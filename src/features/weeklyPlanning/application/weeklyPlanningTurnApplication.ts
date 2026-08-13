@@ -1,22 +1,21 @@
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
-import {
-  executeWeeklyPlanningTurn,
-  type WeeklyPlanningTurnSubmissionResult,
+import type {
+  WeeklyPlanningTurnSubmissionResult,
 } from '../weeklyPlanningTurnExecutor';
 import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
-import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
-import {
-  createWeeklyPlanningTurnRequestContext,
-} from './weeklyPlanningTemporalContext';
 import {
   weeklyPlanningTurnOutcomeLifecycle,
   type WeeklyPlanningTurnOutcomeLifecycle,
 } from './weeklyPlanningTurnOutcomeLifecycle';
+import {
+  weeklyPlanningTurnRuntimeGateway,
+  type WeeklyPlanningTurnRuntimeGateway,
+} from './weeklyPlanningTurnRuntimeGateway';
 import {
   weeklyPlanningTurnStagingLifecycle,
   type WeeklyPlanningTurnStagingLifecycle,
@@ -24,23 +23,17 @@ import {
 
 export interface WeeklyPlanningTurnApplicationServices {
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
-  executeTurn: typeof executeWeeklyPlanningTurn;
-  bindStableV5SessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
+  runtimeGateway: WeeklyPlanningTurnRuntimeGateway;
   stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
   outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle;
 }
 
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
-  executeTurn: executeWeeklyPlanningTurn,
-  bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
+  runtimeGateway: weeklyPlanningTurnRuntimeGateway,
   stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
   outcomeLifecycle: weeklyPlanningTurnOutcomeLifecycle,
 };
-
-function resolvedTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo';
-}
 
 export interface SubmitWeeklyPlanningApplicationTurnParams {
   session: WeeklyPlanningControllerSession;
@@ -69,30 +62,18 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
-    async execute({ snapshot, pending, userText }) {
-      services.bindStableV5SessionScope({
-        ownerId: params.userId,
-        weekStartDate: snapshot.weekStartDate,
-        conversationId: pending.conversationId,
-      });
-      const requestContext = createWeeklyPlanningTurnRequestContext({
-        startedAtIso: pending.startedAt,
-        timeZone: params.timeZone ?? resolvedTimeZone(),
-        weekStartsOn: params.weekStartsOn ?? 'monday',
-      });
-      return services.executeTurn({
-        previousState: snapshot.intakeState,
-        messages: snapshot.messages,
+    execute({ snapshot, pending, userText }) {
+      return services.runtimeGateway.execute({
+        snapshot,
+        pending,
         userText,
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
-        conversationId: pending.conversationId,
-        traceRequestId: pending.requestId,
-        weekStartsOn: requestContext.weekStartsOn,
-        requestContext,
+        weekStartsOn: params.weekStartsOn,
+        timeZone: params.timeZone,
       });
     },
     commitExecutionResult({ pending }) {
