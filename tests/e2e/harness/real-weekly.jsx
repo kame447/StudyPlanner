@@ -77,6 +77,13 @@ function RealWeeklyApplicationHarness() {
     window.__realWeeklyState = application.state;
   }, [application.state]);
 
+  useEffect(() => {
+    window.__realWeeklyActions = {
+      clearConversation: () => application.clearConversation(),
+      resetSession: () => application.resetSession(),
+    };
+  }, [application.clearConversation, application.resetSession]);
+
   if (!open) {
     return (
       <main>
