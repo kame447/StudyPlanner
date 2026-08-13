@@ -138,6 +138,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - `weeklyPlanningTurnOutcomeLifecycle.ts`を新設し、owned state保存とcommitted/discarded/failed traceの組み合わせを内部へ隠す。`failed`理由のdiscard traceは既存どおり重複記録せず、failure trace側へ任せる。
 - `weeklyPlanningTurnApplication.ts`のservices contractから`saveOwnedState`、個別record関数、個別finalize/discard関数を除き、2つのlifecycle facadeへ依存させる。authenticated runtime identityとnormalized storage ownerの分離は維持する。
 - application testはfacadeへの委譲を検証し、outcome lifecycle unit testで保存→trace順序とfailed discard抑止を検証する。architecture testで低レベルside-effect関数がapplication orchestrationへ戻らないことを固定する。
+- 初回CI #2726ではproduction本体ではなく、旧flat service contractを使うtemporal/real-API observation fixtureと、unit testでinterfaceへcastしたため失われたVitest mock型をTypeScriptが検出した。facadeを戻さず、fixtureを`stagingLifecycle / outcomeLifecycle`契約へ移し、mockは構造的型付けのまま保持して修正する。
 - AI意味理解・controllerのcommit semantics・scheduler・preview・approvalには触れず、application side-effect APIのSRP / ISP / encapsulationだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
