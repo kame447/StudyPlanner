@@ -95,23 +95,33 @@ function RealWeeklyApplicationHarness() {
   }
 
   return (
-    <WeeklyPlanningQuickEntryModal
-      application={application}
-      userId="browser-real-weekly-user"
-      selectedDate="2026-08-13"
-      plans={[]}
-      actuals={[]}
-      materials={[]}
-      subjects={[]}
-      onClose={() => {
-        record('real-close');
-        setOpen(false);
-      }}
-      onSaveTodo={async (draft) => record('real-save-todo', draft)}
-      onSavePlan={async (draft) => record('real-save-plan', draft)}
-      onSaveStandaloneActual={async (draft) => record('real-save-actual', draft)}
-      onSaveLinkedActual={async (plan, draft) => record('real-save-linked-actual', { plan, draft })}
-    />
+    <>
+      <div aria-label="real weekly application test controls">
+        <button type="button" onClick={() => application.clearConversation()}>
+          会話履歴だけ消す
+        </button>
+        <button type="button" onClick={() => application.resetSession()}>
+          この週の相談をリセット
+        </button>
+      </div>
+      <WeeklyPlanningQuickEntryModal
+        application={application}
+        userId="browser-real-weekly-user"
+        selectedDate="2026-08-13"
+        plans={[]}
+        actuals={[]}
+        materials={[]}
+        subjects={[]}
+        onClose={() => {
+          record('real-close');
+          setOpen(false);
+        }}
+        onSaveTodo={async (draft) => record('real-save-todo', draft)}
+        onSavePlan={async (draft) => record('real-save-plan', draft)}
+        onSaveStandaloneActual={async (draft) => record('real-save-actual', draft)}
+        onSaveLinkedActual={async (plan, draft) => record('real-save-linked-actual', { plan, draft })}
+      />
+    </>
   );
 }
 
