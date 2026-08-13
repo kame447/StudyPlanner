@@ -66,16 +66,6 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     const { result } = idempotency;
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
-      stage: 'runtime_duplicate_turn_suppressed',
-      severity: 'warn',
-      data: {
-        criterion: 'runtime graph already contains conversationId:requestId in appliedTurnKeys',
-        coreExecutorInvoked: false,
-        previewCandidateCount: 0,
-      },
-    });
-    recordWeeklyPlanningStableV5DebugTrace({
-      requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
       severity: 'warn',
       data: { finalDecision: finalDecision(result) },
