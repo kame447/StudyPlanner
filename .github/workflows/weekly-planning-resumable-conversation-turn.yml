@@ -44,6 +44,7 @@ concurrency:
 
 jobs:
   prepare-and-optionally-observe-one-turn:
+    if: ${{ github.event.repository.private }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -53,6 +54,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -135,18 +138,16 @@ jobs:
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: npm run observe:weekly-ai:conversation:turn
 
-      - name: Publish transcript for human judgment
-        if: ${{ always() && inputs.execute_turn }}
+      - name: Record private observation completion
+        if: always()
         run: |
-          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
-            cat "$OUTPUT_DIR/transcript.md" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "Real-API conversation details are intentionally omitted from GitHub logs."
 
-      - name: Upload observation artifact
+      - name: Upload private observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-resumable-conversation
           path: artifacts/weekly-planning-resumable-conversation/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
