@@ -31,12 +31,15 @@ function createServices(overrides: Partial<WeeklyPlanningTurnApplicationServices
       draftCandidates: [],
     })),
     bindStableV5SessionScope: vi.fn(),
-    saveOwnedState: vi.fn(),
-    finalizeTurn: vi.fn(),
-    discardTurn: vi.fn(),
-    recordCommittedTurn: vi.fn(() => null),
-    recordDiscardedTurn: vi.fn(() => null),
-    recordFailedTurn: vi.fn(() => null),
+    stagingLifecycle: {
+      finalize: vi.fn(),
+      discard: vi.fn(),
+    },
+    outcomeLifecycle: {
+      committed: vi.fn(),
+      discarded: vi.fn(),
+      failed: vi.fn(),
+    },
     ...overrides,
   } as WeeklyPlanningTurnApplicationServices;
 }
@@ -66,7 +69,7 @@ function baseParams() {
 }
 
 describe('submitWeeklyPlanningApplicationTurn', () => {
-  it('binds Stable V5 scope, executes the semantic turn and commits side effects', async () => {
+  it('binds Stable V5 scope, executes the semantic turn and delegates committed lifecycle work', async () => {
     const { store, params } = baseParams();
     const resultState = createInitialPlanningIntakeState();
     const services = createServices({
@@ -96,25 +99,25 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       traceRequestId: 'conversation-1:request:1',
       weekStartsOn: 'monday',
     }));
-    expect(services.finalizeTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.stagingLifecycle.finalize).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
       pending: expect.objectContaining({
         conversationId: 'conversation-1',
         requestId: 'conversation-1:request:1',
       }),
     }));
-    expect(services.saveOwnedState).toHaveBeenCalledWith('user-1', store.getState());
-    expect(services.recordCommittedTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.outcomeLifecycle.committed).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
       userText: '来週の予定を作りたい',
       result: expect.objectContaining({ state: resultState }),
+      committed: store.getState(),
     }));
-    expect(services.recordDiscardedTurn).not.toHaveBeenCalled();
+    expect(services.outcomeLifecycle.discarded).not.toHaveBeenCalled();
     expect(store.getState().intakeState).toBe(resultState);
   });
 
   it('keeps authenticated runtime identity separate from normalized storage ownership', async () => {
-    const { store, params } = baseParams();
+    const { params } = baseParams();
     params.ownerId = 'normalized-owner';
     const services = createServices();
 
@@ -126,16 +129,15 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(services.executeTurn).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
     }));
-    expect(services.finalizeTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.stagingLifecycle.finalize).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
     }));
-    expect(services.saveOwnedState).toHaveBeenCalledWith('normalized-owner', store.getState());
-    expect(services.recordCommittedTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.outcomeLifecycle.committed).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'normalized-owner',
     }));
   });
 
-  it('persists and traces the controlled failure state before rethrowing', async () => {
+  it('delegates controlled failure cleanup and persistence before rethrowing', async () => {
     const { store, params } = baseParams();
     const failure = new Error('provider unavailable');
     const services = createServices({
@@ -144,16 +146,16 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
 
     await expect(submitWeeklyPlanningApplicationTurn(params, services)).rejects.toBe(failure);
 
-    expect(services.discardTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.stagingLifecycle.discard).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: 'conversation-1',
       requestId: 'conversation-1:request:1',
     }));
-    expect(services.recordDiscardedTurn).not.toHaveBeenCalled();
-    expect(services.saveOwnedState).toHaveBeenCalledWith('user-1', store.getState());
-    expect(services.recordFailedTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.outcomeLifecycle.discarded).not.toHaveBeenCalled();
+    expect(services.outcomeLifecycle.failed).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
       userText: '来週の予定を作りたい',
       error: failure,
+      failedState: store.getState(),
       assistantMessage: expect.objectContaining({
         role: 'assistant',
         content: '週間計画の会話状態を更新できませんでした。',
