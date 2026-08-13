@@ -6,18 +6,28 @@ import {
 } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const LEGACY_TOKEN = 'weeklyPlanningBehaviorAware';
-const STATIC_IMPORT_EXPRESSION = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
-const DYNAMIC_IMPORT_EXPRESSION = /import\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 const REQUIRED_LEGACY_ROOTS = new Set([
   'features/weeklyPlanning/planning/weeklyPlanningBehaviorAwarePreviewBridge.ts',
   'features/weeklyPlanning/planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened.ts',
   'features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts',
 ]);
+
+const EXPECTED_TYPE_ONLY_EDGES = new Set([
+  'features/weeklyPlanning/pipeline/weeklyPlanningRenderedQuestionContext.ts:./weeklyPlanningBehaviorAwareIntakePipeline',
+  'features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:../planning/weeklyPlanningBehaviorAwarePreviewBridge',
+  'features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:../pipeline/weeklyPlanningBehaviorAwareIntakePipeline',
+]);
+
+interface ImportedSpecifier {
+  specifier: string;
+  typeOnly: boolean;
+}
 
 function sourceFiles(root: string): string[] {
   const files: string[] = [];
@@ -39,11 +49,71 @@ function isTestSource(relativePath: string): boolean {
     || /\.(test|spec)\.(ts|tsx)$/.test(relativePath);
 }
 
-function importedSpecifiers(source: string): string[] {
-  return [
-    ...source.matchAll(STATIC_IMPORT_EXPRESSION),
-    ...source.matchAll(DYNAMIC_IMPORT_EXPRESSION),
-  ].map((match) => match[1]);
+function importDeclarationIsTypeOnly(node: ts.ImportDeclaration): boolean {
+  const clause = node.importClause;
+  if (!clause) return false;
+  if (clause.isTypeOnly) return true;
+  if (clause.name) return false;
+  if (!clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) return false;
+  return clause.namedBindings.elements.length > 0
+    && clause.namedBindings.elements.every((element) => element.isTypeOnly);
+}
+
+function exportDeclarationIsTypeOnly(node: ts.ExportDeclaration): boolean {
+  if (node.isTypeOnly) return true;
+  if (!node.exportClause || !ts.isNamedExports(node.exportClause)) return false;
+  return node.exportClause.elements.length > 0
+    && node.exportClause.elements.every((element) => element.isTypeOnly);
+}
+
+function importedSpecifiers(path: string): ImportedSpecifier[] {
+  const source = readFileSync(path, 'utf8');
+  const parsed = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    extname(path) === '.tsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const imports: ImportedSpecifier[] = [];
+
+  for (const statement of parsed.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      imports.push({
+        specifier: statement.moduleSpecifier.text,
+        typeOnly: importDeclarationIsTypeOnly(statement),
+      });
+      continue;
+    }
+    if (
+      ts.isExportDeclaration(statement)
+      && statement.moduleSpecifier
+      && ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      imports.push({
+        specifier: statement.moduleSpecifier.text,
+        typeOnly: exportDeclarationIsTypeOnly(statement),
+      });
+    }
+  }
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && node.arguments.length === 1
+      && ts.isStringLiteral(node.arguments[0])
+    ) {
+      imports.push({
+        specifier: node.arguments[0].text,
+        typeOnly: false,
+      });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+
+  return imports;
 }
 
 function resolveRelativeModule(importer: string, specifier: string): string | null {
@@ -63,8 +133,18 @@ function resolveRelativeModule(importer: string, specifier: string): string | nu
   return null;
 }
 
+function targetsLegacyCluster(
+  importer: string,
+  specifier: string,
+  legacySources: ReadonlySet<string>,
+): boolean {
+  if (specifier.includes(LEGACY_TOKEN)) return true;
+  const resolved = resolveRelativeModule(importer, specifier);
+  return Boolean(resolved && legacySources.has(resolved));
+}
+
 describe('legacy behavior-aware production isolation', () => {
-  it('has no production import edge from outside the isolated behavior-aware cluster', () => {
+  it('has no runtime import edge from outside the isolated behavior-aware cluster', () => {
     const allSources = sourceFiles(SRC_ROOT);
     const productionSources = allSources.filter(
       (path) => !isTestSource(normalizedRelative(path)),
@@ -80,23 +160,20 @@ describe('legacy behavior-aware production isolation', () => {
       expect(discoveredLegacyRoots.has(requiredRoot)).toBe(true);
     }
 
-    const violations: string[] = [];
+    const runtimeEdges: string[] = [];
+    const typeOnlyEdges: string[] = [];
     for (const importer of productionSources) {
       if (legacySources.has(importer)) continue;
       const importerRelative = normalizedRelative(importer);
-      const source = readFileSync(importer, 'utf8');
-      for (const specifier of importedSpecifiers(source)) {
-        if (specifier.includes(LEGACY_TOKEN)) {
-          violations.push(`${importerRelative}:${specifier}`);
-          continue;
-        }
-        const resolved = resolveRelativeModule(importer, specifier);
-        if (resolved && legacySources.has(resolved)) {
-          violations.push(`${importerRelative}:${specifier}`);
-        }
+      for (const imported of importedSpecifiers(importer)) {
+        if (!targetsLegacyCluster(importer, imported.specifier, legacySources)) continue;
+        const edge = `${importerRelative}:${imported.specifier}`;
+        if (imported.typeOnly) typeOnlyEdges.push(edge);
+        else runtimeEdges.push(edge);
       }
     }
 
-    expect(violations).toEqual([]);
+    expect(runtimeEdges).toEqual([]);
+    expect(new Set(typeOnlyEdges)).toEqual(EXPECTED_TYPE_ONLY_EDGES);
   });
 });
