@@ -18,8 +18,8 @@ on:
         type: string
       conversation_id:
         description: Stable logical conversation ID; required for turn 1
-        required: false
         type: string
+        required: false
       owner_id:
         description: Observation owner ID; required for turn 1
         required: false
@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   prepare-and-optionally-observe-one-turn:
-    if: ${{ github.event.repository.private }}
+    if: ${{ github.actor == github.repository_owner }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -72,10 +72,7 @@ jobs:
           PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
         run: |
           mkdir -p previous-artifact
-          gh run download "$PREVIOUS_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "$ARTIFACT_NAME" \
-            --dir previous-artifact
+          gh run download "$PREVIOUS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir previous-artifact
           test -f previous-artifact/checkpoint.json
 
       - name: Validate turn inputs without calling API
@@ -138,16 +135,15 @@ jobs:
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: npm run observe:weekly-ai:conversation:turn
 
-      - name: Record private observation completion
+      - name: Record observation completion
         if: always()
-        run: |
-          echo "Real-API conversation details are intentionally omitted from GitHub logs."
+        run: echo "Observation details are available in the uploaded artifact."
 
-      - name: Upload private observation artifact
+      - name: Upload observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-resumable-conversation
           path: artifacts/weekly-planning-resumable-conversation/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
