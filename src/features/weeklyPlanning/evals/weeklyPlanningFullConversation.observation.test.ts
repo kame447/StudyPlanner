@@ -9,8 +9,7 @@ import {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from '../application/weeklyPlanningStableV5RuntimeSession';
 import {
-  discardWeeklyPlanningApplicationTurn,
-  finalizeWeeklyPlanningApplicationTurn,
+  weeklyPlanningTurnStagingLifecycle,
 } from '../application/weeklyPlanningTurnSideEffects';
 import {
   submitWeeklyPlanningApplicationTurn,
@@ -243,12 +242,12 @@ run('weekly planning full real API conversation', () => {
         return capture.result;
       },
       bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
-      saveOwnedState: () => undefined,
-      finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
-      discardTurn: discardWeeklyPlanningApplicationTurn,
-      recordCommittedTurn: () => null,
-      recordDiscardedTurn: () => null,
-      recordFailedTurn: () => null,
+      stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
+      outcomeLifecycle: {
+        committed: () => undefined,
+        discarded: () => undefined,
+        failed: () => undefined,
+      },
     };
 
     let userText = initialUserText;
