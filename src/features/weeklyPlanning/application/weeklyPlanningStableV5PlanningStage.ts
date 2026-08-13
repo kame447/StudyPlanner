@@ -1,4 +1,3 @@
-import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   evaluateWeeklyPlanningStableV5Planning,
@@ -83,10 +82,4 @@ export function runWeeklyPlanningStableV5PlanningStage(params: {
     evaluation,
   });
   return evaluation;
-}
-
-export function getWeeklyPlanningStableV5BlockingIssueCode(
-  compilation: GenericSchedulerInputCompilationResult,
-): string | undefined {
-  return stableV5BlockingIssueCode(compilation);
 }
