@@ -11,8 +11,8 @@ import type { WeeklyPlanningPendingTurn } from '../types';
 import {
   recordCommittedWeeklyPlanningApplicationTurn,
   recordDiscardedWeeklyPlanningApplicationTurn,
-  type WeeklyPlanningTurnSideEffectServices,
-} from './weeklyPlanningTurnSideEffects';
+  type WeeklyPlanningTurnTraceSideEffectServices,
+} from './weeklyPlanningTurnTraceSideEffects';
 
 const pending: WeeklyPlanningPendingTurn = {
   conversationId: 'conversation-1',
@@ -47,13 +47,10 @@ const rendererTrace: WeeklyPlanningDialogueRendererTrace = {
 };
 
 function createServices() {
-  const recordTurnTrace = vi.fn<WeeklyPlanningTurnSideEffectServices['recordTurnTrace']>(
+  const recordTurnTrace = vi.fn<WeeklyPlanningTurnTraceSideEffectServices['recordTurnTrace']>(
     async () => undefined,
   );
-  const services: WeeklyPlanningTurnSideEffectServices = {
-    hasStagedGraph: vi.fn(() => true),
-    finalizeRuntimeGraph: vi.fn(),
-    discardStagedGraph: vi.fn(),
+  const services: WeeklyPlanningTurnTraceSideEffectServices = {
     getRuntimeSession: vi.fn(() => ({
       ownerId: 'owner-1',
       weekStartDate: '2026-07-27',
@@ -83,7 +80,7 @@ afterEach(() => {
   resetWeeklyPlanningStableV5DebugTraceForTest();
 });
 
-describe('weeklyPlanningTurnSideEffects renderer trace', () => {
+describe('weeklyPlanningTurnTraceSideEffects renderer trace', () => {
   it('forwards the adopted renderer trace with the committed turn', async () => {
     const { recordTurnTrace, services } = createServices();
 

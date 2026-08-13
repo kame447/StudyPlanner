@@ -5,6 +5,10 @@ import type {
   StudyTaskScope,
 } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningRemainingWorkItem } from '../intake/weeklyPlanningRemainingWorkItems';
+import type {
+  AcceptedAssumptionDependencyMetadata,
+  BehaviorAwarePreviewMetadata,
+} from '../preview/weeklyPlanningPreviewCompatibility';
 import {
   createWeeklyDraftCandidatesFromRemainingWorkItems,
   type WeeklyDraftCandidate,
@@ -25,25 +29,10 @@ import type {
   TaskExecutionProfile,
 } from './weeklyPlanningBehaviorTypes';
 
-export interface AcceptedAssumptionDependencyMetadata {
-  proposalId: string;
-  targetRef: string;
-  proposalCreatedFromStateRevision: number;
-}
-
-export interface BehaviorAwarePreviewMetadata {
-  conversationId?: string;
-  stateRevision: number;
-  sourceFactRefs: string[];
-  usedAssumptionProposalRefs: string[];
-  acceptedAssumptionDependencies?: AcceptedAssumptionDependencyMetadata[];
-  taskRef: string;
-  opportunityTags: PlanningOpportunityTag[];
-  reasoningKey:
-    | 'explicit-duration'
-    | 'explicit-unit-rate'
-    | 'accepted-assumption-duration';
-}
+export type {
+  AcceptedAssumptionDependencyMetadata,
+  BehaviorAwarePreviewMetadata,
+};
 
 export interface BehaviorAwarePreviewCandidate extends WeeklyDraftCandidate {
   behaviorMetadata: BehaviorAwarePreviewMetadata;

@@ -1,8 +1,11 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import {
-  createWeeklyPlanningSemanticSystemPromptV5,
-  createWeeklyPlanningSemanticUserPromptV5,
-} from './weeklyPlanningSemanticDocumentV5';
+  createWeeklyPlanningSemanticMeaningPolicyV5,
+  createWeeklyPlanningSemanticUserContextPayloadV5,
+} from './weeklyPlanningSemanticMeaningPolicyV5';
+import {
+  readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5,
+} from './weeklyPlanningWorkBreakdownResponseContractV5';
 
 export interface WeeklyPlanningSemanticPromptInputV5 {
   userText: string;
@@ -12,37 +15,46 @@ export interface WeeklyPlanningSemanticPromptInputV5 {
 }
 
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You alone interpret user meaning and context; deterministic code validates structure/state and handles scheduling, safety, persistence.',
-  'Current SemanticDocument is a delta. publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText. If current userText states no planning window, planningWindow must be null. Every sourceText must be supported by current userText, not prior turns.',
-  'episodicMemory is active-fact provenance for current cross-turn references only; never replay it or revive inactive facts.',
-  'Treat publicStateSummary.pendingQuestion as authoritative and never infer its target from assistant wording. For a pending clarification, resolve only that exact target with fresh localIds; never place public Fact IDs in targetLocalId. If unresolved, emit uncertainty. For work_breakdown return only that existingPublicId task with its current structure, not unrelated accepted state or the old uncertainty.',
-  'Quantity roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. A stated full total is not itself remaining. When the same current-turn statement gives both a full total and a completed amount for the same work and unit, derive the unfinished difference as remaining and keep completed as completed; never label the full total as remaining. For quantity_role_unresolved, return only the minimal local task/workload answer. Never keep uncertainty for a resolved role.',
-  'For semantic_uncertainty, answer only unresolved target; if ambiguous, emit uncertainty.',
+  'You interpret user meaning and context; deterministic code validates representation/state and handles scheduling, safety, and persistence.',
+  'Current SemanticDocument is a delta. publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText.',
+  'episodicMemory is provenance for current cross-turn references only; never replay it or revive inactive facts.',
+  'Treat publicStateSummary.pendingQuestion as authoritative. Resolve only its exact target with fresh localIds; if meaning remains ambiguous, emit uncertainty instead of guessing.',
+  'For existingPublicId, keep partner-specific title/contextLabel unless the user renames it.',
+  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. If one statement gives total and completed amounts for the same work/unit, derive remaining as total minus completed.',
   'An effortEstimate may target the exact task, component, or workload localId.',
-  'Use localIds within response; existingPublicId only for accepted cross-turn identity. create_plan authorizes creation without replaying facts.',
-  'Do not emit application/scheduling/readiness/preview/save commands or prose.',
+  'Use existingPublicId only for accepted cross-turn identity. create_plan authorizes creation without replaying accepted facts.',
+  'Do not emit application, scheduling, readiness, preview, save commands, or prose.',
 ].join('\n');
 
-const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
-  'Non-consecutive dates use separate allowed_date constraints.',
-  'Weekdays use weekday:<english-day>, never custom:<original phrase>.',
-  'Recurring workload periods require matching recurrence; recurring weekdays use one weekly recurrence.',
-  'Relations require task localIds and explicit scheduling meaning; workload size alone is not a relation.',
-  'Clock fields require explicit clocks; use namedTimePeriod or exact clocks, not both.',
+const CROSS_FACT_INSTRUCTION_V5 = [
+  'Non-consecutive allowed dates remain separate date constraints rather than an invented continuous range.',
+  'A recurring workload needs matching recurrence semantics.',
 ].join('\n');
+
+function contextualInstructionV5(
+  input: WeeklyPlanningSemanticPromptInputV5,
+): string | null {
+  const workBreakdownTarget = readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
+    input.publicStateSummary,
+  );
+  if (!workBreakdownTarget) return null;
+  return `This turn answers work_breakdown for exact accepted task ${workBreakdownTarget}. Return only that task, bind existingPublicId to it, and represent only structure supported by current userText; do not replay unrelated accepted state or the old uncertainty.`;
+}
 
 export function createWeeklyPlanningSemanticBaseMessagesV5(
   input: WeeklyPlanningSemanticPromptInputV5,
 ): ChatMessage[] {
+  const contextualInstruction = contextualInstructionV5(input);
   return [
     {
       role: 'system',
       content: [
-        createWeeklyPlanningSemanticSystemPromptV5(),
+        createWeeklyPlanningSemanticMeaningPolicyV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
-        TEMPORAL_STRUCTURE_INSTRUCTION_V5,
-      ].join('\n'),
+        CROSS_FACT_INSTRUCTION_V5,
+        contextualInstruction,
+      ].filter((value): value is string => Boolean(value)).join('\n'),
     },
-    { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
+    { role: 'user', content: createWeeklyPlanningSemanticUserContextPayloadV5(input) },
   ];
 }

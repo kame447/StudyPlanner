@@ -5,32 +5,104 @@ const runtimeSource = readFileSync(
   new URL('./weeklyPlanningStableV5RuntimeExecutor.ts', import.meta.url),
   'utf8',
 );
+const planningEvaluationSource = readFileSync(
+  new URL('./weeklyPlanningStableV5PlanningEvaluation.ts', import.meta.url),
+  'utf8',
+);
+const planningStageSource = readFileSync(
+  new URL('./weeklyPlanningStableV5PlanningStage.ts', import.meta.url),
+  'utf8',
+);
+const responseRoutingSource = readFileSync(
+  new URL('./weeklyPlanningStableV5ResponseRouting.ts', import.meta.url),
+  'utf8',
+);
+const semanticTurnSource = readFileSync(
+  new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
+  'utf8',
+);
+const semanticContextSource = readFileSync(
+  new URL('./weeklyPlanningStableV5SemanticContext.ts', import.meta.url),
+  'utf8',
+);
+const runtimeQuestionsSource = readFileSync(
+  new URL('./weeklyPlanningStableV5RuntimeQuestions.ts', import.meta.url),
+  'utf8',
+);
 
 describe('Stable V5 ambiguity and recovery architecture contract', () => {
-  it('publishes active uncertainty context to the semantic AI', () => {
-    expect(runtimeSource).toContain(
+  it('publishes active uncertainty context from the semantic-context adapter', () => {
+    expect(semanticContextSource).toContain(
       'uncertainties: active.uncertainties.map((uncertainty) => ({',
     );
-    expect(runtimeSource).toContain('publicId: uncertainty.id');
-    expect(runtimeSource).toContain('targetPublicId: uncertainty.targetFactId');
-    expect(runtimeSource).toContain('reason: uncertainty.reason');
-    expect(runtimeSource).toContain('sourceText: uncertainty.source.sourceText');
+    expect(semanticContextSource).toContain('publicId: uncertainty.id');
+    expect(semanticContextSource).toContain('targetPublicId: uncertainty.targetFactId');
+    expect(semanticContextSource).toContain('reason: uncertainty.reason');
+    expect(semanticContextSource).toContain('sourceText: uncertainty.source.sourceText');
+    expect(semanticTurnSource).toContain('createStableV5SemanticPublicStateSummary');
   });
 
-  it('asks about the ambiguous source fragment before other scheduler issues', () => {
-    expect(runtimeSource).toContain("case 'semantic_uncertainty':");
-    expect(runtimeSource).toContain(
+  it('keeps ambiguity ordering in planning policy and response wording in the routing facade', () => {
+    expect(runtimeQuestionsSource).toContain("case 'semantic_uncertainty':");
+    expect(runtimeQuestionsSource).toContain(
       '「${sourceText}」の意味を一つに決められませんでした。',
     );
-    expect(runtimeSource.indexOf("'semantic_uncertainty'"))
-      .toBeLessThan(runtimeSource.indexOf("'planning_horizon'"));
+    expect(planningEvaluationSource).toContain(
+      'decideWeeklyPlanningStableDialogueV5(compilation)',
+    );
+    expect(responseRoutingSource).toContain(
+      'renderStableV5RuntimeQuestion(graph, dialogue.question)',
+    );
+    expect(runtimeSource).not.toContain('renderStableV5RuntimeQuestion');
+  });
+
+  it('encapsulates planning evaluation observability behind the planning-stage facade', () => {
+    expect(planningStageSource).toContain('evaluateWeeklyPlanningStableV5Planning(params)');
+    expect(planningStageSource).toContain("stage: 'runtime_scheduler_dialogue_evaluated'");
+    expect(planningStageSource).toContain('firstBlockingIssueCodeInCompilationOrder');
+    expect(runtimeSource).toContain('runWeeklyPlanningStableV5PlanningStage');
+    expect(runtimeSource).not.toContain("stage: 'runtime_scheduler_dialogue_evaluated'");
+    expect(runtimeSource).not.toContain('activeStableV5PlanningWindows');
+    expect(runtimeSource).not.toContain('firstBlockingIssueCodeInCompilationOrder');
+  });
+
+  it('depends on the planning evaluation contract rather than the evaluator implementation', () => {
+    expect(planningEvaluationSource).toContain(
+      'export type WeeklyPlanningStableV5PlanningEvaluation = ReturnType<',
+    );
+    expect(responseRoutingSource).toContain(
+      'evaluation: WeeklyPlanningStableV5PlanningEvaluation;',
+    );
+    expect(responseRoutingSource).not.toContain(
+      'ReturnType<typeof evaluateWeeklyPlanningStableV5Planning>',
+    );
+    expect(responseRoutingSource).not.toContain(
+      'evaluateWeeklyPlanningStableV5Planning,',
+    );
+  });
+
+  it('keeps the runtime executor surface narrow and removes unused low-level diagnostics', () => {
+    expect(runtimeSource).toContain('executeWeeklyPlanningStableV5RuntimeTurn');
+    expect(runtimeSource).toContain('isWeeklyPlanningStableV5PreviewAuthorized');
+    expect(runtimeSource).not.toContain('getWeeklyPlanningStableV5BlockingIssueCode');
+    expect(planningStageSource).not.toContain('getWeeklyPlanningStableV5BlockingIssueCode');
+  });
+
+  it('encapsulates response completion versus preview scheduling behind a typed facade', () => {
+    expect(responseRoutingSource).toContain("kind: 'respond'");
+    expect(responseRoutingSource).toContain("kind: 'schedule_preview'");
+    expect(responseRoutingSource).toContain('weeklyPlanningStableV5ResponseRouter = {');
+    expect(runtimeSource).toContain('weeklyPlanningStableV5ResponseRouter.beforePreview');
+    expect(runtimeSource).toContain('weeklyPlanningStableV5ResponseRouter.afterPreview');
+    expect(runtimeSource).toContain("responseRoute.kind === 'respond'");
+    expect(runtimeSource).not.toContain('compilation.input!');
   });
 
   it('never asks the user to resend the same content after structural rejection', () => {
-    expect(runtimeSource).not.toContain(
+    expect(semanticTurnSource).not.toContain(
       '同じ内容をそのままもう一度送ってください。',
     );
-    expect(runtimeSource).toContain(
+    expect(semanticTurnSource).toContain(
       '予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
     );
   });

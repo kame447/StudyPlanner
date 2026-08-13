@@ -110,7 +110,7 @@ jobs:
           No StudyPlanner turn and no OpenAI API request were executed.
           EOF
 
-      - name: Verify OpenAI secret
+      - name: Verify API credential
         if: ${{ inputs.execute_turn }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

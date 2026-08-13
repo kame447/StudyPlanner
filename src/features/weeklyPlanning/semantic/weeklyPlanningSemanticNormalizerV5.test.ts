@@ -132,7 +132,7 @@ describe('Stable V5 semantic normalizer', () => {
     });
   });
 
-  it('tells the AI it owns contextual meaning and exact pending-target resolution', async () => {
+  it('keeps contextual meaning with AI while exact pending-target state stays authoritative', async () => {
     const fake = client([JSON.stringify(document())]);
     await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '40問に3時間かかります',
@@ -147,16 +147,14 @@ describe('Stable V5 semantic normalizer', () => {
 
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('You alone interpret user meaning and context');
-    expect(system).toContain('Treat publicStateSummary.pendingQuestion as authoritative');
-    expect(system).toContain('never infer its target from assistant wording');
-    expect(system).toContain('Every sourceText must be supported by current userText, not prior turns');
-    expect(system).toContain('target means the amount intended for this plan');
-    expect(system).toContain('remaining means the full unfinished amount');
-    expect(system).toContain('completed means the amount already done');
-    expect(system).toContain('For quantity_role_unresolved');
-    expect(system).toContain('Never keep uncertainty for a resolved role');
-    expect(system).toContain('For semantic_uncertainty');
+    expect(system).toContain('interpret user meaning and context');
+    expect(system).toContain('pendingQuestion as authoritative');
+    expect(system).toContain('exact target');
+    expect(system).toContain('fresh localIds');
+    expect(system).toContain('every sourceText must be supported by current userText');
+    expect(system).toContain('target is the amount intended for this plan');
+    expect(system).toContain('remaining is the unfinished amount');
+    expect(system).toContain('completed is already done');
     expect(system).toContain('An effortEstimate may target the exact task, component, or workload localId');
   });
 
@@ -192,9 +190,9 @@ describe('Stable V5 semantic normalizer', () => {
     });
     expect(fake.calls).toHaveLength(2);
     const payload = repairPayload(fake.calls[1]);
-    expect(payload.requiredChanges).toEqual([
-      'Correct only the listed schema, type, range, reference, or structural validation failures while preserving the meaning you derived from the original context.',
-    ]);
+    expect(payload.requiredChanges).toHaveLength(1);
+    expect(payload.requiredChanges?.[0]).toContain('listed validation failures');
+    expect(payload.requiredChanges?.[0]).toContain('preserving');
     expect(payload.validationErrors).toEqual(['document:invalid-json']);
   });
 

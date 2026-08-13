@@ -75,6 +75,7 @@ describe('weeklyPlanningApproval assumption dependency', () => {
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [proposal('accepted')],
+      runtimeSnapshot: null,
     }).allowed).toBe(true);
   });
 
@@ -84,6 +85,7 @@ describe('weeklyPlanningApproval assumption dependency', () => {
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [proposal('pending')],
+      runtimeSnapshot: null,
     });
     expect(pending.allowed).toBe(false);
     if (!pending.allowed) expect(pending.attempt.kind).toBe('pending_assumption_preview_approval_attempt');
@@ -93,6 +95,7 @@ describe('weeklyPlanningApproval assumption dependency', () => {
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [proposal('superseded')],
+      runtimeSnapshot: null,
     });
     expect(superseded.allowed).toBe(false);
     if (!superseded.allowed) expect(superseded.attempt.kind).toBe('invalid_preview_approval_attempt');

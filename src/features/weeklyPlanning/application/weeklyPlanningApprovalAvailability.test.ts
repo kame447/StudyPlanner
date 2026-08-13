@@ -4,8 +4,15 @@ import {
   clearWeeklyPlanningSessionRuntime,
   publishWeeklyPlanningSessionRuntime,
 } from '../planning/weeklyPlanningSessionRuntime';
+import {
+  createEmptyWeeklyPlanningFactGraphV5,
+} from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningTestDraftBlock } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
+import {
+  hydrateWeeklyPlanningStableV5RuntimeSession,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './weeklyPlanningStableV5RuntimeSession';
 
 const metadata: WeeklyPreviewMetadata = {
   previewId: 'preview-restored',
@@ -24,8 +31,41 @@ function behaviorBlock(override: Partial<WeeklyPreviewMetadata> = {}) {
   });
 }
 
+function stableV5Block(override: Partial<WeeklyPreviewMetadata> = {}) {
+  const block = behaviorBlock(override);
+  block.behaviorMetadata = {
+    ...block.behaviorMetadata!,
+    reasoningKey: 'stable-v5-explicit-duration',
+    compatibility: {
+      workItemSemantic: 'generic_semantic_task',
+      schedulerInputSource: 'stable_v5_generic_scheduler_input',
+      candidateSource: 'stable_v5',
+    },
+  };
+  return block;
+}
+
+function hydrateStableV5Session(params: {
+  conversationId: string;
+  revision: number;
+  ownerId?: string;
+}): void {
+  hydrateWeeklyPlanningStableV5RuntimeSession({
+    ownerId: params.ownerId ?? 'user-1',
+    weekStartDate: '2026-07-27',
+    conversationId: params.conversationId,
+    graph: {
+      ...createEmptyWeeklyPlanningFactGraphV5(),
+      revision: params.revision,
+    },
+  });
+}
+
 describe('classifyWeeklyPlanningApprovalAvailability', () => {
-  afterEach(() => clearWeeklyPlanningSessionRuntime());
+  afterEach(() => {
+    clearWeeklyPlanningSessionRuntime();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  });
 
   it('allows a behavior-aware draft while the matching runtime remains active', () => {
     publishWeeklyPlanningSessionRuntime({
@@ -91,6 +131,42 @@ describe('classifyWeeklyPlanningApprovalAvailability', () => {
 
     expect(beforeClose.kind).toBe('eligible');
     expect(afterReopen.kind).toBe('eligible');
+  });
+
+  it('checks a Stable V5 draft against its own conversation even when another conversation is current', () => {
+    hydrateStableV5Session({ conversationId: 'conversation-current', revision: 3 });
+    hydrateStableV5Session({ conversationId: 'another-conversation', revision: 8 });
+
+    expect(classifyWeeklyPlanningApprovalAvailability({
+      blocks: [stableV5Block()],
+      userId: 'user-1',
+    })).toEqual({ kind: 'eligible', reason: 'current_session' });
+  });
+
+  it('requires Stable V5 recomputation when its own conversation is unavailable or revised', () => {
+    expect(classifyWeeklyPlanningApprovalAvailability({
+      blocks: [stableV5Block()],
+      userId: 'user-1',
+    }).reason).toBe('session_runtime_unavailable');
+
+    hydrateStableV5Session({ conversationId: 'conversation-current', revision: 4 });
+    expect(classifyWeeklyPlanningApprovalAvailability({
+      blocks: [stableV5Block()],
+      userId: 'user-1',
+    }).reason).toBe('state_revision_mismatch');
+  });
+
+  it('never approves a Stable V5 draft against another owner runtime', () => {
+    hydrateStableV5Session({
+      conversationId: 'conversation-current',
+      revision: 3,
+      ownerId: 'user-2',
+    });
+
+    expect(classifyWeeklyPlanningApprovalAvailability({
+      blocks: [stableV5Block()],
+      userId: 'user-1',
+    })).toMatchObject({ kind: 'blocked', reason: 'user_mismatch' });
   });
 
   it('preserves the metadata-less legacy approval path', () => {

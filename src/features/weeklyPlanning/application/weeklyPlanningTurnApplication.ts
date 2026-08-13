@@ -1,46 +1,38 @@
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
-import {
-  executeWeeklyPlanningTurn,
-  type WeeklyPlanningTurnSubmissionResult,
-} from '../weeklyPlanningTurnExecutor';
+import type {
+  WeeklyPlanningTurnSubmissionResult,
+} from '../weeklyPlanningTurnExecutionTypes';
 import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
-import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
-import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
-  discardWeeklyPlanningApplicationTurn,
-  finalizeWeeklyPlanningApplicationTurn,
-  recordCommittedWeeklyPlanningApplicationTurn,
-  recordDiscardedWeeklyPlanningApplicationTurn,
-  recordFailedWeeklyPlanningApplicationTurn,
+  weeklyPlanningTurnOutcomeLifecycle,
+  type WeeklyPlanningTurnOutcomeLifecycle,
+} from './weeklyPlanningTurnOutcomeLifecycle';
+import {
+  weeklyPlanningTurnRuntimeGateway,
+  type WeeklyPlanningTurnRuntimeGateway,
+} from './weeklyPlanningTurnRuntimeGateway';
+import {
+  weeklyPlanningTurnStagingLifecycle,
+  type WeeklyPlanningTurnStagingLifecycle,
 } from './weeklyPlanningTurnSideEffects';
 
 export interface WeeklyPlanningTurnApplicationServices {
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
-  executeTurn: typeof executeWeeklyPlanningTurn;
-  bindStableV5SessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
-  saveOwnedState: typeof saveOwnedWeeklyPlanningState;
-  finalizeTurn: typeof finalizeWeeklyPlanningApplicationTurn;
-  discardTurn: typeof discardWeeklyPlanningApplicationTurn;
-  recordCommittedTurn: typeof recordCommittedWeeklyPlanningApplicationTurn;
-  recordDiscardedTurn: typeof recordDiscardedWeeklyPlanningApplicationTurn;
-  recordFailedTurn: typeof recordFailedWeeklyPlanningApplicationTurn;
+  runtimeGateway: WeeklyPlanningTurnRuntimeGateway;
+  stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
+  outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle;
 }
 
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
-  executeTurn: executeWeeklyPlanningTurn,
-  bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
-  saveOwnedState: saveOwnedWeeklyPlanningState,
-  finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
-  discardTurn: discardWeeklyPlanningApplicationTurn,
-  recordCommittedTurn: recordCommittedWeeklyPlanningApplicationTurn,
-  recordDiscardedTurn: recordDiscardedWeeklyPlanningApplicationTurn,
-  recordFailedTurn: recordFailedWeeklyPlanningApplicationTurn,
+  runtimeGateway: weeklyPlanningTurnRuntimeGateway,
+  stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
+  outcomeLifecycle: weeklyPlanningTurnOutcomeLifecycle,
 };
 
 export interface SubmitWeeklyPlanningApplicationTurnParams {
@@ -53,6 +45,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
+  timeZone?: string;
+  now?: () => string;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -67,62 +61,53 @@ export function submitWeeklyPlanningApplicationTurn(
     userText: params.userText,
     getState: params.getState,
     dispatch: params.dispatch,
-    async execute({ snapshot, pending, userText }) {
-      services.bindStableV5SessionScope({
-        ownerId: params.userId,
-        weekStartDate: snapshot.weekStartDate,
-        conversationId: pending.conversationId,
-      });
-      return services.executeTurn({
-        previousState: snapshot.intakeState,
-        messages: snapshot.messages,
+    now: params.now,
+    execute({ snapshot, pending, userText }) {
+      return services.runtimeGateway.execute({
+        snapshot,
+        pending,
         userText,
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
-        conversationId: pending.conversationId,
-        traceRequestId: pending.requestId,
         weekStartsOn: params.weekStartsOn,
+        timeZone: params.timeZone,
       });
     },
     commitExecutionResult({ pending }) {
-      services.finalizeTurn({ ownerId: params.userId, pending });
+      services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending, userText, result, reason }) {
-      services.discardTurn(pending);
-      if (reason === 'failed') return;
-      const traceWrite = services.recordDiscardedTurn({
+      services.stagingLifecycle.discard(pending);
+      services.outcomeLifecycle.discarded({
         ownerId: params.ownerId,
         pending,
         userText,
         result,
         reason,
       });
-      if (traceWrite) void traceWrite;
     },
     onCommittedTurn({ pending, userText, result, committed }) {
-      services.saveOwnedState(params.ownerId, committed);
-      const traceWrite = services.recordCommittedTurn({
+      services.outcomeLifecycle.committed({
         ownerId: params.ownerId,
         pending,
         userText,
         result,
+        committed,
       });
-      if (traceWrite) void traceWrite;
     },
     onFailedTurn({ pending, userText, error, failedState, assistantMessage }) {
-      services.discardTurn(pending);
-      services.saveOwnedState(params.ownerId, failedState);
-      const traceWrite = services.recordFailedTurn({
+      services.stagingLifecycle.discard(pending);
+      services.outcomeLifecycle.failed({
         ownerId: params.ownerId,
         pending,
         userText,
         error,
+        failedState,
         assistantMessage,
       });
-      if (traceWrite) void traceWrite;
     },
   });
 }

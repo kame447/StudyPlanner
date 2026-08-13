@@ -1,188 +1,71 @@
-import type {
-  ChatMessage,
-  OpenAiCompatibleClient,
-} from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
 import {
-  recordWeeklyPlanningStableV5DebugTrace,
-} from '../trace/weeklyPlanningStableV5DebugTrace';
-import {
-  WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  type WeeklyPlanningSemanticDocumentV5,
-} from './weeklyPlanningSemanticDocumentV5';
+  tryFocusedAuthorizationRouteV5,
+  tryFocusedContextualAnswerRouteV5,
+} from './weeklyPlanningSemanticFocusedPreRoutesV5';
+import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
 import {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
 import {
-  FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
-  FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5,
-  createFocusedAuthorizationDocumentV5,
-  createFocusedAuthorizationMessagesV5,
-  focusedAuthorizationEligibleV5,
-  parseFocusedAuthorizationDecisionV5,
-  type FocusedAuthorizationDecisionV5,
-} from './weeklyPlanningFocusedAuthorizationV5';
+  WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+  type WeeklyPlanningSemanticNormalizerInputV5,
+  type WeeklyPlanningSemanticNormalizerResultV5,
+  type WeeklyPlanningSemanticNormalizerV5,
+} from './weeklyPlanningSemanticNormalizerContractsV5';
 import {
-  validateWeeklyPlanningSemanticResponseV5,
-} from './weeklyPlanningSemanticResponseValidationV5';
-import {
-  createWeeklyPlanningSemanticRepairMessagesV5,
-} from './weeklyPlanningSemanticRepairPromptV5';
+  SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+  semanticNormalizerErrorMessage,
+  WeeklyPlanningSemanticNormalizerRunV5,
+} from './weeklyPlanningSemanticNormalizerRunV5';
+import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
+import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
+import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
+
 export {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
+export {
+  WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+} from './weeklyPlanningSemanticNormalizerContractsV5';
+export type {
+  WeeklyPlanningSemanticNormalizerDiagnosticsV5,
+  WeeklyPlanningSemanticNormalizerInputV5,
+  WeeklyPlanningSemanticNormalizerResultV5,
+  WeeklyPlanningSemanticNormalizerV5,
+} from './weeklyPlanningSemanticNormalizerContractsV5';
 
-export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
-  'weekly-planning-semantic-normalizer-v5' as const;
-
-const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
-
-
-export interface WeeklyPlanningSemanticNormalizerInputV5 {
-  userText: string;
-  recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  publicStateSummary?: Record<string, unknown>;
-  traceRequestId?: string;
+function recordInitialValidation(params: {
+  input: WeeklyPlanningSemanticNormalizerInputV5;
+  validation: ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
+}): void {
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.input.traceRequestId,
+    stage: 'semantic_validation_result',
+    data: {
+      attempt: 'initial',
+      accepted: Boolean(params.validation.document),
+      errors: params.validation.errors,
+      algorithmicRepairs: params.validation.algorithmicRepairs,
+      parsedDocument: params.validation.parsedDocument,
+    },
+  });
 }
-
-export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
-  schemaVersion: typeof WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5;
-  jsonSchemaName: typeof WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name;
-  normalizerVersion: typeof WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5;
-  attemptCount: number;
-  repairAttempted: boolean;
-  requestBytes: number[];
-  responseLengths: number[];
-  latencyMs: number;
-  validationErrors: string[];
-  algorithmicRepairs?: string[];
-  providerError: string | null;
-}
-
-export interface WeeklyPlanningSemanticNormalizerResultV5 {
-  status: 'accepted' | 'rejected' | 'provider_failure';
-  document: WeeklyPlanningSemanticDocumentV5 | null;
-  diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
-}
-
-export interface WeeklyPlanningSemanticNormalizerV5 {
-  normalize(
-    input: WeeklyPlanningSemanticNormalizerInputV5,
-  ): Promise<WeeklyPlanningSemanticNormalizerResultV5>;
-}
-
-function byteLength(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-}
-
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  return 'Unknown Stable V5 semantic provider error.';
-}
-
-function errorDetails(error: unknown): Record<string, unknown> {
-  if (error instanceof Error) {
-    const errorWithCause = error as Error & { cause?: unknown };
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack ?? null,
-      cause: errorWithCause.cause ?? null,
-    };
-  }
-  return { value: error };
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
 
 export function createWeeklyPlanningSemanticNormalizerV5(
   client: OpenAiCompatibleClient,
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
     async normalize(input) {
-      const startedAt = performance.now();
-      const requestBytes: number[] = [];
-      const responseLengths: number[] = [];
-      const algorithmicRepairs: string[] = [];
-      let focusedConversationDecision: FocusedAuthorizationDecisionV5['decision'] | null = null;
+      const run = new WeeklyPlanningSemanticNormalizerRunV5(client, input);
 
-      if (focusedAuthorizationEligibleV5(input)) {
-        const focusedMessages = createFocusedAuthorizationMessagesV5(input);
-        const focusedRequest = {
-          messages: focusedMessages,
-          temperature: 0,
-          responseFormat: FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5,
-          purpose: 'weekly_planning_semantic_normalizer' as const,
-          maxCompletionTokens: FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
-        };
-        const focusedBytes = byteLength(focusedRequest);
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_orchestrator_route',
-          data: {
-            route: 'focused_conversation_intent_candidate',
-            meaningOwner: 'ai',
-            deterministicResponsibilities: ['route_from_machine_state', 'combine_ai_semantic_outputs'],
-            requestBytes: focusedBytes,
-          },
-        });
-        try {
-          const focusedResponse = await client.createChatCompletion(focusedRequest);
-          const focusedDecision = parseFocusedAuthorizationDecisionV5(focusedResponse);
-          focusedConversationDecision = focusedDecision?.decision ?? null;
-          recordWeeklyPlanningStableV5DebugTrace({
-            requestId: input.traceRequestId,
-            stage: 'semantic_focused_authorization_result',
-            data: {
-              decision: focusedConversationDecision ?? 'invalid_response',
-              responseLength: focusedResponse.length,
-              rawResponse: focusedResponse,
-            },
-          });
-          if (focusedConversationDecision === 'create_plan') {
-            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-              status: 'accepted',
-              document: createFocusedAuthorizationDocumentV5(),
-              diagnostics: {
-                schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-                jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
-                normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
-                attemptCount: 1,
-                repairAttempted: false,
-                requestBytes: [focusedBytes],
-                responseLengths: [focusedResponse.length],
-                latencyMs: Math.round(performance.now() - startedAt),
-                validationErrors: [],
-                algorithmicRepairs: [],
-                providerError: null,
-              },
-            };
-            recordWeeklyPlanningStableV5DebugTrace({
-              requestId: input.traceRequestId,
-              stage: 'semantic_normalizer_decision',
-              data: {
-                ...result,
-                orchestrationRoute: 'focused_authorization',
-              },
-            });
-            return result;
-          }
-        } catch (error) {
-          recordWeeklyPlanningStableV5DebugTrace({
-            requestId: input.traceRequestId,
-            stage: 'semantic_focused_authorization_error',
-            severity: 'warn',
-            data: {
-              error: errorDetails(error),
-              fallback: 'generic_semantic',
-            },
-          });
-        }
-      }
+      const contextualResult = await tryFocusedContextualAnswerRouteV5(run);
+      if (contextualResult) return contextualResult;
+
+      const authorization = await tryFocusedAuthorizationRouteV5(run);
+      if (authorization.result) return authorization.result;
 
       const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5(input);
       recordWeeklyPlanningStableV5DebugTrace({
@@ -193,233 +76,71 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
           input,
           orchestrationContext: {
-            focusedConversationDecision,
+            focusedConversationDecision: authorization.decision,
           },
           request: {
             purpose: 'weekly_planning_semantic_normalizer',
             messages: baseMessages,
             temperature: 0,
-            responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+            responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
             maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
           },
         },
       });
 
-      const call = async (
-        messages: ChatMessage[],
-        attempt: 'initial' | 'repair',
-      ): Promise<string> => {
-        const request = {
-          messages,
-          temperature: 0,
-          responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-          purpose: 'weekly_planning_semantic_normalizer' as const,
-          maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
-        };
-        const bytes = byteLength(request);
-        requestBytes.push(bytes);
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_provider_request',
-          data: { attempt, requestBytes: bytes, request },
-        });
-        try {
-          const response = await client.createChatCompletion(request);
-          responseLengths.push(response.length);
-          recordWeeklyPlanningStableV5DebugTrace({
-            requestId: input.traceRequestId,
-            stage: 'semantic_provider_response',
-            data: {
-              attempt,
-              responseLength: response.length,
-              rawResponse: response,
-            },
-          });
-          return response;
-        } catch (error) {
-          recordWeeklyPlanningStableV5DebugTrace({
-            requestId: input.traceRequestId,
-            stage: 'semantic_provider_error',
-            severity: 'error',
-            data: { attempt, error: errorDetails(error) },
-          });
-          throw error;
-        }
-      };
-
-      const diagnostics = (params: {
-        attemptCount: number;
-        repairAttempted: boolean;
-        validationErrors: string[];
-        providerError: string | null;
-      }): WeeklyPlanningSemanticNormalizerDiagnosticsV5 => ({
-        schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-        jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
-        normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
-        attemptCount: params.attemptCount,
-        repairAttempted: params.repairAttempted,
-        requestBytes,
-        responseLengths,
-        latencyMs: Math.round(performance.now() - startedAt),
-        validationErrors: params.validationErrors,
-        algorithmicRepairs: unique(algorithmicRepairs),
-        providerError: params.providerError,
-      });
-
       let initialResponse: string;
       try {
-        initialResponse = await call(baseMessages, 'initial');
+        initialResponse = await run.callGeneric(baseMessages, 'initial');
       } catch (error) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'provider_failure',
           document: null,
-          diagnostics: diagnostics({
+          diagnostics: run.diagnostics({
             attemptCount: 1,
             repairAttempted: false,
             validationErrors: [],
-            providerError: errorMessage(error),
+            providerError: semanticNormalizerErrorMessage(error),
           }),
         };
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_normalizer_decision',
-          severity: 'error',
-          data: result,
-        });
+        run.recordDecision(result, { severity: 'error' });
         return result;
       }
 
-      const initialValidation = validateWeeklyPlanningSemanticResponseV5(initialResponse, input);
-      algorithmicRepairs.push(...initialValidation.algorithmicRepairs);
-      recordWeeklyPlanningStableV5DebugTrace({
-        requestId: input.traceRequestId,
-        stage: 'semantic_validation_result',
-        data: {
-          attempt: 'initial',
-          accepted: Boolean(initialValidation.document),
-          errors: initialValidation.errors,
-          algorithmicRepairs: initialValidation.algorithmicRepairs,
-          parsedDocument: initialValidation.parsedDocument,
-        },
-      });
+      const initialValidation = validateWeeklyPlanningSemanticResponseV5(
+        initialResponse,
+        input,
+      );
+      run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);
+      recordInitialValidation({ input, validation: initialValidation });
+
       if (initialValidation.document) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
           document: initialValidation.document,
-          diagnostics: diagnostics({
+          diagnostics: run.diagnostics({
             attemptCount: 1,
             repairAttempted: false,
             validationErrors: [],
             providerError: null,
           }),
         };
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_normalizer_decision',
-          data: {
-            ...result,
-            orchestrationRoute: 'generic_semantic',
-          },
-        });
+        run.recordDecision(result, { route: 'generic_semantic' });
         return result;
       }
 
-      const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
+      const focusedRepairResult = await tryFocusedSemanticRepairRouteV5({
+        run,
+        initialResponse,
+        initialValidation,
+      });
+      if (focusedRepairResult) return focusedRepairResult;
+
+      return runGenericSemanticRepairRouteV5({
+        run,
         baseMessages,
-        invalidResponse: initialResponse,
-        validationErrors: initialValidation.errors,
-        input,
+        initialResponse,
+        initialValidation,
       });
-      recordWeeklyPlanningStableV5DebugTrace({
-        requestId: input.traceRequestId,
-        stage: 'semantic_repair_prepared',
-        severity: 'warn',
-        data: {
-          invalidResponse: initialResponse,
-          validationErrors: initialValidation.errors,
-          repairMessages,
-        },
-      });
-
-      let repairedResponse: string;
-      try {
-        repairedResponse = await call(repairMessages, 'repair');
-      } catch (error) {
-        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-          status: 'provider_failure',
-          document: null,
-          diagnostics: diagnostics({
-            attemptCount: 2,
-            repairAttempted: true,
-            validationErrors: initialValidation.errors,
-            providerError: errorMessage(error),
-          }),
-        };
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_normalizer_decision',
-          severity: 'error',
-          data: result,
-        });
-        return result;
-      }
-
-      const repairedValidation = validateWeeklyPlanningSemanticResponseV5(repairedResponse, input);
-      algorithmicRepairs.push(...repairedValidation.algorithmicRepairs);
-      recordWeeklyPlanningStableV5DebugTrace({
-        requestId: input.traceRequestId,
-        stage: 'semantic_validation_result',
-        severity: repairedValidation.document ? 'info' : 'error',
-        data: {
-          attempt: 'repair',
-          accepted: Boolean(repairedValidation.document),
-          errors: repairedValidation.errors,
-          algorithmicRepairs: repairedValidation.algorithmicRepairs,
-          parsedDocument: repairedValidation.parsedDocument,
-        },
-      });
-      if (!repairedValidation.document) {
-        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-          status: 'rejected',
-          document: null,
-          diagnostics: diagnostics({
-            attemptCount: 2,
-            repairAttempted: true,
-            validationErrors: [
-              ...initialValidation.errors.map((value) => `initial:${value}`),
-              ...repairedValidation.errors.map((value) => `repair:${value}`),
-            ],
-            providerError: null,
-          }),
-        };
-        recordWeeklyPlanningStableV5DebugTrace({
-          requestId: input.traceRequestId,
-          stage: 'semantic_normalizer_decision',
-          severity: 'error',
-          data: result,
-        });
-        return result;
-      }
-
-      const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-        status: 'accepted',
-        document: repairedValidation.document,
-        diagnostics: diagnostics({
-          attemptCount: 2,
-          repairAttempted: true,
-          validationErrors: initialValidation.errors,
-          providerError: null,
-        }),
-      };
-      recordWeeklyPlanningStableV5DebugTrace({
-        requestId: input.traceRequestId,
-        stage: 'semantic_normalizer_decision',
-        data: {
-          ...result,
-          orchestrationRoute: 'generic_semantic_repair',
-        },
-      });
-      return result;
     },
   };
 }

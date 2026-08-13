@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
+import type { Actual, Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
+import {
+  deriveWeeklyPlanningEstimateCalibration,
+} from '../personalization/weeklyPlanningEstimateCalibration';
+import {
+  clearWeeklyPlanningEstimateCalibrationRuntimeV5,
+  setWeeklyPlanningEstimateCalibrationRuntimeV5,
+} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -37,6 +44,7 @@ export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
   selectedDate: string;
   plans: Plan[];
+  actuals?: Actual[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
@@ -69,6 +77,7 @@ export function useWeeklyPlanningApplication({
   userId,
   selectedDate,
   plans,
+  actuals = [],
   scheduleTemplates,
   timetableTermId,
   saveWeeklyApprovedPlan,
@@ -76,6 +85,10 @@ export function useWeeklyPlanningApplication({
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
   const { weekStartsOn } = useWeeklyPlanningPersonalization();
+  const estimateCalibration = useMemo(
+    () => deriveWeeklyPlanningEstimateCalibration({ plans, actuals }),
+    [actuals, plans],
+  );
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
@@ -108,6 +121,14 @@ export function useWeeklyPlanningApplication({
   }, [dispatchPlanningAction, ownerId]);
 
   useEffect(() => {
+    setWeeklyPlanningEstimateCalibrationRuntimeV5({
+      ownerId,
+      calibration: estimateCalibration,
+    });
+    return () => clearWeeklyPlanningEstimateCalibrationRuntimeV5(ownerId);
+  }, [estimateCalibration, ownerId]);
+
+  useEffect(() => {
     const session = controllerSessionRef.current;
     if (!session) return;
     synchronizeWeeklyPlanningApplicationSession({
@@ -130,7 +151,6 @@ export function useWeeklyPlanningApplication({
     if (approvalLedger.ownerId !== ownerId) return;
     saveWeeklyPlanningApprovalOperations(ownerId, approvalLedger.operations);
   }, [approvalLedger, ownerId]);
-
 
   const approvalOperations = approvalLedger.ownerId === ownerId
     ? approvalLedger.operations

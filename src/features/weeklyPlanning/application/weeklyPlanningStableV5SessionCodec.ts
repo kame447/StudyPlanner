@@ -1,0 +1,424 @@
+import type { PlanningState } from '../types';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { parseWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
+
+export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
+  'studyplanner-weekly-planning-stable-v5-session-v1' as const;
+
+export const MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES = 2 * 1024 * 1024;
+const MAX_MESSAGES = 200;
+const MAX_MESSAGE_CONTENT_LENGTH = 20_000;
+const MAX_DRAFT_BLOCKS = 500;
+const MAX_PREVIEW_CANDIDATES = 500;
+
+export interface WeeklyPlanningStableV5PersistedSession {
+  version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const allowedKeys = new Set(allowed);
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isTime(value: unknown): value is string {
+  return typeof value === 'string'
+    && (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) || value === '24:00');
+}
+
+function isMessage(value: unknown): boolean {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['id', 'role', 'content', 'createdAt'])
+    && isNonEmptyString(value.id)
+    && (value.role === 'user' || value.role === 'assistant')
+    && typeof value.content === 'string'
+    && value.content.length <= MAX_MESSAGE_CONTENT_LENGTH
+    && isTimestamp(value.createdAt);
+}
+
+function isDraftBlock(value: unknown, ownerId: string, conversationId: string): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    !isNonEmptyString(value.id)
+    || value.userId !== ownerId
+    || !isDate(value.date)
+    || !isTime(value.startTime)
+    || !isTime(value.endTime)
+    || typeof value.title !== 'string'
+    || typeof value.subject !== 'string'
+    || value.source !== 'ai'
+    || value.status !== 'draft'
+    || typeof value.userEdited !== 'boolean'
+    || !isTimestamp(value.createdAt)
+    || !isTimestamp(value.updatedAt)
+  ) {
+    return false;
+  }
+  if (value.behaviorMetadata === undefined) return true;
+  if (!isRecord(value.behaviorMetadata)) return false;
+  const metadataConversationId = value.behaviorMetadata.conversationId;
+  if (metadataConversationId !== undefined && metadataConversationId !== conversationId) {
+    return false;
+  }
+  const previewMetadata = value.behaviorMetadata.previewMetadata;
+  if (previewMetadata !== undefined) {
+    if (!isRecord(previewMetadata)) return false;
+    if (previewMetadata.authorizedUserId !== ownerId) return false;
+    if (
+      previewMetadata.conversationId !== undefined
+      && previewMetadata.conversationId !== conversationId
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isStableV5Metadata(value: unknown, graphRevision: number): boolean {
+  if (!isRecord(value)) return false;
+  return value.runtime === 'stable_v5'
+    && isNonNegativeInteger(value.graphRevision)
+    && value.graphRevision <= graphRevision
+    && isNonEmptyString(value.taskId)
+    && Array.isArray(value.sourceFactRefs)
+    && value.sourceFactRefs.every(isNonEmptyString)
+    && (value.planType === 'study' || value.planType === 'other');
+}
+
+function isPreviewCandidate(value: unknown, graphRevision: number): boolean {
+  if (!isRecord(value)) return false;
+  return isNonEmptyString(value.stableKey)
+    && !value.stableKey.includes('..')
+    && isDate(value.date)
+    && isTime(value.startTime)
+    && isTime(value.endTime)
+    && isPositiveInteger(value.durationMinutes)
+    && typeof value.title === 'string'
+    && typeof value.field === 'string'
+    && typeof value.year === 'number'
+    && Number.isInteger(value.year)
+    && isPositiveInteger(value.estimatedMinutes)
+    && value.source === 'weekly_exam_prep'
+    && value.approvalStatus === 'unapproved'
+    && isNonEmptyString(value.workItemKey)
+    && isStableV5Metadata(value.stableV5Metadata, graphRevision);
+}
+
+function isPlanningState(
+  value: unknown,
+  ownerId: string,
+  weekStartDate: string,
+  conversationId: string,
+  graphRevision: number,
+): value is PlanningState {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, [
+    'weekStartDate',
+    'revision',
+    'conversationRequestSequence',
+    'mode',
+    'draftBlocks',
+    'previewCandidates',
+    'messages',
+    'intakeState',
+    'lastAssistantMessage',
+    'updatedAt',
+  ])) {
+    return false;
+  }
+  const modes = new Set([
+    'idle',
+    'collecting_tasks',
+    'draft_created',
+    'awaiting_approval',
+    'confirmed',
+  ]);
+  return value.weekStartDate === weekStartDate
+    && isNonNegativeInteger(value.revision)
+    && (value.conversationRequestSequence === undefined
+      || isNonNegativeInteger(value.conversationRequestSequence))
+    && modes.has(String(value.mode))
+    && Array.isArray(value.draftBlocks)
+    && value.draftBlocks.length <= MAX_DRAFT_BLOCKS
+    && value.draftBlocks.every((block) => isDraftBlock(block, ownerId, conversationId))
+    && Array.isArray(value.previewCandidates)
+    && value.previewCandidates.length <= MAX_PREVIEW_CANDIDATES
+    && value.previewCandidates.every((candidate) => isPreviewCandidate(candidate, graphRevision))
+    && Array.isArray(value.messages)
+    && value.messages.length <= MAX_MESSAGES
+    && value.messages.every(isMessage)
+    && (value.intakeState === undefined || isRecord(value.intakeState))
+    && (value.lastAssistantMessage === undefined
+      || typeof value.lastAssistantMessage === 'string')
+    && isTimestamp(value.updatedAt);
+}
+
+function graphBelongsToConversation(
+  graph: WeeklyPlanningFactGraphV5,
+  conversationId: string,
+): boolean {
+  const sourcedFacts = [
+    ...graph.planningWindows,
+    ...graph.tasks,
+    ...graph.studyContexts,
+    ...graph.components,
+    ...graph.workloads,
+    ...graph.effortEstimates,
+    ...graph.temporalConstraints,
+    ...graph.taskDateRules,
+    ...graph.recurrences,
+    ...graph.relations,
+    ...graph.uncertainties,
+    ...graph.correctionIntents,
+    ...graph.decisionIntents,
+    ...graph.availabilityDeclarations,
+    ...graph.constraintSourceRequests,
+  ];
+  return sourcedFacts.every((fact) => fact.source.conversationId === conversationId);
+}
+
+function serializablePlanningState(state: PlanningState): PlanningState {
+  const {
+    pendingTurn: _pendingTurn,
+    pendingApproval: _pendingApproval,
+    ...withoutPending
+  } = state;
+  const intakeState = state.intakeState
+    ? (() => {
+        const {
+          assumptionProposalRecords: _sessionOnlyRecords,
+          ...serializable
+        } = state.intakeState;
+        return serializable;
+      })()
+    : undefined;
+  return JSON.parse(JSON.stringify({
+    ...withoutPending,
+    conversationRequestSequence: state.conversationRequestSequence ?? 0,
+    draftBlocks: state.draftBlocks.filter((block) => block.status === 'draft'),
+    previewCandidates: state.previewCandidates ?? [],
+    messages: state.messages.slice(-MAX_MESSAGES),
+    intakeState,
+  })) as PlanningState;
+}
+
+function isEmptySession(state: PlanningState, graph: WeeklyPlanningFactGraphV5): boolean {
+  return graph.revision === 0
+    && (state.conversationRequestSequence ?? 0) === 0
+    && state.messages.length === 0
+    && state.draftBlocks.length === 0
+    && (state.previewCandidates?.length ?? 0) === 0
+    && !state.intakeState;
+}
+
+function createPersistedEnvelope(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}): WeeklyPlanningStableV5PersistedSession {
+  return {
+    version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+    ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
+    conversationId: params.conversationId,
+    graph: params.graph,
+    planningState: params.planningState,
+    savedAt: params.savedAt,
+  };
+}
+
+function serializeEnvelopeWithinBudget(
+  envelope: WeeklyPlanningStableV5PersistedSession,
+): string | null {
+  try {
+    const raw = JSON.stringify(envelope);
+    return new TextEncoder().encode(raw).byteLength <= MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES
+      ? raw
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseWeeklyPlanningStableV5PersistedSession(params: {
+  raw: string;
+  ownerId: string;
+  weekStartDate: string;
+}): WeeklyPlanningStableV5PersistedSession | null {
+  if (new TextEncoder().encode(params.raw).byteLength > MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES) {
+    return null;
+  }
+  try {
+    const value: unknown = JSON.parse(params.raw);
+    if (!isRecord(value)
+      || !hasOnlyKeys(value, [
+        'version',
+        'ownerId',
+        'weekStartDate',
+        'conversationId',
+        'graph',
+        'planningState',
+        'savedAt',
+      ])
+      || value.version !== WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION
+      || value.ownerId !== params.ownerId
+      || value.weekStartDate !== params.weekStartDate
+      || !isNonEmptyString(value.conversationId)
+      || !isTimestamp(value.savedAt)
+      || !isRecord(value.graph)) {
+      return null;
+    }
+    const parsedGraph = parseWeeklyPlanningFactGraphV5(JSON.stringify(value.graph));
+    if (!parsedGraph.graph
+      || !graphBelongsToConversation(parsedGraph.graph, value.conversationId)
+      || !isPlanningState(
+        value.planningState,
+        params.ownerId,
+        params.weekStartDate,
+        value.conversationId,
+        parsedGraph.graph.revision,
+      )) {
+      return null;
+    }
+    return {
+      version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+      ownerId: params.ownerId,
+      weekStartDate: params.weekStartDate,
+      conversationId: value.conversationId,
+      graph: parsedGraph.graph,
+      planningState: {
+        ...value.planningState,
+        conversationRequestSequence: value.planningState.conversationRequestSequence ?? 0,
+        pendingTurn: undefined,
+        pendingApproval: undefined,
+      },
+      savedAt: value.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type WeeklyPlanningStableV5CheckpointPreparation =
+  | { status: 'invalid' }
+  | { status: 'empty' }
+  | { status: 'ready'; planningState: PlanningState };
+
+export function prepareWeeklyPlanningStableV5Checkpoint(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+}): WeeklyPlanningStableV5CheckpointPreparation {
+  if (params.planningState.pendingTurn || params.planningState.pendingApproval) {
+    return { status: 'invalid' };
+  }
+  if (params.planningState.weekStartDate !== params.weekStartDate) {
+    return { status: 'invalid' };
+  }
+  if (!graphBelongsToConversation(params.graph, params.conversationId)) {
+    return { status: 'invalid' };
+  }
+  const planningState = serializablePlanningState(params.planningState);
+  if (isEmptySession(planningState, params.graph)) return { status: 'empty' };
+  if (!isPlanningState(
+    planningState,
+    params.ownerId,
+    params.weekStartDate,
+    params.conversationId,
+    params.graph.revision,
+  )) {
+    return { status: 'invalid' };
+  }
+  return { status: 'ready', planningState };
+}
+
+export function largestWeeklyPlanningStableV5Checkpoint(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}): { raw: string; messageCount: number } | null {
+  const messages = params.planningState.messages;
+  let low = 0;
+  let high = messages.length;
+  let best: { raw: string; messageCount: number } | null = null;
+
+  while (low <= high) {
+    const messageCount = Math.floor((low + high) / 2);
+    const candidateState: PlanningState = {
+      ...params.planningState,
+      messages: messageCount > 0 ? messages.slice(-messageCount) : [],
+    };
+    const raw = serializeEnvelopeWithinBudget(createPersistedEnvelope({
+      ...params,
+      planningState: candidateState,
+    }));
+    if (raw) {
+      best = { raw, messageCount };
+      low = messageCount + 1;
+    } else {
+      high = messageCount - 1;
+    }
+  }
+
+  return best;
+}
+
+export function serializeWeeklyPlanningStableV5CheckpointWithMessageCount(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+  messageCount: number;
+}): string | null {
+  const candidateState: PlanningState = {
+    ...params.planningState,
+    messages: params.messageCount > 0
+      ? params.planningState.messages.slice(-params.messageCount)
+      : [],
+  };
+  return serializeEnvelopeWithinBudget(createPersistedEnvelope({
+    ...params,
+    planningState: candidateState,
+  }));
+}

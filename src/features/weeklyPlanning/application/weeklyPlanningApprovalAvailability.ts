@@ -1,5 +1,7 @@
-import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyPlanDraftBlock } from '../types';
+import {
+  resolveWeeklyPlanningApprovalRuntime,
+} from './weeklyPlanningApprovalRuntimeResolver';
 
 export type WeeklyPlanningApprovalAvailability =
   | {
@@ -78,11 +80,29 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
     return { kind: 'blocked', reason: 'metadata_ineligible', message: BLOCKED_MESSAGE };
   }
 
+  const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
+    blocks,
+    userId: params.userId,
+  });
+  if (runtimeResolution.kind === 'mixed_runtime_sources') {
+    return { kind: 'blocked', reason: 'metadata_mismatch', message: BLOCKED_MESSAGE };
+  }
+  if (runtimeResolution.kind === 'owner_mismatch') {
+    return { kind: 'blocked', reason: 'user_mismatch', message: BLOCKED_MESSAGE };
+  }
+  if (runtimeResolution.stableV5 && runtimeResolution.kind === 'unbound') {
+    return {
+      kind: 'recompute_required',
+      reason: 'session_runtime_unavailable',
+      message: RECOMPUTE_MESSAGE,
+    };
+  }
+
   if (!first.conversationId) {
     return { kind: 'eligible', reason: 'legacy_compatible' };
   }
 
-  const runtime = getWeeklyPlanningSessionRuntime();
+  const runtime = runtimeResolution.runtimeSnapshot;
   if (!runtime) {
     return {
       kind: 'recompute_required',

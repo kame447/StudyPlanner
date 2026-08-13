@@ -125,9 +125,10 @@ describe('Stable V5 preview scheduler', () => {
       field: '部屋の掃除',
     });
     expect((result.candidates[0] as typeof result.candidates[0] & {
-      stableV5Metadata?: { runtime: string; planType: string };
+      stableV5Metadata?: { runtime: string; conversationId: string; planType: string };
     }).stableV5Metadata).toMatchObject({
       runtime: 'stable_v5',
+      conversationId: 'conversation-1',
       planType: 'other',
     });
   });
@@ -223,5 +224,4 @@ describe('Stable V5 preview scheduler', () => {
       durationMinutes: 180,
     });
   });
-
 });

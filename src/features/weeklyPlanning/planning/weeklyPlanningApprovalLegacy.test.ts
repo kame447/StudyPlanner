@@ -28,6 +28,7 @@ describe('weeklyPlanningApproval legacy compatibility', () => {
       currentStateRevision: 0,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: null,
     });
     expect(result.allowed).toBe(true);
     if (result.allowed) {
@@ -43,6 +44,7 @@ describe('weeklyPlanningApproval legacy compatibility', () => {
       currentStateRevision: 0,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: null,
     });
     expect(result.allowed).toBe(false);
   });

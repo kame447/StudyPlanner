@@ -7,6 +7,16 @@ import {
   type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
 
+const RESOLVER_WEEKDAY_KEY_BY_CANONICAL: Readonly<Record<string, string>> = {
+  'weekday:sunday': 'sun',
+  'weekday:monday': 'mon',
+  'weekday:tuesday': 'tue',
+  'weekday:wednesday': 'wed',
+  'weekday:thursday': 'thu',
+  'weekday:friday': 'fri',
+  'weekday:saturday': 'sat',
+};
+
 function isWholeDayUnavailableDeclaration(
   declaration: AvailabilityDeclarationFact,
 ): boolean {
@@ -18,6 +28,28 @@ function isWholeDayUnavailableDeclaration(
     && Boolean(declaration.dateExpression || declaration.recurrenceKind);
 }
 
+function adaptAvailabilityDeclarationForResolver(
+  declaration: AvailabilityDeclarationFact,
+): AvailabilityDeclarationFact {
+  const normalizedDays = declaration.days.map(
+    (day) => RESOLVER_WEEKDAY_KEY_BY_CANONICAL[day] ?? day,
+  );
+
+  if (isWholeDayUnavailableDeclaration(declaration)) {
+    return {
+      ...declaration,
+      days: normalizedDays,
+      startTime: '00:00',
+      endTime: '24:00',
+    };
+  }
+
+  return {
+    ...declaration,
+    days: normalizedDays,
+  };
+}
+
 export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
@@ -25,14 +57,9 @@ export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
 }): AvailabilityResolutionResult {
   const graph: WeeklyPlanningAvailabilityGraphView = {
     revision: params.graph.revision,
-    availabilityDeclarations: params.graph.availabilityDeclarations.map((declaration) =>
-      isWholeDayUnavailableDeclaration(declaration)
-        ? {
-            ...declaration,
-            startTime: '00:00',
-            endTime: '24:00',
-          }
-        : declaration),
+    availabilityDeclarations: params.graph.availabilityDeclarations.map(
+      adaptAvailabilityDeclarationForResolver,
+    ),
     constraintSourceRequests: params.graph.constraintSourceRequests,
   };
   return resolveWeeklyPlanningAvailability({

@@ -20,6 +20,9 @@ import {
   createWeeklyPlanningApplicationMessage,
   createWeeklyPlanningApplicationRequestId,
 } from './weeklyPlanningApplicationIdentity';
+import {
+  resolveWeeklyPlanningApprovalRuntime,
+} from './weeklyPlanningApprovalRuntimeResolver';
 
 interface WeeklyPlanningApprovalApplicationInput {
   userId: string | null | undefined;
@@ -103,11 +106,16 @@ export async function approveWeeklyPlanningDraftBlocks({
   if (!ownsPendingApproval(begun, pending)) return;
 
   try {
+    const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
+      blocks,
+      userId: authenticatedUserId,
+    });
     const guard = validateWeeklyPreviewApproval({
       blocks,
       currentStateRevision: snapshot.intakeState?.sourceTurns.length ?? 0,
       userId: authenticatedUserId,
       proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
+      runtimeSnapshot: runtimeResolution.runtimeSnapshot,
     });
     if (!guard.allowed) {
       const reason = 'reason' in guard.attempt ? guard.attempt.reason : undefined;

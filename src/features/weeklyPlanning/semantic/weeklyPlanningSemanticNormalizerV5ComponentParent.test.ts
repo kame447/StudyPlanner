@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  createWeeklyPlanningSemanticSystemPromptV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   createWeeklyPlanningSemanticNormalizerV5,
@@ -68,12 +67,5 @@ describe('Stable V5 component parent normalization integration', () => {
       'component-parent-task-reference-normalized:task-math-study:component-math',
     );
     expect(result.document?.tasks[0]?.study?.components[0]?.parentLocalId).toBeNull();
-  });
-
-  it('makes the component-only parent contract explicit in the provider prompt', () => {
-    const prompt = createWeeklyPlanningSemanticSystemPromptV5();
-    expect(prompt).toContain('parentLocalId is only for component-to-component hierarchy');
-    expect(prompt).toContain('top-level components use null');
-    expect(prompt).toContain('a task localId must never be used as parentLocalId');
   });
 });

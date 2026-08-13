@@ -1,10 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanDraftBlock } from '../types';
 import { validateWeeklyPreviewApproval } from './weeklyPlanningApproval';
-import {
-  clearWeeklyPlanningSessionRuntime,
-  publishWeeklyPlanningSessionRuntime,
-} from './weeklyPlanningSessionRuntime';
 
 function block(conversationId = 'conversation-1', stateRevision = 5): WeeklyPlanDraftBlock {
   return {
@@ -47,47 +43,46 @@ function block(conversationId = 'conversation-1', stateRevision = 5): WeeklyPlan
   };
 }
 
-afterEach(() => clearWeeklyPlanningSessionRuntime());
-
 describe('weeklyPlanningApproval current runtime', () => {
-  it('rejects a preview whose revision is older than the current dialogue state', () => {
-    publishWeeklyPlanningSessionRuntime({
-      conversationId: 'conversation-1',
-      stateRevision: 6,
-      proposalRecords: [],
-    });
+  it('rejects a preview whose revision is older than the supplied dialogue state', () => {
     const result = validateWeeklyPreviewApproval({
       blocks: [block('conversation-1', 5)],
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: {
+        conversationId: 'conversation-1',
+        stateRevision: 6,
+        proposalRecords: [],
+      },
     });
     expect(result.allowed).toBe(false);
     if (!result.allowed) expect(result.attempt.kind).toBe('stale_preview_approval_attempt');
   });
 
-  it('rejects a preview from another current conversation', () => {
-    publishWeeklyPlanningSessionRuntime({
-      conversationId: 'conversation-2',
-      stateRevision: 5,
-      proposalRecords: [],
-    });
+  it('rejects a preview when the supplied runtime belongs to another conversation', () => {
     const result = validateWeeklyPreviewApproval({
       blocks: [block('conversation-1', 5)],
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: {
+        conversationId: 'conversation-2',
+        stateRevision: 5,
+        proposalRecords: [],
+      },
     });
     expect(result.allowed).toBe(false);
     if (!result.allowed) expect(result.attempt.kind).toBe('stale_preview_approval_attempt');
   });
 
-  it('requires a live session runtime for behavior-aware preview after reload', () => {
+  it('requires an explicit live runtime for a conversation-bound preview', () => {
     const result = validateWeeklyPreviewApproval({
       blocks: [block()],
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: null,
     });
     expect(result.allowed).toBe(false);
     if (!result.allowed) {

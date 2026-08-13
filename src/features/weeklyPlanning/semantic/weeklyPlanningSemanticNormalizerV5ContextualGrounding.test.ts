@@ -30,64 +30,28 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
   };
 }
 
-function document(params: {
-  quantityRole?: 'target';
-  minutes?: number;
-}): string {
-  const workload = {
-    localId: 'workload-writing-answer',
-    quantityRole: params.quantityRole ?? 'unknown',
-    amount: 4,
-    unitCode: 'page',
-    unitLabel: 'ページ',
-    rangeStart: null,
-    rangeEnd: null,
-    perOccurrence: false,
-    periodExpression: null,
-    sourceText: params.minutes ? '4ページ' : '今回進めたい量です',
-  };
+function focusedQuantityRoleAnswer(): string {
   return JSON.stringify({
-    schemaVersion: 'weekly-planning-semantic-v5',
-    planningIntent: 'discuss',
-    planningWindow: null,
-    tasks: [{
-      localId: 'task-writing-answer',
-      category: 'study',
-      title: 'レポート執筆',
-      study: {
-        purpose: 'homework',
-        contextLabel: null,
-        components: [],
-      },
-      workloads: [workload],
-      effortEstimates: params.minutes
-        ? [{
-            localId: 'effort-writing-answer',
-            targetLocalId: workload.localId,
-            kind: 'total_duration',
-            minutes: params.minutes,
-            unitCode: null,
-            precision: 'exact',
-            sourceText: '3時間です',
-          }]
-        : [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: params.minutes ? '3時間です' : '今回進めたい量です',
-    }],
-    relations: [],
-    availabilityDeclarations: [],
-    constraintSourceRequests: [],
-    uncertainties: [],
-    corrections: [],
-    decisions: [],
+    decision: 'quantity_role_answer',
+    minutes: null,
+    precision: null,
+    quantityRole: 'target',
+  });
+}
+
+function focusedEffortAnswer(): string {
+  return JSON.stringify({
+    decision: 'effort_answer',
+    minutes: 180,
+    precision: 'exact',
+    quantityRole: null,
   });
 }
 
 describe('Stable V5 normalizer AI-owned contextual answers', () => {
-  it('accepts a quantity-role answer expressed by the AI', async () => {
+  it('accepts a quantity-role answer expressed by the focused AI', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => document({ quantityRole: 'target' })),
+      createChatCompletion: vi.fn(async () => focusedQuantityRoleAnswer()),
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
@@ -106,11 +70,15 @@ describe('Stable V5 normalizer AI-owned contextual answers', () => {
       'contextual-answer-grounded-from-machine-question:quantity_role_unresolved',
     );
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(client.createChatCompletion).mock.calls[0][0].responseFormat)
+      .toMatchObject({
+        json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
+      });
   });
 
-  it('accepts an AI effort estimate targeting the exact workload', async () => {
+  it('accepts a focused AI effort estimate for the exact machine-selected workload', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => document({ minutes: 180 })),
+      createChatCompletion: vi.fn(async () => focusedEffortAnswer()),
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
@@ -121,7 +89,6 @@ describe('Stable V5 normalizer AI-owned contextual answers', () => {
 
     expect(result.status).toBe('accepted');
     expect(result.document?.tasks[0]?.effortEstimates[0]).toMatchObject({
-      targetLocalId: 'workload-writing-answer',
       kind: 'total_duration',
       minutes: 180,
     });
@@ -129,9 +96,13 @@ describe('Stable V5 normalizer AI-owned contextual answers', () => {
       'contextual-answer-grounded-from-machine-question:missing_effort_estimate',
     );
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(client.createChatCompletion).mock.calls[0][0].responseFormat)
+      .toMatchObject({
+        json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
+      });
   });
 
-  it('repairs or rejects invalid AI output instead of parsing the short reply itself', async () => {
+  it('falls through to generic AI repair instead of parsing an invalid short reply itself', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => 'not-json'),
     };
@@ -145,6 +116,17 @@ describe('Stable V5 normalizer AI-owned contextual answers', () => {
     expect(result.status).toBe('rejected');
     expect(result.diagnostics.repairAttempted).toBe(true);
     expect(result.diagnostics.algorithmicRepairs).toEqual([]);
-    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(3);
+
+    const calls = vi.mocked(client.createChatCompletion).mock.calls;
+    expect(calls[0][0].responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
+    });
+    expect(calls[1][0].responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_semantic_document_v5' },
+    });
+    expect(calls[2][0].responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_semantic_document_v5' },
+    });
   });
 });

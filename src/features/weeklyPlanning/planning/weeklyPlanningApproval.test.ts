@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { AssumptionProposalRecord } from '../intake/weeklyPlanningAssumptionProposals';
 import type { WeeklyPlanDraftBlock } from '../types';
 import {
@@ -9,10 +9,6 @@ import {
   validateWeeklyPreviewApproval,
 } from './weeklyPlanningApproval';
 import type { WeeklyPreviewMetadata } from './weeklyPlanningApprovalTypes';
-import {
-  clearWeeklyPlanningSessionRuntime,
-  publishWeeklyPlanningSessionRuntime,
-} from './weeklyPlanningSessionRuntime';
 
 const metadata: WeeklyPreviewMetadata = {
   previewId: 'preview-1',
@@ -73,44 +69,41 @@ function proposal(status: AssumptionProposalRecord['status']): AssumptionProposa
 }
 
 describe('weeklyPlanningApproval', () => {
-  afterEach(() => {
-    clearWeeklyPlanningSessionRuntime();
-  });
-
   it('rejects stale preview before starting a ledger', () => {
     const result = validateWeeklyPreviewApproval({
       blocks: [block('block-1')],
       currentStateRevision: 6,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: null,
     });
     expect(result.allowed).toBe(false);
     if (!result.allowed) expect(result.attempt.kind).toBe('stale_preview_approval_attempt');
   });
 
-  it('rejects a preview from another conversation runtime as stale', () => {
+  it('rejects a preview from another supplied conversation runtime as stale', () => {
     const boundMetadata: WeeklyPreviewMetadata = {
       ...metadata,
       conversationId: 'conversation-1',
     };
-    publishWeeklyPlanningSessionRuntime({
-      conversationId: 'conversation-2',
-      stateRevision: 5,
-      proposalRecords: [],
-    });
 
     const result = validateWeeklyPreviewApproval({
       blocks: [block('block-1', boundMetadata)],
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: {
+        conversationId: 'conversation-2',
+        stateRevision: 5,
+        proposalRecords: [],
+      },
     });
 
     expect(result.allowed).toBe(false);
     if (!result.allowed) expect(result.attempt.kind).toBe('stale_preview_approval_attempt');
   });
 
-  it('uses the actual accepted proposal record from the matching runtime', () => {
+  it('uses the actual accepted proposal record from the supplied matching runtime', () => {
     const acceptedMetadata: WeeklyPreviewMetadata = {
       ...metadata,
       conversationId: 'conversation-1',
@@ -120,17 +113,17 @@ describe('weeklyPlanningApproval', () => {
         proposalCreatedFromStateRevision: 4,
       }],
     };
-    publishWeeklyPlanningSessionRuntime({
-      conversationId: 'conversation-1',
-      stateRevision: 5,
-      proposalRecords: [proposal('accepted')],
-    });
 
     const result = validateWeeklyPreviewApproval({
       blocks: [block('block-1', acceptedMetadata)],
       currentStateRevision: 0,
       userId: 'user-1',
       proposalRecords: [],
+      runtimeSnapshot: {
+        conversationId: 'conversation-1',
+        stateRevision: 5,
+        proposalRecords: [proposal('accepted')],
+      },
     });
 
     expect(result.allowed).toBe(true);
@@ -151,6 +144,7 @@ describe('weeklyPlanningApproval', () => {
       currentStateRevision: 5,
       userId: 'user-1',
       proposalRecords: [proposal('pending')],
+      runtimeSnapshot: null,
     });
     expect(result.allowed).toBe(false);
     if (!result.allowed) {

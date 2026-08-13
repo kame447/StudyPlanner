@@ -139,8 +139,11 @@ describe('Stable V5 contextual repair messages', () => {
     expect(repairMessages.map((message) => message.role)).toEqual(['system', 'user', 'user']);
     expect(repairMessages.some((message) => message.content === invalidOldBreakdown())).toBe(false);
     const lastMessage = repairMessages[repairMessages.length - 1];
-    const repairPayload = JSON.parse(lastMessage?.content ?? '{}');
-    expect(repairPayload.requiredChanges.join('\n')).toContain('exact target task-public');
+    const repairPayload = JSON.parse(lastMessage?.content ?? '{}') as {
+      requiredChanges: string[];
+    };
+    expect(repairPayload.requiredChanges.some((directive) =>
+      directive.includes('task-public') && directive.includes('existingPublicId'))).toBe(true);
   });
 
   it('keeps invalid-response-assisted repair for an ordinary schema error', async () => {

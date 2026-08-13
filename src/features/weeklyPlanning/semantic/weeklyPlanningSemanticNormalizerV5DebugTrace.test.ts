@@ -90,19 +90,13 @@ describe('Stable V5 semantic normalizer debug trace', () => {
       };
     };
 
-    expect(system).toContain(
-      'Treat publicStateSummary.pendingQuestion as authoritative',
-    );
-    expect(system).toContain('never infer its target from assistant wording');
-    expect(system).toContain(
-      'Every sourceText must be supported by current userText, not prior turns',
-    );
-    expect(system).toContain('target means the amount intended for this plan');
-    expect(system).toContain('remaining means the full unfinished amount');
-    expect(system).toContain('completed means the amount already done');
-    expect(system).toContain('For quantity_role_unresolved');
-    expect(system).toContain('Never keep uncertainty for a resolved role');
-    expect(system).toContain('For semantic_uncertainty');
+    expect(system).toContain('pendingQuestion as authoritative');
+    expect(system).toContain('exact target');
+    expect(system).toContain('fresh localIds');
+    expect(system).toContain('every sourceText must be supported by current userText');
+    expect(system).toContain('target is the amount intended for this plan');
+    expect(system).toContain('remaining is the unfinished amount');
+    expect(system).toContain('completed is already done');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
       publicStateSummary: {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizePlanningWindowCanonicalV5,
-  relativeWindowSourceExpectationV5,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -34,7 +33,6 @@ describe('Stable V5 semantic ownership architecture', () => {
       end: null,
       sourceText: '明日',
     };
-    expect(relativeWindowSourceExpectationV5(window.sourceText)).toBeNull();
     expect(normalizePlanningWindowCanonicalV5(window)).toEqual({
       window,
       repairs: [],

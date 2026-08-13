@@ -1,6 +1,6 @@
 const QUESTION_TARGET_PATTERNS: Partial<Record<string, RegExp>> = {
   quantity_role_unresolved: /^(.+?)の量は、/,
-  missing_effort_estimate: /^(.+?)を指定した量だけ進めるのに、/,
+  missing_effort_estimate: /^(.+?)(?:について、|を指定した量だけ進めるのに、)/,
   ambiguous_effort_estimate: /^(.+?)の所要時間が複数あります。/,
   missing_commitment_date_scope: /^(.+?)は何日の固定予定ですか/,
   invalid_commitment_interval: /^(.+?)の開始時刻と終了時刻を/,

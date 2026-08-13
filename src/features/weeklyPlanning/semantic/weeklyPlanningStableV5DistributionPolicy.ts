@@ -1,0 +1,216 @@
+export const WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS = 6;
+export const WEEKLY_PLANNING_VOCABULARY_REVIEW_ROUNDS_V5 = 2;
+export const WEEKLY_PLANNING_STABLE_V5_MIN_DAILY_WORK_MINUTES = 60;
+
+export interface WeeklyPlanningDatePartitionV5 {
+  normalDates: string[];
+  reserveDates: string[];
+}
+
+export interface WeeklyPlanningVocabularyReviewTargetV5 {
+  round: 1 | 2;
+  offsetDays: number;
+  preferredDate: string;
+  durationMinutes: number;
+}
+
+export function partitionWeeklyPlanningDatesV5(
+  dates: readonly string[],
+): WeeklyPlanningDatePartitionV5 {
+  if (dates.length === 7) {
+    return {
+      normalDates: dates.slice(0, WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS),
+      reserveDates: dates.slice(WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS),
+    };
+  }
+  return {
+    normalDates: [...dates],
+    reserveDates: [],
+  };
+}
+
+function distributedBucketIndex(index: number, count: number, bucketCount: number): number {
+  if (count <= 0 || bucketCount <= 0) return 0;
+  const safeIndex = Math.max(0, Math.min(index, count - 1));
+  return Math.min(bucketCount - 1, Math.floor((safeIndex * bucketCount) / count));
+}
+
+export function preferredDistributedDateV5(params: {
+  index: number;
+  count: number;
+  dates: readonly string[];
+}): string | null {
+  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
+  if (normalDates.length === 0 || params.count <= 0) return null;
+  const safeIndex = Math.max(0, Math.min(params.index, params.count - 1));
+  return normalDates[safeIndex % normalDates.length] ?? null;
+}
+
+export function preferredTaskDistributedDateV5(params: {
+  taskIndex: number;
+  sessionIndex: number;
+  sessionCount: number;
+  dates: readonly string[];
+}): string | null {
+  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
+  if (normalDates.length === 0 || params.sessionCount <= 0) return null;
+  const safeTaskIndex = Math.max(0, Math.floor(params.taskIndex));
+  const safeSessionIndex = Math.max(
+    0,
+    Math.min(Math.floor(params.sessionIndex), params.sessionCount - 1),
+  );
+  const startIndex = safeTaskIndex % normalDates.length;
+  return normalDates[(startIndex + safeSessionIndex) % normalDates.length] ?? null;
+}
+
+export function resolveWeeklySpreadSessionCountV5(params: {
+  totalMinutes: number;
+  dates: readonly string[];
+  maximumSessions?: number;
+}): number {
+  if (!Number.isFinite(params.totalMinutes) || params.totalMinutes <= 0) return 0;
+  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
+  if (normalDates.length === 0) return 0;
+  const possibleSpreadDays = Math.max(
+    1,
+    Math.floor(params.totalMinutes / WEEKLY_PLANNING_STABLE_V5_MIN_DAILY_WORK_MINUTES),
+  );
+  return Math.min(
+    normalDates.length,
+    possibleSpreadDays,
+    params.maximumSessions ?? Number.POSITIVE_INFINITY,
+  );
+}
+
+function roundToPlanningQuantum(minutes: number, quantumMinutes = 5): number {
+  return Math.round(minutes / quantumMinutes) * quantumMinutes;
+}
+
+export function distributeMinutesAcrossWeeklyBucketsV5(
+  totalMinutes: number,
+  bucketCount: number,
+  quantumMinutes = 5,
+): number[] {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0 || bucketCount <= 0) return [];
+  const safeBucketCount = Math.max(1, Math.floor(bucketCount));
+  const roundedAverage = roundToPlanningQuantum(
+    totalMinutes / safeBucketCount,
+    quantumMinutes,
+  );
+  const buckets = Array.from({ length: safeBucketCount }, () => roundedAverage);
+  let deltaMinutes = totalMinutes - buckets.reduce((sum, minutes) => sum + minutes, 0);
+  let cursor = 0;
+
+  while (Math.abs(deltaMinutes) >= quantumMinutes && buckets.length > 0) {
+    const step = deltaMinutes > 0 ? quantumMinutes : -quantumMinutes;
+    buckets[cursor] += step;
+    deltaMinutes -= step;
+    cursor = (cursor + 1) % buckets.length;
+  }
+
+  if (deltaMinutes !== 0 && buckets.length > 0) {
+    buckets[buckets.length - 1] += deltaMinutes;
+  }
+
+  return buckets.sort((left, right) => right - left);
+}
+
+export function distributeDiscreteQuantityAcrossWeeklyBucketsV5(
+  totalQuantity: number,
+  bucketCount: number,
+): number[] {
+  if (!Number.isInteger(totalQuantity) || totalQuantity <= 0 || bucketCount <= 0) return [];
+  const safeBucketCount = Math.min(totalQuantity, Math.max(1, Math.floor(bucketCount)));
+  const base = Math.floor(totalQuantity / safeBucketCount);
+  const remainder = totalQuantity % safeBucketCount;
+  return Array.from(
+    { length: safeBucketCount },
+    (_, index) => base + (index < remainder ? 1 : 0),
+  );
+}
+
+export function vocabularyReviewOffsetsV5(dateCount: number): Array<1 | 2 | 3> {
+  if (dateCount >= 4) return [1, 3];
+  if (dateCount === 3) return [1, 2];
+  if (dateCount === 2) return [1];
+  return [];
+}
+
+export function preferredVocabularyLearningDateV5(params: {
+  sessionIndex: number;
+  sessionCount: number;
+  dates: readonly string[];
+}): string | null {
+  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
+  if (normalDates.length === 0 || params.sessionCount <= 0) return null;
+  const offsets = vocabularyReviewOffsetsV5(params.dates.length);
+  const maxReviewOffset = offsets.length > 0 ? Math.max(...offsets) : 0;
+  const learningBucketCount = Math.max(1, normalDates.length - maxReviewOffset);
+  const bucketIndex = distributedBucketIndex(
+    params.sessionIndex,
+    params.sessionCount,
+    learningBucketCount,
+  );
+  return normalDates[bucketIndex] ?? normalDates[0] ?? null;
+}
+
+export function vocabularyLearningCandidateDatesV5(params: {
+  preferredDate: string | null;
+  dates: readonly string[];
+}): string[] {
+  const candidates = [...params.dates];
+  if (!params.preferredDate || !candidates.includes(params.preferredDate)) return candidates;
+  return [
+    params.preferredDate,
+    ...candidates.filter((date) => date !== params.preferredDate),
+  ];
+}
+
+function roundToFive(minutes: number): number {
+  return Math.max(5, Math.round(minutes / 5) * 5);
+}
+
+export function vocabularyReviewDurationMinutesV5(
+  learningDurationMinutes: number,
+  round: 1 | 2,
+): number {
+  if (!Number.isFinite(learningDurationMinutes) || learningDurationMinutes <= 0) return 0;
+  const ratio = round === 1 ? 0.5 : 0.35;
+  const minimumReviewMinutes = Math.min(15, learningDurationMinutes);
+  return Math.min(
+    learningDurationMinutes,
+    Math.max(minimumReviewMinutes, roundToFive(learningDurationMinutes * ratio)),
+  );
+}
+
+export function vocabularyReviewTargetsV5(params: {
+  learningDate: string;
+  learningDurationMinutes: number;
+  dates: readonly string[];
+}): WeeklyPlanningVocabularyReviewTargetV5[] {
+  const learningIndex = params.dates.indexOf(params.learningDate);
+  if (learningIndex < 0) return [];
+  return vocabularyReviewOffsetsV5(params.dates.length).flatMap((offset, index) => {
+    const preferredDate = params.dates[learningIndex + offset];
+    if (!preferredDate) return [];
+    const round = (index + 1) as 1 | 2;
+    return [{
+      round,
+      offsetDays: offset,
+      preferredDate,
+      durationMinutes: vocabularyReviewDurationMinutesV5(
+        params.learningDurationMinutes,
+        round,
+      ),
+    }];
+  });
+}
+
+export function reviewCandidateDatesV5(params: {
+  preferredDate: string;
+  dates: readonly string[];
+}): string[] {
+  const preferredIndex = params.dates.indexOf(params.preferredDate);
+  if (preferredIndex < 0) return [];
+  return params.dates.slice(preferredIndex);
+}

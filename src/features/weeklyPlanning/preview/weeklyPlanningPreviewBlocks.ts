@@ -3,22 +3,23 @@ import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningBehaviorMetadata,
 } from '../types';
-import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
-import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
+import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
+import type { BehaviorAwarePreviewMetadata } from './weeklyPlanningPreviewCompatibility';
 
-export interface WeeklyPlanningStableV5PreviewMetadata {
-  runtime: 'stable_v5';
+export type WeeklyPlanningStableV5PreviewMetadata =
+  WeeklyPlanningStableV5PreviewProvenance;
+
+type RuntimeStableV5PreviewMetadata = Omit<
+  WeeklyPlanningStableV5PreviewMetadata,
+  'conversationId'
+> & {
   conversationId?: string;
-  graphRevision: number;
-  taskId: string;
-  sourceFactRefs: string[];
-  planType: PlanType;
-}
+};
 
 type WeeklyDraftCandidateWithRuntimeMetadata = WeeklyDraftCandidate & {
-  stableV5Metadata?: WeeklyPlanningStableV5PreviewMetadata;
+  stableV5Metadata?: RuntimeStableV5PreviewMetadata;
 };
 
 export interface WeeklyPlanningPreviewBlock {
@@ -57,17 +58,9 @@ function stableV5MetadataFromCandidate(
   if (!metadata || metadata.runtime !== 'stable_v5') return undefined;
   return {
     ...metadata,
+    conversationId: metadata.conversationId?.trim() ?? '',
     sourceFactRefs: [...metadata.sourceFactRefs],
   };
-}
-
-function stableV5ConversationId(
-  metadata: WeeklyPlanningStableV5PreviewMetadata,
-): string {
-  if (metadata.conversationId?.trim()) return metadata.conversationId;
-  const runtime = getWeeklyPlanningSessionRuntime();
-  if (runtime?.stateRevision === metadata.graphRevision) return runtime.conversationId;
-  return 'stable-v5-unbound';
 }
 
 function behaviorMetadataFromCandidate(
@@ -76,7 +69,7 @@ function behaviorMetadataFromCandidate(
 ): WeeklyPlanningBehaviorMetadata | undefined {
   const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
   if (stableV5Metadata) {
-    const conversationId = stableV5ConversationId(stableV5Metadata);
+    const conversationId = stableV5Metadata.conversationId;
     return {
       conversationId,
       stateRevision: stableV5Metadata.graphRevision,
@@ -167,7 +160,8 @@ export function createWeeklyPlanningPreviewBlocks(
       ...(stableV5Metadata
         ? { planType: stableV5Metadata.planType, stableV5Metadata }
         : {}),
-      ...(behaviorMetadata ? { behaviorMetadata } : {}),
+      ...(behaviorMetadata ? { behaviorMetadata }
+        : {}),
     };
   });
 }

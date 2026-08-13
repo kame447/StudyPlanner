@@ -152,10 +152,16 @@ export function createWeeklyPlanningSemanticPipelineV5(
   return {
     async run(input) {
       const graph = input.graph ?? createEmptyWeeklyPlanningFactGraphV5();
-      const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(
-        input.publicStateSummary,
-        graph,
-      );
+      const publicStateSummary = {
+        ...createWeeklyPlanningSemanticPublicStateSummaryV5(
+          input.publicStateSummary,
+          graph,
+        ),
+        calendarContext: {
+          currentDate: input.schedulerContext.currentDate,
+          timeZone: input.schedulerContext.timeZone,
+        },
+      };
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'semantic_pipeline_input',

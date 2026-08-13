@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizePlanningWindowCanonicalV5,
-  relativeWindowSourceExpectationV5,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 
 describe('Stable V5 semantic abstraction guards', () => {
@@ -10,9 +9,7 @@ describe('Stable V5 semantic abstraction guards', () => {
     '明日か明後日のどちらか',
     '来週ではなく今週に変更',
     '今日または来週',
-  ])('does not derive a planning-window meaning from sourceText: %s', (sourceText) => {
-    expect(relativeWindowSourceExpectationV5(sourceText)).toBeNull();
-
+  ])('does not reinterpret an AI-selected relative window from sourceText: %s', (sourceText) => {
     const window = {
       localId: 'window-ai-selected',
       kind: 'relative_week' as const,
@@ -26,6 +23,4 @@ describe('Stable V5 semantic abstraction guards', () => {
       repairs: [],
     });
   });
-
-
 });

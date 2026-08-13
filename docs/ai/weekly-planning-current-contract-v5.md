@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-11
+Updated: 2026-08-12
 
 Canonical references:
 
@@ -10,7 +10,7 @@ Canonical references:
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
-- [execution sequence](tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md)
+- [current migration / real-API audit](tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
 - [semantic schema](../architecture/weekly-planning-semantic-schema-v5.md)
 - [dialogue architecture](../architecture/weekly-planning-dialogue-architecture-v5.md)
 
@@ -98,10 +98,13 @@ AI境界で日付、曜日、時間帯をcanonical表現へ構造化する。
 ```text
 dateExpression:
   today | tomorrow | day_after_tomorrow | this_week | next_week
+  | weekday:sunday | weekday:monday | weekday:tuesday
+  | weekday:wednesday | weekday:thursday | weekday:friday | weekday:saturday
   | YYYY-MM-DD | custom:<原文>
 
-weekday:
-  sun | mon | tue | wed | thu | fri | sat
+weekday recurrence days:
+  weekday:sunday | weekday:monday | weekday:tuesday
+  | weekday:wednesday | weekday:thursday | weekday:friday | weekday:saturday
 
 namedTimePeriod:
   morning | afternoon | evening | night
@@ -109,6 +112,8 @@ namedTimePeriod:
 ```
 
 標準曜日を`custom:`へ逃がさない。validator以降で日本語曜日を再解釈しない。解決不能な`custom:`は捏造せずreadinessへ返す。
+
+過去のavailability resolverが内部で使用した`sun/mon/tue/...`はmigration compatibilityの内部表現であり、Stable V5 semantic contractではない。production boundaryではcanonical `weekday:<english-day>`を正とする。
 
 scheduler既定時間帯はユーザーの明示preferred windowより弱い。明示された曜日・時間帯を既定09:00–22:00等のヒューリスティックで切り落とさない。
 
@@ -138,6 +143,9 @@ readinessはaccepted machine stateだけから決める。
 - partial placementを成功previewとして返さない。
 - existing plan / timetable / fixed commitmentはAIへ本文を送らずschedulerで扱う。
 - task-local weekday / allowed / excluded / preferred timeをplacementへ保持する。
+- session分割・日付分散・負荷ranking・relation orderingはsemantic AIではなくdeterministic policyで行う。
+- cyclic relationなど実行順が矛盾するmachine stateは黙って無視せずresolutionへ戻す。
+- personalization/estimate calibrationはhard constraintを変更しない。
 
 AIはmissing slot、question target、preview gate、placementを決めない。
 
@@ -185,6 +193,7 @@ traceは同一logical conversationのidentityを維持し、request/turn/revisio
 - storage / checkpoint / recovery
 - trace / request budget / prompt budget
 - production dependency boundary
+- heuristic policy invariants / adversarial placement cases
 
 禁止:
 
@@ -195,15 +204,27 @@ traceは同一logical conversationのidentityを維持し、request/turn/revisio
 
 実AIの意味理解・自然さはhuman-reviewed real-API observationで確認し、明確な欠陥は最終ユーザー判断前に開発ループ内で修正する。
 
+重要なscheduler/semantic境界変更後は、対象回帰だけでなくfull CIをgreenに戻してから次の実装単位へ進む。
+
 ## 11. Current execution order
 
-Stable V5主要経路はPR #109でmainへmerge済みである。以降は次の順番を変更しない。
+旧「legacy削除 → 挙動不変リファクタ → 7視点監査 → 新規改善」はStable V5移行期のhistorical sequenceであり、現在のactive phaseではない。
+
+2026-08-12時点の実行順序は次とする。
 
 ```text
-legacy / 過去経路削除
-→ 挙動不変リファクタ
-→ 7視点再棚卸し
-→ 新規改善再開
+旧pipeline / historical roadmapの概念棚卸し
+→ 現Stable V5とのcapability差分確認
+→ 責務境界を守れる有効概念だけdeterministic policyへ移植
+→ 移植単位ごとの対象回帰
+→ full CI green
+→ 実APIを1 turnずつcheckpoint付きで人手監査
+→ 実APIの通し会話
+→ 7視点敵対的監査
+→ production heuristic inventory確定
+→ roadmap / contract / statusを最終同期
 ```
 
-legacy削除とリファクタを同一PRへ混ぜない。削除フェーズでは挙動改善を追加しない。リファクタフェーズでは原則public behaviorを変えない。
+実API観測で新しい実不具合を見つけた場合はそのturnで停止し、修正→回帰→full CI→新規conversationまたは必要なcheckpointから再検証する。
+
+現在のactive作業正本は`tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md`である。

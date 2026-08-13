@@ -17,6 +17,9 @@ import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
+  readWeeklyPlanningRepresentationRepairBaselineV5,
+} from './weeklyPlanningSemanticRepairPreservationV5';
+import {
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
 } from './weeklyPlanningWorkBreakdownResponseContractV5';
 import type {
@@ -32,8 +35,18 @@ import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
+  canonicalizeWeeklyPlanningSemanticRepresentationV5,
+} from './weeklyPlanningSemanticRepresentationCanonicalizationV5';
+import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
+import {
+  normalizeWeeklyPlanningTemporalClockRawV5,
+  validateWeeklyPlanningTemporalClockEncodingV5,
+} from './weeklyPlanningTemporalClockEncodingV5';
+import {
+  validateWeeklyPlanningWeekdayEncodingV5,
+} from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
   userText: string;
@@ -63,46 +76,58 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
-  const algorithmicRepairs = [
+  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+    workloadNormalization.rawResponse,
+  );
+  const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
+    ...clockNormalization.repairs,
   ];
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(workloadNormalization.rawResponse);
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(clockNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
-      parsedDocument: null,
+      parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
+        rawResponse: clockNormalization.rawResponse,
+        validationErrors: parsed.errors,
+      }),
       errors: parsed.errors,
-      algorithmicRepairs,
+      algorithmicRepairs: preParseRepairs,
     };
   }
 
+  const normalized = canonicalizeWeeklyPlanningSemanticRepresentationV5(parsed.document);
+  const algorithmicRepairs = [...preParseRepairs, ...normalized.repairs];
+  const document = normalized.document;
   const errors = [
-    ...planningWindowCanonicalValueErrors(parsed.document.planningWindow),
+    ...planningWindowCanonicalValueErrors(document.planningWindow),
+    ...validateWeeklyPlanningTemporalClockEncodingV5(document),
+    ...validateWeeklyPlanningWeekdayEncodingV5(document),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
-      document: parsed.document,
+      document,
       publicStateSummary: input.publicStateSummary,
     }),
-    ...validateWeeklyPlanningRecurrenceConsistencyV5(parsed.document),
+    ...validateWeeklyPlanningRecurrenceConsistencyV5(document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
-      document: parsed.document,
+      document,
       userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({
-      document: parsed.document,
+      document,
       input,
     }),
     ...validateWeeklyPlanningStandaloneModifierTargetsV5({
-      document: parsed.document,
+      document,
       userText: input.userText,
     }),
   ];
   return {
-    document: errors.length === 0 ? parsed.document : null,
-    parsedDocument: parsed.document,
+    document: errors.length === 0 ? document : null,
+    parsedDocument: document,
     errors,
     algorithmicRepairs,
   };

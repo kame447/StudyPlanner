@@ -136,6 +136,7 @@ function previewCandidate(factGraph: ReturnType<typeof graph>) {
     workItemKey: workloadId,
     stableV5Metadata: {
       runtime: 'stable_v5',
+      conversationId: CONVERSATION_ID,
       graphRevision: factGraph.revision,
       taskId,
       sourceFactRefs: [taskId, workloadId],
@@ -144,6 +145,7 @@ function previewCandidate(factGraph: ReturnType<typeof graph>) {
   } as WeeklyDraftCandidate & {
     stableV5Metadata: {
       runtime: 'stable_v5';
+      conversationId: string;
       graphRevision: number;
       taskId: string;
       sourceFactRefs: string[];
@@ -172,14 +174,14 @@ describe('Stable V5 persisted runtime session', () => {
   beforeEach(() => {
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
-      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     renderer = null;
   });
 
   afterEach(() => {
     renderer?.unmount();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-      restoreWindow();
+    restoreWindow();
   });
 
   it('restores conversation and Fact Graph together after runtime memory is lost', () => {
@@ -233,6 +235,7 @@ describe('Stable V5 persisted runtime session', () => {
       (loaded.previewCandidates?.[0] as typeof candidate).stableV5Metadata,
     ).toMatchObject({
       runtime: 'stable_v5',
+      conversationId: CONVERSATION_ID,
       graphRevision: factGraph.revision,
       taskId: factGraph.tasks[0].id,
     });
