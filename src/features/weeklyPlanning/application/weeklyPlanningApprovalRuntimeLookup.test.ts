@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { AssumptionProposalRecord } from '../intake/weeklyPlanningAssumptionProposals';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   createWeeklyPlanningApprovalRuntimeLookup,
@@ -69,18 +70,18 @@ describe('weeklyPlanningApprovalRuntimeLookup', () => {
   });
 
   it('maps the legacy compatibility runtime without changing its proposal records contract', () => {
-    const proposalRecord = {
+    const proposalRecord: AssumptionProposalRecord = {
       proposalId: 'proposal-1',
+      conversationId: 'legacy-conversation',
       targetRef: 'task:0',
-      slot: 'duration' as const,
+      slot: 'duration',
       proposedValue: 60,
       proposedUnit: 'minutes',
-      reason: 'first-trial' as const,
-      status: 'pending' as const,
+      reasonCode: 'first_trial_estimate',
+      status: 'pending',
       sourceFactRefs: ['task:0'],
       createdFromStateRevision: 3,
       createdAtTurnId: 'turn-1',
-      createdBy: 'ai' as const,
     };
     const injected = services({
       getCompatibilityRuntime: vi.fn(() => ({
