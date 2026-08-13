@@ -126,20 +126,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - response facadeのplanning evaluator実装依存を除去し、`WeeklyPlanningStableV5PlanningEvaluation`出力contractへのtype-only依存へ変更。policy実装とresponse projectionの変更理由を分離し、full CI #2690 green
 - RuntimeExecutor / planning stageの公開surfaceを監査し、実利用のない`getWeeklyPlanningStableV5BlockingIssueCode` wrapper/re-exportを削除。authorization互換re-exportは既存contractとして維持し、不要APIだけを選別して閉じてfull CI #2695 green
 - InstrumentedRuntimeExecutorのfreshest graph付与・human-scale effort question rewrite・repair-safe preview保持を`weeklyPlanningStableV5ResultProjection.ts`へ集約。`core` / `duplicate`の小さいProjector facadeを公開し、graph non-null assertionも除去してfull CI #2700 green
+- InstrumentedRuntimeExecutorからduplicate detection/result constructionを`weeklyPlanningStableV5TurnIdempotency.ts`へ分離。初回CI #2703で構造監査の旧期待とtrace文字列経由の`appliedTurnKeys`漏出を検出し、duplicate専用projection/traceをidempotency境界へ移してfull CI #2709 green
 
 現在のloop:
 
-- InstrumentedRuntimeExecutorに残っていたduplicate判定、`appliedTurnKeys` contract、owner照合、空compatibility state、duplicate result生成をidempotency責務として分離する。
-- `weeklyPlanningStableV5TurnIdempotency.ts`を新設し、内部でduplicate detectionとduplicate result projectionまで完結させる。callerには`weeklyPlanningStableV5IdempotencyGate.evaluate()`だけを公開する。
-- gate結果は`{ kind: 'proceed' } | { kind: 'duplicate'; result }`のdiscriminated unionとし、InstrumentedRuntimeExecutorがsession内部・appliedTurnKeys・duplicate結果生成規則を知る必要をなくす。
-- duplicate結果のfreshest graph付与もidempotency境界からResult Projectorの`duplicate` APIへ委譲し、InstrumentedRuntimeExecutorからduplicate用Projector呼び出しを除去する。
-- InstrumentedRuntimeExecutorはtrace開始、idempotency gate、core実行、通常結果projection、output/error traceという横断制御へ縮小する。
-- idempotency moduleはStable V5 runtime sessionへ接続する正式なproduction support moduleとしてproduction isolation監査へ登録する。
-- architecture testで`appliedTurnKeys`、empty compatibility state、duplicate result construction、session参照がInstrumentedRuntimeExecutorへ戻らないことを固定する。
-- AI意味理解・scheduler・preview・approval policyには触れず、revision/idempotencyはdeterministic codeが担当するという最上位責務境界をより明示的にする。
+- InstrumentedRuntimeExecutorに残っていたtrace開始、turn input/output/error trace、final decision projection、error detail projectionを同じobservability責務として分離する。
+- `weeklyPlanningStableV5RuntimeTraceLifecycle.ts`を新設し、`start / complete / fail`の3操作だけを公開する。trace event名、入力件数schema、final decision shape、error serializationは内部へ隠す。
+- InstrumentedRuntimeExecutorはtrace lifecycle facade、idempotency gate、core runtime実行、通常result projectionだけを組み合わせる薄い横断orchestrationへ縮小する。
+- duplicate固有の`runtime_duplicate_turn_suppressed` traceは一般trace lifecycleへ戻さず、idempotency boundaryが所有する。一般turn lifecycleとduplicate policy observabilityを分離する。
+- 新しいtrace lifecycle moduleはStable V5 debug traceへ直接接続する正式なproduction support moduleなのでproduction isolation監査へ明示登録した。
+- architecture testで`runtime_turn_input` / `runtime_turn_output` / `runtime_turn_threw`、finalDecision、errorDetailsがInstrumentedRuntimeExecutorへ戻らず、`start / complete / fail` facadeだけが見えることを固定する。
+- AI意味理解・planning policy・scheduler・preview・approvalには触れず、observabilityのSRPとカプセル化だけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。InstrumentedRuntimeExecutorに残るtrace lifecycle / final-decision projection、RuntimeExecutor/InstrumentedRuntimeExecutor間のapplication API、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor/InstrumentedRuntimeExecutor間のapplication API、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
