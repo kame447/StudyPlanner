@@ -92,6 +92,8 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離または明示的安全境界修正 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
 
+関連・類似する機能は、単に同じファイルへ集約するのではなく、共通責務を内部へ隠し、利用側には小さく安定したapplication API / facadeだけを公開する。callerが内部条件、singleton、fallback順序、個別実装moduleを知る必要がある構造を避ける。型で表せる状態遷移はnullable値やnon-null assertionではなくdiscriminated union等の明示的contractを優先する。
+
 完了済みの分離・hardening:
 
 - execution profile / session policy / session splittingを分離し、旧public APIはfacadeで維持
@@ -118,17 +120,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - Stable V5 scheduler candidateとpreview/draftで重複していたprovenance型を`weeklyPlanningPreviewProvenance.ts`へ単一化。既存型名はaliasで維持し、review情報を含む同一contractを生成からpreviewまで利用してfull CI #2662 green
 - RuntimeExecutorからsemantic成功後のdeterministic planning evaluationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ分離。horizon、grounding、scheduler compilation、repair/dialogue、authorizationの所有者を明確化し、architecture testも新ownerへ追従させてfull CI #2667 green
 - RuntimeExecutorからpreview scheduler実行を`weeklyPlanningStableV5PreviewExecution.ts`へ分離。scheduler inputから配置、not-before、version/default/result traceまでを専用責務へ移し、full CI #2671 green
+- RuntimeExecutorからsemantic成功後のuser planning context / Fact Graph staging副作用を`weeklyPlanningStableV5TurnStaging.ts`へ分離。durable context収集、transactional graph staging、対応traceの所有者を明確化し、full CI #2675 green
 
 現在のloop:
 
-- RuntimeExecutorに残っていた、semantic成功後にuser planning context factsとStable V5 Fact Graphをstagingし、そのdebug traceを記録する副作用をresponse orchestrationから分離する。
-- `weeklyPlanningStableV5TurnStaging.ts`へ、durable context fact収集・user context staging・graph staging・それぞれのtraceを移した。
-- RuntimeExecutorはsemantic成功後にstagingを一度呼び、その後planning evaluationとresponse orchestrationへ進む。staging内容や順序は移動前と同じで、graphはfinal commitではなく従来どおりrequest単位の未確定stageへ置く。
-- 新moduleはFact Graph V5とdurable context extractionへ直接依存するproduction support moduleなので、production isolation監査へ明示登録した。
-- この分離はAIが出したsemantic document/Fact Graphの意味を変えず、commit前のtransactional stagingとobservabilityだけをdeterministic side effectとして扱う。意味理解をdeterministic codeへ移していない。
+- RuntimeExecutorに残っていたask-question / nothing-to-schedule / authorization-required / preview-unchanged / insufficient-capacity / preview-empty / preview-readyのresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へカプセル化する。
+- response module内部のgrounding付与、compatibility projection、branch trace、question renderingを外部へ露出せず、callerには`weeklyPlanningStableV5ResponseRouter.beforePreview`と`afterPreview`だけを公開する。
+- pre-preview APIは`null`やcaller側の`compilation.input`再検査を要求せず、`respond`または`schedule_preview`のdiscriminated unionを返す。preview実行に進む場合は有効な`GenericSchedulerInput`をroute結果自身が保持するため、RuntimeExecutorは内部条件を推測しない。
+- RuntimeExecutorはsemantic turn → staging → planning evaluation → response facade → 必要時preview execution → response facadeという薄いorchestrationへ縮小する。response文面やbranch条件は保持しない。
+- recovery architecture testはquestion priorityの所有者をplanning evaluation、question rendering / response完了の所有者をresponse facadeとして別々に検査する。RuntimeExecutorへ個別response wordingが戻らないことも固定する。
+- 新しいresponse facadeはStable V5 internalsへの正式なproduction support接続点としてproduction isolation監査へ登録する。初回CI #2676ではこの登録漏れだけが失敗し、typecheckおよび他1438 testsはpassしていた。監査を削除・緩和せず正式接続点として追従する。
+- この分離はAIの意味理解やdeterministic planning policyを変更せず、既に決定されたapplication resultのprojection / response routingだけを一責務へ集約する。SRP、カプセル化、caller側の依存縮小を目的とする。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのresponse branch構築・trace、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorに残るevaluation trace組み立て、application module間の類似facade/API、legacy runtimeの残存production reachability、その他singleton/重複contractを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
