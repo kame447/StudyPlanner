@@ -122,20 +122,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - RuntimeExecutorからpreview scheduler実行を`weeklyPlanningStableV5PreviewExecution.ts`へ分離。scheduler inputから配置、not-before、version/default/result traceまでを専用責務へ移し、full CI #2671 green
 - RuntimeExecutorからsemantic成功後のuser planning context / Fact Graph staging副作用を`weeklyPlanningStableV5TurnStaging.ts`へ分離。durable context収集、transactional graph staging、対応traceの所有者を明確化し、full CI #2675 green
 - ask-question / authorization / preview result等のresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へ集約し、`beforePreview` / `afterPreview`の小さいfacadeとして公開。pre-preview遷移は`respond` / `schedule_preview`のdiscriminated unionにし、caller側のnullable判定と内部条件重複を除去。初回CI #2676ではproduction isolation登録漏れだけを検出し、正式接続点として追従後full CI #2681 green
+- planning evaluationと`runtime_scheduler_dialogue_evaluated` observabilityを`weeklyPlanningStableV5PlanningStage.ts`へカプセル化。pure evaluatorを副作用なしで維持し、RuntimeExecutorからevaluation内部fieldとtrace schemaを隠した。blocking-issue互換helperもstage経由へ寄せてfull CI #2687 green
 
 現在のloop:
 
-- RuntimeExecutorに残るplanning evaluationの内部field展開と`runtime_scheduler_dialogue_evaluated` trace組み立てを、callerから隠す。
-- `weeklyPlanningStableV5PlanningEvaluation.ts`はhorizon / grounding / compilation / repair / dialogue / authorizationを計算するpure deterministic evaluatorとして維持し、trace副作用を混ぜない。
-- その外側に`weeklyPlanningStableV5PlanningStage.ts`を設け、evaluation実行とevaluation observabilityをapplication-stage facadeとしてカプセル化する。RuntimeExecutorは`runWeeklyPlanningStableV5PlanningStage()`だけを呼び、evaluation内部fieldやtrace schemaを知らない。
-- planning evaluationの戻り値は`WeeklyPlanningStableV5PlanningEvaluation`として型contract化し、stage側が明示的に利用する。blocking issue互換helperもplanning stageから再公開し、RuntimeExecutor自身の低レベルquestion-policy依存を減らす。
-- RuntimeExecutorはsemantic turn → staging → planning stage → response facade → 必要時preview execution → response facadeというpipeline接続だけを担当する。
-- recovery architecture testではplanning policy owner、planning-stage observability owner、response ownerを別々に検査し、evaluation traceの組み立てがRuntimeExecutorへ戻らないことを固定する。
-- 新しいplanning stageはStable V5 planning internalsとtraceへ接続する正式なproduction support moduleなのでproduction isolation監査へ明示登録する。
-- pure evaluatorとside-effecting stage facadeを分けることでSRPを維持しつつ、外部callerには一つの使いやすいapplication APIだけを見せる。意味理解はAI、readiness / scheduler / question priorityはdeterministicという責務境界は変更しない。
+- `weeklyPlanningStableV5ResponseRouting.ts`がplanning evaluationの型を得るためだけに`evaluateWeeklyPlanningStableV5Planning`実装関数をimportし、`ReturnType<typeof ...>`で具体実装へ結合していた依存を切る。
+- pure evaluator側が`WeeklyPlanningStableV5PlanningEvaluation`を正式な出力contractとしてexportし、planning stageとresponse facadeはこのcontractへ依存する。
+- response facadeは`import type`だけでplanning evaluation contractを受け取り、evaluator実装関数をruntime importしない。response projectionの変更理由とplanning policy実装の変更理由を分離する。
+- recovery architecture testで、response facadeが`ReturnType<typeof evaluateWeeklyPlanningStableV5Planning>`やevaluator実装importへ戻らないことを固定する。
+- 挙動、planning policy、response branch、trace内容は変更しない。DIPとカプセル化の改善だけを行う。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。response facadeのplanning evaluator実装依存、application facadeの公開面、legacy runtimeの残存production reachability、その他singleton/重複contractを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。application facadeの公開面、legacy runtimeの残存production reachability、singleton依存、類似contract / helperの重複を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
