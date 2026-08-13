@@ -6,23 +6,50 @@
 // model は、呼び出し側(index.ts)で必ず allowlist(ALLOWED_CHAT_MODELS)に含まれることを
 // 検証してから OpenAI へ送る(purpose 由来でも allowlist をバイパスしない)。
 
+const WEEKLY_PLANNING_SEMANTIC_PURPOSE = 'weekly_planning_semantic_normalizer';
+export const WEEKLY_PLANNING_SEMANTIC_REPAIR_MODEL = 'gpt-5.4-mini-2026-03-17';
+
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: 'gpt-5.4-nano-2026-03-17',
-  weekly_planning_semantic_normalizer: 'gpt-5.4-mini-2026-03-17',
+  weekly_planning_semantic_normalizer: 'gpt-5.6-luna',
   weekly_planning_renderer: 'gpt-5.4-mini-2026-03-17',
 };
 
 // ALLOWED_CHAT_MODELS env が未設定のときの既定 allowlist。
-// AI_CHAT_PURPOSE_MODELS の全 model を必ず含めること(purpose 解決後にallowlist検証で弾かれないため)。
+// AI_CHAT_PURPOSE_MODELS の全 model と semantic repair model を必ず含めること。
 export const DEFAULT_ALLOWED_CHAT_MODELS = [
   'gpt-5.4-mini',
   'gpt-5.4-nano-2026-03-17',
   'gpt-5.4-mini-2026-03-17',
+  'gpt-5.6-luna',
 ];
+
+interface ChatModelMessageInput {
+  role?: string;
+  content?: string;
+}
 
 export interface ChatModelResolutionInput {
   model?: string;
   purpose?: string;
+  messages?: ChatModelMessageInput[];
+}
+
+function isSemanticRepairRequest(payload: ChatModelResolutionInput): boolean {
+  if (payload.purpose?.trim() !== WEEKLY_PLANNING_SEMANTIC_PURPOSE) return false;
+  if (!Array.isArray(payload.messages)) return false;
+
+  const hasInvalidAssistantResponse = payload.messages.some(
+    (message) => message?.role === 'assistant',
+  );
+  const hasRepairInstruction = payload.messages.some(
+    (message) => message?.role === 'user'
+      && typeof message.content === 'string'
+      && message.content.includes('"validationErrors"')
+      && message.content.includes('"requiredChanges"'),
+  );
+
+  return hasInvalidAssistantResponse && hasRepairInstruction;
 }
 
 export function resolveChatModel(
@@ -35,6 +62,10 @@ export function resolveChatModel(
 
     if (!policyModel) {
       return { error: 'Requested AI purpose is not supported.' };
+    }
+
+    if (isSemanticRepairRequest(payload)) {
+      return { model: WEEKLY_PLANNING_SEMANTIC_REPAIR_MODEL };
     }
 
     return { model: policyModel };
