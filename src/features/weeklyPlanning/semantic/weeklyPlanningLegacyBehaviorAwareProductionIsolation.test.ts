@@ -23,9 +23,7 @@ const REQUIRED_LEGACY_SOURCES = new Set([
   ...LEGACY_SUPPORT_SOURCES,
 ]);
 
-const EXPECTED_TYPE_ONLY_EDGES = new Set([
-  'features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:../pipeline/weeklyPlanningBehaviorAwareIntakePipeline',
-]);
+const EXPECTED_TYPE_ONLY_EDGES = new Set<string>();
 
 interface ImportedSpecifier {
   specifier: string;
