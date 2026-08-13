@@ -66,6 +66,21 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(runtimeSource).not.toContain('firstBlockingIssueCodeInCompilationOrder');
   });
 
+  it('depends on the planning evaluation contract rather than the evaluator implementation', () => {
+    expect(planningEvaluationSource).toContain(
+      'export type WeeklyPlanningStableV5PlanningEvaluation = ReturnType<',
+    );
+    expect(responseRoutingSource).toContain(
+      'evaluation: WeeklyPlanningStableV5PlanningEvaluation;',
+    );
+    expect(responseRoutingSource).not.toContain(
+      'ReturnType<typeof evaluateWeeklyPlanningStableV5Planning>',
+    );
+    expect(responseRoutingSource).not.toContain(
+      'evaluateWeeklyPlanningStableV5Planning,',
+    );
+  });
+
   it('encapsulates response completion versus preview scheduling behind a typed facade', () => {
     expect(responseRoutingSource).toContain("kind: 'respond'");
     expect(responseRoutingSource).toContain("kind: 'schedule_preview'");
