@@ -9,41 +9,33 @@ import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
-import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
   createWeeklyPlanningTurnRequestContext,
 } from './weeklyPlanningTemporalContext';
 import {
-  discardWeeklyPlanningApplicationTurn,
-  finalizeWeeklyPlanningApplicationTurn,
-  recordCommittedWeeklyPlanningApplicationTurn,
-  recordDiscardedWeeklyPlanningApplicationTurn,
-  recordFailedWeeklyPlanningApplicationTurn,
+  weeklyPlanningTurnOutcomeLifecycle,
+  type WeeklyPlanningTurnOutcomeLifecycle,
+} from './weeklyPlanningTurnOutcomeLifecycle';
+import {
+  weeklyPlanningTurnStagingLifecycle,
+  type WeeklyPlanningTurnStagingLifecycle,
 } from './weeklyPlanningTurnSideEffects';
 
 export interface WeeklyPlanningTurnApplicationServices {
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
   executeTurn: typeof executeWeeklyPlanningTurn;
   bindStableV5SessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
-  saveOwnedState: typeof saveOwnedWeeklyPlanningState;
-  finalizeTurn: typeof finalizeWeeklyPlanningApplicationTurn;
-  discardTurn: typeof discardWeeklyPlanningApplicationTurn;
-  recordCommittedTurn: typeof recordCommittedWeeklyPlanningApplicationTurn;
-  recordDiscardedTurn: typeof recordDiscardedWeeklyPlanningApplicationTurn;
-  recordFailedTurn: typeof recordFailedWeeklyPlanningApplicationTurn;
+  stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
+  outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle;
 }
 
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
   executeTurn: executeWeeklyPlanningTurn,
   bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
-  saveOwnedState: saveOwnedWeeklyPlanningState,
-  finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
-  discardTurn: discardWeeklyPlanningApplicationTurn,
-  recordCommittedTurn: recordCommittedWeeklyPlanningApplicationTurn,
-  recordDiscardedTurn: recordDiscardedWeeklyPlanningApplicationTurn,
-  recordFailedTurn: recordFailedWeeklyPlanningApplicationTurn,
+  stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
+  outcomeLifecycle: weeklyPlanningTurnOutcomeLifecycle,
 };
 
 function resolvedTimeZone(): string {
@@ -104,41 +96,37 @@ export function submitWeeklyPlanningApplicationTurn(
       });
     },
     commitExecutionResult({ pending }) {
-      services.finalizeTurn({ ownerId: params.userId, pending });
+      services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending, userText, result, reason }) {
-      services.discardTurn(pending);
-      if (reason === 'failed') return;
-      const traceWrite = services.recordDiscardedTurn({
+      services.stagingLifecycle.discard(pending);
+      services.outcomeLifecycle.discarded({
         ownerId: params.ownerId,
         pending,
         userText,
         result,
         reason,
       });
-      if (traceWrite) void traceWrite;
     },
     onCommittedTurn({ pending, userText, result, committed }) {
-      services.saveOwnedState(params.ownerId, committed);
-      const traceWrite = services.recordCommittedTurn({
+      services.outcomeLifecycle.committed({
         ownerId: params.ownerId,
         pending,
         userText,
         result,
+        committed,
       });
-      if (traceWrite) void traceWrite;
     },
     onFailedTurn({ pending, userText, error, failedState, assistantMessage }) {
-      services.discardTurn(pending);
-      services.saveOwnedState(params.ownerId, failedState);
-      const traceWrite = services.recordFailedTurn({
+      services.stagingLifecycle.discard(pending);
+      services.outcomeLifecycle.failed({
         ownerId: params.ownerId,
         pending,
         userText,
         error,
+        failedState,
         assistantMessage,
       });
-      if (traceWrite) void traceWrite;
     },
   });
 }
