@@ -171,6 +171,8 @@ export function AuthScreen({
                   }
                   onClick={() => setIntent('sign-up')}
                   type="button"
+                  role="tab"
+                  aria-selected={intent === 'sign-up'}
                 >
                   新規会員登録
                 </button>
@@ -180,6 +182,8 @@ export function AuthScreen({
                   }
                   onClick={() => setIntent('sign-in')}
                   type="button"
+                  role="tab"
+                  aria-selected={intent === 'sign-in'}
                 >
                   ログイン
                 </button>
