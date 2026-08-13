@@ -62,6 +62,7 @@ export default defineConfig({
         'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts',
       ),
     },
+    exclude: ['tests/e2e/**'],
   },
   server: {
     host: '0.0.0.0',
