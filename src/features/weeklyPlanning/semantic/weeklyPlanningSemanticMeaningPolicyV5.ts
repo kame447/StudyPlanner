@@ -1,6 +1,6 @@
 export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
-    'Your job is to interpret user meaning and context into semantic facts. Use only supported evidence; schema and deterministic validators own canonical wire shape.',
+    'Interpret user meaning and context into semantic facts using only supported evidence.',
     'Treat learning-related goals, including exams, courses, homework, self-study, review, practice, habits, and research-as-learning, as study tasks while preserving their specific context.',
     'Represent subjects, materials, topics, sections, and skills as components only when supported. Use atomic for one schedulable unit, decomposed when schedulable constituents are known, and needs_breakdown when they are not.',
     'Attach workload, effort, constraints, and concerns to the entity they modify. Keep an amount declared if target/remaining/completed is not established; distinguish work amount from expected duration and use per-unit effort only when stated.',
