@@ -8,9 +8,9 @@ Updated: 2026-08-14
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
-- [current SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
-- [current loop log](tasks/20260814-solid-file-by-file-loop-log.md)
-- [current seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
+- [current conversation-quality / Luna task](tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+- [completed SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
+- [completed seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
 
 ## 1. 現在位置
 
@@ -24,9 +24,9 @@ Stable V5は唯一のproduction週間計画runtimeである。
 - PR #120: human grounding / repair、scheduler human-scale policy、real API hardening、semantic orchestration監査、legacy behavior-aware execution cluster隔離を完了しmainへmerge
 - PR #127: audited Browser Regression suiteを統合しmainへmerge
 
-現在はPR #129 `agent/browser-regression-audited-integration`で、全体コードのfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を行っている。
+PR #129はDayView、BookshelfView、AdminViews、MonthEventDialog、MonthViewを含む残りfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を完了しmainへmerge済みである。
 
-PR #129では新規semantic policyやfeatureを混ぜず、挙動不変の責務分離、dead surface / dead contract除去、監査で見つかった回帰修正、focused regression、CI harness / document hygieneだけを扱う。
+現在は第2PR `agent/weekly-conversation-quality-luna-audit`で、過去の会話品質taskとIssueを現コードへ対応付け、Stable V5をLunaで一対話ずつ再観測する。既知の未完了差分はIssue #118のcompleted duration clarificationであり、prompt複雑性、historical heuristic、最終previewも同じPRで監査する。
 
 ## 2. Stable V5 production baseline
 
@@ -97,39 +97,33 @@ raw Japaneseをregex / keyword / dictionary / legacy parserで再解釈してsem
 - preview / approval runtime ownershipのconversation isolation
 - Stable V5 execution clusterからlegacy behavior-aware execution edgeの隔離
 
-## 5. 現在の構造監査
+## 5. 現在の会話品質監査
 
-PR #129のfile-by-file refactorでは、pure domain projection、collection normalization、presentation、interaction flowを変更理由ごとに抽出する一方、凝集している小規模componentはno-changeとする。
+2026-08-07/10の会話品質task群は、現コードに実装と回帰が存在するものを未実装扱いせず、Luna再観測scenarioへ変換する。各turnでsemantic response、validation/repair、formal binding、Fact Graph、dialogue、renderer、preview、traceを確認し、明確な失敗があれば次へ進まない。
 
-七視点監査で確定修正した主項目:
-
-- `DailyMaterialShelf`のmissing-subject fallback metadata ordering regression
-- day-material extractionのdirect component regression不足
-- `ReportView`のunused required propsとApp caller plumbing
-- Browser Regressionのisolated Playwright runner更新
-- stale documentation index / closed task duplicate
-
-詳細は`audits/20260814-solid-refactor-seven-audit.md`を正とする。
+モデル更新後もAI/deterministic責務境界は維持する。promptは意味・安全contract、schema重複、historical scaffolding、意味不変normalizationに分類し、Luna ablationで退行がないものだけを削減候補とする。
 
 ## 6. Current verification
 
-PR #129のpre-final hardening head `f8eea8348ecbc456046efd3915aa12af3b720e38`では次を確認済み。
+PR #129のmerge前最終HEADでは次を確認済み。
 
 - normal CI success
   - npm ci
   - TypeScript checks
   - Vitest
   - production build
-  - PR diff check
+- PR diff check
 - Browser Regression success: 80 / 80 passed
 
-その後、Playwright runner更新、ReportView dead contract削除、MD hygiene修正を追加したため、post-audit HEADでnormal CIとBrowser Regressionを再実行して両方greenにすることがPR #129の最終gateである。
+PR #129はready化後にsquash mergeされ、main merge commitは`be0c483d779be315f10ccf3f34adb9c7420e9631`である。
+
+第2PR開始時の代表prompt実測はgeneric system 5,002 bytes、provider schema 11,333 bytes、generic request 17,351 bytes、focused authorization 1,202 bytes、focused contextual answer 2,263 bytesで、現budget内である。会話品質のpass判定は今後の逐次・通し実API artifactと最終HEADのCI結果で行う。
 
 テストを「追加した」ことと「実行してgreenだった」ことを区別する。
 
 ## 7. 既知の残Issue / 別scope
 
-PR #129へ混在させない主な残件:
+現在PRへ混在させない主な残件:
 
 - Issue #43: request ownershipの残browser evidence
 - Issue #45: trace privacy / lifecycle / operational rollout
@@ -138,26 +132,27 @@ PR #129へ混在させない主な残件:
 - Issue #52: weekly planning UIをgeneric Quick Entry / AI inputから分離
 - Issue #89: trace empty-session production / operational verification
 - Issue #115: raw-text regex weekly entry routingをAI-owned structured routingへ移行
-- Issue #118: completed-work paceからremaining effortをdeterministicに導出
+- Issue #118: 今回の対象。deterministic導出は実装済みで、completed durationを先に確認する会話policyが残る
 - Issue #128: saved-preview approval compatibility migration
 
-Issue #52 / #115は構造監査で実在を再確認しているが、PR #129の挙動不変refactorとして黙って実装しない。
+Issue #52 / #115は今回も独立scopeを維持する。
 
-## 8. 非blocking構造負債
+## 8. 今回の既知残差
 
-- `DayView`: timetable import / detail modal composition
-- `BookshelfView`: subject/material modal lifecycle
-- `AdminViews`: user list/detail loading + routing
-- `MonthEventDialog`: save normalization / recurrence delete scope / editor UI
-- `MonthView`: pager gesture / keyboard navigation / projection / rendering
-- production buildの既存chunk/code-splitting warning
+- Issue #118 completed-duration clarification
+- historical conversation taskのLuna再観測とtask queue closeout
+- production heuristicの対象・敵対的回帰
+- prompt複雑性とLunaで削減可能なscaffoldingのablation
+- 最終HEADの逐次会話、通しpreview、Browser Regression、normal CI
+- production buildの既存chunk/code-splitting warningは今回の会話品質scope外
 
 これらは次のfile-by-file phaseで、対象回帰を先に用意できる単位から処理する。
 
 ## 9. 次の進行条件
 
-1. PR #129 post-audit HEADのnormal CI green
-2. Browser Regression 80/80 green
-3. 七視点監査に新しいBLOCKER/MAJORが出た場合は次ファイルへ進まず同PRで修正
-4. 仕様変更が必要な場合だけユーザー確認
-5. green checkpoint後に残りfile-by-file auditを再開
+1. stale task・Issue・PRを現コード根拠へ対応付ける
+2. historical scenarioをLunaで一対話ずつ再観測する
+3. 明確な失敗があれば次turnへ進まず原因層を直して同地点から再実行する
+4. Issue #118、heuristic、prompt ablationを対象回帰とfull CIで確認する
+5. 最終HEADで通しpreview、Browser Regression、normal CIをgreenにする
+6. roadmap、contract、status、task queue、Issueを観測結果と同期する

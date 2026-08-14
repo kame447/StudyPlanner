@@ -1,11 +1,11 @@
 # 週間計画 AI ロードマップ
 
-Status: canonical / PR #120 hardening and selective orchestration
-最終更新: 2026-08-13
+Status: canonical / conversation quality and Luna simplification audit
+最終更新: 2026-08-14
 
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
-- Current execution task: [../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md](../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
+- Current execution task: [../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
 - Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
 ## 0. 最上位設計原則
@@ -40,24 +40,25 @@ user utterance
 
 PR #109でStable V5主要経路を固定し、PR #112でproductionから到達不能なlegacy interpreter/parser/runtime/semantic experimentを削除した。PR #113でsemantic責務境界をmoduleへ分離した。
 
-現在のPR #120では、旧実装思想の選別移植、human grounding / repair、real API hardening、scheduler human-scale化、prompt / orchestration監査を同じStable V5上で行っている。
+PR #120で旧実装思想の選別移植、human grounding / repair、real API hardening、scheduler human-scale化、prompt / orchestration監査を完了した。PR #129では残るfile-by-file refactorと最終Browser Regressionを完了しmainへmergeした。
+
+現在は第2PR `agent/weekly-conversation-quality-luna-audit`で、過去の会話品質taskとIssueを現コードへ対応付け、Lunaによる逐次実API再観測、Issue #118の残差、heuristic敵対的回帰、prompt簡素化監査、最終previewを行う。Issue #52と#115は別scopeのまま維持する。
 
 ## 2. 現在の実行順序
 
 古いPhase 4 / Phase 5表記はcurrent execution sequenceではない。
 
 ```text
-1. legacy実装・historical roadmap棚卸し
-2. Stable V5へ採用する思想だけを選別移植
-3. deterministic regression
-4. full CI
-5. 逐次real API conversation
-6. 通しreal API conversation
-7. prompt / orchestration監査
-8. 7視点敵対的監査
-9. current MD同期
-10. production heuristic inventory確定
-11. final CI / real API再確認
+1. stale task・Issue・PRと現コード回帰の対応付け
+2. deterministic baselineとprompt byte実測
+3. historical scenarioの逐次real API Luna再観測
+4. 明確な失敗ごとの停止・原因層修正・同地点再実行
+5. Issue #118のcompleted-work pace会話policy完了
+6. production heuristic inventoryと敵対的回帰
+7. prompt複雑性分類とLuna ablation
+8. 最終HEADの通し実API conversationからpreview
+9. Browser Regression / normal CI / trace persistence
+10. current MDと関連Issueのcloseout
 ```
 
 詳細はcurrent execution taskを正とする。
@@ -139,10 +140,10 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 現在のloop:
 
-- 第36ループでは、`weeklyPlanningRenderedQuestionContext.ts`をshared contractへ延命せず、実際のimport graphに沿ってlegacy behavior-aware closureへ分類した。現在のarchitecture監査でruntime edgeは0本、外部type-only edgeは`weeklyPlanningTraceRuntime.ts`から`weeklyPlanningBehaviorAwareIntakePipeline.ts`への1本だけである。
-- 第37ループは、このroadmap同期後の最終HEADがfull CI greenであることを確認し、roadmapとcurrent execution taskを再読してから選ぶ。
-- 残る`weeklyPlanningTraceRuntime.ts`は現行productionでも利用されるmoduleだが、behavior-aware pipeline型を使う`prepareWeeklyPlanningTraceOptions` / `recordWeeklyPlanningPipelineTrace`は旧pipeline専用である。型だけをshared化する前に、legacy trace adapterを現行trace runtimeから分離できるか、trace側の狭いcontractへ依存反転すべきか、旧pipeline closureとともに削除できるかをimport graphと利用箇所から判定する。
-- 旧behavior-aware approval compatibilityは保存済みpreview metadata/runtime互換の問題であり、behavior-aware実行clusterのruntime到達性とは別に扱う。import isolationだけを根拠に削除しない。
+- PR #129の最終HEADはnormal CIとBrowser Regression 80/80がgreenとなりmainへmerge済みである。
+- 第2PRではrootに残る2026-08-07/10会話品質taskを未実装一覧として扱わず、現コードのmodule/testと照合したうえでLuna再観測scenarioへ変換する。
+- 現時点で実装差分が確認できる既知項目はIssue #118のcompleted duration clarificationである。それ以外はまず逐次実APIで再現を確認し、再現しないhistorical workaroundを追加しない。
+- prompt変更は意味責務・schema・validator・repair・trace persistenceの境界を同時に監査し、Lunaの性能向上だけを根拠にload-bearing contractを削除しない。
 
 ## 4. Prompt / orchestration方針
 
@@ -160,10 +161,13 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 validator errorが増えたという理由だけで、同じ規則をsystem prompt、validator、repair promptへ重複追加しない。
 
+2026-08-14開始時点の実測はmeaning policy 3,575 bytes、supplemental policy 1,427 bytes、generic system 5,002 bytes、provider schema 11,333 bytes、representative generic request 17,351 bytesである。focused authorizationは1,202 bytes、focused contextual answerは2,263 bytesである。
+
 Prompt budget gate:
 
-- generic system prompt <= 11,000 bytes
-- representative generic request including schema <= 24,000 bytes
+- generic system prompt <= 9,000 bytes
+- representative generic request including schema <= 23,000 bytes
+- generic supplemental policy overhead <= 2,200 bytes
 - focused authorization <= 2,500 bytes
 - focused contextual answer <= 4,000 bytes
 - focused request < representative generic request / 4
@@ -227,27 +231,24 @@ real APIで観測されたoutput shapeを固定scenario oracleにはしないが
 - real API通し会話
 - final 7-view audit
 
-## 8. PR #120完了gate
+## 8. 現在の会話品質PR完了gate
 
 - current execution taskのfinal gateを全て満たす
 - full CI green
 - 最終HEADで逐次real APIがpreviewまで完走
 - 最終HEADで通しreal APIがpreviewまで完走
+- Issue #118の未完了会話policyが実APIで確認済み
+- historical heuristicが対象・敵対的回帰でgreen
+- prompt簡素化の維持・削除判断にbyte実測とLuna ablationの根拠がある
 - prompt / orchestration auditで新たなBLOCKER/MAJORなし
 - roadmap / semantic roadmap / current status / current contractが現コードと一致
 - production heuristic inventoryがコード根拠付きで確定
 
 このgateを満たすまで「完全に完了」としない。
 
-## 9. PR #120後の候補
+## 9. 今回の別scope
 
-PR #120後も、古いroadmapをそのまま継承しない。現コード・real API観測・product goalから再評価する。
-
-候補:
-
-- focused work-breakdown semantic
-- field-scoped semantic repair
-- external source production adapter
+Issue #52の週間計画UI大規模責務分離とIssue #115のraw-text regex routingは今回へ混在させない。今回の実API観測で接点を見つけても、証拠を記録するだけに留め、独立scopeを維持する。
 - cross-tab / cross-device conflict handling
 - trace production operations
 - approval rollout

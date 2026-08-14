@@ -3,8 +3,7 @@ name: Weekly Planning Resumable Conversation Command
 on:
   push:
     branches:
-      - agent/weekly-ai-conversation-eval
-      - agent/weekly-planning-human-grounding-repair
+      - agent/weekly-conversation-quality-luna-audit
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
 

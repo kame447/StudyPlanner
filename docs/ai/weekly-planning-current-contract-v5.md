@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 Canonical references:
 
@@ -10,7 +10,7 @@ Canonical references:
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
-- [current migration / real-API audit](tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
+- [current conversation-quality / Luna audit](tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
 - [semantic schema](../architecture/weekly-planning-semantic-schema-v5.md)
 - [dialogue architecture](../architecture/weekly-planning-dialogue-architecture-v5.md)
 
@@ -210,21 +210,20 @@ traceは同一logical conversationのidentityを維持し、request/turn/revisio
 
 旧「legacy削除 → 挙動不変リファクタ → 7視点監査 → 新規改善」はStable V5移行期のhistorical sequenceであり、現在のactive phaseではない。
 
-2026-08-12時点の実行順序は次とする。
+2026-08-14時点の実行順序は次とする。
 
 ```text
-旧pipeline / historical roadmapの概念棚卸し
-→ 現Stable V5とのcapability差分確認
-→ 責務境界を守れる有効概念だけdeterministic policyへ移植
-→ 移植単位ごとの対象回帰
-→ full CI green
-→ 実APIを1 turnずつcheckpoint付きで人手監査
-→ 実APIの通し会話
-→ 7視点敵対的監査
-→ production heuristic inventory確定
-→ roadmap / contract / statusを最終同期
+stale会話task・Issue・PRと現コード回帰の対応付け
+→ deterministic baselineとprompt byte実測
+→ historical scenarioを実APIで1 turnずつLuna監査
+→ 失敗地点で停止し、原因層修正・回帰・full CI・同地点再実行
+→ Issue #118の残るcompleted-duration会話policyを完了
+→ heuristic敵対的回帰とprompt Luna ablation
+→ 最終HEADの通し会話をpreviewまで実行
+→ Browser Regression / normal CI / trace persistence
+→ roadmap / contract / status / task queue / Issueを最終同期
 ```
 
 実API観測で新しい実不具合を見つけた場合はそのturnで停止し、修正→回帰→full CI→新規conversationまたは必要なcheckpointから再検証する。
 
-現在のactive作業正本は`tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md`である。
+現在のactive作業正本は`tasks/20260814-weekly-planning-conversation-quality-luna-audit.md`である。Issue #52と#115は別scopeである。
