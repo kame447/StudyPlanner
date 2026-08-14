@@ -1,28 +1,93 @@
-const QUESTION_TARGET_PATTERNS: Partial<Record<string, RegExp>> = {
-  quantity_role_unresolved: /^(.+?)の量は、/,
-  missing_effort_estimate: /^(.+?)(?:について、|を指定した量だけ進めるのに、)/,
-  ambiguous_effort_estimate: /^(.+?)の所要時間が複数あります。/,
-  missing_commitment_date_scope: /^(.+?)は何日の固定予定ですか/,
-  invalid_commitment_interval: /^(.+?)の開始時刻と終了時刻を/,
-  conflicting_task_date_rule: /^(.+?)を同じ日に「行う」と「行わない」/,
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-function normalizeLabel(value: string): string | null {
-  const label = value.trim().replace(/^「|」$/g, '').trim();
+function recordArray(
+  planningInformation: Record<string, unknown> | null,
+  key: string,
+): Record<string, unknown>[] {
+  const value = planningInformation?.[key];
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function normalizedLabel(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const label = value.trim();
   if (!label || label.length > 100 || /[\r\n]/.test(label)) return null;
   return label;
 }
 
-function quotedLabels(value: string): string[] {
-  return [...value.matchAll(/「([^」]{1,100})」/g)]
-    .map((match) => normalizeLabel(match[1]))
-    .filter((label): label is string => Boolean(label));
+function factById(
+  planningInformation: Record<string, unknown> | null,
+  key: string,
+  factId: string,
+): Record<string, unknown> | null {
+  return recordArray(planningInformation, key)
+    .find((entry) => entry.id === factId) ?? null;
 }
 
-function recognizedTaskLabels(questionCode: string | null, fallbackText: string): string[] {
-  if (questionCode !== 'missing_schedulable_work') return [];
-  const acceptedTaskSummary = fallbackText.split('は把握しました。', 1)[0];
-  return quotedLabels(acceptedTaskSummary);
+function ownerLabelForFactId(
+  planningInformation: Record<string, unknown> | null,
+  factId: string,
+  visited = new Set<string>(),
+): string | null {
+  if (visited.has(factId)) return null;
+  visited.add(factId);
+
+  const task = factById(planningInformation, 'tasks', factId);
+  const taskLabel = normalizedLabel(task?.title);
+  if (taskLabel) return taskLabel;
+
+  const component = factById(planningInformation, 'components', factId);
+  const componentLabel = normalizedLabel(component?.label);
+  if (componentLabel) return componentLabel;
+
+  const uncertainty = factById(planningInformation, 'uncertainties', factId);
+  if (typeof uncertainty?.targetFactId === 'string') {
+    const label = ownerLabelForFactId(
+      planningInformation,
+      uncertainty.targetFactId,
+      visited,
+    );
+    if (label) return label;
+  }
+
+  for (const key of [
+    'workloads',
+    'effortEstimates',
+    'temporalConstraints',
+    'taskDateRules',
+    'recurrences',
+  ]) {
+    const fact = factById(planningInformation, key, factId);
+    if (!fact) continue;
+    if (typeof fact.targetFactId === 'string') {
+      const targetLabel = ownerLabelForFactId(
+        planningInformation,
+        fact.targetFactId,
+        visited,
+      );
+      if (targetLabel) return targetLabel;
+    }
+    if (typeof fact.componentId === 'string') {
+      const componentOwnerLabel = ownerLabelForFactId(
+        planningInformation,
+        fact.componentId,
+        visited,
+      );
+      if (componentOwnerLabel) return componentOwnerLabel;
+    }
+    if (typeof fact.taskId === 'string') {
+      const taskOwnerLabel = ownerLabelForFactId(
+        planningInformation,
+        fact.taskId,
+        visited,
+      );
+      if (taskOwnerLabel) return taskOwnerLabel;
+    }
+  }
+
+  return null;
 }
 
 export function isStableV5QuestionLikeText(text: string): boolean {
@@ -31,18 +96,20 @@ export function isStableV5QuestionLikeText(text: string): boolean {
 }
 
 export function requiredLabelsForStableV5Dialogue(params: {
-  questionCode: string | null;
-  fallbackText: string;
+  planningInformation: Record<string, unknown> | null;
+  targetFactId: string | null;
+  includePreviewPromotionControl: boolean;
 }): string[] {
-  const labels = new Set(recognizedTaskLabels(params.questionCode, params.fallbackText));
-  if (params.fallbackText.includes('「この内容で仮予定にする」')) {
+  const labels = new Set<string>();
+  if (params.targetFactId) {
+    const targetLabel = ownerLabelForFactId(
+      params.planningInformation,
+      params.targetFactId,
+    );
+    if (targetLabel) labels.add(targetLabel);
+  }
+  if (params.includePreviewPromotionControl) {
     labels.add('この内容で仮予定にする');
   }
-  const pattern = params.questionCode
-    ? QUESTION_TARGET_PATTERNS[params.questionCode]
-    : undefined;
-  const target = pattern?.exec(params.fallbackText)?.[1];
-  const normalizedTarget = target ? normalizeLabel(target) : null;
-  if (normalizedTarget) labels.add(normalizedTarget);
   return [...labels];
 }
