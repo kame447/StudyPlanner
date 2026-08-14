@@ -6,15 +6,6 @@ import {
   type WeeklyPlanningEpisodicMemoryV5,
 } from './weeklyPlanningEpisodicMemoryV5';
 
-export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
-  version: 'weekly-planning-correction-targeting-contract-v5',
-  targetIdentity: 'Target the exact active publicId and matching fact kind; if not unique, emit uncertainty.',
-  replacementIdentity: 'Emit only the current-turn replacement; replacementLocalId is its fresh localId.',
-  minimalDelta: 'Current-turn delta only; omit unrelated accepted facts.',
-  multipleTargets: 'One correction per explicit target; never swap targets.',
-  ambiguity: 'Ambiguous target: emit uncertainty, never guess a publicId.',
-} as const;
-
 function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
   return new Set(
     graph.factLifecycles
@@ -113,12 +104,6 @@ function compactEpisodicEvidence(
   };
 }
 
-function hasCorrectionTargets(facts: Record<string, unknown>): boolean {
-  return Object.values(facts).some(
-    (value) => Array.isArray(value) && value.length > 0,
-  );
-}
-
 function pendingQuestionFactId(summary: Record<string, unknown> | undefined): string | null {
   const pending = summary?.pendingQuestion;
   if (!pending || typeof pending !== 'object' || Array.isArray(pending)) return null;
@@ -148,14 +133,10 @@ export function createWeeklyPlanningSemanticPublicStateSummaryV5(
     graph,
     priorityFactId: pendingQuestionFactId(summary),
   });
-  const correctionTargets = correctionTargetPublicFacts(graph);
   return {
     ...baseRuntimeSummary(summary),
-    ...correctionTargets,
+    ...correctionTargetPublicFacts(graph),
     graphRevision: graph.revision,
-    ...(hasCorrectionTargets(correctionTargets)
-      ? { correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 }
-      : {}),
     episodicMemory: compactEpisodicEvidence(episodicMemory),
   };
 }
