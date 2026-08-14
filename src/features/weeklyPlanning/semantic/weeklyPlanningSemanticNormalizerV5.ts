@@ -108,7 +108,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
 
       const initialValidation = validateWeeklyPlanningSemanticResponseV5(
         initialResponse,
-        input,
+        { publicStateSummary: input.publicStateSummary },
       );
       run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);
       recordInitialValidation({ input, validation: initialValidation });
