@@ -126,7 +126,7 @@ const breakdownState = {
 };
 
 describe('Stable V5 contextual repair messages', () => {
-  it('retries a typed work-breakdown answer without anchoring on the invalid assistant JSON', async () => {
+  it('uses the generic pending-question contract for work-breakdown repair', async () => {
     const fake = client([invalidOldBreakdown(), resolvedBreakdown()]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '英語レポートと化学プリントが残っています',
@@ -136,14 +136,22 @@ describe('Stable V5 contextual repair messages', () => {
     expect(result.status).toBe('accepted');
     expect(fake.calls).toHaveLength(2);
     const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    expect(repairMessages.map((message) => message.role)).toEqual(['system', 'user', 'user']);
-    expect(repairMessages.some((message) => message.content === invalidOldBreakdown())).toBe(false);
-    const lastMessage = repairMessages[repairMessages.length - 1];
-    const repairPayload = JSON.parse(lastMessage?.content ?? '{}') as {
+    expect(repairMessages.map((message) => message.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(repairMessages[0]?.content).toContain('pendingQuestion is authoritative');
+    expect(repairMessages[0]?.content).not.toContain('work_breakdown target');
+    expect(repairMessages[2]?.content).toBe(invalidOldBreakdown());
+
+    const repairPayload = JSON.parse(repairMessages[3]?.content ?? '{}') as {
       requiredChanges: string[];
     };
-    expect(repairPayload.requiredChanges.some((directive) =>
-      directive.includes('task-public') && directive.includes('existingPublicId'))).toBe(true);
+    expect(repairPayload.requiredChanges).toEqual([
+      'Correct only the listed validation failures; preserve unrelated current-turn meaning.',
+    ]);
   });
 
   it('keeps invalid-response-assisted repair for an ordinary schema error', async () => {
