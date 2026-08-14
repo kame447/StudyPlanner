@@ -14,6 +14,12 @@ The app helps users:
 
 This repository should prioritize a clean MVP first.
 
+## Instruction roles
+
+- This file defines stable product, architecture, safety, and repository hygiene principles.
+- The current canonical roadmap and task records define active scope, priority, checkpoint, and the next implementation step.
+- For task progress and execution order, follow the current roadmap rather than inferring status from this file or from historical task documents.
+
 ## Product priorities
 
 Priority order:
@@ -239,7 +245,7 @@ Never delete or weaken a regression solely to obtain green CI. AI wording and on
 
 ## GitHub workflow policy
 
-This section is mandatory for every agent performing Git or GitHub work in this repository.
+This section applies whenever ChatGPT performs Git or GitHub work in this repository.
 
 ### Mandatory pre-flight check
 
@@ -296,41 +302,13 @@ When finishing GitHub-related work, report:
 
 ## Git operation policy
 
-Codex must not perform Git write operations.
+ChatGPT may perform the ordinary Git write operations needed to complete a user-requested implementation and publishing workflow after the mandatory pre-flight check. The user does not need to restate or approve each routine command individually.
 
-Do not run the following commands unless the user explicitly asks for that exact command in the current message:
+Before making or publishing changes, inspect the current state and relevant diff. Keep commits and pushes limited to the active logical task and report what was published.
 
-- git add
-- git commit
-- git reset
-- git restore
-- git checkout
-- git switch
-- git merge
-- git rebase
-- git cherry-pick
-- git stash
-- git clean
-- git pull
-- git push
-- git mv
-- git rm
+Ask before a destructive or history-rewriting operation that is not already explicit in the user's request, including discarding worktree changes, hard reset, force push, rewriting shared history, or deleting a branch.
 
-Codex may run read-only Git commands for investigation:
-
-- git status
-- git diff
-- git diff --stat
-- git log
-- git show
-- git branch
-- git rev-parse
-
-Before making changes, Codex should inspect the current diff when relevant.
-After making changes, Codex should report changed files and leave staging, committing, reverting, and pushing to the user.
-
-Codex must not remove `.git/index.lock` automatically.
-If a Git lock file exists, Codex should stop and tell the user instead of deleting it.
+Do not remove `.git/index.lock` automatically. If a Git lock file exists, stop and tell the user instead of deleting it.
 
 ## Verification rules
 
