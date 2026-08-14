@@ -36,8 +36,7 @@ vi.mock('./dialogue/weeklyPlanningStableV5AiDialogueRenderer', () => ({
   createAiWeeklyPlanningStableV5DialogueRenderer: () => ({ render: stableV5RendererMock }),
 }));
 
-function stableV5QuestionResult() {
-  const fallback = '院試の勉強の量は、今回進めたい量ですか、それとも残っている全体量ですか？';
+function stableV5QuestionResult(fallback = '院試の勉強の量は、今回進めたい量ですか、それとも残っている全体量ですか？') {
   return {
     state: {
       ...createInitialPlanningIntakeState(),
@@ -126,6 +125,25 @@ describe('executeWeeklyPlanningTurn', () => {
         branch: 'no_recorded_failure',
         projectedResult: result,
       }),
+    }));
+  });
+
+  it('uses typed question context even when fallback copy has no question-like wording', async () => {
+    const fallback = '確認対象を保持しています。';
+    stableV5RuntimeMock.mockResolvedValue(stableV5QuestionResult(fallback));
+    stableV5RendererMock.mockResolvedValue({
+      status: 'rendered',
+      text: '院試の勉強について、今回進めたい量か残っている全体量かを教えてください。',
+      rawResponse: '{"text":"typed-question"}',
+    });
+
+    const result = await executeWeeklyPlanningTurn(input);
+
+    expect(result.responseSource).toBe('ai');
+    expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
+      actionKind: 'question',
+      questionCode: 'quantity_role_unresolved',
+      fallbackText: fallback,
     }));
   });
 
