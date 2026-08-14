@@ -51,6 +51,19 @@ describe('Stable V5 human-scale effort question policy', () => {
     });
   });
 
+  it('asks for completed workload evidence as a total duration', () => {
+    expect(createWeeklyPlanningEffortQuestionPlanV5({
+      amount: 30,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+      quantityRole: 'completed',
+    })).toEqual({
+      kind: 'total_duration',
+      unitCode: null,
+      sessionQuantities: [],
+    });
+  });
+
   it('asks small vocabulary as one batch and large vocabulary by learning session', () => {
     expect(createWeeklyPlanningEffortQuestionPlanV5({
       amount: 80,

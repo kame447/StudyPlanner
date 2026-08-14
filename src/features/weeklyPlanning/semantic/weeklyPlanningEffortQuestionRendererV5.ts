@@ -24,6 +24,10 @@ export function renderWeeklyPlanningEffortQuestionV5(params: {
   const label = targetLabel(params.graph, workload.taskId, workload.componentId);
   const plan = createWeeklyPlanningEffortQuestionPlanV5(workload);
 
+  if (workload.quantityRole === 'completed') {
+    return `${label}について、完了した${quantityText(workload.amount, workload.unitLabel)}には、合計でどれくらい時間がかかりましたか？`;
+  }
+
   if (plan.kind === 'duration_per_unit') {
     return `${label}について、1${workload.unitLabel}あたりどれくらい時間がかかりますか？`;
   }

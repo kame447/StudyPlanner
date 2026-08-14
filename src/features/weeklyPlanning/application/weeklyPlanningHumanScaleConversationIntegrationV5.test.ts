@@ -119,6 +119,68 @@ function durationAnswerDocument(minutes: number): WeeklyPlanningSemanticDocument
   };
 }
 
+function observedPacePlanningDocument(): WeeklyPlanningSemanticDocumentV5 {
+  const sourceText = '数学のワークは80ページ中30ページ終わっていて、残り50ページです';
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'window',
+      kind: 'absolute',
+      value: '2026-08-17/2026-08-23',
+      start: '2026-08-17',
+      end: '2026-08-23',
+      sourceText: '8月17日から23日',
+    },
+    tasks: [{
+      localId: 'task',
+      category: 'study',
+      title: '数学のワーク',
+      study: {
+        purpose: 'self_study',
+        contextLabel: '数学のワーク',
+        components: [],
+      },
+      workloads: [
+        {
+          localId: 'completed-workload',
+          quantityRole: 'completed',
+          amount: 30,
+          unitCode: 'page',
+          unitLabel: 'ページ',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+          sourceText,
+        },
+        {
+          localId: 'remaining-workload',
+          quantityRole: 'remaining',
+          amount: 50,
+          unitCode: 'page',
+          unitLabel: 'ページ',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+          sourceText,
+        },
+      ],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText,
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
 vi.mock('../../../lib/aiConfig', () => ({
   getAiConfig: () => ({
     provider: 'openai',
@@ -213,6 +275,15 @@ function candidateRole(candidate: unknown): {
   };
 }
 
+function candidateSourceFactRefs(candidate: unknown): string[] {
+  const metadata = (candidate as { stableV5Metadata?: unknown }).stableV5Metadata;
+  if (typeof metadata !== 'object' || metadata === null) return [];
+  const sourceFactRefs = (metadata as { sourceFactRefs?: unknown }).sourceFactRefs;
+  return Array.isArray(sourceFactRefs)
+    ? sourceFactRefs.filter((value): value is string => typeof value === 'string')
+    : [];
+}
+
 describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
@@ -299,6 +370,44 @@ describe('Stable V5 human-scale conversation integration', () => {
       { title: '英単語 80語・復習1回目', date: '2026-08-18', durationMinutes: 20, sessionRole: 'review', reviewRound: 1 },
       { title: '英単語 80語・復習2回目', date: '2026-08-20', durationMinutes: 15, sessionRole: 'review', reviewRound: 2 },
     ]);
+  });
+
+  it('asks for completed duration and derives the remaining preview from observed pace', async () => {
+    const { first, second } = await runTwoTurnPlanningConversation({
+      conversationId: 'conversation-observed-pace',
+      firstUserText: '8月17日から23日で、数学のワークは80ページ中30ページ終わっていて、残り50ページです',
+      planningDocument: observedPacePlanningDocument(),
+      answerMinutes: 90,
+    });
+
+    const completedWorkload = first.stableV5Graph?.workloads.find(
+      (workload) => workload.quantityRole === 'completed',
+    );
+    expect(first.message).toContain('完了した30ページ');
+    expect(first.message).toContain('合計でどれくらい時間がかかりましたか');
+    expect(first.state.lastQuestionContext?.topicId).toBe(completedWorkload?.id);
+
+    expect(second.state.status).toBe('draft_ready');
+    const observedEffort = second.stableV5Graph?.effortEstimates.find(
+      (estimate) => estimate.targetFactId === completedWorkload?.id,
+    );
+    const remainingWorkload = second.stableV5Graph?.workloads.find(
+      (workload) => workload.quantityRole === 'remaining',
+    );
+    expect(observedEffort).toMatchObject({
+      targetFactId: completedWorkload?.id,
+      kind: 'total_duration',
+      minutes: 90,
+      unitCode: null,
+    });
+    expect(second.draftCandidates.reduce(
+      (sum, candidate) => sum + candidate.durationMinutes,
+      0,
+    )).toBe(150);
+    expect(second.draftCandidates.every((candidate) =>
+      [completedWorkload?.id, remainingWorkload?.id, observedEffort?.id].every(
+        (factId) => factId && candidateSourceFactRefs(candidate).includes(factId),
+      ))).toBe(true);
   });
 
   it('splits a long problem workload into quantity-preserving daily quotas', async () => {

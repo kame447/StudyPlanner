@@ -151,6 +151,24 @@ function samePaceScope(left: WorkloadFact, right: WorkloadFact): boolean {
     && left.unitCode === right.unitCode;
 }
 
+export function findObservedPaceEvidenceQuestionTarget(params: {
+  workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): WorkloadFact | null {
+  const completed = params.workloads.filter((candidate) =>
+    candidate.quantityRole === 'completed'
+    && candidate.amount > 0
+    && samePaceScope(candidate, params.workload));
+  if (completed.length !== 1) return null;
+
+  const [candidate] = completed;
+  const alreadyHasEstimate = params.estimates.some((estimate) =>
+    estimate.taskId === candidate.taskId
+    && estimate.targetFactId === candidate.id);
+  return alreadyHasEstimate ? null : candidate;
+}
+
 function observedPaceEstimate(params: {
   workload: WorkloadFact;
   workloads: ReadonlyArray<WorkloadFact>;

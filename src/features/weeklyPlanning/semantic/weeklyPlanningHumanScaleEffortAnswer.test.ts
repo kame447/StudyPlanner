@@ -9,7 +9,11 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import { applyWeeklyPlanningStableV5ContextualAnswer } from './weeklyPlanningStableV5ContextualAnswer';
 
-function graphFor(unitCode: 'page' | 'problem' | 'word', amount: number): WeeklyPlanningFactGraphV5 {
+function graphFor(
+  unitCode: 'page' | 'problem' | 'word',
+  amount: number,
+  quantityRole: 'target' | 'completed' = 'target',
+): WeeklyPlanningFactGraphV5 {
   const task = {
     id: 'task-1',
     category: 'study' as const,
@@ -27,7 +31,7 @@ function graphFor(unitCode: 'page' | 'problem' | 'word', amount: number): Weekly
     id: 'workload-1',
     taskId: task.id,
     componentId: null,
-    quantityRole: 'target' as const,
+    quantityRole,
     amount,
     unitCode,
     unitLabel: unitCode === 'page' ? 'ページ' : unitCode === 'problem' ? '問' : '語',
@@ -87,9 +91,14 @@ function durationAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-function answer(unitCode: 'page' | 'problem' | 'word', amount: number, minutes: number) {
+function answer(
+  unitCode: 'page' | 'problem' | 'word',
+  amount: number,
+  minutes: number,
+  quantityRole: 'target' | 'completed' = 'target',
+) {
   return applyWeeklyPlanningStableV5ContextualAnswer({
-    graph: graphFor(unitCode, amount),
+    graph: graphFor(unitCode, amount, quantityRole),
     document: durationAnswer(minutes),
     pendingQuestion: {
       actionId: 'question-1',
@@ -115,6 +124,15 @@ describe('Stable V5 human-scale contextual effort answers', () => {
       kind: 'duration_per_unit',
       minutes: 8,
       unitCode: 'problem',
+    });
+  });
+
+  it('stores a completed page answer as the total observed duration', () => {
+    expect(answer('page', 30, 90, 'completed')?.graph.effortEstimates[0]).toMatchObject({
+      targetFactId: 'workload-1',
+      kind: 'total_duration',
+      minutes: 90,
+      unitCode: null,
     });
   });
 

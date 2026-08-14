@@ -381,7 +381,7 @@ export function compileGenericSchedulerInput(params: {
       domain: 'work_item',
       code: issue.code,
       blocking: issue.blocking,
-      factId: issue.workloadFactId,
+      factId: issue.questionTargetWorkloadFactId ?? issue.workloadFactId,
       details: issue.details,
     });
   }

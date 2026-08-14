@@ -12,6 +12,7 @@ import {
 import { splitVocabularyIntoLearningSessionsV5 } from './weeklyPlanningEffortQuestionPolicyV5';
 import {
   effortEstimateTargetsWorkload,
+  findObservedPaceEvidenceQuestionTarget,
   resolveGenericWorkItemEstimate,
   type GenericWorkItemEstimateBasis,
   type GenericWorkItemEstimateResolution,
@@ -81,6 +82,7 @@ export type GenericWorkItemIssueCode =
 export interface GenericWorkItemIssue {
   code: GenericWorkItemIssueCode;
   workloadFactId: string;
+  questionTargetWorkloadFactId?: string;
   blocking: boolean;
   details?: Record<string, string | number | boolean | null>;
 }
@@ -343,7 +345,25 @@ export function compileGenericPlanningWorkItems(
         details: { matchingEstimateCount: estimate.sourceFactIds.length },
       });
     } else if (estimate.estimatedMinutes === null) {
-      issues.push({ code: 'missing_effort_estimate', workloadFactId: workload.id, blocking: true });
+      const observedPaceTarget = findObservedPaceEvidenceQuestionTarget({
+        workload,
+        workloads: graph.workloads,
+        estimates: graph.effortEstimates,
+      });
+      issues.push({
+        code: 'missing_effort_estimate',
+        workloadFactId: workload.id,
+        ...(observedPaceTarget
+          ? {
+              questionTargetWorkloadFactId: observedPaceTarget.id,
+              details: {
+                estimateForWorkloadFactId: workload.id,
+                questionBasis: 'completed_workload_total',
+              },
+            }
+          : {}),
+        blocking: true,
+      });
     }
 
     const vocabularySessions = compileVocabularySessions({

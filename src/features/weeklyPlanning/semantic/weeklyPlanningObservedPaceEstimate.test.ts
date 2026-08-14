@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createEmptyWeeklyPlanningFactGraph,
-  type EffortEstimateFact,
-  type WeeklyPlanningFactGraph,
-  type WorkloadFact,
-} from './weeklyPlanningFactGraph';
+  createEmptyWeeklyPlanningFactGraphV5,
+  type EffortEstimateFactV5,
+  type WeeklyPlanningFactGraphV5,
+  type WorkloadFactV5,
+} from './weeklyPlanningFactGraphV5';
+import { renderWeeklyPlanningEffortQuestionV5 } from './weeklyPlanningEffortQuestionRendererV5';
+import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
 
 const SOURCE = {
@@ -17,10 +19,10 @@ const SOURCE = {
 
 function workload(
   id: string,
-  quantityRole: WorkloadFact['quantityRole'],
+  quantityRole: WorkloadFactV5['quantityRole'],
   amount: number,
-  overrides: Partial<WorkloadFact> = {},
-): WorkloadFact {
+  overrides: Partial<WorkloadFactV5> = {},
+): WorkloadFactV5 {
   return {
     id,
     taskId: 'task-math',
@@ -43,7 +45,7 @@ function totalDuration(
   id: string,
   targetFactId: string,
   minutes: number,
-): EffortEstimateFact {
+): EffortEstimateFactV5 {
   return {
     id,
     taskId: 'task-math',
@@ -58,11 +60,11 @@ function totalDuration(
 }
 
 function graph(params: {
-  workloads?: WorkloadFact[];
-  estimates?: EffortEstimateFact[];
-} = {}): WeeklyPlanningFactGraph {
+  workloads?: WorkloadFactV5[];
+  estimates?: EffortEstimateFactV5[];
+} = {}): WeeklyPlanningFactGraphV5 {
   return {
-    ...createEmptyWeeklyPlanningFactGraph(),
+    ...createEmptyWeeklyPlanningFactGraphV5(),
     revision: 1,
     tasks: [{
       id: 'task-math',
@@ -106,6 +108,62 @@ describe('generic work item observed pace estimation', () => {
         'completed-30',
         'completed-duration-90',
       ]),
+    });
+  });
+
+  it('asks for the one completed workload total before asking for a direct remaining estimate', () => {
+    const value = graph({ estimates: [] });
+    const work = compileGenericPlanningWorkItems(value);
+    expect(work.issues).toContainEqual({
+      code: 'missing_effort_estimate',
+      workloadFactId: 'remaining-50',
+      questionTargetWorkloadFactId: 'completed-30',
+      blocking: true,
+      details: {
+        estimateForWorkloadFactId: 'remaining-50',
+        questionBasis: 'completed_workload_total',
+      },
+    });
+
+    const scheduler = compileGenericSchedulerInput({
+      graph: value,
+      context: {
+        ownerId: 'owner-pace',
+        currentDate: '2026-08-17',
+        planningStartDate: '2026-08-17',
+        planningEndDate: '2026-08-23',
+        timeZone: 'Asia/Tokyo',
+      },
+    });
+    expect(scheduler.issues).toContainEqual({
+      domain: 'work_item',
+      code: 'missing_effort_estimate',
+      blocking: true,
+      factId: 'completed-30',
+      details: {
+        estimateForWorkloadFactId: 'remaining-50',
+        questionBasis: 'completed_workload_total',
+      },
+    });
+    expect(renderWeeklyPlanningEffortQuestionV5({
+      graph: value,
+      workloadFactId: 'completed-30',
+    })).toBe('数学ワークについて、完了した30ページには、合計でどれくらい時間がかかりましたか？');
+  });
+
+  it('does not choose completed evidence arbitrarily when more than one candidate exists', () => {
+    const value = graph({
+      workloads: [
+        workload('completed-30', 'completed', 30),
+        workload('completed-10', 'completed', 10),
+        workload('remaining-50', 'remaining', 50),
+      ],
+      estimates: [],
+    });
+    expect(compileGenericPlanningWorkItems(value).issues).toContainEqual({
+      code: 'missing_effort_estimate',
+      workloadFactId: 'remaining-50',
+      blocking: true,
     });
   });
 
