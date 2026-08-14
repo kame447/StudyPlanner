@@ -72,6 +72,10 @@ roadmap / current contract / task正本を同期
 
 この実測に基づき、`gpt-5.6-luna`を維持したまま、直結clientと本番Cloudflare proxyのOpenAI上流requestからtemperatureだけを省略する共有parameter policyを追加した。他モデルへの既存temperature指定は維持する。対象回帰17件とTypeScriptを通した後、同じturnをattempt 3として再実行する。
 
+attempt 3のrun `31786044289`はLunaで成功した。Graph revision 1に、数学→ワークのcomponent階層、completed 30 pages、remaining 50 pages、同じ週のtarget 50 pagesがcurrent-turn evidence付きで入り、質問targetはcompleted workloadになった。利用者向け文面は「ワークについて、完了した30ページには、合計でどれくらい時間がかかりましたか？」であり、remaining 50 pagesの所要時間を先に尋ねていない。
+
+初回semantic出力はtotal 80 pagesを`declared`のままcompleted 30 pagesと併存させ、既存validatorが拒否した。1回のAI repairでcompleted 30、remaining 50、target 50へ修正されて受理されたため機能上は合格とするが、17.6秒・2 provider callsを要した。この事実はprompt簡素化/structured normalizationのablation候補として保持し、固定文面や特定発話専用ruleは追加しない。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
