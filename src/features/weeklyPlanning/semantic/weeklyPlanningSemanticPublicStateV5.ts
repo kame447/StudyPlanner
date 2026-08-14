@@ -3,6 +3,7 @@ import type {
 } from './weeklyPlanningFactGraphV5';
 import {
   buildWeeklyPlanningGraphSourceMemoryV5,
+  type WeeklyPlanningEpisodicMemoryV5,
 } from './weeklyPlanningEpisodicMemoryV5';
 
 export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
@@ -100,6 +101,18 @@ function correctionTargetPublicFacts(
   };
 }
 
+function compactEpisodicEvidence(
+  memory: WeeklyPlanningEpisodicMemoryV5,
+): Record<string, unknown> {
+  return {
+    version: memory.version,
+    items: memory.items.map((item) => ({
+      factIds: item.factIds,
+      sourceExcerpts: item.sourceExcerpts,
+    })),
+  };
+}
+
 function hasCorrectionTargets(facts: Record<string, unknown>): boolean {
   return Object.values(facts).some(
     (value) => Array.isArray(value) && value.length > 0,
@@ -143,6 +156,6 @@ export function createWeeklyPlanningSemanticPublicStateSummaryV5(
     ...(hasCorrectionTargets(correctionTargets)
       ? { correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 }
       : {}),
-    episodicMemory,
+    episodicMemory: compactEpisodicEvidence(episodicMemory),
   };
 }
