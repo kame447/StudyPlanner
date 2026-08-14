@@ -1,7 +1,7 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
   "turn": 7,
-  "attempt": 2,
+  "attempt": 3,
   "user_text": "模試対策の数学は、毎日2時間ではなく1時間半に変更してください。",
   "previous_run_id": "31789525607",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
