@@ -24,10 +24,11 @@ Current completed loops:
 - Loop 17: `src/components/AdminGuard.tsx` — no change; access-boundary rendering remains minimal.
 - Loop 18: `src/components/AdminViews.tsx` — report presentation extracted to `AdminReportViews.tsx` with focused tests; routing/data loading retained in the original file.
 - Loop 19: `src/components/AiRuntimeSettings.tsx` — no change; config policy/storage/proxy rules already live in `src/lib/aiConfig.ts`, leaving a small cohesive editor UI.
+- Loop 20: `src/components/AuthScreen.tsx` — access-key gate lifecycle extracted to `AuthAccessGateForm.tsx` with focused interaction coverage; sign-in/sign-up UI stays in the auth surface.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit, next with `AuthScreen.tsx`.
+1. Continue `src/components/` file-by-file audit, next with `BookshelfView.tsx`.
 2. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
 3. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
 4. Audit duplicated actual-entry concerns across `ActualEditorCard`, `StandaloneActualEditorCard`, `ActualTrackingTools`, and Quick Entry without prematurely merging distinct workflows.
