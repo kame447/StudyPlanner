@@ -68,7 +68,8 @@ describe('Stable V5 dialogue prompt', () => {
     expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
-    expect(prompt.userPrompt).toContain('referenceResponseはアプリが必要としている確認意図の参考');
+    expect(prompt.userPrompt).not.toContain('referenceResponse');
+    expect(prompt.userPrompt).not.toContain(input().fallbackText);
     expect(prompt.userPrompt).not.toContain('未実行の作成・保存を完了したとは言わないでください');
     expect(payload).toMatchObject({
       actionId: input().actionId,
@@ -89,6 +90,6 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
     expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(1_000);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(700);
   });
 });
