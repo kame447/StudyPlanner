@@ -22,7 +22,7 @@ describe('Stable V5 semantic repair prompt', () => {
       },
     });
 
-    const payload = JSON.parse(messages.at(-1)?.content ?? '{}') as {
+    const payload = JSON.parse(messages[messages.length - 1]?.content ?? '{}') as {
       requiredChanges?: string[];
     };
     expect(payload.requiredChanges).toEqual([
@@ -32,7 +32,7 @@ describe('Stable V5 semantic repair prompt', () => {
       "set correction.replacementLocalId to that fact's declared localId",
     );
     expect(payload.requiredChanges?.[0]).toContain('Do not leave a dangling localId');
-    expect(messages.at(-2)).toEqual({
+    expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
     });
