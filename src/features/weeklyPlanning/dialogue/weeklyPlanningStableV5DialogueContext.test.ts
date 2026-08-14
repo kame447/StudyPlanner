@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  questionIntentForStableV5Dialogue,
+  questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
@@ -9,7 +11,15 @@ const planningInformation = {
     { id: 'component-math', taskId: 'task-1', label: '数学のワーク' },
   ],
   workloads: [
-    { id: 'workload-math', taskId: 'task-1', componentId: 'component-math' },
+    {
+      id: 'workload-math',
+      taskId: 'task-1',
+      componentId: 'component-math',
+      quantityRole: 'completed',
+      amount: 30,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    },
   ],
   uncertainties: [
     { id: 'uncertainty-math', targetFactId: 'component-math', field: 'workload_amount' },
@@ -31,6 +41,36 @@ describe('Stable V5 dialogue context', () => {
       targetFactId: 'workload-math',
       includePreviewPromotionControl: false,
     })).toEqual(['数学のワーク']);
+  });
+
+  it('projects completed workload effort evidence as total-duration intent', () => {
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation,
+      targetFactId: 'workload-math',
+    });
+
+    expect(questionTarget).toEqual({
+      collection: 'workloads',
+      fact: expect.objectContaining({
+        id: 'workload-math',
+        quantityRole: 'completed',
+        amount: 30,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      }),
+    });
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_effort_estimate',
+      questionTarget,
+    })).toEqual({
+      kind: 'effort_evidence',
+      measurement: 'total_duration',
+      evidenceRole: 'completed',
+      targetFactId: 'workload-math',
+      amount: 30,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    });
   });
 
   it('does not invent a label when the selected fact has no readable owner', () => {
