@@ -183,6 +183,6 @@ describe('Stable V5 temporal clock encoding', () => {
     expect(repairPayload.requiredChanges).toHaveLength(1);
     expect(repairPayload.requiredChanges?.[0]).toContain('startTime/endTime');
     expect(repairPayload.requiredChanges?.[0]).toContain('namedTimePeriod null');
-    expect(repairPayload.requiredChanges?.[0]).toContain('do not invent clock bounds');
+    expect(repairPayload.requiredChanges?.[0]).toContain('invent no bounds');
   });
 });
