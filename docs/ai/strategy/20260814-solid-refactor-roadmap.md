@@ -21,6 +21,7 @@ Current completed loops:
 - Loop 14: `src/components/ActualEditorCard.tsx` — actual draft/alignment projection extraction with tests.
 - Loop 15: `src/components/ActualTrackingTools.tsx` — tracking calculations extraction with tests.
 - Loop 16: `src/components/AdminApp.tsx` — no change; composition root remains cohesive.
+- Loop 17: `src/components/AdminGuard.tsx` — no change; access-boundary rendering remains minimal.
 
 Next priorities:
 
