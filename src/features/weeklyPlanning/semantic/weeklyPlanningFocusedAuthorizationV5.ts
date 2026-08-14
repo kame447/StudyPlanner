@@ -30,7 +30,7 @@ export const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat 
 
 const FOCUSED_AUTHORIZATION_SYSTEM_PROMPT = [
   'Return create_plan only when the current utterance purely authorizes creating the draft/preview from already-collected conditions.',
-  'If it adds, changes, removes, corrects, qualifies, discusses, or ambiguously refers to any planning fact, return fallback. Deterministic code owns readiness, scheduling, persistence, and wording; return only the schema.',
+  'If it adds, changes, removes, corrects, qualifies, discusses, or ambiguously refers to any planning fact, return fallback.',
 ].join('\n');
 
 export interface FocusedAuthorizationDecisionV5 {
