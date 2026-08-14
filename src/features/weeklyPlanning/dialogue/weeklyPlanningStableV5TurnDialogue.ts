@@ -272,7 +272,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
-  const finalMessage = withSelfRepairNotice(rendered.text, notice);
+  const finalMessage = rendered.text;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,
