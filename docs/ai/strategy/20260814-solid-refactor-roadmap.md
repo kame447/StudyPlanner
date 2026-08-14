@@ -20,9 +20,10 @@ Current checkpoint:
 
 - Loops 13-37: file-by-file extraction / no-change / deferred decisions recorded in the compact loop log.
 - Loop 38: adversarial hardening of the Loop 25 day-material extraction. Fixed fallback subject metadata ordering regression and added a focused component regression.
+- Loop 39: added direct component regression for `MaterialQuickCreateModal` after the test-quality audit found that the extraction was covered only indirectly. No production behavior change made in this loop.
 - PR #129 exists specifically to run normal CI and Browser Regression for this refactor branch. No merge-ready claim is allowed until current-head runs are green.
 
-Next execution phase: seven-perspective audit
+Current execution phase: seven-perspective audit
 
 1. Behavior preservation: compare changed code against `main` and look for silent semantic changes, ordering changes, fallback changes, default changes, lifecycle changes, and error-handling changes.
 2. Type/build contract: detect broken imports, stale props, invalid type narrowing, circular dependency risk, and build-only failures.
