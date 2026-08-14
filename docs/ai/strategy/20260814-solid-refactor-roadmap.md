@@ -25,6 +25,9 @@ Execution ledger:
   - kept stopwatch/timer interaction state and rendering together as one cohesive measurement-tool responsibility.
   - extracted elapsed-time calculation, timer clamping/parsing/formatting and measured-range projection into `src/lib/actualTracking.ts`.
   - added `src/lib/actualTracking.test.ts` for duration formatting, paused/running elapsed calculation, timer bounds and range projection.
+- Loop 16: `src/components/AdminApp.tsx`
+  - no change.
+  - admin auth resolution, local browser navigation, guard and route composition form one small composition-root responsibility; extracting hooks now would add indirection without reuse or a distinct policy owner.
 
 Next priorities:
 
