@@ -115,6 +115,28 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
+  it('omits temperature on the direct Luna path while preserving it for other models', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+
+    const lunaClient = createOpenAiCompatibleClient({
+      ...config,
+      model: 'gpt-5.6-luna',
+    });
+    await lunaClient.createChatCompletion({
+      messages: [{ role: 'user', content: 'luna' }],
+      temperature: 0,
+    });
+    expect(lastRequestBody(fetchMock)).not.toHaveProperty('temperature');
+
+    const miniClient = createOpenAiCompatibleClient(config);
+    await miniClient.createChatCompletion({
+      messages: [{ role: 'user', content: 'mini' }],
+      temperature: 0,
+    });
+    expect(lastRequestBody(fetchMock).temperature).toBe(0);
+  });
+
   it('preserves bounded structured provider diagnostics for a rejected direct request', async () => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
     vi.stubGlobal('fetch', vi.fn(async () => ({

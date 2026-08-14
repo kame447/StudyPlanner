@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
+import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 
 interface Env {
   OPENAI_API_KEY: string;
@@ -803,6 +804,10 @@ async function handleChatCompletion(
   }
 
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const upstreamTemperature = resolveOpenAiChatTemperature(
+    model,
+    getChatTemperature(payload),
+  );
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -811,7 +816,7 @@ async function handleChatCompletion(
     },
     body: JSON.stringify({
       model,
-      temperature: getChatTemperature(payload),
+      ...(upstreamTemperature === undefined ? {} : { temperature: upstreamTemperature }),
       messages: payload.messages,
       response_format: payload.response_format,
       max_completion_tokens: getChatOutputTokenLimit(payload),

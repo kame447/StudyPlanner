@@ -4,6 +4,7 @@ import {
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
+import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -29,7 +30,7 @@ export interface JsonSchemaResponseFormat {
 
 interface ChatCompletionRequest {
   model: string;
-  temperature: number;
+  temperature?: number;
   messages: ChatMessage[];
   response_format?: JsonSchemaResponseFormat;
   max_completion_tokens?: number;
@@ -309,9 +310,10 @@ export function createOpenAiCompatibleClient(
 
       const semanticRepair = isSemanticRepairRequest(purpose, messages);
       const directModel = evalSemanticModel(purpose, messages) ?? config.model;
+      const directTemperature = resolveOpenAiChatTemperature(directModel, temperature);
       const payload: ChatCompletionRequest = {
         model: directModel,
-        temperature,
+        ...(directTemperature === undefined ? {} : { temperature: directTemperature }),
         messages,
         response_format: responseFormat,
         ...(maxCompletionTokens === undefined

@@ -7,6 +7,19 @@ export const AI_PROXY_CHAT_REQUEST_LIMITS = {
   maxOutputTokens: 4_096,
 } as const;
 
+const DEFAULT_TEMPERATURE_ONLY_OPENAI_MODELS = new Set([
+  'gpt-5.6-luna',
+]);
+
+export function resolveOpenAiChatTemperature(
+  model: string,
+  requestedTemperature: number,
+): number | undefined {
+  return DEFAULT_TEMPERATURE_ONLY_OPENAI_MODELS.has(model.trim())
+    ? undefined
+    : requestedTemperature;
+}
+
 export function getUtf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
