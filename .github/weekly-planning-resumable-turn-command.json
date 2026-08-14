@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-final-dynamic-conversation-20260815",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "来週の勉強計画を一緒に考えてほしいです。",
-  "previous_run_id": null,
+  "user_text": "数学のワークです。",
+  "previous_run_id": "31851436005",
   "conversation_id": "weekly-luna-audit-final-dynamic-20260815-01",
   "owner_id": "real-api-luna-audit-final-dynamic-user-1",
   "week_start_date": "2026-08-17",
