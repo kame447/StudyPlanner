@@ -19,6 +19,14 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput {
         { taskId: 'task-1', amount: 3, unitLabel: '時間', quantityRole: 'target' },
         { taskId: 'task-2', amount: 3, unitLabel: '時間', quantityRole: 'unknown' },
       ],
+      groundingRecords: [{
+        targetFactId: 'window-1',
+        interpretationKind: 'relative_date_resolution',
+        status: 'proposed',
+        sourceExpression: '来週',
+        startDate: '2026-08-03',
+        endDate: '2026-08-09',
+      }],
       availabilityDeclarations: [
         { id: 'a1', resolutionStatus: 'resolved' },
         { id: 'a2', resolutionStatus: 'unresolved' },
@@ -38,9 +46,10 @@ function bytes(value: string): number {
 }
 
 describe('Stable V5 dialogue prompt', () => {
-  it('projects decided facts separately from unresolved items', () => {
+  it('projects decided facts, grounding context, and unresolved items separately', () => {
     const summary = createWeeklyPlanningStableV5DialogueStateSummary(input()) as {
       decidedFacts: Record<string, unknown>;
+      groundingContext: Array<Record<string, unknown>>;
       undecidedItems: Array<Record<string, unknown>>;
     };
 
@@ -51,6 +60,15 @@ describe('Stable V5 dialogue prompt', () => {
       expect.objectContaining({ id: 'a1', resolutionStatus: 'resolved' }),
     ]);
     expect(summary.decidedFacts).not.toHaveProperty('uncertainties');
+    expect(summary.decidedFacts).not.toHaveProperty('groundingRecords');
+    expect(summary.groundingContext).toEqual([
+      expect.objectContaining({
+        status: 'proposed',
+        sourceExpression: '来週',
+        startDate: '2026-08-03',
+        endDate: '2026-08-09',
+      }),
+    ]);
     expect(summary.undecidedItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: 'work_breakdown' }),
       expect.objectContaining({ kind: 'workload_field', taskId: 'task-2' }),
@@ -64,6 +82,7 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
 
     expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
+    expect(prompt.systemPrompt).toContain('共有理解に役立つ場合だけ自然に示してください');
     expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
@@ -74,7 +93,9 @@ describe('Stable V5 dialogue prompt', () => {
     expect(payload).toMatchObject({
       actionId: input().actionId,
       currentUserMessage: input().currentUserMessage,
-      planningStateSummary: expect.any(Object),
+      planningStateSummary: expect.objectContaining({
+        groundingContext: expect.any(Array),
+      }),
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
@@ -89,7 +110,7 @@ describe('Stable V5 dialogue prompt', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
-    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(700);
+    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(800);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(1000);
   });
 });
