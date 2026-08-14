@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
-import { formatMinutesToTime, minutesBetween, parseTimeToMinutes } from '../lib/date';
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import { inferSubjectFromTitle } from '../lib/subjectInference';
+import {
+  createStandaloneActualCandidate,
+  createStandaloneActualDraft,
+  getStandaloneActualDurationMinutes,
+  resolveStandaloneActualEndTime,
+} from '../lib/standaloneActualDrafts';
 import { TimeWheelPicker } from './TimeRangeFields';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 
@@ -28,24 +33,6 @@ const DURATION_OPTIONS: Array<{ value: DurationOptionValue; label: string }> = [
   { value: 'custom', label: '自由' },
 ];
 
-function calculateEndTime(startTime: string, durationMinutes: number | null): string | null {
-  if (durationMinutes === null || durationMinutes <= 0 || durationMinutes >= 24 * 60) {
-    return null;
-  }
-
-  const endMinutes = Math.min(
-    parseTimeToMinutes(startTime, 'start') + durationMinutes,
-    24 * 60,
-  );
-
-  return formatMinutesToTime(endMinutes, 'end');
-}
-
-function getInitialDuration(actual: Actual): number | null {
-  const minutes = minutesBetween(actual.actualStartTime, actual.actualEndTime);
-  return minutes > 0 ? minutes : null;
-}
-
 function isPresetDuration(value: number | null): boolean {
   return DURATION_OPTIONS.some((option) => option.value === value);
 }
@@ -59,7 +46,7 @@ export function StandaloneActualEditorCard({
   onDeleteActual,
   onClose,
 }: StandaloneActualEditorCardProps) {
-  const initialDuration = getInitialDuration(actual);
+  const initialDuration = getStandaloneActualDurationMinutes(actual);
   const [title, setTitle] = useState(actual.title?.trim() || '');
   const [subject, setSubject] = useState(actual.subject.trim());
   const [subjectWasEdited, setSubjectWasEdited] = useState(false);
@@ -77,22 +64,20 @@ export function StandaloneActualEditorCard({
   const [note, setNote] = useState(actual.note);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const endTime = calculateEndTime(startTime, durationMinutes);
-  const candidateActual: Actual = {
-    ...actual,
+  const endTime = resolveStandaloneActualEndTime(startTime, durationMinutes);
+  const candidateActual = createStandaloneActualCandidate(actual, {
     occurrenceDate,
+    startTime,
+    endTime: endTime ?? actual.actualEndTime,
     title,
     subject,
-    actualStartTime: startTime,
-    actualEndTime: endTime ?? actual.actualEndTime,
-    isAlignedToPlan: false,
     note,
-  };
+  });
   const candidatePlans = expandPlansForDate(plans, occurrenceDate);
   const linkCandidates = buildActualPlanLinkCandidates(candidateActual, candidatePlans, actuals);
 
   useEffect(() => {
-    const nextDuration = getInitialDuration(actual);
+    const nextDuration = getStandaloneActualDurationMinutes(actual);
     const nextIsCustomDuration =
       nextDuration !== null && !isPresetDuration(nextDuration);
 
@@ -168,20 +153,14 @@ export function StandaloneActualEditorCard({
     setError('');
     setIsSubmitting(true);
     void onSaveStandaloneActual(
-      {
-        userId: actual.userId,
-        planId: null,
+      createStandaloneActualDraft(actual, {
         occurrenceDate,
-        actualStartTime: startTime,
-        actualEndTime: endTime,
-        title: title.trim(),
-        subject: subject.trim(),
-        isAlignedToPlan: false,
-        note: note.trim(),
-        materialId: actual.materialId ?? null,
-        materialName: actual.materialName ?? '',
-        materialProgressUpdates: actual.materialProgressUpdates,
-      },
+        startTime,
+        endTime,
+        title,
+        subject,
+        note,
+      }),
       actual.id,
     ).catch(() => undefined);
     onClose();
