@@ -64,7 +64,7 @@ describe('Stable V5 focused user-context date normalizer route', () => {
     expect((calls[1].responseFormat as { json_schema?: { name?: string } })?.json_schema?.name)
       .toBe('weekly_planning_focused_user_context_date_repair_v5');
     expect(calls[1]).toMatchObject({
-      maxCompletionTokens: 40,
+      maxCompletionTokens: 120,
       purpose: 'weekly_planning_semantic_normalizer',
     });
   });
