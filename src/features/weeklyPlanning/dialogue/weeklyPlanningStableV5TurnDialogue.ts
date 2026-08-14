@@ -9,11 +9,7 @@ import {
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
-  shouldUseAiWeeklyPlanningStableV5DialogueRenderer,
-} from './weeklyPlanningStableV5DialogueRouting';
-import {
   createWeeklyPlanningAiRenderedDialogueTrace,
-  createWeeklyPlanningDeterministicQuestionDialogueTrace,
   createWeeklyPlanningFallbackDialogueTrace,
   createWeeklyPlanningSystemDialogueRendererTrace,
   recordWeeklyPlanningDialogueDecisionV5,
@@ -111,39 +107,6 @@ function withAssistantMessage(params: {
   };
 }
 
-function deterministicQuestionBypass(params: {
-  input: WeeklyPlanningTurnExecutionInput;
-  result: WeeklyPlanningTurnExecutionResult;
-  notice: string | null;
-  actionKind: WeeklyPlanningStableV5DialogueActionKind;
-  questionCode: string | null;
-  actionId: string;
-}): WeeklyPlanningTurnExecutionResult {
-  const finalMessage = withSelfRepairNotice(params.result.message, params.notice);
-  const dialogueRendererTrace = createWeeklyPlanningDeterministicQuestionDialogueTrace({
-    actionId: params.actionId,
-    actionKind: params.actionKind,
-    questionCode: params.questionCode,
-    finalMessage,
-  });
-  const result = withAssistantMessage({
-    result: params.result,
-    message: finalMessage,
-    responseSource: 'rules',
-    dialogueRendererTrace,
-  });
-  recordWeeklyPlanningDialogueDecisionV5({
-    requestId: params.input.traceRequestId,
-    branch: 'deterministic_question_bypass',
-    actionId: params.actionId,
-    questionCode: params.questionCode,
-    responseSource: result.responseSource,
-    message: result.message,
-    selfRepairNotice: params.notice,
-  });
-  return result;
-}
-
 function createRenderInput(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -206,21 +169,6 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     actionKind,
     questionCode: currentQuestionCode,
   });
-
-  if (!shouldUseAiWeeklyPlanningStableV5DialogueRenderer({
-    actionKind,
-    questionCode: currentQuestionCode,
-    currentUserMessage: params.input.userText,
-  })) {
-    return deterministicQuestionBypass({
-      ...params,
-      notice,
-      actionKind,
-      questionCode: currentQuestionCode,
-      actionId: currentActionId,
-    });
-  }
-
   const renderInput = createRenderInput({
     ...params,
     notice,
