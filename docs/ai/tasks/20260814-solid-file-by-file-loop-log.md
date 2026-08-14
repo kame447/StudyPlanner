@@ -17,5 +17,6 @@ This file is the compact per-loop execution log. The parent inventory keeps arch
 | 16 | `src/components/AdminApp.tsx` | no change; small admin composition root is acceptably cohesive. | Auth/navigation responsibilities are local to the admin shell and no reusable abstraction was found. | done |
 | 17 | `src/components/AdminGuard.tsx` | no change; guard only maps `checking / denied / allowed` status to access-boundary rendering. | Authorization decision remains owned by `useAdminStatus`; props expose only status and children. | done |
 | 18 | `src/components/AdminViews.tsx` | extracted report formatting, report panel and report-list presentation into `AdminReportViews.tsx`; retained route and user data-loading ownership in `AdminViews`. | Added `AdminReportViews.test.tsx` for mode labels, signed deltas and shared metric rendering. | done |
+| 19 | `src/components/AiRuntimeSettings.tsx` | no change; local AI-config editing UI is cohesive and provider/proxy/validation/storage semantics are already delegated to `src/lib/aiConfig.ts`. | Props are limited to `config / onSave / onReset`; no duplicated policy or provider implementation detail found in the component. | done |
 
 Per-loop rule: before starting the next code file, update this log and `docs/ai/strategy/20260814-solid-refactor-roadmap.md`.
