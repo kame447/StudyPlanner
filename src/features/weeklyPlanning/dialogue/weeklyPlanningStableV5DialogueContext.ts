@@ -1,3 +1,8 @@
+import type {
+  WeeklyPlanningStableV5DialogueQuestionIntent,
+  WeeklyPlanningStableV5DialogueQuestionTarget,
+} from './weeklyPlanningStableV5DialogueContracts';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -88,6 +93,56 @@ function ownerLabelForFactId(
   }
 
   return null;
+}
+
+const QUESTION_TARGET_COLLECTIONS = [
+  'tasks',
+  'components',
+  'workloads',
+  'effortEstimates',
+  'temporalConstraints',
+  'taskDateRules',
+  'recurrences',
+  'uncertainties',
+  'availabilityDeclarations',
+  'constraintSourceRequests',
+] as const;
+
+export function questionTargetForStableV5Dialogue(params: {
+  planningInformation: Record<string, unknown> | null;
+  targetFactId: string | null;
+}): WeeklyPlanningStableV5DialogueQuestionTarget | null {
+  if (!params.targetFactId) return null;
+  for (const collection of QUESTION_TARGET_COLLECTIONS) {
+    const fact = factById(params.planningInformation, collection, params.targetFactId);
+    if (fact) return { collection, fact };
+  }
+  return null;
+}
+
+export function questionIntentForStableV5Dialogue(params: {
+  questionCode: string | null;
+  questionTarget: WeeklyPlanningStableV5DialogueQuestionTarget | null;
+}): WeeklyPlanningStableV5DialogueQuestionIntent | null {
+  const fact = params.questionTarget?.fact;
+  if (
+    params.questionCode !== 'missing_effort_estimate'
+    || params.questionTarget?.collection !== 'workloads'
+    || fact?.quantityRole !== 'completed'
+    || typeof fact.id !== 'string'
+    || typeof fact.amount !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    kind: 'effort_evidence',
+    measurement: 'total_duration',
+    evidenceRole: 'completed',
+    targetFactId: fact.id,
+    amount: fact.amount,
+    unitCode: typeof fact.unitCode === 'string' ? fact.unitCode : null,
+    unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
+  };
 }
 
 export function requiredLabelsForStableV5Dialogue(params: {
