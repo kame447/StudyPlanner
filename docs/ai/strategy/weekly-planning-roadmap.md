@@ -1,11 +1,12 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / conversation quality and Luna simplification audit
-最終更新: 2026-08-14
+最終更新: 2026-08-15
 
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
 - Current execution task: [../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+- Human grounding / dynamic dialogue policy: [../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
 - Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
 ## 0. 最上位設計原則
@@ -17,6 +18,16 @@ deterministic codeはschema/reference/evidence validation、formal binding、Fac
 AI orchestrationはmachine stateからsemantic責務を狭めるために使う。deterministic routerがユーザー発話の意味を判定してはならない。
 
 rendererはtyped application decisionを自然な日本語へ変換する。renderer文面からsemantic stateを逆推定しない。
+
+### 0.1 Human grounding / dynamic dialogue
+
+会話品質の実装・監査では [PR #130 Human Grounding / Dynamic Dialogue Policy](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md) を必須参照とする。
+
+正常系の対話をquestion codeごとの完成済み固定日本語で構成しない。deterministic codeは「何を確認するか」「何が未確定か」を所有するが、「どう言うか」はtyped decisionとgrounded contextを受けたAI rendererが発話系列に応じて自然に実現する。
+
+共通基盤はFact Graphへ情報が保存されたことだけでは成立したとみなさない。直前のuser contributionを受け取ったことが必要に応じてacknowledgement、確認、言い換え、共有済み語彙の再利用、deterministicに確定した帰結等として会話上から観察できることを求める。ただしACK自体を固定prefixにしてはならない。
+
+conversation-quality acceptanceでは、ユーザーを完全なform入力者として扱わない。短答、省略、後出し、訂正を通常ケースとし、次のuser utterance本文を事前に固定せず、各assistant turnを確認してから次turnを生成するdynamic turn-by-turn real-API evaluationを必須とする。固定unit/integration testはdeterministic invariantの検査として維持するが、自然な対話本文の全文一致を品質oracleにしない。
 
 ## 1. Production基準線
 
@@ -51,17 +62,17 @@ PR #120で旧実装思想の選別移植、human grounding / repair、real API h
 ```text
 1. stale task・Issue・PRと現コード回帰の対応付け
 2. deterministic baselineとprompt byte実測
-3. historical scenarioの逐次real API Luna再観測
-4. 明確な失敗ごとの停止・原因層修正・同地点再実行
+3. historical scenarioを固定transcriptではなく逐次dynamic real API Lunaで再観測
+4. 各assistant turnを人間視点で確認し、明確な失敗ごとに停止・原因層修正・同地点再実行
 5. Issue #118のcompleted-work pace会話policy完了
 6. production heuristic inventoryと敵対的回帰
 7. prompt複雑性分類とLuna ablation
-8. 最終HEADの通し実API conversationからpreview
+8. 最終HEADのdynamic通し実API conversationからpreview
 9. Browser Regression / normal CI / trace persistence
 10. current MDと関連Issueのcloseout
 ```
 
-詳細はcurrent execution taskを正とする。
+詳細はcurrent execution taskとHuman Grounding / Dynamic Dialogue Policyを正とする。
 
 ## 3. 現在までに確立した会話・計画能力
 
@@ -234,9 +245,10 @@ real APIで観測されたoutput shapeを固定scenario oracleにはしないが
 ## 8. 現在の会話品質PR完了gate
 
 - current execution taskのfinal gateを全て満たす
+- Human Grounding / Dynamic Dialogue Policyのacceptanceを満たす
 - full CI green
-- 最終HEADで逐次real APIがpreviewまで完走
-- 最終HEADで通しreal APIがpreviewまで完走
+- 最終HEADで逐次dynamic real APIがpreviewまで完走
+- 最終HEADでdynamic通しreal APIがpreviewまで完走
 - Issue #118の未完了会話policyが実APIで確認済み
 - historical heuristicが対象・敵対的回帰でgreen
 - prompt簡素化の維持・削除判断にbyte実測とLuna ablationの根拠がある
