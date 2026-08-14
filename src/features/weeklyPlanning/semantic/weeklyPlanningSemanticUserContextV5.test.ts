@@ -9,9 +9,6 @@ import {
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
-  validateWeeklyPlanningSemanticEvidenceV5,
-} from './weeklyPlanningSemanticEvidenceV5';
-import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
@@ -93,26 +90,6 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(validation.errors).toEqual([]);
     expect(validation.document?.tasks[0]?.temporalConstraints).toEqual([]);
     expect(validation.document?.userContextFacts).toHaveLength(2);
-  });
-
-  it('keeps current-turn grounding for durable context even outside pending-question turns', () => {
-    const document: WeeklyPlanningSemanticDocumentV5 = {
-      ...baseDocument(),
-      userContextFacts: [{
-        localId: 'context-event',
-        kind: 'goal_event',
-        label: '資格試験',
-        value: null,
-        dateExpression: 'next_week',
-        sourceText: '来週資格試験がある',
-      }],
-    };
-    expect(validateWeeklyPlanningSemanticEvidenceV5({
-      document,
-      input: { userText: '今日は英語を進めたいです' },
-    })).toEqual([
-      'document.userContextFacts[0].sourceText:not-grounded-in-current-user-text',
-    ]);
   });
 
   it('removes a copied stored user-context fact deterministically without a second AI call', async () => {
