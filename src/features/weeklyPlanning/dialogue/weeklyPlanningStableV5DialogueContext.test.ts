@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isStableV5QuestionLikeText,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
@@ -48,12 +47,5 @@ describe('Stable V5 dialogue context', () => {
       targetFactId: null,
       includePreviewPromotionControl: true,
     })).toEqual(['この内容で仮予定にする']);
-  });
-
-  it('still identifies question-like fallback text until action-kind inference is migrated separately', () => {
-    expect(isStableV5QuestionLikeText(
-      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
-    )).toBe(true);
-    expect(isStableV5QuestionLikeText('2件の仮予定候補を作りました。')).toBe(false);
   });
 });
