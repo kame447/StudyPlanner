@@ -6,7 +6,7 @@ import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
-export const FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS = 40;
+export const FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS = 120;
 
 export const FOCUSED_USER_CONTEXT_DATE_REPAIR_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
