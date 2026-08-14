@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-audit-general-correction-20260814",
-  "turn": 10,
-  "attempt": 14,
-  "user_text": "やっぱり夕方ではなく、夜にしてください。",
-  "previous_run_id": "31791952338",
-  "conversation_id": "weekly-luna-audit-general-20260814-01",
-  "owner_id": "real-api-luna-audit-general-user-1",
+  "scenario": "luna-audit-ambiguous-standalone-modifier-20260815",
+  "turn": 1,
+  "attempt": 1,
+  "user_text": "英語と数学をやりたいです。20ページくらい。",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-audit-ambiguous-modifier-20260815-01",
+  "owner_id": "real-api-luna-audit-ambiguous-modifier-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
