@@ -75,10 +75,10 @@ function recurringPerOccurrenceSlices(params: {
   if (recurrences.length !== 1) return [params.item];
 
   const recurrence = recurrences[0];
-  const dates = recurrenceDates(recurrence, params.dates);
-  if (!dates || dates.length === 0) return [params.item];
+  const occurrenceDates = recurrenceDates(recurrence, params.dates);
+  if (occurrenceDates === null) return [params.item];
 
-  return dates.map((date) => ({
+  return occurrenceDates.map((date) => ({
     ...params.item,
     id: `${params.item.id}:recurrence:${recurrence.id}:${date}`,
     requiredDate: date,

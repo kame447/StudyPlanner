@@ -64,19 +64,27 @@ function graph(): WeeklyPlanningFactGraphV5 {
   };
 }
 
+function compile(
+  value: WeeklyPlanningFactGraphV5,
+  planningStartDate = '2026-08-17',
+  planningEndDate = '2026-08-23',
+) {
+  return compileGenericSchedulerInput({
+    graph: value,
+    context: {
+      ownerId: 'owner-1',
+      currentDate: '2026-08-14',
+      planningStartDate,
+      planningEndDate,
+      timeZone: 'Asia/Tokyo',
+    },
+  });
+}
+
 describe('Stable V5 recurring per-occurrence scheduling', () => {
   it('places one complete occurrence on every day in the planning horizon', () => {
     const value = graph();
-    const compiled = compileGenericSchedulerInput({
-      graph: value,
-      context: {
-        ownerId: 'owner-1',
-        currentDate: '2026-08-14',
-        planningStartDate: '2026-08-17',
-        planningEndDate: '2026-08-23',
-        timeZone: 'Asia/Tokyo',
-      },
-    });
+    const compiled = compile(value);
 
     expect(compiled.status).toBe('ready');
     expect(compiled.input?.movableWorkItems).toHaveLength(7);
@@ -118,5 +126,77 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
         stableV5Metadata?: { sourceFactRefs: string[] };
       }).stableV5Metadata?.sourceFactRefs.includes('recurrence-math-daily')))
       .toBe(true);
+  });
+
+  it('does not multiply a workload that is not marked per occurrence', () => {
+    const value = graph();
+    value.workloads[0].perOccurrence = false;
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems).toHaveLength(1);
+    expect(compiled.input?.movableWorkItems[0].requiredDate).toBeUndefined();
+  });
+
+  it('does not borrow recurrence semantics from a different exact target', () => {
+    const value = graph();
+    value.recurrences[0].targetFactId = 'task-mock-exam';
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems).toHaveLength(1);
+    expect(compiled.input?.movableWorkItems[0].requiredDate).toBeUndefined();
+  });
+
+  it('expands simple weekend recurrence only on weekend dates', () => {
+    const value = graph();
+    value.recurrences[0].kind = 'weekends';
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-22',
+      '2026-08-23',
+    ]);
+  });
+
+  it('creates no fake occurrence when a simple recurrence has no date in the horizon', () => {
+    const value = graph();
+    value.recurrences[0].kind = 'weekdays';
+
+    const compiled = compile(value, '2026-08-22', '2026-08-23');
+
+    expect(compiled.status).toBe('empty');
+    expect(compiled.input).toBeNull();
+  });
+
+  it('intersects an occurrence date with task exclusions and returns no partial preview', () => {
+    const value = graph();
+    value.taskDateRules = [{
+      id: 'exclude-wednesday',
+      taskId: 'task-mock-exam',
+      targetFactId: 'task-mock-exam',
+      kind: 'excluded_date',
+      dateExpression: '2026-08-19',
+      constraintLevel: 'hard',
+      source: source('exclude-wednesday'),
+      createdRevision: 1,
+    }];
+    const compiled = compile(value);
+    expect(compiled.status).toBe('ready');
+
+    const scheduled = scheduleWeeklyPlanningStableV5Preview({
+      input: compiled.input!,
+      graph: value,
+    });
+
+    expect(scheduled.status).toBe('insufficient_capacity');
+    expect(scheduled.candidates).toEqual([]);
+    expect(scheduled.unscheduledWorkItemIds).toEqual([
+      expect.stringContaining(':recurrence:recurrence-math-daily:2026-08-19'),
+    ]);
   });
 });

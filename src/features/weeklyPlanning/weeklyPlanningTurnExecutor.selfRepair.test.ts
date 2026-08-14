@@ -53,14 +53,14 @@ describe('Stable V5 self-repair rendering integration', () => {
     failureMock.mockReturnValue(null);
   });
 
-  it('uses the successful AI rendering as the complete correction response', async () => {
+  it('lets a successful renderer produce one complete correction acknowledgement', async () => {
     runtimeMock.mockResolvedValue({
       state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
       stableV5Graph: correctedGraph(),
     });
     rendererMock.mockResolvedValue({
       status: 'rendered',
-      text: '英単語を80語に修正しました。次の条件を確認します。',
+      text: '英単語を80語に修正し、次の条件を確認します。',
       rawResponse: '{}',
     });
 
@@ -69,20 +69,24 @@ describe('Stable V5 self-repair rendering integration', () => {
       plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
     });
 
-    expect(result.message).toBe('英単語を80語に修正しました。次の条件を確認します。');
-    expect(result.message).not.toContain('80ページではなく80語ですね');
+    expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
+      fallbackText: '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+      planningInformation: expect.objectContaining({
+        selfRepairNotice: '英単語は80ページではなく80語ですね。修正しました。',
+      }),
+    }));
+    expect(result.message).toBe('英単語を80語に修正し、次の条件を確認します。');
+    expect(result.message).not.toContain('修正しました。 英単語');
     expect(result.message).not.toContain('数学');
   });
 
-  it('keeps the deterministic correction acknowledgement when rendering falls back', async () => {
+  it('keeps the exact correction acknowledgement in the deterministic fallback', async () => {
     runtimeMock.mockResolvedValue({
       state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
       stableV5Graph: correctedGraph(),
     });
     rendererMock.mockResolvedValue({
-      status: 'fallback',
-      reason: 'provider_error',
-      rawResponse: null,
+      status: 'fallback', reason: 'provider_error', rawResponse: null,
     });
 
     const result = await executeWeeklyPlanningTurn({

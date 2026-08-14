@@ -272,6 +272,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
+  // The renderer already receives the correction in both planningInformation and
+  // fallbackText, so its successful response owns the complete user-facing copy.
+  // Prefixing the deterministic notice here repeats the same acknowledgement and
+  // can produce an ungrammatical transition. The fallback paths still retain the
+  // exact deterministic notice when rendering is unavailable or rejected.
   const finalMessage = rendered.text;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
