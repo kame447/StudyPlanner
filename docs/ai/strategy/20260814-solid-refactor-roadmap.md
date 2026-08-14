@@ -26,11 +26,12 @@ Current completed loops:
 - Loop 19: `src/components/AiRuntimeSettings.tsx` — no change; config policy/storage/proxy rules already live in `src/lib/aiConfig.ts`, leaving a small cohesive editor UI.
 - Loop 20: `src/components/AuthScreen.tsx` — access-key gate lifecycle extracted to `AuthAccessGateForm.tsx` with focused interaction coverage; sign-in/sign-up UI stays in the auth surface.
 - Loop 21: `src/components/BookshelfView.tsx` — active-material filtering, missing-subject fallback reconstruction and subject grouping/sorting extracted to `src/lib/bookshelfMaterials.ts` with focused tests.
+- Loop 22: `src/components/DatePickerDialogs.tsx` — day calendar extracted to `DayCalendarDialog.tsx`; week picker remains the module owner and the old day-picker import path is preserved by re-export.
 
 Next priorities:
 
-1. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
-2. Continue `src/components/` file-by-file audit after the bookshelf checkpoint.
+1. Continue `src/components/` file-by-file audit, next with `DayNotebookPanel.tsx`.
+2. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
 3. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
 4. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
 5. Audit duplicated actual-entry concerns across `ActualEditorCard`, `StandaloneActualEditorCard`, `ActualTrackingTools`, and Quick Entry without prematurely merging distinct workflows.
