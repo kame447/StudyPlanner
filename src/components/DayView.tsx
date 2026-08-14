@@ -7,16 +7,13 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
-import {
-  buildTimetableImportCandidates,
-  createPlanDraftFromTimetableImportCandidate,
-} from '../lib/timetableImport';
+import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
-import { ActualEditorCard } from './ActualEditorCard';
 import { DailyMaterialShelf } from './DailyMaterialShelf';
+import { DayDetailModal } from './DayDetailModal';
 import { DayTimeline } from './DayTimeline';
+import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { MaterialQuickCreateModal } from './MaterialQuickCreateModal';
-import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
@@ -121,10 +118,6 @@ export function DayView({
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
-  const [selectedTimetableSourceIds, setSelectedTimetableSourceIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [isImportingTimetable, setIsImportingTimetable] = useState(false);
   const dayRangeLabel = formatDateLabel(selectedDate);
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeDay(addDays(selectedDate, -1)),
@@ -218,11 +211,14 @@ export function DayView({
     modalState.type === 'month-event-detail'
       ? dayMonthEventMap.get(modalState.monthEventId) ?? null
       : null;
-  const selectedMonthEventPlan =
-    selectedMonthEvent ? dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null : null;
+  const selectedMonthEventPlan = selectedMonthEvent
+    ? dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null
+    : null;
   const selectedDetailPlan = selectedPlan ?? selectedMonthEventPlan;
   const selectedDetailActual = selectedDetailPlan
-    ? actualByOccurrenceKey.get(buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date))
+    ? actualByOccurrenceKey.get(
+        buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date),
+      )
     : undefined;
   const selectedStandaloneActual =
     modalState.type === 'standalone-actual-detail'
@@ -262,143 +258,23 @@ export function DayView({
     setModalState({ type: 'closed' });
   }
 
-  function openTimetableImport() {
-    setSelectedTimetableSourceIds(
-      new Set(
-        timetableImportCandidates
-          .filter((candidate) => !importedTimetableSourceIds.has(candidate.sourceId))
-          .map((candidate) => candidate.sourceId),
-      ),
-    );
-    setIsTimetableImportOpen(true);
-  }
-
-  function closeTimetableImport() {
-    setIsTimetableImportOpen(false);
-    setSelectedTimetableSourceIds(new Set());
-  }
-
-  function toggleSelectedTimetableCandidate(sourceId: string) {
-    setSelectedTimetableSourceIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(sourceId)) {
-        next.delete(sourceId);
-      } else {
-        next.add(sourceId);
-      }
-
-      return next;
-    });
-  }
-
-  async function importSelectedTimetable() {
-    const candidatesToImport = timetableImportCandidates.filter(
-      (candidate) =>
-        selectedTimetableSourceIds.has(candidate.sourceId) &&
-        !importedTimetableSourceIds.has(candidate.sourceId),
-    );
-
-    if (candidatesToImport.length === 0) {
-      closeTimetableImport();
-      return;
-    }
-
-    setIsImportingTimetable(true);
-    try {
-      for (const candidate of candidatesToImport) {
-        await onSavePlan(
-          createPlanDraftFromTimetableImportCandidate(candidate, userId, selectedDate),
-        );
-      }
-      closeTimetableImport();
-    } finally {
-      setIsImportingTimetable(false);
-    }
-  }
-
   return (
     <section className="section-stack swipe-view" {...swipeNavigation}>
-      {selectedDetailPlan ? (
-        <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={closeModal}>
-          <div
-            className="modal-card daily-detail-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="daily-detail-modal-header">
-              <button
-                className="ghost-button"
-                onClick={closeModal}
-                type="button"
-              >
-                閉じる
-              </button>
-              <div className="daily-detail-modal-heading">
-                <h2>{selectedMonthEvent ? '主要予定を記録登録' : '詳細入力'}</h2>
-                <p>
-                  {selectedDetailPlan.startTime} - {selectedDetailPlan.endTime} / {selectedDetailPlan.title}
-                </p>
-              </div>
-            </div>
-
-            <div className="daily-detail-modal-body">
-              <ActualEditorCard
-                key={buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date)}
-                plan={selectedDetailPlan}
-                plans={plans}
-                actuals={actuals}
-                actual={selectedDetailActual}
-                onEditPlan={onEditPlan}
-                onDeletePlan={onDeletePlan}
-                onSaveActual={onSaveActual}
-                onDeleteActual={onDeleteActual}
-                onClose={closeModal}
-                forceOpen
-                hideToggleButton
-                hidePlanActions={Boolean(selectedMonthEvent)}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {selectedStandaloneActual ? (
-        <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={closeModal}>
-          <div
-            className="modal-card daily-detail-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="daily-detail-modal-header">
-              <button
-                className="ghost-button"
-                onClick={closeModal}
-                type="button"
-              >
-                閉じる
-              </button>
-              <div className="daily-detail-modal-heading">
-                <h2>記録を編集</h2>
-                <p>
-                  {selectedStandaloneActual.actualStartTime} - {selectedStandaloneActual.actualEndTime} / {selectedStandaloneActual.title || '記録'}
-                </p>
-              </div>
-            </div>
-
-            <div className="daily-detail-modal-body">
-              <StandaloneActualEditorCard
-                key={selectedStandaloneActual.id}
-                actual={selectedStandaloneActual}
-                plans={plans}
-                actuals={actuals}
-                onSaveStandaloneActual={onSaveStandaloneActual}
-                onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
-                onDeleteActual={onDeleteActual}
-                onClose={closeModal}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <DayDetailModal
+        detailPlan={selectedDetailPlan}
+        monthEvent={selectedMonthEvent}
+        detailActual={selectedDetailActual}
+        standaloneActual={selectedStandaloneActual}
+        plans={plans}
+        actuals={actuals}
+        onEditPlan={onEditPlan}
+        onDeletePlan={onDeletePlan}
+        onSaveActual={onSaveActual}
+        onSaveStandaloneActual={onSaveStandaloneActual}
+        onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
+        onDeleteActual={onDeleteActual}
+        onClose={closeModal}
+      />
 
       {quickMaterial ? (
         <MaterialQuickCreateModal
@@ -411,89 +287,16 @@ export function DayView({
         />
       ) : null}
 
-      {isTimetableImportOpen ? (
-        <div className="overlay modal-overlay" onClick={closeTimetableImport}>
-          <div
-            className="modal-card timetable-import-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="section-stack">
-              <div className="section-header">
-                <div>
-                  <h2>今日の時間割を反映</h2>
-                  <p>{dayRangeLabel}</p>
-                </div>
-                <button
-                  className="ghost-button"
-                  onClick={closeTimetableImport}
-                  type="button"
-                >
-                  閉じる
-                </button>
-              </div>
-
-              <section className="timetable-import-card">
-                <h3>反映する授業</h3>
-                {timetableImportCandidates.length > 0 ? (
-                  <div className="timetable-import-list">
-                    {timetableImportCandidates.map((candidate) => {
-                      const isImported = importedTimetableSourceIds.has(candidate.sourceId);
-
-                      return (
-                        <label
-                          className="timetable-import-item"
-                          key={candidate.id}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedTimetableSourceIds.has(candidate.sourceId)}
-                            disabled={isImported || isImportingTimetable}
-                            onChange={() => toggleSelectedTimetableCandidate(candidate.sourceId)}
-                          />
-                          <span>
-                            <strong>{candidate.title}</strong>
-                            <span>
-                              {candidate.startTime}-{candidate.endTime}
-                              {candidate.periodLabel ? ` / ${candidate.periodLabel}` : ''}
-                              {candidate.subject ? ` / ${candidate.subject}` : ''}
-                              {candidate.classroom ? ` / ${candidate.classroom}` : ''}
-                              {isImported ? ' / 反映済み' : ''}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="empty-copy">この曜日の時間割はありません。</p>
-                )}
-              </section>
-
-              <div className="row-actions timetable-import-actions">
-                <button
-                  className="ghost-button"
-                  onClick={closeTimetableImport}
-                  type="button"
-                >
-                  キャンセル
-                </button>
-                <button
-                  className="primary-button"
-                  disabled={
-                    isImportingTimetable || selectedTimetableSourceIds.size === 0
-                  }
-                  onClick={() => {
-                    void importSelectedTimetable();
-                  }}
-                  type="button"
-                >
-                  反映
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <DayTimetableImportDialog
+        open={isTimetableImportOpen}
+        dateLabel={dayRangeLabel}
+        selectedDate={selectedDate}
+        userId={userId}
+        candidates={timetableImportCandidates}
+        importedSourceIds={importedTimetableSourceIds}
+        onSavePlan={onSavePlan}
+        onClose={() => setIsTimetableImportOpen(false)}
+      />
 
       <DayTimeline
         dateLabel={dayRangeLabel}
@@ -525,7 +328,7 @@ export function DayView({
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
         onPrint={() => window.print()}
-        onImportTimetable={openTimetableImport}
+        onImportTimetable={() => setIsTimetableImportOpen(true)}
         timetableImportCount={timetableImportCandidates.length}
       />
 

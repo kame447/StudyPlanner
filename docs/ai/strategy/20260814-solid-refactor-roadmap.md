@@ -1,6 +1,6 @@
 # SOLID file-by-file refactor roadmap
 
-Status: seven-perspective audit / final verification
+Status: next file-by-file phase / Browser Regression pending
 Updated: 2026-08-14
 Branch: `agent/browser-regression-audited-integration`
 PR: #129
@@ -25,7 +25,15 @@ Current checkpoint:
 - Loop 40: removed ReportView dead prop/caller plumbing discovered by the ISP audit.
 - Loop 41: updated the isolated Browser Regression runner from Playwright 1.55.0 to official stable 1.62.1 after the old isolated install reported two high-severity audit findings; application manifests remain isolated.
 - Loop 42: removed three root-level completed task duplicates after verifying their closed records.
-- Earlier exact head `f8eea8348ecbc456046efd3915aa12af3b720e38` passed normal CI and Browser Regression 80/80. Final verification must run again on the post-Loop-42 head before PR #129 is considered ready.
+- Post-Loop-42 head `1d1800213b22d90fdca42dbdd48c4744449fd20e` passed normal CI and Browser Regression 80/80. The audit checkpoint is green and the next file-by-file phase can proceed on the same PR.
+- Loop 43 separated `MonthEventDialog` save normalization, validation, and recurrence delete-scope mutation policy into `src/lib/monthEventEditor.ts`, with focused policy regressions.
+- Loop 44 extracted `BookshelfSubjectDialog` and `BookshelfMaterialDialog`, with shared editor-field presentation helpers and direct submit/delete contract coverage.
+- Loop 45 reduced `AdminViews` to a typed route facade, moved user-list/detail pages into focused components, and centralized stale-request-safe loading in `useAdminDataLoader`.
+- Loop 46 extracted `DayTimetableImportDialog` and `DayDetailModal`; DayView now composes those workflows through typed props while retaining day selection/projection ownership.
+- Loop 47 extracted pure month projection, `MonthGridPanel`, and `useMonthPager`; MonthView now owns only cross-interaction composition, cell selection, and dialog coordination.
+- Loops 43-47 focused typechecks and 20 targeted regressions are green.
+- Local full verification is green: 329 test files passed, 1 skipped; 1521 tests passed, 14 skipped, 5 todo; production build passed with only the pre-existing chunk/code-splitting warnings.
+- Browser Regression must run on PR #129 after the new head is published.
 
 Seven-perspective audit
 
@@ -59,13 +67,15 @@ Fix-loop policy
 - Product/spec changes, legacy compatibility decisions, or changes to older specification Markdown still require user confirmation.
 - Issue #52 and #115 remain separate functional/architecture work units; do not opportunistically implement them as part of structural cleanup.
 
-Known structural debt retained for the next file-by-file phase after this audit checkpoint is green:
+Structural debt addressed in Loops 43-47:
 
-- `DayView.tsx`: timetable-import interaction and detail-modal composition remain.
-- `BookshelfView.tsx`: subject/material modal lifecycles remain.
-- `AdminViews.tsx`: user-list/detail loading and route composition remain after report presentation extraction.
-- `MonthEventDialog.tsx`: save normalization and recurrence delete-scope policy remain mixed with editor UI.
-- `MonthView.tsx`: pager gesture/keyboard state remains mixed with month projection/rendering.
+- `DayView.tsx`: timetable-import interaction and detail-modal composition extracted.
+- `BookshelfView.tsx`: subject/material modal lifecycles extracted.
+- `AdminViews.tsx`: user-list/detail loading and route composition extracted.
+- `MonthEventDialog.tsx`: save normalization and recurrence delete-scope policy extracted.
+- `MonthView.tsx`: pager gesture state and month projection/rendering extracted; keyboard/cell selection remains in the composition root because it coordinates the active grid and external selected-date contract.
+
+Structural debt intentionally retained outside this phase:
 - `NaturalLanguageAssistant.tsx` / `QuickEntryModal.tsx`: dedicated weekly-planning UI separation remains Issue #52.
 - raw-text weekly entry routing remains Issue #115 and must not be repaired by adding regex heuristics.
 
