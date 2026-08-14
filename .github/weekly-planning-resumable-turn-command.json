@@ -1,7 +1,7 @@
 {
   "scenario": "luna-audit-final-dynamic-conversation-20260815",
   "turn": 3,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "残り50ページを全部やりたいです。30ページまでは終わってます。",
   "previous_run_id": "31851515460",
   "conversation_id": "weekly-luna-audit-final-dynamic-20260815-01",
