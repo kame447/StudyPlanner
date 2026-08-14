@@ -27,12 +27,15 @@ describe('Stable V5 semantic repair prompt', () => {
     });
 
     const payload = JSON.parse(messages[messages.length - 1]?.content ?? '{}') as {
-      instruction?: string;
       requiredChanges?: string[];
+      validationErrors?: string[];
     };
     const directive = payload.requiredChanges?.[0] ?? '';
 
-    expect(payload.instruction).toContain('corrected current-turn Stable V5 semantic delta');
+    expect(payload).not.toHaveProperty('instruction');
+    expect(payload.validationErrors).toEqual([
+      'document.corrections[0].replacementLocalId:unknown:temporal_1',
+    ]);
     expect(directive).toContain('replacement fact stated in currentUserText');
     expect(directive).toContain('minimal schema-valid containing task/component');
     expect(directive).toContain('correction.replacementLocalId');
