@@ -90,6 +90,8 @@ historical turn 3のrun `31787183640`では、semantic層は既存の夏休み�
 
 原因はsemantic AIではなくapplicationのmissing-work question target選択である。解消済み`work_breakdown` uncertaintyより後に追加されたcomponentだけを具体候補とし、component階層ではworkloadのないleafを優先し、一度に一件だけ質問する。選択したcomponent/task Fact IDを`lastQuestionContext.topicId`へ保持し、次turnの`pendingQuestion.targetFactId`へ渡す。特定の教材名や日本語表現は判定に使わない。pure question selection、runtime projection、breakdown/current-delta contractの対象18件とTypeScriptを通し、turn 2 checkpointから同じturn 3を再試行する。
 
+turn 3再試行run `31787630567`は合格した。Graphは数学ワークと古典課題を同じ既存taskの具体componentとして保持し、relationは空、旧breakdown uncertaintyはinactiveのままである。質問は数学ワーク一件だけを対象にし、`lastQuestionContext.topicId`もそのcomponent Fact IDを保持した。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
