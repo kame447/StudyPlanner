@@ -127,6 +127,9 @@ turn 8 attempt 1のrun `31790894628`では、「ありがとうございます�
 
 同じcheckpoint・入力のattempt 2 run `31791667885`では、provider 1回・repair 0回で同じproposal acceptを返した後、canonical diffはrevision 9→9、added/superseded/removedすべて0、`preview_unchanged` branchとなり、preview schedulerは実行されなかった。checkpointはrevision 9の同じstable key・同じ9候補を保持し、`shouldSavePlan=false`のまま、rendererは9件の内容と「この内容で仮予定にする」ボタンを自然に案内した。localはfocused 13件、TypeScript、全333 test files（1,547 tests）、production buildがgreenで、commit `07b6750`のnormal CI run `31791670915`、Browser Regression run `31791670932`、実API run `31791667885`もすべてgreenである。
 
+
+turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方にしてください。」をexact既存task/componentへのsoft `preferred_window=evening`としてprovider 1回・repair 0回で受理した。Graph revision 9→10でtemporal constraintだけを一件追加し、daily recurrence、1.5 hours per occurrence、数学ワーク、古典には変更がない。re-previewは合計9件のまま、模試数学7件を8月17日〜23日の各日17:00–18:30へ配置し、rendererも夕方希望、毎日1時間半、9件を一致して説明した。normal CI run `31791955975`、Browser Regression run `31791956014`、実API run `31791952338`はすべてgreenであり、modifier target、soft preference、re-previewのhistorical contractは合格した。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
