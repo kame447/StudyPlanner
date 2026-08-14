@@ -82,7 +82,8 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
 
     expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
-    expect(prompt.systemPrompt).toContain('共有理解に役立つ場合だけ自然に示してください');
+    expect(prompt.systemPrompt).toContain('共有理解に必要な場合に自然に示してください');
+    expect(prompt.userPrompt).toContain('statusがproposedの解釈');
     expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
