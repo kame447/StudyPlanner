@@ -33,10 +33,11 @@ Current completed loops:
 - Loop 26: `src/components/FloatingActualTrackingPanel.tsx` — no change; draggable/collapsible floating shell remains cohesive and delegates all measurement behavior to `ActualTrackingTools`.
 - Loop 27: `src/components/InitialPrivacyConsentScreen.tsx` — no change; consent interaction stays in the screen while persistence/retry/sign-out semantics remain callback-owned; privacy copy was not changed.
 - Loop 28: `src/components/InitialWeekStartPreferenceScreen.tsx` — no change; first-run week-start selection remains a small cohesive UI and delegates persistence/interpretation through typed callbacks/contracts.
+- Loop 29: `src/components/LegalPage.tsx` — no change; legal/privacy copy remains co-located with a small generic renderer to avoid high-risk copy movement with negligible architectural benefit.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit with the remaining startup/legal screens.
+1. Continue `src/components/` file-by-file audit after the startup/legal checkpoint.
 2. `DayView.tsx` still owns timetable-import interaction and detail-modal composition; split only if each boundary remains independently testable.
 3. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
 4. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
