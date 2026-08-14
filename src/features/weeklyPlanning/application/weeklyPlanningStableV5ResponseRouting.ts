@@ -260,8 +260,9 @@ function routeAfterPreview(params: {
   }
 
   if (preview.status === 'empty') {
+    const missingWork = stableV5MissingSchedulableWorkQuestion(semantic.graph);
     const message = groundedMessage({
-      message: '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。',
+      message: missingWork.message,
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
@@ -270,6 +271,8 @@ function routeAfterPreview(params: {
       userText: input.userText,
       message,
       draftCandidates: [],
+      questionCode: missingWork.questionCode,
+      questionFactId: missingWork.targetFactId ?? undefined,
       authorized: true,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
@@ -277,7 +280,13 @@ function routeAfterPreview(params: {
     traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'preview_empty',
-      basis: { preview, groundingRecords, repairDecision },
+      basis: {
+        preview,
+        questionCode: missingWork.questionCode,
+        questionFactId: missingWork.targetFactId,
+        groundingRecords,
+        repairDecision,
+      },
       output,
       severity: 'warn',
     });
