@@ -1,79 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  buildMeasuredRange,
+  formatDurationDisplay,
+  formatTimerInputValue,
+  getElapsedMs,
+  parseTimerInputValue,
+  type TrackerState,
+} from '../lib/actualTracking';
 
 type TrackingMode = 'stopwatch' | 'timer';
-
-interface TrackerState {
-  anchorMs: number | null;
-  runningFromMs: number | null;
-  elapsedBeforeMs: number;
-}
 
 interface ActualTrackingToolsProps {
   onApplyMeasuredRange: (startTime: string, endTime: string) => void;
   canApplyMeasuredRange?: boolean;
   applyDisabledReason?: string;
   onDisplayChange?: (display: string) => void;
-}
-
-function formatClockTime(date: Date): string {
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function formatDurationDisplay(totalMs: number): string {
-  const safeSeconds = Math.max(0, Math.floor(totalMs / 1000));
-  const hours = Math.floor(safeSeconds / 3600)
-    .toString()
-    .padStart(2, '0');
-  const minutes = Math.floor((safeSeconds % 3600) / 60)
-    .toString()
-    .padStart(2, '0');
-  const seconds = (safeSeconds % 60).toString().padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
-}
-
-function getElapsedMs(tracker: TrackerState, nowMs: number): number {
-  return tracker.elapsedBeforeMs + (tracker.runningFromMs ? nowMs - tracker.runningFromMs : 0);
-}
-
-function clampTimerMinutes(value: number): number {
-  if (Number.isNaN(value)) {
-    return 30;
-  }
-
-  return Math.min(Math.max(Math.round(value), 1), 1439);
-}
-
-function formatTimerInputValue(totalMinutes: number): string {
-  const clampedMinutes = clampTimerMinutes(totalMinutes);
-  const hours = Math.floor(clampedMinutes / 60)
-    .toString()
-    .padStart(2, '0');
-  const minutes = (clampedMinutes % 60).toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function parseTimerInputValue(value: string, fallbackMinutes: number): number {
-  const [hoursText, minutesText] = value.split(':');
-  const hours = Number(hoursText);
-  const minutes = Number(minutesText);
-
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return clampTimerMinutes(fallbackMinutes);
-  }
-
-  return clampTimerMinutes(hours * 60 + minutes);
-}
-
-function buildMeasuredRange(anchorMs: number, durationMs: number) {
-  const startAt = new Date(anchorMs);
-  const endAt = new Date(anchorMs + durationMs);
-
-  return {
-    startTime: formatClockTime(startAt),
-    endTime: formatClockTime(endAt),
-  };
 }
 
 export function ActualTrackingTools({
