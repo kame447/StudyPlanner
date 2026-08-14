@@ -94,6 +94,7 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 12 | `AGENTS.md` / `weekly-planning-pipeline-guide.md` | ユーザー承認を受け、旧parser semantic authorityとlegacy fallback契約をcurrent Stable V5責務境界へ同期。SOLID/AI ownership/test audit ruleも実装実態へ整合。 | `weekly-planning-current-contract-v5.md`、current roadmapの最上位原則、Issue #115と照合。 | 2文書と本台帳を同期。 | done |
 | 13 | `src/components/AppSettingsDialog.tsx` | FAQ/contact/legal/versionのsupport責務を`AppSettingsSupportPanel.tsx`へ抽出。modal shellとtheme/week-start/personalization settingsは元componentへ保持。 | 既存`AppSettingsDialog.runtimeMode.test.tsx`のStable V5固定表示契約を維持し、support JSXを内容変更なしで移設したことを確認。 | `docs/ai/strategy/20260814-solid-refactor-roadmap.md`を新設し、本台帳と同期。 | done |
 | 14 | `src/components/ActualEditorCard.tsx` | plan/actual→`ActualDraft`生成、legacy alignment推定、relink候補projectionを`src/lib/actualDrafts.ts`へ抽出。componentはstate/interaction/renderingへ寄せた。 | `src/lib/actualDrafts.test.ts`を追加し、新規/既存draft、explicit/legacy alignment、relink projectionを固定。 | SOLID専用roadmapと本台帳を同期。 | done |
+| 15 | `src/components/ActualTrackingTools.tsx` | stopwatch/timer UIとinteraction stateは同一の計測責務として維持し、elapsed計算・timer clamp/parse/format・measured range projectionを`src/lib/actualTracking.ts`へ抽出。 | `src/lib/actualTracking.test.ts`を追加し、duration表示、running/paused elapsed、timer境界、測定rangeを固定。 | SOLID専用roadmapと本台帳を同期。 | done |
 
 ## Remaining-problem register
 
