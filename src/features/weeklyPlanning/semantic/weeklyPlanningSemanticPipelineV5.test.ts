@@ -230,6 +230,60 @@ describe('Stable V5 semantic pipeline', () => {
     expect(second.graph.appliedTurnKeys).toContain('conversation-noop:turn-noop');
   });
 
+  it('keeps proposal acceptance as a graph no-op while preserving turn idempotency', async () => {
+    const first = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(),
+    ).run({
+      conversationId: 'conversation-proposal-noop',
+      turnId: 'turn-create',
+      expectedRevision: 0,
+      userText: '24日に英単語を30分進めたい',
+      schedulerContext,
+    });
+    const acceptance = document();
+    acceptance.planningIntent = 'update_plan';
+    acceptance.planningWindow = null;
+    acceptance.tasks = [];
+    acceptance.relations = [];
+    acceptance.decisions = [{
+      localId: 'decision-accept-preview',
+      target: {
+        kind: 'proposal',
+        publicId: null,
+        localId: null,
+        mention: '仮予定候補',
+      },
+      decision: 'accept',
+      sourceText: 'この内容で大丈夫です',
+    }];
+
+    const second = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(acceptance),
+    ).run({
+      graph: first.graph,
+      conversationId: 'conversation-proposal-noop',
+      turnId: 'turn-accept-preview',
+      expectedRevision: first.graph.revision,
+      userText: 'この内容で大丈夫です',
+      schedulerContext,
+    });
+
+    expect(second.normalization.document?.decisions).toHaveLength(1);
+    expect(second.canonicalization?.diff).toEqual({
+      fromRevision: first.graph.revision,
+      toRevision: first.graph.revision,
+      added: [],
+      superseded: [],
+      removed: [],
+    });
+    expect(second.graph.revision).toBe(first.graph.revision);
+    expect(second.graph.decisionIntents).toEqual(first.graph.decisionIntents);
+    expect(second.graph.appliedTurnKeys).toContain(
+      'conversation-proposal-noop:turn-accept-preview',
+    );
+    expect(second.scheduler?.status).toBe('ready');
+  });
+
   it('keeps duplicate turns idempotent while compiling the existing graph', async () => {
     const pipeline = createWeeklyPlanningSemanticPipelineV5(acceptedNormalizer());
     const first = await pipeline.run({

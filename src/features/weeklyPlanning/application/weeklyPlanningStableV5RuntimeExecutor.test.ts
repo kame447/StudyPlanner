@@ -9,6 +9,7 @@ import {
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   finalizeWeeklyPlanningStableV5RuntimeGraph,
+  getWeeklyPlanningStableV5StagedGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -114,6 +115,31 @@ function workOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
     uncertainties: [],
     corrections: [],
     decisions: [],
+  };
+}
+
+function acceptedPreviewDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan',
+    planningWindow: null,
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [{
+      localId: 'decision-accept-preview',
+      target: {
+        kind: 'proposal',
+        publicId: null,
+        localId: null,
+        mention: '仮予定候補',
+      },
+      decision: 'accept',
+      sourceText: 'この内容で大丈夫です',
+    }],
   };
 }
 
@@ -236,6 +262,13 @@ import {
 } from './weeklyPlanningStableV5RuntimeExecutor';
 
 describe('Stable V5 runtime executor', () => {
+  beforeEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
+    normalizeMock.mockReset();
+    normalizeMock.mockResolvedValue(acceptedResult(document()));
+  });
+
   it('keeps authorization durable through clarification while preserving draft-ready update semantics', () => {
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
@@ -269,11 +302,73 @@ describe('Stable V5 runtime executor', () => {
     })).toBe(false);
   });
 
-  beforeEach(() => {
-    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-    resetWeeklyPlanningStableV5DebugTraceForTest();
-    normalizeMock.mockReset();
-    normalizeMock.mockResolvedValue(acceptedResult(document()));
+  it('preserves an existing preview when the user accepts it in conversation', async () => {
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '7月27日に部屋の掃除を1時間する予定を作って',
+      selectedDate: '2026-07-27',
+      userId: 'owner-preview-noop',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-preview-noop',
+      traceRequestId: 'request-preview-noop-1',
+    });
+    expect(first.state.status).toBe('draft_ready');
+    expect(first.draftCandidates).toHaveLength(1);
+    const firstGraph = getWeeklyPlanningStableV5StagedGraph({
+      ownerId: 'owner-preview-noop',
+      conversationId: 'conversation-preview-noop',
+      requestId: 'request-preview-noop-1',
+    });
+    expect(firstGraph).not.toBeNull();
+    const firstRevision = firstGraph?.revision;
+    finalizeWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: 'owner-preview-noop',
+      conversationId: 'conversation-preview-noop',
+      requestId: 'request-preview-noop-1',
+    });
+
+    normalizeMock.mockResolvedValueOnce(acceptedResult(acceptedPreviewDocument()));
+    const second = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: first.state,
+      messages: [],
+      userText: 'この内容で大丈夫です',
+      selectedDate: '2026-07-27',
+      userId: 'owner-preview-noop',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-preview-noop',
+      traceRequestId: 'request-preview-noop-2',
+    });
+
+    const secondGraph = getWeeklyPlanningStableV5StagedGraph({
+      ownerId: 'owner-preview-noop',
+      conversationId: 'conversation-preview-noop',
+      requestId: 'request-preview-noop-2',
+    });
+    expect(secondGraph?.revision).toBe(firstRevision);
+    expect(secondGraph?.decisionIntents).toEqual([]);
+    expect(secondGraph?.appliedTurnKeys).toContain(
+      'conversation-preview-noop:request-preview-noop-2',
+    );
+    expect(second.preserveExistingPreview).toBe(true);
+    expect(second.draftCandidates).toEqual([]);
+    expect(second.state.status).toBe('draft_ready');
+    expect(second.message).toContain('仮予定候補は変更していません');
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-preview-noop-2')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_branch_selected',
+          data: expect.objectContaining({ branch: 'preview_unchanged' }),
+        }),
+      ]),
+    );
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-preview-noop-2')).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: 'runtime_preview_scheduler_evaluated' }),
+      ]),
+    );
   });
 
   it('runs structured semantic normalization through deterministic preview placement', async () => {
