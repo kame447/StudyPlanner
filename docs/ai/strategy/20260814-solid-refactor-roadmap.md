@@ -28,10 +28,11 @@ Current completed loops:
 - Loop 21: `src/components/BookshelfView.tsx` — active-material filtering, missing-subject fallback reconstruction and subject grouping/sorting extracted to `src/lib/bookshelfMaterials.ts` with focused tests.
 - Loop 22: `src/components/DatePickerDialogs.tsx` — day calendar extracted to `DayCalendarDialog.tsx`; week picker remains the module owner and the old day-picker import path is preserved by re-export.
 - Loop 23: `src/components/DayNotebookPanel.tsx` — removed as an unreferenced dead component surface.
+- Loop 24: `src/components/DayTimeline.tsx` — overlap lane layout extracted to `src/lib/dayTimelineLayout.ts`; duplicate actual title/subject/alignment inference replaced by shared `actualDrafts` helpers; focused layout tests added.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit, next with `DayTimeline.tsx`.
+1. Continue `src/components/` file-by-file audit, next with `DayView.tsx`.
 2. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
 3. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
 4. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
