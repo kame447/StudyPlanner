@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
-  "turn": 4,
+  "turn": 5,
   "attempt": 1,
-  "user_text": "数学のワークは全部で80ページで、30ページまで終わっています。来週は残りから25ページ進めたいです。終わった30ページには90分くらいかかりました。",
-  "previous_run_id": "31787630567",
+  "user_text": "古典の課題はプリント10枚で、3枚終わっています。来週は残り7枚を全部進めたいです。1枚15分くらいです。",
+  "previous_run_id": "31787781166",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
   "owner_id": "real-api-luna-audit-historical-binding-user-1",
   "week_start_date": "2026-08-17",
