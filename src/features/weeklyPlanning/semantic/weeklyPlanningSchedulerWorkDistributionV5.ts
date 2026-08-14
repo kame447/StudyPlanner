@@ -1,12 +1,16 @@
 import type {
   PlanningTaskFact,
+  RecurrenceFact,
   StudyComponentFact,
   StudyContextFact,
   TaskRelationFact,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
-import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
+import {
+  calendarWeekday,
+  listCalendarDatesInclusive,
+} from './weeklyPlanningCalendarResolver';
 import {
   distributeDiscreteQuantityAcrossWeeklyBucketsV5,
   distributeMinutesAcrossWeeklyBucketsV5,
@@ -30,7 +34,56 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
   readonly workloads: ReadonlyArray<WorkloadFact>;
+  readonly recurrences: ReadonlyArray<RecurrenceFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
+}
+
+function recurrenceDates(
+  recurrence: RecurrenceFact,
+  dates: readonly string[],
+): string[] | null {
+  if (recurrence.kind === 'daily') return [...dates];
+  if (recurrence.kind === 'weekdays') {
+    return dates.filter((date) => {
+      const weekday = calendarWeekday(date);
+      return weekday !== null && weekday >= 1 && weekday <= 5;
+    });
+  }
+  if (recurrence.kind === 'weekends') {
+    return dates.filter((date) => {
+      const weekday = calendarWeekday(date);
+      return weekday === 0 || weekday === 6;
+    });
+  }
+  return null;
+}
+
+function recurringPerOccurrenceSlices(params: {
+  graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
+  item: GenericPlanningWorkItem;
+  dates: readonly string[];
+}): GenericPlanningWorkItem[] {
+  const workload = params.graph.workloads.find(
+    (candidate) => candidate.id === params.item.workloadFactId,
+  );
+  if (!workload?.perOccurrence) return [params.item];
+
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  const recurrences = params.graph.recurrences.filter((recurrence) =>
+    recurrence.taskId === params.item.taskId
+    && recurrence.targetFactId === targetFactId);
+  if (recurrences.length !== 1) return [params.item];
+
+  const recurrence = recurrences[0];
+  const dates = recurrenceDates(recurrence, params.dates);
+  if (!dates || dates.length === 0) return [params.item];
+
+  return dates.map((date) => ({
+    ...params.item,
+    id: `${params.item.id}:recurrence:${recurrence.id}:${date}`,
+    requiredDate: date,
+    sourceFactRefs: [...new Set([...params.item.sourceFactRefs, recurrence.id])],
+  }));
 }
 
 function isDistributableDiscreteItem(item: GenericPlanningWorkItem): boolean {
@@ -216,12 +269,21 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   preferredSessionMinutes?: number | null;
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
-  const dayDistributed = dates.length === 0
+  const recurrenceDistributed = dates.length === 0
     ? [...params.items]
-    : params.items.flatMap((item) =>
-        isDistributableDiscreteItem(item)
+    : params.items.flatMap((item) => recurringPerOccurrenceSlices({
+        graph: params.graph,
+        item,
+        dates,
+      }));
+  const dayDistributed = dates.length === 0
+    ? recurrenceDistributed
+    : recurrenceDistributed.flatMap((item) => {
+        if (item.requiredDate) return [item];
+        return isDistributableDiscreteItem(item)
           ? distributedSlices({ graph: params.graph, item, dates })
-          : [item]);
+          : [item];
+      });
   const sessionDistributed = dayDistributed.flatMap((item) =>
     executionPolicySlices({
       graph: params.graph,

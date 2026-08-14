@@ -102,6 +102,10 @@ historical turn 6のrun `31788110631`は`stable_v5_normalization_rejected`とな
 
 turn 6 attempt 2のrun `31788424582`もnormalization rejectedとなったが、今回はtask/component public IDは両方exactだった。Lunaはdaily recurrenceの`targetLocalId`をschemaが許可するtask/component local IDではなく、同じcomponent内のworkload local IDにしており、generic repairでも同じ形を返した。workload local IDがJSON内で一つのownerへだけ解決できる場合に限り、そのtask/component local IDへrecurrence targetを移すstructural normalizationを追加した。曖昧または非workload targetは変更しない。binding、recurrence、trace persistenceを含む対象19件とTypeScriptを通し、同じcheckpointからattempt 3を実行する。
 
+turn 6 attempt 3のrun `31788647370`はprovider 1回・AI repair 0回で受理され、Graph revision 6から7へdaily recurrenceと2 hours per occurrenceを追加した。一方でscheduler inputはそのworkloadを1件・120分としてしか扱わず、previewは数学ワーク、古典、模試数学の合計3件だった。rendererは「模試対策の数学を毎日2時間」と説明しており、structured semantic/Fact Graphとpreviewが不一致なのでworkflow greenでも会話品質上は不採用とした。
+
+原因はAIではなくschedulerのper-occurrence distribution欠落である。simple recurrence (`daily` / `weekdays` / `weekends`)がexact task/componentを対象とし、対応workloadが`perOccurrence=true`のときだけ、planning horizon内の各該当日へ一つずつwork itemを展開し、その日を`requiredDate`としてplacementへ渡す。recurrence Fact IDも各候補の`sourceFactRefs`へ保持する。raw text、periodExpression、labelから頻度を推測せず、複数またはadvanced recurrenceを勝手に解釈しない。回帰は修正前に7件期待に対して1件で失敗し、修正後は7日×120分=840分、各日一件、recurrence provenanceを確認した。関連9件、TypeScript、全333 test files（1,544 tests）、production buildを通し、同じturn 5 checkpointからattempt 4を実行する。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes

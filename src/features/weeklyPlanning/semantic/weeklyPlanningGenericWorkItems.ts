@@ -67,6 +67,7 @@ export interface GenericPlanningWorkItem {
   plannedSessions?: GenericPlanningWorkSession[];
   splitPolicy: 'splittable' | 'atomic' | 'unknown';
   periodExpression: string | null;
+  requiredDate?: string | null;
   sourceFactRefs: string[];
 }
 

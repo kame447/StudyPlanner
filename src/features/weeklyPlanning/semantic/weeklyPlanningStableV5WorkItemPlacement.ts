@@ -77,7 +77,10 @@ function eligibleDates(params: {
     ? [...params.dates]
     : eligibility.allowedDates;
   const excluded = new Set(eligibility?.excludedDates ?? []);
-  return allowed.filter((date) => params.dates.includes(date) && !excluded.has(date));
+  return allowed.filter((date) =>
+    params.dates.includes(date)
+    && !excluded.has(date)
+    && (!params.item.requiredDate || date === params.item.requiredDate));
 }
 
 function findWorkItemSlot(params: {
