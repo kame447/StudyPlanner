@@ -35,5 +35,6 @@ This file is the compact per-loop execution log. The parent inventory keeps arch
 | 34 | `src/components/PlanFieldsEditor.tsx` | no change; typed `PlanDraft` field editing is a single presentational responsibility. | Plan/repeat option definitions and time-range behavior are delegated to existing libraries/components. | done |
 | 35 | `src/components/PlanEditorPanel.tsx` | no change; modal submit/cancel orchestration and minimal edit validation are cohesive. | Recurrence scope mutation is not owned here; `PlanFieldsEditor` remains the field editor. | done |
 | 36 | `src/components/TimeRangeFields.tsx` | no change; `TimeWheelPicker` and its range wrapper are one time-input interaction unit, while duration/auto-end calculations already live in `lib/date`. | No repository/business-policy dependency or duplicated time-domain calculation remains in the component. | done |
+| 37 | `src/components/StandaloneActualEditorCard.tsx` | extracted standalone actual duration, same-day end-time, save-draft and link-candidate projections into `src/lib/standaloneActualDrafts.ts`. | Added `src/lib/standaloneActualDrafts.test.ts`; preserved 24:00 clamp and kept raw edit values for candidate scoring while trimming only persisted drafts. | done |
 
 Per-loop rule: before starting the next code file, update this log and `docs/ai/strategy/20260814-solid-refactor-roadmap.md`.
