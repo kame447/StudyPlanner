@@ -34,6 +34,10 @@ import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemant
 
 type SemanticValidationResultV5 = ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
 
+function validationState(run: WeeklyPlanningSemanticNormalizerRunV5) {
+  return { publicStateSummary: run.input.publicStateSummary };
+}
+
 function rejectedResult(
   run: WeeklyPlanningSemanticNormalizerRunV5,
   validationErrors: string[],
@@ -134,7 +138,7 @@ async function tryFocusedUserContextDateRepairRouteV5(params: {
 
   const validation = validateWeeklyPlanningSemanticResponseV5(
     JSON.stringify(mergedDocument),
-    params.run.input,
+    validationState(params.run),
   );
   params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
   recordWeeklyPlanningStableV5DebugTrace({
@@ -232,7 +236,7 @@ async function tryFocusedPlanningWindowRepairRouteV5(params: {
   });
   const validation = validateWeeklyPlanningSemanticResponseV5(
     JSON.stringify(mergedDocument),
-    params.run.input,
+    validationState(params.run),
   );
   params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
   recordWeeklyPlanningStableV5DebugTrace({
@@ -330,7 +334,7 @@ async function tryFocusedTemporalScopeRepairRouteV5(params: {
 
   const validation = validateWeeklyPlanningSemanticResponseV5(
     patchedResponse,
-    params.run.input,
+    validationState(params.run),
   );
   params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
   recordWeeklyPlanningStableV5DebugTrace({
