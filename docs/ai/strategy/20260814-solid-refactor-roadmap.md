@@ -31,10 +31,11 @@ Current completed loops:
 - Loop 24: `src/components/DayTimeline.tsx` — overlap lane layout extracted to `src/lib/dayTimelineLayout.ts`; duplicate actual title/subject/alignment inference replaced by shared `actualDrafts` helpers; focused layout tests added.
 - Loop 25: `src/components/DayView.tsx` — daily material shelf and material quick-create modal extracted; shared bookshelf and quick-entry contracts reused instead of duplicating filtering/end-time policy.
 - Loop 26: `src/components/FloatingActualTrackingPanel.tsx` — no change; draggable/collapsible floating shell remains cohesive and delegates all measurement behavior to `ActualTrackingTools`.
+- Loop 27: `src/components/InitialPrivacyConsentScreen.tsx` — no change; consent interaction stays in the screen while persistence/retry/sign-out semantics remain callback-owned; privacy copy was not changed.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit with startup/consent screens.
+1. Continue `src/components/` file-by-file audit with the remaining startup/legal screens.
 2. `DayView.tsx` still owns timetable-import interaction and detail-modal composition; split only if each boundary remains independently testable.
 3. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
 4. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
