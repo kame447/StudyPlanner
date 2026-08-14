@@ -150,7 +150,7 @@ describe('Stable V5 contextual repair messages', () => {
       requiredChanges: string[];
     };
     expect(repairPayload.requiredChanges).toEqual([
-      'Correct only the listed validation failures; preserve unrelated current-turn meaning.',
+      'Remove prior-turn facts not grounded in currentUserText; preserve unrelated valid current-turn facts and invent nothing.',
     ]);
   });
 
