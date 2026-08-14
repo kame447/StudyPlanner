@@ -7,9 +7,6 @@ function unique(values: string[]): string[] {
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
 
-  if (errors.some((error) => error.includes('canonical-relative-'))) {
-    directives.push('Choose the canonical relative-day/week value matching current meaning and context.');
-  }
   if (errors.some((error) =>
     error.includes(':missing-start')
     || error.includes(':missing-end')
