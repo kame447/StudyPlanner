@@ -32,6 +32,7 @@ Current completed loops:
 - Loop 25: `src/components/DayView.tsx` — daily material shelf and material quick-create modal extracted; shared bookshelf and quick-entry contracts reused instead of duplicating filtering/end-time policy.
 - Loop 26: `src/components/FloatingActualTrackingPanel.tsx` — no change; draggable/collapsible floating shell remains cohesive and delegates all measurement behavior to `ActualTrackingTools`.
 - Loop 27: `src/components/InitialPrivacyConsentScreen.tsx` — no change; consent interaction stays in the screen while persistence/retry/sign-out semantics remain callback-owned; privacy copy was not changed.
+- Loop 28: `src/components/InitialWeekStartPreferenceScreen.tsx` — no change; first-run week-start selection remains a small cohesive UI and delegates persistence/interpretation through typed callbacks/contracts.
 
 Next priorities:
 
