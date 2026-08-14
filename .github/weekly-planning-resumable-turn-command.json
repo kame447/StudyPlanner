@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-audit-canonical-relative-ablation-20260815",
+  "scenario": "luna-audit-final-dynamic-conversation-20260815",
   "turn": 1,
-  "attempt": 5,
+  "attempt": 1,
   "user_text": "来週の勉強計画を一緒に考えてほしいです。",
   "previous_run_id": null,
-  "conversation_id": "weekly-luna-audit-canonical-relative-20260815-01",
-  "owner_id": "real-api-luna-audit-canonical-relative-user-1",
+  "conversation_id": "weekly-luna-audit-final-dynamic-20260815-01",
+  "owner_id": "real-api-luna-audit-final-dynamic-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
