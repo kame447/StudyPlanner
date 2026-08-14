@@ -61,6 +61,16 @@ conversation-quality test では、ユーザーを協力的だが省力的な人
 
 AI はユーザーの自然言語と会話文脈から意味を解釈し、current-turn semantic delta を構造化する。
 
+### AI semantic boundary は raw conversation の終端でもある
+
+`AI first, schema next` は、単に AI の解釈を deterministic code より優先するという意味ではない。AI が structured semantic document を返した時点を semantic boundary とし、それ以後の deterministic code へ `userText`、raw conversation、`recentConversation` 本文を意味判断の入力として渡してはならない。
+
+deterministic code が意味入力として受け取ってよいのは、AI が生成した schema 化済み semantic document と、application が所有する typed machine state に限る。raw text の substring 照合、sentence 分割、regex、keyword / dictionary match、token 位置比較などを用いて、target 推定、grounding 判定、quantity role 判定、日付解釈、曖昧性判定、authorization intent 判定を行ってはならない。
+
+必要な不確実性、grounding、target ambiguity、参照候補は AI が schema 内の uncertainty / evidence / reference として表現する。deterministic layer はそれらと既存 typed state の構造整合性、参照整合性、lifecycle、policy invariant を検証し、raw conversation を再解釈して意味を補完または上書きしない。
+
+この禁止は、raw conversation を AI semantic interpreter や AI dialogue renderer へ渡すこと、または意味判断を伴わない bounded logging / display / trace に保持することを禁止するものではない。禁止対象は、AI semantic boundary より後段の deterministic production logic が raw conversation を semantic decision source として利用することである。
+
 ### deterministic application layer
 
 deterministic code は以下を所有する。
@@ -198,6 +208,7 @@ PR #130 の conversation-quality 部分を完了扱いにするには、少な�
 7. 同じ semantic scenario を言い回しや情報提示順を変えて複数回観測し、特定 transcript 依存でないことを確認する。
 8. semantic / Fact Graph / scheduler / preview / approval / save の deterministic ownership は維持する。
 9. full CI / Browser Regression を green にしたうえで、最終HEADの実API transcriptとtraceを人間が読んで不自然な固定対話が残っていないことを確認する。
+10. AI semantic boundary 後の deterministic production path が raw `userText` / raw conversation を意味判断に使用せず、AI-produced schema / Fact Graph / typed machine state だけから semantic application decision を行うことを、実装監査と回帰で確認する。
 
 ## 12. 禁止する修正パターン
 
@@ -206,6 +217,7 @@ PR #130 の conversation-quality 部分を完了扱いにするには、少な�
 - ACK不足を直すために全turnへ同じ相槌をprefixする。
 - dynamic dialogue failureを、固定 transcript のexpected string変更だけでgreenにする。
 - Lunaが理解できる意味処理をraw-text regex / keyword routingへ戻す。
+- AI semantic boundary 後の deterministic code が、raw conversation の substring / regex / keyword / sentence split を semantic decision source として利用する。
 - rendererが自然に言える内容を、旧モデル向けprompt例示で過剰拘束する。
 - user simulatorに未来のassistant responseや最終Fact Graphを見せ、最適な完全回答を作らせる。
 - conversation-quality testの途中で違和感を見つけても、そのままscriptを最後まで流す。
