@@ -31,11 +31,6 @@ import {
   FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
   createFocusedTemporalScopeRepairMessagesV5,
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
-import {
-  WEEKLY_PLANNING_ENTRY_ROUTER_MAX_COMPLETION_TOKENS,
-  WEEKLY_PLANNING_ENTRY_ROUTER_RESPONSE_FORMAT,
-  createWeeklyPlanningEntryRouterMessages,
-} from '../entry/weeklyPlanningEntryRouter';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 9_000;
@@ -45,7 +40,6 @@ const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
-const ENTRY_ROUTER_REQUEST_MAX_BYTES = 2_500;
 
 function byteLength(value: unknown): number {
   return new TextEncoder().encode(
@@ -57,13 +51,12 @@ function requestBytes(params: {
   messages: Array<{ role: string; content: string }>;
   responseFormat: unknown;
   maxCompletionTokens: number;
-  purpose?: 'weekly_planning_interpreter' | 'weekly_planning_semantic_normalizer';
 }): number {
   return byteLength({
     messages: params.messages,
     temperature: 0,
     responseFormat: params.responseFormat,
-    purpose: params.purpose ?? 'weekly_planning_semantic_normalizer',
+    purpose: 'weekly_planning_semantic_normalizer',
     maxCompletionTokens: params.maxCompletionTokens,
   });
 }
@@ -133,19 +126,6 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
-  it('keeps semantic entry routing materially smaller than the generic Stable V5 request', () => {
-    const genericBytes = representativeGenericRequestBytes();
-    const entryBytes = requestBytes({
-      messages: createWeeklyPlanningEntryRouterMessages('来週の勉強予定を立てたい'),
-      responseFormat: WEEKLY_PLANNING_ENTRY_ROUTER_RESPONSE_FORMAT,
-      maxCompletionTokens: WEEKLY_PLANNING_ENTRY_ROUTER_MAX_COMPLETION_TOKENS,
-      purpose: 'weekly_planning_interpreter',
-    });
-
-    expect(entryBytes).toBeLessThanOrEqual(ENTRY_ROUTER_REQUEST_MAX_BYTES);
-    expect(entryBytes).toBeLessThan(genericBytes / 4);
-  });
-
   it('keeps supplemental orchestration policy small and scenario independent', () => {
     const meaningPolicy = createWeeklyPlanningSemanticMeaningPolicyV5();
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({

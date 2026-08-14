@@ -7,7 +7,6 @@ import {
 import type {
   WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
-import type { WeeklyPlanningEntryRoutingTrace } from '../entry/weeklyPlanningEntryRouter';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
   createWeeklyPlanningTurnRequestContext,
@@ -38,7 +37,6 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   timetableTermId?: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
-  entryRoutingTrace?: WeeklyPlanningEntryRoutingTrace;
 }
 
 export interface WeeklyPlanningTurnRuntimeGateway {
@@ -75,7 +73,6 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         traceRequestId: params.pending.requestId,
         weekStartsOn: requestContext.weekStartsOn,
         requestContext,
-        entryRoutingTrace: params.entryRoutingTrace,
       });
     },
   };

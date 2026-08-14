@@ -11,6 +11,7 @@ import {
   distributeWeeklyDraftBlocks,
   mergeWeeklyPlanningRevision,
   parseWeeklyPlanningConditionOperations,
+  looksLikeWeeklyPlanningRequest,
 } from './weeklyPlanningTransforms';
 import {
   blocksGroupedByDate,
@@ -443,6 +444,7 @@ describe('weeklyPlanningTransforms.integration', () => {
 
   it('does not treat short condition replies as weekly planning requests without pending state', () => {
     ['7日間で', '1回90分で', '13時から22時で', '休憩15分で'].forEach((reply) => {
+      expect(looksLikeWeeklyPlanningRequest(reply)).toBe(false);
       expect(
         assessWeeklyPlanningRequest({
           selectedDate: '2026-06-19',

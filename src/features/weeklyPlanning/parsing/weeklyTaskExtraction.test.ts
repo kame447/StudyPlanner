@@ -3,8 +3,20 @@ import {
   assessWeeklyPlanningRequest,
   createAvailabilityAwareWeeklyDraftBlocksFromText,
   createSimpleWeeklyDraftBlocksFromText,
+  looksLikeWeeklyPlanningRequest,
 } from '../weeklyPlanningTransforms';
 describe('parsing weeklyTaskExtraction', () => {
+  it('detects multi-task weekly planning requests for UI routing', () => {
+    expect(
+      looksLikeWeeklyPlanningRequest(
+        '来週、英語を3時間、計算理論を4時間、卒研を2時間やりたい',
+      ),
+    ).toBe(true);
+    expect(looksLikeWeeklyPlanningRequest('来週、英語を３時間、数学を２時間')).toBe(true);
+    expect(looksLikeWeeklyPlanningRequest('明日19時から英語を1時間')).toBe(false);
+    expect(looksLikeWeeklyPlanningRequest('来週ちょっと勉強したい')).toBe(false);
+  });
+
   it('returns no simple drafts for blank or unextractable input', () => {
     expect(
       createSimpleWeeklyDraftBlocksFromText({

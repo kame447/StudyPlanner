@@ -399,7 +399,6 @@ function projectStageData(stage: string, value: unknown): unknown {
         userText: headTailUtf8(stringValue(data.userText) ?? '', 4_000),
         selectedDate: stringValue(data.selectedDate),
         timetableTermId: stringValue(data.timetableTermId),
-        entryRoute: stringValue(data.entryRoute),
         inputCounts: compactUnknown(data.inputCounts),
       };
     case 'runtime_configuration_evaluated':

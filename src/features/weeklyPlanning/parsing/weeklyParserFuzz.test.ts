@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessWeeklyPlanningRequest,
   parseWeeklyPlanningConditionOperations,
+  looksLikeWeeklyPlanningRequest,
 } from '../weeklyPlanningTransforms';
 import fc from 'fast-check';
 
@@ -29,6 +30,7 @@ describe('weekly parser fuzz', () => {
         expect(() => extractSimpleWeeklyPlanningTasks(text)).not.toThrow();
         expect(() => parseWeeklyPlanningConditionOperations(text)).not.toThrow();
         expect(() => assessWeeklyPlanningRequest({ selectedDate: '2026-06-23', text })).not.toThrow();
+        expect(() => looksLikeWeeklyPlanningRequest(text)).not.toThrow();
         const tasks = extractSimpleWeeklyPlanningTasks(text);
         tasks.forEach((task) => {
           expect(task.title.trim().length).toBeGreaterThan(0);

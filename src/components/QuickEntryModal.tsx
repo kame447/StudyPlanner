@@ -25,10 +25,7 @@ import type {
   WeeklyPlanningPendingApproval,
   WeeklyPlanningPendingTurn,
 } from '../features/weeklyPlanning/types';
-import type {
-  WeeklyPlanningTurnSubmissionOptions,
-  WeeklyPlanningTurnSubmissionResult,
-} from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
 import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
 import { resolveInitialQuickEntryInputMethod } from './weeklyPlanningConversationMode';
 import type {
@@ -65,10 +62,7 @@ interface QuickEntryModalProps {
   weeklyPlanningRevision: number;
   weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
   weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
-  onSubmitWeeklyPlanningTurn: (
-    text: string,
-    options?: WeeklyPlanningTurnSubmissionOptions,
-  ) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
   onCancelWeeklyPlanningTurn: () => boolean;
   onClearWeeklyPlanningConversation: () => boolean;
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;

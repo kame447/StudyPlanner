@@ -15,7 +15,6 @@ export type {
   WeeklyPlanningTurnFailure,
   WeeklyPlanningTurnFailureCode,
   WeeklyPlanningTurnFailureDiagnostics,
-  WeeklyPlanningTurnSubmissionOptions,
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutionTypes';
 
@@ -36,7 +35,6 @@ export async function executeWeeklyPlanningTurn(
     traceRequestId: input.traceRequestId,
     weekStartsOn: input.weekStartsOn,
     requestContext: input.requestContext,
-    entryRoutingTrace: input.entryRoutingTrace,
   });
   return weeklyPlanningStableV5TurnResultProjector.project({ input, result });
 }

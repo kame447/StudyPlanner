@@ -3,8 +3,8 @@
 Status: active / second and final PR in the current two-PR scope
 Date: 2026-08-14
 Branch: `agent/weekly-conversation-quality-luna-audit`
-Primary existing issues: #115, #118
-Explicitly excluded: #45 privacy, #47 personalization, #51 multi-device approval, #52 UI separation, #128 saved-preview migration
+Primary existing issue: #118
+Explicitly excluded: #52, #115
 
 ## 1. 目的
 
@@ -13,14 +13,6 @@ PR #129でfile-by-file refactorとその最終検証はmainへmerge済みであ�
 明確な失敗を見つけた場合は次のturnへ進まず、semantic AI、schema/validator、formal binding、dialogue decision、renderer、scheduler、previewのどの層が原因かを特定する。修正はその層に限定し、対象回帰、full CI、同じ会話地点からの再実行を行う。
 
 最後に最終HEADで通し会話をpreviewまで完走させ、ブラウザ上のpreview昇格、承認入口、保存境界まで既存contractどおりに接続されることを確認する。
-
-### Start gate
-
-作業は2026-08-14にGitHub上で次を再確認した後にのみ開始した。
-
-- PR #129はmerge済み: <https://github.com/kame447/StudyPlanner/pull/129>
-- `main`はmerge commit `be0c483d779be315f10ccf3f34adb9c7420e9631`を指す
-- 同commitのmain push CI run `31783727179`はsuccess
 
 ## 2. 固定する責務境界
 
@@ -38,11 +30,9 @@ raw Japanese textをregex、keyword、dictionary、legacy parserで再解釈し�
 
 PR #109のhuman-reviewed conversation loopはbaselineとして完了しているが、root task queueに残っている。今回の最終再観測後にclosedへ移し、現在taskとの関係を明記する。
 
-Issue #118は開始時に部分実装だった。completed workloadからremaining effortを導くdeterministic計算、provenance、5分/15分単位の切り上げ回帰は存在したが、remaining workloadの直接所要時間を聞く前にcompleted duration evidenceを尋ねる会話policyが未完了だった。現在のbranchではこの質問選択を実装し、逐次実APIで確認中である。
+Issue #118は部分実装である。completed workloadからremaining effortを導くdeterministic計算、provenance、5分/15分単位の切り上げ回帰は存在するが、remaining workloadの直接所要時間を聞く前にcompleted duration evidenceを尋ねる会話policyが未完了である。今回の既知feature差分はここに限定する。
 
-Issue #115もmain上で未完了だった。`NaturalLanguageAssistant`が`looksLikeWeeklyPlanningRequest`を呼び、week表現と2個以上の`N時間`に一致したときだけdefault chatから週間計画へ案内していた。これはStable V5より前のraw Japanese semantic truthであり、`来週の勉強予定を立てたい`を扱えない。focused structured Luna routerへ置換し、元の入力をStable V5へ渡すwork unitをこの同一branchへ統合した。
-
-PR/Issue stateだけでは完了判定していない。PR #109のStable V5 baseline、#111の#109へ吸収されたdocs-only作業、#120のgrounding/repair/pass-over/active-only/observed pace、#124のLuna統一、#127のPlaywright再接続を現在のmoduleとtestへ照合した。Issue #43はcontroller/application ownershipが実装済みのstale-open候補、#89は空trace session infrastructureで対話品質外、#116は完了済み、#128はsaved-preview migrationで別scopeと判定した。新規Issueは作成していない。
+Issue #52の週間計画UI大規模責務分離とIssue #115のraw-text regex routingは独立scopeを維持し、このPRへ混在させない。
 
 ## 4. 実行順序
 
@@ -53,7 +43,6 @@ roadmap / current contract / task正本を同期
 → historical scenarioをresumable実APIで1 turnずつLuna再観測
 → 明確な失敗ごとに停止、原因層修正、対象回帰、full CI、同地点再実行
 → Issue #118の未完了会話policyを実装・実API確認
-→ Issue #115のfresh-session入口をstructured semantic routingへ移し実API確認
 → production heuristic inventoryと敵対的回帰を再確認
 → prompt簡素化候補をLuna ablationし、安全に削れるものだけ反映
 → 最終HEADで通し実API会話をpreviewまで完走
@@ -72,7 +61,6 @@ roadmap / current contract / task正本を同期
 6. correction/no-op/re-previewでrevision、idempotency、previewを壊さない会話
 7. completed workloadとcompleted durationからremaining effortを導くIssue #118会話
 8. calendar/availability、explicit time、relation、session splittingを含む代表会話
-9. default chatから曖昧な週間計画要求をmagic phraseなしでStable V5へ入れるIssue #115会話
 
 各turnでtranscriptだけでなく、semantic raw response、accepted document、validation/repair、formal binding、Fact Graph、dialogue decision、renderer、preview、trace persistenceを確認する。AI文面や一つのsemantic output shapeを固定oracleにはしない。
 
@@ -101,22 +89,14 @@ turn 2のrun `31786200882`はworkflow上はgreenだったが、意味上は不�
 - representative generic request: 17,351 bytes
 - focused authorization request: 1,202 bytes
 - focused contextual answer request: 2,263 bytes
-- focused planning-window repair request: 1,121 bytes
-- focused temporal-scope repair request: 1,097 bytes
-- dialogue renderer request: 3,513 bytes
-- fresh-session entry router request: 1,237 bytes（約310 tokens、completion cap 40）
 
 現在のgeneric requestはbudget内であり、最大部分はprovider schemaである。したがって単純な文字数削減を目的に安全指示を落とさない。
-
-weekly planning production model callsは、fresh entry、focused authorization、focused contextual answer、focused planning-window repair、focused temporal-scope repair、generic initial、最大1回のgeneric repair、dialogue rendererである。weekly promptにfew-shot会話はない。focused routeがexactでなければgenericへfallbackし、renderer failureは決定論的reference responseへfallbackする。entryはschema不適合時にheuristic repairせず明示的に失敗する。
-
-別系統のordinary single-plan pipeline (`src/services/naturalLanguagePlanner.ts`) にはbatch extraction、planning-intent extraction、single-plan extractionと最大1回のrepairがある。single-plan extractionだけ2行のcompact exampleを含み、各call後にdeterministic normalization/validationを行う。legacy `weeklyPlanningBehaviorAwareDialoguePlanner.ts`にもmodel callが残るが、architecture test上production Stable V5から到達不能である。最終gateまでにこれらもschema、bytes/tokens、重複責務表へ含める。
 
 監査では規則を、意味・domain・安全contract、schemaと重複するrepresentation contract、historical model weakness向けscaffolding、deterministicで意味を変えず扱えるnormalizationへ分類する。Luna ablation前後で同じscenarioを比較し、明確な退行がなく、schema/validator/repairとの重複も減る場合だけ削除する。通常CIへmodel比較oracleや一時的ablation artifactを残さない。
 
 ## 7. Heuristic監査
 
-過去に導入したheuristicは、raw textの意味解釈ではなくaccepted structured factsまたはmachine stateに対するdeterministic policyであることを確認する。対象は短答binding、pending range、field priority、clarification、quantity role、completed/remaining/duration、ambiguity、modifier target、progress-first、phase/focused routing、希望時間帯、訂正と再計算、grounding、repair、pass-over/reopen、active-only projection、draft-ready、re-preview、no-op idempotency、preview promotion、approval誘導に加え、human-scale effort質問、per-unit/total/session effort、vocabulary session分割、tiny-tail抑制、長いfree segment優先、existing plan/timetable buffer、relation ordering、request-time not-before、reserve/review policy、observed pace derivation、5分/15分allocation granularityである。
+過去に導入したheuristicは、raw textの意味解釈ではなくaccepted structured factsに対するdeterministic policyであることを確認する。対象はhuman-scale effort質問、per-unit/total/session effort、vocabulary session分割、tiny-tail抑制、長いfree segment優先、existing plan/timetable buffer、relation ordering、request-time not-before、reserve/review policy、observed pace derivation、5分/15分allocation granularityである。
 
 happy pathだけでなく、unit/component mismatch、曖昧なprovenance、既存のdirect estimate優先、今日の過去時刻、partial placement、cycle、stale previewを敵対的回帰で確認する。
 
@@ -129,7 +109,6 @@ prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trac
 - stale task、Issue、PRの棚卸しが現コード根拠と一致する
 - historical scenarioを一対話ずつLunaで再観測し、明確な失敗を未処理のまま次へ送っていない
 - Issue #118の未完了acceptanceが実装、回帰、実API会話で確認されている
-- Issue #115のraw-text regex truthがproductionから消え、fresh-session Luna routeとtraceが実APIで確認されている
 - promptの長さと複雑さを実測し、削除・維持の判断にLuna ablationの根拠がある
 - production heuristic inventoryが対象回帰と敵対的回帰でgreenである
 - 最終HEADの通し実API会話がpreviewまで完走する

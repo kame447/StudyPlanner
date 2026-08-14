@@ -19,11 +19,8 @@ import type {
   WeeklyPlanningPendingApproval,
   WeeklyPlanningPendingTurn,
 } from '../features/weeklyPlanning/types';
-import type {
-  WeeklyPlanningTurnSubmissionOptions,
-  WeeklyPlanningTurnSubmissionResult,
-} from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
-import { routeWeeklyPlanningEntry } from '../features/weeklyPlanning/entry/weeklyPlanningEntryRouter';
+import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import { looksLikeWeeklyPlanningRequest } from '../features/weeklyPlanning/weeklyPlanningTransforms';
 import { decideDialogueKeyboardAction } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
 import {
@@ -57,10 +54,7 @@ interface NaturalLanguageAssistantProps {
   weeklyPlanningRevision: number;
   weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
   weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
-  onSubmitWeeklyPlanningTurn: (
-    text: string,
-    options?: WeeklyPlanningTurnSubmissionOptions,
-  ) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
   onCancelWeeklyPlanningTurn: () => boolean;
   onClearWeeklyPlanningConversation: () => boolean;
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
@@ -476,47 +470,25 @@ export function NaturalLanguageAssistant({
   }
 
   async function handleAnalyze() {
-    const trimmedText = text.trim();
-    if (!trimmedText) {
+    if (!text.trim()) {
       setError('自然言語の入力内容を入れてください。');
+      return;
+    }
+
+    if (looksLikeWeeklyPlanningRequest(text)) {
+      setError('複数タスクの週間計画は「週間計画」モードで作成してください。');
+      setStatus('');
+      setSuggestions([]);
+      setEditTargetPlanId('');
       return;
     }
 
     setIsAnalyzing(true);
 
     try {
-      const routing = await routeWeeklyPlanningEntry(trimmedText);
-      if (routing.decision === 'weekly_planning') {
-        setAiInputMode('weekly_planning');
-        setError('');
-        setStatus('');
-        setSuggestions([]);
-        setEditTargetPlanId('');
-        setSelectedWeeklyDraftDate('');
-        setWeeklyDraftPreviewMode('overview');
-        setText('');
-        const result = await onSubmitWeeklyPlanningTurn(trimmedText, {
-          entryRoutingTrace: routing.trace,
-        });
-        if (!result.accepted) setText(trimmedText);
-        if (result.draftCandidates.length > 0) {
-          setWeeklyDraftPreviewMode('overview');
-          setSelectedWeeklyDraftDate('');
-        }
-        scheduleWeeklyPlanningInputFocus();
-        return;
-      }
-      if (routing.decision === 'ambiguous') {
-        setError('1件の予定と週間計画のどちらにも読めます。「相談」か「週間計画」を選んで、意図を一つだけ補ってください。');
-        setStatus('');
-        setSuggestions([]);
-        setEditTargetPlanId('');
-        return;
-      }
-
       const nextSuggestions = await generateNaturalLanguageSuggestions({
         mode,
-        text: trimmedText,
+        text,
         selectedDate,
         plans,
         userId,
@@ -541,7 +513,7 @@ export function NaturalLanguageAssistant({
       setSuggestions(nextSuggestions);
       setEditTargetPlanId(nextSuggestions[0]?.matchedPlanId ?? '');
     } catch {
-      setError('入力の解析に失敗しました。接続を確認してもう一度送ってください。');
+      setError('提案の生成に失敗しました。');
     } finally {
       setIsAnalyzing(false);
     }
