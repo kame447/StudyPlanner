@@ -239,13 +239,13 @@ describe('Stable V5 semantic document', () => {
     expect(result.diff).toBeNull();
   });
 
-  it('keeps AI responsibility limited to semantic normalization without representation guardrails', () => {
+  it('keeps model-facing policy about meaning rather than deterministic ownership', () => {
     const system = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '来週の予定を作りたい',
     })[0]?.content ?? '';
-    expect(system).toContain('interpret user meaning and context');
-    expect(system).toContain('schema and deterministic validators own canonical wire shape');
+    expect(system).toContain('Interpret user meaning and context into semantic facts using only supported evidence');
     expect(system).toContain('never invent their contents');
+    expect(system).not.toContain('schema and deterministic validators own canonical wire shape');
     expect(system).not.toContain('Do not emit application, scheduling, readiness, preview, save commands');
   });
 });
