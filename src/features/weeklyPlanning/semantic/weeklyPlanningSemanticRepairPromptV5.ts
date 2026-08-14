@@ -1,10 +1,5 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 
-export interface WeeklyPlanningSemanticRepairInputV5 {
-  userText: string;
-  publicStateSummary?: Record<string, unknown>;
-}
-
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -42,9 +37,6 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
     directives.push('Emit relations only for stated order/dependency/priority and reference task localIds only.');
   }
-  if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
-    directives.push('Remove prior-turn facts not grounded in currentUserText; preserve unrelated valid current-turn facts and invent nothing.');
-  }
   if (directives.length === 0) {
     directives.push('Correct only the listed validation failures; preserve unrelated current-turn meaning.');
   }
@@ -55,7 +47,6 @@ export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
   baseMessages: ChatMessage[];
   invalidResponse: string;
   validationErrors: string[];
-  input: WeeklyPlanningSemanticRepairInputV5;
 }): ChatMessage[] {
   const repairInstruction: ChatMessage = {
     role: 'user',
