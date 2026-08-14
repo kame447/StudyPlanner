@@ -76,7 +76,7 @@ function validateRenderedText(
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
     planningInformation: input.planningInformation,
-    referenceResponse: input.fallbackText,
+    requiredLabels: input.requiredLabels,
     previewCount: input.previewCount,
   });
   const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
