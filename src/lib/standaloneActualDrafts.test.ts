@@ -59,25 +59,25 @@ describe('standaloneActualDrafts', () => {
     });
   });
 
-  it('projects an edited draft onto the existing actual identity', () => {
-    const draft = createStandaloneActualDraft(actual, {
-      occurrenceDate: '2026-08-15',
-      startTime: '19:00',
-      endTime: '20:30',
-      title: '英語レポート',
-      subject: '英語',
-      note: '続き',
-    });
-
-    expect(createStandaloneActualCandidate(actual, draft)).toMatchObject({
+  it('projects raw edit values onto the existing actual identity for link scoring', () => {
+    expect(
+      createStandaloneActualCandidate(actual, {
+        occurrenceDate: '2026-08-15',
+        startTime: '19:00',
+        endTime: '20:30',
+        title: '  英語レポート  ',
+        subject: '  英語  ',
+        note: '  続き  ',
+      }),
+    ).toMatchObject({
       id: 'actual-1',
       planId: null,
       occurrenceDate: '2026-08-15',
       actualStartTime: '19:00',
       actualEndTime: '20:30',
-      title: '英語レポート',
-      subject: '英語',
-      note: '続き',
+      title: '  英語レポート  ',
+      subject: '  英語  ',
+      note: '  続き  ',
       isAlignedToPlan: false,
     });
   });
