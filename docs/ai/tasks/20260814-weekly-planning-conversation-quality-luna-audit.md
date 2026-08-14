@@ -82,6 +82,8 @@ turn 2のrun `31786200882`はworkflow上はgreenだったが、意味上は不�
 
 turn 2の再試行run `31786546124`はLunaで意味上も合格した。accepted graphにはcompleted 30 pagesへ`total_duration=90`が入り、schedulerはcompletedを非計画、同一scopeのremainingを明示targetのcontextとして非計画にした。previewは25 pagesずつ2件、75分ずつ、合計50 pages・150分であり、二重計上はない。両候補の`sourceFactRefs`にはtask、material component、target、remaining、completed、observed effortがすべて残った。利用者向け文面も実績ペースを根拠に2件を作ったことを説明している。これによりIssue #118の未完了acceptanceは、対象回帰と2-turn実API会話の双方で満たした。
 
+historical scenario turn 1のrun `31786921036`も会話品質として合格した。「来週の勉強計画を一緒に考えてほしいです。」からrelative planning windowを作り、8月17日〜23日と説明したうえで、予定へ入れる作業を一つ尋ねた。初回Luna出力はrelative-week valueをcanonical enumの`next_week`ではなく「来週」としたためvalidatorが拒否し、1回のAI repairで受理された。Graphやcheckpointは正しくrevision 1へ進んだが、約17〜18KBのgeneric requestを2回送る必要はないため、機能failureではなくfocused repairまたはstructural normalizationのablation候補として保持する。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
