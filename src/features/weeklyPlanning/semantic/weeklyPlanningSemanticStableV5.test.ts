@@ -239,13 +239,14 @@ describe('Stable V5 semantic document', () => {
     expect(result.diff).toBeNull();
   });
 
-  it('keeps model-facing policy about meaning rather than deterministic ownership', () => {
+  it('keeps model-facing policy about semantic meaning rather than workflow ownership', () => {
     const system = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '来週の予定を作りたい',
     })[0]?.content ?? '';
-    expect(system).toContain('Interpret user meaning and context into semantic facts using only supported evidence');
-    expect(system).toContain('never invent their contents');
+    expect(system).toContain('current-turn meaning into semantic facts');
+    expect(system).toContain('Emit relations only when stated');
     expect(system).not.toContain('schema and deterministic validators own canonical wire shape');
     expect(system).not.toContain('Do not emit application, scheduling, readiness, preview, save commands');
+    expect(system).not.toContain('A concern requires explicit evidence');
   });
 });
