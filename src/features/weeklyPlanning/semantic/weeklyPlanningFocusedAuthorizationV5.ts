@@ -29,11 +29,8 @@ export const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat 
 };
 
 const FOCUSED_AUTHORIZATION_SYSTEM_PROMPT = [
-  'You are a focused semantic interpreter for one planning-conversation decision.',
-  'Meaning interpretation is your responsibility. Deterministic code will only route this request and combine your structured decision with other AI-derived semantic facts.',
-  'Return create_plan only when the current user utterance purely authorizes creating the draft/preview from conditions that are already collected.',
-  'Return fallback for any utterance that adds, changes, removes, corrects, or qualifies planning facts, as well as ordinary discussion or ambiguous intent.',
-  'Do not decide readiness, scheduling, placement, persistence, or wording. Return only the schema.',
+  'Return create_plan only when the current utterance purely authorizes creating the draft/preview from already-collected conditions.',
+  'If it adds, changes, removes, corrects, qualifies, discusses, or ambiguously refers to any planning fact, return fallback. Deterministic code owns readiness, scheduling, persistence, and wording; return only the schema.',
 ].join('\n');
 
 export interface FocusedAuthorizationDecisionV5 {
