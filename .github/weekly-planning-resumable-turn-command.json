@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-audit-ambiguous-standalone-modifier-20260815",
-  "turn": 1,
-  "attempt": 4,
-  "user_text": "英語と数学をやりたいです。20ページくらい。",
-  "previous_run_id": null,
-  "conversation_id": "weekly-luna-audit-ambiguous-modifier-20260815-01",
-  "owner_id": "real-api-luna-audit-ambiguous-modifier-user-1",
+  "scenario": "luna-audit-historical-binding-20260814",
+  "turn": 3,
+  "attempt": 3,
+  "user_text": "数学のワークと古典の課題が残ってます。数学のワークの方が量は多いです。",
+  "previous_run_id": "31787045539",
+  "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
+  "owner_id": "real-api-luna-audit-historical-binding-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
