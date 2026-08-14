@@ -21,7 +21,7 @@ function client(sequence: string[]): {
   };
 }
 
-function invalidOldBreakdown(): string {
+function structurallyInvalidBreakdown(): string {
   return JSON.stringify({
     schemaVersion: 'weekly-planning-semantic-v5',
     planningIntent: 'update_plan',
@@ -29,7 +29,7 @@ function invalidOldBreakdown(): string {
     tasks: [{
       localId: 'task-1',
       existingPublicId: 'task-public',
-      decompositionStatus: 'needs_breakdown',
+      decompositionStatus: 'decomposed',
       category: 'study',
       title: '提出課題',
       study: { purpose: 'homework', contextLabel: '提出課題', components: [] },
@@ -44,13 +44,7 @@ function invalidOldBreakdown(): string {
     availabilityDeclarations: [],
     constraintSourceRequests: [],
     userContextFacts: [],
-    uncertainties: [{
-      localId: 'uncertainty-1',
-      targetLocalId: 'task-1',
-      field: 'work_breakdown',
-      reason: 'constituents unknown',
-      sourceText: '提出課題が残っている',
-    }],
+    uncertainties: [],
     corrections: [],
     decisions: [],
   });
@@ -126,8 +120,9 @@ const breakdownState = {
 };
 
 describe('Stable V5 contextual repair messages', () => {
-  it('uses a generic validation repair contract for work-breakdown repair', async () => {
-    const fake = client([invalidOldBreakdown(), resolvedBreakdown()]);
+  it('uses a generic validation repair contract for structural work-breakdown repair', async () => {
+    const invalidResponse = structurallyInvalidBreakdown();
+    const fake = client([invalidResponse, resolvedBreakdown()]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '英語レポートと化学プリントが残っています',
       publicStateSummary: breakdownState,
@@ -144,7 +139,7 @@ describe('Stable V5 contextual repair messages', () => {
     ]);
     expect(repairMessages[0]?.content).toContain('pendingQuestion as authoritative');
     expect(repairMessages[0]?.content).not.toContain('work_breakdown target');
-    expect(repairMessages[2]?.content).toBe(invalidOldBreakdown());
+    expect(repairMessages[2]?.content).toBe(invalidResponse);
 
     const repairPayload = JSON.parse(repairMessages[3]?.content ?? '{}') as {
       requiredChanges: string[];
