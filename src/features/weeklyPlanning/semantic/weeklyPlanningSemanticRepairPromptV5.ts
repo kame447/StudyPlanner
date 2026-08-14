@@ -16,6 +16,11 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('Choose the canonical relative-day/week value matching current meaning and context.');
   }
   if (errors.some((error) =>
+    error.includes('document.userContextFacts')
+    && error.includes('dateExpression:unsupported-expression'))) {
+    directives.push('For a user-context event with a relative date, resolve dateExpression to supported ISO YYYY-MM-DD from calendarContext.currentDate/timeZone; preserve the event value separately and do not discard the date.');
+  }
+  if (errors.some((error) =>
     error.includes(':missing-start')
     || error.includes(':missing-end')
     || error.includes(':missing-interval')
