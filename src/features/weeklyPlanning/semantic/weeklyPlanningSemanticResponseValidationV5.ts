@@ -35,9 +35,6 @@ import {
   validateWeeklyPlanningSemanticEvidenceV5,
 } from './weeklyPlanningSemanticEvidenceV5';
 import {
-  validateWeeklyPlanningStandaloneModifierTargetsV5,
-} from './weeklyPlanningStandaloneModifierTargetV5';
-import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
@@ -141,10 +138,6 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...validateWeeklyPlanningSemanticEvidenceV5({
       document,
       input,
-    }),
-    ...validateWeeklyPlanningStandaloneModifierTargetsV5({
-      document,
-      userText: input.userText,
     }),
   ];
   return {
