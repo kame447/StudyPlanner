@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { BookOpen } from 'lucide-react';
 import {
+  buildSubjectsWithMaterialFallback,
   getActiveStudyMaterials,
   groupMaterialsBySubjectId,
 } from '../lib/bookshelfMaterials';
@@ -59,12 +60,24 @@ export function DailyMaterialShelf({
     () => getActiveStudyMaterials(materials, userId),
     [materials, userId],
   );
+  const subjectsWithFallback = useMemo(
+    () =>
+      buildSubjectsWithMaterialFallback({
+        subjects,
+        activeMaterials,
+        userId,
+        fallbackColor: FALLBACK_SUBJECT_COLOR,
+      }),
+    [activeMaterials, subjects, userId],
+  );
   const groupedMaterials = useMemo(
     () => groupMaterialsBySubjectId(activeMaterials),
     [activeMaterials],
   );
   const sections = useMemo(() => {
-    const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+    const subjectById = new Map(
+      subjectsWithFallback.map((subject) => [subject.id, subject]),
+    );
 
     return Array.from(groupedMaterials.entries())
       .map(([subjectId, subjectMaterials]) => {
@@ -82,7 +95,7 @@ export function DailyMaterialShelf({
         };
       })
       .sort((left, right) => left.name.localeCompare(right.name, 'ja'));
-  }, [groupedMaterials, subjects]);
+  }, [groupedMaterials, subjectsWithFallback]);
 
   return (
     <section className="panel daily-bookshelf-link-card print-hide">
