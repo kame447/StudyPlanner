@@ -13,15 +13,6 @@ function recordArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-function normalized(value: string): string {
-  return value.normalize('NFKC').replace(/\s+/g, ' ').trim();
-}
-
-function grounded(sourceText: string, userText: string): boolean {
-  const evidence = normalized(sourceText);
-  return evidence.length > 0 && normalized(userText).includes(evidence);
-}
-
 export function readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
   publicStateSummary?: Record<string, unknown>,
 ): string | null {
@@ -40,7 +31,6 @@ export function readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
 
 export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
-  userText: string;
   publicStateSummary?: Record<string, unknown>;
 }): string[] {
   const targetPublicId = readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
@@ -64,9 +54,6 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   }
 
   const target = targetEntries[0]?.task;
-  if (target && !grounded(target.sourceText, params.userText)) {
-    errors.push('document:work-breakdown-target-current-evidence-required');
-  }
   if (
     target?.decompositionStatus === 'decomposed'
     && target.category === 'study'
