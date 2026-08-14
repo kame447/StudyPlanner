@@ -29,17 +29,19 @@ Current completed loops:
 - Loop 22: `src/components/DatePickerDialogs.tsx` — day calendar extracted to `DayCalendarDialog.tsx`; week picker remains the module owner and the old day-picker import path is preserved by re-export.
 - Loop 23: `src/components/DayNotebookPanel.tsx` — removed as an unreferenced dead component surface.
 - Loop 24: `src/components/DayTimeline.tsx` — overlap lane layout extracted to `src/lib/dayTimelineLayout.ts`; duplicate actual title/subject/alignment inference replaced by shared `actualDrafts` helpers; focused layout tests added.
+- Loop 25: `src/components/DayView.tsx` — daily material shelf and material quick-create modal extracted; shared bookshelf and quick-entry contracts reused instead of duplicating filtering/end-time policy.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit, next with `DayView.tsx`.
-2. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
-3. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
-4. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
-5. Audit duplicated actual-entry concerns across `ActualEditorCard`, `StandaloneActualEditorCard`, `ActualTrackingTools`, and Quick Entry without prematurely merging distinct workflows.
-6. Treat `NaturalLanguageAssistant.tsx` / `QuickEntryModal.tsx` separation as Issue #52, not an opportunistic mega-rewrite.
-7. Treat raw-text weekly entry routing as Issue #115; do not add regex heuristics during refactor.
-8. Keep trace/privacy, cross-device approval, personalization and saved-preview migration concerns in their existing Issues rather than mixing them into structural loops.
+1. Continue `src/components/` file-by-file audit after the DayView checkpoint.
+2. `DayView.tsx` still owns timetable-import interaction and detail-modal composition; split only if each boundary remains independently testable.
+3. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
+4. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
+5. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
+6. Audit duplicated actual-entry concerns across `ActualEditorCard`, `StandaloneActualEditorCard`, `ActualTrackingTools`, and Quick Entry without prematurely merging distinct workflows.
+7. Treat `NaturalLanguageAssistant.tsx` / `QuickEntryModal.tsx` separation as Issue #52, not an opportunistic mega-rewrite.
+8. Treat raw-text weekly entry routing as Issue #115; do not add regex heuristics during refactor.
+9. Keep trace/privacy, cross-device approval, personalization and saved-preview migration concerns in their existing Issues rather than mixing them into structural loops.
 
 Per-loop documentation rule:
 
