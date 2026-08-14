@@ -84,16 +84,16 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 
-  it('removes a copied accepted planning window algorithmically while preserving current-turn facts', async () => {
-    const staleWindow = {
-      localId: 'window-copied',
+  it('does not reinterpret an AI-emitted planning window from raw current-turn text after the semantic boundary', async () => {
+    const emittedWindow = {
+      localId: 'window-emitted',
       kind: 'relative_week' as const,
       value: 'next_week',
       start: null,
       end: null,
       sourceText: '来週の予定',
     };
-    const initial = currentTaskDocument(staleWindow);
+    const initial = currentTaskDocument(emittedWindow);
     const fake = client([JSON.stringify(initial)]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
@@ -113,11 +113,11 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.document?.planningWindow).toBeNull();
+    expect(result.document?.planningWindow).toEqual(emittedWindow);
     expect(result.document?.tasks).toHaveLength(1);
     expect(result.diagnostics.repairAttempted).toBe(false);
     expect(fake.calls).toHaveLength(1);
-    expect(result.diagnostics.algorithmicRepairs).toEqual(
+    expect(result.diagnostics.algorithmicRepairs).not.toEqual(
       expect.arrayContaining([expect.stringContaining('copied-planning-window-removed')]),
     );
   });
