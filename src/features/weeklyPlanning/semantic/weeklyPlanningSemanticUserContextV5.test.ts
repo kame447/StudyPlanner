@@ -159,11 +159,11 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
-  it('keeps the event-vs-work-deadline rule in the semantic meaning policy', () => {
+  it('keeps deadline semantics without a regression-specific goal-event prompt rule', () => {
     const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(prompt).toContain('Use deadline only for completion-by meaning');
-    expect(prompt).toContain('goal event');
-    expect(prompt).toContain('concern');
+    expect(prompt).toContain('Deadline means completion-by');
+    expect(prompt).not.toContain('otherwise an event date is a goal event');
+    expect(prompt).not.toContain('goal event');
     expect(prompt).not.toContain('共通テスト模試');
     expect(prompt).not.toContain('2週間後');
   });
