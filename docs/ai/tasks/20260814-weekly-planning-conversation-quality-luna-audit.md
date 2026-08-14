@@ -108,6 +108,12 @@ turn 6 attempt 3のrun `31788647370`はprovider 1回・AI repair 0回で受理�
 
 turn 6 attempt 4のrun `31789525607`は意味・scheduler・rendererを含めて合格した。Graph revision 7にdaily recurrenceと2 hours per occurrenceを保持し、scheduler input/previewは数学ワーク1件、古典1件、模試数学7件の合計9件となった。模試数学は8月17日〜23日の各日に120分ずつ一件だけ配置され、各候補の`sourceFactRefs`にrecurrence Fact IDが入った。rendererも「模試対策の数学は毎日2時間」と9件を一致して説明した。初回semantic出力はexact既存taskのtitleを空文字にしたため1回repairされた。この一過性のrepresentation失敗は機能上の不採用理由にはせず、repair率を下げるstructural normalization/ablation候補として保持する。commit `e9e18b0`のnormal CIとBrowser Regressionはいずれもgreenである。
 
+turn 7 attempt 1のrun `31789809229`は、2 hoursから1.5 hoursへのexact workload correctionをprovider 1回・repair 0回で受理した。旧workloadだけをsupersedeし、daily recurrenceはactiveのまま保持した。Graph revision 9のre-previewは引き続き9件で、模試数学は7日すべて90分、旧120分候補は残らない。semantic、correction lifecycle、schedulerは合格した。
+
+ただし最終表示は不採用とした。Luna renderer自身が「模試対策の数学を毎日1時間半に変更し」と自然に説明した後へ、mini時代からの決定論的self-repair notice「共通テスト模試の勉強を進めるは2時間ではなく1.5時間ですね。修正しました。」を再び前置し、同じ訂正を二度述べた。final messageは410 bytes、renderer単体は303 bytesで、107 bytes（26.1%）が重複だった。
+
+一要素ablationとして、成功したAI renderer応答をcomplete presentationとして採用し、決定論的noticeの後置前処理を外した。Fact correction、lifecycle、preview、approval/saveは引き続きdeterministicであり、provider/validation失敗時のdeterministic fallbackにはnoticeを残す。prompt/schema/call数は変更しない。成功・fallback・renderer trace・persistent outbox・Worker preparationの対象16件、TypeScript、全333 test files（1,545 tests）、production buildを通し、同じturn 6 checkpointからattempt 2で自然さを比較する。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
