@@ -63,7 +63,6 @@ export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
   const repairInstruction: ChatMessage = {
     role: 'user',
     content: JSON.stringify({
-      instruction: 'Return only the corrected current-turn Stable V5 semantic delta. Invent nothing.',
       requiredChanges: repairDirectivesForErrors(params.validationErrors),
       validationErrors: params.validationErrors,
     }),
