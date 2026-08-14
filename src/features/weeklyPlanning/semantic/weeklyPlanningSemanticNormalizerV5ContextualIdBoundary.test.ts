@@ -156,10 +156,10 @@ describe('Stable V5 contextual ID boundary', () => {
     };
     expect(repairPayload.requiredChanges).toHaveLength(1);
     expect(repairPayload.requiredChanges?.[0]).toContain(
-      'localId declared in this response',
+      'fresh localId declared in this response',
     );
     expect(repairPayload.requiredChanges?.[0]).toContain(
-      'Never copy a public Fact ID into targetLocalId',
+      'never use a public Fact ID',
     );
   });
 });
