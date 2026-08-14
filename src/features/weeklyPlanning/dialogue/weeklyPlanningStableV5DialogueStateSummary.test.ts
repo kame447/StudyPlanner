@@ -135,7 +135,7 @@ describe('Stable V5 dialogue state summary', () => {
       (payload.planningStateSummary as Record<string, unknown>),
     ).not.toHaveProperty('currentQuestion');
     expect(prompt.userPrompt).toContain(
-      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です',
+      'decidedFactsは確定情報、undecidedItemsは未確定情報です',
     );
   });
 });
