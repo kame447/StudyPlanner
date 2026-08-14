@@ -79,6 +79,7 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 6 | `src/components/NaturalLanguageAssistant.tsx` | 単発AI提案、週間計画request制御、会話、preview promotion/approval、24h preview描画を1componentが所有。SRP/ISP違反でIssue #52の根拠。段階抽出対象。 | 全体を4chunkで読了。#115 regex routingのproduction callerも再確認。 | 本台帳へ#52責務分離候補を記録。 | done |
 | 7 | `src/components/QuickEntryModal.tsx` | modal shell、manual plan/Todo/repeat、actual記録/紐付け、教材推論、AI/weekly delegationを同時所有。weekly propsの大量prop drillingもISP違反。 | 全体を3chunkで読了し`WeeklyPlanningQuickEntryModal` facadeからの展開を確認。 | 本台帳へ#52の第2責務分離対象として記録。 | done |
 | 8 | `src/components/WeeklyPlanningQuickEntryModal.tsx` | `WeeklyPlanningApplication`を現在のQuickEntry contractへ適合させるcompatibility adapter。現時点では変更理由が一つなのでno-change。#52完了時に縮退対象。 | application→QuickEntry prop mappingとapproval availability projectionを全体確認。 | 本台帳へ移行順序を記録。 | done |
+| 9 | `src/components/RootManagedAuthenticationContext.tsx` | root-managed authの有無だけを伝える1bit coordination contract。小さく凝集しておりno-change。 | `useAuthSessionState`がlogin後の二重state更新を避けるため利用していることを確認。 | 本台帳へLoop 9を追記。 | done |
 
 ## Remaining-problem register
 
