@@ -9,6 +9,11 @@ import {
 } from 'react';
 import { BookOpen, Bookmark, Image as ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
+  buildSubjectsWithMaterialFallback,
+  getActiveStudyMaterials,
+  groupMaterialsBySubjectId,
+} from '../lib/bookshelfMaterials';
+import {
   calculateMaterialPace,
   getMaterialUnitLabel,
   type MaterialPaceResult,
@@ -699,54 +704,23 @@ export function BookshelfView({
     undefined,
   );
   const activeMaterials = useMemo(
-    () =>
-      materials.filter(
-        (material) => material.userId === userId && material.status !== 'archived',
-      ),
+    () => getActiveStudyMaterials(materials, userId),
     [materials, userId],
   );
-  const subjectsWithFallback = useMemo(() => {
-    const subjectIds = new Set(subjects.map((subject) => subject.id));
-    const fallbackSubjects = new Map<string, StudySubject>();
-
-    activeMaterials
-      .filter((material) => !subjectIds.has(material.subjectId))
-      .forEach((material) => {
-        if (fallbackSubjects.has(material.subjectId)) {
-          return;
-        }
-
-        fallbackSubjects.set(material.subjectId, {
-          id: material.subjectId,
-          userId,
-          name: material.subjectName || '未分類',
-          color: material.color || SUBJECT_COLOR_OPTIONS[6].value,
-          createdAt: material.createdAt,
-          updatedAt: material.updatedAt,
-        });
-      });
-
-    return [...subjects, ...Array.from(fallbackSubjects.values())];
-  }, [activeMaterials, subjects, userId]);
-  const materialBySubjectId = useMemo(() => {
-    const grouped = new Map<string, StudyMaterial[]>();
-
-    activeMaterials.forEach((material) => {
-      const group = grouped.get(material.subjectId) ?? [];
-      group.push(material);
-      grouped.set(material.subjectId, group);
-    });
-
-    grouped.forEach((group) => {
-      group.sort(
-        (left, right) =>
-          left.name.localeCompare(right.name, 'ja') ||
-          left.createdAt.localeCompare(right.createdAt),
-      );
-    });
-
-    return grouped;
-  }, [activeMaterials]);
+  const subjectsWithFallback = useMemo(
+    () =>
+      buildSubjectsWithMaterialFallback({
+        subjects,
+        activeMaterials,
+        userId,
+        fallbackColor: SUBJECT_COLOR_OPTIONS[6].value,
+      }),
+    [activeMaterials, subjects, userId],
+  );
+  const materialBySubjectId = useMemo(
+    () => groupMaterialsBySubjectId(activeMaterials),
+    [activeMaterials],
+  );
 
   useEffect(() => {
     if (initialAction === 'add-material') {
