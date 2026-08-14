@@ -6,6 +6,7 @@ import {
 const REPRESENTATION_ONLY_ERROR_PATTERNS = [
   /^document\.planningWindow:/,
   /^document\.planningWindow\.value:/,
+  /^document\.userContextFacts\[\d+]\.dateExpression:unsupported-expression$/,
   /^availabilityDeclarations\[[^\]]+\]: namedTimePeriod must be null/,
   /^availabilityDeclarations\[[^\]]+\]: explicit clock text must use startTime\/endTime/,
   /^temporalConstraints\[[^\]]+\]: namedTimePeriod must be null/,
@@ -56,6 +57,21 @@ function redactPlanningWindowRepresentation(document: MutableRecord): void {
   window.value = '__REPAIRABLE_WINDOW_VALUE__';
   window.start = '__REPAIRABLE_WINDOW_START__';
   window.end = '__REPAIRABLE_WINDOW_END__';
+}
+
+function redactUserContextDateRepresentation(
+  document: MutableRecord,
+  factIndexes: ReadonlySet<string>,
+): void {
+  const facts = document.userContextFacts;
+  if (!Array.isArray(facts)) return;
+  for (const indexText of factIndexes) {
+    const index = Number(indexText);
+    if (!Number.isInteger(index) || index < 0 || index >= facts.length) continue;
+    const fact = facts[index];
+    if (!fact || typeof fact !== 'object' || Array.isArray(fact)) continue;
+    (fact as MutableRecord).dateExpression = '__REPAIRABLE_USER_CONTEXT_DATE__';
+  }
 }
 
 function redactAvailabilityRepresentation(
@@ -178,6 +194,13 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
     redactPlanningWindowRepresentation(initial);
     redactPlanningWindowRepresentation(repaired);
   }
+
+  const userContextDateIndexes = idsMatching(
+    params.initialErrors,
+    /^document\.userContextFacts\[(\d+)]\.dateExpression:unsupported-expression$/,
+  );
+  redactUserContextDateRepresentation(initial, userContextDateIndexes);
+  redactUserContextDateRepresentation(repaired, userContextDateIndexes);
 
   const availabilityClockIds = idsMatching(
     params.initialErrors,
