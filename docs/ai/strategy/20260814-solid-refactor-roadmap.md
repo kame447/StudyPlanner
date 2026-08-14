@@ -27,10 +27,11 @@ Current completed loops:
 - Loop 20: `src/components/AuthScreen.tsx` — access-key gate lifecycle extracted to `AuthAccessGateForm.tsx` with focused interaction coverage; sign-in/sign-up UI stays in the auth surface.
 - Loop 21: `src/components/BookshelfView.tsx` — active-material filtering, missing-subject fallback reconstruction and subject grouping/sorting extracted to `src/lib/bookshelfMaterials.ts` with focused tests.
 - Loop 22: `src/components/DatePickerDialogs.tsx` — day calendar extracted to `DayCalendarDialog.tsx`; week picker remains the module owner and the old day-picker import path is preserved by re-export.
+- Loop 23: `src/components/DayNotebookPanel.tsx` — removed as an unreferenced dead component surface.
 
 Next priorities:
 
-1. Continue `src/components/` file-by-file audit, next with `DayNotebookPanel.tsx`.
+1. Continue `src/components/` file-by-file audit, next with `DayTimeline.tsx`.
 2. Continue reducing `BookshelfView.tsx` only through independent responsibilities; subject/material modal lifecycles remain extraction candidates.
 3. Continue splitting `AdminViews.tsx` only when a distinct responsibility can be removed without creating page-level duplication.
 4. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
