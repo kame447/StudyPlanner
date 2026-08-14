@@ -24,6 +24,30 @@ raw Japanese textをregex、keyword、dictionary、legacy parserで再解釈し�
 
 モデルがLunaへ更新されたことは、意味責務や安全境界を移す理由にはしない。削除候補は、JSON Schemaと重複する表現指示、現在のmodelで不要になったhistorical repair scaffolding、同じ規則のprompt間重複に限定して実API ablationで評価する。
 
+### 2.1 日付・相対期間の責務
+
+「来週」「今週」「明日」「月曜日」のような自然言語表現がどの時間関係を意味するかの理解だけをAIの責務とする。AIに基準日から具体的な年月日を計算させない。
+
+具体的な日付範囲は、turn開始時に取得した実際の発話日時、利用者のtime zone、week-start設定、および既存のcalendar resolverを用いてdeterministic codeが解決する。selectedDateを「今日」の代用にしない。たとえばAIが「次の週」という意味を返した後、何月何日から何月何日かを決めるのはapplication側である。
+
+相対日のcanonical wire表現も、promptで特定文字列の綴りを反復指示して守らせない。`relative_week`なら「今週」「次週」に対応する有限のtyped valueだけをschema上で選べる形を優先し、意味が正しいのに「来週」と返したためgeneric AI repairを再呼び出しするようなrepresentation failureを減らす。schemaまたはdeterministic normalizationだけで一意に直せるrepresentationはモデルへ戻さない。ただしraw Japanese textをapplication側で再解釈して意味を決め直すことはしない。
+
+### 2.2 学習量と所要時間推定の責務
+
+教材上の構造、進捗量、作業速度、calendarへ配置するsession時間を同じ概念として扱わない。
+
+`chapter`、`section`、`lesson`などの大きい単位は、原則として「どこを学習するか」を示す教材構造・範囲として保持する。これらをそのまま「1章あたり何分」のような時間推定単位へ使わず、可能ならpageまたはproblemへ分解してから所要時間を推定する。章や節の大きさ・難易度は一定でないため、直接の時間推定単位にすると予測誤差が大きくなりやすい。
+
+pageとproblemは、時間推定に使う基礎単位を原則1単位とする。利用者が「30ページ」「10問」のように量を明示し、利用可能なobserved paceやdirect per-unit estimateがない場合は、「全部で何分か」より「1ページあたり大体何分か」「1問あたり大体何分か」を確認する方向を優先する。重要問題集のような教材名や難易度をheuristicで推測する必要はなく、problem単位ならproblemあたりの時間を尋ねればよい。
+
+1ページ・1問を基礎単位にすることは、1ページ・1問ごとにcalendar candidateを作ることを意味しない。内部では単位あたり速度から総所要時間を算出し、schedulerが利用可能時間に応じて複数ページ・複数問題を一つのsessionへまとめる。計算粒度とcalendar上のsession粒度を分離する。
+
+すでに実績が存在する場合は、自己予測より観測値を優先できる。たとえば30ページを実際に90分で終えたというevidenceがあれば、1ページあたり約3分というobserved paceをdeterministicに導出し、残り量や新しいtargetの見積りへ再利用する。Issue #118で導入したcompleted workloadとcompleted durationからremaining effortを導く方針は、この原則と矛盾しない。
+
+wordは例外として扱う。単語数は進捗量として保持できるが、通常の語彙学習は1語ずつ独立にscheduleする作業ではないため、既定では「1語あたり何分」を要求しない。語彙学習では「1回あたり何分やるか」というsession durationを優先して確認し、word countはそのsessionで扱う範囲・進捗の情報として残す。利用者自身が「毎日20語」のような明示targetを与えた場合はその量を保持するが、calendar配置はsession durationと分離する。
+
+利用者がすでにtotal duration、per-unit duration、session durationのいずれかを明示している場合は、同じ情報を別表現で聞き直さない。application側がどのevidenceで十分かを決定し、AIには必要な質問意図だけを渡す。単位変換、整数ページ・整数問題への丸め、残量から所要時間への計算、sessionへの分割はdeterministic codeの責務とする。
+
 ## 3. 開始時点の棚卸し
 
 過去の2026-08-07会話品質task群は、component parent、cross-turn binding、recurrence、current-turn delta、durable concern、goal eventとdeadline、failure artifact、実APItimeout、provenanceの実装と回帰が現コードに存在する。一方でtask文書がactiveのまま残っているため、実装漏れとは決めつけずLuna再観測scenarioのinventoryとして扱う。
@@ -148,6 +172,10 @@ turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方
 
 過去に導入したheuristicは、raw textの意味解釈ではなくaccepted structured factsに対するdeterministic policyであることを確認する。対象はhuman-scale effort質問、per-unit/total/session effort、vocabulary session分割、tiny-tail抑制、長いfree segment優先、existing plan/timetable buffer、relation ordering、request-time not-before、reserve/review policy、observed pace derivation、5分/15分allocation granularityである。
 
+human-scale effort質問については、page/problemを原則1単位の推定基礎にし、大きい教材構造単位を直接の時間予測へ使わない方針を追加確認する。page/problemの量がある場合、observed paceまたは既存direct estimateがなければper-unit durationを優先して取得し、総量の時間はdeterministicに導く。wordはsession-based effortを既定とする。これらの質問要否・evidence優先順位・丸め・session分割はapplication側で決め、教材名やraw textから難易度を推測するheuristicは追加しない。
+
+calendar関連では、相対日・相対週の自然言語意味だけをAIが構造化し、具体日付への展開はrequest clock、time zone、week-start設定とcalendar resolverで決定論的に行うことを再確認する。canonical wire literalの綴りを守らせるためだけのprompt guardを増やさず、有限値ならschemaで閉じる。
+
 happy pathだけでなく、unit/component mismatch、曖昧なprovenance、既存のdirect estimate優先、今日の過去時刻、partial placement、cycle、stale previewを敵対的回帰で確認する。
 
 ## 8. Trace persistence gate
@@ -161,6 +189,8 @@ prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trac
 - Issue #118の未完了acceptanceが実装、回帰、実API会話で確認されている
 - promptの長さと複雑さを実測し、削除・維持の判断にLuna ablationの根拠がある
 - production heuristic inventoryが対象回帰と敵対的回帰でgreenである
+- 日付の具体化がAIのカレンダー計算ではなくdeterministic calendar resolverで行われ、相対表現のwire綴りだけを守らせるprompt guardに依存しない
+- page/problemは1単位あたりの速度を推定基礎とし、chapter/section等は原則scopeへ分離、wordはsession duration中心というworkload方針が回帰と実会話で確認されている
 - 最終HEADの通し実API会話がpreviewまで完走する
 - Browser Regressionとnormal CIが最終HEADでgreenである
 - `npm run typecheck`、`npm run test:run`、`npm run build`がlocalでもgreenである
