@@ -1,11 +1,12 @@
 # 週間計画 Stable V5 Semantic / Orchestration ロードマップ
 
-Status: canonical / PR #120 semantic hardening
-最終更新: 2026-08-12
+Status: canonical / PR #130 conversation grounding and Luna simplification audit
+最終更新: 2026-08-15
 
 - Main roadmap: [weekly-planning-roadmap.md](weekly-planning-roadmap.md)
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-- Current execution task: [../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md](../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
+- Current execution task: [../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+- Human grounding / dynamic dialogue policy: [../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
 - Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
 ## 0. Semantic ownership
@@ -63,6 +64,23 @@ SemanticDocumentはcurrent-turn deltaでありaccepted state snapshotではな�
 - representation contractはvalidator / canonical contractで検査する。
 - renderer文面をsemantic targetのsource of truthにしない。
 - provider / validation failureからraw-text parserへfallbackしない。
+
+### 2.1 Human grounding / dialogue realization contract
+
+Conversation quality は、固定質問文を正しく順番に出すことではなく、発話系列を通して共同理解が観察可能に形成されることを基準とする。
+
+必須参照は [PR #130 Human Grounding / Dynamic Dialogue Policy](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md) とする。
+
+- deterministic code は「何を確認するか」「何が未確定か」を所有するが、正常系の完成済み日本語質問文を source of truth にしない。
+- AI renderer は typed application decision と grounded context を受け、直前発話への acknowledgement / confirmation / paraphrase / grounded consequence 等を必要に応じて自然に統合する。
+- acknowledgement を毎回同じ文言でprefixするなど、別の固定templateへ置き換えない。
+- user は完全なform入力者ではなく、短答・省略・後出し・訂正を行う economical participant として扱う。
+- conversation-quality acceptance は固定 transcript の全文一致ではなく、各 assistant turn を確認してから次の user utterance を生成する dynamic turn-by-turn real-API evaluation を必須とする。
+- fixed unit/integration test は semantic / deterministic invariant の検査として維持するが、自然な対話本文の固定oracleにしない。
+- 同じ question code でも発話系列や共有状態が異なるなら、rendererの表現が自然に変化することを許容・要求する。
+- provider failure等の最小fallbackは保持できるが、fallbackの存在を正常系 deterministic question bypass の根拠にしない。
+
+このcontractに反する fixed realization、deterministic question bypass、特定発話専用prompt rule は PR #130 の監査対象とする。
 
 ## 3. Prompt complexity audit
 
