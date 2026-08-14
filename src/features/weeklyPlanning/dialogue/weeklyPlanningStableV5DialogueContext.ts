@@ -90,11 +90,6 @@ function ownerLabelForFactId(
   return null;
 }
 
-export function isStableV5QuestionLikeText(text: string): boolean {
-  return /[？?]/.test(text)
-    || /(?:教えてください|確認してください|どちらを採用しますか|どれを使うか)/.test(text);
-}
-
 export function requiredLabelsForStableV5Dialogue(params: {
   planningInformation: Record<string, unknown> | null;
   targetFactId: string | null;
