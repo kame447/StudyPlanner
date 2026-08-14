@@ -31,6 +31,10 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(payload.requiredChanges?.[0]).toContain(
       "set correction.replacementLocalId to that fact's declared localId",
     );
+    expect(payload.requiredChanges?.[0]).toContain('minimal schema-valid containing task/component');
+    expect(payload.requiredChanges?.[0]).toContain(
+      'Set every targetLocalId to a fresh localId declared in this response',
+    );
     expect(payload.requiredChanges?.[0]).toContain('Do not leave a dangling localId');
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
