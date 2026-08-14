@@ -27,7 +27,7 @@ function createDecidedFacts(
 
   return Object.fromEntries(
     Object.entries(planningInformation)
-      .filter(([key]) => key !== 'uncertainties')
+      .filter(([key]) => key !== 'uncertainties' && key !== 'groundingRecords')
       .map(([key, value]) => {
         if (key === 'workloads' && Array.isArray(value)) {
           return [key, value.filter(isResolvedWorkload)];
@@ -41,6 +41,14 @@ function createDecidedFacts(
         return [key, value];
       }),
   );
+}
+
+function groundingContext(
+  planningInformation: Record<string, unknown> | null,
+): Record<string, unknown>[] {
+  return arrayField(planningInformation, 'groundingRecords')
+    .filter(isRecord)
+    .filter((record) => record.status !== 'rejected');
 }
 
 function unresolvedWorkloadFields(
@@ -79,6 +87,7 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
 
   return {
     decidedFacts: createDecidedFacts(planningInformation),
+    groundingContext: groundingContext(planningInformation),
     undecidedItems: [
       ...arrayField(planningInformation, 'uncertainties'),
       ...unresolvedWorkloadFields(planningInformation),
@@ -97,6 +106,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。アプリが決めた意図を、簡潔で自然な日本語にしてください。',
     '入力にない具体情報は、例としても補わないでください。',
+    '直前の発話への理解やアプリが確定した解釈は、共有理解に役立つ場合だけ自然に示してください。',
     '質問では一度に一つだけ確認してください。',
   ].join('\n');
 
@@ -114,6 +124,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     request: [
       'applicationDecisionを守り、現在の発話系列に合う自然な日本語を一つ返してください。',
       'decidedFactsは確定情報、undecidedItemsは未確定情報です。',
+      'groundingContextは共有中の解釈や帰結です。必要な場合だけ短く反映し、proposedやcontestedを確定事項として断言しないでください。',
       '質問ならquestionCodeの解消に必要な一つだけを尋ねてください。',
     ].join(''),
   });
