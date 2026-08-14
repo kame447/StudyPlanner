@@ -56,15 +56,24 @@ Green化だけを目的に regression を削除・弱体化しない。
 
 ## MD inventory findings
 
-### requires-user-confirmation
+### confirmed and aligned
 
-- `AGENTS.md`: `Natural language scheduling rules` が staged parser (`normalize → tokenize → clause parsing → AST → IR → compile → validate`) と旧planner/fallback維持を規定しており、現在の Stable V5 の AI semantic ownership / deterministic control 方針と競合している。古い仕様文書のため未変更。
+- `AGENTS.md`: ユーザー承認後、旧 staged parser / legacy fallback 契約を廃止し、Stable V5 の AI semantic ownership / deterministic control 方針へ同期済み。
+- `docs/ai/weekly-planning-pipeline-guide.md`: ユーザー承認後、architecture v4 / interpreter / behavior-core前提を外し、current contract v5をread orderと責務境界の正本へ更新済み。
 
 ### stale-active candidates
 
 - `docs/ai/tasks/20260730-weekly-planning-stable-v5-ai-dialogue-renderer.md`: closed record確認後、active queueから削除済み。
 - `docs/ai/tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md`: 未実装表記だがPR #120で実装済み、closed記録あり。active queue削除候補。
 - `docs/ai/tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md`: pre-cutoverのactive gateを保持しているがclosed記録あり。active queue削除候補。
+- `docs/ai/tasks/20260810-weekly-planning-human-reviewed-conversation-improvement-loop.md`: 本文自身がcompleted baseline / frozenを明記しておりhistorical化候補。
+- `docs/ai/tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md`: closed pointerのみ。active queueからの除去候補。
+
+### current documents with stale progress metadata
+
+- `docs/ai/strategy/weekly-planning-roadmap.md`: 最上位設計原則はcurrent contractと整合するが、PR #120をcurrent executionとして参照している。
+- `docs/ai/weekly-planning-current-contract-status.md`: Stable V5責務境界は正しいがPR #120 final gate未完の進捗表示が残る。
+- `docs/ai/weekly-planning-docs-index.md`: current phase / branch / execution orderがPR #109直後のlegacy cleanupで止まっている。
 
 ## Loop ledger
 
@@ -81,12 +90,22 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 8 | `src/components/WeeklyPlanningQuickEntryModal.tsx` | `WeeklyPlanningApplication`を現在のQuickEntry contractへ適合させるcompatibility adapter。現時点では変更理由が一つなのでno-change。#52完了時に縮退対象。 | application→QuickEntry prop mappingとapproval availability projectionを全体確認。 | 本台帳へ移行順序を記録。 | done |
 | 9 | `src/components/RootManagedAuthenticationContext.tsx` | root-managed authの有無だけを伝える1bit coordination contract。小さく凝集しておりno-change。 | `useAuthSessionState`がlogin後の二重state更新を避けるため利用していることを確認。 | 本台帳へLoop 9を追記。 | done |
 | 10 | `src/components/RootStartupReadyContext.tsx` | startup完了callbackだけをDIする小さいcoordination contract。concrete auth/planner detailを漏らさずno-change。 | providerが`StudyPlannerAppRoot`、consumerが`useAuthSessionState`であることを確認。 | 本台帳へLoop 10を追記。 | done |
+| 11 | `src/components/FaqView.tsx` | FAQ dataと表示だけを所有し、副作用・repository・routing依存なし。過剰分割不要のためno-change。 | repository参照とcomponent全体を確認。 | 直後のGitHub safety blockで未記録だったため本loopで遡及記録。 | done |
+| 12 | `AGENTS.md` / `weekly-planning-pipeline-guide.md` | ユーザー承認を受け、旧parser semantic authorityとlegacy fallback契約をcurrent Stable V5責務境界へ同期。SOLID/AI ownership/test audit ruleも実装実態へ整合。 | `weekly-planning-current-contract-v5.md`、current roadmapの最上位原則、Issue #115と照合。 | 2文書と本台帳を同期。 | done |
 
 ## Remaining-problem register
 
 - Issue #116 はstale cleanup対象がcurrent repositoryから消えていることを確認し、completedでclose済み。
 - Issue #115: fresh-session weekly routingをraw-text regexが所有している。SOLID整理だけで黙って削除せず、semantic router契約として実装する必要がある。
 - Issue #52: `NaturalLanguageAssistant` と `QuickEntryModal` がgeneric/manual/weekly責務を混在させている。weekly専用surfaceへ段階分離し、application facadeを個別propへ展開しない境界へ寄せる。`WeeklyPlanningQuickEntryModal`はその移行adapterとして現時点では維持する。
+- Issue #43: request ownershipの大半は実装・browser regression済みだが、selected-week変更時のstale result破棄について実ブラウザ証拠が未確定。
+- Issue #45: trace privacy/lifecycleのoperational rollout、TTL、account deletion、admin audit等が残る。
+- Issue #47: current-time safetyは完了済みだが、cloud session authorityとpersonalization rolloutが残る。Issue本文のP0部分はstale。
+- Issue #51: cross-tab/cross-device approval uniquenessが残る。
+- Issue #89: Stable V5 trace empty-sessionのproduction/operational verificationが残る。
+- Issue #118: completed-work paceからremaining effortをdeterministicに導出するcurrent-session機能が未実装。
+- Issue #128: old saved-preview approval compatibilityのversion/provenance migrationが未実装。
 - `isPlacementConditionOnly`のproduction reachabilityを継続監査する。
 - `App.tsx` / `StudyPlannerAppRoot.tsx` のlegal route policy重複は小規模なdeferred refactor。
-- その他のopen Issueとコード/MDを照合中。
+- roadmap / current-status / docs-indexの進捗metadata同期が必要。
+- その他のコードとMDをfile-by-fileで継続監査する。
