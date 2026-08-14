@@ -115,23 +115,25 @@ function createRenderInput(params: {
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
+  const planningInformation = params.result.stableV5Graph
+    ? {
+        ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
+        selfRepairNotice: params.notice,
+      }
+    : null;
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
     recentConversation: params.input.messages
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
-    planningInformation: params.result.stableV5Graph
-      ? {
-          ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
-          selfRepairNotice: params.notice,
-        }
-      : null,
+    planningInformation,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     requiredLabels: requiredLabelsForStableV5Dialogue({
-      questionCode: params.questionCode,
-      fallbackText: params.result.message,
+      planningInformation,
+      targetFactId: params.result.state.lastQuestionContext?.topicId ?? null,
+      includePreviewPromotionControl: params.result.state.status === 'draft_ready',
     }),
     fallbackText: withSelfRepairNotice(params.result.message, params.notice),
     previewCount: params.result.draftCandidates.length,
@@ -220,11 +222,9 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
-  // The renderer already receives the correction in both planningInformation and
-  // fallbackText, so its successful response owns the complete user-facing copy.
-  // Prefixing the deterministic notice here repeats the same acknowledgement and
-  // can produce an ungrammatical transition. The fallback paths still retain the
-  // exact deterministic notice when rendering is unavailable or rejected.
+  // Successful renderer output owns the user-facing copy. The deterministic
+  // fallback remains available only for renderer failure/rejection, while the
+  // structured planningInformation carries any correction context on normal paths.
   const finalMessage = rendered.text;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
