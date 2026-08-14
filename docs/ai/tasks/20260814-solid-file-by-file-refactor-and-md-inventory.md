@@ -77,12 +77,13 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 4 | `src/components/StudyPlannerAppRoot.tsx` | startup/consent/week-startのlocal component分割は妥当。`App.tsx`とのlegal route判定重複を発見。 | route重複をrepository searchで確認。抽出module作成はconnector safety blockのため未適用。 | 本台帳へdeferred refactorを記録。 | done |
 | 5 | `src/features/weeklyPlanning/parsing/weeklyPlanningText.ts` | raw text normalizationとlegacy semantic predicatesが同居。`looksLikeWeeklyPlanningRequest`はproduction entry routingのsemantic ownership違反。`isPlacementConditionOnly`も到達性監査が必要。 | `looksLikeWeeklyPlanningRequest`が`NaturalLanguageAssistant`から参照されることを確認。Issue #115と一致。 | 本台帳へIssue #115との対応を記録。 | done |
 | 6 | `src/components/NaturalLanguageAssistant.tsx` | 単発AI提案、週間計画request制御、会話、preview promotion/approval、24h preview描画を1componentが所有。SRP/ISP違反でIssue #52の根拠。段階抽出対象。 | 全体を4chunkで読了。#115 regex routingのproduction callerも再確認。 | 本台帳へ#52責務分離候補を記録。 | done |
+| 7 | `src/components/QuickEntryModal.tsx` | modal shell、manual plan/Todo/repeat、actual記録/紐付け、教材推論、AI/weekly delegationを同時所有。weekly propsの大量prop drillingもISP違反。 | 全体を3chunkで読了し`WeeklyPlanningQuickEntryModal` facadeからの展開を確認。 | 本台帳へ#52の第2責務分離対象として記録。 | done |
 
 ## Remaining-problem register
 
 - Issue #116 はstale cleanup対象がcurrent repositoryから消えていることを確認し、completedでclose済み。
 - Issue #115: fresh-session weekly routingをraw-text regexが所有している。SOLID整理だけで黙って削除せず、semantic router契約として実装する必要がある。
-- Issue #52: `NaturalLanguageAssistant` がchat suggestionとweekly planning UI/controller/previewを同時所有。段階的にweekly専用surfaceへ分離する。
+- Issue #52: `NaturalLanguageAssistant` と `QuickEntryModal` がgeneric/manual/weekly責務を混在させている。weekly専用surfaceへ段階分離し、application facadeを個別propへ展開しない境界へ寄せる。
 - `isPlacementConditionOnly`のproduction reachabilityを継続監査する。
 - `App.tsx` / `StudyPlannerAppRoot.tsx` のlegal route policy重複は小規模なdeferred refactor。
 - その他のopen Issueとコード/MDを照合中。
