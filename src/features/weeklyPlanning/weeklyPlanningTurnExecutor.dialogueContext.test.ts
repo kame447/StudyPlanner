@@ -19,7 +19,6 @@ vi.mock('../../lib/aiConfig', () => ({
   getAiConfigValidationMessage: () => undefined,
 }));
 
-
 vi.mock('./application/weeklyPlanningStableV5InstrumentedRuntimeExecutor', () => ({
   executeWeeklyPlanningStableV5RuntimeTurn: stableV5RuntimeMock,
 }));
@@ -150,7 +149,7 @@ describe('Stable V5 dialogue context wiring', () => {
     recordStableV5DebugTraceMock.mockReset();
   });
 
-  it('passes the current utterance, the last six turns, and cross-turn planning facts to the renderer', async () => {
+  it('passes the current utterance, the last four turns, and cross-turn planning facts to the renderer', async () => {
     const messages = [
       message('1', 'user', 'この発話だけは古いので除外される'),
       message('2', 'assistant', '来週の計画ですね。'),
@@ -181,8 +180,6 @@ describe('Stable V5 dialogue context wiring', () => {
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       currentUserMessage: 'どういうこと？',
       recentConversation: [
-        { role: 'assistant', content: '来週の計画ですね。' },
-        { role: 'user', content: '院試の勉強をしたい' },
         { role: 'assistant', content: '分野を教えてください。' },
         { role: 'user', content: '第1分野と第2分野' },
         { role: 'assistant', content: '作業量を教えてください。' },
