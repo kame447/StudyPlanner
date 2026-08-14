@@ -4,36 +4,53 @@ import {
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
+const planningInformation = {
+  tasks: [{ id: 'task-1', title: '夏休みの課題' }],
+  components: [
+    { id: 'component-math', taskId: 'task-1', label: '数学のワーク' },
+  ],
+  workloads: [
+    { id: 'workload-math', taskId: 'task-1', componentId: 'component-math' },
+  ],
+  uncertainties: [
+    { id: 'uncertainty-math', targetFactId: 'component-math', field: 'workload_amount' },
+  ],
+};
+
 describe('Stable V5 dialogue context', () => {
-  it('extracts an unquoted deterministic target for quantity-role questions', () => {
+  it('resolves the application-selected uncertainty target from typed facts', () => {
     expect(requiredLabelsForStableV5Dialogue({
-      questionCode: 'quantity_role_unresolved',
-      fallbackText: '分野1の量は、今回進めたい量ですか、それとも残っている全体量ですか？',
-    })).toEqual(['分野1']);
+      planningInformation,
+      targetFactId: 'uncertainty-math',
+      includePreviewPromotionControl: false,
+    })).toEqual(['数学のワーク']);
   });
 
-  it('preserves task labels but not quoted examples in a missing-work question', () => {
+  it('resolves a workload target to its owning component label', () => {
     expect(requiredLabelsForStableV5Dialogue({
-      questionCode: 'missing_schedulable_work',
-      fallbackText: '「研究」、「院試の勉強」は把握しました。それぞれどれくらい進めたいですか？「2時間」「30ページ」「20問」のように、量を教えてください。',
-    })).toEqual(['研究', '院試の勉強']);
+      planningInformation,
+      targetFactId: 'workload-math',
+      includePreviewPromotionControl: false,
+    })).toEqual(['数学のワーク']);
   });
 
-  it('does not invent a target for a generic question', () => {
+  it('does not invent a label when the selected fact has no readable owner', () => {
     expect(requiredLabelsForStableV5Dialogue({
-      questionCode: 'invalid_planning_horizon',
-      fallbackText: 'いつからいつまでの予定を作るか教えてください。',
+      planningInformation,
+      targetFactId: 'missing-fact',
+      includePreviewPromotionControl: false,
     })).toEqual([]);
   });
 
-  it('preserves the preview promotion control label in status rendering', () => {
+  it('preserves the preview promotion control label from typed preview state', () => {
     expect(requiredLabelsForStableV5Dialogue({
-      questionCode: null,
-      fallbackText: '問題なければ下の「この内容で仮予定にする」ボタンを押してください。',
+      planningInformation,
+      targetFactId: null,
+      includePreviewPromotionControl: true,
     })).toEqual(['この内容で仮予定にする']);
   });
 
-  it('treats a deterministic information request without a question code as a question action', () => {
+  it('still identifies question-like fallback text until action-kind inference is migrated separately', () => {
     expect(isStableV5QuestionLikeText(
       '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
     )).toBe(true);
