@@ -12,8 +12,9 @@ export interface WeeklyPlanningSemanticPromptInputV5 {
 }
 
 const SEMANTIC_DELTA_CONTEXT_INSTRUCTION_V5 = [
-  'publicStateSummary and recentConversation are context, not output. Emit only facts stated or changed in current userText; sourceText must be grounded in current userText. Do not replay inactive facts or episodic memory.',
-  'pendingQuestion is authoritative when present: resolve only its exact target, keep accepted identity through exact existingPublicId, and use fresh localIds for current-turn facts.',
+  'publicStateSummary and recentConversation are context, not output. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText. Do not replay inactive facts or episodic memory.',
+  'Treat pendingQuestion as authoritative: resolve only its exact target with fresh localIds and preserve accepted identity through exact existingPublicId.',
+  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. An effortEstimate may target the exact task, component, or workload localId.',
 ].join('\n');
 
 export function createWeeklyPlanningSemanticBaseMessagesV5(
