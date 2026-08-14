@@ -45,13 +45,9 @@ export {
 import {
   createWeeklyPlanningSemanticPublicStateSummaryV5,
 } from './weeklyPlanningSemanticPublicStateV5';
-export {
-  WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
-} from './weeklyPlanningSemanticPublicStateV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5 =
   'weekly-planning-semantic-pipeline-v5' as const;
-
 
 export interface WeeklyPlanningSemanticPipelineInputV5
   extends WeeklyPlanningSemanticNormalizerInputV5 {
