@@ -75,7 +75,7 @@ describe('Stable V5 cross-turn entity binding', () => {
         temporalConstraints: [],
         recurrence: [{
           localId: 'recurrence-local',
-          targetLocalId: 'task-local',
+          targetLocalId: 'workload-local',
           kind: 'daily',
           count: null,
           days: [],
@@ -116,7 +116,11 @@ describe('Stable V5 cross-turn entity binding', () => {
     expect(result.diagnostics.algorithmicRepairs).toContain(
       'pending-component-parent-task-id-restored:task-local',
     );
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'recurrence-workload-target-normalized:task-local:recurrence-local:workload-local:component-local',
+    );
     expect(result.document?.tasks[0]).toMatchObject({ existingPublicId: 'task-public' });
+    expect(result.document?.tasks[0]?.recurrence[0]?.targetLocalId).toBe('component-local');
   });
 
   it('repairs a duplicate-container delta and missing daily recurrence in one AI repair', async () => {

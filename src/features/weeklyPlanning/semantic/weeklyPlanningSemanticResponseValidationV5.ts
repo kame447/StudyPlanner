@@ -14,6 +14,9 @@ import {
   validateWeeklyPlanningRecurrenceConsistencyV5,
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
+  normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5,
+} from './weeklyPlanningRecurrenceTargetNormalizationV5';
+import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
@@ -83,8 +86,11 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
-  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+  const recurrenceTargetNormalization = normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(
     workloadNormalization.rawResponse,
+  );
+  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+    recurrenceTargetNormalization.rawResponse,
   );
   const preParseRepairs = [
     ...decompositionNormalization.repairs,
@@ -92,6 +98,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...pendingBindingNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
+    ...recurrenceTargetNormalization.repairs,
     ...clockNormalization.repairs,
   ];
   const parsed = parseWeeklyPlanningSemanticDocumentV5(clockNormalization.rawResponse);
