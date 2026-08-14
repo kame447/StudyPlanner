@@ -57,17 +57,17 @@ export function createStandaloneActualDraft(
 
 export function createStandaloneActualCandidate(
   actual: Actual,
-  draft: ActualDraft,
+  values: StandaloneActualEditValues,
 ): Actual {
   return {
     ...actual,
     planId: null,
-    occurrenceDate: draft.occurrenceDate,
-    actualStartTime: draft.actualStartTime,
-    actualEndTime: draft.actualEndTime,
-    title: draft.title,
-    subject: draft.subject,
+    occurrenceDate: values.occurrenceDate,
+    actualStartTime: values.startTime,
+    actualEndTime: values.endTime,
+    title: values.title,
+    subject: values.subject,
     isAlignedToPlan: false,
-    note: draft.note,
+    note: values.note,
   };
 }
