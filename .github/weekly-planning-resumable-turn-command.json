@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
-  "turn": 2,
+  "turn": 3,
   "attempt": 1,
-  "user_text": "夏休みの課題もまだ終わってなくて、2週間後に共通テスト模試もあるので、その勉強も進めたいです。特に数学が結構まずいです。",
-  "previous_run_id": "31786921036",
+  "user_text": "数学のワークと古典の課題が残ってます。数学のワークの方が量は多いです。",
+  "previous_run_id": "31787045539",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
   "owner_id": "real-api-luna-audit-historical-binding-user-1",
   "week_start_date": "2026-08-17",
