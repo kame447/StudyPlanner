@@ -28,9 +28,6 @@ describe('Stable V5 semantic repair prompt', () => {
       validationErrors: [
         'document.corrections[0].replacementLocalId:unknown:temporal_1',
       ],
-      input: {
-        userText: 'やっぱり夕方ではなく、夜にしてください。',
-      },
     });
 
     const payload = repairPayload(messages);
