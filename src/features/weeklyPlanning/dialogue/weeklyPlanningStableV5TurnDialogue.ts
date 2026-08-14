@@ -5,6 +5,8 @@ import {
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import {
+  questionIntentForStableV5Dialogue,
+  questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
@@ -132,6 +134,11 @@ function createRenderInput(params: {
         selfRepairNotice: params.notice,
       }
     : null;
+  const targetFactId = params.result.state.lastQuestionContext?.topicId ?? null;
+  const questionTarget = questionTargetForStableV5Dialogue({
+    planningInformation,
+    targetFactId,
+  });
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
@@ -141,9 +148,14 @@ function createRenderInput(params: {
     planningInformation,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
+    questionTarget,
+    questionIntent: questionIntentForStableV5Dialogue({
+      questionCode: params.questionCode,
+      questionTarget,
+    }),
     requiredLabels: requiredLabelsForStableV5Dialogue({
       planningInformation,
-      targetFactId: params.result.state.lastQuestionContext?.topicId ?? null,
+      targetFactId,
       includePreviewPromotionControl: params.result.state.status === 'draft_ready',
     }),
     fallbackText: withSelfRepairNotice(params.result.message, params.notice),
