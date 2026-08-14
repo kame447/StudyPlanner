@@ -122,6 +122,11 @@ turn 7 attempt 2は修正ファイルを誤った複製パスへpublishした実
 
 attempt 3はprovider 1回・repair 0回、9.3秒、26,677 bytesでsemantic correctionを受理した。Graph revision 9、旧workloadのsupersede、active daily recurrence、8月17日〜23日の90分候補7件、数学ワーク75分、古典105分、合計9件とrecurrence provenanceはattempt 1と一致する。最終文はrendererの「模試対策の数学を、毎日2時間から1時間半に変更しました。来週分の仮予定候補を9件作成しています。内容を確認して、問題なければ『この内容で仮予定にする』を押してください。」だけになり、決定論的noticeの二重前置は消えた。意味・候補・操作案内が一致し、同じ修正を繰り返さないため合格とする。
 
+
+turn 8 attempt 1のrun `31790894628`では、「ありがとうございます。この内容で大丈夫です。」をLunaがproposalへの`accept` decisionとしてprovider 1回・repair 0回で正しく構造化した一方、deterministic canonicalizerがそのapplication-level decisionをFact Graphへ追加し、revisionを9から10へ進めて同じ9件を再previewした。これはno-op turnでrevisionを増やさず既存previewを保持する現行contractへの違反である。修正はraw textではなくstructured `target.kind=proposal`だけを用い、proposal decisionをsemantic request/response/validation traceには保持しつつ、Fact Graphへは永続化しない境界に限定した。planning-window等のGraph factを対象とするdecision、approval/saveのUI境界、applied turn keyは変更しない。
+
+同じcheckpoint・入力のattempt 2 run `31791667885`では、provider 1回・repair 0回で同じproposal acceptを返した後、canonical diffはrevision 9→9、added/superseded/removedすべて0、`preview_unchanged` branchとなり、preview schedulerは実行されなかった。checkpointはrevision 9の同じstable key・同じ9候補を保持し、`shouldSavePlan=false`のまま、rendererは9件の内容と「この内容で仮予定にする」ボタンを自然に案内した。localはfocused 13件、TypeScript、全333 test files（1,547 tests）、production buildがgreenで、commit `07b6750`のnormal CI run `31791670915`、Browser Regression run `31791670932`、実API run `31791667885`もすべてgreenである。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
