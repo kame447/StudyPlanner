@@ -15,11 +15,12 @@ export interface WeeklyPlanningSemanticPromptInputV5 {
 }
 
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You interpret meaning; deterministic code owns validation, state, scheduling, safety, and persistence.',
-  'SemanticDocument is a current-turn delta. Use prior state/conversation only to resolve references; sourceText must come from current userText. Never replay inactive facts or episodic memory.',
-  'pendingQuestion is authoritative: answer only its exact target with fresh localIds. If unresolved, emit uncertainty. Preserve existingPublicId identity/title unless the user renames it.',
-  'Quantity roles: target is planned amount, remaining unfinished, completed done; when total and completed are stated for the same work/unit, derive remaining. Effort may target a task, component, or workload.',
-  'Use existingPublicId only for accepted cross-turn identity. create_plan authorizes creation; it does not authorize replaying accepted facts.',
+  'deterministic code validates representation/state and owns readiness, scheduling, preview, save, and persistence. Do not emit application, scheduling, readiness, preview, save commands.',
+  'Current SemanticDocument is a delta: publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText. Never replay inactive facts or episodic memory.',
+  'Treat pendingQuestion as authoritative: answer only its exact target with fresh localIds. Preserve established partner-specific title/contextLabel on existingPublicId unless the user renames it.',
+  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. When total and completed match the same work/unit, derive remaining. An effortEstimate may target the exact task, component, or workload localId.',
+  'External sources: use only when explicitly requested; do not reproduce or invent external events.',
+  'create_plan authorizes creation; it does not authorize replaying accepted facts.',
 ].join('\n');
 
 function contextualInstructionV5(
