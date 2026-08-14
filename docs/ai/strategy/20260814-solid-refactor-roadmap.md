@@ -21,6 +21,10 @@ Execution ledger:
   - extracted plan/actual → `ActualDraft` construction, legacy alignment inference, and relink-candidate projection into `src/lib/actualDrafts.ts`.
   - kept editor state, save/delete interactions and rendering in the component.
   - added `src/lib/actualDrafts.test.ts` covering new/existing draft construction, explicit/legacy alignment, and relink projection.
+- Loop 15: `src/components/ActualTrackingTools.tsx`
+  - kept stopwatch/timer interaction state and rendering together as one cohesive measurement-tool responsibility.
+  - extracted elapsed-time calculation, timer clamping/parsing/formatting and measured-range projection into `src/lib/actualTracking.ts`.
+  - added `src/lib/actualTracking.test.ts` for duration formatting, paused/running elapsed calculation, timer bounds and range projection.
 
 Next priorities:
 
