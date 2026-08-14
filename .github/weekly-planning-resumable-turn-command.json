@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
-  "turn": 10,
-  "attempt": 8,
-  "user_text": "やっぱり夕方ではなく、夜にしてください。",
-  "previous_run_id": "31791952338",
+  "turn": 3,
+  "attempt": 9,
+  "user_text": "数学のワークと古典の課題が残ってます。数学のワークの方が量は多いです。",
+  "previous_run_id": "31787045539",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
   "owner_id": "real-api-luna-audit-historical-binding-user-1",
   "week_start_date": "2026-08-17",
