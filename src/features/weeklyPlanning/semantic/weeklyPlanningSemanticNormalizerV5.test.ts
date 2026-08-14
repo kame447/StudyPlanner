@@ -100,7 +100,6 @@ function client(sequence: Array<string | Error>): {
 }
 
 function repairPayload(call: Record<string, unknown>): {
-  instruction?: string;
   requiredChanges?: string[];
   validationErrors?: string[];
 } {
@@ -147,7 +146,7 @@ describe('Stable V5 semantic normalizer', () => {
 
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('interpret user meaning and context');
+    expect(system.toLowerCase()).toContain('interpret user meaning and context');
     expect(system).toContain('pendingQuestion as authoritative');
     expect(system).toContain('exact target');
     expect(system).toContain('fresh localIds');
