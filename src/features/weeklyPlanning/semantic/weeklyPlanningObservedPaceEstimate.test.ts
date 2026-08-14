@@ -111,6 +111,111 @@ describe('generic work item observed pace estimation', () => {
     });
   });
 
+  it('schedules an explicit target once when the same remaining amount is also retained as context', () => {
+    const value = graph({
+      workloads: [
+        workload('completed-30', 'completed', 30),
+        workload('remaining-50', 'remaining', 50),
+        workload('target-50', 'target', 50, { periodExpression: '2026-08-17〜2026-08-23' }),
+      ],
+    });
+    const work = compileGenericPlanningWorkItems(value);
+
+    expect(work.readiness).toBe('ready');
+    expect(work.items).toHaveLength(1);
+    expect(work.items[0]).toMatchObject({
+      workloadFactId: 'target-50',
+      quantity: { amount: 50, unitCode: 'page' },
+      estimatedMinutes: 150,
+      estimateBasis: 'observed_pace',
+      sourceFactRefs: expect.arrayContaining([
+        'target-50',
+        'remaining-50',
+        'completed-30',
+        'completed-duration-90',
+      ]),
+    });
+    expect(work.issues).toContainEqual({
+      code: 'remaining_workload_skipped_for_target',
+      workloadFactId: 'remaining-50',
+      blocking: false,
+      details: {
+        targetWorkloadFactId: 'target-50',
+        targetWorkloadCount: 1,
+      },
+    });
+
+    const scheduler = compileGenericSchedulerInput({
+      graph: value,
+      context: {
+        ownerId: 'owner-pace',
+        currentDate: '2026-08-17',
+        planningStartDate: '2026-08-17',
+        planningEndDate: '2026-08-23',
+        timeZone: 'Asia/Tokyo',
+      },
+    });
+    expect(scheduler.status).toBe('ready');
+    expect(scheduler.input?.movableWorkItems.every(
+      (item) => item.workloadFactId === 'target-50',
+    )).toBe(true);
+    expect(scheduler.input?.movableWorkItems.reduce(
+      (sum, item) => sum + item.quantity.amount,
+      0,
+    )).toBe(50);
+    expect(scheduler.input?.movableWorkItems.reduce(
+      (sum, item) => sum + (item.estimatedMinutes ?? 0),
+      0,
+    )).toBe(150);
+  });
+
+  it('asks once for completed pace when remaining context and an explicit target coexist', () => {
+    const value = graph({
+      workloads: [
+        workload('completed-30', 'completed', 30),
+        workload('remaining-50', 'remaining', 50),
+        workload('target-50', 'target', 50),
+      ],
+      estimates: [],
+    });
+    const work = compileGenericPlanningWorkItems(value);
+    expect(work.issues.filter((issue) => issue.code === 'missing_effort_estimate')).toEqual([{
+      code: 'missing_effort_estimate',
+      workloadFactId: 'target-50',
+      questionTargetWorkloadFactId: 'completed-30',
+      blocking: true,
+      details: {
+        estimateForWorkloadFactId: 'target-50',
+        questionBasis: 'completed_workload_total',
+      },
+    }]);
+  });
+
+  it('does not suppress remaining work across components or units', () => {
+    const value = graph({
+      workloads: [
+        workload('remaining-pages', 'remaining', 50),
+        workload('target-problems', 'target', 20, {
+          unitCode: 'problem',
+          unitLabel: '問',
+        }),
+        workload('target-other-component', 'target', 10, {
+          componentId: null,
+        }),
+      ],
+      estimates: [],
+    });
+    const work = compileGenericPlanningWorkItems(value);
+    expect(work.items.map((item) => item.workloadFactId)).toEqual([
+      'remaining-pages',
+      'target-problems',
+      'target-other-component',
+    ]);
+    expect(work.issues).not.toContainEqual(expect.objectContaining({
+      code: 'remaining_workload_skipped_for_target',
+    }));
+  });
+
   it('asks for the one completed workload total before asking for a direct remaining estimate', () => {
     const value = graph({ estimates: [] });
     const work = compileGenericPlanningWorkItems(value);

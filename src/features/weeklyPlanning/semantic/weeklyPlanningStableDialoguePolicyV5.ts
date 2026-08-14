@@ -51,6 +51,7 @@ const WORK_ITEM_CODE_PRIORITY: Record<string, number> = {
   quantity_role_unresolved: 3,
   ambiguous_effort_estimate: 4,
   missing_effort_estimate: 5,
+  remaining_workload_skipped_for_target: 98,
   completed_workload_skipped: 99,
 };
 

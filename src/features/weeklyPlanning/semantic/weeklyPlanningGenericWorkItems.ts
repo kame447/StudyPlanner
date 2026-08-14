@@ -77,7 +77,8 @@ export type GenericWorkItemIssueCode =
   | 'non_integral_discrete_amount'
   | 'invalid_actual_range'
   | 'orphan_workload'
-  | 'completed_workload_skipped';
+  | 'completed_workload_skipped'
+  | 'remaining_workload_skipped_for_target';
 
 export interface GenericWorkItemIssue {
   code: GenericWorkItemIssueCode;
@@ -126,6 +127,27 @@ function taskById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, Planni
 
 function componentById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, StudyComponentFact> {
   return new Map(graph.components.map((component) => [component.id, component]));
+}
+
+function planningScopeKey(workload: WorkloadFact): string {
+  return [
+    workload.taskId,
+    workload.componentId ?? '',
+    workload.unitCode,
+  ].join('|');
+}
+
+function workloadsByPlanningScope(
+  workloads: ReadonlyArray<WorkloadFact>,
+  quantityRole: 'target' | 'remaining',
+): Map<string, WorkloadFact[]> {
+  const grouped = new Map<string, WorkloadFact[]>();
+  for (const workload of workloads) {
+    if (workload.quantityRole !== quantityRole) continue;
+    const key = planningScopeKey(workload);
+    grouped.set(key, [...(grouped.get(key) ?? []), workload]);
+  }
+  return grouped;
 }
 
 function targetLabel(params: {
@@ -228,11 +250,13 @@ function compileVocabularySessions(params: {
 function sourceFactRefs(params: {
   workload: WorkloadFact;
   estimate: GenericWorkItemEstimateResolution;
+  relatedWorkloadFactIds?: ReadonlyArray<string>;
 }): string[] {
   return [
     params.workload.taskId,
     ...(params.workload.componentId ? [params.workload.componentId] : []),
     params.workload.id,
+    ...(params.relatedWorkloadFactIds ?? []),
     ...params.estimate.sourceWorkloadFactIds,
     ...params.estimate.sourceFactIds,
   ];
@@ -245,9 +269,14 @@ function compileVocabularySessionWorkItems(params: {
   estimate: GenericWorkItemEstimateResolution;
   vocabularySessions: NonNullable<ReturnType<typeof compileVocabularySessions>>;
   unresolvedRole: boolean;
+  relatedWorkloadFactIds: ReadonlyArray<string>;
 }): GenericPlanningWorkItem[] {
   let consumedWords = 0;
-  const refs = sourceFactRefs({ workload: params.workload, estimate: params.estimate });
+  const refs = sourceFactRefs({
+    workload: params.workload,
+    estimate: params.estimate,
+    relatedWorkloadFactIds: params.relatedWorkloadFactIds,
+  });
   return params.vocabularySessions.sessions.map((session, sessionIndex) => {
     const ordinalStart = consumedWords + 1;
     consumedWords += session.quantityAmount;
@@ -297,6 +326,8 @@ export function compileGenericPlanningWorkItems(
   const components = componentById(graph);
   const items: GenericPlanningWorkItem[] = [];
   const issues: GenericWorkItemIssue[] = [];
+  const targetWorkloadsByScope = workloadsByPlanningScope(graph.workloads, 'target');
+  const remainingWorkloadsByScope = workloadsByPlanningScope(graph.workloads, 'remaining');
 
   for (const workload of graph.workloads) {
     const task = tasks.get(workload.taskId);
@@ -309,6 +340,23 @@ export function compileGenericPlanningWorkItems(
       issues.push({ code: 'completed_workload_skipped', workloadFactId: workload.id, blocking: false });
       continue;
     }
+    const scopeKey = planningScopeKey(workload);
+    const targetWorkloads = targetWorkloadsByScope.get(scopeKey) ?? [];
+    if (workload.quantityRole === 'remaining' && targetWorkloads.length > 0) {
+      issues.push({
+        code: 'remaining_workload_skipped_for_target',
+        workloadFactId: workload.id,
+        blocking: false,
+        details: {
+          targetWorkloadFactId: targetWorkloads.length === 1 ? targetWorkloads[0].id : null,
+          targetWorkloadCount: targetWorkloads.length,
+        },
+      });
+      continue;
+    }
+    const relatedWorkloadFactIds = workload.quantityRole === 'target'
+      ? (remainingWorkloadsByScope.get(scopeKey) ?? []).map((fact) => fact.id)
+      : [];
 
     const unresolvedRole = workload.quantityRole === 'declared' || workload.quantityRole === 'unknown';
     if (unresolvedRole) {
@@ -380,6 +428,7 @@ export function compileGenericPlanningWorkItems(
         estimate,
         vocabularySessions,
         unresolvedRole,
+        relatedWorkloadFactIds,
       }));
       continue;
     }
@@ -413,7 +462,11 @@ export function compileGenericPlanningWorkItems(
       estimateSourceWorkloadFactIds: estimate.sourceWorkloadFactIds,
       splitPolicy: deriveSplitPolicy(workload),
       periodExpression: workload.periodExpression,
-      sourceFactRefs: sourceFactRefs({ workload, estimate }),
+      sourceFactRefs: sourceFactRefs({
+        workload,
+        estimate,
+        relatedWorkloadFactIds,
+      }),
     });
   }
 

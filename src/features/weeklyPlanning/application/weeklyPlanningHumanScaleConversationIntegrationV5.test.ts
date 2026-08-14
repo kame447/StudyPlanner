@@ -120,7 +120,7 @@ function durationAnswerDocument(minutes: number): WeeklyPlanningSemanticDocument
 }
 
 function observedPacePlanningDocument(): WeeklyPlanningSemanticDocumentV5 {
-  const sourceText = '数学のワークは80ページ中30ページ終わっていて、残り50ページです';
+  const sourceText = '数学のワークは80ページ中30ページ終わっていて、残り50ページを今週進めたいです';
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'create_plan',
@@ -164,6 +164,18 @@ function observedPacePlanningDocument(): WeeklyPlanningSemanticDocumentV5 {
           rangeEnd: null,
           perOccurrence: false,
           periodExpression: null,
+          sourceText,
+        },
+        {
+          localId: 'target-workload',
+          quantityRole: 'target',
+          amount: 50,
+          unitCode: 'page',
+          unitLabel: 'ページ',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: '2026-08-17〜2026-08-23',
           sourceText,
         },
       ],
@@ -400,12 +412,16 @@ describe('Stable V5 human-scale conversation integration', () => {
       minutes: 90,
       unitCode: null,
     });
+    const targetWorkload = second.stableV5Graph?.workloads.find(
+      (workload) => workload.quantityRole === 'target',
+    );
+    expect(second.draftCandidates).toHaveLength(2);
     expect(second.draftCandidates.reduce(
       (sum, candidate) => sum + candidate.durationMinutes,
       0,
     )).toBe(150);
     expect(second.draftCandidates.every((candidate) =>
-      [completedWorkload?.id, remainingWorkload?.id, observedEffort?.id].every(
+      [completedWorkload?.id, remainingWorkload?.id, targetWorkload?.id, observedEffort?.id].every(
         (factId) => factId && candidateSourceFactRefs(candidate).includes(factId),
       ))).toBe(true);
   });
