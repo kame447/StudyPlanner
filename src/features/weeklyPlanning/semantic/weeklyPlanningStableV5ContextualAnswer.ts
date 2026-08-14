@@ -170,8 +170,7 @@ function isSemanticUncertaintyReplyEnvelope(
     && input.pendingQuestion.graphRevision === input.graph.revision
     && isSemanticUncertaintyQuestion(input.pendingQuestion.questionCode)
     && typeof input.pendingQuestion.targetFactId === 'string'
-    && input.pendingQuestion.targetFactId.length > 0
-    && input.document.planningIntent !== 'create_plan';
+    && input.pendingQuestion.targetFactId.length > 0;
 }
 
 function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean {
