@@ -50,7 +50,7 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
   'Interpret only the current answer to the machine-selected pending question; state already fixes the target identity and scale.',
-  'For missing_effort_estimate, return effort_answer only for a direct duration answer and convert it to minutes. For quantity_role_unresolved, return quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback; return only the schema.',
+  'For missing_effort_estimate, return effort_answer only for a direct duration answer and convert it to minutes. For quantity_role_unresolved, return quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =
