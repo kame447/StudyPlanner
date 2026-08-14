@@ -68,7 +68,7 @@ describe('Stable V5 focused user-context date repair', () => {
       calendarContext: { currentDate: '2026-08-14', timeZone: 'Asia/Tokyo' },
     });
     expect(messages[0]?.content).toContain('only the already-interpreted relative event date');
-    expect(FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS).toBe(40);
+    expect(FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS).toBe(120);
 
     const decision = parseFocusedUserContextDateRepairDecisionV5(
       JSON.stringify({ dateExpression: '2026-08-28' }),
