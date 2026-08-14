@@ -63,13 +63,13 @@ describe('Stable V5 dialogue prompt', () => {
     const combined = `${prompt.systemPrompt}\n${prompt.userPrompt}`;
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
 
-    expect(prompt.systemPrompt).toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
     expect(combined.match(/入力にない/g)).toHaveLength(1);
+    expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
     expect(prompt.userPrompt).toContain('referenceResponseはアプリが必要としている確認意図の参考');
-    expect(prompt.userPrompt).toContain('未実行の作成・保存を完了したとは言わないでください');
+    expect(prompt.userPrompt).not.toContain('未実行の作成・保存を完了したとは言わないでください');
     expect(payload).toMatchObject({
       actionId: input().actionId,
       currentUserMessage: input().currentUserMessage,
