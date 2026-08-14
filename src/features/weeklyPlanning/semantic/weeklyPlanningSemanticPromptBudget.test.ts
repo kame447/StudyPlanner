@@ -149,6 +149,9 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(systemPrompt).not.toContain('weekday:tuesday, weekday:wednesday');
     expect(systemPrompt).not.toContain('Return empty availabilityDeclarations');
     expect(systemPrompt).not.toContain('selector must be active');
+    expect(systemPrompt).not.toContain(
+      'Do not emit application, scheduling, readiness, preview, save commands, or prose.',
+    );
   });
 
   it('caps the always-on generic system prompt itself', () => {

@@ -23,7 +23,6 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. If one statement gives total and completed amounts for the same work/unit, derive remaining as total minus completed.',
   'An effortEstimate may target the exact task, component, or workload localId.',
   'Use existingPublicId only for accepted cross-turn identity. create_plan authorizes creation without replaying accepted facts.',
-  'Do not emit application, scheduling, readiness, preview, save commands, or prose.',
 ].join('\n');
 
 const CROSS_FACT_INSTRUCTION_V5 = [
