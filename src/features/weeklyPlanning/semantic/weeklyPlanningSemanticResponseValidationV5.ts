@@ -35,6 +35,9 @@ import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
+  normalizePendingQuestionEntityBindingsV5,
+} from './weeklyPlanningPendingEntityBindingNormalizationV5';
+import {
   canonicalizeWeeklyPlanningSemanticRepresentationV5,
 } from './weeklyPlanningSemanticRepresentationCanonicalizationV5';
 import {
@@ -70,8 +73,12 @@ export function validateWeeklyPlanningSemanticResponseV5(
     userText: input.userText,
     publicStateSummary: input.publicStateSummary,
   });
+  const pendingBindingNormalization = normalizePendingQuestionEntityBindingsV5({
+    rawResponse: copiedContextNormalization.rawResponse,
+    publicStateSummary: input.publicStateSummary,
+  });
   const componentParentNormalization = normalizeContainingTaskComponentParentV5(
-    copiedContextNormalization.rawResponse,
+    pendingBindingNormalization.rawResponse,
   );
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
@@ -82,6 +89,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
+    ...pendingBindingNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
     ...clockNormalization.repairs,

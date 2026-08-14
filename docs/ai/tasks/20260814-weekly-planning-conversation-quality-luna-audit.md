@@ -96,6 +96,10 @@ historical turn 4のrun `31787781166`は、数学ワークへcompleted 30 pages�
 
 historical turn 5のrun `31787953951`は、古典課題へcompleted 3 sheets、remaining/target 7 sheets、15 minutes per sheetを正確に追加し、次に模試task内の数学component一件だけを質問した。ここでもtotal 10を`declared`とした初回出力を1回repairしており、同じstructural inefficiencyは3回再現した。
 
+historical turn 6のrun `31788110631`は`stable_v5_normalization_rejected`となり、成功済みturn 5 checkpointとGraph revision 6を保った。Lunaは模試数学のtarget 2 hours per occurrenceとdaily recurrenceを意味上は正しく出力し、pending targetのcomponent public IDも正確に転記したが、その親task public IDだけを1文字列として壊した。generic repairはtask/componentの両IDをさらに別文字列へ変え、2回ともexisting-entity validationが拒否した。
+
+修正はexact pending bindingのrepresentation normalizationに限定した。`missing_schedulable_work`のpending targetがactive componentで、出力が一つのtask/componentを既存Factへbindしようとし、親子の片方がexact ID、もう片方だけがどのactive IDにも一致しない場合に限り、public graphのcomponent→task関係から未知側IDを復元する。両方が未知、または別のvalid public IDなら変更しない。label similarity、編集距離、raw textは使わない。normalizer/cross-turn/trace exportを含む対象16件とTypeScriptを通し、turn 5 checkpointからturn 6を再試行する。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes

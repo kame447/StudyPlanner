@@ -1,7 +1,7 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
   "turn": 6,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "模試対策の数学は、来週は毎日2時間ずつ取りたいです。",
   "previous_run_id": "31787953951",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
