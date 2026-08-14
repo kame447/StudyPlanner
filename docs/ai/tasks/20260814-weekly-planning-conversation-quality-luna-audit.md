@@ -86,6 +86,10 @@ historical scenario turn 1のrun `31786921036`も会話品質として合格し�
 
 historical turn 2のrun `31787045539`は、夏休みの課題を`needs_breakdown`、共通テスト模試の勉強を別task、数学を模試taskのcomponentとして受理した。2週間後の模試はowner-level goal event、数学がまずいという発話はowner-level concernへcurrent-turn provenance付きで保存され、goal eventをwork deadlineへ強めていない。dialogueは課題の中身を一つの答えやすい質問で尋ねた。初回出力のdateExpressionがunsupportedだったため1回repairしたが、意味・Graph・質問は合格である。次turnは実際の質問へ答え、過去に失敗したexact breakdown bindingと、量の比較をschedule priorityへ誤昇格しない境界を再観測する。
 
+historical turn 3のrun `31787183640`では、semantic層は既存の夏休み課題taskへ数学ワークと古典課題を追加し、breakdown uncertaintyを閉じ、関係factを作らなかった。したがってexact target binding、current-turn delta、quantity comparisonをpriorityへ誤昇格しない境界は合格した。一方、次の質問が具体componentではなく旧umbrella componentの「夏休みの課題」全体へ範囲と進捗を尋ね、異なる単位の2教材を再び一括回答させる形になったため、会話品質上は不採用とした。
+
+原因はsemantic AIではなくapplicationのmissing-work question target選択である。解消済み`work_breakdown` uncertaintyより後に追加されたcomponentだけを具体候補とし、component階層ではworkloadのないleafを優先し、一度に一件だけ質問する。選択したcomponent/task Fact IDを`lastQuestionContext.topicId`へ保持し、次turnの`pendingQuestion.targetFactId`へ渡す。特定の教材名や日本語表現は判定に使わない。pure question selection、runtime projection、breakdown/current-delta contractの対象18件とTypeScriptを通し、turn 2 checkpointから同じturn 3を再試行する。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes

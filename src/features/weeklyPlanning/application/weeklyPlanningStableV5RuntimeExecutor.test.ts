@@ -474,6 +474,7 @@ describe('Stable V5 runtime executor', () => {
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
         intent: 'missing_schedulable_work',
+        topicId: expect.any(String),
       },
     });
     expect(result.message).toContain('「午前：研究を進める」');
