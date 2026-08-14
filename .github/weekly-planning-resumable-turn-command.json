@@ -1,11 +1,13 @@
 {
-  "scenario": "refactored-pr120-real-api-conversation-20260812",
+  "scenario": "conversation-quality-entry-routing-20260814",
   "turn": 1,
   "attempt": 1,
-  "user_text": "8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。",
+  "user_text": "来週の勉強予定を立てたい",
   "previous_run_id": "",
-  "conversation_id": "weekly-pr120-refactored-real-api-20260812-01",
-  "owner_id": "real-api-pr120-refactored-user-1",
+  "conversation_id": "weekly-conversation-quality-entry-20260814-01",
+  "owner_id": "real-api-conversation-quality-user-1",
   "week_start_date": "2026-08-17",
-  "selected_date": "2026-08-17"
+  "selected_date": "2026-08-17",
+  "started_at": "2026-08-14T08:30:00.000Z",
+  "route_entry": true
 }

@@ -2,7 +2,6 @@ import { describe, expect, it, test } from 'vitest';
 import {
   assessWeeklyPlanningRequest,
   createSimpleWeeklyDraftBlocksFromText,
-  looksLikeWeeklyPlanningRequest,
   mergeWeeklyPlanningRevision,
 } from '../weeklyPlanningTransforms';
 import { totalDraftMinutes } from '../testUtils/weeklyPlanningTestHelpers';
@@ -18,10 +17,6 @@ function joinedQuestions(text: string): string {
 }
 
 describe('P1/P7 P0 Quick set: ambiguous weekly planning intake', () => {
-  it.skip('P1 P0-1 detects "来週勉強計画を作りたい" as weekly planning intent', () => {
-    expect(looksLikeWeeklyPlanningRequest('来週勉強計画を作りたい')).toBe(true);
-  });
-
   it('P1 P0-2 asks for missing subjects and target time instead of drafting', () => {
     const assessment = assessWeeklyPlanningRequest({
       selectedDate: SELECTED_DATE,
@@ -115,7 +110,6 @@ describe('P5/P7 P0 Quick set: exam prep and OCR fixture intake', () => {
   ].join('\n');
 
   it.skip('P1/P5 P0-3 detects "テスト対策したい" as study planning intent and asks for exam information', () => {
-    expect(looksLikeWeeklyPlanningRequest('テスト対策したい')).toBe(true);
     expect(joinedQuestions('テスト対策したい')).toMatch(/試験日|予定表|範囲表|科目/);
   });
 
@@ -168,10 +162,6 @@ describe('P5/P7 P0 Quick set: exam prep and OCR fixture intake', () => {
 });
 
 describe('P2/P6 P0 Quick set: multi-turn follow-up and false positive prevention', () => {
-  it('P2/P6 P0-15 does not route duration-only text to weekly planning in normal mode', () => {
-    expect(looksLikeWeeklyPlanningRequest('英語を3時間、計算理論を4時間')).toBe(false);
-  });
-
   it('P2/P4 P0-16 accepts duration-only text as follow-up while weekly planning is pending', () => {
     const followUp = mergeWeeklyPlanningRevision({
       selectedDate: SELECTED_DATE,
@@ -216,8 +206,7 @@ describe('P2/P6 P0 Quick set: multi-turn follow-up and false positive prevention
     ['P6 P0-13', '英語の勉強法を教えて'],
     ['P6 P0-14', '英単語の覚え方を教えて'],
     ['P6 P0-25', '明日14時から歯医者'],
-  ])('%s keeps "%s" out of weekly planning routing', (_id, input) => {
-    expect(looksLikeWeeklyPlanningRequest(input)).toBe(false);
+  ])('%s does not create weekly drafts from "%s"', (_id, input) => {
     expect(
       createSimpleWeeklyDraftBlocksFromText({
         userId: USER_ID,

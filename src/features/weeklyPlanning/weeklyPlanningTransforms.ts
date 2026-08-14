@@ -14,7 +14,6 @@ import { resolveSimpleTaskTitle } from './parsing/weeklyTitleCleanup';
 export { resolveSimpleTaskTitle, stripWeeklyPlanningTaskTitle } from './parsing/weeklyTitleCleanup';
 import { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
 export { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
-export { looksLikeWeeklyPlanningRequest } from './parsing/weeklyPlanningText';
 import {
   createSessionIntentOverrideFromText,
   hasTaskConsolidationIntent,

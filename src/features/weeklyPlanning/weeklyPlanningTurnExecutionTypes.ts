@@ -7,6 +7,11 @@ import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGra
 import type { WeeklyPlanningDialogueRendererTrace } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
+import type { WeeklyPlanningEntryRoutingTrace } from './entry/weeklyPlanningEntryRouter';
+
+export interface WeeklyPlanningTurnSubmissionOptions {
+  entryRoutingTrace?: WeeklyPlanningEntryRoutingTrace;
+}
 
 export interface WeeklyPlanningTurnExecutionInput {
   previousState?: PlanningIntakeState;
@@ -21,6 +26,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   requestContext?: WeeklyPlanningTurnRequestContext;
+  entryRoutingTrace?: WeeklyPlanningEntryRoutingTrace;
 }
 
 export type WeeklyPlanningTurnFailureCode =

@@ -4,6 +4,7 @@ import { createInitialPlanningState } from '../weeklyPlanningReducer';
 import {
   createWeeklyPlanningTurnRuntimeGateway,
 } from './weeklyPlanningTurnRuntimeGateway';
+import type { WeeklyPlanningEntryRoutingTrace } from '../entry/weeklyPlanningEntryRouter';
 
 const pending = {
   conversationId: 'conversation-1',
@@ -27,6 +28,22 @@ describe('weeklyPlanningTurnRuntimeGateway', () => {
       bindStableV5SessionScope,
     });
     const snapshot = createInitialPlanningState('2026-09-07');
+    const entryRoutingTrace = {
+      decision: 'weekly_planning',
+      requestBytes: 512,
+      request: {
+        messages: [],
+        temperature: 0,
+        responseFormat: {
+          type: 'json_schema',
+          json_schema: { name: 'entry_route', schema: {}, strict: true },
+        },
+        purpose: 'weekly_planning_interpreter',
+        maxCompletionTokens: 40,
+      },
+      responseLength: 30,
+      rawResponse: '{"decision":"weekly_planning"}',
+    } satisfies WeeklyPlanningEntryRoutingTrace;
 
     await gateway.execute({
       snapshot,
@@ -38,6 +55,7 @@ describe('weeklyPlanningTurnRuntimeGateway', () => {
       scheduleTemplates: [],
       weekStartsOn: 'monday',
       timeZone: 'Asia/Tokyo',
+      entryRoutingTrace,
     });
 
     expect(bindStableV5SessionScope).toHaveBeenCalledWith({
@@ -63,6 +81,7 @@ describe('weeklyPlanningTurnRuntimeGateway', () => {
         notBeforeTime: '14:56',
         weekStartsOn: 'monday',
       },
+      entryRoutingTrace,
     }));
   });
 

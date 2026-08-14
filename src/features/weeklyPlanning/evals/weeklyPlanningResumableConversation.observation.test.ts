@@ -47,6 +47,10 @@ import {
   serializeWeeklyPlanningResumableConversationCheckpoint,
   type WeeklyPlanningResumableConversationCheckpoint,
 } from './weeklyPlanningResumableConversationCheckpoint';
+import {
+  routeWeeklyPlanningEntry,
+  type WeeklyPlanningEntryRoutingResult,
+} from '../entry/weeklyPlanningEntryRouter';
 
 const shouldRun = process.env.WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN === '1';
 const outputDir = process.env.WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR
@@ -64,6 +68,10 @@ function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required.`);
   return value;
+}
+
+function optionalEnv(name: string): string | null {
+  return process.env[name]?.trim() || null;
 }
 
 function resetRuntime(): void {
@@ -138,6 +146,7 @@ function writeOutputs(params: {
   checkpoint: WeeklyPlanningResumableConversationCheckpoint;
   trace: unknown[];
   result: WeeklyPlanningTurnExecutionResult;
+  entryRouting: WeeklyPlanningEntryRoutingResult | null;
 }): void {
   mkdirSync(outputDir, { recursive: true });
   const checkpointPath = `${outputDir}/checkpoint.json`;
@@ -152,6 +161,7 @@ function writeOutputs(params: {
     turn: latestTurn,
     failure: params.result.failure ?? null,
     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
+    entryRouting: params.entryRouting,
     userPlanningContext: params.checkpoint.userPlanningContext,
     trace: params.trace,
   }, null, 2)}\n`);
@@ -257,6 +267,12 @@ run('weekly planning resumable real API turn', () => {
     };
 
     const userText = requiredEnv('WEEKLY_PLANNING_RESUMABLE_USER_TEXT');
+    const entryRouting = process.env.WEEKLY_PLANNING_RESUMABLE_ROUTE_ENTRY === '1'
+      ? await routeWeeklyPlanningEntry(userText)
+      : null;
+    if (entryRouting && entryRouting.decision !== 'weekly_planning') {
+      throw new Error(`Fresh-session entry route was ${entryRouting.decision}.`);
+    }
     const submission = await submitWeeklyPlanningApplicationTurn({
       session,
       userId: checkpoint.ownerId,
@@ -266,6 +282,12 @@ run('weekly planning resumable real API turn', () => {
       plans: [],
       scheduleTemplates: [],
       weekStartsOn: 'monday',
+      now: optionalEnv('WEEKLY_PLANNING_RESUMABLE_STARTED_AT')
+        ? () => requiredEnv('WEEKLY_PLANNING_RESUMABLE_STARTED_AT')
+        : undefined,
+      submissionOptions: entryRouting
+        ? { entryRoutingTrace: entryRouting.trace }
+        : undefined,
       getState: store.getState,
       dispatch: store.dispatch,
     }, services);
@@ -307,6 +329,6 @@ run('weekly planning resumable real API turn', () => {
       ],
       savedAt: new Date().toISOString(),
     };
-    writeOutputs({ checkpoint: nextCheckpoint, trace, result });
+    writeOutputs({ checkpoint: nextCheckpoint, trace, result, entryRouting });
   }, resolveRealApiTurnTimeoutMs());
 });

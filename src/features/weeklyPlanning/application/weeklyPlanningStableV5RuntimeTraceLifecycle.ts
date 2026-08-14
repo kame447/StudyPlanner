@@ -40,11 +40,42 @@ function startRuntimeTrace(input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput)
       userText: input.userText,
       selectedDate: input.selectedDate,
       timetableTermId: input.timetableTermId ?? null,
+      entryRoute: input.entryRoutingTrace?.decision ?? null,
       inputCounts: {
         recentMessageCount: input.messages.length,
         existingPlanCount: input.plans.length,
         scheduleTemplateCount: input.scheduleTemplates.length,
       },
+    },
+  });
+  const entryRouting = input.entryRoutingTrace;
+  if (!entryRouting) return;
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'semantic_provider_request',
+    data: {
+      attempt: 'entry_routing',
+      requestBytes: entryRouting.requestBytes,
+      request: entryRouting.request,
+    },
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'semantic_provider_response',
+    data: {
+      attempt: 'entry_routing',
+      responseLength: entryRouting.responseLength,
+      rawResponse: entryRouting.rawResponse,
+    },
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'semantic_validation_result',
+    data: {
+      attempt: 'entry_routing',
+      accepted: true,
+      errors: [],
+      parsedDocument: { decision: entryRouting.decision },
     },
   });
 }

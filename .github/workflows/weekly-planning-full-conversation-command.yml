@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/weekly-planning-human-grounding-repair
+      - agent/weekly-planning-conversation-quality
     paths:
       - '.github/weekly-planning-full-conversation-command.json'
 

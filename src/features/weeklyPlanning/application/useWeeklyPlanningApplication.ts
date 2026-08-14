@@ -16,7 +16,10 @@ import type {
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
-import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
+import type {
+  WeeklyPlanningTurnSubmissionOptions,
+  WeeklyPlanningTurnSubmissionResult,
+} from '../weeklyPlanningTurnExecutor';
 import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
@@ -56,7 +59,10 @@ export interface WeeklyPlanningApplication {
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
   approvalAvailability: WeeklyPlanningApprovalAvailability;
   canEditDraftBlocks: boolean;
-  submitTurn: (userText: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  submitTurn: (
+    userText: string,
+    options?: WeeklyPlanningTurnSubmissionOptions,
+  ) => Promise<WeeklyPlanningTurnSubmissionResult>;
   cancelTurn: () => boolean;
   clearConversation: () => boolean;
   appendMessage: (message: WeeklyPlanningMessage) => void;
@@ -165,7 +171,10 @@ export function useWeeklyPlanningApplication({
   });
   const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval;
 
-  async function submitTurn(userText: string): Promise<WeeklyPlanningTurnSubmissionResult> {
+  async function submitTurn(
+    userText: string,
+    submissionOptions?: WeeklyPlanningTurnSubmissionOptions,
+  ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
     if (!userId || !session) return { accepted: false, draftCandidates: [] };
     return submitWeeklyPlanningApplicationTurn({
@@ -178,6 +187,7 @@ export function useWeeklyPlanningApplication({
       scheduleTemplates,
       timetableTermId,
       weekStartsOn,
+      submissionOptions,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
     });

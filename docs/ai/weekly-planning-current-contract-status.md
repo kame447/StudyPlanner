@@ -1,6 +1,6 @@
 # weeklyPlanning current contract status
 
-Status: canonical / Stable V5 sole runtime + structural hardening
+Status: canonical / Stable V5 sole runtime + conversation-quality re-verification
 Updated: 2026-08-14
 
 - [current contract v5](weekly-planning-current-contract-v5.md)
@@ -8,9 +8,10 @@ Updated: 2026-08-14
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
-- [current SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
-- [current loop log](tasks/20260814-solid-file-by-file-loop-log.md)
-- [current seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
+- [current conversation-quality task](tasks/20260814-weekly-planning-conversation-quality-reverification.md)
+- [completed SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
+- [completed SOLID loop log](tasks/20260814-solid-file-by-file-loop-log.md)
+- [SOLID seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
 
 ## 1. 現在位置
 
@@ -23,10 +24,11 @@ Stable V5は唯一のproduction週間計画runtimeである。
 - PR #113: semantic module責務を整理
 - PR #120: human grounding / repair、scheduler human-scale policy、real API hardening、semantic orchestration監査、legacy behavior-aware execution cluster隔離を完了しmainへmerge
 - PR #127: audited Browser Regression suiteを統合しmainへmerge
+- PR #129: file-by-file SOLID hardening、MD棚卸し、browser regression監査を完了しmainへmerge
 
-現在はPR #129 `agent/browser-regression-audited-integration`で、全体コードのfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を行っている。
+現在は`agent/weekly-planning-conversation-quality`で、過去PR・Issueとcurrent mainを突き合わせ、実API対話を一turnずつ再検証している。
 
-PR #129では新規semantic policyやfeatureを混ぜず、挙動不変の責務分離、dead surface / dead contract除去、監査で見つかった回帰修正、focused regression、CI harness / document hygieneだけを扱う。
+最初の確定問題はIssue #115のfresh-session入口regexである。raw textの意味判定を小さいstructured AI routerへ移し、Stable V5の決定論的readiness / scheduler / preview / approval / save境界は変更しない。
 
 ## 2. Stable V5 production baseline
 

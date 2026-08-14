@@ -5,7 +5,7 @@ Status: canonical / PR #120 hardening and selective orchestration
 
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
-- Current execution task: [../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md](../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
+- Current execution task: [../tasks/20260814-weekly-planning-conversation-quality-reverification.md](../tasks/20260814-weekly-planning-conversation-quality-reverification.md)
 - Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
 ## 0. 最上位設計原則

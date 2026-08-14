@@ -81,10 +81,3 @@ export function isPlacementConditionOnly(text: string): boolean {
     )
   );
 }
-
-export function looksLikeWeeklyPlanningRequest(text: string): boolean {
-  const normalizedText = normalizeWeeklyPlanningText(text);
-  const durationMentions = normalizedText.match(/\d+(?:\.\d+)?\s*時間/g) ?? [];
-
-  return /今週|来週|週間|週/.test(normalizedText) && durationMentions.length >= 2;
-}
