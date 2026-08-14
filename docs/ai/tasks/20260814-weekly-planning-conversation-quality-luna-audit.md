@@ -94,6 +94,8 @@ turn 3再試行run `31787630567`は合格した。Graphは数学ワークと古�
 
 historical turn 4のrun `31787781166`は、数学ワークへcompleted 30 pages、derived remaining 50 pages、next-week target 25 pages、completed workloadのobserved total 90 minutesを正確に追加し、次の具体componentである古典課題だけを質問した。初回Luna出力はtotal 80を`declared`としてcompleted 30と併存させ、validator後の1回repairでremaining 50へ直した。Issue #118初回と同じ形が再現したため、会話baseline完了後に意味を推測しないstructural normalizationでこのprovider再呼び出しを除けるかablationする。
 
+historical turn 5のrun `31787953951`は、古典課題へcompleted 3 sheets、remaining/target 7 sheets、15 minutes per sheetを正確に追加し、次に模試task内の数学component一件だけを質問した。ここでもtotal 10を`declared`とした初回出力を1回repairしており、同じstructural inefficiencyは3回再現した。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
