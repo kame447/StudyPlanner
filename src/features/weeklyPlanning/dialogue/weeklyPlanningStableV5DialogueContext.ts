@@ -1,8 +1,3 @@
-import type {
-  WeeklyPlanningStableV5DialogueQuestionIntent,
-  WeeklyPlanningStableV5DialogueQuestionTarget,
-} from './weeklyPlanningStableV5DialogueContracts';
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -111,7 +106,7 @@ const QUESTION_TARGET_COLLECTIONS = [
 export function questionTargetForStableV5Dialogue(params: {
   planningInformation: Record<string, unknown> | null;
   targetFactId: string | null;
-}): WeeklyPlanningStableV5DialogueQuestionTarget | null {
+}) {
   if (!params.targetFactId) return null;
   for (const collection of QUESTION_TARGET_COLLECTIONS) {
     const fact = factById(params.planningInformation, collection, params.targetFactId);
@@ -122,8 +117,8 @@ export function questionTargetForStableV5Dialogue(params: {
 
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
-  questionTarget: WeeklyPlanningStableV5DialogueQuestionTarget | null;
-}): WeeklyPlanningStableV5DialogueQuestionIntent | null {
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+}) {
   const fact = params.questionTarget?.fact;
   if (
     params.questionCode !== 'missing_effort_estimate'
@@ -142,7 +137,7 @@ export function questionIntentForStableV5Dialogue(params: {
     amount: fact.amount,
     unitCode: typeof fact.unitCode === 'string' ? fact.unitCode : null,
     unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
-  };
+  } as const;
 }
 
 export function requiredLabelsForStableV5Dialogue(params: {
