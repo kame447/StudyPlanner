@@ -17,14 +17,19 @@ Execution ledger:
   - extracted support-only FAQ/legal/contact/version content into `AppSettingsSupportPanel.tsx`.
   - retained modal shell, settings state, theme, week-start and personalization reset ownership in `AppSettingsDialog`.
   - no product/Stable V5 behavior change intended.
+- Loop 14: `src/components/ActualEditorCard.tsx`
+  - extracted plan/actual → `ActualDraft` construction, legacy alignment inference, and relink-candidate projection into `src/lib/actualDrafts.ts`.
+  - kept editor state, save/delete interactions and rendering in the component.
+  - added `src/lib/actualDrafts.test.ts` covering new/existing draft construction, explicit/legacy alignment, and relink projection.
 
 Next priorities:
 
 1. Continue `src/components/` file-by-file audit.
 2. Prefer dead-surface removal and behavior-preserving responsibility extraction before feature work.
-3. Treat `NaturalLanguageAssistant.tsx` / `QuickEntryModal.tsx` separation as Issue #52, not an opportunistic mega-rewrite.
-4. Treat raw-text weekly entry routing as Issue #115; do not add regex heuristics during refactor.
-5. Keep trace/privacy, cross-device approval, personalization and saved-preview migration concerns in their existing Issues rather than mixing them into structural loops.
+3. Audit duplicated actual-entry concerns across `ActualEditorCard`, `StandaloneActualEditorCard`, `ActualTrackingTools`, and Quick Entry without prematurely merging distinct workflows.
+4. Treat `NaturalLanguageAssistant.tsx` / `QuickEntryModal.tsx` separation as Issue #52, not an opportunistic mega-rewrite.
+5. Treat raw-text weekly entry routing as Issue #115; do not add regex heuristics during refactor.
+6. Keep trace/privacy, cross-device approval, personalization and saved-preview migration concerns in their existing Issues rather than mixing them into structural loops.
 
 Loop rule:
 
