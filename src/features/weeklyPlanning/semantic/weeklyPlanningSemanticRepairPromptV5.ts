@@ -41,6 +41,9 @@ function repairDirectivesForErrors(
   if (errors.some((error) => error.includes('targetLocalId'))) {
     directives.push('Resolve references semantically, then use a localId declared in this response as targetLocalId. Never copy a public Fact ID into targetLocalId.');
   }
+  if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
+    directives.push("Create the replacement fact stated by current userText in the appropriate current-document collection, then set correction.replacementLocalId to that fact's declared localId. Do not leave a dangling localId, reuse the corrected publicId, copy the old fact, or invent replacement meaning.");
+  }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
     directives.push('Bind continued accepted task/component identity with the exact existingPublicId from publicStateSummary; keep null only for genuinely new entities.');
   }
