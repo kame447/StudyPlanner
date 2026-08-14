@@ -1,7 +1,7 @@
 {
   "scenario": "luna-audit-historical-binding-20260814",
   "turn": 10,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "やっぱり夕方ではなく、夜にしてください。",
   "previous_run_id": "31791952338",
   "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
