@@ -55,7 +55,6 @@ import {
 } from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
-  userText: string;
   publicStateSummary?: Record<string, unknown>;
 }
 
@@ -131,7 +130,6 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...validateWeeklyPlanningRecurrenceConsistencyV5(document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
       document,
-      userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
