@@ -110,7 +110,7 @@ describe('Stable V5 dialogue prompt', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
-    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(800);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(1000);
+    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(700);
   });
 });
