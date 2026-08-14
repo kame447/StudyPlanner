@@ -1,7 +1,4 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
-import {
-  readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5,
-} from './weeklyPlanningWorkBreakdownResponseContractV5';
 
 export interface WeeklyPlanningSemanticRepairInputV5 {
   userText: string;
@@ -12,17 +9,9 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function repairDirectivesForErrors(
-  errors: string[],
-  input: WeeklyPlanningSemanticRepairInputV5,
-): string[] {
+function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
-  const pendingWorkBreakdownTarget =
-    readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(input.publicStateSummary);
 
-  if (pendingWorkBreakdownTarget) {
-    directives.push(`Resolve only pending work_breakdown target ${pendingWorkBreakdownTarget}; bind that existingPublicId and emit only current-userText structure for it. Do not replay unrelated state.`);
-  }
   if (errors.some((error) => error.includes('canonical-relative-'))) {
     directives.push('Choose the canonical relative-day/week value matching current meaning and context.');
   }
@@ -75,16 +64,10 @@ export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
     role: 'user',
     content: JSON.stringify({
       instruction: 'Return only the corrected current-turn Stable V5 semantic delta. Invent nothing.',
-      requiredChanges: repairDirectivesForErrors(params.validationErrors, params.input),
+      requiredChanges: repairDirectivesForErrors(params.validationErrors),
       validationErrors: params.validationErrors,
     }),
   };
-  const freshContextualRepair = Boolean(
-    readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(params.input.publicStateSummary),
-  );
-  if (freshContextualRepair) {
-    return [...params.baseMessages, repairInstruction];
-  }
   return [
     ...params.baseMessages,
     { role: 'assistant', content: params.invalidResponse },
