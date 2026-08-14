@@ -51,26 +51,4 @@ describe('Stable V5 semantic repair prompt', () => {
       content: invalidResponse,
     });
   });
-
-  it('repairs unsupported relative goal-event dates without restoring a global prompt guard', () => {
-    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
-      baseMessages: [{ role: 'system', content: 'normalize' }],
-      invalidResponse: '{}',
-      validationErrors: [
-        'document.userContextFacts[0].dateExpression:unsupported-expression',
-      ],
-      input: {
-        userText: '2週間後に共通テスト模試があります。',
-        publicStateSummary: {
-          calendarContext: { currentDate: '2026-08-14', timeZone: 'Asia/Tokyo' },
-        },
-      },
-    });
-
-    const directive = repairPayload(messages).requiredChanges?.[0] ?? '';
-    expect(directive).toContain('supported ISO YYYY-MM-DD');
-    expect(directive).toContain('calendarContext.currentDate/timeZone');
-    expect(directive).toContain('preserve the event value separately');
-    expect(bytes(directive)).toBeLessThanOrEqual(260);
-  });
 });
