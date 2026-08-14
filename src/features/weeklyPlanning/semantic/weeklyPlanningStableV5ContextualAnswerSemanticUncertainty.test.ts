@@ -62,10 +62,11 @@ function graphWithPendingBreakdown(): WeeklyPlanningFactGraphV5 {
 function breakdownDocument(params: {
   retainedUncertaintyField: string;
   retainedUncertaintyTargetLocalId: string;
+  planningIntent?: WeeklyPlanningSemanticDocumentV5['planningIntent'];
 }): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'update_plan',
+    planningIntent: params.planningIntent ?? 'update_plan',
     planningWindow: null,
     tasks: [{
       localId: 'task-current',
@@ -130,12 +131,13 @@ const pendingQuestion = {
 };
 
 describe('Stable V5 semantic-uncertainty contextual answer', () => {
-  it('closes the exact pending uncertainty while preserving a new child uncertainty', () => {
+  it('closes the exact pending uncertainty while preserving a new child uncertainty even if AI intent drifts to create_plan', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graphWithPendingBreakdown(),
       document: breakdownDocument({
         retainedUncertaintyField: 'relative_workload_amount',
         retainedUncertaintyTargetLocalId: 'component-math',
+        planningIntent: 'create_plan',
       }),
       pendingQuestion,
       conversationId: 'conversation-1',
