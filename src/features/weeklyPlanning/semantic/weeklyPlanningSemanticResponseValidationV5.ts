@@ -135,10 +135,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
-    ...validateWeeklyPlanningSemanticEvidenceV5({
-      document,
-      input,
-    }),
+    ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
   ];
   return {
     document: errors.length === 0 ? document : null,
