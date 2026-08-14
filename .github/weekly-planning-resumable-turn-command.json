@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-audit-historical-binding-20260814",
-  "turn": 10,
-  "attempt": 4,
-  "user_text": "やっぱり夕方ではなく、夜にしてください。",
-  "previous_run_id": "31791952338",
-  "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
-  "owner_id": "real-api-luna-audit-historical-binding-user-1",
+  "scenario": "luna-audit-observed-pace-20260814",
+  "turn": 2,
+  "attempt": 2,
+  "user_text": "完了した30ページには、90分くらいかかりました。",
+  "previous_run_id": "31786044289",
+  "conversation_id": "weekly-luna-audit-observed-pace-20260814-01",
+  "owner_id": "real-api-luna-audit-observed-pace-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
