@@ -14,6 +14,12 @@ The app helps users:
 
 This repository should prioritize a clean MVP first.
 
+## Instruction roles
+
+- This file defines stable product, architecture, safety, and repository hygiene principles.
+- The current canonical roadmap and task records define active scope, priority, checkpoint, and the next implementation step.
+- For task progress and execution order, follow the current roadmap rather than inferring status from this file or from historical task documents.
+
 ## Product priorities
 
 Priority order:
@@ -131,23 +137,61 @@ Rules:
 - Create a repository/service abstraction for auth and data access
 - Keep AI-related logic separate from UI rendering logic
 - Prefer predictable, maintainable code over clever shortcuts
+- Follow SOLID principles where they improve responsibility boundaries and dependency direction
+- Encapsulate related behavior by responsibility and change reason, then expose a small stable facade/application API to callers
+- Do not make callers know singleton selection, fallback ordering, storage implementation details, or internal condition trees
+- Prefer explicit state/transition types such as discriminated unions over unrelated nullable flags when practical
 
 ## Natural language scheduling rules
 
-- Keep natural language schedule parsing in a staged pipeline
-- Preserve the separation:
-  - normalize
-  - tokenize
-  - clause parsing
-  - AST building
-  - IR lowering
-  - compile
-  - validate
-- Do not collapse multiple stages into ad-hoc postprocessing
-- Keep old planner / fallback paths until the new pipeline is safely integrated
-- Prefer incremental extension over large rewrites
-- Keep parser outputs reviewable and debuggable through assumptions, diagnostics, and unresolved fields
-- Do not expose advanced recurrence UI/behavior beyond MVP unless explicitly requested
+Stable V5 is the production baseline for weekly planning.
+
+### Ownership boundary
+
+AI owns semantic interpretation of raw user language and conversation context, including:
+
+- task / component meaning
+- workload and quantity role
+- dates, weekdays, time periods, and temporal intent
+- corrections and short contextual answers
+- authorization intent
+- structured semantic candidates
+
+Deterministic code owns:
+
+- schema / evidence / reference validation
+- formal binding and canonical IDs
+- Fact Graph lifecycle
+- revision and idempotency
+- whether clarification or confirmation is required
+- question priority and progression policy
+- readiness
+- scheduling and placement safety
+- preview freshness
+- approval and save
+- persistence, recovery, and safety boundaries
+
+### Required constraints
+
+- Do not reinterpret raw Japanese text with regex, keywords, dictionaries, or a legacy parser to establish semantic truth.
+- Do not restore the old normalize → tokenize → clause parser → AST → IR pipeline as a production semantic authority.
+- Deterministic routing may use machine state and validated typed AI output, but it must not infer user intent from ad-hoc lexical heuristics.
+- Do not add more raw-text regex rules to compensate for semantic routing or interpretation failures.
+- Provider failure, malformed output, validation failure, or AI repair failure must not fall back to a legacy natural-language parser.
+- Semantic repair may be performed at most once where the current Stable V5 contract permits it.
+- AI must not choose formal lifecycle mutations, readiness, question priority, scheduler placement, approval, or save.
+- Renderer output is presentation only. Do not infer machine state or pending targets back from rendered Japanese text.
+- Keep current saved-data migration/read compatibility separate from semantic runtime compatibility. Existing data compatibility is not permission to reintroduce legacy semantic execution.
+- Prefer small typed semantic/application boundaries and stable facades over central orchestrators that expose internal implementation details.
+
+Canonical weekly-planning contracts live under `docs/ai/`, especially:
+
+- `docs/ai/weekly-planning-current-contract-v5.md`
+- `docs/ai/weekly-planning-current-contract-status.md`
+- `docs/ai/strategy/weekly-planning-roadmap.md`
+- `docs/ai/testing/weekly-planning-test-philosophy.md`
+
+Historical task files or legacy architecture documents must not override the current Stable V5 contract merely because they still contain `Status: active`.
 
 ## Responsive design rules
 
@@ -162,17 +206,20 @@ AI should support the user, not silently override user intent.
 
 Allowed AI roles in MVP:
 
-- parse natural language schedule additions
-- parse natural language schedule edits
+- semantically interpret natural language schedule additions and edits
+- structure user language into validated typed candidates
+- interpret contextual corrections, short answers, and authorization intent where required by the active contract
+- render deterministic application decisions into natural user-facing language
 - suggest structured fields from loose input
-- compute simple study feedback and scores
+- compute or generate user-facing study feedback only where the feature contract explicitly assigns that responsibility to AI
 - generate short actionable advice
 
 AI must:
 
-- present suggestions in a reviewable way before final apply
-- avoid making destructive changes without confirmation
+- present suggestions in a reviewable way before final apply when the product flow requires review
+- avoid making destructive changes without the deterministic confirmation/approval boundary
 - prefer simple, understandable outputs
+- never become the authority for scheduler placement, formal state transitions, idempotency, approval, or persistence
 
 ## Coding style
 
@@ -182,10 +229,23 @@ AI must:
 - Add comments only where they help understanding
 - Keep files reasonably scoped
 - Follow existing project conventions once established
+- A large file is not automatically wrong, but split it when it owns independent responsibilities or independent reasons to change
+- Do not refactor only to move code between files; improve responsibility, encapsulation, dependency direction, or testability
+- Remove dead compatibility surfaces only after verifying they have no production, test, migration, or persisted-data responsibility
+
+## Test audit policy
+
+When a test fails during refactoring or feature work, classify the cause before changing assertions:
+
+1. implementation defect → fix production code
+2. stale or incorrect test contract → fix the test against the current canonical contract
+3. harness boundary issue → fix the harness
+
+Never delete or weaken a regression solely to obtain green CI. AI wording and one exact semantic phrasing should not be treated as universal truth unless a deterministic UI contract explicitly requires exact text.
 
 ## GitHub workflow policy
 
-This section is mandatory for every agent performing Git or GitHub work in this repository.
+This section applies whenever ChatGPT performs Git or GitHub work in this repository.
 
 ### Mandatory pre-flight check
 
@@ -242,41 +302,13 @@ When finishing GitHub-related work, report:
 
 ## Git operation policy
 
-Codex must not perform Git write operations.
+ChatGPT may perform the ordinary Git write operations needed to complete a user-requested implementation and publishing workflow after the mandatory pre-flight check. The user does not need to restate or approve each routine command individually.
 
-Do not run the following commands unless the user explicitly asks for that exact command in the current message:
+Before making or publishing changes, inspect the current state and relevant diff. Keep commits and pushes limited to the active logical task and report what was published.
 
-- git add
-- git commit
-- git reset
-- git restore
-- git checkout
-- git switch
-- git merge
-- git rebase
-- git cherry-pick
-- git stash
-- git clean
-- git pull
-- git push
-- git mv
-- git rm
+Ask before a destructive or history-rewriting operation that is not already explicit in the user's request, including discarding worktree changes, hard reset, force push, rewriting shared history, or deleting a branch.
 
-Codex may run read-only Git commands for investigation:
-
-- git status
-- git diff
-- git diff --stat
-- git log
-- git show
-- git branch
-- git rev-parse
-
-Before making changes, Codex should inspect the current diff when relevant.
-After making changes, Codex should report changed files and leave staging, committing, reverting, and pushing to the user.
-
-Codex must not remove `.git/index.lock` automatically.
-If a Git lock file exists, Codex should stop and tell the user instead of deleting it.
+Do not remove `.git/index.lock` automatically. If a Git lock file exists, stop and tell the user instead of deleting it.
 
 ## Verification rules
 

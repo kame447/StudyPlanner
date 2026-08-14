@@ -9,17 +9,21 @@ import {
   calculateShiftedEndTimeForEdit,
   calculateTimeRangeDurationMinutes,
   formatDateLabel,
-  minutesBetween,
   parseTimeToMinutes,
 } from '../lib/date';
 import {
   doesMonthEventOccurOnDate,
   formatMonthEventTimeRange,
-  getPreviousMonthEventOccurrenceDate,
   getMonthEventRepeatLabel,
   MONTH_EVENT_REPEAT_OPTIONS,
   sortMonthEvents,
 } from '../lib/monthEvents';
+import {
+  resolveMonthEventDeleteMutation,
+  sanitizeMonthEventDraft,
+  validateMonthEventDraft,
+  type MonthEventDeleteScope,
+} from '../lib/monthEventEditor';
 import { DayCalendarDialog } from './DatePickerDialogs';
 import { TimeWheelPicker } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
@@ -84,41 +88,6 @@ function getTimelineItemStyle(index: number): CSSProperties {
     '--month-event-bar-color':
       MONTH_EVENT_BAR_COLORS[index % MONTH_EVENT_BAR_COLORS.length],
   } as CSSProperties;
-}
-
-function sanitizeDraft(draft: MonthEventDraft): MonthEventDraft {
-  const checklist = draft.checklist
-    .map((item) => ({
-      ...item,
-      text: item.text.trim(),
-    }))
-    .filter((item) => item.text.length > 0);
-  const locationTags = draft.locationTags
-    .map((tag) => tag.trim())
-    .filter((tag, index, array) => tag.length > 0 && array.indexOf(tag) === index);
-  const repeatUntil =
-    draft.repeat === 'none' ||
-    !draft.repeatUntil ||
-    draft.repeatUntil.localeCompare(draft.date) < 0
-      ? null
-      : draft.repeatUntil;
-  const excludedDates =
-    draft.repeat === 'none'
-      ? []
-      : [...new Set(draft.excludedDates)]
-          .filter((date) => date.localeCompare(draft.date) >= 0)
-          .sort((left, right) => left.localeCompare(right));
-
-  return {
-    ...draft,
-    title: draft.title.trim(),
-    repeatUntil,
-    excludedDates,
-    url: draft.url.trim(),
-    memo: draft.memo.trim(),
-    checklist,
-    locationTags,
-  };
 }
 
 function getInitialExpandedAddons(draft: MonthEventDraft): Set<MonthEventAddonKey> {
@@ -303,15 +272,11 @@ export function MonthEventDialog({
   }
 
   async function handleSave() {
-    const nextDraft = sanitizeDraft(draft);
+    const nextDraft = sanitizeMonthEventDraft(draft);
+    const validationError = validateMonthEventDraft(nextDraft);
 
-    if (!nextDraft.title) {
-      setError('タイトルを入れてください。');
-      return;
-    }
-
-    if (minutesBetween(nextDraft.startTime, nextDraft.endTime) <= 0) {
-      setError('終了時刻は開始時刻より後にしてください。');
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -344,47 +309,23 @@ export function MonthEventDialog({
     onClose();
   }
 
-  async function handleDeleteScope(scope: 'single' | 'future') {
+  async function handleDeleteScope(scope: MonthEventDeleteScope) {
     if (!editingEvent) {
       return;
     }
 
-    const baseDraft = createMonthEventDraftFromEvent(editingEvent);
-
-    if (scope === 'single') {
-      const nextDraft = sanitizeDraft({
-        ...baseDraft,
-        excludedDates: [...baseDraft.excludedDates, activeDate],
-      });
-
-      setIsSavingMonthEvent(true);
-      void onSave(nextDraft, editingEvent.id).catch(() => undefined);
-      onClose();
-      return;
-    }
-
-    const previousOccurrenceDate = getPreviousMonthEventOccurrenceDate(
+    const mutation = resolveMonthEventDeleteMutation(
       editingEvent,
       activeDate,
+      scope,
     );
 
-    if (!previousOccurrenceDate) {
-      setIsSavingMonthEvent(true);
-      void onDelete(editingEvent).catch(() => undefined);
-      onClose();
-      return;
-    }
-
-    const nextDraft = sanitizeDraft({
-      ...baseDraft,
-      repeatUntil: previousOccurrenceDate,
-      excludedDates: baseDraft.excludedDates.filter(
-        (date) => date.localeCompare(previousOccurrenceDate) <= 0,
-      ),
-    });
-
     setIsSavingMonthEvent(true);
-    void onSave(nextDraft, editingEvent.id).catch(() => undefined);
+    if (mutation.type === 'delete') {
+      void onDelete(mutation.monthEvent).catch(() => undefined);
+    } else {
+      void onSave(mutation.draft, mutation.targetMonthEventId).catch(() => undefined);
+    }
     onClose();
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { NoticeState } from '../hooks/useNoticeState';
+import { AuthAccessGateForm } from './AuthAccessGateForm';
 import { StudyPlannerLogo } from './StudyPlannerLogo';
 
 type AuthIntent = 'sign-in' | 'sign-up';
@@ -36,7 +37,6 @@ export function AuthScreen({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
-  const [accessKey, setAccessKey] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,16 +76,7 @@ export function AuthScreen({
     await onSignInWithPassword(email, password);
   }
 
-  function handleAccessUnlock() {
-    setLocalError(null);
-
-    if (!onUnlockAccessGate(accessKey)) {
-      setLocalError('閲覧キーが一致しません。');
-      return;
-    }
-
-    setAccessKey('');
-  }
+  const accessGateLocked = accessGateEnabled && !accessGateUnlocked;
 
   return (
     <main className="auth-shell auth-shell-modern">
@@ -124,44 +115,17 @@ export function AuthScreen({
         <div className="auth-stage-card">
           <div className="auth-stage-header">
             <div>
-              <h2>
-                {accessGateEnabled && !accessGateUnlocked ? '限定公開キー' : requestTitle}
-              </h2>
+              <h2>{accessGateLocked ? '限定公開キー' : requestTitle}</h2>
               <p>
-                {accessGateEnabled && !accessGateUnlocked
+                {accessGateLocked
                   ? '共有されたキーを一度だけ入力すると、この端末でログイン画面へ進めます。'
                   : requestDescription}
               </p>
             </div>
           </div>
 
-          {accessGateEnabled && !accessGateUnlocked ? (
-            <form
-              className="auth-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleAccessUnlock();
-              }}
-            >
-              <label className="field">
-                <span>閲覧キー</span>
-                <input
-                  type="password"
-                  value={accessKey}
-                  onChange={(event) => setAccessKey(event.target.value)}
-                  placeholder="共有されたキーを入力"
-                />
-              </label>
-
-              {localError ? <p className="inline-error">{localError}</p> : null}
-
-              <button
-                className="primary-button"
-                type="submit"
-              >
-                キーを確認して進む
-              </button>
-            </form>
+          {accessGateLocked ? (
+            <AuthAccessGateForm onUnlock={onUnlockAccessGate} />
           ) : (
             <>
               <div className="auth-mode-tabs" role="tablist" aria-label="認証モード">
@@ -241,10 +205,7 @@ export function AuthScreen({
 
                 {localError ? <p className="inline-error">{localError}</p> : null}
 
-                <button
-                  className="primary-button"
-                  type="submit"
-                >
+                <button className="primary-button" type="submit">
                   {requestButtonLabel}
                 </button>
 

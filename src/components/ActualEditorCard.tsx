@@ -4,6 +4,13 @@ import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
+import {
+  createActualDraftForPlan,
+  createRelinkCandidateActual,
+  resolveActualAlignedToPlan,
+  resolveActualSubject,
+  resolveActualTitle,
+} from '../lib/actualDrafts';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
@@ -22,41 +29,6 @@ interface ActualEditorCardProps {
   hidePlanActions?: boolean;
 }
 
-function resolveActualTitle(plan: Plan, actual?: Actual): string {
-  return actual?.title?.trim() || plan.title;
-}
-
-function resolveActualSubject(plan: Plan, actual?: Actual): string {
-  return actual?.subject?.trim() || plan.subject;
-}
-
-function resolveAlignedToPlan(plan: Plan, actual?: Actual): boolean {
-  if (typeof actual?.isAlignedToPlan === 'boolean') {
-    return actual.isAlignedToPlan;
-  }
-
-  return (
-    resolveActualTitle(plan, actual) === plan.title &&
-    resolveActualSubject(plan, actual) === plan.subject
-  );
-}
-
-function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
-  return {
-    userId: plan.userId,
-    planId: plan.id,
-    occurrenceDate: actual?.occurrenceDate ?? getPlanOccurrenceDate(plan),
-    actualStartTime: actual?.actualStartTime ?? plan.startTime,
-    actualEndTime: actual?.actualEndTime ?? plan.endTime,
-    title: resolveActualTitle(plan, actual),
-    subject: resolveActualSubject(plan, actual),
-    isAlignedToPlan: resolveAlignedToPlan(plan, actual),
-    note: actual?.note ?? '',
-    materialId: actual?.materialId ?? plan.materialId ?? null,
-    materialName: actual?.materialName ?? plan.materialName ?? '',
-  };
-}
-
 export function ActualEditorCard({
   plan,
   plans,
@@ -71,13 +43,13 @@ export function ActualEditorCard({
   hideToggleButton = false,
   hidePlanActions = false,
 }: ActualEditorCardProps) {
-  const [draft, setDraft] = useState<ActualDraft>(buildDraft(plan, actual));
+  const [draft, setDraft] = useState<ActualDraft>(() => createActualDraftForPlan(plan, actual));
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
   const [selectedCandidatePlanId, setSelectedCandidatePlanId] = useState<string | null>(null);
 
   useEffect(() => {
-    setDraft(buildDraft(plan, actual));
+    setDraft(createActualDraftForPlan(plan, actual));
     setError('');
     setIsOpen(forceOpen || !actual);
     setSelectedCandidatePlanId(null);
@@ -91,21 +63,11 @@ export function ActualEditorCard({
   const isScopedRecurringPlan = supportsScopedRecurringPlanEdits(plan);
   const actualTitle = resolveActualTitle(plan, actual);
   const actualSubject = resolveActualSubject(plan, actual);
-  const alignedToPlan = resolveAlignedToPlan(plan, actual);
+  const alignedToPlan = resolveActualAlignedToPlan(plan, actual);
   const isActualDateChanged = Boolean(actual && draft.occurrenceDate !== actual.occurrenceDate);
-  const candidateActual =
-    actual && isActualDateChanged
-      ? {
-          ...actual,
-          occurrenceDate: draft.occurrenceDate,
-          actualStartTime: draft.actualStartTime,
-          actualEndTime: draft.actualEndTime,
-          title: draft.title,
-          subject: draft.subject,
-          isAlignedToPlan: false,
-          note: draft.note,
-        }
-      : null;
+  const candidateActual = actual && isActualDateChanged
+    ? createRelinkCandidateActual(actual, draft)
+    : null;
   const candidatePlans = useMemo(
     () => expandPlansForDate(plans, draft.occurrenceDate),
     [draft.occurrenceDate, plans],

@@ -1,33 +1,34 @@
 # weeklyPlanning current contract status
 
-Status: canonical / PR #120 real-API hardening and selective orchestration audit
-Updated: 2026-08-12
+Status: canonical / Stable V5 sole runtime + structural hardening
+Updated: 2026-08-14
 
 - [current contract v5](weekly-planning-current-contract-v5.md)
 - [runtime contract](weekly-planning-stable-v5-runtime-trial-contract.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
-- [current execution task](tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
+- [current SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
+- [current loop log](tasks/20260814-solid-file-by-file-loop-log.md)
+- [current seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
 
 ## 1. 現在位置
 
-PR #109でStable V5主要経路をmainへ固定し、PR #112でproductionから到達不能なlegacy interpreter/parser/runtime/semantic experimentを削除した。PR #113でsemantic module責務を整理した。
+Stable V5は唯一のproduction週間計画runtimeである。
 
-現在はPR #120 `agent/weekly-planning-human-grounding-repair`で次を同時に最終化している。
+完了済みの主要段階:
 
-- human grounding / repair dialogue
-- legacy実装思想の選別移植
-- scheduler human-scale policy
-- real API output varianceへのformal contract強化
-- semantic prompt / orchestration監査
-- roadmap / contract / task MD整理
+- PR #109: Stable V5主要経路をmainへ固定
+- PR #112: productionから到達不能なlegacy interpreter / parser / runtime / semantic experimentを削除
+- PR #113: semantic module責務を整理
+- PR #120: human grounding / repair、scheduler human-scale policy、real API hardening、semantic orchestration監査、legacy behavior-aware execution cluster隔離を完了しmainへmerge
+- PR #127: audited Browser Regression suiteを統合しmainへmerge
 
-旧`Phase 4 behavior-preserving refactor`表記はcurrent phaseではない。
+現在はPR #129 `agent/browser-regression-audited-integration`で、全体コードのfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を行っている。
+
+PR #129では新規semantic policyやfeatureを混ぜず、挙動不変の責務分離、dead surface / dead contract除去、監査で見つかった回帰修正、focused regression、CI harness / document hygieneだけを扱う。
 
 ## 2. Stable V5 production baseline
-
-Stable V5が唯一のproduction週間計画runtimeである。
 
 ```text
 user utterance
@@ -45,130 +46,118 @@ user utterance
 
 削除済みlegacy runtimeへ戻すproduction pathはない。
 
-残す互換層:
-
-- 保存data migration decoder
-- approval / owner migration
-- trace/export read compatibility
-- current observation checkpoint helper
-- repository / test support
-
-これらはruntime selectorではない。
+残すcompatibility layerは、保存data migration、approval / owner migration、trace/export read compatibility、current observation/test supportなど、既存data/read contractのためのものに限定する。runtime selectorとして扱わない。
 
 ## 3. AI / deterministic責務
 
-- raw user text、会話文脈、訂正、quantity role、曜日・日付・時刻、authorization intentの意味理解はAI。
-- focused routeでも意味理解はAI。
-- deterministic routerはmachine stateからsemantic責務を選ぶだけ。
-- validator / formal binding / Fact Graph / revision / readiness / question priority / scheduler / preview / approval / saveはdeterministic core。
-- provider / validation failureからraw Japanese parserへfallbackしない。
-- renderer文面からpending targetやsemantic factを逆推定しない。
+AI:
 
-## 4. PR #120で現在までに確認済みの主要改善
+- raw user text / conversation contextの意味理解
+- task / component / quantity role
+- date / weekday / time period / clock intent
+- correction / short contextual answer
+- authorization intent
+- structured semantic candidates
 
-- selectedDateと発話日時の分離
+Deterministic core:
+
+- schema / evidence / reference validation
+- formal binding / canonical IDs
+- Fact Graph lifecycle
+- revision / idempotency
+- clarification / confirmation requirement
+- question priority / progression
+- readiness
+- scheduler / placement safety
+- preview freshness
+- approval / save
+- persistence / recovery / safety
+
+raw Japaneseをregex / keyword / dictionary / legacy parserで再解釈してsemantic truthにしない。provider / validation / repair failureからlegacy parserへfallbackしない。renderer textからmachine stateを逆推定しない。
+
+## 4. 現在までに確立した主要能力
+
+- selectedDateと実際の発話日時の分離
+- request-time not-before / today past-time hard boundary
 - weekStartsOn / `来週` grounding
-- today past-time hard boundary
-- active-only corrected fact projection
+- active-only corrected Fact projection
 - proposal acceptance / rejection grounding
 - repair agenda / local self-repair
 - human-scale effort questions
 - page/problem per-unit effort
-- vocabulary total/session effort
-- vocabulary <=100語/session分割
-- split sessionのpreview保持
-- session chunking / daily load distribution
-- tiny-tail抑制
-- heavy taskのlong free segment優先
+- vocabulary total/session effortとsession分割
+- preview保持 / session chunking / daily load distribution
+- tiny-tail抑制 / long free segment優先
 - task relation ordering / cycle blocking
 - timetable / existing-plan buffer
 - reserve / review policy
-- actual-derived effort calibration
+- owner-scoped actual-derived effort calibration
 - canonical weekday / planning-window / clock validation
-- representation-only repair preservation
-- machine-pending effort / quantity-role focused semantic
+- focused machine-pending semantic routes
+- preview / approval runtime ownershipのconversation isolation
+- Stable V5 execution clusterからlegacy behavior-aware execution edgeの隔離
 
-## 5. Prompt / orchestration current status
+## 5. 現在の構造監査
 
-real API実測:
+PR #129のfile-by-file refactorでは、pure domain projection、collection normalization、presentation、interaction flowを変更理由ごとに抽出する一方、凝集している小規模componentはno-changeとする。
 
-- generic initial request: 23,014 bytes
-- generic system prompt: 10,404 bytes / 53 lines
-- focused導入前のmachine-pending短答`8分くらいです。`: 25,239 bytes generic request
+七視点監査で確定修正した主項目:
 
-system prompt 53行のうち38行に`never` / `must` / `only` / `do not`が含まれる。全てが不要な制約ではないが、instruction densityは高い。
+- `DailyMaterialShelf`のmissing-subject fallback metadata ordering regression
+- day-material extractionのdirect component regression不足
+- `ReportView`のunused required propsとApp caller plumbing
+- Browser Regressionのisolated Playwright runner更新
+- stale documentation index / closed task duplicate
 
-現在の判断:
+詳細は`audits/20260814-solid-refactor-seven-audit.md`を正とする。
 
-- generic semanticを今すぐ全面分割はしない。
-- genericへalways-on規則をこれ以上安易に追加しない。
-- machine-stateでtargetが確定した継続turnはfocused routeを優先する。
-- representation contractはschema / canonicalizer / validatorを優先する。
-- AI repair対象がfield-localならfull-document repairではなくfield-scoped repairを検討する。
-- validator errorごとにsystem prompt + validator + repair promptを三重追加しない。
+## 6. Current verification
 
-CI prompt budget gate:
+PR #129のpre-final hardening head `f8eea8348ecbc456046efd3915aa12af3b720e38`では次を確認済み。
 
-- generic system <= 11,000 bytes
-- representative generic request <= 24,000 bytes
-- focused authorization <= 2,500 bytes
-- focused contextual <= 4,000 bytes
-- focused < generic / 4
+- normal CI success
+  - npm ci
+  - TypeScript checks
+  - Vitest
+  - production build
+  - PR diff check
+- Browser Regression success: 80 / 80 passed
 
-empty Graphでは約908 bytesを占めていたcorrectionContractをAIへ渡さない。active correction targetがあるturnだけ送る。
+その後、Playwright runner更新、ReportView dead contract削除、MD hygiene修正を追加したため、post-audit HEADでnormal CIとBrowser Regressionを再実行して両方greenにすることがPR #129の最終gateである。
 
-## 6. Real API audit status
+テストを「追加した」ことと「実行してgreenだった」ことを区別する。
 
-逐次real APIでは一度、次の3 turnでpreviewまで完走済み。
+## 7. 既知の残Issue / 別scope
 
-1. 8/17–8/23、英単語220語、数学40問、火曜18–20除外
-2. 数学のeffort回答: 8分
-3. 英単語のsession effort回答: 30分
+PR #129へ混在させない主な残件:
 
-その時点のpreviewは14候補まで生成された。
+- Issue #43: request ownershipの残browser evidence
+- Issue #45: trace privacy / lifecycle / operational rollout
+- Issue #47: personalization / cloud session authority（current-time safety自体は完了）
+- Issue #51: cross-tab / cross-device approval uniqueness
+- Issue #52: weekly planning UIをgeneric Quick Entry / AI inputから分離
+- Issue #89: trace empty-session production / operational verification
+- Issue #115: raw-text regex weekly entry routingをAI-owned structured routingへ移行
+- Issue #118: completed-work paceからremaining effortをdeterministicに導出
+- Issue #128: saved-preview approval compatibility migration
 
-その後の通しreal APIでsemantic output varianceを追加検出したため、単なる成功runを完了判定には使っていない。
+Issue #52 / #115は構造監査で実在を再確認しているが、PR #129の挙動不変refactorとして黙って実装しない。
 
-追加で修正・回帰化したもの:
+## 8. 非blocking構造負債
 
-- weekday canonical token / resolver mismatch
-- pending短答のgeneric replay問題
-- exact clockのcustom namedTimePeriod escape
-- non-ISO absolute planning window
-- bare weekday token
-- destructive targeted repair
+- `DayView`: timetable import / detail modal composition
+- `BookshelfView`: subject/material modal lifecycle
+- `AdminViews`: user list/detail loading + routing
+- `MonthEventDialog`: save normalization / recurrence delete scope / editor UI
+- `MonthView`: pager gesture / keyboard navigation / projection / rendering
+- production buildの既存chunk/code-splitting warning
 
-最終HEADで逐次real APIと通しreal APIを再実行する必要がある。
+これらは次のfile-by-file phaseで、対象回帰を先に用意できる単位から処理する。
 
-## 7. Current verification
+## 9. 次の進行条件
 
-直近の各実装batchはfull CIでgreenへ戻してから次へ進めている。
-
-2026-08-12時点でprompt budget gate、empty-Graph correction prompt削減、semantic roadmap同期までtypecheck / full Vitest / production build / diff check greenを確認済み。
-
-ただしPR #120全体のfinal gateはまだ未完了である。
-
-## 8. 残作業
-
-1. current status / roadmap / semantic roadmapの最終同期確認
-2. 最終HEADでreal API初期turn再計測
-3. 最終HEADで逐次real API conversation
-4. 最終HEADで通しreal API conversation
-5. prompt / orchestration最終監査
-6. 7視点敵対的監査
-7. production heuristic inventory確定
-8. PR body / task status同期
-9. final full CI
-
-新しい実API不具合を見つけた場合はそのturnで停止し、修正→回帰→full CI→再検証する。
-
-## 9. オーケストレーション次候補
-
-優先候補:
-
-- pending `work_breakdown` focused semantic
-- planningWindow / weekday / clockのfield-scoped repair
-
-初回自由入力の無条件multi-call fan-outは現時点では採用しない。task、workload、period、availability、modifier、relationを一発話内で統合する必要があるため、分割コストとidentity統合リスクが大きい。
-
-今後generic request budgetを超える変更が必要になった場合、閾値を上げる前にこのオーケストレーション候補を実装・比較する。
+1. PR #129 post-audit HEADのnormal CI green
+2. Browser Regression 80/80 green
+3. 七視点監査に新しいBLOCKER/MAJORが出た場合は次ファイルへ進まず同PRで修正
+4. 仕様変更が必要な場合だけユーザー確認
+5. green checkpoint後に残りfile-by-file auditを再開

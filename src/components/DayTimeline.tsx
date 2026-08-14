@@ -1,6 +1,12 @@
 import type { CSSProperties } from "react";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
+  resolveActualAlignedToPlan,
+  resolveActualSubject,
+  resolveActualTitle,
+} from "../lib/actualDrafts";
+import { layoutTimelineEntries } from "../lib/dayTimelineLayout";
+import {
   buildPlanOccurrenceKey,
   getActualOccurrenceKey,
 } from "../lib/planRecurrence";
@@ -56,100 +62,12 @@ const HOUR_HEIGHT = 54;
 const MIN_BLOCK_HEIGHT = 34;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 
-function getDisplayMetrics(startTime: string, endTime: string) {
-  const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
-  const durationMinutes = minutesBetween(startTime, endTime);
-  const heightPx = Math.max(
-    (durationMinutes / 60) * HOUR_HEIGHT,
-    MIN_BLOCK_HEIGHT
-  );
-
-  return {
-    topPx,
-    heightPx,
-    bottomPx: topPx + heightPx,
-  };
-}
-
 function buildTimelineEntries<
   T extends Omit<TimelineEntry, "lane" | "laneCount">
 >(items: T[]): Array<TimelineEntry & T> {
-  const sortedItems = [...items].sort((left, right) => {
-    const startDelta =
-      minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
-
-    if (startDelta !== 0) {
-      return startDelta;
-    }
-
-    return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
-  });
-
-  const groups: T[][] = [];
-  let currentGroup: T[] = [];
-  let currentGroupDisplayEndPx = -1;
-
-  sortedItems.forEach((item) => {
-    const { topPx, bottomPx } = getDisplayMetrics(item.startTime, item.endTime);
-
-    if (currentGroup.length === 0) {
-      currentGroup = [item];
-      currentGroupDisplayEndPx = bottomPx;
-      return;
-    }
-
-    if (topPx < currentGroupDisplayEndPx) {
-      currentGroup.push(item);
-      currentGroupDisplayEndPx = Math.max(currentGroupDisplayEndPx, bottomPx);
-      return;
-    }
-
-    groups.push(currentGroup);
-    currentGroup = [item];
-    currentGroupDisplayEndPx = bottomPx;
-  });
-
-  if (currentGroup.length > 0) {
-    groups.push(currentGroup);
-  }
-
-  return groups.flatMap((group) => {
-    const activeLanes: Array<{ lane: number; displayEndPx: number }> = [];
-    const laneById = new Map<string, number>();
-    let laneCount = 0;
-
-    group.forEach((item) => {
-      const { topPx, bottomPx } = getDisplayMetrics(
-        item.startTime,
-        item.endTime
-      );
-
-      for (let index = activeLanes.length - 1; index >= 0; index -= 1) {
-        if (activeLanes[index].displayEndPx <= topPx) {
-          activeLanes.splice(index, 1);
-        }
-      }
-
-      const usedLanes = new Set(activeLanes.map((entry) => entry.lane));
-      let lane = 0;
-
-      while (usedLanes.has(lane)) {
-        lane += 1;
-      }
-
-      laneCount = Math.max(laneCount, lane + 1);
-      laneById.set(item.id, lane);
-      activeLanes.push({
-        lane,
-        displayEndPx: bottomPx,
-      });
-    });
-
-    return group.map((item) => ({
-      ...item,
-      lane: laneById.get(item.id) ?? 0,
-      laneCount,
-    }));
+  return layoutTimelineEntries(items, {
+    hourHeight: HOUR_HEIGHT,
+    minBlockHeight: MIN_BLOCK_HEIGHT,
   });
 }
 
@@ -195,26 +113,6 @@ function getTimelineDensityClass(
   }
 
   return classes.join(" ");
-}
-
-function resolveActualTitle(actual: Actual, plan: Plan): string {
-  const actualTitle = actual.title?.trim();
-  return actualTitle || plan.title;
-}
-
-function resolveActualSubject(actual: Actual, plan: Plan): string {
-  return actual.subject.trim() || plan.subject;
-}
-
-function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
-  if (typeof actual.isAlignedToPlan === "boolean") {
-    return actual.isAlignedToPlan;
-  }
-
-  return (
-    resolveActualTitle(actual, plan) === plan.title &&
-    resolveActualSubject(actual, plan) === plan.subject
-  );
 }
 
 export function DayTimeline({
@@ -292,13 +190,13 @@ export function DayTimeline({
             targetId: plan.id,
             selectionId: `plan:${plan.id}`,
             entryKind: "plan" as const,
-            title: resolveActualTitle(actual, plan),
-            subject: resolveActualSubject(actual, plan),
+            title: resolveActualTitle(plan, actual),
+            subject: resolveActualSubject(plan, actual),
             type: plan.type,
             sourceType: plan.sourceType,
             startTime: actual.actualStartTime,
             endTime: actual.actualEndTime,
-            alignedToPlan: resolveAlignedToPlan(actual, plan),
+            alignedToPlan: resolveActualAlignedToPlan(plan, actual),
           },
         ];
       }),

@@ -4,36 +4,13 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent,
-  type TransitionEvent,
 } from 'react';
-import {
-  addMonths,
-  formatCompactMinutes,
-  formatMonthLabel,
-  getCalendarDayTone,
-  getJapaneseHolidayName,
-  getMonthWeeks,
-  getWeekdayLabels,
-  minutesBetween,
-  startOfWeek,
-  todayIsoDate,
-} from '../lib/date';
-import {
-  doesMonthEventOccurOnDate,
-  formatMonthEventTimeRange,
-  sortMonthEvents,
-} from '../lib/monthEvents';
-import {
-  expandPlansForDateRange,
-} from '../lib/planRecurrence';
-import {
-  isStudyRecordForDisplay,
-  normalizeStudyRecordsForDisplay,
-  sumStudyRecordMinutes,
-} from '../lib/studyRecords';
-import { MonthPickerDialog } from './MonthPickerDialog';
+import { formatMonthLabel, startOfWeek, todayIsoDate } from '../lib/date';
+import { buildMonthGrid } from '../lib/monthViewProjection';
+import { useMonthPager } from '../hooks/useMonthPager';
 import { MonthEventDialog } from './MonthEventDialog';
+import { MonthGridPanel } from './MonthGridPanel';
+import { MonthPickerDialog } from './MonthPickerDialog';
 import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
 
 interface MonthViewProps {
@@ -48,59 +25,6 @@ interface MonthViewProps {
   onOpenWeek: (date: string) => void;
   onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
-}
-
-const MONTH_PAGER_DRAG_LIMIT_RATIO = 0.92;
-const MONTH_PAGER_DRAG_THRESHOLD_RATIO = 0.22;
-const MONTH_PAGER_MAX_DRAG_THRESHOLD = 96;
-const MONTH_PAGER_MIN_CLICK_SUPPRESS_DELTA = 8;
-const MONTH_PAGER_DIRECTION_RATIO = 1.15;
-const MONTH_PAGER_CENTER_INDEX = 2;
-const MONTH_PAGER_EXTENSION_COUNT = 2;
-const MONTH_PAGER_EDGE_BUFFER = 1;
-
-function createPagerMonths(centerMonthDate: string): string[] {
-  return Array.from({ length: 5 }, (_, index) =>
-    addMonths(centerMonthDate, index - MONTH_PAGER_CENTER_INDEX),
-  );
-}
-
-function createMonthsBefore(firstMonthDate: string, count: number): string[] {
-  return Array.from({ length: count }, (_, index) =>
-    addMonths(firstMonthDate, index - count),
-  );
-}
-
-function createMonthsAfter(lastMonthDate: string, count: number): string[] {
-  return Array.from({ length: count }, (_, index) =>
-    addMonths(lastMonthDate, index + 1),
-  );
-}
-
-function getCalendarDayNumber(dateString: string): string {
-  return Number.parseInt(dateString.slice(-2), 10).toString();
-}
-
-function getHolidayLabelLengthClass(holidayName: string): string {
-  const holidayLength = [...holidayName].length;
-
-  if (holidayLength >= 7) {
-    return 'is-ultra-long';
-  }
-
-  if (holidayLength >= 6) {
-    return 'is-very-long';
-  }
-
-  if (holidayLength >= 5) {
-    return 'is-long';
-  }
-
-  if (holidayLength >= 4) {
-    return 'is-medium';
-  }
-
-  return '';
 }
 
 export function MonthView({
@@ -118,48 +42,25 @@ export function MonthView({
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  const [visibleMonths, setVisibleMonths] = useState(() =>
-    createPagerMonths(monthDate),
-  );
-  const [activeMonthIndex, setActiveMonthIndex] = useState(
-    MONTH_PAGER_CENTER_INDEX,
-  );
-  const [pagerOffset, setPagerOffset] = useState(0);
-  const [pagerTransitionEnabled, setPagerTransitionEnabled] = useState(true);
-  const [pendingPagerDirection, setPendingPagerDirection] = useState<-1 | 1 | null>(
-    null,
-  );
-  const pagerViewportRef = useRef<HTMLDivElement | null>(null);
-  const pagerPointerRef = useRef<{
-    id: number;
-    startX: number;
-    startY: number;
-    didDrag: boolean;
-  } | null>(null);
-  const pagerStepRef = useRef(0);
-  const suppressNextCellClick = useRef(false);
-  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
-  const shouldFocusSelectedCell = useRef(false);
-  const pendingCellClickTimeout = useRef<number | null>(null);
-  const lastCellClick = useRef<{ date: string; at: number } | null>(null);
-  const activeMonthDate = visibleMonths[activeMonthIndex] ?? monthDate;
-  const todayDate = todayIsoDate();
-  const weeks = getMonthWeeks(activeMonthDate);
-  const grid = useMemo(
-    () =>
-      weeks.flatMap((week) =>
-        week.dates.map((date) => ({
-          date,
-          inCurrentMonth: date.startsWith(activeMonthDate.slice(0, 7)),
-        })),
-      ),
-    [activeMonthDate, weeks],
+  const pager = useMonthPager({
+    monthDate,
+    disabled: Boolean(eventModalDate || isMonthPickerOpen),
+    onChangeMonth,
+  });
+  const { weeks, cells: grid } = useMemo(
+    () => buildMonthGrid(pager.activeMonthDate),
+    [pager.activeMonthDate],
   );
   const selectedWeek = startOfWeek(selectedDate);
   const gridIndexByDate = useMemo(
     () => new Map(grid.map((cell, index) => [cell.date, index])),
     [grid],
   );
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+  const shouldFocusSelectedCell = useRef(false);
+  const pendingCellClickTimeout = useRef<number | null>(null);
+  const lastCellClick = useRef<{ date: string; at: number } | null>(null);
+  const todayDate = todayIsoDate();
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
     if (node) {
@@ -177,223 +78,33 @@ export function MonthView({
 
     cellRefs.current.get(selectedDate)?.focus({ preventScroll: true });
     shouldFocusSelectedCell.current = false;
-  }, [selectedDate, activeMonthDate]);
+  }, [selectedDate, pager.activeMonthDate]);
 
-  const measurePagerStep = useCallback(() => {
-    const viewport = pagerViewportRef.current;
+  const moveSelectionByKeyboard = useCallback(
+    (currentDate: string, offset: number) => {
+      const currentIndex = gridIndexByDate.get(currentDate);
 
-    if (!viewport) {
-      return pagerStepRef.current;
-    }
+      if (currentIndex === undefined) {
+        return;
+      }
 
-    const nextStep = viewport.clientWidth;
+      const nextIndex = currentIndex + offset;
 
-    pagerStepRef.current = nextStep;
-    return nextStep;
-  }, []);
+      if (nextIndex < 0 || nextIndex >= grid.length) {
+        return;
+      }
 
-  useEffect(() => {
-    measurePagerStep();
+      const nextDate = grid[nextIndex]?.date;
 
-    const viewport = pagerViewportRef.current;
+      if (!nextDate) {
+        return;
+      }
 
-    if (!viewport || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      measurePagerStep();
-    });
-
-    observer.observe(viewport);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [measurePagerStep]);
-
-  useEffect(() => {
-    const currentVisibleMonth = visibleMonths[activeMonthIndex];
-
-    if (currentVisibleMonth === monthDate) {
-      return;
-    }
-
-    setPagerTransitionEnabled(false);
-    setPagerOffset(0);
-    setPendingPagerDirection(null);
-    pagerPointerRef.current = null;
-    setVisibleMonths(createPagerMonths(monthDate));
-    setActiveMonthIndex(MONTH_PAGER_CENTER_INDEX);
-
-    window.requestAnimationFrame(() => {
-      setPagerTransitionEnabled(true);
-    });
-  }, [monthDate]);
-
-  function animateMonthChange(direction: -1 | 1) {
-    if (pendingPagerDirection !== null || eventModalDate || isMonthPickerOpen) {
-      return;
-    }
-
-    measurePagerStep();
-
-    setPagerTransitionEnabled(true);
-    setPendingPagerDirection(direction);
-    setPagerOffset(0);
-    setActiveMonthIndex((currentIndex) => currentIndex + direction);
-  }
-
-  function handlePagerTransitionEnd(event: TransitionEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget || event.propertyName !== 'transform') {
-      return;
-    }
-
-    if (pendingPagerDirection === null) {
-      return;
-    }
-
-    const settledMonthDate = visibleMonths[activeMonthIndex] ?? activeMonthDate;
-    const settledIndex = activeMonthIndex;
-
-    setPagerOffset(0);
-    setPendingPagerDirection(null);
-    onChangeMonth(settledMonthDate);
-
-    if (settledIndex <= MONTH_PAGER_EDGE_BUFFER) {
-      const firstMonthDate = visibleMonths[0] ?? settledMonthDate;
-      const prependedMonths = createMonthsBefore(
-        firstMonthDate,
-        MONTH_PAGER_EXTENSION_COUNT,
-      );
-
-      setPagerTransitionEnabled(false);
-      setVisibleMonths((currentMonths) => [...prependedMonths, ...currentMonths]);
-      setActiveMonthIndex(settledIndex + MONTH_PAGER_EXTENSION_COUNT);
-
-      window.requestAnimationFrame(() => {
-        setPagerTransitionEnabled(true);
-      });
-      return;
-    }
-
-    if (settledIndex >= visibleMonths.length - 1 - MONTH_PAGER_EDGE_BUFFER) {
-      const lastMonthDate =
-        visibleMonths[visibleMonths.length - 1] ?? settledMonthDate;
-      const appendedMonths = createMonthsAfter(
-        lastMonthDate,
-        MONTH_PAGER_EXTENSION_COUNT,
-      );
-
-      setVisibleMonths((currentMonths) => [...currentMonths, ...appendedMonths]);
-    }
-
-    setPagerTransitionEnabled(true);
-  }
-
-  function handlePagerPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (pendingPagerDirection !== null || eventModalDate || isMonthPickerOpen) {
-      return;
-    }
-
-    measurePagerStep();
-    pagerPointerRef.current = {
-      id: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      didDrag: false,
-    };
-    setPagerTransitionEnabled(false);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function handlePagerPointerMove(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pagerPointerRef.current;
-
-    if (!pointer || pointer.id !== event.pointerId) {
-      return;
-    }
-
-    const deltaX = event.clientX - pointer.startX;
-    const deltaY = event.clientY - pointer.startY;
-    const step = pagerStepRef.current || measurePagerStep();
-    const clampedOffset = Math.max(
-      -step * MONTH_PAGER_DRAG_LIMIT_RATIO,
-      Math.min(step * MONTH_PAGER_DRAG_LIMIT_RATIO, deltaX),
-    );
-
-    if (Math.abs(deltaX) > MONTH_PAGER_MIN_CLICK_SUPPRESS_DELTA) {
-      pointer.didDrag = true;
-      suppressNextCellClick.current = true;
-    }
-
-    if (Math.abs(deltaX) > Math.abs(deltaY) * MONTH_PAGER_DIRECTION_RATIO) {
-      event.preventDefault();
-    }
-
-    setPagerOffset(clampedOffset);
-  }
-
-  function finishPagerDrag(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pagerPointerRef.current;
-
-    if (!pointer || pointer.id !== event.pointerId) {
-      return;
-    }
-
-    const deltaX = event.clientX - pointer.startX;
-    const deltaY = event.clientY - pointer.startY;
-    const step = pagerStepRef.current || measurePagerStep();
-    const threshold = Math.min(
-      MONTH_PAGER_MAX_DRAG_THRESHOLD,
-      step * MONTH_PAGER_DRAG_THRESHOLD_RATIO,
-    );
-    const isHorizontalSwipe =
-      Math.abs(deltaX) > Math.abs(deltaY) * MONTH_PAGER_DIRECTION_RATIO;
-
-    pagerPointerRef.current = null;
-    setPagerTransitionEnabled(true);
-
-    if (pointer.didDrag) {
-      window.setTimeout(() => {
-        suppressNextCellClick.current = false;
-      }, 0);
-    }
-
-    if (Math.abs(deltaX) >= threshold && isHorizontalSwipe) {
-      const direction = deltaX < 0 ? 1 : -1;
-
-      setPendingPagerDirection(direction);
-      setPagerOffset(0);
-      setActiveMonthIndex((currentIndex) => currentIndex + direction);
-      return;
-    }
-
-    setPagerOffset(0);
-  }
-
-  const moveSelectionByKeyboard = useCallback((currentDate: string, offset: number) => {
-    const currentIndex = gridIndexByDate.get(currentDate);
-
-    if (currentIndex === undefined) {
-      return;
-    }
-
-    const nextIndex = currentIndex + offset;
-
-    if (nextIndex < 0 || nextIndex >= grid.length) {
-      return;
-    }
-
-    const nextDate = grid[nextIndex]?.date;
-
-    if (!nextDate) {
-      return;
-    }
-
-    shouldFocusSelectedCell.current = true;
-    onSelectDate(nextDate);
-  }, [grid, gridIndexByDate, onSelectDate]);
+      shouldFocusSelectedCell.current = true;
+      onSelectDate(nextDate);
+    },
+    [grid, gridIndexByDate, onSelectDate],
+  );
 
   function openMonthEventEditor(date: string) {
     onSelectDate(date);
@@ -401,8 +112,8 @@ export function MonthView({
   }
 
   function handleCellClick(date: string) {
-    if (suppressNextCellClick.current) {
-      suppressNextCellClick.current = false;
+    if (pager.suppressNextCellClick.current) {
+      pager.suppressNextCellClick.current = false;
       return;
     }
 
@@ -501,221 +212,6 @@ export function MonthView({
     };
   }, []);
 
-  function renderMonthPanel(panelMonthDate: string, panelIndex: number) {
-    const isCurrentPanel = panelIndex === activeMonthIndex;
-    const panelWeeks = getMonthWeeks(panelMonthDate);
-    const panelGrid = panelWeeks.flatMap((week) =>
-      week.dates.map((date) => ({
-        date,
-        inCurrentMonth: date.startsWith(panelMonthDate.slice(0, 7)),
-      })),
-    );
-    const panelPlanOccurrences =
-      panelGrid.length > 0
-        ? expandPlansForDateRange(
-            plans,
-            panelGrid[0].date,
-            panelGrid[panelGrid.length - 1].date,
-          )
-        : [];
-    const panelStudyPlanMinutesByDate = new Map<string, number>();
-
-    panelPlanOccurrences.forEach((plan) => {
-      if (plan.type !== 'study') {
-        return;
-      }
-
-      panelStudyPlanMinutesByDate.set(
-        plan.date,
-        (panelStudyPlanMinutesByDate.get(plan.date) ?? 0) +
-          minutesBetween(plan.startTime, plan.endTime),
-      );
-    });
-
-    const panelActualStudyMinutesByDate = new Map<string, number>();
-    const panelActualRecords =
-      panelGrid.length > 0
-        ? normalizeStudyRecordsForDisplay({
-            actuals,
-            plans,
-            startDate: panelGrid[0].date,
-            endDate: panelGrid[panelGrid.length - 1].date,
-          }).filter(isStudyRecordForDisplay)
-        : [];
-
-    panelGrid.forEach((cell) => {
-      const dayRecords = panelActualRecords.filter(
-        (record) => record.date === cell.date,
-      );
-
-      panelActualStudyMinutesByDate.set(
-        cell.date,
-        sumStudyRecordMinutes(dayRecords),
-      );
-    });
-
-    return (
-      <article
-        className={isCurrentPanel ? 'month-pager-panel is-current' : 'month-pager-panel'}
-        key={panelMonthDate}
-        aria-hidden={!isCurrentPanel}
-      >
-        <div className="month-grid">
-          {getWeekdayLabels().map((label, index) => (
-            <div
-              key={label}
-              className={[
-                'month-weekday',
-                index === 5 ? 'is-saturday' : '',
-                index === 6 ? 'is-holiday' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            >
-              {label}
-            </div>
-          ))}
-
-          {panelGrid.map((cell) => {
-            const dayTone = getCalendarDayTone(cell.date);
-            const holidayName = getJapaneseHolidayName(cell.date);
-            const targetMinutes = panelStudyPlanMinutesByDate.get(cell.date) ?? 0;
-            const actualMinutes = panelActualStudyMinutesByDate.get(cell.date) ?? 0;
-            const visibleMonthEvents = sortMonthEvents(
-              monthEvents.filter((monthEvent) =>
-                doesMonthEventOccurOnDate(monthEvent, cell.date),
-              ),
-            );
-            const limitedMonthEvents = visibleMonthEvents.slice(0, 3);
-            const cellClassName = [
-              'month-cell',
-              cell.inCurrentMonth ? '' : 'is-muted',
-              isCurrentPanel && cell.date === selectedDate ? 'is-selected' : '',
-              cell.date === todayDate ? 'is-today' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-
-            return (
-              <button
-                key={cell.date}
-                className={cellClassName}
-                ref={
-                  isCurrentPanel
-                    ? (node) => registerCellRef(cell.date, node)
-                    : undefined
-                }
-                onClick={
-                  isCurrentPanel
-                    ? () => {
-                        handleCellClick(cell.date);
-                      }
-                    : undefined
-                }
-                onKeyDown={
-                  isCurrentPanel
-                    ? (event) => {
-                        switch (event.key) {
-                          case 'Enter':
-                            event.preventDefault();
-                            openMonthEventEditor(cell.date);
-                            break;
-                          case 'ArrowLeft':
-                            event.preventDefault();
-                            moveSelectionByKeyboard(cell.date, -1);
-                            break;
-                          case 'ArrowRight':
-                            event.preventDefault();
-                            moveSelectionByKeyboard(cell.date, 1);
-                            break;
-                          case 'ArrowUp':
-                            event.preventDefault();
-                            moveSelectionByKeyboard(cell.date, -7);
-                            break;
-                          case 'ArrowDown':
-                            event.preventDefault();
-                            moveSelectionByKeyboard(cell.date, 7);
-                            break;
-                          default:
-                            break;
-                        }
-                      }
-                    : undefined
-                }
-                tabIndex={isCurrentPanel && cell.date === selectedDate ? 0 : -1}
-                aria-selected={isCurrentPanel && cell.date === selectedDate}
-                type="button"
-              >
-                <div className="month-cell-head">
-                  <strong
-                    className={[
-                      'month-date-number',
-                      dayTone === 'saturday' ? 'is-saturday' : '',
-                      dayTone === 'holiday' ? 'is-holiday' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {getCalendarDayNumber(cell.date)}
-                  </strong>
-                  {holidayName ? (
-                    <span
-                      className={[
-                        'month-holiday-label',
-                        getHolidayLabelLengthClass(holidayName),
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      title={holidayName}
-                    >
-                      {holidayName}
-                    </span>
-                  ) : null}
-                </div>
-
-                <p className="month-study-summary">
-                  <span>目標 {formatCompactMinutes(targetMinutes)}</span>
-                  <span>記録 {formatCompactMinutes(actualMinutes)}</span>
-                </p>
-
-                <div className="month-major-event-list">
-                  {limitedMonthEvents.map((monthEvent) => (
-                    <span
-                      key={monthEvent.id}
-                      className="event-pill month-major-event-pill"
-                      title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
-                    >
-                      <span className="month-major-event-full">
-                        {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
-                      </span>
-                      <span className="month-major-event-short">
-                        {monthEvent.title}
-                      </span>
-                    </span>
-                  ))}
-
-                  {visibleMonthEvents.length > limitedMonthEvents.length ? (
-                    <span className="month-event-more">
-                      +{visibleMonthEvents.length - limitedMonthEvents.length}件
-                    </span>
-                  ) : null}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </article>
-    );
-  }
-
-  const pagerOffsetTerm =
-    pagerOffset >= 0 ? `+ ${pagerOffset}px` : `- ${Math.abs(pagerOffset)}px`;
-  const pagerBaseOffset = `-${activeMonthIndex * 100}%`;
-  const pagerTransform =
-    pagerOffset === 0
-      ? `translate3d(${pagerBaseOffset}, 0, 0)`
-      : `translate3d(calc(${pagerBaseOffset} ${pagerOffsetTerm}), 0, 0)`;
-
   return (
     <section className="panel swipe-view">
       <div className="view-header-stack">
@@ -726,7 +222,7 @@ export function MonthView({
               <div className="nav-actions view-title-nav month-view-title-nav">
                 <button
                   className="ghost-button nav-icon-button"
-                  onClick={() => animateMonthChange(-1)}
+                  onClick={() => pager.animateMonthChange(-1)}
                   type="button"
                   aria-label="前月"
                 >
@@ -737,11 +233,11 @@ export function MonthView({
                   onClick={() => setIsMonthPickerOpen(true)}
                   type="button"
                 >
-                  {formatMonthLabel(activeMonthDate)}
+                  {formatMonthLabel(pager.activeMonthDate)}
                 </button>
                 <button
                   className="ghost-button nav-icon-button"
-                  onClick={() => animateMonthChange(1)}
+                  onClick={() => pager.animateMonthChange(1)}
                   type="button"
                   aria-label="翌月"
                 >
@@ -770,9 +266,8 @@ export function MonthView({
             onClick={() => {
               const focusDate =
                 week.dates.find((date) =>
-                  date.startsWith(activeMonthDate.slice(0, 7)),
-                ) ??
-                week.startDate;
+                  date.startsWith(pager.activeMonthDate.slice(0, 7)),
+                ) ?? week.startDate;
               onOpenWeek(focusDate);
             }}
             type="button"
@@ -785,27 +280,38 @@ export function MonthView({
 
       <div
         className="month-pager-viewport"
-        ref={pagerViewportRef}
-        onPointerDown={handlePagerPointerDown}
-        onPointerMove={handlePagerPointerMove}
-        onPointerUp={finishPagerDrag}
-        onPointerCancel={finishPagerDrag}
+        ref={pager.pagerViewportRef}
+        onPointerDown={pager.handlePagerPointerDown}
+        onPointerMove={pager.handlePagerPointerMove}
+        onPointerUp={pager.finishPagerDrag}
+        onPointerCancel={pager.finishPagerDrag}
       >
         <div
           className={[
             'month-pager-track',
-            pagerTransitionEnabled ? 'is-animated' : 'is-dragging',
+            pager.pagerTransitionEnabled ? 'is-animated' : 'is-dragging',
           ]
             .filter(Boolean)
             .join(' ')}
-          onTransitionEnd={handlePagerTransitionEnd}
-          style={{
-            transform: pagerTransform,
-          }}
+          onTransitionEnd={pager.handlePagerTransitionEnd}
+          style={{ transform: pager.pagerTransform }}
         >
-          {visibleMonths.map((visibleMonthDate, panelIndex) =>
-            renderMonthPanel(visibleMonthDate, panelIndex),
-          )}
+          {pager.visibleMonths.map((visibleMonthDate, panelIndex) => (
+            <MonthGridPanel
+              key={visibleMonthDate}
+              monthDate={visibleMonthDate}
+              isCurrent={panelIndex === pager.activeMonthIndex}
+              selectedDate={selectedDate}
+              todayDate={todayDate}
+              plans={plans}
+              actuals={actuals}
+              monthEvents={monthEvents}
+              registerCellRef={registerCellRef}
+              onCellClick={handleCellClick}
+              onMoveSelection={moveSelectionByKeyboard}
+              onOpenMonthEventEditor={openMonthEventEditor}
+            />
+          ))}
         </div>
       </div>
 
@@ -820,7 +326,7 @@ export function MonthView({
 
       <MonthPickerDialog
         open={isMonthPickerOpen}
-        activeMonthDate={activeMonthDate}
+        activeMonthDate={pager.activeMonthDate}
         onSelectMonth={onChangeMonth}
         onClose={() => setIsMonthPickerOpen(false)}
       />
