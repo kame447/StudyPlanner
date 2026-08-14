@@ -131,7 +131,7 @@ describe('Stable V5 semantic normalizer', () => {
     });
   });
 
-  it('keeps contextual meaning with AI while exact pending-target state stays authoritative', async () => {
+  it('keeps semantic interpretation with AI while exact pending-target state stays authoritative', async () => {
     const fake = client([JSON.stringify(document())]);
     await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '40問に3時間かかります',
@@ -146,7 +146,7 @@ describe('Stable V5 semantic normalizer', () => {
 
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system.toLowerCase()).toContain('interpret user meaning and context');
+    expect(system).toContain('current-turn meaning into semantic facts');
     expect(system).toContain('pendingQuestion as authoritative');
     expect(system).toContain('exact target');
     expect(system).toContain('fresh localIds');
