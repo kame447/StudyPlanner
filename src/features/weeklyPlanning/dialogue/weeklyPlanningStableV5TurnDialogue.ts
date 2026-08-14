@@ -34,7 +34,7 @@ import type {
 
 export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
-const RECENT_TURN_LIMIT = 6;
+const RECENT_TURN_LIMIT = 4;
 const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
   'AIに接続できなかったため',
   '入力内容は保持していますが、予定条件の構造化処理に失敗しました',
