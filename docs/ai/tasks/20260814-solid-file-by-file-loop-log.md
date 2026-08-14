@@ -1,6 +1,6 @@
 # SOLID file-by-file loop log
 
-Status: active
+Status: completed
 Updated: 2026-08-14
 Branch: `agent/browser-regression-audited-integration`
 PR: #129
@@ -46,7 +46,7 @@ This file is the compact per-loop execution log. The parent inventory keeps arch
 | 44 | `src/components/BookshelfView.tsx` | extracted subject and material editor modal lifecycles into `BookshelfSubjectDialog.tsx` and `BookshelfMaterialDialog.tsx`; shared color/unit field policy lives in `BookshelfDialogFields.ts`. | Added `BookshelfDialogs.test.tsx` with 4 direct component contracts; typecheck and 13 focused tests passed. | done |
 | 45 | `src/components/AdminViews.tsx` | reduced to typed route composition; user-list/detail pages moved to focused components and shared stale-request-safe loading moved to `useAdminDataLoader`. | Added `adminRoutes.test.ts` and `useAdminData.test.tsx`; typecheck and 18 focused tests passed. | done |
 | 46 | `src/components/DayView.tsx` | extracted timetable-import selection/save lifecycle into `DayTimetableImportDialog` and planned/standalone detail composition into `DayDetailModal`. | Added `DayViewDialogs.test.tsx` with 3 direct contracts; typecheck and 18 focused tests passed. | done |
-| 47 | `src/components/MonthView.tsx` | extracted pure month projection into `monthViewProjection.ts`, month cell rendering into `MonthGridPanel.tsx`, and gesture/transition state into `useMonthPager.ts`; MonthView retains cross-interaction selection/dialog coordination. | Added `monthViewProjection.test.ts`; typecheck, 20 focused tests, full 1521-test run, and production build passed. Browser Regression awaits publication to PR #129. | done |
+| 47 | `src/components/MonthView.tsx` | extracted pure month projection into `monthViewProjection.ts`, month cell rendering into `MonthGridPanel.tsx`, and gesture/transition state into `useMonthPager.ts`; MonthView retains cross-interaction selection/dialog coordination. | Added `monthViewProjection.test.ts`; typecheck, 20 focused tests, full 1521-test run, and production build passed. PR #129 implementation head `454467cd427fa61e936c62aff4b1aa7b4fb34973` then passed normal CI and Browser Regression 80/80. | done |
 
 Verification terminology: `Added ...test` means a regression test file was added. It does not mean the test executed successfully. Execution/pass status must come from PR #129 CI or an equivalent explicit test run.
 

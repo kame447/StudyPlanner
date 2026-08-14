@@ -1,6 +1,6 @@
 # SOLID file-by-file refactor roadmap
 
-Status: next file-by-file phase / Browser Regression pending
+Status: file-by-file phase complete / final verification green
 Updated: 2026-08-14
 Branch: `agent/browser-regression-audited-integration`
 PR: #129
@@ -33,7 +33,8 @@ Current checkpoint:
 - Loop 47 extracted pure month projection, `MonthGridPanel`, and `useMonthPager`; MonthView now owns only cross-interaction composition, cell selection, and dialog coordination.
 - Loops 43-47 focused typechecks and 20 targeted regressions are green.
 - Local full verification is green: 329 test files passed, 1 skipped; 1521 tests passed, 14 skipped, 5 todo; production build passed with only the pre-existing chunk/code-splitting warnings.
-- Browser Regression must run on PR #129 after the new head is published.
+- Implementation head `454467cd427fa61e936c62aff4b1aa7b4fb34973` passed normal CI run 2832 and Browser Regression run 124 with 80/80 browser contracts. The PR #129 implementation checkpoint is green.
+- Repository execution guidance now treats this roadmap and the current task records as the source of active scope, priority, checkpoint, and next steps; `AGENTS.md` remains the stable product, architecture, safety, and repository-hygiene policy.
 
 Seven-perspective audit
 
@@ -41,22 +42,22 @@ Seven-perspective audit
    - Result after fixes: PASS.
    - Extracted modules have independent change reasons; no Stable V5 semantic ownership boundary changed.
 2. Behavior preservation / type contracts
-   - Result after fixes: PASS pending final-head CI.
+   - Result after fixes: PASS.
    - One actual fallback-order regression was found and fixed; ReportView dead props were removed without changing rendering/calculation behavior.
 3. State / data invariants
    - Result after fixes: PASS.
    - identity, occurrence, alignment, material provenance, raw-vs-trimmed candidate semantics, recurrence and persisted-data schemas were not changed.
 4. UX / browser / accessibility
-   - Result after fixes: PASS pending final Browser Regression.
-   - Prior post-hardening head passed 80/80 browser contracts; final runner upgrade requires the same suite to pass again.
+   - Result after fixes: PASS.
+   - Final implementation head passed the same 80/80 browser contracts after the runner upgrade and Loops 43-47.
 5. Test quality / harness correctness
-   - Result after fixes: PASS pending final Browser Regression.
+   - Result after fixes: PASS.
    - Added component regressions for the two day-material extraction boundaries; upgraded the isolated Playwright harness rather than modifying production for a harness dependency warning.
 6. Observability / security / dependency trust
    - Result after fixes: PASS WITH NONBLOCKING BUILD DEBT.
    - Application `npm ci` reported zero vulnerabilities on the verified head. Existing Vite chunk/code-splitting warnings are not caused by this refactor and are recorded as separate performance debt, not a correctness blocker.
 7. Documentation / Git / merge hygiene
-   - Result after fixes: PASS pending final-head checks.
+   - Result after fixes: PASS.
    - One refactor PR only (#129); loop log/roadmap/index synchronized; closed-task root duplicates reduced. Branch name is historically reused from merged #127 but changing it now would add unnecessary Git churn.
 
 Fix-loop policy
