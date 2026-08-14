@@ -106,7 +106,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。アプリが決めた意図を、簡潔で自然な日本語にしてください。',
     '入力にない具体情報は、例としても補わないでください。',
-    '直前の発話への理解やアプリが確定した解釈は、共有理解に役立つ場合だけ自然に示してください。',
+    '直前の発話への理解や、アプリが構造化した解釈・確定した帰結は、共有理解に必要な場合に自然に示してください。',
     '質問では一度に一つだけ確認してください。',
   ].join('\n');
 
@@ -124,7 +124,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     request: [
       'applicationDecisionを守り、現在の発話系列に合う自然な日本語を一つ返してください。',
       'decidedFactsは確定情報、undecidedItemsは未確定情報です。',
-      'groundingContextは共有中の解釈や帰結です。必要な場合だけ短く反映し、proposedやcontestedを確定事項として断言しないでください。',
+      'groundingContextでstatusがproposedの解釈は、次の共同作業へ進む前にユーザーから見える形で短く示してください。言い回しは文脈に合わせ、確認質問は追加しないでください。contestedは確定事項として断言しないでください。',
       '質問ならquestionCodeの解消に必要な一つだけを尋ねてください。',
     ].join(''),
   });
