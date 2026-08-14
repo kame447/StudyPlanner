@@ -11,12 +11,13 @@ describe('AuthAccessGateForm', () => {
       renderer = create(<AuthAccessGateForm onUnlock={onUnlock} />);
     });
 
-    const input = renderer.root.findByType('input');
-    const form = renderer.root.findByType('form');
-
     act(() => {
-      input.props.onChange({ target: { value: 'wrong-key' } });
-      form.props.onSubmit({ preventDefault: vi.fn() });
+      renderer.root.findByType('input').props.onChange({
+        target: { value: 'wrong-key' },
+      });
+    });
+    act(() => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
     });
 
     expect(onUnlock).toHaveBeenCalledWith('wrong-key');
@@ -25,8 +26,12 @@ describe('AuthAccessGateForm', () => {
     );
 
     act(() => {
-      input.props.onChange({ target: { value: 'correct-key' } });
-      form.props.onSubmit({ preventDefault: vi.fn() });
+      renderer.root.findByType('input').props.onChange({
+        target: { value: 'correct-key' },
+      });
+    });
+    act(() => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
     });
 
     expect(onUnlock).toHaveBeenCalledWith('correct-key');
