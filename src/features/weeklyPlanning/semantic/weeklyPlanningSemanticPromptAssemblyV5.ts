@@ -15,19 +15,11 @@ export interface WeeklyPlanningSemanticPromptInputV5 {
 }
 
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You interpret user meaning and context; deterministic code validates representation/state and handles scheduling, safety, and persistence.',
-  'Current SemanticDocument is a delta. publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText.',
-  'episodicMemory is provenance for current cross-turn references only; never replay it or revive inactive facts.',
-  'Treat publicStateSummary.pendingQuestion as authoritative. Resolve only its exact target with fresh localIds; if meaning remains ambiguous, emit uncertainty instead of guessing.',
-  'For existingPublicId, keep partner-specific title/contextLabel unless the user renames it.',
-  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. If one statement gives total and completed amounts for the same work/unit, derive remaining as total minus completed.',
-  'An effortEstimate may target the exact task, component, or workload localId.',
-  'Use existingPublicId only for accepted cross-turn identity. create_plan authorizes creation without replaying accepted facts.',
-].join('\n');
-
-const CROSS_FACT_INSTRUCTION_V5 = [
-  'Non-consecutive allowed dates remain separate date constraints rather than an invented continuous range.',
-  'A recurring workload needs matching recurrence semantics.',
+  'You interpret meaning; deterministic code owns validation, state, scheduling, safety, and persistence.',
+  'SemanticDocument is a current-turn delta. Use prior state/conversation only to resolve references; sourceText must come from current userText. Never replay inactive facts or episodic memory.',
+  'pendingQuestion is authoritative: answer only its exact target with fresh localIds. If unresolved, emit uncertainty. Preserve existingPublicId identity/title unless the user renames it.',
+  'Quantity roles: target is planned amount, remaining unfinished, completed done; when total and completed are stated for the same work/unit, derive remaining. Effort may target a task, component, or workload.',
+  'Use existingPublicId only for accepted cross-turn identity. create_plan authorizes creation; it does not authorize replaying accepted facts.',
 ].join('\n');
 
 function contextualInstructionV5(
@@ -37,7 +29,7 @@ function contextualInstructionV5(
     input.publicStateSummary,
   );
   if (!workBreakdownTarget) return null;
-  return `This turn answers work_breakdown for exact accepted task ${workBreakdownTarget}. Return only that task, bind existingPublicId to it, and represent only structure supported by current userText; do not replay unrelated accepted state or the old uncertainty.`;
+  return `Answer only pending work_breakdown target ${workBreakdownTarget}; bind that existingPublicId and emit only current-turn structure for it.`;
 }
 
 export function createWeeklyPlanningSemanticBaseMessagesV5(
@@ -50,7 +42,6 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
       content: [
         createWeeklyPlanningSemanticMeaningPolicyV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
-        CROSS_FACT_INSTRUCTION_V5,
         contextualInstruction,
       ].filter((value): value is string => Boolean(value)).join('\n'),
     },
