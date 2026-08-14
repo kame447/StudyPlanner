@@ -7,11 +7,11 @@ import {
 
 export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
   version: 'weekly-planning-correction-targeting-contract-v5',
-  targetIdentity: 'For an explicit correction of an accepted public fact, set correction.target.publicId to the exact publicId from publicStateSummary and set correction.target.kind to the matching fact kind.',
-  replacementIdentity: 'Create only the replacement fact stated by the user in the current semantic document and set correction.replacementLocalId to that fact localId.',
-  minimalDelta: 'Do not copy unrelated accepted facts from publicStateSummary. Include only facts newly stated or changed in the current utterance.',
-  multipleTargets: 'For multiple explicit corrections, emit one correction per exact target and do not exchange targets between tasks.',
-  ambiguity: 'When the corrected target cannot be identified uniquely from publicStateSummary, do not guess a publicId. Emit an uncertainty describing the unresolved correction target.',
+  targetIdentity: 'Target the exact active publicId and matching fact kind; if not unique, emit uncertainty.',
+  replacementIdentity: 'Emit only the current-turn replacement; replacementLocalId is its fresh localId.',
+  minimalDelta: 'Current-turn delta only; omit unrelated accepted facts.',
+  multipleTargets: 'One correction per explicit target; never swap targets.',
+  ambiguity: 'Ambiguous target: emit uncertainty, never guess a publicId.',
 } as const;
 
 function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
