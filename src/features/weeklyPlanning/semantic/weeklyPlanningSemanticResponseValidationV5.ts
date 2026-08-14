@@ -73,7 +73,6 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const decompositionNormalization = normalizeTaskDecompositionUncertaintiesV5(rawResponse);
   const copiedContextNormalization = normalizeCopiedUserContextDeltaV5({
     rawResponse: decompositionNormalization.rawResponse,
-    userText: input.userText,
     publicStateSummary: input.publicStateSummary,
   });
   const pendingBindingNormalization = normalizePendingQuestionEntityBindingsV5({
