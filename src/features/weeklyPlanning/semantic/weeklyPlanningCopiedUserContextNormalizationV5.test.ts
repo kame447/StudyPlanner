@@ -3,13 +3,9 @@ import {
   normalizeCopiedUserContextDeltaV5,
 } from './weeklyPlanningCopiedUserContextNormalizationV5';
 
-function normalize(params: {
-  userText: string;
-  document: Record<string, unknown>;
-}) {
+function normalize(document: Record<string, unknown>) {
   return normalizeCopiedUserContextDeltaV5({
-    rawResponse: JSON.stringify(params.document),
-    userText: params.userText,
+    rawResponse: JSON.stringify(document),
     publicStateSummary: {
       userPlanningContext: [
         {
@@ -32,29 +28,26 @@ function normalize(params: {
 }
 
 describe('Stable V5 copied user context normalization', () => {
-  it('removes a stored concern copied onto an existing component even when the entity mention is current-grounded', () => {
+  it('collapses a stored concern copied onto an existing component using typed state only', () => {
     const result = normalize({
-      userText: '模試の方は数学を中心に、毎日2時間くらい取れたらと思ってます。',
-      document: {
-        tasks: [{
-          localId: 'task-local',
-          existingPublicId: 'task-public',
-          study: {
-            components: [{
-              localId: 'component-local',
-              existingPublicId: 'component-public',
-              label: '数学',
-              durableContextSignals: [{
-                localId: 'copied-concern',
-                kind: 'concern',
-                value: '結構まずい',
-                sourceText: '数学を中心に',
-              }],
+      tasks: [{
+        localId: 'task-local',
+        existingPublicId: 'task-public',
+        study: {
+          components: [{
+            localId: 'component-local',
+            existingPublicId: 'component-public',
+            label: '数学',
+            durableContextSignals: [{
+              localId: 'copied-concern',
+              kind: 'concern',
+              value: '結構まずい',
+              sourceText: '数学を中心に',
             }],
-          },
-        }],
-        userContextFacts: [],
-      },
+          }],
+        },
+      }],
+      userContextFacts: [],
     });
 
     const document = JSON.parse(result.rawResponse) as any;
@@ -64,29 +57,26 @@ describe('Stable V5 copied user context normalization', () => {
     ]);
   });
 
-  it('treats an exact repeated concern as redundant instead of moving its provenance forward', () => {
+  it('treats an exact repeated concern as an idempotent typed-state duplicate', () => {
     const result = normalize({
-      userText: '数学が結構まずいので、今週も数学を中心にしたいです。',
-      document: {
-        tasks: [{
-          localId: 'task-local',
-          existingPublicId: 'task-public',
-          study: {
-            components: [{
-              localId: 'component-local',
-              existingPublicId: 'component-public',
-              label: '数学',
-              durableContextSignals: [{
-                localId: 'current-concern',
-                kind: 'concern',
-                value: '結構まずい',
-                sourceText: '数学が結構まずい',
-              }],
+      tasks: [{
+        localId: 'task-local',
+        existingPublicId: 'task-public',
+        study: {
+          components: [{
+            localId: 'component-local',
+            existingPublicId: 'component-public',
+            label: '数学',
+            durableContextSignals: [{
+              localId: 'current-concern',
+              kind: 'concern',
+              value: '結構まずい',
+              sourceText: '数学が結構まずい',
             }],
-          },
-        }],
-        userContextFacts: [],
-      },
+          }],
+        },
+      }],
+      userContextFacts: [],
     });
 
     const document = JSON.parse(result.rawResponse) as any;
@@ -96,29 +86,26 @@ describe('Stable V5 copied user context normalization', () => {
     ]);
   });
 
-  it('keeps a genuinely changed concern value as a new current-turn delta', () => {
+  it('keeps a genuinely changed concern value as a new structured delta', () => {
     const result = normalize({
-      userText: '数学は前よりかなり不安です。',
-      document: {
-        tasks: [{
-          localId: 'task-local',
-          existingPublicId: 'task-public',
-          study: {
-            components: [{
-              localId: 'component-local',
-              existingPublicId: 'component-public',
-              label: '数学',
-              durableContextSignals: [{
-                localId: 'changed-concern',
-                kind: 'concern',
-                value: '前よりかなり不安',
-                sourceText: '数学は前よりかなり不安です',
-              }],
+      tasks: [{
+        localId: 'task-local',
+        existingPublicId: 'task-public',
+        study: {
+          components: [{
+            localId: 'component-local',
+            existingPublicId: 'component-public',
+            label: '数学',
+            durableContextSignals: [{
+              localId: 'changed-concern',
+              kind: 'concern',
+              value: '前よりかなり不安',
+              sourceText: '数学は前よりかなり不安です',
             }],
-          },
-        }],
-        userContextFacts: [],
-      },
+          }],
+        },
+      }],
+      userContextFacts: [],
     });
 
     const document = JSON.parse(result.rawResponse) as any;
@@ -126,26 +113,21 @@ describe('Stable V5 copied user context normalization', () => {
     expect(result.repairs).toEqual([]);
   });
 
-  it('removes an ungrounded stored goal event copied into a later turn', () => {
+  it('does not classify a repeated goal event as copied from raw conversation evidence', () => {
     const result = normalize({
-      userText: '今週は数学を毎日2時間やりたいです。',
-      document: {
-        tasks: [],
-        userContextFacts: [{
-          localId: 'copied-event',
-          kind: 'goal_event',
-          label: '共通テスト模試',
-          value: null,
-          dateExpression: 'custom:2週間後',
-          sourceText: '2週間後に共通テスト模試がある',
-        }],
-      },
+      tasks: [],
+      userContextFacts: [{
+        localId: 'event-current',
+        kind: 'goal_event',
+        label: '共通テスト模試',
+        value: null,
+        dateExpression: 'custom:2週間後',
+        sourceText: '2週間後に共通テスト模試がある',
+      }],
     });
 
     const document = JSON.parse(result.rawResponse) as any;
-    expect(document.userContextFacts).toEqual([]);
-    expect(result.repairs).toEqual([
-      'copied-user-context-fact-removed:0:goal_event:共通テスト模試',
-    ]);
+    expect(document.userContextFacts).toHaveLength(1);
+    expect(result.repairs).toEqual([]);
   });
 });
