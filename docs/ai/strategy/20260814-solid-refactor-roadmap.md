@@ -22,10 +22,13 @@ Current completed loops:
 - Loop 31: `src/components/MonthView.tsx` — pager gesture/keyboard state, daily aggregation and cell rendering are distinct responsibilities; defer the pager split until browser regressions can run.
 - Loop 32: `src/components/MonthPickerDialog.tsx` — no change; wheel-picker DOM measurement/scroll-settle/selection state is cohesive and owns no business policy.
 - Loop 33: `src/components/MyPageDialog.tsx` — no change; profile/avatar/account actions remain a cohesive account modal and delegate policy to existing helpers/hooks/callbacks.
+- Loop 34: `src/components/PlanFieldsEditor.tsx` — no change; typed draft field editing stays presentational.
+- Loop 35: `src/components/PlanEditorPanel.tsx` — no change; editor modal orchestration owns no recurrence mutation policy.
+- Loop 36: `src/components/TimeRangeFields.tsx` — no change; wheel interaction stays cohesive while time-domain calculations remain in `lib/date`.
 
 Current structural priorities:
 
-1. Continue `src/components/` file-by-file audit; perform low-risk extractions/dead-surface cleanup now and record high-coupling splits for the CI-capable checkpoint.
+1. Continue `src/components/` file-by-file audit; next focus on standalone actual-entry duplication and remaining reusable plan/actual boundaries.
 2. `DayView.tsx` still owns timetable-import interaction and detail-modal composition; split only if each boundary remains independently testable.
 3. `BookshelfView.tsx` still owns subject/material modal lifecycles after collection logic was extracted.
 4. `AdminViews.tsx` still owns user-list/detail loading and route composition after report presentation was extracted.
