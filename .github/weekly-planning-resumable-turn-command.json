@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-audit-historical-binding-20260814",
-  "turn": 2,
-  "attempt": 18,
-  "user_text": "夏休みの課題もまだ終わってなくて、2週間後に共通テスト模試もあるので、その勉強も進めたいです。特に数学が結構まずいです。",
-  "previous_run_id": "31786921036",
-  "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
-  "owner_id": "real-api-luna-audit-historical-binding-user-1",
+  "scenario": "luna-audit-general-correction-20260814",
+  "turn": 10,
+  "attempt": 14,
+  "user_text": "やっぱり夕方ではなく、夜にしてください。",
+  "previous_run_id": "31791952338",
+  "conversation_id": "weekly-luna-audit-general-20260814-01",
+  "owner_id": "real-api-luna-audit-general-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
