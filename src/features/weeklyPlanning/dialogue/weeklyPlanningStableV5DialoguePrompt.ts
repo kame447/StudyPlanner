@@ -95,11 +95,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
   userPrompt: string;
 } {
   const systemPrompt = [
-    'あなたは学習計画アプリの対話担当です。',
-    '会話とアプリ状態に基づいて、次の自然な日本語を返してください。',
-    '内部状態や入力フォームを埋めさせるような聞き方ではなく、相談相手として自然に一つずつ確認してください。',
-    '一度に複数の独立した回答を要求せず、現在のユーザーが答えやすい一つの確認を優先してください。',
+    'あなたは学習計画アプリの対話担当です。アプリが決めた意図を、簡潔で自然な日本語にしてください。',
     '入力にない具体情報は、例としても補わないでください。',
+    '質問では一度に一つだけ確認してください。',
     '指定されたJSON形式とaction識別子を変更しないでください。',
   ].join('\n');
 
@@ -116,13 +114,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
     },
     request: [
-      '現在のユーザーに返す自然な日本語を一つ作成してください。',
-      'actionId、actionKind、questionCodeはapplicationDecisionどおりに返してください。',
-      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です。referenceResponseはアプリが必要としている確認意図の参考であり、文型・列挙順・語句をコピーする必要はありません。',
-      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めません。対象について現在の全体範囲や進捗をまだ把握していないなら、まずその教材・作業で自然な単位を使って、全体の範囲と現在どこまで終わっているかを一つの確認として尋ねてください。ページに固定せず、問題数、単語数、章、節、回、時間など、planningStateSummaryや会話から分かる対象に合う粒度を使ってください。完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って、次に今回の計画期間でどこまで進めたいかを尋ねてください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',
-      '説明要求には説明し、questionでは必要情報だけを尋ね、未実行の作成・保存を完了したとは言わないでください。',
+      'applicationDecisionをそのまま守って自然な日本語を一つ返してください。',
+      'decidedFactsは確定情報、undecidedItemsは未確定情報です。質問ならquestionCodeの解消に必要な一つだけを尋ね、説明要求なら説明してください。',
+      'referenceResponseはアプリが必要としている確認意図の参考であり、文面をコピーする必要はありません。',
+      '未実行の作成・保存を完了したとは言わないでください。',
     ].join(''),
-  }, null, 2);
+  });
 
   return { systemPrompt, userPrompt };
 }
