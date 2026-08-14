@@ -126,7 +126,7 @@ const breakdownState = {
 };
 
 describe('Stable V5 contextual repair messages', () => {
-  it('uses the generic pending-question contract for work-breakdown repair', async () => {
+  it('uses a generic validation repair contract for work-breakdown repair', async () => {
     const fake = client([invalidOldBreakdown(), resolvedBreakdown()]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '英語レポートと化学プリントが残っています',
@@ -149,9 +149,10 @@ describe('Stable V5 contextual repair messages', () => {
     const repairPayload = JSON.parse(repairMessages[3]?.content ?? '{}') as {
       requiredChanges: string[];
     };
-    expect(repairPayload.requiredChanges).toEqual([
-      'Remove prior-turn facts not grounded in currentUserText; preserve unrelated valid current-turn facts and invent nothing.',
-    ]);
+    expect(repairPayload.requiredChanges).toHaveLength(1);
+    expect(repairPayload.requiredChanges[0]).toContain('listed validation failures');
+    expect(repairPayload.requiredChanges[0]).not.toContain('currentUserText');
+    expect(repairPayload.requiredChanges[0]).not.toContain('prior-turn facts');
   });
 
   it('keeps invalid-response-assisted repair for an ordinary schema error', async () => {
