@@ -42,9 +42,6 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
     directives.push('Emit relations only for stated order/dependency/priority and reference task localIds only.');
   }
-  if (errors.some((error) => error.includes('ambiguous-standalone-modifier-target'))) {
-    directives.push('Remove the guessed modifier attachment and emit one modifier_target uncertainty; preserve unrelated current-turn facts.');
-  }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
     directives.push('Remove prior-turn facts not grounded in currentUserText; preserve unrelated valid current-turn facts and invent nothing.');
   }
