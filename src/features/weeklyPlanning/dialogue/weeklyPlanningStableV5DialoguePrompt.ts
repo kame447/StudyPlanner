@@ -109,13 +109,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       actionKind: input.actionKind,
       questionCode: input.questionCode,
       relevantLabels: input.requiredLabels,
-      referenceResponse: input.fallbackText,
       previewCount: input.previewCount,
     },
     request: [
-      'applicationDecisionをそのまま守って自然な日本語を一つ返してください。',
-      'decidedFactsは確定情報、undecidedItemsは未確定情報です。質問ならquestionCodeの解消に必要な一つだけを尋ね、説明要求なら説明してください。',
-      'referenceResponseはアプリが必要としている確認意図の参考であり、文面をコピーする必要はありません。',
+      'applicationDecisionを守り、現在の発話系列に合う自然な日本語を一つ返してください。',
+      'decidedFactsは確定情報、undecidedItemsは未確定情報です。',
+      '質問ならquestionCodeの解消に必要な一つだけを尋ねてください。',
     ].join(''),
   });
 
