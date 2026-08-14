@@ -106,6 +106,8 @@ turn 6 attempt 3のrun `31788647370`はprovider 1回・AI repair 0回で受理�
 
 原因はAIではなくschedulerのper-occurrence distribution欠落である。simple recurrence (`daily` / `weekdays` / `weekends`)がexact task/componentを対象とし、対応workloadが`perOccurrence=true`のときだけ、planning horizon内の各該当日へ一つずつwork itemを展開し、その日を`requiredDate`としてplacementへ渡す。recurrence Fact IDも各候補の`sourceFactRefs`へ保持する。raw text、periodExpression、labelから頻度を推測せず、複数またはadvanced recurrenceを勝手に解釈しない。回帰は修正前に7件期待に対して1件で失敗し、修正後は7日×120分=840分、各日一件、recurrence provenanceを確認した。関連9件、TypeScript、全333 test files（1,544 tests）、production buildを通し、同じturn 5 checkpointからattempt 4を実行する。
 
+turn 6 attempt 4のrun `31789525607`は意味・scheduler・rendererを含めて合格した。Graph revision 7にdaily recurrenceと2 hours per occurrenceを保持し、scheduler input/previewは数学ワーク1件、古典1件、模試数学7件の合計9件となった。模試数学は8月17日〜23日の各日に120分ずつ一件だけ配置され、各候補の`sourceFactRefs`にrecurrence Fact IDが入った。rendererも「模試対策の数学は毎日2時間」と9件を一致して説明した。初回semantic出力はexact既存taskのtitleを空文字にしたため1回repairされた。この一過性のrepresentation失敗は機能上の不採用理由にはせず、repair率を下げるstructural normalization/ablation候補として保持する。commit `e9e18b0`のnormal CIとBrowser Regressionはいずれもgreenである。
+
 開始時点の代表request実測は次である。
 
 - meaning policy: 3,575 bytes
