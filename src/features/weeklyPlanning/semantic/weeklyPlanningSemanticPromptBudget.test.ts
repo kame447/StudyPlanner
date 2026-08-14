@@ -33,9 +33,10 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 9_000;
-const GENERIC_REQUEST_MAX_BYTES = 23_000;
-const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 2_200;
+const GENERIC_MEANING_POLICY_MAX_BYTES = 2_200;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_500;
+const GENERIC_REQUEST_MAX_BYTES = 16_000;
+const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
@@ -126,6 +127,12 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
+  it('keeps the always-on meaning policy compact', () => {
+    expect(byteLength(createWeeklyPlanningSemanticMeaningPolicyV5())).toBeLessThanOrEqual(
+      GENERIC_MEANING_POLICY_MAX_BYTES,
+    );
+  });
+
   it('keeps supplemental orchestration policy small and scenario independent', () => {
     const meaningPolicy = createWeeklyPlanningSemanticMeaningPolicyV5();
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({
