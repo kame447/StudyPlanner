@@ -70,6 +70,11 @@ export function groundedDateExpressionsFromPlanningInformation(
   );
   addKnownDateFields(
     grounded,
+    arrayField(planningInformation, 'groundingRecords'),
+    ['startDate', 'endDate'],
+  );
+  addKnownDateFields(
+    grounded,
     arrayField(planningInformation, 'temporalConstraints'),
     ['dateExpression'],
   );
