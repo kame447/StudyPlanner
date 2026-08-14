@@ -6,9 +6,6 @@ import type {
   WeeklyPlanningStableV5DialogueRenderInput,
   WeeklyPlanningStableV5DialogueRenderResult,
 } from './weeklyPlanningStableV5DialogueContracts';
-import {
-  isWeeklyPlanningStableV5DialogueExplanationRequest,
-} from './weeklyPlanningStableV5DialogueRouting';
 
 const MAX_RENDERED_TEXT_LENGTH = 800;
 const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
@@ -67,7 +64,6 @@ function hasUnsupportedActionShape(
     return true;
   }
   return input.actionKind === 'question'
-    && !isWeeklyPlanningStableV5DialogueExplanationRequest(input.currentUserMessage)
     && !QUESTION_RESPONSE_EXPRESSION.test(text);
 }
 
