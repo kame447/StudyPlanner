@@ -3,8 +3,12 @@ import {
   createWeeklyPlanningSemanticRepairMessagesV5,
 } from './weeklyPlanningSemanticRepairPromptV5';
 
+function bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 describe('Stable V5 semantic repair prompt', () => {
-  it('requires a declared replacement fact for a dangling correction replacement localId', () => {
+  it('keeps dangling-correction repair local, bound, and compact', () => {
     const invalidResponse = JSON.stringify({
       corrections: [{
         operation: 'replace',
@@ -23,19 +27,18 @@ describe('Stable V5 semantic repair prompt', () => {
     });
 
     const payload = JSON.parse(messages[messages.length - 1]?.content ?? '{}') as {
+      instruction?: string;
       requiredChanges?: string[];
     };
-    expect(payload.requiredChanges).toEqual([
-      expect.stringContaining('Create the replacement fact stated by current userText'),
-    ]);
-    expect(payload.requiredChanges?.[0]).toContain(
-      "set correction.replacementLocalId to that fact's declared localId",
-    );
-    expect(payload.requiredChanges?.[0]).toContain('minimal schema-valid containing task/component');
-    expect(payload.requiredChanges?.[0]).toContain(
-      'Set every targetLocalId to a fresh localId declared in this response',
-    );
-    expect(payload.requiredChanges?.[0]).toContain('Do not leave a dangling localId');
+    const directive = payload.requiredChanges?.[0] ?? '';
+
+    expect(payload.instruction).toContain('corrected current-turn Stable V5 semantic delta');
+    expect(directive).toContain('replacement fact stated in currentUserText');
+    expect(directive).toContain('minimal schema-valid containing task/component');
+    expect(directive).toContain('correction.replacementLocalId');
+    expect(directive).toContain('fresh localId');
+    expect(directive).toContain('exact existingPublicIds');
+    expect(bytes(directive)).toBeLessThanOrEqual(450);
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
