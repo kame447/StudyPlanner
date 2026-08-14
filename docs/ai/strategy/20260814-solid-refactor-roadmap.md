@@ -20,6 +20,7 @@ Current completed loops:
 - Loops 13-29: see compact loop log for completed extraction/no-change decisions.
 - Loop 30: `src/components/MonthEventDialog.tsx` — structural debt confirmed but deferred until focused/full tests can execute; save normalization and recurrence delete-scope policy should leave the editor UI in a CI-capable checkpoint.
 - Loop 31: `src/components/MonthView.tsx` — pager gesture/keyboard state, daily aggregation and cell rendering are distinct responsibilities; defer the pager split until browser regressions can run.
+- Loop 32: `src/components/MonthPickerDialog.tsx` — no change; wheel-picker DOM measurement/scroll-settle/selection state is cohesive and owns no business policy.
 
 Current structural priorities:
 
