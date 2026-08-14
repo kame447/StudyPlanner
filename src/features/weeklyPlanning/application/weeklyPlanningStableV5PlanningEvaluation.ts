@@ -41,12 +41,17 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   previousDraftGenerationIntent: PlanningIntakeState['draftGenerationIntent'] | null;
   planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
   semanticChanged: boolean;
+  hadMachinePendingQuestion?: boolean;
 }): boolean {
-  if (params.planningIntent === 'create_plan') return true;
+  if (params.planningIntent === 'create_plan' && !params.hadMachinePendingQuestion) return true;
   if (params.previousStatus === 'draft_ready') {
     return params.planningIntent === 'update_plan' && params.semanticChanged;
   }
   return params.previousDraftGenerationIntent === 'user_authorized';
+}
+
+function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): boolean {
+  return state?.lastQuestionContext?.targetSlot?.startsWith('stable_v5:') ?? false;
 }
 
 export function evaluateWeeklyPlanningStableV5Planning(params: {
@@ -123,6 +128,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     previousDraftGenerationIntent,
     planningIntent,
     semanticChanged,
+    hadMachinePendingQuestion: hadMachinePendingQuestion(input.previousState),
   });
 
   return {
