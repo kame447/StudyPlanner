@@ -98,7 +98,6 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     'あなたは学習計画アプリの対話担当です。アプリが決めた意図を、簡潔で自然な日本語にしてください。',
     '入力にない具体情報は、例としても補わないでください。',
     '質問では一度に一つだけ確認してください。',
-    '指定されたJSON形式とaction識別子を変更しないでください。',
   ].join('\n');
 
   const userPrompt = JSON.stringify({
@@ -117,7 +116,6 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'applicationDecisionをそのまま守って自然な日本語を一つ返してください。',
       'decidedFactsは確定情報、undecidedItemsは未確定情報です。質問ならquestionCodeの解消に必要な一つだけを尋ね、説明要求なら説明してください。',
       'referenceResponseはアプリが必要としている確認意図の参考であり、文面をコピーする必要はありません。',
-      '未実行の作成・保存を完了したとは言わないでください。',
     ].join(''),
   });
 
