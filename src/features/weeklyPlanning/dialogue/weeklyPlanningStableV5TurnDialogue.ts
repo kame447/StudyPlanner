@@ -5,7 +5,6 @@ import {
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import {
-  isStableV5QuestionLikeText,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
@@ -49,9 +48,7 @@ function dialogueActionKind(
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningStableV5DialogueActionKind {
   if (result.draftCandidates.length > 0) return 'preview_ready';
-  if (result.state.questions.length > 0 || isStableV5QuestionLikeText(result.message)) {
-    return 'question';
-  }
+  if (questionCode(result)) return 'question';
   return 'status';
 }
 
@@ -222,9 +219,6 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
-  // Successful renderer output owns the user-facing copy. The deterministic
-  // fallback remains available only for renderer failure/rejection, while the
-  // structured planningInformation carries any correction context on normal paths.
   const finalMessage = rendered.text;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
