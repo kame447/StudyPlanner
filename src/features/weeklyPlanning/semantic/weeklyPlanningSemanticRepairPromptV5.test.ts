@@ -7,6 +7,13 @@ function bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
+function repairPayload(messages: Array<{ role: string; content: string }>): {
+  requiredChanges?: string[];
+  validationErrors?: string[];
+} {
+  return JSON.parse(messages[messages.length - 1]?.content ?? '{}');
+}
+
 describe('Stable V5 semantic repair prompt', () => {
   it('keeps dangling-correction repair local, bound, and compact', () => {
     const invalidResponse = JSON.stringify({
@@ -26,10 +33,7 @@ describe('Stable V5 semantic repair prompt', () => {
       },
     });
 
-    const payload = JSON.parse(messages[messages.length - 1]?.content ?? '{}') as {
-      requiredChanges?: string[];
-      validationErrors?: string[];
-    };
+    const payload = repairPayload(messages);
     const directive = payload.requiredChanges?.[0] ?? '';
 
     expect(payload).not.toHaveProperty('instruction');
@@ -46,5 +50,27 @@ describe('Stable V5 semantic repair prompt', () => {
       role: 'assistant',
       content: invalidResponse,
     });
+  });
+
+  it('repairs unsupported relative goal-event dates without restoring a global prompt guard', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.userContextFacts[0].dateExpression:unsupported-expression',
+      ],
+      input: {
+        userText: '2週間後に共通テスト模試があります。',
+        publicStateSummary: {
+          calendarContext: { currentDate: '2026-08-14', timeZone: 'Asia/Tokyo' },
+        },
+      },
+    });
+
+    const directive = repairPayload(messages).requiredChanges?.[0] ?? '';
+    expect(directive).toContain('supported ISO YYYY-MM-DD');
+    expect(directive).toContain('calendarContext.currentDate/timeZone');
+    expect(directive).toContain('preserve the event value separately');
+    expect(bytes(directive)).toBeLessThanOrEqual(260);
   });
 });
