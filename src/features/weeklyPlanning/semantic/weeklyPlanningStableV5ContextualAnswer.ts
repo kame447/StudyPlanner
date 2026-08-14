@@ -209,6 +209,37 @@ function targetUncertainty(
   return input.graph.uncertainties.find((fact) => fact.id === targetFactId) ?? null;
 }
 
+function semanticLocalIdsForExistingFact(
+  document: WeeklyPlanningSemanticDocumentV5,
+  publicId: string | null,
+): Set<string> {
+  if (!publicId) return new Set();
+  const localIds = new Set<string>();
+  for (const task of document.tasks) {
+    if (task.existingPublicId === publicId) localIds.add(task.localId);
+    for (const component of task.study?.components ?? []) {
+      if (component.existingPublicId === publicId) localIds.add(component.localId);
+    }
+  }
+  return localIds;
+}
+
+function retainsPendingSemanticUncertainty(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: UncertaintyFactV5,
+): boolean {
+  const targetLocalIds = semanticLocalIdsForExistingFact(
+    input.document,
+    target.targetFactId,
+  );
+  return input.document.uncertainties.some((uncertainty) => {
+    if (uncertainty.field !== target.field) return false;
+    if (!uncertainty.targetLocalId) return true;
+    if (targetLocalIds.size === 0) return true;
+    return targetLocalIds.has(uncertainty.targetLocalId);
+  });
+}
+
 function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
   minutes: number;
   precision: EffortEstimateFactV5['precision'];
@@ -515,7 +546,7 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
       };
     }
     if (
-      input.document.uncertainties.length > 0
+      retainsPendingSemanticUncertainty(input, target)
       || !containsResolvedSemanticDelta(input.document)
     ) {
       return {
