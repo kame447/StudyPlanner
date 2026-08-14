@@ -33,6 +33,10 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput {
   };
 }
 
+function bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 describe('Stable V5 dialogue prompt', () => {
   it('projects decided facts separately from unresolved items', () => {
     const summary = createWeeklyPlanningStableV5DialogueStateSummary(input()) as {
@@ -78,5 +82,13 @@ describe('Stable V5 dialogue prompt', () => {
       },
     });
     expect(payload).not.toHaveProperty('planningInformation');
+  });
+
+  it('locks the always-on renderer prose to a small budget', () => {
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
+    const payload = JSON.parse(prompt.userPrompt) as { request: string };
+
+    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(1_000);
   });
 });
