@@ -16,5 +16,6 @@ This file is the compact per-loop execution log. The parent inventory keeps arch
 | 15 | `src/components/ActualTrackingTools.tsx` | pure elapsed/timer/range calculations extracted to `src/lib/actualTracking.ts`; measurement UI/state kept cohesive. | Added `src/lib/actualTracking.test.ts`. | done |
 | 16 | `src/components/AdminApp.tsx` | no change; small admin composition root is acceptably cohesive. | Auth/navigation responsibilities are local to the admin shell and no reusable abstraction was found. | done |
 | 17 | `src/components/AdminGuard.tsx` | no change; guard only maps `checking / denied / allowed` status to access-boundary rendering. | Authorization decision remains owned by `useAdminStatus`; props expose only status and children. | done |
+| 18 | `src/components/AdminViews.tsx` | extracted report formatting, report panel and report-list presentation into `AdminReportViews.tsx`; retained route and user data-loading ownership in `AdminViews`. | Added `AdminReportViews.test.tsx` for mode labels, signed deltas and shared metric rendering. | done |
 
 Per-loop rule: before starting the next code file, update this log and `docs/ai/strategy/20260814-solid-refactor-roadmap.md`.
