@@ -192,7 +192,7 @@ describe('Stable V5 semantic normalizer', () => {
     const payload = repairPayload(fake.calls[1]);
     expect(payload.requiredChanges).toHaveLength(1);
     expect(payload.requiredChanges?.[0]).toContain('listed validation failures');
-    expect(payload.requiredChanges?.[0]).toContain('preserving');
+    expect(payload.requiredChanges?.[0]).toContain('preserve unrelated current-turn meaning');
     expect(payload.validationErrors).toEqual(['document:invalid-json']);
   });
 
@@ -209,9 +209,10 @@ describe('Stable V5 semantic normalizer', () => {
     expect(result.diagnostics.validationErrors).toEqual([
       'document.tasks[0].temporalConstraints[0]:missing-start',
     ]);
-    expect(repairPayload(fake.calls[1]).requiredChanges).toEqual([
-      'Remove or change unsupported temporal constraints instead of inventing a missing clock or date boundary.',
-    ]);
+    const requiredChanges = repairPayload(fake.calls[1]).requiredChanges ?? [];
+    expect(requiredChanges).toHaveLength(1);
+    expect(requiredChanges[0]).toContain('Remove or change unsupported temporal constraints');
+    expect(requiredChanges[0]).toContain('do not invent missing date/time bounds');
   });
 
   it('rejects when the single repair remains invalid', async () => {
