@@ -104,6 +104,19 @@ function withAssistantMessage(params: {
   };
 }
 
+function groundingRecords(
+  result: WeeklyPlanningTurnExecutionResult,
+): Array<Record<string, unknown>> {
+  return (result.state.groundingRecords ?? []).map((record) => ({
+    targetFactId: record.targetFactId,
+    interpretationKind: record.interpretationKind,
+    status: record.status,
+    sourceExpression: record.sourceExpression,
+    startDate: record.startDate,
+    endDate: record.endDate,
+  }));
+}
+
 function createRenderInput(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -115,6 +128,7 @@ function createRenderInput(params: {
   const planningInformation = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
+        groundingRecords: groundingRecords(params.result),
         selfRepairNotice: params.notice,
       }
     : null;
