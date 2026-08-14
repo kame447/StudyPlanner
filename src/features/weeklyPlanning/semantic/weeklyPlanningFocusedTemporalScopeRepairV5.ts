@@ -127,7 +127,7 @@ export function createFocusedTemporalScopeRepairMessagesV5(
       role: 'system',
       content: [
         'Classify only the scope of this extracted temporal statement.',
-        'Return plan_unavailable only when sourceText itself clearly makes the time plan-wide unavailable/avoid; otherwise uncertain. Return only the schema.',
+        'Return plan_unavailable only when sourceText itself clearly makes the time plan-wide unavailable/avoid; otherwise uncertain.',
       ].join('\n'),
     },
     {
