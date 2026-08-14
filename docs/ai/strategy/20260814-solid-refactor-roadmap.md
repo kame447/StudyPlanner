@@ -10,24 +10,17 @@ Canonical architecture references:
 - `docs/ai/weekly-planning-pipeline-guide.md`
 - `AGENTS.md`
 
-Execution ledger:
+Execution records:
 
-- Loops 0-12: see `docs/ai/tasks/20260814-solid-file-by-file-refactor-and-md-inventory.md`.
-- Loop 13: `src/components/AppSettingsDialog.tsx`
-  - extracted support-only FAQ/legal/contact/version content into `AppSettingsSupportPanel.tsx`.
-  - retained modal shell, settings state, theme, week-start and personalization reset ownership in `AppSettingsDialog`.
-  - no product/Stable V5 behavior change intended.
-- Loop 14: `src/components/ActualEditorCard.tsx`
-  - extracted plan/actual → `ActualDraft` construction, legacy alignment inference, and relink-candidate projection into `src/lib/actualDrafts.ts`.
-  - kept editor state, save/delete interactions and rendering in the component.
-  - added `src/lib/actualDrafts.test.ts` covering new/existing draft construction, explicit/legacy alignment, and relink projection.
-- Loop 15: `src/components/ActualTrackingTools.tsx`
-  - kept stopwatch/timer interaction state and rendering together as one cohesive measurement-tool responsibility.
-  - extracted elapsed-time calculation, timer clamping/parsing/formatting and measured-range projection into `src/lib/actualTracking.ts`.
-  - added `src/lib/actualTracking.test.ts` for duration formatting, paused/running elapsed calculation, timer bounds and range projection.
-- Loop 16: `src/components/AdminApp.tsx`
-  - no change.
-  - admin auth resolution, local browser navigation, guard and route composition form one small composition-root responsibility; extracting hooks now would add indirection without reuse or a distinct policy owner.
+- Loops 0-15 and MD inventory: `docs/ai/tasks/20260814-solid-file-by-file-refactor-and-md-inventory.md`
+- Compact per-loop log from Loop 13 onward: `docs/ai/tasks/20260814-solid-file-by-file-loop-log.md`
+
+Current completed loops:
+
+- Loop 13: `src/components/AppSettingsDialog.tsx` — support panel extraction.
+- Loop 14: `src/components/ActualEditorCard.tsx` — actual draft/alignment projection extraction with tests.
+- Loop 15: `src/components/ActualTrackingTools.tsx` — tracking calculations extraction with tests.
+- Loop 16: `src/components/AdminApp.tsx` — no change; composition root remains cohesive.
 
 Next priorities:
 
@@ -38,6 +31,6 @@ Next priorities:
 5. Treat raw-text weekly entry routing as Issue #115; do not add regex heuristics during refactor.
 6. Keep trace/privacy, cross-device approval, personalization and saved-preview migration concerns in their existing Issues rather than mixing them into structural loops.
 
-Loop rule:
+Per-loop documentation rule:
 
-Every completed loop must update this roadmap and `docs/ai/tasks/20260814-solid-file-by-file-refactor-and-md-inventory.md` before the next code file is started.
+Before starting the next code file, update this roadmap and `docs/ai/tasks/20260814-solid-file-by-file-loop-log.md`. The large parent inventory is updated at checkpoints or when the MD inventory / remaining-problem classification changes.
