@@ -2,6 +2,7 @@ import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
+  WeeklyPlanningTurnSubmissionOptions,
   WeeklyPlanningTurnSubmissionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
 import {
@@ -47,6 +48,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
+  submissionOptions?: WeeklyPlanningTurnSubmissionOptions;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -74,6 +76,7 @@ export function submitWeeklyPlanningApplicationTurn(
         timetableTermId: params.timetableTermId,
         weekStartsOn: params.weekStartsOn,
         timeZone: params.timeZone,
+        entryRoutingTrace: params.submissionOptions?.entryRoutingTrace,
       });
     },
     commitExecutionResult({ pending }) {

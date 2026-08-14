@@ -1,6 +1,6 @@
 # weeklyPlanning current contract status
 
-Status: canonical / Stable V5 sole runtime + structural hardening
+Status: canonical / Stable V5 sole runtime + conversation-quality re-verification
 Updated: 2026-08-14
 
 - [current contract v5](weekly-planning-current-contract-v5.md)
@@ -23,10 +23,11 @@ Stable V5は唯一のproduction週間計画runtimeである。
 - PR #113: semantic module責務を整理
 - PR #120: human grounding / repair、scheduler human-scale policy、real API hardening、semantic orchestration監査、legacy behavior-aware execution cluster隔離を完了しmainへmerge
 - PR #127: audited Browser Regression suiteを統合しmainへmerge
+- PR #129: file-by-file SOLID hardening、MD棚卸し、browser regression監査を完了しmainへmerge
 
 PR #129はDayView、BookshelfView、AdminViews、MonthEventDialog、MonthViewを含む残りfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を完了しmainへmerge済みである。
 
-現在は第2PR `agent/weekly-conversation-quality-luna-audit`で、過去の会話品質taskとIssueを現コードへ対応付け、Stable V5をLunaで一対話ずつ再観測する。既知の未完了差分はIssue #118のcompleted duration clarificationであり、prompt複雑性、historical heuristic、最終previewも同じPRで監査する。
+現在は第2PR `agent/weekly-conversation-quality-luna-audit` 1本で、過去の会話品質taskとIssueを現コードへ対応付け、Stable V5をLunaで一対話ずつ再観測する。Issue #118のcompleted duration clarificationに加え、Issue #115のfresh-session raw-text regex入口を小さいstructured AI routerへ置換する。prompt複雑性、historical heuristic、最終previewも同じPRで監査し、Stable V5の決定論的readiness / scheduler / preview / approval / save境界は変更しない。
 
 ## 2. Stable V5 production baseline
 

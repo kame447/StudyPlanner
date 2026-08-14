@@ -3,6 +3,7 @@ import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyPlanningMessage } from '../types';
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
+import type { WeeklyPlanningEntryRoutingTrace } from '../entry/weeklyPlanningEntryRouter';
 
 export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   previousState?: PlanningIntakeState;
@@ -17,4 +18,5 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   requestContext?: WeeklyPlanningTurnRequestContext;
+  entryRoutingTrace?: WeeklyPlanningEntryRoutingTrace;
 }
