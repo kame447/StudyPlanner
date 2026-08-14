@@ -17,6 +17,9 @@ import {
   normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5,
 } from './weeklyPlanningRecurrenceTargetNormalizationV5';
 import {
+  normalizeResolvedProgressWorkloadsV5,
+} from './weeklyPlanningResolvedProgressNormalizationV5';
+import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
@@ -86,8 +89,11 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
-  const recurrenceTargetNormalization = normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(
+  const resolvedProgressNormalization = normalizeResolvedProgressWorkloadsV5(
     workloadNormalization.rawResponse,
+  );
+  const recurrenceTargetNormalization = normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(
+    resolvedProgressNormalization.rawResponse,
   );
   const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
     recurrenceTargetNormalization.rawResponse,
@@ -98,6 +104,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...pendingBindingNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
+    ...resolvedProgressNormalization.repairs,
     ...recurrenceTargetNormalization.repairs,
     ...clockNormalization.repairs,
   ];
