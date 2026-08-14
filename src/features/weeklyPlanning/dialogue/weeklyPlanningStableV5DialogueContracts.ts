@@ -10,6 +10,21 @@ export interface WeeklyPlanningStableV5DialogueConversationTurn {
   content: string;
 }
 
+export interface WeeklyPlanningStableV5DialogueQuestionTarget {
+  collection: string;
+  fact: Record<string, unknown>;
+}
+
+export interface WeeklyPlanningStableV5DialogueQuestionIntent {
+  kind: 'effort_evidence';
+  measurement: 'total_duration';
+  evidenceRole: 'completed';
+  targetFactId: string;
+  amount: number;
+  unitCode: string | null;
+  unitLabel: string | null;
+}
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
@@ -17,6 +32,8 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   planningInformation: Record<string, unknown> | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
+  questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
+  questionIntent?: WeeklyPlanningStableV5DialogueQuestionIntent | null;
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
