@@ -119,9 +119,10 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     previousRecords: input.previousState?.learningStrategyProposalRecords ?? [],
   });
   const baselineCompilation = compileGenericSchedulerInput({
-    graph: observedPaceProjection.graph,
+    graph: activeGraph,
     context: schedulerContext,
     externalSources,
+    observedEstimateOverrides: observedPaceProjection.estimateOverrides,
   });
   const learningStrategyProposals = semantic.normalization.document
     ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
@@ -152,7 +153,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     : null;
   const acceptedMemorySessionCompilation = applyAcceptedMemorySessionProjectionV5({
     compilation: baselineCompilation,
-    graph: observedPaceProjection.graph,
+    graph: activeGraph,
     acceptedSpacedProposal: learningStrategyProposals.acceptedSpacedProposal,
     acceptedCalibrationProposal: acceptedCalibration,
   });
