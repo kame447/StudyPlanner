@@ -8,7 +8,7 @@ export interface WeeklyPlanningPendingQuestionV5 {
   questionCode: string;
   targetFactId: string | null;
   graphRevision: number;
-  effortMeasurement: WeeklyPlanningEffortMeasurementV5 | null;
+  effortMeasurement?: WeeklyPlanningEffortMeasurementV5 | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -26,6 +26,7 @@ export function readWeeklyPlanningPendingQuestionV5(
 ): WeeklyPlanningPendingQuestionV5 | null {
   const value = publicStateSummary?.pendingQuestion;
   if (!isRecord(value)) return null;
+  const effortMeasurement = value.effortMeasurement ?? null;
   if (
     (value.actionId !== null && typeof value.actionId !== 'string')
     || typeof value.questionCode !== 'string'
@@ -33,7 +34,7 @@ export function readWeeklyPlanningPendingQuestionV5(
     || (value.targetFactId !== null && typeof value.targetFactId !== 'string')
     || !Number.isInteger(value.graphRevision)
     || Number(value.graphRevision) < 0
-    || !(value.effortMeasurement === null || isEffortMeasurement(value.effortMeasurement))
+    || !(effortMeasurement === null || isEffortMeasurement(effortMeasurement))
   ) {
     return null;
   }
@@ -42,7 +43,7 @@ export function readWeeklyPlanningPendingQuestionV5(
     questionCode: value.questionCode,
     targetFactId: value.targetFactId,
     graphRevision: Number(value.graphRevision),
-    effortMeasurement: value.effortMeasurement,
+    effortMeasurement,
   };
 }
 
