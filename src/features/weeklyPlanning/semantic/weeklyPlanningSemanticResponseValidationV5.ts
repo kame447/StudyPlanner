@@ -5,6 +5,9 @@ import {
   normalizeCopiedUserContextDeltaV5,
 } from './weeklyPlanningCopiedUserContextNormalizationV5';
 import {
+  normalizeWeeklyPlanningConstraintAbsenceMetadataV5,
+} from './weeklyPlanningConstraintAbsenceNormalizationV5';
+import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
@@ -93,6 +96,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
     recurrenceTargetNormalization.rawResponse,
   );
+  const absenceNormalization = normalizeWeeklyPlanningConstraintAbsenceMetadataV5(
+    clockNormalization.rawResponse,
+  );
   const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
@@ -102,13 +108,14 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...resolvedProgressNormalization.repairs,
     ...recurrenceTargetNormalization.repairs,
     ...clockNormalization.repairs,
+    ...absenceNormalization.repairs,
   ];
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(clockNormalization.rawResponse);
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(absenceNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
       parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
-        rawResponse: clockNormalization.rawResponse,
+        rawResponse: absenceNormalization.rawResponse,
         validationErrors: parsed.errors,
       }),
       errors: parsed.errors,
