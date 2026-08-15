@@ -6,6 +6,7 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
 import {
+  renderWeeklyPlanningMemorySessionDurationQuestionV5,
   renderWeeklyPlanningMemoryStrategyProposalV5,
 } from './weeklyPlanningStableV5LearningStrategyProposal';
 import type {
@@ -120,8 +121,21 @@ function routeBeforePreview(params: {
   }
 
   if (dialogue.status === 'ask_question') {
+    const acceptedMemoryProposal = dialogue.question.code === 'missing_effort_estimate'
+      && learningStrategyProposals.acceptedProposal?.workloadFactId === dialogue.question.factId
+      ? learningStrategyProposals.acceptedProposal
+      : null;
+    const taskLabel = acceptedMemoryProposal
+      ? graph.tasks.find((task) => task.id === acceptedMemoryProposal.taskId)?.title ?? 'この学習'
+      : null;
+    const renderedQuestion = acceptedMemoryProposal && taskLabel
+      ? renderWeeklyPlanningMemorySessionDurationQuestionV5({
+          taskLabel,
+          proposal: acceptedMemoryProposal,
+        })
+      : renderStableV5RuntimeQuestion(graph, dialogue.question);
     const message = groundedMessage({
-      message: renderStableV5RuntimeQuestion(graph, dialogue.question),
+      message: renderedQuestion,
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
@@ -132,6 +146,7 @@ function routeBeforePreview(params: {
       draftCandidates: [],
       questionCode: dialogue.question.code,
       questionFactId: dialogue.question.factId ?? undefined,
+      questionIntent: acceptedMemoryProposal ? 'session_duration' : undefined,
       authorized,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
