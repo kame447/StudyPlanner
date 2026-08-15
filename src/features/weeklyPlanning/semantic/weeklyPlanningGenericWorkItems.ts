@@ -287,7 +287,10 @@ export function compileGenericPlanningWorkItems(
 
     const allocation = estimate.estimatedMinutes === null
       ? null
-      : allocateWeeklyPlanningEffort({ baseEstimateMinutes: estimate.estimatedMinutes });
+      : allocateWeeklyPlanningEffort({
+          baseEstimateMinutes: estimate.estimatedMinutes,
+          safetyBufferMultiplier: estimate.basis === 'intrinsic_duration' ? 1 : undefined,
+        });
 
     items.push({
       version: GENERIC_WORK_ITEM_VERSION,
