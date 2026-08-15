@@ -4,9 +4,6 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
-  createWeeklyPlanningActiveSchedulerGraphViewV5,
-} from './weeklyPlanningActiveSchedulerGraphViewV5';
-import {
   compileWeeklyPlanningMemoryCalibrationSchedulerInputV5,
 } from './weeklyPlanningMemoryCalibrationSchedulerInputV5';
 
@@ -69,7 +66,7 @@ describe('Stable V5 memory calibration scheduler input', () => {
   it('compiles one trial session without rewriting the persisted full scope', () => {
     const original = graph();
     const result = compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({
-      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(original),
+      graph: original,
       workloadFactId: 'workload-1',
       sessionMinutes: 20,
       context,
@@ -111,7 +108,7 @@ describe('Stable V5 memory calibration scheduler input', () => {
 
   it('fails closed when there is no matching one-session duration evidence', () => {
     expect(compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({
-      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph()),
+      graph: graph(),
       workloadFactId: 'workload-1',
       sessionMinutes: 25,
       context,
