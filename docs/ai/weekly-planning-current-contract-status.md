@@ -1,158 +1,142 @@
 # weeklyPlanning current contract status
 
-Status: canonical / Stable V5 sole runtime + structural hardening
-Updated: 2026-08-14
+Status: canonical / Stable V5 sole runtime + PR #130 conversation quality audit
+Updated: 2026-08-15
+
+Canonical references:
 
 - [current contract v5](weekly-planning-current-contract-v5.md)
 - [runtime contract](weekly-planning-stable-v5-runtime-trial-contract.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
+- [human grounding policy](tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+- [adaptive memory learning policy](strategy/weekly-planning-adaptive-memory-learning-policy.md)
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
-- [current conversation-quality / Luna task](tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
-- [completed SOLID refactor roadmap](strategy/20260814-solid-refactor-roadmap.md)
-- [completed seven-perspective audit](audits/20260814-solid-refactor-seven-audit.md)
+- [current Luna audit](tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
 
 ## 1. 現在位置
 
-Stable V5は唯一のproduction週間計画runtimeである。
+Stable V5が唯一のproduction週間計画runtimeである。
 
-完了済みの主要段階:
+PR #109 / #112 / #113 / #120 / #127 / #129で、Stable V5主要経路、legacy削除、semantic責務整理、human grounding、scheduler hardening、Browser Regression、file-by-file SOLID refactorをmainへ統合済みである。
 
-- PR #109: Stable V5主要経路をmainへ固定
-- PR #112: productionから到達不能なlegacy interpreter / parser / runtime / semantic experimentを削除
-- PR #113: semantic module責務を整理
-- PR #120: human grounding / repair、scheduler human-scale policy、real API hardening、semantic orchestration監査、legacy behavior-aware execution cluster隔離を完了しmainへmerge
-- PR #127: audited Browser Regression suiteを統合しmainへmerge
+現在はPR #130 `agent/weekly-conversation-quality-luna-audit`で、Lunaによる逐次実API会話監査、prompt簡素化、残heuristicの削除・一般化、最終preview確認を行っている。
 
-PR #129はDayView、BookshelfView、AdminViews、MonthEventDialog、MonthViewを含む残りfile-by-file SOLID hardening、MD棚卸し、七視点敵対的監査を完了しmainへmerge済みである。
-
-現在は第2PR `agent/weekly-conversation-quality-luna-audit`で、過去の会話品質taskとIssueを現コードへ対応付け、Stable V5をLunaで一対話ずつ再観測する。既知の未完了差分はIssue #118のcompleted duration clarificationであり、prompt複雑性、historical heuristic、最終previewも同じPRで監査する。
-
-## 2. Stable V5 production baseline
-
-```text
-user utterance
-→ machine-state semantic routing
-   ├─ focused authorization AI
-   ├─ focused contextual-answer AI
-   └─ generic open-ended semantic AI
-→ validation / optional one-shot AI repair
-→ formal binding / canonical commit
-→ Fact Graph V5
-→ readiness / scheduler / dialogue
-→ AI renderer
-→ preview / approval / save
-```
-
-削除済みlegacy runtimeへ戻すproduction pathはない。
-
-残すcompatibility layerは、保存data migration、approval / owner migration、trace/export read compatibility、current observation/test supportなど、既存data/read contractのためのものに限定する。runtime selectorとして扱わない。
-
-## 3. AI / deterministic責務
+## 2. AI / deterministic責務
 
 AI:
 
 - raw user text / conversation contextの意味理解
 - task / component / quantity role
-- date / weekday / time period / clock intent
-- correction / short contextual answer
-- authorization intent
+- date / weekday / time intent
+- correction / contextual reference
+- proposalへのaccept / reject / modification
+- current-only / durable preference等のscope理解
 - structured semantic candidates
 
-Deterministic core:
+Deterministic application:
 
 - schema / evidence / reference validation
 - formal binding / canonical IDs
-- Fact Graph lifecycle
-- revision / idempotency
-- clarification / confirmation requirement
-- question priority / progression
+- Fact Graph lifecycle / revision / idempotency
+- confirmation necessity / question priority
+- proposal candidate / lifecycle / acceptance scope
 - readiness
-- scheduler / placement safety
-- preview freshness
-- approval / save
+- scheduler / placement
+- preview / approval / save
 - persistence / recovery / safety
+- observed pace / retention等のderived calculation
 
-raw Japaneseをregex / keyword / dictionary / legacy parserで再解釈してsemantic truthにしない。provider / validation / repair failureからlegacy parserへfallbackしない。renderer textからmachine stateを逆推定しない。
+raw Japaneseをregex / keyword / dictionary / legacy parserで再解釈してsemantic truthにしない。renderer textからmachine stateを逆推定しない。
 
-## 4. 現在までに確立した主要能力
+## 3. Human grounding
 
-- selectedDateと実際の発話日時の分離
+application内部で知っているheuristicや推奨方針を、ユーザーとの共通基盤に既に入っている前提で話さない。
+
+```text
+internal heuristic
+→ proposalを会話上へ提示
+→ user accept / reject / modify
+→ accepted scopeだけshared groundへ
+```
+
+「今回はそうして」と「今後もそうして」は別scopeとして扱う。
+
+## 4. 暗記・想起系のcurrent contract
+
+詳細は [Adaptive Memory Learning Policy](strategy/weekly-planning-adaptive-memory-learning-policy.md) を正本とする。
+
+- 英単語専用の固定heuristicへ閉じない。
+- 100語等の語数境界からsession数を決めない。
+- 単語総量の総所要時間を必須で自己予測させない。
+- 15〜30分はcold-start proposal候補であり固定規則ではない。
+- 1日複数回・朝昼夜分散もproposalであり自動採用しない。
+- 新規学習と復習を分離する。
+- 量・期限・空き時間から短時間だけでは厳しい場合、長めの新規学習＋短い分散復習を提案できる。
+- それでも期限内に難しい場合、全体一巡 / 範囲を絞る / 目標変更等を提案してユーザーに選択させる。
+- 復習は固定3周や固定日程ではなく、spacing / retrievalの一般原則と本人実績から適応する。
+
+## 5. Memory contract
+
+三層を区別する。
+
+1. current week / conversation state
+   - 今回だけ採用したsession長、復習方針、配置方針。
+2. durable user preference
+   - 今後も利用することまで明示的に共有された好み。
+3. observed learning profile
+   - 実行時間、進捗量、想起率、経過時間等の観測から導出した本人特性。
+
+既存`userPlanningContext`はowner-scoped durable storageを持つが、現行型は`goal_event` / `concern`中心である。learning preference / observed learning profileは今後のtyped extension対象とする。
+
+一回のweek-local acceptanceを根拠なくdurable preferenceへ自動昇格させない。
+
+## 6. 現在までに確立した主要能力
+
+- selectedDateと実発話日時の分離
 - request-time not-before / today past-time hard boundary
-- weekStartsOn / `来週` grounding
+- weekStartsOn / relative planning range grounding
 - active-only corrected Fact projection
 - proposal acceptance / rejection grounding
 - repair agenda / local self-repair
 - human-scale effort questions
 - page/problem per-unit effort
-- vocabulary total/session effortとsession分割
-- preview保持 / session chunking / daily load distribution
-- tiny-tail抑制 / long free segment優先
+- session chunking / daily load distribution
 - task relation ordering / cycle blocking
 - timetable / existing-plan buffer
-- reserve / review policy
+- reserve / review safety
 - owner-scoped actual-derived effort calibration
-- canonical weekday / planning-window / clock validation
+- canonical date / weekday / clock validation
 - focused machine-pending semantic routes
 - preview / approval runtime ownershipのconversation isolation
-- Stable V5 execution clusterからlegacy behavior-aware execution edgeの隔離
 
-## 5. 現在の会話品質監査
+旧vocabulary total-duration / 100-word split / automatic vocabulary daypart behaviorはcurrent designとして扱わない。残存実装はPR #130の削除・置換対象である。
 
-2026-08-07/10の会話品質task群は、現コードに実装と回帰が存在するものを未実装扱いせず、Luna再観測scenarioへ変換する。各turnでsemantic response、validation/repair、formal binding、Fact Graph、dialogue、renderer、preview、traceを確認し、明確な失敗があれば次へ進まない。
+## 7. PR #130 current execution
 
-モデル更新後もAI/deterministic責務境界は維持する。promptは意味・安全contract、schema重複、historical scaffolding、意味不変normalizationに分類し、Luna ablationで退行がないものだけを削減候補とする。
+```text
+MD / contract同期
+→ stale vocabulary heuristic inventory
+→ one-element deterministic refactor
+→ targeted regression
+→ full CI / Browser Regression
+→ Luna turn-by-turn revalidation
+→ prompt / repair ablation
+→ final dynamic preview conversation
+→ closeout
+```
 
-## 6. Current verification
+各loopでgreenになるまで次へ進まない。
 
-PR #129のmerge前最終HEADでは次を確認済み。
+## 8. 別scope
 
-- normal CI success
-  - npm ci
-  - TypeScript checks
-  - Vitest
-  - production build
-- PR diff check
-- Browser Regression success: 80 / 80 passed
-
-PR #129はready化後にsquash mergeされ、main merge commitは`be0c483d779be315f10ccf3f34adb9c7420e9631`である。
-
-第2PR開始時の代表prompt実測はgeneric system 5,002 bytes、provider schema 11,333 bytes、generic request 17,351 bytes、focused authorization 1,202 bytes、focused contextual answer 2,263 bytesで、現budget内である。会話品質のpass判定は今後の逐次・通し実API artifactと最終HEADのCI結果で行う。
-
-テストを「追加した」ことと「実行してgreenだった」ことを区別する。
-
-## 7. 既知の残Issue / 別scope
-
-現在PRへ混在させない主な残件:
-
-- Issue #43: request ownershipの残browser evidence
-- Issue #45: trace privacy / lifecycle / operational rollout
-- Issue #47: personalization / cloud session authority（current-time safety自体は完了）
+- Issue #43: request ownership browser evidence
+- Issue #45: trace privacy / operational rollout
+- Issue #47: personalization / cloud session authorityの broader scope
 - Issue #51: cross-tab / cross-device approval uniqueness
-- Issue #52: weekly planning UIをgeneric Quick Entry / AI inputから分離
-- Issue #89: trace empty-session production / operational verification
-- Issue #115: raw-text regex weekly entry routingをAI-owned structured routingへ移行
-- Issue #118: 今回の対象。deterministic導出は実装済みで、completed durationを先に確認する会話policyが残る
-- Issue #128: saved-preview approval compatibility migration
+- Issue #52: weekly planning UI責務分離
+- Issue #89: trace operational verification
+- Issue #115: raw-text regex weekly entry routing
+- Issue #128: saved-preview compatibility migration
 
-Issue #52 / #115は今回も独立scopeを維持する。
-
-## 8. 今回の既知残差
-
-- Issue #118 completed-duration clarification
-- historical conversation taskのLuna再観測とtask queue closeout
-- production heuristicの対象・敵対的回帰
-- prompt複雑性とLunaで削減可能なscaffoldingのablation
-- 最終HEADの逐次会話、通しpreview、Browser Regression、normal CI
-- production buildの既存chunk/code-splitting warningは今回の会話品質scope外
-
-これらは次のfile-by-file phaseで、対象回帰を先に用意できる単位から処理する。
-
-## 9. 次の進行条件
-
-1. stale task・Issue・PRを現コード根拠へ対応付ける
-2. historical scenarioをLunaで一対話ずつ再観測する
-3. 明確な失敗があれば次turnへ進まず原因層を直して同地点から再実行する
-4. Issue #118、heuristic、prompt ablationを対象回帰とfull CIで確認する
-5. 最終HEADで通しpreview、Browser Regression、normal CIをgreenにする
-6. roadmap、contract、status、task queue、Issueを観測結果と同期する
+PR #130では新branch / 新PR / 新Issueを作らず、現在branch内で会話品質と今回確定した暗記系policyの既存heuristic整理を進める。
