@@ -28,6 +28,18 @@ export const SEMANTIC_STUDY_PURPOSES_V5 = [
 ] as const;
 export type SemanticStudyPurposeV5 = (typeof SEMANTIC_STUDY_PURPOSES_V5)[number];
 
+export const SEMANTIC_STUDY_ACTIVITY_KINDS_V5 = [
+  'memorization_retrieval',
+  'problem_solving',
+  'reading',
+  'writing',
+  'mixed',
+  'other',
+  'unknown',
+] as const;
+export type SemanticStudyActivityKindV5 =
+  (typeof SEMANTIC_STUDY_ACTIVITY_KINDS_V5)[number];
+
 export const SEMANTIC_COMPONENT_ROLES_V5 = [
   'subject',
   'field',
@@ -192,6 +204,7 @@ export interface SemanticStudyComponentV5 extends SemanticSourceEvidenceV5 {
 
 export interface SemanticStudyDetailsV5 {
   purpose: SemanticStudyPurposeV5;
+  activityKind?: SemanticStudyActivityKindV5;
   contextLabel: string | null;
   components: SemanticStudyComponentV5[];
 }
