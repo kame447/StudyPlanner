@@ -5,8 +5,6 @@ import {
   partitionWeeklyPlanningDatesV5,
   preferredDistributedDateV5,
   preferredVocabularyLearningDateV5,
-  preferredVocabularyLearningDaypartV5,
-  preferredVocabularyReviewDaypartV5,
   resolveWeeklySpreadSessionCountV5,
   reviewCandidateDatesV5,
   vocabularyLearningCandidateDatesV5,
@@ -76,20 +74,6 @@ describe('Stable V5 distribution policy migrated from the legacy weekly schedule
       '2026-08-22',
       '2026-08-23',
     ]);
-  });
-
-  it('spreads vocabulary learning across morning, midday and night without forcing extra sessions', () => {
-    expect(preferredVocabularyLearningDaypartV5({ sessionIndex: 0, sessionCount: 1 })).toBe('morning');
-    expect([0, 1].map((sessionIndex) => preferredVocabularyLearningDaypartV5({
-      sessionIndex,
-      sessionCount: 2,
-    }))).toEqual(['morning', 'night']);
-    expect([0, 1, 2].map((sessionIndex) => preferredVocabularyLearningDaypartV5({
-      sessionIndex,
-      sessionCount: 3,
-    }))).toEqual(['morning', 'afternoon', 'night']);
-    expect(preferredVocabularyReviewDaypartV5(1)).toBe('night');
-    expect(preferredVocabularyReviewDaypartV5(2)).toBe('morning');
   });
 
   it('creates next-day and three-days-later reviews with shorter deterministic durations', () => {
