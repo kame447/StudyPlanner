@@ -4,57 +4,59 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
+  applyWeeklyPlanningStableV5ContextualAnswer,
+} from './weeklyPlanningStableV5ContextualAnswer';
+import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
-import { applyWeeklyPlanningStableV5ContextualAnswer } from './weeklyPlanningStableV5ContextualAnswer';
 
 function graphFor(
-  unitCode: 'page' | 'problem' | 'word',
+  unitCode: SemanticWorkloadUnitCodeV5,
   amount: number,
   quantityRole: 'target' | 'completed' = 'target',
 ): WeeklyPlanningFactGraphV5 {
-  const task = {
-    id: 'task-1',
-    category: 'study' as const,
-    title: unitCode === 'word' ? '英単語' : '数学',
-    source: {
-      conversationId: 'conversation-1',
-      turnId: 'turn-1',
-      semanticLocalId: 'task-1',
-      sourceText: 'work',
-      origin: 'user' as const,
-    },
-    createdRevision: 1,
-  };
-  const workload = {
-    id: 'workload-1',
-    taskId: task.id,
-    componentId: null,
-    quantityRole,
-    amount,
-    unitCode,
-    unitLabel: unitCode === 'page' ? 'ページ' : unitCode === 'problem' ? '問' : '語',
-    rangeStart: null,
-    rangeEnd: null,
-    perOccurrence: false,
-    periodExpression: null,
-    source: task.source,
-    createdRevision: 1,
+  const graph = createEmptyWeeklyPlanningFactGraphV5();
+  const source = {
+    conversationId: 'conversation-1',
+    turnId: 'turn-1',
+    semanticLocalId: 'workload-1',
+    sourceText: 'workload',
+    origin: 'user' as const,
   };
   return {
-    ...createEmptyWeeklyPlanningFactGraphV5(),
+    ...graph,
     revision: 1,
-    appliedTurnKeys: ['conversation-1:turn-1'],
-    tasks: [task],
-    workloads: [workload],
-    factLifecycles: [task, workload].map((fact) => ({
-      factId: fact.id,
-      status: 'active' as const,
+    tasks: [{
+      id: 'task-1',
+      category: 'study',
+      title: '学習',
+      source,
+      createdRevision: 1,
+    }],
+    workloads: [{
+      id: 'workload-1',
+      taskId: 'task-1',
+      componentId: null,
+      quantityRole,
+      amount,
+      unitCode,
+      unitLabel: unitCode === 'page' ? 'ページ' : unitCode === 'problem' ? '問' : '語',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      source,
+      createdRevision: 1,
+    }],
+    factLifecycles: [{
+      factId: 'workload-1',
+      status: 'active',
       createdRevision: 1,
       terminalRevision: null,
       supersededByFactId: null,
-    })),
+    }],
   };
 }
 
@@ -92,7 +94,7 @@ function durationAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
 }
 
 function answer(
-  unitCode: 'page' | 'problem' | 'word',
+  unitCode: SemanticWorkloadUnitCodeV5,
   amount: number,
   minutes: number,
   quantityRole: 'target' | 'completed' = 'target',
@@ -136,16 +138,16 @@ describe('Stable V5 human-scale contextual effort answers', () => {
     });
   });
 
-  it('stores vocabulary answers as total effort without a word-count threshold', () => {
+  it('stores vocabulary duration as one-session evidence without treating it as total scope time', () => {
     expect(answer('word', 80, 35)?.graph.effortEstimates[0]).toMatchObject({
-      kind: 'total_duration',
+      kind: 'session_duration',
       minutes: 35,
-      unitCode: null,
+      unitCode: 'word',
     });
-    expect(answer('word', 150, 90)?.graph.effortEstimates[0]).toMatchObject({
-      kind: 'total_duration',
-      minutes: 90,
-      unitCode: null,
+    expect(answer('word', 220, 20)?.graph.effortEstimates[0]).toMatchObject({
+      kind: 'session_duration',
+      minutes: 20,
+      unitCode: 'word',
     });
   });
 });
