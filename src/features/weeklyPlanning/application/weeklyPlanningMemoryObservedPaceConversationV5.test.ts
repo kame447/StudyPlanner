@@ -166,7 +166,7 @@ describe('Stable V5 returning memorization learner', () => {
     normalizeMock.mockReset();
   });
 
-  it('uses observed pace for effort, still asks current session length, and skips cold-start calibration', async () => {
+  it('uses observed pace, adds safety buffer, asks current session length, and skips cold-start calibration', async () => {
     const conversationId = 'memory-observed-returning';
     normalizeMock.mockResolvedValueOnce(acceptedResult(memoryDocument()));
     const firstId = `${conversationId}:1`;
@@ -203,8 +203,7 @@ describe('Stable V5 returning memorization learner', () => {
     expect(third.state.status).toBe('draft_ready');
     expect(third.draftCandidates).toHaveLength(7);
     const durations = third.draftCandidates.map((candidate) => candidate.durationMinutes);
-    expect(durations.filter((duration) => duration === 20)).toHaveLength(6);
-    expect(durations.filter((duration) => duration !== 20)).toEqual([6]);
-    expect(durations.reduce((sum, duration) => sum + duration, 0)).toBe(126);
+    expect(durations.every((duration) => duration === 20)).toBe(true);
+    expect(durations.reduce((sum, duration) => sum + duration, 0)).toBe(140);
   });
 });
