@@ -1,11 +1,10 @@
 {
-  "scenario": "luna-audit-remove-fresh-localids-20260815",
-  "turn": 6,
+  "scenario": "luna-audit-vocabulary-time-based-20260815",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "模試対策の数学は、来週は毎日2時間ずつ取りたいです。",
-  "previous_run_id": "31787953951",
-  "conversation_id": "weekly-luna-audit-historical-binding-20260814-01",
-  "owner_id": "real-api-luna-audit-historical-binding-user-1",
+  "user_text": "8月17日から23日で英単語220語を覚える計画を立てたいです。固定予定はありません。",
+  "conversation_id": "weekly-luna-audit-vocabulary-time-based-20260815-01",
+  "owner_id": "real-api-luna-audit-vocabulary-time-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
