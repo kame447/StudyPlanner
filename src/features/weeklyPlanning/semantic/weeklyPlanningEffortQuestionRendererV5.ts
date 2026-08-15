@@ -33,20 +33,7 @@ export function renderWeeklyPlanningEffortQuestionV5(params: {
   }
 
   if (workload.unitCode === 'word' && plan.kind === 'total_duration') {
-    return `${label}について、${quantityText(workload.amount, workload.unitLabel)}をまとめて覚えるのに、どれくらい時間がかかりそうですか？`;
-  }
-
-  if (workload.unitCode === 'word' && plan.kind === 'session_duration') {
-    const sessionCount = plan.sessionQuantities.length;
-    const minimum = Math.min(...plan.sessionQuantities);
-    const maximum = Math.max(...plan.sessionQuantities);
-    if (minimum === maximum) {
-      return `${label}について、${quantityText(workload.amount, workload.unitLabel)}は一度にやるには多いので、${quantityText(minimum, workload.unitLabel)}ずつ${sessionCount}回に分けます。1回あたり${quantityText(minimum, workload.unitLabel)}を覚えるのに、どれくらい時間がかかりそうですか？`;
-    }
-    const split = plan.sessionQuantities
-      .map((amount) => quantityText(amount, workload.unitLabel))
-      .join('・');
-    return `${label}について、${quantityText(workload.amount, workload.unitLabel)}は一度にやるには多いので、${split}の${sessionCount}回に分けます。1回分（${minimum}〜${maximum}${workload.unitLabel}）を覚えるのに、どれくらい時間がかかりそうですか？`;
+    return `${label}について、${quantityText(workload.amount, workload.unitLabel)}を一通り覚えるために、合計でどれくらい時間がかかりそうですか？`;
   }
 
   return `${label}について、指定した量を進めるのに合計でどれくらい時間がかかりますか？`;
