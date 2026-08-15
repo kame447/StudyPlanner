@@ -200,21 +200,37 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
     || !Number.isFinite(max)
     || max < min
   ) return null;
-  const selectedSessionDurationMinutes = typeof proposal.selectedSessionMinutes === 'number'
-    && Number.isFinite(proposal.selectedSessionMinutes)
-    && proposal.selectedSessionMinutes > 0
-    ? proposal.selectedSessionMinutes
-    : null;
+
+  if (proposalKind === 'calibrate_memory_pace') {
+    const sessionDurationMinutes = typeof proposal.selectedSessionMinutes === 'number'
+      && Number.isFinite(proposal.selectedSessionMinutes)
+      && proposal.selectedSessionMinutes > 0
+      ? proposal.selectedSessionMinutes
+      : min === max
+        ? min
+        : null;
+    if (sessionDurationMinutes === null) return null;
+    return {
+      kind: 'learning_strategy_proposal',
+      proposalKind: 'calibrate_memory_pace',
+      targetFactId: proposal.workloadFactId,
+      sessionDurationMinutes,
+      measurementPlan: {
+        observation: 'progress_during_single_session',
+        objective: 'measure_personal_pace',
+        futureUse: 'personalize_future_session_planning',
+      },
+      decisionRequested: 'accept_or_reject',
+    } as const;
+  }
+
   return {
     kind: 'learning_strategy_proposal',
-    proposalKind,
+    proposalKind: 'spaced_memory_practice',
     targetFactId: proposal.workloadFactId,
     suggestedSessionDurationMinutes: { min, max },
     spacingInterval: 'not_yet_selected',
-    selectedSessionDurationMinutes,
-    rationale: proposalKind === 'spaced_memory_practice'
-      ? 'distributed_retrieval_supports_retention'
-      : 'measure_personal_pace',
+    rationale: 'distributed_retrieval_supports_retention',
     decisionRequested: 'accept_or_reject',
   } as const;
 }
