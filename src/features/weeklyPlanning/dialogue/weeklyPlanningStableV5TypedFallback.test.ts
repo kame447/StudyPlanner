@@ -13,7 +13,6 @@ describe('Stable V5 typed dialogue fallback', () => {
         targetFactId: 'workload-1',
         suggestedSessionDurationMinutes: { min: 15, max: 30 },
         spacingInterval: 'not_yet_selected',
-        selectedSessionDurationMinutes: null,
         rationale: 'distributed_retrieval_supports_retention',
         decisionRequested: 'accept_or_reject',
       },
@@ -28,9 +27,13 @@ describe('Stable V5 typed dialogue fallback', () => {
         proposalKind: 'calibrate_memory_pace',
         targetFactId: 'workload-1',
         suggestedSessionDurationMinutes: { min: 20, max: 20 },
-        spacingInterval: 'not_yet_selected',
         selectedSessionDurationMinutes: 20,
-        rationale: 'measure_personal_pace',
+        sessionDurationMinutes: 20,
+        measurementPlan: {
+          observation: 'progress_during_single_session',
+          objective: 'measure_personal_pace',
+          futureUse: 'personalize_future_session_planning',
+        },
         decisionRequested: 'accept_or_reject',
       },
     })).toBe('学習ペース計測の提案（20分）について、採用するか教えてください。');
