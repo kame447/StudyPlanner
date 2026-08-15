@@ -1,3 +1,6 @@
+import type {
+  WeeklyPlanningMemoryPaceObservationSourceV1,
+} from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
@@ -16,6 +19,10 @@ import {
 
 export type WeeklyPlanningStableV5CandidateMetadata =
   WeeklyPlanningStableV5PreviewProvenance;
+
+type WorkItemWithObservationSource = GenericPlanningWorkItem & {
+  weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+};
 
 function taskForCandidate(
   graph: WeeklyPlanningFactGraphV5,
@@ -81,6 +88,8 @@ export function createPlacementCandidate(params: {
 }): WeeklyDraftCandidate {
   const task = taskForCandidate(params.graph, params.item.taskId);
   const planType = task.category === 'study' ? 'study' : 'other';
+  const observationSource = (params.item as WorkItemWithObservationSource)
+    .weeklyPlanningObservationSource;
   const metadata: WeeklyPlanningStableV5CandidateMetadata = {
     runtime: 'stable_v5',
     conversationId: task.source.conversationId,
@@ -90,6 +99,9 @@ export function createPlacementCandidate(params: {
     planType,
     ...(params.sessionRole ? { sessionRole: params.sessionRole } : {}),
     ...(params.reviewRound ? { reviewRound: params.reviewRound } : {}),
+    ...(observationSource
+      ? { weeklyPlanningObservationSource: { ...observationSource } }
+      : {}),
   };
   const workItemKey = params.workItemKey ?? params.item.id;
   return {
