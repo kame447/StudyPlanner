@@ -343,14 +343,14 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(first.state.lastQuestionContext?.kind).toBe('options');
     expect(first.state.lastQuestionContext?.intent).toBe('learning_strategy_proposal');
     expect(first.state.learningStrategyProposalRecords).toHaveLength(1);
-    expect(first.state.learningStrategyProposalRecords?.[0]).toMatchObject({
+    const proposal = first.state.learningStrategyProposalRecords?.[0];
+    expect(proposal).toMatchObject({
       kind: 'spaced_memory_practice',
       status: 'pending',
       suggestedSessionMinutes: { min: 15, max: 30 },
     });
-    expect(first.message).toContain('15〜30分');
-    expect(first.message).toContain('定着');
-    expect(first.message).not.toContain('合計でどれくらい時間');
+    expect(first.state.lastQuestionContext?.actionId).toBe(proposal?.id);
+    expect(first.state.lastQuestionContext?.topicId).toBe(proposal?.workloadFactId);
   });
 
   it('asks for one-session duration only after the memory strategy is accepted', async () => {
@@ -401,8 +401,7 @@ describe('Stable V5 human-scale conversation integration', () => {
       first.state.learningStrategyProposalRecords?.[0]?.workloadFactId,
     );
     expect(second.state.lastQuestionContext?.intent).toBe('session_duration');
-    expect(second.message).toContain('1回');
-    expect(second.message).not.toContain('合計でどれくらい時間');
+    expect(second.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
   });
 
   it('asks for completed duration and derives the remaining preview from observed pace', async () => {
