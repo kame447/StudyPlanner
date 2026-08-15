@@ -156,6 +156,7 @@ function createRenderInput(params: {
     questionIntent: questionIntentForStableV5Dialogue({
       questionCode: params.questionCode,
       questionTarget,
+      effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
     }),
     previewPromotionControlLabel,
     requiredLabels: requiredLabelsForStableV5Dialogue({
