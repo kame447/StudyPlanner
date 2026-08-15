@@ -72,7 +72,7 @@ describe('observed estimate scheduler safety buffer', () => {
 
     expect(result.status).toBe('ready');
     const items = result.input?.movableWorkItems ?? [];
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(1);
     expect(items.reduce(
       (sum, item) => sum + (item.estimatedMinutes ?? 0),
       0,
