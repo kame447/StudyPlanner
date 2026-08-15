@@ -86,6 +86,25 @@ function eligibleDates(params: {
     && (!params.item.requiredDate || date === params.item.requiredDate));
 }
 
+function isVocabularyWorkItem(params: {
+  context: WeeklyPlanningPlacementRuntimeContextV5;
+  item: GenericPlanningWorkItem;
+}): boolean {
+  return params.context.graph.workloads.some((workload) =>
+    workload.id === params.item.workloadFactId && workload.unitCode === 'word');
+}
+
+function isVocabularyTimeSession(params: {
+  context: WeeklyPlanningPlacementRuntimeContextV5;
+  item: GenericPlanningWorkItem;
+}): boolean {
+  if (!isVocabularyWorkItem(params)) return false;
+  return params.context.graph.effortEstimates.some((estimate) =>
+    params.item.estimateSourceFactIds.includes(estimate.id)
+    && estimate.kind === 'session_duration'
+    && estimate.unitCode === 'word');
+}
+
 function findWorkItemSlot(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -237,21 +256,31 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const duration = chunks[chunkIndex];
-    const isVocabulary = params.item.quantity.unitCode === 'word';
+    const isVocabulary = isVocabularyWorkItem({ context: params.context, item: params.item });
+    const vocabularyTimeSession = isVocabularyTimeSession({ context: params.context, item: params.item });
     const sessionIndex = chunks.length > 1 ? chunkIndex : params.taskPosition.index;
     const sessionCount = chunks.length > 1 ? chunks.length : params.taskPosition.count;
-    const preferredDate = isVocabulary
-      ? preferredVocabularyLearningDateV5({
-          sessionIndex: params.vocabularyPosition.index,
-          sessionCount: params.vocabularyPosition.count,
+    const vocabularyIndex = params.vocabularyPosition.index;
+    const vocabularyCount = params.vocabularyPosition.count;
+    const preferredDate = vocabularyTimeSession
+      ? preferredTaskDistributedDateV5({
+          taskIndex: 0,
+          sessionIndex: vocabularyIndex,
+          sessionCount: vocabularyCount,
           dates: params.context.dates,
         })
-      : preferredTaskDistributedDateV5({
-          taskIndex: params.taskOrdinal,
-          sessionIndex,
-          sessionCount,
-          dates: params.context.dates,
-        });
+      : isVocabulary
+        ? preferredVocabularyLearningDateV5({
+            sessionIndex: vocabularyIndex,
+            sessionCount: vocabularyCount,
+            dates: params.context.dates,
+          })
+        : preferredTaskDistributedDateV5({
+            taskIndex: params.taskOrdinal,
+            sessionIndex,
+            sessionCount,
+            dates: params.context.dates,
+          });
     const candidateDates = isVocabulary
       ? vocabularyLearningCandidateDatesV5({
           preferredDate,
@@ -266,8 +295,8 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
     });
     const learningDaypart = isVocabulary
       ? preferredVocabularyLearningDaypartV5({
-          sessionIndex: params.vocabularyPosition.index,
-          sessionCount: params.vocabularyPosition.count,
+          sessionIndex: vocabularyIndex,
+          sessionCount: vocabularyCount,
         })
       : null;
     const defaultPreferredPlacements = learningDaypart && preferredDate
@@ -299,7 +328,7 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
     }));
     addPlacedSlot({ slot, busy: params.context.busy, dayLoads: params.context.dayLoads });
 
-    if (isVocabulary) {
+    if (isVocabulary && !vocabularyTimeSession) {
       const failedReviewId = addVocabularyReviews({
         context: params.context,
         item: params.item,
