@@ -15,7 +15,7 @@ export interface WeeklyPlanningStableV5DialogueQuestionTarget {
   fact: Record<string, unknown>;
 }
 
-export interface WeeklyPlanningStableV5DialogueQuestionIntent {
+export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
   kind: 'effort_measurement';
   measurement: 'total_duration' | 'duration_per_unit' | 'session_duration';
   quantityRole: 'declared' | 'target' | 'remaining' | 'completed' | 'unknown';
@@ -24,6 +24,23 @@ export interface WeeklyPlanningStableV5DialogueQuestionIntent {
   unitCode: string | null;
   unitLabel: string | null;
 }
+
+export interface WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'spaced_memory_practice' | 'calibrate_memory_pace';
+  targetFactId: string;
+  suggestedSessionMinutes: {
+    min: number;
+    max: number;
+  };
+  selectedSessionMinutes: number | null;
+  rationale: 'distributed_retrieval_supports_retention' | 'measure_personal_pace';
+  decisionRequested: 'accept_or_reject';
+}
+
+export type WeeklyPlanningStableV5DialogueQuestionIntent =
+  | WeeklyPlanningStableV5DialogueEffortQuestionIntent
+  | WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent;
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
