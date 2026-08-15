@@ -1,17 +1,15 @@
-import type {
-  EffortEstimateFactV5,
-  WeeklyPlanningFactGraphV5,
-  WorkloadFactV5,
-} from './weeklyPlanningFactGraphV5';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
 } from './weeklyPlanningGenericSchedulerInput';
 
 type CompilerInput = Parameters<typeof compileGenericSchedulerInput>[0];
+type SchedulerGraph = CompilerInput['graph'];
+type SchedulerWorkload = SchedulerGraph['workloads'][number];
+type SchedulerEffort = SchedulerGraph['effortEstimates'][number];
 
 export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
-  graph: WeeklyPlanningFactGraphV5;
+  graph: SchedulerGraph;
   workloadFactId: string;
   sessionMinutes: number;
   context: CompilerInput['context'];
@@ -36,7 +34,7 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   // temporal/date constraints and preview provenance continue to refer to the
   // real facts. The persisted graph still means “full memorization scope plus
   // one-session duration”; only this local projection means “schedule one trial”.
-  const projectedWorkload: WorkloadFactV5 = {
+  const projectedWorkload: SchedulerWorkload = {
     ...sourceWorkload,
     quantityRole: 'target',
     amount: 1,
@@ -47,12 +45,12 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
     perOccurrence: false,
     periodExpression: null,
   };
-  const projectedEffort: EffortEstimateFactV5 = {
+  const projectedEffort: SchedulerEffort = {
     ...sourceSessionEffort,
     kind: 'total_duration',
     unitCode: null,
   };
-  const projectedGraph: WeeklyPlanningFactGraphV5 = {
+  const projectedGraph: SchedulerGraph = {
     ...params.graph,
     workloads: params.graph.workloads.map((workload) =>
       workload.id === sourceWorkload.id ? projectedWorkload : workload),
