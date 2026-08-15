@@ -5,7 +5,6 @@ import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInpu
 import {
   preferredTaskDistributedDateV5,
   preferredVocabularyLearningDateV5,
-  preferredVocabularyLearningDaypartV5,
   reviewCandidateDatesV5,
   vocabularyLearningCandidateDatesV5,
   vocabularyReviewTargetsV5,
@@ -26,9 +25,7 @@ import {
 import {
   findPlacementSlot,
   findPreferredPlacementSlot,
-  preferredNamedTimePeriodPlacementV5,
   preferredPlacementsForWorkItem,
-  type PreferredPlacement,
 } from './weeklyPlanningStableV5SlotSearch';
 
 export interface WeeklyPlanningPlacementRuntimeContextV5 {
@@ -112,7 +109,6 @@ function findWorkItemSlot(params: {
   duration: number;
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment: boolean;
-  defaultPreferredPlacements?: PreferredPlacement[];
 }): MinuteInterval | null {
   const explicitPreferences = preferredPlacementsForWorkItem({
     graph: params.context.graph,
@@ -120,12 +116,9 @@ function findWorkItemSlot(params: {
     dates: params.dates,
     namedTimePeriods: params.context.namedTimePeriods,
   });
-  const preferences = explicitPreferences.length > 0
-    ? explicitPreferences
-    : params.defaultPreferredPlacements ?? [];
-  const preferredSlot = preferences.length > 0
+  const preferredSlot = explicitPreferences.length > 0
     ? findPreferredPlacementSlot({
-        placements: preferences,
+        placements: explicitPreferences,
         duration: params.duration,
         windowsByDate: params.context.windowsByDate,
         hardAvailableByDate: params.context.hardAvailableByDate,
@@ -133,7 +126,7 @@ function findWorkItemSlot(params: {
         breakMinutes: params.context.breakMinutes,
         notBefore: params.notBefore,
         preferLongSegment: params.preferLongSegment,
-        restrictToBaseWindows: explicitPreferences.length === 0,
+        restrictToBaseWindows: false,
       })
     : null;
   return preferredSlot ?? findPlacementSlot({
@@ -293,19 +286,6 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       preferredDate,
       durationMinutes: duration,
     });
-    const learningDaypart = isVocabulary
-      ? preferredVocabularyLearningDaypartV5({
-          sessionIndex: vocabularyIndex,
-          sessionCount: vocabularyCount,
-        })
-      : null;
-    const defaultPreferredPlacements = learningDaypart && preferredDate
-      ? preferredNamedTimePeriodPlacementV5({
-          dates: [preferredDate],
-          namedTimePeriod: learningDaypart,
-          namedTimePeriods: params.context.namedTimePeriods,
-        })
-      : [];
     const slot = findWorkItemSlot({
       context: params.context,
       item: params.item,
@@ -313,7 +293,6 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       duration,
       notBefore: effectiveNotBefore,
       preferLongSegment,
-      defaultPreferredPlacements,
     });
     if (!slot) return { candidates: itemCandidates, failedWorkItemId: params.item.id };
 
