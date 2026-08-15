@@ -2,11 +2,12 @@ export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
     'Interpret only supported current-turn meaning into semantic facts.',
     'Treat learning work as study tasks. Preserve only supported task/component hierarchy and decomposition, and attach workload, effort, constraints, and context to the entity they modify.',
+    'Classify study.activityKind by the dominant cognitive work: memorization_retrieval for memorizing or recalling facts/items, problem_solving for solving exercises, reading for reading-centered work, writing for writing-centered work, mixed when no single mode dominates, otherwise other or unknown.',
     'Keep an amount declared when target/remaining/completed meaning is unclear. Distinguish work amount from expected duration; use per-unit effort only when stated.',
     'Keep task-specific timing on that task, plan-wide free/busy/preference facts in availability, and planningWindow for the whole requested plan. Mandatory, unavailable, and deadline meaning is hard; preferences are soft; unresolved strength is unknown. Deadline means completion-by.',
     'Keep unrelated activities separate. Emit relations only when stated; if a modifier has multiple supported targets and context does not choose one, emit uncertainty.',
     'Emit recurrence and external source requests only when explicitly stated or requested.',
-    'Use corrections and decisions only for explicit corrections or decisions about a previously presented item.',
+    'Use corrections and decisions only for explicit corrections or decisions about a previously presented item. When responding to a pending proposal in publicStateSummary, bind the decision to target.kind=proposal and that proposal exact publicId.',
   ].join('\n');
 }
 
