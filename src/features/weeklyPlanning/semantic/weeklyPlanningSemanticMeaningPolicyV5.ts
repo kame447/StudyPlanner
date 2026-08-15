@@ -1,7 +1,7 @@
 export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
     'Interpret only supported current-turn meaning into semantic facts.',
-    'Treat learning work as study tasks. Preserve only supported task/component hierarchy and decomposition, and attach workload, effort, constraints, and context to the entity they modify.',
+    'Treat learning work as study tasks. Preserve only supported task/component hierarchy and decomposition, and attach workload, effort, constraints, and context to the entity they modify. A component is a separately meaningful user-supported subentity; do not create one merely to repeat the task or only to hold the task’s sole workload.',
     'Classify study.activityKind by the dominant cognitive work: memorization_retrieval for memorizing or recalling facts/items, problem_solving for solving exercises, reading for reading-centered work, writing for writing-centered work, mixed when no single mode dominates, otherwise other or unknown.',
     'Keep an amount declared when target/remaining/completed meaning is unclear. Distinguish work amount from expected duration; use per-unit effort only when stated.',
     'Keep task-specific timing on that task, plan-wide free/busy/preference facts in availability, and planningWindow for the whole requested plan. Mandatory, unavailable, and deadline meaning is hard; preferences are soft; unresolved strength is unknown. Deadline means completion-by.',
