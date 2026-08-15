@@ -5,6 +5,8 @@ import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInpu
 import {
   preferredTaskDistributedDateV5,
   preferredVocabularyLearningDateV5,
+  preferredVocabularyLearningDaypartV5,
+  preferredVocabularyReviewDaypartV5,
   reviewCandidateDatesV5,
   vocabularyLearningCandidateDatesV5,
   vocabularyReviewTargetsV5,
@@ -25,7 +27,9 @@ import {
 import {
   findPlacementSlot,
   findPreferredPlacementSlot,
+  preferredNamedTimePeriodPlacementV5,
   preferredPlacementsForWorkItem,
+  type PreferredPlacement,
 } from './weeklyPlanningStableV5SlotSearch';
 
 export interface WeeklyPlanningPlacementRuntimeContextV5 {
@@ -90,13 +94,17 @@ function findWorkItemSlot(params: {
   duration: number;
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment: boolean;
+  defaultPreferredPlacements?: PreferredPlacement[];
 }): MinuteInterval | null {
-  const preferences = preferredPlacementsForWorkItem({
+  const explicitPreferences = preferredPlacementsForWorkItem({
     graph: params.context.graph,
     item: params.item,
     dates: params.dates,
     namedTimePeriods: params.context.namedTimePeriods,
   });
+  const preferences = explicitPreferences.length > 0
+    ? explicitPreferences
+    : params.defaultPreferredPlacements ?? [];
   const preferredSlot = preferences.length > 0
     ? findPreferredPlacementSlot({
         placements: preferences,
@@ -164,6 +172,12 @@ function addVocabularyReviews(params: {
       preferredDate: review.preferredDate,
       durationMinutes: review.durationMinutes,
     });
+    const reviewDaypart = preferredVocabularyReviewDaypartV5(review.round);
+    const defaultPreferredPlacements = preferredNamedTimePeriodPlacementV5({
+      dates: reviewDates,
+      namedTimePeriod: reviewDaypart,
+      namedTimePeriods: params.context.namedTimePeriods,
+    });
     const reviewSlot = findWorkItemSlot({
       context: params.context,
       item: params.item,
@@ -171,6 +185,7 @@ function addVocabularyReviews(params: {
       duration: review.durationMinutes,
       notBefore: params.effectiveNotBefore,
       preferLongSegment: false,
+      defaultPreferredPlacements,
     });
     if (!reviewSlot) return reviewWorkItemKey;
     usedReviewDates.add(reviewSlot.date);
@@ -256,6 +271,19 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       preferredDate,
       durationMinutes: duration,
     });
+    const learningDaypart = isVocabulary
+      ? preferredVocabularyLearningDaypartV5({
+          sessionIndex: params.vocabularyPosition.index,
+          sessionCount: params.vocabularyPosition.count,
+        })
+      : null;
+    const defaultPreferredPlacements = learningDaypart
+      ? preferredNamedTimePeriodPlacementV5({
+          dates: allowedDates,
+          namedTimePeriod: learningDaypart,
+          namedTimePeriods: params.context.namedTimePeriods,
+        })
+      : [];
     const slot = findWorkItemSlot({
       context: params.context,
       item: params.item,
@@ -263,6 +291,7 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       duration,
       notBefore: effectiveNotBefore,
       preferLongSegment,
+      defaultPreferredPlacements,
     });
     if (!slot) return { candidates: itemCandidates, failedWorkItemId: params.item.id };
 
