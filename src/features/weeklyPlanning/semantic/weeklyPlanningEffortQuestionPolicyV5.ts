@@ -12,12 +12,8 @@ export interface WeeklyPlanningEffortQuestionPlanV5 {
 }
 
 /**
- * Vocabulary word count describes the learning scope, not a fixed session-size rule.
- * Keep one full-scope learning session here; scheduler/review policy decides temporal
- * distribution from session duration, availability, explicit constraints, and reviews.
- *
- * The historical function name remains as a small compatibility facade for callers;
- * it no longer splits at an arbitrary word-count threshold.
+ * Historical compatibility facade. Vocabulary quantity is scope/progress, not a
+ * session-size rule, so this helper no longer invents word-count-based batches.
  */
 export function splitVocabularyIntoLearningSessionsV5(
   totalWords: number,
@@ -47,9 +43,9 @@ export function createWeeklyPlanningEffortQuestionPlanV5(
 
   if (workload.unitCode === 'word') {
     return {
-      kind: 'session_duration',
-      unitCode: 'word',
-      sessionQuantities: splitVocabularyIntoLearningSessionsV5(workload.amount),
+      kind: 'total_duration',
+      unitCode: null,
+      sessionQuantities: [],
     };
   }
 
