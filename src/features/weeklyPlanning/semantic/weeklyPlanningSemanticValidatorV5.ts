@@ -32,6 +32,8 @@ import {
  *   explicit completion evidence is required for both concepts to coexist
  * - study activity kind is a semantic classification used by application policy,
  *   while old fixtures/checkpoints may omit it and are treated as unknown
+ * - no_additional_constraint is an absence fact, not a positive availability
+ *   window; it is retained in V5 while excluded from the legacy base validator
  *
  * The OpenAI JSON Schema requires userContextFacts and study activity kind on
  * new provider responses. The TypeScript/runtime wrapper accepts omitted
@@ -85,6 +87,10 @@ function isValidWorkloadEffortTargetError(
   return workloadIdsInTask(task).has(estimate.targetLocalId);
 }
 
+function isNoAdditionalConstraintDeclaration(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && value.kind === 'no_additional_constraint';
+}
+
 function stripSemanticExtensions(value: Record<string, unknown>): Record<string, unknown> {
   const tasks = Array.isArray(value.tasks)
     ? value.tasks.map((task) => {
@@ -119,7 +125,12 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
         };
       })
     : value.tasks;
-  return { ...value, tasks };
+  const availabilityDeclarations = Array.isArray(value.availabilityDeclarations)
+    ? value.availabilityDeclarations.filter(
+        (declaration) => !isNoAdditionalConstraintDeclaration(declaration),
+      )
+    : value.availabilityDeclarations;
+  return { ...value, tasks, availabilityDeclarations };
 }
 
 function collectLocalIds(value: unknown, ids = new Set<string>()): Set<string> {
@@ -245,6 +256,67 @@ function validateDurableContextSignals(
   return errors;
 }
 
+function validateNoAdditionalConstraintDeclarations(
+  value: Record<string, unknown>,
+  occupiedLocalIds: Set<string>,
+): string[] {
+  if (!Array.isArray(value.availabilityDeclarations)) return [];
+  const errors: string[] = [];
+  const seen = new Set(occupiedLocalIds);
+  value.availabilityDeclarations.forEach((declaration, index) => {
+    if (!isNoAdditionalConstraintDeclaration(declaration)) return;
+    const path = `document.availabilityDeclarations[${index}]`;
+    if (!hasOnlyKeys(declaration, [
+      'localId',
+      'kind',
+      'dateExpression',
+      'namedTimePeriod',
+      'startTime',
+      'endTime',
+      'recurrenceKind',
+      'days',
+      'constraintLevel',
+      'sourceText',
+    ])) {
+      errors.push(`${path}:unknown-key`);
+    }
+    if (typeof declaration.localId !== 'string' || !declaration.localId.trim()) {
+      errors.push(`${path}.localId:expected-non-empty-string`);
+    } else if (seen.has(declaration.localId)) {
+      errors.push(`${path}.localId:duplicate-local-id`);
+    } else {
+      seen.add(declaration.localId);
+    }
+    if (!(declaration.dateExpression === null || typeof declaration.dateExpression === 'string')) {
+      errors.push(`${path}.dateExpression:expected-string-or-null`);
+    } else if (
+      typeof declaration.dateExpression === 'string'
+      && !isCanonicalDateExpressionSyntax(declaration.dateExpression)
+    ) {
+      errors.push(`${path}.dateExpression:unsupported-expression`);
+    }
+    if (declaration.namedTimePeriod !== null) {
+      errors.push(`${path}.namedTimePeriod:absence-has-no-positive-window`);
+    }
+    if (declaration.startTime !== null || declaration.endTime !== null) {
+      errors.push(`${path}:absence-has-no-positive-clock-window`);
+    }
+    if (declaration.recurrenceKind !== null) {
+      errors.push(`${path}.recurrenceKind:absence-has-no-positive-recurrence`);
+    }
+    if (!Array.isArray(declaration.days) || declaration.days.length > 0) {
+      errors.push(`${path}.days:absence-has-no-positive-days`);
+    }
+    if (declaration.constraintLevel !== 'hard') {
+      errors.push(`${path}.constraintLevel:absence-is-factual`);
+    }
+    if (typeof declaration.sourceText !== 'string' || !declaration.sourceText.trim()) {
+      errors.push(`${path}.sourceText:expected-non-empty-string`);
+    }
+  });
+  return errors;
+}
+
 function validateUserContextFacts(
   value: unknown,
   occupiedLocalIds: Set<string>,
@@ -320,6 +392,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   const decompositionErrors = validateTaskDecompositionStatuses(weeklyValue);
   const activityErrors = validateStudyActivityKinds(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
+  const absenceErrors = validateNoAdditionalConstraintDeclarations(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
@@ -330,6 +403,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...decompositionErrors,
     ...activityErrors,
     ...signalErrors,
+    ...absenceErrors,
     ...contextErrors,
   ];
   const document = structuralErrors.length === 0
