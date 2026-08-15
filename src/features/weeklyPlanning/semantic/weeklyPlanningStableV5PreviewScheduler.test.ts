@@ -42,6 +42,31 @@ function workItem(overrides: Partial<GenericPlanningWorkItem> = {}): GenericPlan
   };
 }
 
+function vocabularyWorkItem(params: {
+  index: number;
+  amount: number;
+  start: number;
+  end: number;
+}): GenericPlanningWorkItem {
+  return workItem({
+    id: `vocabulary-${params.index}`,
+    taskId: 'task-vocabulary',
+    workloadFactId: 'workload-vocabulary',
+    label: `英単語 ${params.amount}語（${params.start}〜${params.end}語）`,
+    quantity: {
+      amount: params.amount,
+      unitCode: 'word',
+      unitLabel: '語',
+      ordinalRange: { start: params.start, end: params.end },
+      actualRange: null,
+    },
+    estimatedMinutes: 60,
+    estimateBasis: 'direct_effort',
+    splitPolicy: 'atomic',
+    sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
+  });
+}
+
 function schedulerInput(overrides: Partial<GenericSchedulerInput> = {}): GenericSchedulerInput {
   return {
     version: 'weekly-planning-generic-scheduler-input-v2',
@@ -84,6 +109,55 @@ function graph(): WeeklyPlanningFactGraphV5 {
   };
 }
 
+function vocabularyGraph(preferredPeriod?: 'evening'): WeeklyPlanningFactGraphV5 {
+  const source = {
+    conversationId: 'conversation-vocabulary',
+    turnId: 'turn-1',
+    semanticLocalId: 'vocabulary',
+    sourceText: '英単語220語',
+    origin: 'user' as const,
+  };
+  return {
+    ...createEmptyWeeklyPlanningFactGraphV5(),
+    revision: preferredPeriod ? 2 : 1,
+    tasks: [{
+      id: 'task-vocabulary',
+      category: 'study',
+      title: '英単語',
+      source,
+      createdRevision: 1,
+    }],
+    ...(preferredPeriod ? {
+      temporalConstraints: [{
+        id: 'preferred-vocabulary-time',
+        taskId: 'task-vocabulary',
+        targetFactId: 'task-vocabulary',
+        kind: 'preferred_window' as const,
+        constraintLevel: 'soft' as const,
+        dateExpression: null,
+        namedTimePeriod: preferredPeriod,
+        startTime: null,
+        endTime: null,
+        precision: 'unspecified' as const,
+        source: {
+          ...source,
+          turnId: 'turn-2',
+          semanticLocalId: 'preferred-vocabulary-time',
+          sourceText: 'できれば夕方にしたい',
+        },
+        createdRevision: 2,
+      }],
+      factLifecycles: [{
+        factId: 'preferred-vocabulary-time',
+        status: 'active' as const,
+        createdRevision: 2,
+        terminalRevision: null,
+        supersededByFactId: null,
+      }],
+    } : {}),
+  };
+}
+
 function existingPlan(): Plan {
   return {
     id: 'plan-1',
@@ -103,6 +177,19 @@ function existingPlan(): Plan {
     createdAt: '2026-07-22T00:00:00.000Z',
     updatedAt: '2026-07-22T00:00:00.000Z',
   };
+}
+
+function sessionRole(candidate: unknown): 'learning' | 'review' | null {
+  if (typeof candidate !== 'object' || candidate === null) return null;
+  const metadata = (candidate as { stableV5Metadata?: { sessionRole?: unknown } }).stableV5Metadata;
+  return metadata?.sessionRole === 'learning' || metadata?.sessionRole === 'review'
+    ? metadata.sessionRole
+    : null;
+}
+
+function startMinutes(time: string): number {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
 }
 
 describe('Stable V5 preview scheduler', () => {
@@ -222,6 +309,60 @@ describe('Stable V5 preview scheduler', () => {
       startTime: '21:00',
       endTime: '24:00',
       durationMinutes: 180,
+    });
+  });
+
+  it('uses morning, afternoon and night as soft defaults for three vocabulary learning sessions', () => {
+    const items = [
+      vocabularyWorkItem({ index: 1, amount: 74, start: 1, end: 74 }),
+      vocabularyWorkItem({ index: 2, amount: 73, start: 75, end: 147 }),
+      vocabularyWorkItem({ index: 3, amount: 73, start: 148, end: 220 }),
+    ];
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: schedulerInput({
+        horizon: {
+          startDate: '2026-08-17',
+          endDate: '2026-08-23',
+          timeZone: 'Asia/Tokyo',
+          planningWindowFactIds: [],
+        },
+        movableWorkItems: items,
+        sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
+      }),
+      graph: vocabularyGraph(),
+    });
+
+    expect(result.status).toBe('ready');
+    const learning = result.candidates.filter((candidate) => sessionRole(candidate) === 'learning');
+    expect(learning).toHaveLength(3);
+    const starts = learning.map((candidate) => startMinutes(candidate.startTime));
+    expect(starts.some((minutes) => minutes >= 9 * 60 && minutes < 12 * 60)).toBe(true);
+    expect(starts.some((minutes) => minutes >= 12 * 60 && minutes < 17 * 60)).toBe(true);
+    expect(starts.some((minutes) => minutes >= 21 * 60)).toBe(true);
+  });
+
+  it('lets an explicit vocabulary evening preference override the default daypart', () => {
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: schedulerInput({
+        graphRevision: 2,
+        horizon: {
+          startDate: '2026-08-17',
+          endDate: '2026-08-23',
+          timeZone: 'Asia/Tokyo',
+          planningWindowFactIds: [],
+        },
+        movableWorkItems: [vocabularyWorkItem({ index: 1, amount: 80, start: 1, end: 80 })],
+        sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
+      }),
+      graph: vocabularyGraph('evening'),
+    });
+
+    expect(result.status).toBe('ready');
+    const learning = result.candidates.find((candidate) => sessionRole(candidate) === 'learning');
+    expect(learning).toMatchObject({
+      startTime: '17:00',
+      endTime: '18:00',
+      durationMinutes: 60,
     });
   });
 });
