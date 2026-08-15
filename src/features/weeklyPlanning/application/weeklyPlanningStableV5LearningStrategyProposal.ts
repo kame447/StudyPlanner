@@ -145,3 +145,11 @@ export function renderWeeklyPlanningMemoryStrategyProposalV5(params: {
   const { min, max } = params.proposal.suggestedSessionMinutes;
   return `「${params.taskLabel}」は暗記・想起が中心の学習なので、まとめて一度に繰り返すより、間隔を空けて何度か思い出す機会を作る方が定着しやすいです。まずは1回${min}〜${max}分くらいに分けて組んでみますか？`;
 }
+
+export function renderWeeklyPlanningMemorySessionDurationQuestionV5(params: {
+  taskLabel: string;
+  proposal: WeeklyPlanningLearningStrategyProposalRecord;
+}): string {
+  const { min, max } = params.proposal.suggestedSessionMinutes;
+  return `では、「${params.taskLabel}」は1回何分くらいにしますか？ ${min}〜${max}分くらいを目安にできます。`;
+}
