@@ -123,6 +123,7 @@ export const SEMANTIC_AVAILABILITY_KINDS_V5 = [
   'unavailable',
   'preferred',
   'avoided',
+  'no_additional_constraint',
 ] as const;
 export type SemanticAvailabilityKindV5 =
   (typeof SEMANTIC_AVAILABILITY_KINDS_V5)[number];
