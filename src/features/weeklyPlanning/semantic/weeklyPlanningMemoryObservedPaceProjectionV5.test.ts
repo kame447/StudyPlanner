@@ -98,10 +98,13 @@ describe('observed memory pace scheduler projection', () => {
       localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
     });
     expect(result.appliedWorkloadFactIds).toEqual(['workload']);
-    const observed = result.graph.effortEstimates.find((item) =>
-      item.id.startsWith('observed-memory-pace:'));
-    expect(observed?.kind).toBe('duration_per_unit');
-    expect(observed?.minutes).toBeCloseTo(20 / 35);
+    expect(result.estimateOverrides).toHaveLength(1);
+    expect(result.estimateOverrides[0]).toMatchObject({
+      workloadFactId: 'workload',
+      evidenceKind: 'observed_memory_pace',
+      observationCount: 1,
+    });
+    expect(result.estimateOverrides[0].estimatedMinutes).toBeCloseTo(220 * (20 / 35));
   });
 
   it('does not infer memorization from the word unit alone', () => {
@@ -111,7 +114,7 @@ describe('observed memory pace scheduler projection', () => {
       localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
     });
     expect(result.appliedWorkloadFactIds).toEqual([]);
-    expect(result.graph.effortEstimates).toHaveLength(0);
+    expect(result.estimateOverrides).toEqual([]);
   });
 
   it('keeps an explicit current estimate ahead of observed history', () => {
@@ -121,7 +124,6 @@ describe('observed memory pace scheduler projection', () => {
       localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
     });
     expect(result.appliedWorkloadFactIds).toEqual([]);
-    expect(result.graph.effortEstimates).toHaveLength(1);
-    expect(result.graph.effortEstimates[0].minutes).toBe(1);
+    expect(result.estimateOverrides).toEqual([]);
   });
 });
