@@ -48,6 +48,26 @@ export interface StableV5CompatibilityProjectionInput {
   learningStrategyProposalRecords?: WeeklyPlanningLearningStrategyProposalRecord[];
 }
 
+function resolvedQuestionIntent(params: {
+  questionCode?: string;
+  questionFactId?: string;
+  questionIntent?: string;
+  records: readonly WeeklyPlanningLearningStrategyProposalRecord[];
+}): string | undefined {
+  if (params.questionIntent) return params.questionIntent;
+  if (
+    params.questionCode === 'missing_effort_estimate'
+    && params.questionFactId
+    && params.records.some((record) =>
+      record.kind === 'spaced_memory_practice'
+      && record.workloadFactId === params.questionFactId
+      && record.status === 'accepted')
+  ) {
+    return 'session_duration';
+  }
+  return params.questionCode;
+}
+
 export function projectStableV5CompatibilityState(
   params: StableV5CompatibilityProjectionInput,
 ): PlanningIntakeState {
@@ -58,6 +78,10 @@ export function projectStableV5CompatibilityState(
     || previous.draftGenerationIntent === 'user_authorized'
     ? 'user_authorized'
     : 'not_requested';
+  const learningStrategyProposalRecords =
+    params.learningStrategyProposalRecords
+    ?? previous.learningStrategyProposalRecords
+    ?? [];
 
   return {
     ...previous,
@@ -73,7 +97,12 @@ export function projectStableV5CompatibilityState(
       ? {
           kind: params.questionKind ?? 'missing',
           targetSlot: `stable_v5:${params.questionCode}`,
-          intent: params.questionIntent ?? params.questionCode,
+          intent: resolvedQuestionIntent({
+            questionCode: params.questionCode,
+            questionFactId: params.questionFactId,
+            questionIntent: params.questionIntent,
+            records: learningStrategyProposalRecords,
+          }),
           topicId: params.questionFactId,
           actionId: params.questionActionId,
         }
@@ -85,10 +114,7 @@ export function projectStableV5CompatibilityState(
       : durableDraftGenerationIntent,
     groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
     repairAgenda: params.repairAgenda ?? previous.repairAgenda ?? [],
-    learningStrategyProposalRecords:
-      params.learningStrategyProposalRecords
-      ?? previous.learningStrategyProposalRecords
-      ?? [],
+    learningStrategyProposalRecords,
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }
