@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-memory-natural-absence-20260816",
-  "turn": 3,
-  "attempt": 3,
-  "user_text": "20分くらい",
-  "previous_run_id": 31894820367,
+  "turn": 4,
+  "attempt": 1,
+  "user_text": "それでいい",
+  "previous_run_id": 31895479473,
   "conversation_id": "weekly-luna-audit-memory-natural-absence-20260816-01",
   "owner_id": "real-api-luna-audit-memory-natural-absence-user-1",
   "week_start_date": "2026-08-17",
