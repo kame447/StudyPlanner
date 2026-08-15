@@ -48,7 +48,7 @@ function graph(explicit = false): WeeklyPlanningGenericSchedulerGraphView {
   };
   const tasks = [{
     id: 'task', category: 'study' as const, title: '英単語', source, createdRevision: 1,
-  }] as WeeklyPlanningGenericSchedulerGraphView['tasks'];
+  }] as unknown as WeeklyPlanningGenericSchedulerGraphView['tasks'];
   return {
     revision: 1,
     planningWindows: [],
