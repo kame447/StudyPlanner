@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type SemanticStudyActivityKindV5,
   type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
@@ -39,6 +40,7 @@ function planningDocument(params: {
   unitCode: SemanticWorkloadUnitCodeV5;
   unitLabel: string;
   sourceText: string;
+  activityKind?: SemanticStudyActivityKindV5;
 }): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -57,6 +59,7 @@ function planningDocument(params: {
       title: params.title,
       study: {
         purpose: 'self_study',
+        ...(params.activityKind ? { activityKind: params.activityKind } : {}),
         contextLabel: params.title,
         components: [],
       },
@@ -83,6 +86,34 @@ function planningDocument(params: {
     uncertainties: [],
     corrections: [],
     decisions: [],
+  };
+}
+
+function proposalDecisionDocument(params: {
+  proposalId: string;
+  decision: 'accept' | 'reject';
+}): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'discuss',
+    planningWindow: null,
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [{
+      localId: 'proposal-decision',
+      target: {
+        kind: 'proposal',
+        publicId: params.proposalId,
+        localId: null,
+        mention: null,
+      },
+      decision: params.decision,
+      sourceText: params.decision === 'accept' ? 'それでお願いします' : '今回はやめておく',
+    }],
   };
 }
 
@@ -276,17 +307,6 @@ async function runTwoTurnPlanningConversation(params: {
   return { first, second };
 }
 
-function candidateRole(candidate: unknown): {
-  sessionRole?: 'learning' | 'review';
-  reviewRound?: 1 | 2;
-} {
-  const metadata = (candidate as { stableV5Metadata?: unknown }).stableV5Metadata;
-  return (metadata ?? {}) as {
-    sessionRole?: 'learning' | 'review';
-    reviewRound?: 1 | 2;
-  };
-}
-
 function candidateSourceFactRefs(candidate: unknown): string[] {
   const metadata = (candidate as { stableV5Metadata?: unknown }).stableV5Metadata;
   if (typeof metadata !== 'object' || metadata === null) return [];
@@ -302,80 +322,87 @@ describe('Stable V5 human-scale conversation integration', () => {
     normalizeMock.mockReset();
   });
 
-  it('distributes vocabulary from declared total time without a word-count batch heuristic', async () => {
-    const { first, second } = await runTwoTurnPlanningConversation({
-      conversationId: 'conversation-vocabulary-220',
-      firstUserText: '8月17日から23日で英単語220語を覚える予定を作りたい',
-      planningDocument: planningDocument({
-        title: '英単語',
-        amount: 220,
-        unitCode: 'word',
-        unitLabel: '語',
-        sourceText: '英単語220語',
-      }),
-      answerMinutes: 180,
-    });
+  it('proposes spaced memory practice before asking for a duration', async () => {
+    const conversationId = 'conversation-memory-proposal';
+    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
+      title: '英単語',
+      amount: 220,
+      unitCode: 'word',
+      unitLabel: '語',
+      sourceText: '英単語220語',
+      activityKind: 'memorization_retrieval',
+    })));
+
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+      conversationId,
+      userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
+      traceRequestId: `${conversationId}:request:1`,
+    }));
 
     expect(first.draftCandidates).toEqual([]);
-    expect(first.message).toContain('220語を一通り覚えるために');
-    expect(first.message).toContain('合計でどれくらい時間がかかりそうですか');
-    expect(first.message).not.toContain('1回分');
-    expect(second.state.status).toBe('draft_ready');
-    expect(second.message).toContain('9件の仮予定候補');
-
-    const learning = second.draftCandidates.filter(
-      (candidate) => candidateRole(candidate).sessionRole === 'learning',
-    );
-    const reviews = second.draftCandidates.filter(
-      (candidate) => candidateRole(candidate).sessionRole === 'review',
-    );
-    expect(learning).toHaveLength(3);
-    expect(learning.map((candidate) => candidate.durationMinutes)).toEqual([60, 60, 60]);
-    expect(learning.map((candidate) => candidate.title)).toEqual([
-      '英単語 74語（1〜74語）',
-      '英単語 73語（75〜147語）',
-      '英単語 73語（148〜220語）',
-    ]);
-    expect(learning.reduce(
-      (sum, candidate) => sum + candidate.durationMinutes,
-      0,
-    )).toBe(180);
-    expect(reviews).toHaveLength(6);
-    expect(reviews.every((candidate) =>
-      candidateRole(candidate).reviewRound === 1
-      || candidateRole(candidate).reviewRound === 2)).toBe(true);
+    expect(first.state.lastQuestionContext?.kind).toBe('options');
+    expect(first.state.lastQuestionContext?.intent).toBe('learning_strategy_proposal');
+    expect(first.state.learningStrategyProposalRecords).toHaveLength(1);
+    expect(first.state.learningStrategyProposalRecords?.[0]).toMatchObject({
+      kind: 'spaced_memory_practice',
+      status: 'pending',
+      suggestedSessionMinutes: { min: 15, max: 30 },
+    });
+    expect(first.message).toContain('15〜30分');
+    expect(first.message).toContain('定着');
+    expect(first.message).not.toContain('合計でどれくらい時間');
   });
 
-  it('keeps a short vocabulary total as one learning session plus spaced reviews', async () => {
-    const { first, second } = await runTwoTurnPlanningConversation({
-      conversationId: 'conversation-vocabulary-80',
-      firstUserText: '8月17日から23日で英単語80語を覚える予定を作りたい',
-      planningDocument: planningDocument({
-        title: '英単語',
-        amount: 80,
-        unitCode: 'word',
-        unitLabel: '語',
-        sourceText: '英単語80語',
-      }),
-      answerMinutes: 35,
+  it('asks for one-session duration only after the memory strategy is accepted', async () => {
+    const conversationId = 'conversation-memory-accepted';
+    const firstRequestId = `${conversationId}:request:1`;
+    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
+      title: '英単語',
+      amount: 220,
+      unitCode: 'word',
+      unitLabel: '語',
+      sourceText: '英単語220語',
+      activityKind: 'memorization_retrieval',
+    })));
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+      conversationId,
+      userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
+      traceRequestId: firstRequestId,
+    }));
+    const proposalId = first.state.learningStrategyProposalRecords?.[0]?.id;
+    expect(proposalId).toBeTruthy();
+    finalizeWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: 'owner-human-scale',
+      conversationId,
+      requestId: firstRequestId,
     });
 
-    expect(first.message).toContain('80語を一通り覚えるために');
-    expect(first.message).toContain('合計でどれくらい時間がかかりそうですか');
-    expect(first.message).not.toContain('1語あたり');
-    expect(second.state.status).toBe('draft_ready');
-    expect(second.message).toContain('3件の仮予定候補');
-    expect(second.draftCandidates.map((candidate) => ({
-      title: candidate.title,
-      date: candidate.date,
-      durationMinutes: candidate.durationMinutes,
-      sessionRole: candidateRole(candidate).sessionRole,
-      reviewRound: candidateRole(candidate).reviewRound,
-    }))).toEqual([
-      { title: '英単語 80語', date: '2026-08-17', durationMinutes: 35, sessionRole: 'learning', reviewRound: undefined },
-      { title: '英単語 80語・復習1回目', date: '2026-08-18', durationMinutes: 20, sessionRole: 'review', reviewRound: 1 },
-      { title: '英単語 80語・復習2回目', date: '2026-08-20', durationMinutes: 15, sessionRole: 'review', reviewRound: 2 },
-    ]);
+    normalizeMock.mockResolvedValueOnce(acceptedResult(proposalDecisionDocument({
+      proposalId: proposalId!,
+      decision: 'accept',
+    })));
+    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+      conversationId,
+      previousState: first.state,
+      userText: 'それでお願いします',
+      traceRequestId: `${conversationId}:request:2`,
+      messages: [
+        { id: 'u1', role: 'user', content: '英単語220語を覚える予定を作りたい', createdAt: '2026-08-12T00:00:00.000Z' },
+        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
+      ],
+    }));
+
+    expect(second.draftCandidates).toEqual([]);
+    expect(second.state.learningStrategyProposalRecords?.[0]).toMatchObject({
+      id: proposalId,
+      status: 'accepted',
+    });
+    expect(second.state.lastQuestionContext?.topicId).toBe(
+      first.state.learningStrategyProposalRecords?.[0]?.workloadFactId,
+    );
+    expect(second.state.lastQuestionContext?.intent).toBe('session_duration');
+    expect(second.message).toContain('1回');
+    expect(second.message).not.toContain('合計でどれくらい時間');
   });
 
   it('asks for completed duration and derives the remaining preview from observed pace', async () => {
