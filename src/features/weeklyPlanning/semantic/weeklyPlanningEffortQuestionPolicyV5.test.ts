@@ -38,15 +38,15 @@ describe('Stable V5 human-scale effort question policy', () => {
     });
   });
 
-  it('does not infer vocabulary total duration or word-count batches', () => {
+  it('does not infer a one-session policy from vocabulary units or word-count thresholds', () => {
     for (const amount of [80, 99, 100, 101, 220]) {
       expect(createWeeklyPlanningEffortQuestionPlanV5({
         amount,
         unitCode: 'word',
         unitLabel: '語',
       })).toEqual({
-        kind: 'session_duration',
-        unitCode: 'word',
+        kind: 'total_duration',
+        unitCode: null,
         sessionQuantities: [],
       });
     }
