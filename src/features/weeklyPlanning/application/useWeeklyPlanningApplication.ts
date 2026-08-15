@@ -9,6 +9,10 @@ import {
   clearWeeklyPlanningEstimateCalibrationRuntimeV5,
   setWeeklyPlanningEstimateCalibrationRuntimeV5,
 } from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
+import {
+  clearWeeklyPlanningMemoryPaceRuntimeV5,
+  setWeeklyPlanningMemoryPaceRuntimeV5,
+} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -127,6 +131,11 @@ export function useWeeklyPlanningApplication({
     });
     return () => clearWeeklyPlanningEstimateCalibrationRuntimeV5(ownerId);
   }, [estimateCalibration, ownerId]);
+
+  useEffect(() => {
+    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans, actuals });
+    return () => clearWeeklyPlanningMemoryPaceRuntimeV5(ownerId);
+  }, [actuals, ownerId, plans]);
 
   useEffect(() => {
     const session = controllerSessionRef.current;
