@@ -10,14 +10,15 @@ describe('weekly planning effort allocation', () => {
   it('adds a ten-percent safety buffer before upward allocation', () => {
     expect(WEEKLY_PLANNING_ESTIMATE_SAFETY_BUFFER_MULTIPLIER).toBe(1.1);
     expect(bufferedWeeklyPlanningEstimateMinutes({ baseEstimateMinutes: 100 })).toBeCloseTo(110);
-    expect(allocateWeeklyPlanningEffort({ baseEstimateMinutes: 58 })).toMatchObject({
+    const allocation = allocateWeeklyPlanningEffort({ baseEstimateMinutes: 58 });
+    expect(allocation).toMatchObject({
       baseEstimateMinutes: 58,
       calibrationMultiplier: 1,
       safetyBufferMultiplier: 1.1,
-      bufferedEstimateMinutes: 63.8,
       roundingStepMinutes: 5,
       allocationMinutes: 65,
     });
+    expect(allocation.bufferedEstimateMinutes).toBeCloseTo(63.8);
   });
 
   it('uses five-minute granularity through a 60-minute base estimate', () => {
@@ -53,25 +54,27 @@ describe('weekly planning effort allocation', () => {
   });
 
   it('ceil-rounds calibrated and buffered effort instead of rounding to the nearest slot', () => {
-    expect(allocateWeeklyPlanningEffort({
+    const fivePercent = allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 60,
       calibrationMultiplier: 1.05,
-    })).toMatchObject({
+    });
+    expect(fivePercent).toMatchObject({
       calibratedEstimateMinutes: 63,
-      bufferedEstimateMinutes: 69.3,
       roundingStepMinutes: 5,
       allocationMinutes: 70,
     });
+    expect(fivePercent.bufferedEstimateMinutes).toBeCloseTo(69.3);
 
-    expect(allocateWeeklyPlanningEffort({
+    const fifteenPercent = allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 60,
       calibrationMultiplier: 1.15,
-    })).toMatchObject({
+    });
+    expect(fifteenPercent).toMatchObject({
       calibratedEstimateMinutes: 69,
-      bufferedEstimateMinutes: 75.9,
       roundingStepMinutes: 5,
       allocationMinutes: 80,
     });
+    expect(fifteenPercent.bufferedEstimateMinutes).toBeCloseTo(75.9);
 
     expect(allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 61,
