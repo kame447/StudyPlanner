@@ -179,14 +179,6 @@ function existingPlan(): Plan {
   };
 }
 
-function sessionRole(candidate: unknown): 'learning' | 'review' | null {
-  if (typeof candidate !== 'object' || candidate === null) return null;
-  const metadata = (candidate as { stableV5Metadata?: { sessionRole?: unknown } }).stableV5Metadata;
-  return metadata?.sessionRole === 'learning' || metadata?.sessionRole === 'review'
-    ? metadata.sessionRole
-    : null;
-}
-
 describe('Stable V5 preview scheduler', () => {
   it('places application work after an existing plan without sending placement to AI', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
@@ -307,7 +299,7 @@ describe('Stable V5 preview scheduler', () => {
     });
   });
 
-  it('lets an explicit vocabulary evening preference control placement without an automatic vocabulary daypart', () => {
+  it('lets an explicit vocabulary evening preference control placement without an automatic vocabulary schedule', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({
         graphRevision: 2,
@@ -324,8 +316,8 @@ describe('Stable V5 preview scheduler', () => {
     });
 
     expect(result.status).toBe('ready');
-    const learning = result.candidates.find((candidate) => sessionRole(candidate) === 'learning');
-    expect(learning).toMatchObject({
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
       startTime: '17:00',
       endTime: '18:00',
       durationMinutes: 60,
