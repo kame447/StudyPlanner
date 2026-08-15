@@ -11,17 +11,6 @@ export interface WeeklyPlanningEffortQuestionPlanV5 {
   sessionQuantities: number[];
 }
 
-/**
- * Historical compatibility facade. Vocabulary quantity is scope/progress, not a
- * session-size rule, so this helper no longer invents word-count-based batches.
- */
-export function splitVocabularyIntoLearningSessionsV5(
-  totalWords: number,
-): number[] {
-  if (!Number.isInteger(totalWords) || totalWords <= 0) return [];
-  return [totalWords];
-}
-
 export function createWeeklyPlanningEffortQuestionPlanV5(
   workload: WeeklyPlanningEffortQuestionWorkloadV5,
 ): WeeklyPlanningEffortQuestionPlanV5 {
@@ -43,8 +32,8 @@ export function createWeeklyPlanningEffortQuestionPlanV5(
 
   if (workload.unitCode === 'word') {
     return {
-      kind: 'total_duration',
-      unitCode: null,
+      kind: 'session_duration',
+      unitCode: 'word',
       sessionQuantities: [],
     };
   }
