@@ -200,7 +200,7 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
     || !Number.isFinite(max)
     || max < min
   ) return null;
-  const selectedSessionMinutes = typeof proposal.selectedSessionMinutes === 'number'
+  const selectedSessionDurationMinutes = typeof proposal.selectedSessionMinutes === 'number'
     && Number.isFinite(proposal.selectedSessionMinutes)
     && proposal.selectedSessionMinutes > 0
     ? proposal.selectedSessionMinutes
@@ -209,8 +209,9 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
     kind: 'learning_strategy_proposal',
     proposalKind,
     targetFactId: proposal.workloadFactId,
-    suggestedSessionMinutes: { min, max },
-    selectedSessionMinutes,
+    suggestedSessionDurationMinutes: { min, max },
+    spacingInterval: 'not_yet_selected',
+    selectedSessionDurationMinutes,
     rationale: proposalKind === 'spaced_memory_practice'
       ? 'distributed_retrieval_supports_retention'
       : 'measure_personal_pace',
