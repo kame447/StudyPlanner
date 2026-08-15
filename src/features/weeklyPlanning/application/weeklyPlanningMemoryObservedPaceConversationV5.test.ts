@@ -205,10 +205,10 @@ describe('Stable V5 returning memorization learner', () => {
     expect(third.draftCandidates.slice(0, 6).every(
       (candidate) => candidate.durationMinutes === 20,
     )).toBe(true);
-    expect(third.draftCandidates[6].durationMinutes).toBeGreaterThan(0);
+    expect(third.draftCandidates[6].durationMinutes).toBe(6);
     expect(third.draftCandidates.reduce(
       (sum, candidate) => sum + candidate.durationMinutes,
       0,
-    )).toBe(125);
+    )).toBe(126);
   });
 });
