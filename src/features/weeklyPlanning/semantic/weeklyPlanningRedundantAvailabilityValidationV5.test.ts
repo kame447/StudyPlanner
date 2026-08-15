@@ -59,10 +59,10 @@ function baseResponse(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 absence versus positive availability validation', () => {
-  it('preserves no-additional-constraint meaning instead of rewriting it as availability', () => {
+  it('preserves absence meaning while canonicalizing non-scheduling metadata in code', () => {
     const response = baseResponse();
     response.availabilityDeclarations = [{
-      constraintLevel: 'hard',
+      constraintLevel: 'unknown',
       dateExpression: null,
       days: [],
       endTime: null,
@@ -79,9 +79,13 @@ describe('Stable V5 absence versus positive availability validation', () => {
     expect(result.document?.availabilityDeclarations).toEqual([
       expect.objectContaining({
         kind: 'no_additional_constraint',
+        constraintLevel: 'hard',
         sourceText: '今週は特に予定ない',
       }),
     ]);
+    expect(result.algorithmicRepairs).toEqual(expect.arrayContaining([
+      'document.availabilityDeclarations[0].constraintLevel:absence-metadata-canonicalized',
+    ]));
     expect(result.algorithmicRepairs).not.toEqual(
       expect.arrayContaining([expect.stringContaining('availability-removed')]),
     );
