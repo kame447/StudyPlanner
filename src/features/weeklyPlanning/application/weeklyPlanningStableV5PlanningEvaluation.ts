@@ -9,6 +9,9 @@ import {
   reconcileWeeklyPlanningGroundingRecordsV5,
 } from '../semantic/weeklyPlanningGroundingV5';
 import {
+  compileWeeklyPlanningMemoryCalibrationSchedulerInputV5,
+} from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
+import {
   decideWeeklyPlanningStableDialogueV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
@@ -102,7 +105,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     timeZone: requestContext.timeZone,
   });
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const compilation = compileGenericSchedulerInput({
+  const baselineCompilation = compileGenericSchedulerInput({
     graph: activeGraph,
     context: schedulerContext,
     externalSources,
@@ -112,7 +115,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         previousState: input.previousState,
         document: semantic.normalization.document,
         localToFactId: semantic.canonicalization?.localToFactId ?? {},
-        compilation,
+        compilation: baselineCompilation,
         effortEstimates: activeGraph.effortEstimates,
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
@@ -124,6 +127,17 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         acceptedSpacedProposal: null,
         acceptedCalibrationProposal: null,
       };
+  const acceptedCalibration = learningStrategyProposals.acceptedCalibrationProposal;
+  const calibrationCompilation = acceptedCalibration?.selectedSessionMinutes
+    ? compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({
+        graph: activeGraph,
+        workloadFactId: acceptedCalibration.workloadFactId,
+        sessionMinutes: acceptedCalibration.selectedSessionMinutes,
+        context: schedulerContext,
+        externalSources,
+      })
+    : null;
+  const compilation = calibrationCompilation ?? baselineCompilation;
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
     compilation,
@@ -159,6 +173,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     schedulerContext,
     externalSources,
     activeGraph,
+    baselineCompilation,
     compilation,
     learningStrategyProposals,
     repairDecision,
