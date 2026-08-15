@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-persona-upper-elementary-20260816",
+  "scenario": "luna-persona-middle-school-20260816",
   "turn": 1,
   "attempt": 1,
-  "user_text": "来週、英単語220語覚えたい。ほかは特に予定ないよ",
+  "user_text": "英単語220 らいしゅう覚えたい ほか予定ない",
   "previous_run_id": null,
-  "conversation_id": "weekly-luna-persona-upper-elementary-20260816-01",
-  "owner_id": "real-api-luna-persona-upper-elementary-user-1",
+  "conversation_id": "weekly-luna-persona-middle-school-20260816-01",
+  "owner_id": "real-api-luna-persona-middle-school-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
