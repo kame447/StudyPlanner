@@ -73,7 +73,7 @@ function distribute(graph: WeeklyPlanningFactGraph) {
 }
 
 describe('vocabulary scheduling boundary', () => {
-  it('preserves an explicitly supplied total duration without inventing word-count sessions', () => {
+  it('preserves an explicitly supplied total-time estimate and adds generic scheduling buffer', () => {
     const graph = vocabularyGraph({ amount: 220, minutes: 180 });
     const { compiled, distributed } = distribute(graph);
 
@@ -86,12 +86,14 @@ describe('vocabulary scheduling boundary', () => {
         unitCode: 'word',
         ordinalRange: { start: 1, end: 220 },
       },
-      estimatedMinutes: 180,
+      baseEstimatedMinutes: 180,
+      estimatedMinutes: 210,
       estimateSourceFactIds: ['estimate-vocabulary'],
     });
     expect(distributed).toHaveLength(1);
     expect(distributed[0]).toMatchObject({
-      estimatedMinutes: 180,
+      baseEstimatedMinutes: 180,
+      estimatedMinutes: 210,
       quantity: { amount: 220, unitCode: 'word' },
     });
   });
@@ -99,10 +101,14 @@ describe('vocabulary scheduling boundary', () => {
   it('has no special behavior at the historical 100-word boundary', () => {
     for (const amount of [99, 100, 101]) {
       const graph = vocabularyGraph({ amount, minutes: 60 });
-      const { distributed } = distribute(graph);
+      const { compiled, distributed } = distribute(graph);
+      expect(compiled.items[0]).toMatchObject({
+        baseEstimatedMinutes: 60,
+        estimatedMinutes: 70,
+      });
       expect(distributed).toHaveLength(1);
       expect(distributed[0]).toMatchObject({
-        estimatedMinutes: 60,
+        estimatedMinutes: 70,
         quantity: { amount, unitCode: 'word' },
       });
     }
