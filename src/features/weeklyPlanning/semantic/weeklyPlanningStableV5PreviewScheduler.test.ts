@@ -187,11 +187,6 @@ function sessionRole(candidate: unknown): 'learning' | 'review' | null {
     : null;
 }
 
-function startMinutes(time: string): number {
-  const [hour, minute] = time.split(':').map(Number);
-  return hour * 60 + minute;
-}
-
 describe('Stable V5 preview scheduler', () => {
   it('places application work after an existing plan without sending placement to AI', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
@@ -312,36 +307,7 @@ describe('Stable V5 preview scheduler', () => {
     });
   });
 
-  it('uses morning, afternoon and night as soft defaults for three vocabulary learning sessions', () => {
-    const items = [
-      vocabularyWorkItem({ index: 1, amount: 74, start: 1, end: 74 }),
-      vocabularyWorkItem({ index: 2, amount: 73, start: 75, end: 147 }),
-      vocabularyWorkItem({ index: 3, amount: 73, start: 148, end: 220 }),
-    ];
-    const result = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput({
-        horizon: {
-          startDate: '2026-08-17',
-          endDate: '2026-08-23',
-          timeZone: 'Asia/Tokyo',
-          planningWindowFactIds: [],
-        },
-        movableWorkItems: items,
-        sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
-      }),
-      graph: vocabularyGraph(),
-    });
-
-    expect(result.status).toBe('ready');
-    const learning = result.candidates.filter((candidate) => sessionRole(candidate) === 'learning');
-    expect(learning).toHaveLength(3);
-    const starts = learning.map((candidate) => startMinutes(candidate.startTime));
-    expect(starts.some((minutes) => minutes >= 9 * 60 && minutes < 12 * 60)).toBe(true);
-    expect(starts.some((minutes) => minutes >= 12 * 60 && minutes < 17 * 60)).toBe(true);
-    expect(starts.some((minutes) => minutes >= 21 * 60)).toBe(true);
-  });
-
-  it('lets an explicit vocabulary evening preference override the default daypart', () => {
+  it('lets an explicit vocabulary evening preference control placement without an automatic vocabulary daypart', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({
         graphRevision: 2,
