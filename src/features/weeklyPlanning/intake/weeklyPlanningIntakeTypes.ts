@@ -76,6 +76,27 @@ export interface WeeklyPlanningRepairObligation {
   reopenBefore: 'preview' | 'save';
 }
 
+export type WeeklyPlanningLearningStrategyProposalStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected';
+
+export interface WeeklyPlanningLearningStrategyProposalRecord {
+  id: string;
+  kind: 'spaced_memory_practice';
+  taskId: string;
+  workloadFactId: string;
+  scope: 'week';
+  status: WeeklyPlanningLearningStrategyProposalStatus;
+  suggestedSessionMinutes: {
+    min: number;
+    max: number;
+  };
+  createdRevision: number;
+  proposedAtTurnId: string;
+  decidedAtTurnId: string | null;
+}
+
 export type PlanningRangeConfidence = 'explicit' | 'inferred' | 'missing';
 
 export interface PlanningRange {
@@ -333,8 +354,11 @@ export interface PlanningIntakeState {
   draftGenerationAuthorizedAtRevision?: number;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
   repairAgenda?: WeeklyPlanningRepairObligation[];
+  learningStrategyProposalRecords?: WeeklyPlanningLearningStrategyProposalRecord[];
   /**
-   * Session-local proposal ledger. UI stateと一緒に次turnへ渡すが、repository/localStorageへは保存しない。
+   * Session-local proposal ledger for legacy slot assumptions. UI stateと一緒に次turnへ渡すが、
+   * repository/localStorageへは保存しない。Stable V5 learning strategy proposals use the
+   * dedicated learningStrategyProposalRecords field instead.
    */
   assumptionProposalRecords?: AssumptionProposalRecord[];
   sourceTurns: string[];
