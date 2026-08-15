@@ -11,6 +11,9 @@ import {
   type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import type {
+  WeeklyPlanningEffortMeasurementV5,
+} from './weeklyPlanningPendingQuestionV5';
 
 function graphFor(
   unitCode: SemanticWorkloadUnitCodeV5,
@@ -42,7 +45,13 @@ function graphFor(
       quantityRole,
       amount,
       unitCode,
-      unitLabel: unitCode === 'page' ? 'ページ' : unitCode === 'problem' ? '問' : '語',
+      unitLabel: unitCode === 'page'
+        ? 'ページ'
+        : unitCode === 'problem'
+          ? '問'
+          : unitCode === 'word'
+            ? '語'
+            : '項目',
       rangeStart: null,
       rangeEnd: null,
       perOccurrence: false,
@@ -98,6 +107,7 @@ function answer(
   amount: number,
   minutes: number,
   quantityRole: 'target' | 'completed' = 'target',
+  effortMeasurement?: WeeklyPlanningEffortMeasurementV5,
 ) {
   return applyWeeklyPlanningStableV5ContextualAnswer({
     graph: graphFor(unitCode, amount, quantityRole),
@@ -107,6 +117,7 @@ function answer(
       questionCode: 'missing_effort_estimate',
       targetFactId: 'workload-1',
       graphRevision: 1,
+      effortMeasurement,
     },
     conversationId: 'conversation-1',
     turnId: 'turn-2',
@@ -138,16 +149,24 @@ describe('Stable V5 human-scale contextual effort answers', () => {
     });
   });
 
-  it('stores vocabulary duration as one-session evidence without treating it as total scope time', () => {
-    expect(answer('word', 80, 35)?.graph.effortEstimates[0]).toMatchObject({
-      kind: 'session_duration',
-      minutes: 35,
-      unitCode: 'word',
-    });
-    expect(answer('word', 220, 20)?.graph.effortEstimates[0]).toMatchObject({
+  it('binds a short duration answer to the exact one-session measurement that was asked', () => {
+    expect(answer('word', 220, 20, 'target', 'session_duration')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'session_duration',
       minutes: 20,
       unitCode: 'word',
+    });
+    expect(answer('custom', 100, 25, 'target', 'session_duration')?.graph.effortEstimates[0]).toMatchObject({
+      kind: 'session_duration',
+      minutes: 25,
+      unitCode: 'custom',
+    });
+  });
+
+  it('does not infer one-session meaning from a word unit without a typed pending measurement', () => {
+    expect(answer('word', 220, 20)?.graph.effortEstimates[0]).toMatchObject({
+      kind: 'total_duration',
+      minutes: 20,
+      unitCode: null,
     });
   });
 });
