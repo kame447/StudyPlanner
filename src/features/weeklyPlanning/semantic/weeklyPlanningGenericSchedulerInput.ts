@@ -3,6 +3,8 @@ import type {
   TaskRelationFact,
 } from './weeklyPlanningFactGraph';
 import type {
+  AvailabilityDeclarationFactV5,
+  ConstraintSourceRequestFactV5,
   UncertaintyFactV5,
 } from './weeklyPlanningFactGraphV5';
 import {
@@ -23,11 +25,13 @@ import {
   type AvailabilityWindowFact,
   type ConstraintSourceSelectionFact,
   type ExternalConstraintSourceSnapshot,
-  type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
 import {
   resolveWeeklyPlanningAvailabilityWithFullDayRules,
 } from './weeklyPlanningAvailabilityFullDayAdapter';
+import {
+  createWeeklyPlanningAvailabilityResolverGraphV5,
+} from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 import type {
   TaskCommitmentReservation,
   TaskCommitmentResolutionIssue,
@@ -54,8 +58,10 @@ export const GENERIC_SCHEDULER_INPUT_VERSION =
 export type WeeklyPlanningGenericSchedulerGraphView =
   WeeklyPlanningGenericWorkGraphView
   & WeeklyPlanningTaskCommitmentDateRuleGraphView
-  & WeeklyPlanningAvailabilityGraphView
   & {
+    readonly revision: number;
+    readonly availabilityDeclarations: ReadonlyArray<AvailabilityDeclarationFactV5>;
+    readonly constraintSourceRequests: ReadonlyArray<ConstraintSourceRequestFactV5>;
     readonly planningWindows: ReadonlyArray<PlanningWindowFact>;
     readonly relations: ReadonlyArray<TaskRelationFact>;
     readonly uncertainties: ReadonlyArray<UncertaintyFactV5>;
@@ -387,7 +393,11 @@ export function compileGenericSchedulerInput(params: {
   }
 
   const availability = resolveWeeklyPlanningAvailabilityWithFullDayRules({
-    graph: params.graph,
+    graph: createWeeklyPlanningAvailabilityResolverGraphV5({
+      revision: params.graph.revision,
+      availabilityDeclarations: params.graph.availabilityDeclarations,
+      constraintSourceRequests: params.graph.constraintSourceRequests,
+    }),
     context: params.context,
     externalSources: params.externalSources,
   });
