@@ -290,6 +290,19 @@ function appliedResult(params: {
   };
 }
 
+function effortPlanForPendingQuestion(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: WorkloadFactV5,
+) {
+  const measurement = input.pendingQuestion.effortMeasurement;
+  if (!measurement) return createWeeklyPlanningEffortQuestionPlanV5(target);
+  return {
+    kind: measurement,
+    unitCode: measurement === 'total_duration' ? null : target.unitCode,
+    sessionQuantities: [],
+  };
+}
+
 function applyEffortAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
   target: WorkloadFactV5,
@@ -310,7 +323,7 @@ function applyEffortAnswer(
     || input.graph.appliedTurnKeys.includes(turnKey(input))
   ) return null;
 
-  const questionPlan = createWeeklyPlanningEffortQuestionPlanV5(target);
+  const questionPlan = effortPlanForPendingQuestion(input, target);
   const fact: EffortEstimateFactV5 = {
     id,
     taskId: target.taskId,
