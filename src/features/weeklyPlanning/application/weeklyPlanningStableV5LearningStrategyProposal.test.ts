@@ -175,7 +175,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
     });
 
     expect(accepted.pendingProposal).toBeNull();
-    expect(accepted.acceptedProposal).toMatchObject({
+    expect(accepted.acceptedSpacedProposal).toMatchObject({
       id: proposalId,
       status: 'accepted',
       decidedAtTurnId: 'turn-2',
@@ -209,11 +209,81 @@ describe('Stable V5 learning strategy proposal policy', () => {
     });
 
     expect(rejected.pendingProposal).toBeNull();
-    expect(rejected.acceptedProposal).toBeNull();
+    expect(rejected.acceptedSpacedProposal).toBeNull();
     expect(rejected.records[0]).toMatchObject({
       id: proposalId,
       status: 'rejected',
       decidedAtTurnId: 'turn-2',
     });
+  });
+
+  it('proposes one pace-calibration session after an accepted spacing strategy and one-session duration', () => {
+    const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      document: document({ activityKind: 'memorization_retrieval' }),
+      localToFactId: {
+        task: 'task-public',
+        workload: 'workload-public',
+      },
+      compilation: compilation(),
+      graphRevision: 1,
+      turnId: 'turn-1',
+    });
+    const acceptedSpacing = first.records.map((record) => ({
+      ...record,
+      status: 'accepted' as const,
+      decidedAtTurnId: 'turn-2',
+    }));
+
+    const calibrated = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      previousState: state(acceptedSpacing),
+      document: document({ activityKind: 'unknown' }),
+      localToFactId: {},
+      compilation: compilation(),
+      effortEstimates: [{
+        targetFactId: 'workload-public',
+        kind: 'session_duration',
+        minutes: 20,
+        unitCode: 'custom',
+      }],
+      graphRevision: 2,
+      turnId: 'turn-3',
+    });
+
+    expect(calibrated.pendingProposal).toMatchObject({
+      kind: 'calibrate_memory_pace',
+      workloadFactId: 'workload-public',
+      status: 'pending',
+      selectedSessionMinutes: 20,
+      suggestedSessionMinutes: { min: 20, max: 20 },
+    });
+    expect(calibrated.records).toHaveLength(2);
+  });
+
+  it('does not invent pace calibration before one-session duration is known', () => {
+    const records = [{
+      id: 'spacing',
+      kind: 'spaced_memory_practice' as const,
+      taskId: 'task-public',
+      workloadFactId: 'workload-public',
+      scope: 'week' as const,
+      status: 'accepted' as const,
+      suggestedSessionMinutes: { min: 15, max: 30 },
+      selectedSessionMinutes: null,
+      createdRevision: 1,
+      proposedAtTurnId: 'turn-1',
+      decidedAtTurnId: 'turn-2',
+    }];
+    const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      previousState: state(records),
+      document: document({ activityKind: 'unknown' }),
+      localToFactId: {},
+      compilation: compilation(),
+      effortEstimates: [],
+      graphRevision: 2,
+      turnId: 'turn-3',
+    });
+
+    expect(result.pendingProposal).toBeNull();
+    expect(result.records).toEqual(records);
   });
 });
