@@ -55,8 +55,8 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   };
   const projectedEffort: SchedulerEffort = {
     ...sourceSessionEffort,
-    kind: 'total_duration',
-    unitCode: null,
+    kind: 'session_duration',
+    unitCode: 'session',
   };
   const projectedGraph: SchedulerGraph = {
     ...params.graph,
