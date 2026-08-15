@@ -34,6 +34,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
   questionIntent?: WeeklyPlanningStableV5DialogueQuestionIntent | null;
+  previewPromotionControlLabel?: string | null;
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
