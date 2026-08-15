@@ -5,6 +5,7 @@ import {
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import {
+  learningStrategyProposalIntentForStableV5Dialogue,
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
@@ -140,6 +141,11 @@ function createRenderInput(params: {
     planningInformation,
     targetFactId,
   });
+  const proposalIntent = learningStrategyProposalIntentForStableV5Dialogue({
+    questionCode: params.questionCode,
+    actionId: params.result.state.lastQuestionContext?.actionId ?? null,
+    proposalRecords: params.result.state.learningStrategyProposalRecords ?? [],
+  });
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
@@ -153,7 +159,7 @@ function createRenderInput(params: {
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,
-    questionIntent: questionIntentForStableV5Dialogue({
+    questionIntent: proposalIntent ?? questionIntentForStableV5Dialogue({
       questionCode: params.questionCode,
       questionTarget,
       effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
