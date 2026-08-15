@@ -131,9 +131,18 @@ function quantityRole(value: unknown): 'declared' | 'target' | 'remaining' | 'co
     : 'unknown';
 }
 
+function effortMeasurement(value: unknown) {
+  return value === 'total_duration'
+    || value === 'duration_per_unit'
+    || value === 'session_duration'
+    ? value
+    : null;
+}
+
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+  effortMeasurement?: string | null;
 }) {
   const fact = params.questionTarget?.fact;
   if (
@@ -156,7 +165,7 @@ export function questionIntentForStableV5Dialogue(params: {
   });
   return {
     kind: 'effort_measurement',
-    measurement: plan.kind,
+    measurement: effortMeasurement(params.effortMeasurement) ?? plan.kind,
     quantityRole: role,
     targetFactId: fact.id,
     amount: fact.amount,
