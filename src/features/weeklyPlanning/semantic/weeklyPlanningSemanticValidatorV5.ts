@@ -3,6 +3,7 @@ import {
 } from '../../userPlanningContext/userPlanningContextTypes';
 import {
   SEMANTIC_DURABLE_CONCERN_BASES_V5,
+  SEMANTIC_STUDY_ACTIVITY_KINDS_V5,
   SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -29,10 +30,12 @@ import {
  * - one identical evidence span cannot simultaneously justify a goal-event
  *   occurrence and a work-completion deadline at the same date; distinct
  *   explicit completion evidence is required for both concepts to coexist
+ * - study activity kind is a semantic classification used by application policy,
+ *   while old fixtures/checkpoints may omit it and are treated as unknown
  *
- * The OpenAI JSON Schema requires userContextFacts on new provider responses.
- * The TypeScript/runtime wrapper accepts an omitted field only for pre-migration
- * fixtures/checkpoints and treats it as an empty delta.
+ * The OpenAI JSON Schema requires userContextFacts and study activity kind on
+ * new provider responses. The TypeScript/runtime wrapper accepts omitted
+ * extension fields only for pre-migration fixtures/checkpoints.
  *
  * These checks never derive meaning from raw user text. The AI has already
  * selected semantic kinds; code verifies structure and consistency of those
@@ -95,7 +98,11 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
         if (!isRecord(taskRest.study) || !Array.isArray(taskRest.study.components)) {
           return taskRest;
         }
-        const components = taskRest.study.components.map((component) => {
+        const {
+          activityKind: _activityKind,
+          ...studyRest
+        } = taskRest.study;
+        const components = studyRest.components.map((component) => {
           if (!isRecord(component)) return component;
           const {
             durableContextSignals: _componentSignals,
@@ -106,7 +113,7 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
         });
         return {
           ...taskRest,
-          study: { ...taskRest.study, components },
+          study: { ...studyRest, components },
         };
       })
     : value.tasks;
@@ -137,6 +144,19 @@ function validateTaskDecompositionStatuses(value: Record<string, unknown>): stri
     if (!isRecord(task) || task.decompositionStatus === undefined) return;
     if (!allowed.has(task.decompositionStatus)) {
       errors.push(`document.tasks[${taskIndex}].decompositionStatus:unsupported-value`);
+    }
+  });
+  return errors;
+}
+
+function validateStudyActivityKinds(value: Record<string, unknown>): string[] {
+  if (!Array.isArray(value.tasks)) return [];
+  const allowed = new Set<unknown>(SEMANTIC_STUDY_ACTIVITY_KINDS_V5);
+  const errors: string[] = [];
+  value.tasks.forEach((task, taskIndex) => {
+    if (!isRecord(task) || !isRecord(task.study) || task.study.activityKind === undefined) return;
+    if (!allowed.has(task.study.activityKind)) {
+      errors.push(`document.tasks[${taskIndex}].study.activityKind:unsupported-value`);
     }
   });
   return errors;
@@ -296,6 +316,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   const baseLocalIds = collectLocalIds(baseWeeklyValue);
   const existingPublicIdErrors = validateExistingPublicIds(weeklyValue);
   const decompositionErrors = validateTaskDecompositionStatuses(weeklyValue);
+  const activityErrors = validateStudyActivityKinds(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
@@ -305,6 +326,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...baseErrors,
     ...existingPublicIdErrors,
     ...decompositionErrors,
+    ...activityErrors,
     ...signalErrors,
     ...contextErrors,
   ];
