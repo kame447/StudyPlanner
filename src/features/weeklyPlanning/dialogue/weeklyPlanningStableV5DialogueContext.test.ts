@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { WeeklyPlanningInformationV5 } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
-const planningInformation: WeeklyPlanningInformationV5 = {
+const planningInformation = {
   planningWindow: null,
   tasks: [
     {
