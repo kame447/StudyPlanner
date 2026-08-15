@@ -241,25 +241,18 @@ export function findPreferredPlacementSlot(params: {
   for (const placement of params.placements) {
     for (const date of placement.dates) {
       if (params.notBefore && date < params.notBefore.date) continue;
-      const hardAvailable = params.hardAvailableByDate.get(date);
-      let windows: PlacementWindow[];
-      if (placement.window) {
-        const preferredWindows = clampPlacementWindowsToNotBefore({
-          date,
-          windows: [placement.window],
-          notBefore: params.notBefore,
-        });
-        windows = hardAvailable === undefined
-          ? preferredWindows
-          : preferredWindows.flatMap((preferred) =>
-              intersectPlacementWindows(hardAvailable, preferred));
-      } else {
-        windows = hardAvailable ?? clampPlacementWindowsToNotBefore({
-          date,
-          windows: params.windowsByDate.get(date) ?? [],
-          notBefore: params.notBefore,
-        });
-      }
+      const baseWindows = clampPlacementWindowsToNotBefore({
+        date,
+        windows: params.windowsByDate.get(date) ?? [],
+        notBefore: params.notBefore,
+      });
+      const windows = placement.window
+        ? clampPlacementWindowsToNotBefore({
+            date,
+            windows: [placement.window],
+            notBefore: params.notBefore,
+          }).flatMap((preferred) => intersectPlacementWindows(baseWindows, preferred))
+        : baseWindows;
       const slot = findPlacementSlot({
         dates: [date],
         duration: params.duration,
