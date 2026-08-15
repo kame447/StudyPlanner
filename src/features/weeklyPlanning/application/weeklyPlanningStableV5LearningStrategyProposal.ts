@@ -7,7 +7,7 @@ import type {
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type {
   WeeklyPlanningSemanticDocumentV5,
-} from '../semantic/weeklyPlanningSemanticDocumentV5';
+} from '../semantic/weeklyPlanningSemanticTypesV5';
 
 const DEFAULT_MEMORY_SESSION_MINUTES = { min: 15, max: 30 } as const;
 
