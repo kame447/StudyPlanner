@@ -79,12 +79,15 @@ describe('Stable V5 dialogue context', () => {
       planningInformation,
       targetFactId: 'workload-math',
     });
-    expect(questionTarget).toEqual(expect.objectContaining({
-      factId: 'workload-math',
-      amount: 30,
-      unitCode: 'page',
-      unitLabel: 'ページ',
-    }));
+    expect(questionTarget).toEqual({
+      collection: 'workloads',
+      fact: expect.objectContaining({
+        id: 'workload-math',
+        amount: 30,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      }),
+    });
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
