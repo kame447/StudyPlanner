@@ -302,7 +302,7 @@ describe('Stable V5 human-scale conversation integration', () => {
     normalizeMock.mockReset();
   });
 
-  it('splits 220 vocabulary words into 70/70/80 and carries each batch through two spaced reviews', async () => {
+  it('distributes vocabulary from declared total time without a word-count batch heuristic', async () => {
     const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-vocabulary-220',
       firstUserText: '8月17日から23日で英単語220語を覚える予定を作りたい',
@@ -313,12 +313,13 @@ describe('Stable V5 human-scale conversation integration', () => {
         unitLabel: '語',
         sourceText: '英単語220語',
       }),
-      answerMinutes: 30,
+      answerMinutes: 180,
     });
 
     expect(first.draftCandidates).toEqual([]);
-    expect(first.message).toContain('70語・70語・80語');
-    expect(first.message).toContain('1回分（70〜80語）');
+    expect(first.message).toContain('220語を一通り覚えるために');
+    expect(first.message).toContain('合計でどれくらい時間がかかりそうですか');
+    expect(first.message).not.toContain('1回分');
     expect(second.state.status).toBe('draft_ready');
     expect(second.message).toContain('9件の仮予定候補');
 
@@ -328,32 +329,24 @@ describe('Stable V5 human-scale conversation integration', () => {
     const reviews = second.draftCandidates.filter(
       (candidate) => candidateRole(candidate).sessionRole === 'review',
     );
-    expect(learning.map((candidate) => ({
-      title: candidate.title,
-      date: candidate.date,
-      durationMinutes: candidate.durationMinutes,
-    }))).toEqual([
-      { title: '英単語 70語（1/3）', date: '2026-08-17', durationMinutes: 30 },
-      { title: '英単語 70語（2/3）', date: '2026-08-18', durationMinutes: 30 },
-      { title: '英単語 80語（3/3）', date: '2026-08-19', durationMinutes: 30 },
+    expect(learning).toHaveLength(3);
+    expect(learning.map((candidate) => candidate.durationMinutes)).toEqual([60, 60, 60]);
+    expect(learning.map((candidate) => candidate.title)).toEqual([
+      '英単語 74語（1〜74語）',
+      '英単語 73語（75〜147語）',
+      '英単語 73語（148〜220語）',
     ]);
-    expect(reviews.map((candidate) => ({
-      title: candidate.title,
-      date: candidate.date,
-      durationMinutes: candidate.durationMinutes,
-      reviewRound: candidateRole(candidate).reviewRound,
-    }))).toEqual([
-      { title: '英単語 70語（1/3）・復習1回目', date: '2026-08-18', durationMinutes: 15, reviewRound: 1 },
-      { title: '英単語 70語（2/3）・復習1回目', date: '2026-08-19', durationMinutes: 15, reviewRound: 1 },
-      { title: '英単語 70語（1/3）・復習2回目', date: '2026-08-20', durationMinutes: 15, reviewRound: 2 },
-      { title: '英単語 80語（3/3）・復習1回目', date: '2026-08-20', durationMinutes: 15, reviewRound: 1 },
-      { title: '英単語 70語（2/3）・復習2回目', date: '2026-08-21', durationMinutes: 15, reviewRound: 2 },
-      { title: '英単語 80語（3/3）・復習2回目', date: '2026-08-22', durationMinutes: 15, reviewRound: 2 },
-    ]);
-    expect(second.draftCandidates.some((candidate) => candidate.date === '2026-08-23')).toBe(false);
+    expect(learning.reduce(
+      (sum, candidate) => sum + candidate.durationMinutes,
+      0,
+    )).toBe(180);
+    expect(reviews).toHaveLength(6);
+    expect(reviews.every((candidate) =>
+      candidateRole(candidate).reviewRound === 1
+      || candidateRole(candidate).reviewRound === 2)).toBe(true);
   });
 
-  it('asks for the whole-batch time for 80 vocabulary words and adds shorter spaced reviews', async () => {
+  it('keeps a short vocabulary total as one learning session plus spaced reviews', async () => {
     const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-vocabulary-80',
       firstUserText: '8月17日から23日で英単語80語を覚える予定を作りたい',
@@ -367,7 +360,8 @@ describe('Stable V5 human-scale conversation integration', () => {
       answerMinutes: 35,
     });
 
-    expect(first.message).toContain('80語をまとめて覚えるのに');
+    expect(first.message).toContain('80語を一通り覚えるために');
+    expect(first.message).toContain('合計でどれくらい時間がかかりそうですか');
     expect(first.message).not.toContain('1語あたり');
     expect(second.state.status).toBe('draft_ready');
     expect(second.message).toContain('3件の仮予定候補');
