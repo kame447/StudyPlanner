@@ -12,6 +12,9 @@ import {
   compileWeeklyPlanningMemoryCalibrationSchedulerInputV5,
 } from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
 import {
+  projectWeeklyPlanningMemoryObservedPaceV5,
+} from '../semantic/weeklyPlanningMemoryObservedPaceProjectionV5';
+import {
   decideWeeklyPlanningStableDialogueV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
@@ -105,8 +108,15 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     timeZone: requestContext.timeZone,
   });
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const baselineCompilation = compileGenericSchedulerInput({
+  const observedPaceProjection = projectWeeklyPlanningMemoryObservedPaceV5({
+    ownerId: input.userId,
     graph: activeGraph,
+    document: semantic.normalization.document,
+    localToFactId: semantic.canonicalization?.localToFactId ?? {},
+    previousRecords: input.previousState?.learningStrategyProposalRecords ?? [],
+  });
+  const baselineCompilation = compileGenericSchedulerInput({
+    graph: observedPaceProjection.graph,
     context: schedulerContext,
     externalSources,
   });
@@ -173,6 +183,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     schedulerContext,
     externalSources,
     activeGraph,
+    observedPaceProjection,
     baselineCompilation,
     compilation,
     learningStrategyProposals,
