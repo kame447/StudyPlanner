@@ -14,6 +14,8 @@ const source = {
   origin: 'user' as const,
 };
 
+const OBSERVED_220_WORD_ESTIMATE_MINUTES = (20 / 35) * 220;
+
 function graph(): WeeklyPlanningGenericSchedulerGraphView {
   return {
     revision: 2,
@@ -55,8 +57,11 @@ function compilation(): GenericSchedulerInputCompilationResult {
           amount: 220, unitCode: 'word', unitLabel: '語',
           ordinalRange: { start: 1, end: 220 }, actualRange: null,
         },
-        estimatedMinutes: 140, baseEstimatedMinutes: 126, calibrationMultiplier: 1,
-        roundingStepMinutes: 15, estimateBasis: 'observed_pace',
+        estimatedMinutes: 140,
+        baseEstimatedMinutes: OBSERVED_220_WORD_ESTIMATE_MINUTES,
+        calibrationMultiplier: 1,
+        roundingStepMinutes: 15,
+        estimateBasis: 'observed_pace',
         estimateSourceFactIds: [], estimateSourceWorkloadFactIds: [],
         splitPolicy: 'unknown', periodExpression: null, sourceFactRefs: ['workload'],
       }],
@@ -76,7 +81,8 @@ function proposal(kind: 'spaced_memory_practice' | 'calibrate_memory_pace'): Wee
 }
 
 describe('accepted memory session projection', () => {
-  it('buffers inferred effort and rounds up to full accepted sessions', () => {
+  it('keeps the 125.7-minute observation-derived estimate until buffering and full-session allocation', () => {
+    expect(OBSERVED_220_WORD_ESTIMATE_MINUTES).toBeCloseTo(125.7142857);
     const result = applyAcceptedMemorySessionProjectionV5({
       compilation: compilation(), graph: graph(),
       acceptedSpacedProposal: proposal('spaced_memory_practice'),
