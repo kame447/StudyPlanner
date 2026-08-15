@@ -1,3 +1,7 @@
+import {
+  createWeeklyPlanningEffortQuestionPlanV5,
+} from '../semantic/weeklyPlanningEffortQuestionPolicyV5';
+
 export const WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL = 'この内容で仮予定にする';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,6 +121,16 @@ export function questionTargetForStableV5Dialogue(params: {
   return null;
 }
 
+function quantityRole(value: unknown): 'declared' | 'target' | 'remaining' | 'completed' | 'unknown' {
+  return value === 'declared'
+    || value === 'target'
+    || value === 'remaining'
+    || value === 'completed'
+    || value === 'unknown'
+    ? value
+    : 'unknown';
+}
+
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
@@ -125,19 +139,28 @@ export function questionIntentForStableV5Dialogue(params: {
   if (
     params.questionCode !== 'missing_effort_estimate'
     || params.questionTarget?.collection !== 'workloads'
-    || fact?.quantityRole !== 'completed'
-    || typeof fact.id !== 'string'
+    || typeof fact?.id !== 'string'
     || typeof fact.amount !== 'number'
+    || !Number.isFinite(fact.amount)
+    || fact.amount <= 0
+    || typeof fact.unitCode !== 'string'
   ) {
     return null;
   }
+  const role = quantityRole(fact.quantityRole);
+  const plan = createWeeklyPlanningEffortQuestionPlanV5({
+    amount: fact.amount,
+    unitCode: fact.unitCode,
+    unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : fact.unitCode,
+    quantityRole: role,
+  });
   return {
-    kind: 'effort_evidence',
-    measurement: 'total_duration',
-    evidenceRole: 'completed',
+    kind: 'effort_measurement',
+    measurement: plan.kind,
+    quantityRole: role,
     targetFactId: fact.id,
     amount: fact.amount,
-    unitCode: typeof fact.unitCode === 'string' ? fact.unitCode : null,
+    unitCode: fact.unitCode,
     unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
   } as const;
 }
