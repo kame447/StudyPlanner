@@ -8,6 +8,7 @@ import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
+  WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
   createWeeklyPlanningAiRenderedDialogueTrace,
@@ -139,6 +140,9 @@ function createRenderInput(params: {
     planningInformation,
     targetFactId,
   });
+  const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
+    ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
+    : null;
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
@@ -153,10 +157,11 @@ function createRenderInput(params: {
       questionCode: params.questionCode,
       questionTarget,
     }),
+    previewPromotionControlLabel,
     requiredLabels: requiredLabelsForStableV5Dialogue({
       planningInformation,
       targetFactId,
-      includePreviewPromotionControl: params.result.state.status === 'draft_ready',
+      includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
     fallbackText: withSelfRepairNotice(params.result.message, params.notice),
     previewCount: params.result.draftCandidates.length,
