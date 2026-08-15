@@ -30,14 +30,6 @@ export function createWeeklyPlanningEffortQuestionPlanV5(
     };
   }
 
-  if (workload.unitCode === 'word') {
-    return {
-      kind: 'session_duration',
-      unitCode: 'word',
-      sessionQuantities: [],
-    };
-  }
-
   return {
     kind: 'total_duration',
     unitCode: null,
