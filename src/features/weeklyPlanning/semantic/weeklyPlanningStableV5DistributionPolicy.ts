@@ -2,6 +2,8 @@ export const WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS = 6;
 export const WEEKLY_PLANNING_VOCABULARY_REVIEW_ROUNDS_V5 = 2;
 export const WEEKLY_PLANNING_STABLE_V5_MIN_DAILY_WORK_MINUTES = 60;
 
+export type WeeklyPlanningVocabularyDaypartV5 = 'morning' | 'afternoon' | 'night';
+
 export interface WeeklyPlanningDatePartitionV5 {
   normalDates: string[];
   reserveDates: string[];
@@ -152,6 +154,26 @@ export function preferredVocabularyLearningDateV5(params: {
     learningBucketCount,
   );
   return normalDates[bucketIndex] ?? normalDates[0] ?? null;
+}
+
+export function preferredVocabularyLearningDaypartV5(params: {
+  sessionIndex: number;
+  sessionCount: number;
+}): WeeklyPlanningVocabularyDaypartV5 | null {
+  if (params.sessionCount <= 0) return null;
+  const safeIndex = Math.max(0, Math.min(params.sessionIndex, params.sessionCount - 1));
+  if (params.sessionCount === 1) return 'morning';
+  if (params.sessionCount === 2) return safeIndex === 0 ? 'morning' : 'night';
+  if (params.sessionCount === 3) {
+    return (['morning', 'afternoon', 'night'] as const)[safeIndex] ?? 'morning';
+  }
+  return (['morning', 'night', 'afternoon'] as const)[safeIndex % 3] ?? 'morning';
+}
+
+export function preferredVocabularyReviewDaypartV5(
+  round: 1 | 2,
+): WeeklyPlanningVocabularyDaypartV5 {
+  return round === 1 ? 'night' : 'morning';
 }
 
 export function vocabularyLearningCandidateDatesV5(params: {
