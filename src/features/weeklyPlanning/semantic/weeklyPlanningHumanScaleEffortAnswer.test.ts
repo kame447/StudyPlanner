@@ -136,19 +136,16 @@ describe('Stable V5 human-scale contextual effort answers', () => {
     });
   });
 
-  it('stores up-to-100 vocabulary answers as the whole-batch duration', () => {
+  it('stores vocabulary answers as total effort without a word-count threshold', () => {
     expect(answer('word', 80, 35)?.graph.effortEstimates[0]).toMatchObject({
       kind: 'total_duration',
       minutes: 35,
       unitCode: null,
     });
-  });
-
-  it('stores large-vocabulary answers as one learning-session duration', () => {
-    expect(answer('word', 150, 30)?.graph.effortEstimates[0]).toMatchObject({
-      kind: 'session_duration',
-      minutes: 30,
-      unitCode: 'word',
+    expect(answer('word', 150, 90)?.graph.effortEstimates[0]).toMatchObject({
+      kind: 'total_duration',
+      minutes: 90,
+      unitCode: null,
     });
   });
 });
