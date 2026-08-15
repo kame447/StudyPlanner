@@ -72,10 +72,10 @@ function distribute(graph: WeeklyPlanningFactGraph) {
   };
 }
 
-describe('vocabulary time-based work distribution', () => {
-  it('keeps vocabulary as one aggregate work item until total effort is known', () => {
+describe('vocabulary scheduling boundary', () => {
+  it('preserves an explicitly supplied total duration without inventing word-count sessions', () => {
     const graph = vocabularyGraph({ amount: 220, minutes: 180 });
-    const { compiled } = distribute(graph);
+    const { compiled, distributed } = distribute(graph);
 
     expect(compiled.readiness).toBe('ready');
     expect(compiled.issues).toEqual([]);
@@ -89,27 +89,14 @@ describe('vocabulary time-based work distribution', () => {
       estimatedMinutes: 180,
       estimateSourceFactIds: ['estimate-vocabulary'],
     });
+    expect(distributed).toHaveLength(1);
+    expect(distributed[0]).toMatchObject({
+      estimatedMinutes: 180,
+      quantity: { amount: 220, unitCode: 'word' },
+    });
   });
 
-  it('derives vocabulary session count from total minutes, not from a word-count ceiling', () => {
-    const graph = vocabularyGraph({ amount: 220, minutes: 180 });
-    const { distributed } = distribute(graph);
-
-    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([60, 60, 60]);
-    expect(distributed.map((item) => item.quantity.amount)).toEqual([74, 73, 73]);
-    expect(distributed.map((item) => item.quantity.ordinalRange)).toEqual([
-      { start: 1, end: 74 },
-      { start: 75, end: 147 },
-      { start: 148, end: 220 },
-    ]);
-    expect(distributed.map((item) => item.label)).toEqual([
-      '英単語 74語（1〜74語）',
-      '英単語 73語（75〜147語）',
-      '英単語 73語（148〜220語）',
-    ]);
-  });
-
-  it('has no discontinuity at the historical 100-word boundary when total time is the same', () => {
+  it('has no special behavior at the historical 100-word boundary', () => {
     for (const amount of [99, 100, 101]) {
       const graph = vocabularyGraph({ amount, minutes: 60 });
       const { distributed } = distribute(graph);
@@ -121,7 +108,7 @@ describe('vocabulary time-based work distribution', () => {
     }
   });
 
-  it('does not pretend one session-duration fact is the total time for the whole vocabulary scope', () => {
+  it('does not pretend one session-duration fact is total time for the vocabulary scope', () => {
     const graph = vocabularyGraph({
       amount: 220,
       minutes: 30,
