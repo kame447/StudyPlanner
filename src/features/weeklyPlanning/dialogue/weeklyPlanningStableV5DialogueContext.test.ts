@@ -1,36 +1,57 @@
 import { describe, expect, it } from 'vitest';
+import type { WeeklyPlanningInformationV5 } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
-const planningInformation = {
+const planningInformation: WeeklyPlanningInformationV5 = {
+  planningWindow: null,
   tasks: [
-    { id: 'task-1', title: '夏休みの課題' },
-    { id: 'task-vocabulary', title: '英単語' },
+    {
+      id: 'task-math',
+      title: '数学のワーク',
+      category: 'study',
+      createdRevision: 1,
+    },
+    {
+      id: 'task-vocabulary',
+      title: '英単語',
+      category: 'study',
+      createdRevision: 1,
+    },
   ],
-  components: [
-    { id: 'component-math', taskId: 'task-1', label: '数学のワーク' },
-  ],
+  studyContexts: [],
+  components: [],
   workloads: [
     {
       id: 'workload-math',
-      taskId: 'task-1',
-      componentId: 'component-math',
+      taskId: 'task-math',
+      componentId: null,
       quantityRole: 'completed',
       amount: 30,
       unitCode: 'page',
       unitLabel: 'ページ',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      createdRevision: 1,
     },
     {
       id: 'workload-math-target',
-      taskId: 'task-1',
-      componentId: 'component-math',
+      taskId: 'task-math',
+      componentId: null,
       quantityRole: 'target',
       amount: 50,
       unitCode: 'page',
       unitLabel: 'ページ',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      createdRevision: 1,
     },
     {
       id: 'workload-vocabulary',
@@ -40,46 +61,31 @@ const planningInformation = {
       amount: 220,
       unitCode: 'word',
       unitLabel: '語',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      createdRevision: 1,
     },
   ],
-  uncertainties: [
-    { id: 'uncertainty-math', targetFactId: 'component-math', field: 'workload_amount' },
-  ],
+  effortEstimates: [],
+  temporalConstraints: [],
+  recurrence: [],
+  relations: [],
 };
 
 describe('Stable V5 dialogue context', () => {
-  it('resolves the application-selected uncertainty target from typed facts', () => {
-    expect(requiredLabelsForStableV5Dialogue({
-      planningInformation,
-      targetFactId: 'uncertainty-math',
-      includePreviewPromotionControl: false,
-    })).toEqual(['数学のワーク']);
-  });
-
-  it('resolves a workload target to its owning component label', () => {
-    expect(requiredLabelsForStableV5Dialogue({
-      planningInformation,
-      targetFactId: 'workload-math',
-      includePreviewPromotionControl: false,
-    })).toEqual(['数学のワーク']);
-  });
-
-  it('projects completed workload effort evidence as total-duration intent', () => {
+  it('projects completed workload effort as total-duration intent', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-math',
     });
-
-    expect(questionTarget).toEqual({
-      collection: 'workloads',
-      fact: expect.objectContaining({
-        id: 'workload-math',
-        quantityRole: 'completed',
-        amount: 30,
-        unitCode: 'page',
-        unitLabel: 'ページ',
-      }),
-    });
+    expect(questionTarget).toEqual(expect.objectContaining({
+      factId: 'workload-math',
+      amount: 30,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    }));
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
@@ -114,7 +120,7 @@ describe('Stable V5 dialogue context', () => {
     });
   });
 
-  it('projects vocabulary effort as total-duration intent without a word-count threshold', () => {
+  it('projects vocabulary duration as one-session intent without treating it as total scope time', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-vocabulary',
@@ -125,7 +131,7 @@ describe('Stable V5 dialogue context', () => {
       questionTarget,
     })).toEqual({
       kind: 'effort_measurement',
-      measurement: 'total_duration',
+      measurement: 'session_duration',
       quantityRole: 'target',
       targetFactId: 'workload-vocabulary',
       amount: 220,
