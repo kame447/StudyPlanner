@@ -1,9 +1,9 @@
 {
   "scenario": "luna-audit-final-dynamic-conversation-20260815",
-  "turn": 3,
-  "attempt": 3,
-  "user_text": "残り50ページを全部やりたいです。30ページまでは終わってます。",
-  "previous_run_id": "31851515460",
+  "turn": 4,
+  "attempt": 1,
+  "user_text": "90分くらいです。",
+  "previous_run_id": "31852124408",
   "conversation_id": "weekly-luna-audit-final-dynamic-20260815-01",
   "owner_id": "real-api-luna-audit-final-dynamic-user-1",
   "week_start_date": "2026-08-17",
