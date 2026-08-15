@@ -93,19 +93,21 @@ describe('quantity-preserving discrete work distribution', () => {
       estimatedMinutes: 360,
     });
 
-    expect(distributed).toHaveLength(5);
-    expect(distributed.map((item) => item.quantity.amount)).toEqual([8, 8, 8, 8, 8]);
+    expect(distributed).toHaveLength(6);
+    expect(distributed.map((item) => item.quantity.amount)).toEqual([7, 7, 7, 7, 6, 6]);
+    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([60, 60, 60, 60, 60, 60]);
     expect(distributed.map((item) => item.label)).toEqual([
-      '数学 8問（1〜8問）',
-      '数学 8問（9〜16問）',
-      '数学 8問（17〜24問）',
-      '数学 8問（25〜32問）',
-      '数学 8問（33〜40問）',
+      '数学 7問（1〜7問）',
+      '数学 7問（8〜14問）',
+      '数学 7問（15〜21問）',
+      '数学 7問（22〜28問）',
+      '数学 6問（29〜34問）',
+      '数学 6問（35〜40問）',
     ]);
     expect(distributed.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
     expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(360);
     expect(distributed.every((item) => item.splitPolicy === 'atomic')).toBe(true);
-    expect(new Set(distributed.map((item) => item.id)).size).toBe(5);
+    expect(new Set(distributed.map((item) => item.id)).size).toBe(6);
   });
 
   it('preserves an explicit numeric page range across however many buffered slices are needed', () => {
