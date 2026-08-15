@@ -4,6 +4,9 @@ import type {
   WeeklyPlanningGenericSchedulerGraphView,
 } from './weeklyPlanningGenericSchedulerInput';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import {
+  bufferedWeeklyPlanningEstimateMinutes,
+} from './weeklyPlanningEffortAllocation';
 
 function targetLabel(
   graph: WeeklyPlanningGenericSchedulerGraphView,
@@ -16,16 +19,18 @@ function targetLabel(
   return graph.tasks.find((candidate) => candidate.id === item.taskId)?.title.trim() || item.label;
 }
 
-function splitDurations(totalMinutes: number, sessionMinutes: number): number[] {
-  const total = Math.max(1, Math.round(totalMinutes));
-  const session = Math.max(1, Math.round(sessionMinutes));
-  if (total <= session) return [total];
-  const fullCount = Math.floor(total / session);
-  const remainder = total % session;
-  return [
-    ...Array.from({ length: fullCount }, () => session),
-    ...(remainder > 0 ? [remainder] : []),
-  ];
+function splitIntoFullSessions(params: {
+  baseEstimateMinutes: number;
+  calibrationMultiplier: number;
+  sessionMinutes: number;
+}): number[] {
+  const session = Math.max(1, Math.round(params.sessionMinutes));
+  const bufferedEstimate = bufferedWeeklyPlanningEstimateMinutes({
+    baseEstimateMinutes: params.baseEstimateMinutes,
+    calibrationMultiplier: params.calibrationMultiplier,
+  });
+  const sessionCount = Math.max(1, Math.ceil(bufferedEstimate / session));
+  return Array.from({ length: sessionCount }, () => session);
 }
 
 function allocateIntegerQuantity(totalAmount: number, durations: readonly number[]): number[] {
@@ -104,24 +109,33 @@ function sessionizeItem(params: {
   item: GenericPlanningWorkItem;
   sessionMinutes: number;
 }): GenericPlanningWorkItem[] {
-  const totalMinutes = params.item.estimatedMinutes;
+  const baseEstimateMinutes = params.item.baseEstimatedMinutes ?? params.item.estimatedMinutes;
   if (
-    totalMinutes === null
-    || !Number.isFinite(totalMinutes)
-    || totalMinutes <= 0
+    baseEstimateMinutes === null
+    || !Number.isFinite(baseEstimateMinutes)
+    || baseEstimateMinutes <= 0
     || !Number.isFinite(params.sessionMinutes)
     || params.sessionMinutes <= 0
   ) return [params.item];
 
-  const durations = splitDurations(totalMinutes, params.sessionMinutes);
-  if (durations.length <= 1) return [params.item];
+  const calibrationMultiplier = (
+    params.item.calibrationMultiplier !== null
+    && params.item.calibrationMultiplier !== undefined
+    && Number.isFinite(params.item.calibrationMultiplier)
+    && params.item.calibrationMultiplier > 0
+  ) ? params.item.calibrationMultiplier : 1;
+  const durations = splitIntoFullSessions({
+    baseEstimateMinutes,
+    calibrationMultiplier,
+    sessionMinutes: params.sessionMinutes,
+  });
   const quantities = allocateQuantity(params.item.quantity.amount, durations);
   const totalAllocatedMinutes = durations.reduce((sum, duration) => sum + duration, 0);
   const label = targetLabel(params.graph, params.item);
 
   return durations.map((durationMinutes, index) => {
     const quantityAmount = quantities[index] ?? 0;
-    const baseEstimatedMinutes = params.item.baseEstimatedMinutes === null
+    const baseEstimatedMinutesForSession = params.item.baseEstimatedMinutes === null
       || params.item.baseEstimatedMinutes === undefined
       ? params.item.baseEstimatedMinutes
       : params.item.baseEstimatedMinutes * (durationMinutes / totalAllocatedMinutes);
@@ -136,7 +150,7 @@ function sessionizeItem(params: {
         actualRange: null,
       },
       estimatedMinutes: durationMinutes,
-      baseEstimatedMinutes,
+      baseEstimatedMinutes: baseEstimatedMinutesForSession,
       plannedSessions: undefined,
       splitPolicy: 'atomic',
     };
@@ -173,7 +187,6 @@ export function applyAcceptedMemorySessionProjectionV5(params: {
     item: aggregate,
     sessionMinutes: sessionEfforts[0].minutes,
   });
-  if (sessions.length <= 1) return params.compilation;
 
   const firstIndex = params.compilation.input.movableWorkItems.findIndex(
     (item) => item.workloadFactId === workloadFactId,
