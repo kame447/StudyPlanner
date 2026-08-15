@@ -73,24 +73,18 @@ function blockingEffortFactId(
 function memoryWorkloadFromCurrentMeaning(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   localToFactId: Readonly<Record<string, string>>;
-  compilation: GenericSchedulerInputCompilationResult;
 }): { taskId: string; workloadFactId: string } | null {
-  const missingEffortFactId = blockingEffortFactId(params.compilation);
-  if (!missingEffortFactId) return null;
-
   for (const task of params.document.tasks) {
     if (task.study?.activityKind !== 'memorization_retrieval') continue;
     const taskId = params.localToFactId[task.localId];
     if (!taskId) continue;
     const workloads = [
       ...task.workloads,
-      ...(task.study?.components ?? []).flatMap((component) => component.workloads),
+      ...(task.study.components ?? []).flatMap((component) => component.workloads),
     ];
     for (const workload of workloads) {
       const workloadFactId = params.localToFactId[workload.localId];
-      if (workloadFactId === missingEffortFactId) {
-        return { taskId, workloadFactId };
-      }
+      if (workloadFactId) return { taskId, workloadFactId };
     }
   }
   return null;
@@ -200,9 +194,10 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     turnId: params.turnId,
   });
 
+  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);
   records = createInitialMemoryProposal({
     records,
-    currentMemoryWorkload: memoryWorkloadFromCurrentMeaning(params),
+    currentMemoryWorkload,
     graphRevision: params.graphRevision,
     turnId: params.turnId,
   });
@@ -216,8 +211,19 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     turnId: params.turnId,
   });
 
-  const relevant = missingEffortFactId
-    ? records.filter((record) => record.workloadFactId === missingEffortFactId)
+  const decisionTargetProposalId = params.document.decisions.find(
+    (decision) => decision.target.kind === 'proposal' && decision.target.publicId,
+  )?.target.publicId ?? null;
+  const relevantWorkloadFactId = currentMemoryWorkload?.workloadFactId
+    ?? missingEffortFactId
+    ?? (decisionTargetProposalId
+      ? records.find((record) => record.id === decisionTargetProposalId)?.workloadFactId ?? null
+      : null)
+    ?? records.find((record) => record.status === 'pending')?.workloadFactId
+    ?? records.at(-1)?.workloadFactId
+    ?? null;
+  const relevant = relevantWorkloadFactId
+    ? records.filter((record) => record.workloadFactId === relevantWorkloadFactId)
     : [];
   const acceptedSpacedProposal = relevant.find((record) =>
     record.kind === 'spaced_memory_practice' && record.status === 'accepted') ?? null;
