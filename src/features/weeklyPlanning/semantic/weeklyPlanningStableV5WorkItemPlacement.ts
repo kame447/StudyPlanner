@@ -137,7 +137,6 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
   taskPosition: { index: number; count: number };
-  vocabularyPosition: { index: number; count: number };
   taskOrdinal: number;
   fixedEnds: Map<string, WeeklyPlanningPlacementNotBeforeV5>;
   globalCandidates: WeeklyDraftCandidate[];
