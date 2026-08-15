@@ -5,11 +5,6 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
-import {
-  renderWeeklyPlanningMemoryPaceCalibrationProposalV5,
-  renderWeeklyPlanningMemorySessionDurationQuestionV5,
-  renderWeeklyPlanningMemoryStrategyProposalV5,
-} from './weeklyPlanningStableV5LearningStrategyProposal';
 import type {
   WeeklyPlanningStableV5PlanningEvaluation,
 } from './weeklyPlanningStableV5PlanningEvaluation';
@@ -88,19 +83,10 @@ function routeBeforePreview(params: {
 
   if (learningStrategyProposals.pendingProposal) {
     const proposal = learningStrategyProposals.pendingProposal;
-    const taskLabel = graph.tasks.find((task) => task.id === proposal.taskId)?.title ?? 'この学習';
-    const proposalText = proposal.kind === 'calibrate_memory_pace'
-      ? renderWeeklyPlanningMemoryPaceCalibrationProposalV5({ taskLabel, proposal })
-      : renderWeeklyPlanningMemoryStrategyProposalV5({ taskLabel, proposal });
-    const message = groundedMessage({
-      message: proposalText,
-      records: groundingRecords,
-      currentTurnId: input.traceRequestId,
-    });
     const output = projectStableV5CompatibilityOutput({
       previousState: input.previousState,
       userText: input.userText,
-      message,
+      message: '',
       draftCandidates: [],
       questionCode: 'learning_strategy_proposal',
       questionFactId: proposal.workloadFactId,
@@ -129,20 +115,16 @@ function routeBeforePreview(params: {
       && learningStrategyProposals.acceptedSpacedProposal?.workloadFactId === dialogue.question.factId
       ? learningStrategyProposals.acceptedSpacedProposal
       : null;
-    const taskLabel = acceptedMemoryProposal
-      ? graph.tasks.find((task) => task.id === acceptedMemoryProposal.taskId)?.title ?? 'この学習'
-      : null;
-    const renderedQuestion = acceptedMemoryProposal && taskLabel
-      ? renderWeeklyPlanningMemorySessionDurationQuestionV5({
-          taskLabel,
-          proposal: acceptedMemoryProposal,
-        })
+    const renderedQuestion = acceptedMemoryProposal
+      ? ''
       : renderStableV5RuntimeQuestion(graph, dialogue.question);
-    const message = groundedMessage({
-      message: renderedQuestion,
-      records: groundingRecords,
-      currentTurnId: input.traceRequestId,
-    });
+    const message = acceptedMemoryProposal
+      ? ''
+      : groundedMessage({
+          message: renderedQuestion,
+          records: groundingRecords,
+          currentTurnId: input.traceRequestId,
+        });
     const output = projectStableV5CompatibilityOutput({
       previousState: input.previousState,
       userText: input.userText,
@@ -161,7 +143,7 @@ function routeBeforePreview(params: {
       branch: 'ask_question',
       basis: {
         dialogue,
-        renderedQuestion: message,
+        renderedQuestion: message || null,
         issueLabel: stableV5IssueTaskLabel(graph, dialogue.question),
         groundingRecords,
         repairDecision,
