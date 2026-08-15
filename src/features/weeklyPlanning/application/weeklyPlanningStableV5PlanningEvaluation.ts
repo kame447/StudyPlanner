@@ -20,6 +20,9 @@ import {
 import {
   stableV5RelevantContinuationAccepted,
 } from './weeklyPlanningStableV5GroundingFlow';
+import {
+  evaluateWeeklyPlanningLearningStrategyProposalsV5,
+} from './weeklyPlanningStableV5LearningStrategyProposal';
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
@@ -104,6 +107,20 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     context: schedulerContext,
     externalSources,
   });
+  const learningStrategyProposals = semantic.normalization.document
+    ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
+        previousState: input.previousState,
+        document: semantic.normalization.document,
+        localToFactId: semantic.canonicalization?.localToFactId ?? {},
+        compilation,
+        graphRevision: semantic.graph.revision,
+        turnId: input.traceRequestId,
+      })
+    : {
+        records: input.previousState?.learningStrategyProposalRecords ?? [],
+        pendingProposal: null,
+        acceptedProposal: null,
+      };
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
     compilation,
@@ -140,6 +157,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     externalSources,
     activeGraph,
     compilation,
+    learningStrategyProposals,
     repairDecision,
     dialogue,
     planningIntent,
