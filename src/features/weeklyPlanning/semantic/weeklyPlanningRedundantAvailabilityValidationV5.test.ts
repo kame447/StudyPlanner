@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type {
+  WeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningSemanticDocumentV5';
 import {
   validateWeeklyPlanningSemanticResponseV5,
 } from './weeklyPlanningSemanticResponseValidationV5';
 
-function baseResponse() {
+function baseResponse(): WeeklyPlanningSemanticDocumentV5 {
   return {
     availabilityDeclarations: [],
     constraintSourceRequests: [],
