@@ -174,6 +174,50 @@ export function questionIntentForStableV5Dialogue(params: {
   } as const;
 }
 
+export function learningStrategyProposalIntentForStableV5Dialogue(params: {
+  questionCode: string | null;
+  actionId: string | null;
+  proposalRecords: readonly unknown[];
+}) {
+  if (params.questionCode !== 'learning_strategy_proposal' || !params.actionId) return null;
+  const proposal = params.proposalRecords
+    .filter(isRecord)
+    .find((record) => record.id === params.actionId && record.status === 'pending');
+  if (!proposal) return null;
+  const proposalKind = proposal.kind;
+  if (proposalKind !== 'spaced_memory_practice' && proposalKind !== 'calibrate_memory_pace') {
+    return null;
+  }
+  if (typeof proposal.workloadFactId !== 'string') return null;
+  if (!isRecord(proposal.suggestedSessionMinutes)) return null;
+  const min = proposal.suggestedSessionMinutes.min;
+  const max = proposal.suggestedSessionMinutes.max;
+  if (
+    typeof min !== 'number'
+    || !Number.isFinite(min)
+    || min <= 0
+    || typeof max !== 'number'
+    || !Number.isFinite(max)
+    || max < min
+  ) return null;
+  const selectedSessionMinutes = typeof proposal.selectedSessionMinutes === 'number'
+    && Number.isFinite(proposal.selectedSessionMinutes)
+    && proposal.selectedSessionMinutes > 0
+    ? proposal.selectedSessionMinutes
+    : null;
+  return {
+    kind: 'learning_strategy_proposal',
+    proposalKind,
+    targetFactId: proposal.workloadFactId,
+    suggestedSessionMinutes: { min, max },
+    selectedSessionMinutes,
+    rationale: proposalKind === 'spaced_memory_practice'
+      ? 'distributed_retrieval_supports_retention'
+      : 'measure_personal_pace',
+    decisionRequested: 'accept_or_reject',
+  } as const;
+}
+
 export function requiredLabelsForStableV5Dialogue(params: {
   planningInformation: Record<string, unknown> | null;
   targetFactId: string | null;
