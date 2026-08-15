@@ -113,6 +113,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         document: semantic.normalization.document,
         localToFactId: semantic.canonicalization?.localToFactId ?? {},
         compilation,
+        effortEstimates: activeGraph.effortEstimates,
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
       })
@@ -120,6 +121,8 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         records: input.previousState?.learningStrategyProposalRecords ?? [],
         pendingProposal: null,
         acceptedProposal: null,
+        acceptedSpacedProposal: null,
+        acceptedCalibrationProposal: null,
       };
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
