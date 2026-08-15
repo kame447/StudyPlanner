@@ -122,7 +122,7 @@ describe('Stable V5 dialogue context', () => {
     });
   });
 
-  it('projects vocabulary duration as one-session intent without treating it as total scope time', () => {
+  it('does not infer one-session meaning from a vocabulary unit alone', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-vocabulary',
@@ -131,6 +131,22 @@ describe('Stable V5 dialogue context', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
+    })).toEqual(expect.objectContaining({
+      measurement: 'total_duration',
+      targetFactId: 'workload-vocabulary',
+    }));
+  });
+
+  it('projects one-session intent when the application has explicitly established that measurement', () => {
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation,
+      targetFactId: 'workload-vocabulary',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_effort_estimate',
+      questionTarget,
+      effortMeasurement: 'session_duration',
     })).toEqual({
       kind: 'effort_measurement',
       measurement: 'session_duration',
