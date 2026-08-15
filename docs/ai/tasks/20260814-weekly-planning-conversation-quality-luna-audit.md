@@ -42,9 +42,19 @@ pageとproblemは、時間推定に使う基礎単位を原則1単位とする�
 
 1ページ・1問を基礎単位にすることは、1ページ・1問ごとにcalendar candidateを作ることを意味しない。内部では単位あたり速度から総所要時間を算出し、schedulerが利用可能時間に応じて複数ページ・複数問題を一つのsessionへまとめる。計算粒度とcalendar上のsession粒度を分離する。
 
-すでに実績が存在する場合は、自己予測より観測値を優先できる。たとえば30ページを実際に90分で終えたというevidenceがあれば、1ページあたり約3分というobserved paceをdeterministicに導出し、残り量や新しいtargetの見積りへ再利用する。Issue #118で導入したcompleted workloadとcompleted durationからremaining effortを導く方針は、この原則と矛盾しない。
+`exam_year`はpage/problemへ機械的に分解しない例外とする。過去問の「3年分」「5年分」のように利用者自身が年度を自然な実行単位として扱っている場合は、1年分を基礎単位として「1年分あたり大体何分か」を確認・学習できるようにする。年度内のページ数や問題数は試験ごとの差が大きく、利用者が自らより細かい単位を提示していない限り、application側で勝手にpage/problemへ分解しない。
 
-wordは例外として扱う。単語数は進捗量として保持できるが、通常の語彙学習は1語ずつ独立にscheduleする作業ではないため、既定では「1語あたり何分」を要求しない。語彙学習では「1回あたり何分やるか」というsession durationを優先して確認し、word countはそのsessionで扱う範囲・進捗の情報として残す。利用者自身が「毎日20語」のような明示targetを与えた場合はその量を保持するが、calendar配置はsession durationと分離する。
+すでに実績が存在する場合は、自己予測や一般的な初期heuristicより観測値を優先できる。たとえば30ページを実際に90分で終えたというevidenceがあれば、1ページあたり約3分というobserved paceをdeterministicに導出し、残り量や新しいtargetの見積りへ再利用する。Issue #118で導入したcompleted workloadとcompleted durationからremaining effortを導く方針は、この原則と矛盾しない。
+
+wordは例外として扱う。単語数は進捗量として保持できるが、通常の語彙学習は1語ずつ独立にscheduleする作業ではないため、既定では「1語あたり何分」を要求しない。語彙学習では語数の固定境界でsessionを分けず、「1回あたり何分やるか」というsession durationを優先して確認する。word countはそのsessionで扱う範囲・進捗の情報として残す。利用者自身が「毎日20語」のような明示targetを与えた場合はその量を保持するが、calendar配置はsession durationと分離する。既存の「100語以下／超過」で質問方式やsession数を切り替える固定heuristicは、実装監査で削除・置換候補として扱う。
+
+語彙学習のcalendar配置は、利用者の明示時刻、availability、既存予定を最優先したうえで、明示指定がない場合のsoft preferenceとして同日の朝と夜へ分散する方向を優先する。必要session数が多い場合は昼にも分散候補を増やす。これは「必ず朝・夜に置く」というhard constraintではなく、利用者の生活制約や本人の時間帯prefererenceで上書き可能なscheduler heuristicとする。単語量そのものから朝・昼・夜の回数を機械的に決めず、必要な総session時間と利用可能枠から分散する。
+
+初回の利用では本人の速度や集中持続時間が未知であるため、一般的な学習heuristicをcold-startの初期値として用いることは許容する。ただし初回から完全な推定を要求しない。予定実行後の実記録が蓄積するにつれて、同じ教材・component・単位のobserved paceや実際のsession lengthを一般heuristicより強く使い、個人実績の比重を段階的に高める。一般heuristicは恒久的な正解ではなく、個人データがないときのprior/fallbackである。
+
+時間推定・session分割のevidence優先順位は、原則として「利用者が今回明示した時間・回数・制約 > 同じ教材/作業scopeの本人実績 > より広い本人実績 > 一般的なcold-start heuristic > 最終fallback」とする。明示的に「毎日20分」「1問30分」「1回90分」のように指定されている場合、一般heuristicがそれを上書きしない。実績は同じ教材・component・unitに近いものほど強く扱い、十分な実績がある場合は一般heuristicの影響を小さくする。
+
+総所要時間が長い場合は、人間の集中持続と休憩の必要性を考慮して複数sessionへ分割すること自体はapplication側heuristicとして維持できる。ただし「常に90分」「30分未満は禁止」のような固定値を絶対規則にしない。本人が明示したsession時間または蓄積された実記録があればそれを優先し、データがないcold startだけ一般的なsession長を使う。休憩を含む分割方針も利用実績からpersonalizeできる余地を残す。
 
 利用者がすでにtotal duration、per-unit duration、session durationのいずれかを明示している場合は、同じ情報を別表現で聞き直さない。application側がどのevidenceで十分かを決定し、AIには必要な質問意図だけを渡す。単位変換、整数ページ・整数問題への丸め、残量から所要時間への計算、sessionへの分割はdeterministic codeの責務とする。
 
@@ -85,6 +95,9 @@ roadmap / current contract / task正本を同期
 6. correction/no-op/re-previewでrevision、idempotency、previewを壊さない会話
 7. completed workloadとcompleted durationからremaining effortを導くIssue #118会話
 8. calendar/availability、explicit time、relation、session splittingを含む代表会話
+9. vocabularyを語数固定境界ではなくsession時間で扱い、明示制約がない場合に朝・夜、必要なら昼へsoft preferenceで分散する会話
+10. chapter/sectionをpage/problemへ具体化する一方、past examのexam_yearは1年分単位を維持する会話
+11. cold-start heuristicから始め、実記録がある場合に本人実績を優先し、明示時間がある場合はさらにそれを優先する会話
 
 各turnでtranscriptだけでなく、semantic raw response、accepted document、validation/repair、formal binding、Fact Graph、dialogue decision、renderer、preview、trace persistenceを確認する。AI文面や一つのsemantic output shapeを固定oracleにはしない。
 
@@ -172,7 +185,13 @@ turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方
 
 過去に導入したheuristicは、raw textの意味解釈ではなくaccepted structured factsに対するdeterministic policyであることを確認する。対象はhuman-scale effort質問、per-unit/total/session effort、vocabulary session分割、tiny-tail抑制、長いfree segment優先、existing plan/timetable buffer、relation ordering、request-time not-before、reserve/review policy、observed pace derivation、5分/15分allocation granularityである。
 
-human-scale effort質問については、page/problemを原則1単位の推定基礎にし、大きい教材構造単位を直接の時間予測へ使わない方針を追加確認する。page/problemの量がある場合、observed paceまたは既存direct estimateがなければper-unit durationを優先して取得し、総量の時間はdeterministicに導く。wordはsession-based effortを既定とする。これらの質問要否・evidence優先順位・丸め・session分割はapplication側で決め、教材名やraw textから難易度を推測するheuristicは追加しない。
+human-scale effort質問については、page/problemを原則1単位の推定基礎にし、大きい教材構造単位を直接の時間予測へ使わない方針を追加確認する。page/problemの量がある場合、observed paceまたは既存direct estimateがなければper-unit durationを優先して取得し、総量の時間はdeterministicに導く。chapter/section/lessonは可能ならpage/problemへ具体化する一方、past examの`exam_year`は自然な1年分単位を維持し、利用者が明示しない限りpage/problemへ自動分解しない。
+
+wordはsession-based effortを既定とし、固定の語数閾値でsession数や質問方式を切り替えない。既存の100-word boundaryは削除・置換候補とする。明示制約がなければvocabulary sessionは同日の朝・夜をsoft preferenceとして分散し、必要session数が多い場合は昼も候補にする。ただし利用者の明示時刻、availability、既存予定、本人の時間帯preferenceを常に優先する。
+
+時間推定とsession lengthは、cold startだけ一般heuristicを使い、実行記録が蓄積するほど同じ教材・component・unitの本人実績を優先する。利用者が今回明示した時間・回数・制約はさらに上位に置く。30/60/90/120分等の既定値、短いsessionへのpenalty、study-purpose由来のshort/deep-work推定は、個人evidenceを上書きする規則ではなくfallback/priorとして監査する。長時間作業を分割し休憩を確保する方針自体は維持できるが、分割長は本人の実記録へpersonalizeできるようにする。
+
+これらの質問要否・evidence優先順位・丸め・session分割はapplication側で決め、教材名やraw textから難易度を推測するheuristicは追加しない。
 
 calendar関連では、相対日・相対週の自然言語意味だけをAIが構造化し、具体日付への展開はrequest clock、time zone、week-start設定とcalendar resolverで決定論的に行うことを再確認する。canonical wire literalの綴りを守らせるためだけのprompt guardを増やさず、有限値ならschemaで閉じる。
 
@@ -190,7 +209,10 @@ prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trac
 - promptの長さと複雑さを実測し、削除・維持の判断にLuna ablationの根拠がある
 - production heuristic inventoryが対象回帰と敵対的回帰でgreenである
 - 日付の具体化がAIのカレンダー計算ではなくdeterministic calendar resolverで行われ、相対表現のwire綴りだけを守らせるprompt guardに依存しない
-- page/problemは1単位あたりの速度を推定基礎とし、chapter/section等は原則scopeへ分離、wordはsession duration中心というworkload方針が回帰と実会話で確認されている
+- page/problemは1単位あたりの速度を推定基礎とし、chapter/section等は原則scopeへ分離、exam_yearは1年分単位を維持、wordは語数固定境界ではなくsession duration中心というworkload方針が回帰と実会話で確認されている
+- vocabularyは明示制約がない場合に朝・夜、必要なら昼へsoft preferenceで分散し、利用者の明示時刻やavailabilityを上書きしない
+- cold-start heuristicは本人データがない場合のprior/fallbackに限定され、明示時間・本人のobserved pace/session実績が優先される
+- 長時間作業のsession分割と休憩方針は維持しつつ、固定時間を絶対規則にせず本人実績へpersonalizeできる
 - 最終HEADの通し実API会話がpreviewまで完走する
 - Browser Regressionとnormal CIが最終HEADでgreenである
 - `npm run typecheck`、`npm run test:run`、`npm run build`がlocalでもgreenである
