@@ -51,6 +51,16 @@ function hasIncorrectPreviewCount(
   return mentionedCounts.some((count) => count !== input.previewCount);
 }
 
+function missesPreviewPromotionControl(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  return input.actionKind === 'preview_ready'
+    && typeof input.previewPromotionControlLabel === 'string'
+    && input.previewPromotionControlLabel.length > 0
+    && !text.includes(input.previewPromotionControlLabel);
+}
+
 function claimsUnexecutedAction(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -72,11 +82,16 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
+  if (missesPreviewPromotionControl(text, input)) {
+    return 'action_contract_mismatch';
+  }
+
   const groundingInformation = JSON.stringify({
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
     planningInformation: input.planningInformation,
     requiredLabels: input.requiredLabels,
+    previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
     previewCount: input.previewCount,
   });
   const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
