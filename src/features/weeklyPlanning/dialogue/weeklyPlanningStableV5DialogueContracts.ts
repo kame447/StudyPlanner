@@ -25,19 +25,35 @@ export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
   unitLabel: string | null;
 }
 
-export interface WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent {
+export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
   kind: 'learning_strategy_proposal';
-  proposalKind: 'spaced_memory_practice' | 'calibrate_memory_pace';
+  proposalKind: 'spaced_memory_practice';
   targetFactId: string;
   suggestedSessionDurationMinutes: {
     min: number;
     max: number;
   };
   spacingInterval: 'not_yet_selected';
-  selectedSessionDurationMinutes: number | null;
-  rationale: 'distributed_retrieval_supports_retention' | 'measure_personal_pace';
+  rationale: 'distributed_retrieval_supports_retention';
   decisionRequested: 'accept_or_reject';
 }
+
+export interface WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'calibrate_memory_pace';
+  targetFactId: string;
+  sessionDurationMinutes: number;
+  measurementPlan: {
+    observation: 'progress_during_single_session';
+    objective: 'measure_personal_pace';
+    futureUse: 'personalize_future_session_planning';
+  };
+  decisionRequested: 'accept_or_reject';
+}
+
+export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
+  | WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent
+  | WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent;
 
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
