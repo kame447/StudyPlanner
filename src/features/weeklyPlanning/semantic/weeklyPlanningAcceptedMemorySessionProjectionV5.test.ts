@@ -56,7 +56,7 @@ function compilation(): GenericSchedulerInputCompilationResult {
           ordinalRange: { start: 1, end: 220 }, actualRange: null,
         },
         estimatedMinutes: 126, baseEstimatedMinutes: 126, calibrationMultiplier: 1,
-        roundingStepMinutes: 5, estimateBasis: 'explicit_unit_rate',
+        roundingStepMinutes: 5, estimateBasis: 'direct_effort',
         estimateSourceFactIds: [], estimateSourceWorkloadFactIds: [],
         splitPolicy: 'unknown', periodExpression: null, sourceFactRefs: ['workload'],
       }],
