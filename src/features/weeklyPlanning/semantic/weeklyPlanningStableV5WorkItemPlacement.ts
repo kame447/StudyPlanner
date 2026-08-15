@@ -114,6 +114,7 @@ function findWorkItemSlot(params: {
         breakMinutes: params.context.breakMinutes,
         notBefore: params.notBefore,
         preferLongSegment: params.preferLongSegment,
+        restrictToBaseWindows: explicitPreferences.length === 0,
       })
     : null;
   return preferredSlot ?? findPlacementSlot({
