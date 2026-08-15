@@ -20,8 +20,9 @@ describe('Stable V5 learning proposal dialogue intent', () => {
       kind: 'learning_strategy_proposal',
       proposalKind: 'spaced_memory_practice',
       targetFactId: 'workload-1',
-      suggestedSessionMinutes: { min: 15, max: 30 },
-      selectedSessionMinutes: null,
+      suggestedSessionDurationMinutes: { min: 15, max: 30 },
+      spacingInterval: 'not_yet_selected',
+      selectedSessionDurationMinutes: null,
       rationale: 'distributed_retrieval_supports_retention',
       decisionRequested: 'accept_or_reject',
     });
@@ -43,8 +44,9 @@ describe('Stable V5 learning proposal dialogue intent', () => {
       kind: 'learning_strategy_proposal',
       proposalKind: 'calibrate_memory_pace',
       targetFactId: 'workload-1',
-      suggestedSessionMinutes: { min: 20, max: 20 },
-      selectedSessionMinutes: 20,
+      suggestedSessionDurationMinutes: { min: 20, max: 20 },
+      spacingInterval: 'not_yet_selected',
+      selectedSessionDurationMinutes: 20,
       rationale: 'measure_personal_pace',
       decisionRequested: 'accept_or_reject',
     });
