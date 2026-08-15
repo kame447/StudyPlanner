@@ -71,25 +71,22 @@ function proposal(): WeeklyPlanningLearningStrategyProposalRecord {
   };
 }
 
+const context = {
+  ownerId: 'owner-1',
+  currentDate: '2026-08-17',
+  planningStartDate: '2026-08-17',
+  planningEndDate: '2026-08-23',
+  timeZone: 'Asia/Tokyo',
+};
+
 describe('Stable V5 memory calibration scheduler', () => {
   it('compiles one 20-minute trial without treating the full 220-word scope as 20 minutes', () => {
     const original = graph();
     const result = compileWeeklyPlanningMemoryCalibrationSchedulerV5({
       graph: original,
       proposal: proposal(),
-      context: {
-        ownerId: 'owner-1',
-        horizon: {
-          startDate: '2026-08-17',
-          endDate: '2026-08-23',
-          timeZone: 'Asia/Tokyo',
-          planningWindowFactIds: [],
-        },
-      },
-      externalSources: {
-        availabilityWindows: [],
-        fixedTaskReservations: [],
-      },
+      context,
+      externalSources: [],
     });
 
     expect(result?.status).toBe('ready');
@@ -124,19 +121,8 @@ describe('Stable V5 memory calibration scheduler', () => {
     expect(compileWeeklyPlanningMemoryCalibrationSchedulerV5({
       graph: graph(),
       proposal: { ...proposal(), status: 'pending', decidedAtTurnId: null },
-      context: {
-        ownerId: 'owner-1',
-        horizon: {
-          startDate: '2026-08-17',
-          endDate: '2026-08-23',
-          timeZone: 'Asia/Tokyo',
-          planningWindowFactIds: [],
-        },
-      },
-      externalSources: {
-        availabilityWindows: [],
-        fixedTaskReservations: [],
-      },
+      context,
+      externalSources: [],
     })).toBeNull();
   });
 });
