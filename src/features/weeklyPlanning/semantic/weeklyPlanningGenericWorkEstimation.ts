@@ -5,7 +5,6 @@ import type {
 
 export type GenericWorkItemEstimateBasis =
   | 'intrinsic_duration'
-  | 'explicit_session_duration'
   | 'direct_effort'
   | 'observed_pace';
 
@@ -101,7 +100,7 @@ function directEstimate(params: {
   if (params.workload.unitCode === 'session' && session.length === 1) {
     return {
       estimatedMinutes: session[0].minutes * params.workload.amount,
-      basis: 'explicit_session_duration',
+      basis: 'intrinsic_duration',
       sourceFactIds: [session[0].id],
       sourceWorkloadFactIds: [],
       ambiguous: false,
