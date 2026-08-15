@@ -164,10 +164,30 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     graphRevision: semantic.graph.revision,
     turnId: input.traceRequestId,
   });
+  const acceptedSpacedProposal = learningStrategyProposals.acceptedSpacedProposal;
+  const hasAcceptedMemorySessionDuration = acceptedSpacedProposal
+    ? activeGraph.effortEstimates.some((estimate) =>
+        estimate.targetFactId === acceptedSpacedProposal.workloadFactId
+        && estimate.kind === 'session_duration'
+        && Number.isFinite(estimate.minutes)
+        && estimate.minutes > 0)
+    : false;
+  const memorySessionDurationQuestion = acceptedSpacedProposal
+    && !acceptedCalibration
+    && !hasAcceptedMemorySessionDuration
+    ? {
+        domain: 'work_item' as const,
+        code: 'missing_effort_estimate' as const,
+        factId: acceptedSpacedProposal.workloadFactId,
+        details: { measurement: 'session_duration' },
+      }
+    : null;
   const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
   const dialogue = repairDecision.question
     ? { status: 'ask_question' as const, question: repairDecision.question }
-    : baselineDialogue;
+    : memorySessionDurationQuestion
+      ? { status: 'ask_question' as const, question: memorySessionDurationQuestion }
+      : baselineDialogue;
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
   const semanticChanged = Boolean(
     semanticDiff
