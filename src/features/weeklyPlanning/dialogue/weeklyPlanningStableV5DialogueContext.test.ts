@@ -6,7 +6,10 @@ import {
 } from './weeklyPlanningStableV5DialogueContext';
 
 const planningInformation = {
-  tasks: [{ id: 'task-1', title: '夏休みの課題' }],
+  tasks: [
+    { id: 'task-1', title: '夏休みの課題' },
+    { id: 'task-vocabulary', title: '英単語' },
+  ],
   components: [
     { id: 'component-math', taskId: 'task-1', label: '数学のワーク' },
   ],
@@ -19,6 +22,24 @@ const planningInformation = {
       amount: 30,
       unitCode: 'page',
       unitLabel: 'ページ',
+    },
+    {
+      id: 'workload-math-target',
+      taskId: 'task-1',
+      componentId: 'component-math',
+      quantityRole: 'target',
+      amount: 50,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    },
+    {
+      id: 'workload-vocabulary',
+      taskId: 'task-vocabulary',
+      componentId: null,
+      quantityRole: 'target',
+      amount: 220,
+      unitCode: 'word',
+      unitLabel: '語',
     },
   ],
   uncertainties: [
@@ -63,13 +84,53 @@ describe('Stable V5 dialogue context', () => {
       questionCode: 'missing_effort_estimate',
       questionTarget,
     })).toEqual({
-      kind: 'effort_evidence',
+      kind: 'effort_measurement',
       measurement: 'total_duration',
-      evidenceRole: 'completed',
+      quantityRole: 'completed',
       targetFactId: 'workload-math',
       amount: 30,
       unitCode: 'page',
       unitLabel: 'ページ',
+    });
+  });
+
+  it('projects target page effort as per-unit intent', () => {
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation,
+      targetFactId: 'workload-math-target',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_effort_estimate',
+      questionTarget,
+    })).toEqual({
+      kind: 'effort_measurement',
+      measurement: 'duration_per_unit',
+      quantityRole: 'target',
+      targetFactId: 'workload-math-target',
+      amount: 50,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    });
+  });
+
+  it('projects vocabulary effort as total-duration intent without a word-count threshold', () => {
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation,
+      targetFactId: 'workload-vocabulary',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_effort_estimate',
+      questionTarget,
+    })).toEqual({
+      kind: 'effort_measurement',
+      measurement: 'total_duration',
+      quantityRole: 'target',
+      targetFactId: 'workload-vocabulary',
+      amount: 220,
+      unitCode: 'word',
+      unitLabel: '語',
     });
   });
 
