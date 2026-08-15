@@ -97,24 +97,6 @@ function directEstimate(params: {
 
   const session = matching.filter((estimate) =>
     estimate.kind === 'session_duration' && estimate.unitCode === params.workload.unitCode);
-  if (params.workload.unitCode === 'word' && session.length === 1) {
-    return {
-      estimatedMinutes: session[0].minutes,
-      basis: 'direct_effort',
-      sourceFactIds: [session[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
-  }
-  if (params.workload.unitCode === 'word' && session.length > 1) {
-    return {
-      estimatedMinutes: null,
-      basis: null,
-      sourceFactIds: session.map((value) => value.id),
-      sourceWorkloadFactIds: [],
-      ambiguous: true,
-    };
-  }
   if (params.workload.unitCode === 'session' && session.length === 1) {
     return {
       estimatedMinutes: session[0].minutes * params.workload.amount,
