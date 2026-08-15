@@ -20,6 +20,15 @@ function positiveFinite(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function ceilToAllocationStep(value: number, step: WeeklyPlanningAllocationStepMinutes): number {
+  const stepUnits = value / step;
+  const nearestInteger = Math.round(stepUnits);
+  const allocationUnits = Math.abs(stepUnits - nearestInteger) < 1e-9
+    ? nearestInteger
+    : Math.ceil(stepUnits);
+  return allocationUnits * step;
+}
+
 export function bufferedWeeklyPlanningEstimateMinutes(params: {
   baseEstimateMinutes: number;
   calibrationMultiplier?: number;
@@ -59,7 +68,7 @@ export function allocateWeeklyPlanningEffort(params: {
   });
   const roundingStepMinutes = allocationStepForBaseEstimate(baseEstimateMinutes);
   const allocationMinutes = bufferedEstimateMinutes > 0
-    ? Math.ceil(bufferedEstimateMinutes / roundingStepMinutes) * roundingStepMinutes
+    ? ceilToAllocationStep(bufferedEstimateMinutes, roundingStepMinutes)
     : 0;
   return {
     version: WEEKLY_PLANNING_EFFORT_ALLOCATION_VERSION,
