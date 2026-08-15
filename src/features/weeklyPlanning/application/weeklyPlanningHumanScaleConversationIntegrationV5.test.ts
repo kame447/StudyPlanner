@@ -404,7 +404,7 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(second.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
   });
 
-  it('asks for completed duration and derives the remaining preview from observed pace', async () => {
+  it('asks for completed duration and reserves buffer around the observed-pace estimate', async () => {
     const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-observed-pace',
       firstUserText: '8月17日から23日で、数学のワークは80ページ中30ページ終わっていて、残り50ページです',
@@ -439,14 +439,14 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(second.draftCandidates.reduce(
       (sum, candidate) => sum + candidate.durationMinutes,
       0,
-    )).toBe(150);
+    )).toBe(165);
     expect(second.draftCandidates.every((candidate) =>
       [completedWorkload?.id, remainingWorkload?.id, targetWorkload?.id, observedEffort?.id].every(
         (factId) => factId && candidateSourceFactRefs(candidate).includes(factId),
       ))).toBe(true);
   });
 
-  it('splits a long problem workload into quantity-preserving daily quotas', async () => {
+  it('splits a long problem workload while preserving buffered time and total quantity semantics', async () => {
     const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-problems-40',
       firstUserText: '8月17日から23日で数学40問を進める予定を作りたい',
@@ -462,21 +462,21 @@ describe('Stable V5 human-scale conversation integration', () => {
 
     expect(first.message).toContain('1問あたりどれくらい時間がかかりますか');
     expect(second.state.status).toBe('draft_ready');
-    expect(second.message).toContain('5件の仮予定候補');
-    expect(second.draftCandidates.map((candidate) => ({
-      title: candidate.title,
-      date: candidate.date,
-      durationMinutes: candidate.durationMinutes,
-    }))).toEqual([
-      { title: '数学 8問（1〜8問）', date: '2026-08-17', durationMinutes: 70 },
-      { title: '数学 8問（9〜16問）', date: '2026-08-18', durationMinutes: 65 },
-      { title: '数学 8問（17〜24問）', date: '2026-08-19', durationMinutes: 65 },
-      { title: '数学 8問（25〜32問）', date: '2026-08-20', durationMinutes: 65 },
-      { title: '数学 8問（33〜40問）', date: '2026-08-21', durationMinutes: 65 },
+    expect(second.draftCandidates).toHaveLength(6);
+    expect(second.draftCandidates.map((candidate) => candidate.date)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
     ]);
+    expect(second.draftCandidates.every(
+      (candidate) => candidate.durationMinutes === 60,
+    )).toBe(true);
     expect(second.draftCandidates.reduce(
       (sum, candidate) => sum + candidate.durationMinutes,
       0,
-    )).toBe(330);
+    )).toBe(360);
   });
 });
