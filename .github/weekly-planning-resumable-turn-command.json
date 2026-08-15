@@ -1,8 +1,9 @@
 {
   "scenario": "luna-audit-vocabulary-time-based-20260815",
-  "turn": 1,
-  "attempt": 2,
-  "user_text": "8月17日から23日で英単語220語を覚える計画を立てたいです。固定予定はありません。",
+  "turn": 2,
+  "attempt": 1,
+  "user_text": "180分くらいです。",
+  "previous_run_id": "31860578812",
   "conversation_id": "weekly-luna-audit-vocabulary-time-based-20260815-02",
   "owner_id": "real-api-luna-audit-vocabulary-time-user-2",
   "week_start_date": "2026-08-17",
