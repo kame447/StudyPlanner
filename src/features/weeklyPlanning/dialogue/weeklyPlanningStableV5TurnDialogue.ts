@@ -4,6 +4,9 @@ import {
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
+import type {
+  WeeklyPlanningStableV5DialogueQuestionIntent,
+} from './weeklyPlanningStableV5DialogueContracts';
 import {
   learningStrategyProposalIntentForStableV5Dialogue,
   questionIntentForStableV5Dialogue,
@@ -121,6 +124,26 @@ function groundingRecords(
   }));
 }
 
+export function fallbackTextForStableV5TypedIntent(params: {
+  applicationText: string;
+  questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
+}): string {
+  const intent = params.questionIntent;
+  if (intent?.kind === 'learning_strategy_proposal') {
+    const min = intent.suggestedSessionDurationMinutes.min;
+    const max = intent.suggestedSessionDurationMinutes.max;
+    if (intent.proposalKind === 'calibrate_memory_pace') {
+      const minutes = intent.selectedSessionDurationMinutes ?? min;
+      return `学習ペース計測の提案（${minutes}分）について、採用するか教えてください。`;
+    }
+    return `分散学習の提案（1回${min}〜${max}分）について、採用するか教えてください。`;
+  }
+  if (intent?.kind === 'effort_measurement' && intent.measurement === 'session_duration') {
+    return '1回の学習時間を教えてください。';
+  }
+  return params.applicationText;
+}
+
 function createRenderInput(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -146,9 +169,18 @@ function createRenderInput(params: {
     actionId: params.result.state.lastQuestionContext?.actionId ?? null,
     proposalRecords: params.result.state.learningStrategyProposalRecords ?? [],
   });
+  const questionIntent = proposalIntent ?? questionIntentForStableV5Dialogue({
+    questionCode: params.questionCode,
+    questionTarget,
+    effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
+  });
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
+  const fallbackText = fallbackTextForStableV5TypedIntent({
+    applicationText: params.result.message,
+    questionIntent,
+  });
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
@@ -159,18 +191,14 @@ function createRenderInput(params: {
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,
-    questionIntent: proposalIntent ?? questionIntentForStableV5Dialogue({
-      questionCode: params.questionCode,
-      questionTarget,
-      effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
-    }),
+    questionIntent,
     previewPromotionControlLabel,
     requiredLabels: requiredLabelsForStableV5Dialogue({
       planningInformation,
       targetFactId,
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
-    fallbackText: withSelfRepairNotice(params.result.message, params.notice),
+    fallbackText: withSelfRepairNotice(fallbackText, params.notice),
     previewCount: params.result.draftCandidates.length,
   };
 }
