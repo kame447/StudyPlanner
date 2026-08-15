@@ -4,6 +4,7 @@ export const USER_PLANNING_CONTEXT_STORAGE_VERSION =
 export const USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 = [
   'goal_event',
   'concern',
+  'learning_preference',
 ] as const;
 
 export type UserPlanningContextSemanticKindV1 =
