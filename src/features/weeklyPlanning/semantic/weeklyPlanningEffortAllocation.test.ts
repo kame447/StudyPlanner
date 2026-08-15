@@ -85,6 +85,13 @@ describe('weekly planning effort allocation', () => {
     });
   });
 
+  it('does not add an extra slot when floating-point noise lands on an exact boundary', () => {
+    const allocation = allocateWeeklyPlanningEffort({ baseEstimateMinutes: 7200 });
+    expect(allocation.bufferedEstimateMinutes).toBeCloseTo(7920);
+    expect(allocation.roundingStepMinutes).toBe(15);
+    expect(allocation.allocationMinutes).toBe(7920);
+  });
+
   it('never lets an upward calibration or safety buffer disappear into a smaller allocation', () => {
     const baseEstimates = [5, 10, 55, 58, 60, 61, 75, 90, 120];
     const multipliers = [1.001, 1.01, 1.05, 1.15, 1.5];
