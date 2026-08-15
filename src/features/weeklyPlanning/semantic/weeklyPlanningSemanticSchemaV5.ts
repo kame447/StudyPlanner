@@ -10,6 +10,7 @@ import {
   SEMANTIC_NAMED_TIME_PERIODS_V5,
   SEMANTIC_QUANTITY_ROLES_V5,
   SEMANTIC_RECURRENCE_KINDS_V5,
+  SEMANTIC_STUDY_ACTIVITY_KINDS_V5,
   SEMANTIC_STUDY_PURPOSES_V5,
   SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
@@ -117,9 +118,10 @@ const componentSchema = objectSchema(
 );
 
 const studySchema = objectSchema(
-  ['purpose', 'contextLabel', 'components'],
+  ['purpose', 'activityKind', 'contextLabel', 'components'],
   {
     purpose: enumSchema(SEMANTIC_STUDY_PURPOSES_V5),
+    activityKind: enumSchema(SEMANTIC_STUDY_ACTIVITY_KINDS_V5),
     contextLabel: nullableStringSchema,
     components: arraySchema(componentSchema),
   },
