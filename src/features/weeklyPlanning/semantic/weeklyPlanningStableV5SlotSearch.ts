@@ -237,6 +237,7 @@ export function findPreferredPlacementSlot(params: {
   breakMinutes: number;
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment?: boolean;
+  restrictToBaseWindows?: boolean;
 }): MinuteInterval | null {
   for (const placement of params.placements) {
     for (const date of placement.dates) {
@@ -246,13 +247,26 @@ export function findPreferredPlacementSlot(params: {
         windows: params.windowsByDate.get(date) ?? [],
         notBefore: params.notBefore,
       });
-      const windows = placement.window
-        ? clampPlacementWindowsToNotBefore({
-            date,
-            windows: [placement.window],
-            notBefore: params.notBefore,
-          }).flatMap((preferred) => intersectPlacementWindows(baseWindows, preferred))
-        : baseWindows;
+      const hardAvailable = params.hardAvailableByDate.get(date);
+      let windows: PlacementWindow[];
+      if (placement.window) {
+        const preferredWindows = clampPlacementWindowsToNotBefore({
+          date,
+          windows: [placement.window],
+          notBefore: params.notBefore,
+        });
+        if (params.restrictToBaseWindows) {
+          windows = preferredWindows.flatMap((preferred) =>
+            intersectPlacementWindows(baseWindows, preferred));
+        } else {
+          windows = hardAvailable === undefined
+            ? preferredWindows
+            : preferredWindows.flatMap((preferred) =>
+                intersectPlacementWindows(hardAvailable, preferred));
+        }
+      } else {
+        windows = hardAvailable ?? baseWindows;
+      }
       const slot = findPlacementSlot({
         dates: [date],
         duration: params.duration,
