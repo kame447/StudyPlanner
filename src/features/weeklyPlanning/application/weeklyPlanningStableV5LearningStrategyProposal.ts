@@ -46,17 +46,9 @@ function applyProposalDecisions(params: {
     const index = records.findIndex((record) => record.id === decision.target.publicId);
     if (index < 0 || records[index].status !== 'pending') continue;
     if (decision.decision === 'accept') {
-      records[index] = {
-        ...records[index],
-        status: 'accepted',
-        decidedAtTurnId: params.turnId,
-      };
+      records[index] = { ...records[index], status: 'accepted', decidedAtTurnId: params.turnId };
     } else if (decision.decision === 'reject') {
-      records[index] = {
-        ...records[index],
-        status: 'rejected',
-        decidedAtTurnId: params.turnId,
-      };
+      records[index] = { ...records[index], status: 'rejected', decidedAtTurnId: params.turnId };
     }
   }
   return records;
@@ -139,9 +131,7 @@ function createCalibrationProposal(params: {
   if (!spaced) return params.records;
   if (params.records.some((record) =>
     record.kind === 'calibrate_memory_pace'
-    && record.workloadFactId === params.workloadFactId)) {
-    return params.records;
-  }
+    && record.workloadFactId === params.workloadFactId)) return params.records;
   const sessionEstimates = params.effortEstimates.filter((estimate) =>
     estimate.targetFactId === params.workloadFactId
     && estimate.kind === 'session_duration'
@@ -214,13 +204,14 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   const decisionTargetProposalId = params.document.decisions.find(
     (decision) => decision.target.kind === 'proposal' && decision.target.publicId,
   )?.target.publicId ?? null;
+  const lastRecord = records.length > 0 ? records[records.length - 1] : null;
   const relevantWorkloadFactId = currentMemoryWorkload?.workloadFactId
     ?? missingEffortFactId
     ?? (decisionTargetProposalId
       ? records.find((record) => record.id === decisionTargetProposalId)?.workloadFactId ?? null
       : null)
     ?? records.find((record) => record.status === 'pending')?.workloadFactId
-    ?? records.at(-1)?.workloadFactId
+    ?? lastRecord?.workloadFactId
     ?? null;
   const relevant = relevantWorkloadFactId
     ? records.filter((record) => record.workloadFactId === relevantWorkloadFactId)
