@@ -217,11 +217,11 @@ function validateHorizon(params: {
   if (params.graph.planningWindows.length > 1) {
     issues.push({
       domain: 'planning_horizon',
-      code: 'ambiguous_planning_horizon',
+      code: 'ambiguous_planning_window',
       blocking: true,
       factId: null,
       details: { planningWindowCount: params.graph.planningWindows.length },
-    } as GenericSchedulerInputIssue);
+    });
   }
   return issues;
 }
