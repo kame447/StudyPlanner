@@ -46,11 +46,23 @@ export function stableV5RequestContextForInput(
   };
 }
 
+function effortMeasurementFromState(
+  state: PlanningIntakeState | undefined,
+): 'total_duration' | 'duration_per_unit' | 'session_duration' | null {
+  const intent = state?.lastQuestionContext?.intent;
+  return intent === 'total_duration'
+    || intent === 'duration_per_unit'
+    || intent === 'session_duration'
+    ? intent
+    : null;
+}
+
 function pendingQuestionFromState(
   state: PlanningIntakeState | undefined,
   graphRevision: number,
 ): Record<string, unknown> | null {
   const context = state?.lastQuestionContext;
+  if (context?.kind === 'options') return null;
   const targetSlot = context?.targetSlot;
   if (!targetSlot?.startsWith('stable_v5:')) return null;
   const questionCode = targetSlot.slice('stable_v5:'.length).trim();
@@ -60,7 +72,24 @@ function pendingQuestionFromState(
     questionCode,
     targetFactId: context?.topicId ?? null,
     graphRevision,
+    effortMeasurement: effortMeasurementFromState(state),
   };
+}
+
+function learningStrategyProposalsFromState(
+  state: PlanningIntakeState | undefined,
+): Array<Record<string, unknown>> {
+  return (state?.learningStrategyProposalRecords ?? [])
+    .slice(-16)
+    .map((record) => ({
+      publicId: record.id,
+      kind: record.kind,
+      taskPublicId: record.taskId,
+      workloadPublicId: record.workloadFactId,
+      scope: record.scope,
+      status: record.status,
+      suggestedSessionMinutes: record.suggestedSessionMinutes,
+    }));
 }
 
 export function createStableV5SemanticPublicStateSummary(params: {
@@ -76,6 +105,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
     graphRevision: params.graph.revision,
     previousCompatibilityStatus: params.previousState?.status ?? null,
     pendingQuestion: pendingQuestionFromState(params.previousState, params.graph.revision),
+    learningStrategyProposals: learningStrategyProposalsFromState(params.previousState),
     groundingRecords: (params.previousState?.groundingRecords ?? [])
       .filter((record) => record.status !== 'rejected')
       .slice(-16)
