@@ -40,6 +40,7 @@ export interface StableV5CompatibilityProjectionInput {
   questionFactId?: string;
   questionKind?: WeeklyPlanningQuestionContextKind;
   questionActionId?: string;
+  questionIntent?: string;
   authorized: boolean;
   preserveExistingPreview?: boolean;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
@@ -72,7 +73,7 @@ export function projectStableV5CompatibilityState(
       ? {
           kind: params.questionKind ?? 'missing',
           targetSlot: `stable_v5:${params.questionCode}`,
-          intent: params.questionCode,
+          intent: params.questionIntent ?? params.questionCode,
           topicId: params.questionFactId,
           actionId: params.questionActionId,
         }
