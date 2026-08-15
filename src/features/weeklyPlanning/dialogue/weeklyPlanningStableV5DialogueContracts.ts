@@ -29,11 +29,12 @@ export interface WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent {
   kind: 'learning_strategy_proposal';
   proposalKind: 'spaced_memory_practice' | 'calibrate_memory_pace';
   targetFactId: string;
-  suggestedSessionMinutes: {
+  suggestedSessionDurationMinutes: {
     min: number;
     max: number;
   };
-  selectedSessionMinutes: number | null;
+  spacingInterval: 'not_yet_selected';
+  selectedSessionDurationMinutes: number | null;
   rationale: 'distributed_retrieval_supports_retention' | 'measure_personal_pace';
   decisionRequested: 'accept_or_reject';
 }
