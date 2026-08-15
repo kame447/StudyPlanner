@@ -1,3 +1,6 @@
+import type {
+  WeeklyPlanningMemoryPaceObservationSourceV1,
+} from '../../../types/domain';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
@@ -7,6 +10,11 @@ type CompilerInput = Parameters<typeof compileGenericSchedulerInput>[0];
 type SchedulerGraph = CompilerInput['graph'];
 type SchedulerWorkload = SchedulerGraph['workloads'][number];
 type SchedulerEffort = SchedulerGraph['effortEstimates'][number];
+
+export type MemoryCalibrationSchedulerWorkItemV5 =
+  GenericSchedulerInputCompilationResult extends { input: infer T }
+    ? T
+    : never;
 
 export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   graph: SchedulerGraph;
@@ -65,6 +73,21 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   });
   if (!compiled.input) return compiled;
 
+  const observationSource: WeeklyPlanningMemoryPaceObservationSourceV1 = {
+    version: 1,
+    kind: 'memory_pace_calibration',
+    conversationId: task.source.conversationId,
+    graphRevision: params.graph.revision,
+    taskId: task.id,
+    workloadFactId: sourceWorkload.id,
+    sessionEffortFactId: sourceSessionEffort.id,
+    activityKind: 'memorization_retrieval',
+    targetAmount: sourceWorkload.amount,
+    unitCode: sourceWorkload.unitCode,
+    unitLabel: sourceWorkload.unitLabel,
+    plannedSessionMinutes: params.sessionMinutes,
+  };
+
   return {
     ...compiled,
     input: {
@@ -81,6 +104,7 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
                   sourceSessionEffort.id,
                 ]),
               ],
+              weeklyPlanningObservationSource: observationSource,
             }
           : item),
     },
