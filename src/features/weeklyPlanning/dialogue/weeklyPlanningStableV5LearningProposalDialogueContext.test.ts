@@ -22,13 +22,12 @@ describe('Stable V5 learning proposal dialogue intent', () => {
       targetFactId: 'workload-1',
       suggestedSessionDurationMinutes: { min: 15, max: 30 },
       spacingInterval: 'not_yet_selected',
-      selectedSessionDurationMinutes: null,
       rationale: 'distributed_retrieval_supports_retention',
       decisionRequested: 'accept_or_reject',
     });
   });
 
-  it('keeps the pace-calibration proposal distinct from the spacing proposal', () => {
+  it('projects pace calibration as a one-session observation plan', () => {
     expect(learningStrategyProposalIntentForStableV5Dialogue({
       questionCode: 'learning_strategy_proposal',
       actionId: 'proposal-calibration',
@@ -45,9 +44,13 @@ describe('Stable V5 learning proposal dialogue intent', () => {
       proposalKind: 'calibrate_memory_pace',
       targetFactId: 'workload-1',
       suggestedSessionDurationMinutes: { min: 20, max: 20 },
-      spacingInterval: 'not_yet_selected',
       selectedSessionDurationMinutes: 20,
-      rationale: 'measure_personal_pace',
+      sessionDurationMinutes: 20,
+      measurementPlan: {
+        observation: 'progress_during_single_session',
+        objective: 'measure_personal_pace',
+        futureUse: 'personalize_future_session_planning',
+      },
       decisionRequested: 'accept_or_reject',
     });
   });
