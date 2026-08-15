@@ -87,7 +87,9 @@ function recurringPerOccurrenceSlices(params: {
 }
 
 function isDistributableDiscreteItem(item: GenericPlanningWorkItem): boolean {
-  return (item.quantity.unitCode === 'page' || item.quantity.unitCode === 'problem')
+  return (item.quantity.unitCode === 'page'
+      || item.quantity.unitCode === 'problem'
+      || item.quantity.unitCode === 'word')
     && Number.isInteger(item.quantity.amount)
     && item.quantity.amount > 1
     && item.estimatedMinutes !== null
