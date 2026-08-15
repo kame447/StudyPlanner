@@ -42,6 +42,11 @@ export interface WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent {
   kind: 'learning_strategy_proposal';
   proposalKind: 'calibrate_memory_pace';
   targetFactId: string;
+  suggestedSessionDurationMinutes: {
+    min: number;
+    max: number;
+  };
+  selectedSessionDurationMinutes: number;
   sessionDurationMinutes: number;
   measurementPlan: {
     observation: 'progress_during_single_session';
