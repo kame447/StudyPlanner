@@ -1,3 +1,5 @@
+export const WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL = 'この内容で仮予定にする';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -154,7 +156,7 @@ export function requiredLabelsForStableV5Dialogue(params: {
     if (targetLabel) labels.add(targetLabel);
   }
   if (params.includePreviewPromotionControl) {
-    labels.add('この内容で仮予定にする');
+    labels.add(WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL);
   }
   return [...labels];
 }
