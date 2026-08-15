@@ -127,7 +127,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     request: [
       'applicationDecisionを守り、発話系列に合う自然な日本語を一つ返してください。',
       'decidedFactsは確定、undecidedItemsは未確定です。',
-      '質問はquestionCode/questionTarget/questionIntentを変えず、一つだけ聞いてください。',
+      '質問はquestionCode/questionTarget/questionIntentで決められた確認対象・提案内容・目的・判断要求を省略せず、一つだけ聞いてください。',
       'previewPromotionControlLabelがあれば候補は既に生成済みです。その操作を案内してください。',
       'groundingContextのproposedは次へ進む前に短く示し、確認質問は足さないでください。contestedは断言しないでください。',
     ].join(''),
