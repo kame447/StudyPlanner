@@ -81,9 +81,13 @@ export type WeeklyPlanningLearningStrategyProposalStatus =
   | 'accepted'
   | 'rejected';
 
+export type WeeklyPlanningLearningStrategyProposalKind =
+  | 'spaced_memory_practice'
+  | 'calibrate_memory_pace';
+
 export interface WeeklyPlanningLearningStrategyProposalRecord {
   id: string;
-  kind: 'spaced_memory_practice';
+  kind: WeeklyPlanningLearningStrategyProposalKind;
   taskId: string;
   workloadFactId: string;
   scope: 'week';
@@ -92,6 +96,7 @@ export interface WeeklyPlanningLearningStrategyProposalRecord {
     min: number;
     max: number;
   };
+  selectedSessionMinutes?: number | null;
   createdRevision: number;
   proposedAtTurnId: string;
   decidedAtTurnId: string | null;
