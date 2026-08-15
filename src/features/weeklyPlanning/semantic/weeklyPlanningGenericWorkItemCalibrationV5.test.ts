@@ -37,25 +37,25 @@ function item(params: {
 }
 
 describe('Stable V5 generic work-item estimate calibration', () => {
-  it('reallocates inferred effort using the trusted actual-derived multiplier', () => {
+  it('reallocates inferred effort using actual-derived calibration plus safety buffer', () => {
     const [result] = calibrateGenericPlanningWorkItemsV5({
-      items: [item({ basis: 'direct_effort', base: 200, allocated: 210 })],
+      items: [item({ basis: 'direct_effort', base: 200, allocated: 225 })],
       calibrationMultiplier: 1.2,
     });
     expect(result).toMatchObject({
       baseEstimatedMinutes: 200,
       calibrationMultiplier: 1.2,
       roundingStepMinutes: 15,
-      estimatedMinutes: 240,
+      estimatedMinutes: 270,
     });
   });
 
-  it('also calibrates observed pace because it is an estimate rather than a user-fixed duration', () => {
+  it('keeps a safety margin even when observed evidence says the learner is faster', () => {
     const [result] = calibrateGenericPlanningWorkItemsV5({
-      items: [item({ basis: 'observed_pace', base: 150, allocated: 150 })],
+      items: [item({ basis: 'observed_pace', base: 150, allocated: 165 })],
       calibrationMultiplier: 0.8,
     });
-    expect(result.estimatedMinutes).toBe(120);
+    expect(result.estimatedMinutes).toBe(135);
   });
 
   it('never changes intrinsic time workloads such as “study for one hour”', () => {
@@ -74,7 +74,7 @@ describe('Stable V5 generic work-item estimate calibration', () => {
   it.each([undefined, null, 1, 0, -1, Number.NaN])(
     'is a no-op for unusable or neutral multiplier %s',
     (multiplier) => {
-      const source = item({ basis: 'direct_effort', base: 200, allocated: 210 });
+      const source = item({ basis: 'direct_effort', base: 200, allocated: 225 });
       const [result] = calibrateGenericPlanningWorkItemsV5({
         items: [source],
         calibrationMultiplier: multiplier,
