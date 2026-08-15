@@ -2,7 +2,6 @@ import type {
   EffortEstimateFact,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
-import { splitVocabularyIntoLearningSessionsV5 } from './weeklyPlanningEffortQuestionPolicyV5';
 
 export type GenericWorkItemEstimateBasis =
   | 'intrinsic_duration'
@@ -98,23 +97,13 @@ function directEstimate(params: {
 
   const session = matching.filter((estimate) =>
     estimate.kind === 'session_duration' && estimate.unitCode === params.workload.unitCode);
-  if (params.workload.unitCode === 'word' && session.length === 1) {
-    const sessionCount = splitVocabularyIntoLearningSessionsV5(params.workload.amount).length;
-    return {
-      estimatedMinutes: session[0].minutes * sessionCount,
-      basis: 'direct_effort',
-      sourceFactIds: [session[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
-  }
-  if (params.workload.unitCode === 'word' && session.length > 1) {
+  if (params.workload.unitCode === 'word' && session.length > 0) {
     return {
       estimatedMinutes: null,
       basis: null,
       sourceFactIds: session.map((value) => value.id),
       sourceWorkloadFactIds: [],
-      ambiguous: true,
+      ambiguous: false,
     };
   }
   if (params.workload.unitCode === 'session' && session.length === 1) {
