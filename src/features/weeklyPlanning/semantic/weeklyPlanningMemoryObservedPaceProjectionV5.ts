@@ -3,6 +3,7 @@ import {
   getWeeklyPlanningMemoryPaceRuntimeV5,
 } from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
 import type {
+  GenericSchedulerObservedEstimateOverride,
   WeeklyPlanningGenericSchedulerGraphView,
 } from './weeklyPlanningGenericSchedulerInput';
 import type {
@@ -10,7 +11,7 @@ import type {
 } from './weeklyPlanningSemanticTypesV5';
 
 export interface WeeklyPlanningMemoryObservedPaceProjectionV5 {
-  graph: WeeklyPlanningGenericSchedulerGraphView;
+  estimateOverrides: GenericSchedulerObservedEstimateOverride[];
   appliedWorkloadFactIds: string[];
 }
 
@@ -43,8 +44,7 @@ export function projectWeeklyPlanningMemoryObservedPaceV5(params: {
   previousRecords: readonly WeeklyPlanningLearningStrategyProposalRecord[];
 }): WeeklyPlanningMemoryObservedPaceProjectionV5 {
   const eligibleWorkloadIds = memoryWorkloadFactIds(params);
-  const projectedEfforts = [...params.graph.effortEstimates];
-  const appliedWorkloadFactIds: string[] = [];
+  const estimateOverrides: GenericSchedulerObservedEstimateOverride[] = [];
 
   params.graph.workloads.forEach((workload) => {
     if (!eligibleWorkloadIds.has(workload.id)) return;
@@ -63,31 +63,16 @@ export function projectWeeklyPlanningMemoryObservedPaceV5(params: {
       || minutesPerUnit <= 0
     ) return;
 
-    // Scheduler-only evidence. It is intentionally not committed to the Fact Graph:
-    // the user did not state this rate in the current conversation. The copied source
-    // satisfies the graph-view shape while the synthetic id keeps provenance distinct.
-    projectedEfforts.push({
-      id: `observed-memory-pace:${workload.id}:${observed.observationCount}`,
-      taskId: workload.taskId,
-      targetFactId: workload.id,
-      kind: 'duration_per_unit',
-      minutes: minutesPerUnit,
-      unitCode: workload.unitCode,
-      precision: 'approximate',
-      source: {
-        ...workload.source,
-        semanticLocalId: `observed-memory-pace:${workload.id}`,
-        sourceText: '',
-      },
-      createdRevision: params.graph.revision,
+    estimateOverrides.push({
+      workloadFactId: workload.id,
+      estimatedMinutes: workload.amount * minutesPerUnit,
+      evidenceKind: 'observed_memory_pace',
+      observationCount: observed.observationCount,
     });
-    appliedWorkloadFactIds.push(workload.id);
   });
 
   return {
-    graph: appliedWorkloadFactIds.length > 0
-      ? { ...params.graph, effortEstimates: projectedEfforts }
-      : params.graph,
-    appliedWorkloadFactIds,
+    estimateOverrides,
+    appliedWorkloadFactIds: estimateOverrides.map((override) => override.workloadFactId),
   };
 }
