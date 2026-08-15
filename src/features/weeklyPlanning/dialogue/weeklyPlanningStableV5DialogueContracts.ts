@@ -16,9 +16,9 @@ export interface WeeklyPlanningStableV5DialogueQuestionTarget {
 }
 
 export interface WeeklyPlanningStableV5DialogueQuestionIntent {
-  kind: 'effort_evidence';
-  measurement: 'total_duration';
-  evidenceRole: 'completed';
+  kind: 'effort_measurement';
+  measurement: 'total_duration' | 'duration_per_unit' | 'session_duration';
+  quantityRole: 'declared' | 'target' | 'remaining' | 'completed' | 'unknown';
   targetFactId: string;
   amount: number;
   unitCode: string | null;
