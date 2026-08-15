@@ -120,15 +120,16 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       questionCode: input.questionCode,
       questionTarget: input.questionTarget ?? null,
       questionIntent: input.questionIntent ?? null,
+      previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
       relevantLabels: input.requiredLabels,
       previewCount: input.previewCount,
     },
     request: [
-      'applicationDecisionを守り、現在の発話系列に合う自然な日本語を一つ返してください。',
-      'decidedFactsは確定情報、undecidedItemsは未確定情報です。',
-      'questionTargetとquestionIntentがある場合は対象と測定基準を変えず、自然に尋ねてください。',
-      'groundingContextでstatusがproposedの解釈は、次の共同作業へ進む前にユーザーから見える形で短く示してください。言い回しは文脈に合わせ、確認質問は追加しないでください。contestedは確定事項として断言しないでください。',
-      '質問ならquestionCodeの解消に必要な一つだけを尋ねてください。',
+      'applicationDecisionを守り、発話系列に合う自然な日本語を一つ返してください。',
+      'decidedFactsは確定、undecidedItemsは未確定です。',
+      '質問はquestionCode/questionTarget/questionIntentを変えず、一つだけ聞いてください。',
+      'previewPromotionControlLabelがあれば候補は既に生成済みです。その操作を案内してください。',
+      'groundingContextのproposedは次へ進む前に短く示し、確認質問は足さないでください。contestedは断言しないでください。',
     ].join(''),
   });
 
