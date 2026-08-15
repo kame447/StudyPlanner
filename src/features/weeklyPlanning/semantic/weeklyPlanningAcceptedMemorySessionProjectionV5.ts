@@ -69,6 +69,36 @@ function displayQuantity(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
 
+function aggregateDistributedItems(items: readonly GenericPlanningWorkItem[]): GenericPlanningWorkItem | null {
+  if (items.length === 0) return null;
+  const first = items[0];
+  const estimatedMinutes = items.every((item) => item.estimatedMinutes !== null)
+    ? items.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)
+    : null;
+  const baseEstimatedMinutes = items.every(
+    (item) => item.baseEstimatedMinutes !== null && item.baseEstimatedMinutes !== undefined,
+  )
+    ? items.reduce((sum, item) => sum + (item.baseEstimatedMinutes ?? 0), 0)
+    : first.baseEstimatedMinutes;
+  const requiredDates = new Set(items.map((item) => item.requiredDate ?? null));
+  return {
+    ...first,
+    id: `${first.workloadFactId}:accepted-memory-aggregate`,
+    quantity: {
+      ...first.quantity,
+      amount: items.reduce((sum, item) => sum + item.quantity.amount, 0),
+      ordinalRange: null,
+      actualRange: null,
+    },
+    estimatedMinutes,
+    baseEstimatedMinutes,
+    requiredDate: requiredDates.size === 1 ? first.requiredDate : undefined,
+    sourceFactRefs: [...new Set(items.flatMap((item) => item.sourceFactRefs))],
+    plannedSessions: undefined,
+    splitPolicy: 'unknown',
+  };
+}
+
 function sessionizeItem(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   item: GenericPlanningWorkItem;
@@ -133,18 +163,30 @@ export function applyAcceptedMemorySessionProjectionV5(params: {
     && estimate.minutes > 0);
   if (sessionEfforts.length !== 1) return params.compilation;
 
-  let applied = false;
-  const movableWorkItems = params.compilation.input.movableWorkItems.flatMap((item) => {
-    if (item.workloadFactId !== workloadFactId) return [item];
-    const sessions = sessionizeItem({
-      graph: params.graph,
-      item,
-      sessionMinutes: sessionEfforts[0].minutes,
-    });
-    if (sessions.length > 1) applied = true;
-    return sessions;
+  const matchingItems = params.compilation.input.movableWorkItems.filter(
+    (item) => item.workloadFactId === workloadFactId,
+  );
+  const aggregate = aggregateDistributedItems(matchingItems);
+  if (!aggregate) return params.compilation;
+  const sessions = sessionizeItem({
+    graph: params.graph,
+    item: aggregate,
+    sessionMinutes: sessionEfforts[0].minutes,
   });
-  if (!applied) return params.compilation;
+  if (sessions.length <= 1) return params.compilation;
+
+  const firstIndex = params.compilation.input.movableWorkItems.findIndex(
+    (item) => item.workloadFactId === workloadFactId,
+  );
+  const otherItems = params.compilation.input.movableWorkItems.filter(
+    (item) => item.workloadFactId !== workloadFactId,
+  );
+  const insertionIndex = Math.max(0, Math.min(firstIndex, otherItems.length));
+  const movableWorkItems = [
+    ...otherItems.slice(0, insertionIndex),
+    ...sessions,
+    ...otherItems.slice(insertionIndex),
+  ];
 
   return {
     ...params.compilation,
