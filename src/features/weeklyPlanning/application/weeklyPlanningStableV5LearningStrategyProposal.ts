@@ -11,6 +11,13 @@ import type {
 
 const DEFAULT_MEMORY_SESSION_MINUTES = { min: 15, max: 30 } as const;
 
+export interface WeeklyPlanningLearningStrategyEffortFact {
+  targetFactId: string;
+  kind: 'total_duration' | 'duration_per_unit' | 'session_duration';
+  minutes: number;
+  unitCode: string | null;
+}
+
 function stableHash(input: string): string {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -20,8 +27,12 @@ function stableHash(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function proposalId(taskId: string, workloadFactId: string): string {
-  return `wpp_memory_${stableHash(`${taskId}|${workloadFactId}|spaced_memory_practice`)}`;
+function proposalId(params: {
+  kind: WeeklyPlanningLearningStrategyProposalRecord['kind'];
+  taskId: string;
+  workloadFactId: string;
+}): string {
+  return `wpp_memory_${stableHash(`${params.taskId}|${params.workloadFactId}|${params.kind}`)}`;
 }
 
 function applyProposalDecisions(params: {
@@ -51,15 +62,21 @@ function applyProposalDecisions(params: {
   return records;
 }
 
+function blockingEffortFactId(
+  compilation: GenericSchedulerInputCompilationResult,
+): string | null {
+  return compilation.issues.find(
+    (issue) => issue.blocking && issue.code === 'missing_effort_estimate',
+  )?.factId ?? null;
+}
+
 function memoryWorkloadFromCurrentMeaning(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   localToFactId: Readonly<Record<string, string>>;
   compilation: GenericSchedulerInputCompilationResult;
 }): { taskId: string; workloadFactId: string } | null {
-  const missingEffort = params.compilation.issues.find(
-    (issue) => issue.blocking && issue.code === 'missing_effort_estimate',
-  );
-  if (!missingEffort?.factId) return null;
+  const missingEffortFactId = blockingEffortFactId(params.compilation);
+  if (!missingEffortFactId) return null;
 
   for (const task of params.document.tasks) {
     if (task.study?.activityKind !== 'memorization_retrieval') continue;
@@ -71,7 +88,7 @@ function memoryWorkloadFromCurrentMeaning(params: {
     ];
     for (const workload of workloads) {
       const workloadFactId = params.localToFactId[workload.localId];
-      if (workloadFactId === missingEffort.factId) {
+      if (workloadFactId === missingEffortFactId) {
         return { taskId, workloadFactId };
       }
     }
@@ -79,10 +96,93 @@ function memoryWorkloadFromCurrentMeaning(params: {
   return null;
 }
 
+function createInitialMemoryProposal(params: {
+  records: WeeklyPlanningLearningStrategyProposalRecord[];
+  currentMemoryWorkload: { taskId: string; workloadFactId: string } | null;
+  graphRevision: number;
+  turnId: string;
+}): WeeklyPlanningLearningStrategyProposalRecord[] {
+  if (!params.currentMemoryWorkload) return params.records;
+  const existing = params.records.find(
+    (record) => record.kind === 'spaced_memory_practice'
+      && record.workloadFactId === params.currentMemoryWorkload?.workloadFactId,
+  );
+  if (existing) return params.records;
+  return [
+    ...params.records,
+    {
+      id: proposalId({
+        kind: 'spaced_memory_practice',
+        taskId: params.currentMemoryWorkload.taskId,
+        workloadFactId: params.currentMemoryWorkload.workloadFactId,
+      }),
+      kind: 'spaced_memory_practice',
+      taskId: params.currentMemoryWorkload.taskId,
+      workloadFactId: params.currentMemoryWorkload.workloadFactId,
+      scope: 'week',
+      status: 'pending',
+      suggestedSessionMinutes: { ...DEFAULT_MEMORY_SESSION_MINUTES },
+      selectedSessionMinutes: null,
+      createdRevision: params.graphRevision,
+      proposedAtTurnId: params.turnId,
+      decidedAtTurnId: null,
+    },
+  ];
+}
+
+function createCalibrationProposal(params: {
+  records: WeeklyPlanningLearningStrategyProposalRecord[];
+  effortEstimates: readonly WeeklyPlanningLearningStrategyEffortFact[];
+  workloadFactId: string | null;
+  graphRevision: number;
+  turnId: string;
+}): WeeklyPlanningLearningStrategyProposalRecord[] {
+  if (!params.workloadFactId) return params.records;
+  const spaced = params.records.find((record) =>
+    record.kind === 'spaced_memory_practice'
+    && record.workloadFactId === params.workloadFactId
+    && record.status === 'accepted');
+  if (!spaced) return params.records;
+  if (params.records.some((record) =>
+    record.kind === 'calibrate_memory_pace'
+    && record.workloadFactId === params.workloadFactId)) {
+    return params.records;
+  }
+  const sessionEstimates = params.effortEstimates.filter((estimate) =>
+    estimate.targetFactId === params.workloadFactId
+    && estimate.kind === 'session_duration'
+    && Number.isFinite(estimate.minutes)
+    && estimate.minutes > 0);
+  if (sessionEstimates.length !== 1) return params.records;
+  const sessionMinutes = sessionEstimates[0].minutes;
+  return [
+    ...params.records,
+    {
+      id: proposalId({
+        kind: 'calibrate_memory_pace',
+        taskId: spaced.taskId,
+        workloadFactId: params.workloadFactId,
+      }),
+      kind: 'calibrate_memory_pace',
+      taskId: spaced.taskId,
+      workloadFactId: params.workloadFactId,
+      scope: 'week',
+      status: 'pending',
+      suggestedSessionMinutes: { min: sessionMinutes, max: sessionMinutes },
+      selectedSessionMinutes: sessionMinutes,
+      createdRevision: params.graphRevision,
+      proposedAtTurnId: params.turnId,
+      decidedAtTurnId: null,
+    },
+  ];
+}
+
 export interface WeeklyPlanningLearningStrategyProposalEvaluation {
   records: WeeklyPlanningLearningStrategyProposalRecord[];
   pendingProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
   acceptedProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
+  acceptedSpacedProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
+  acceptedCalibrationProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
 }
 
 export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
@@ -90,6 +190,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   localToFactId: Readonly<Record<string, string>>;
   compilation: GenericSchedulerInputCompilationResult;
+  effortEstimates?: readonly WeeklyPlanningLearningStrategyEffortFact[];
   graphRevision: number;
   turnId: string;
 }): WeeklyPlanningLearningStrategyProposalEvaluation {
@@ -99,42 +200,36 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     turnId: params.turnId,
   });
 
-  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);
-  if (currentMemoryWorkload) {
-    const existing = records.find(
-      (record) => record.kind === 'spaced_memory_practice'
-        && record.workloadFactId === currentMemoryWorkload.workloadFactId,
-    );
-    if (!existing) {
-      records = [
-        ...records,
-        {
-          id: proposalId(currentMemoryWorkload.taskId, currentMemoryWorkload.workloadFactId),
-          kind: 'spaced_memory_practice',
-          taskId: currentMemoryWorkload.taskId,
-          workloadFactId: currentMemoryWorkload.workloadFactId,
-          scope: 'week',
-          status: 'pending',
-          suggestedSessionMinutes: { ...DEFAULT_MEMORY_SESSION_MINUTES },
-          createdRevision: params.graphRevision,
-          proposedAtTurnId: params.turnId,
-          decidedAtTurnId: null,
-        },
-      ];
-    }
-  }
+  records = createInitialMemoryProposal({
+    records,
+    currentMemoryWorkload: memoryWorkloadFromCurrentMeaning(params),
+    graphRevision: params.graphRevision,
+    turnId: params.turnId,
+  });
 
-  const blockingEffortFactId = params.compilation.issues.find(
-    (issue) => issue.blocking && issue.code === 'missing_effort_estimate',
-  )?.factId;
-  const relevant = blockingEffortFactId
-    ? records.filter((record) => record.workloadFactId === blockingEffortFactId)
+  const missingEffortFactId = blockingEffortFactId(params.compilation);
+  records = createCalibrationProposal({
+    records,
+    effortEstimates: params.effortEstimates ?? [],
+    workloadFactId: missingEffortFactId,
+    graphRevision: params.graphRevision,
+    turnId: params.turnId,
+  });
+
+  const relevant = missingEffortFactId
+    ? records.filter((record) => record.workloadFactId === missingEffortFactId)
     : [];
+  const acceptedSpacedProposal = relevant.find((record) =>
+    record.kind === 'spaced_memory_practice' && record.status === 'accepted') ?? null;
+  const acceptedCalibrationProposal = relevant.find((record) =>
+    record.kind === 'calibrate_memory_pace' && record.status === 'accepted') ?? null;
 
   return {
     records,
     pendingProposal: relevant.find((record) => record.status === 'pending') ?? null,
-    acceptedProposal: relevant.find((record) => record.status === 'accepted') ?? null,
+    acceptedProposal: acceptedSpacedProposal ?? acceptedCalibrationProposal,
+    acceptedSpacedProposal,
+    acceptedCalibrationProposal,
   };
 }
 
@@ -152,4 +247,13 @@ export function renderWeeklyPlanningMemorySessionDurationQuestionV5(params: {
 }): string {
   const { min, max } = params.proposal.suggestedSessionMinutes;
   return `では、「${params.taskLabel}」は1回何分くらいにしますか？ ${min}〜${max}分くらいを目安にできます。`;
+}
+
+export function renderWeeklyPlanningMemoryPaceCalibrationProposalV5(params: {
+  taskLabel: string;
+  proposal: WeeklyPlanningLearningStrategyProposalRecord;
+}): string {
+  const minutes = params.proposal.selectedSessionMinutes
+    ?? params.proposal.suggestedSessionMinutes.min;
+  return `では、まず「${params.taskLabel}」を${minutes}分だけ1回やって、どのくらい進むかを記録してみますか？ その実績を基準に、残りの量と復習の入れ方を調整できます。`;
 }
