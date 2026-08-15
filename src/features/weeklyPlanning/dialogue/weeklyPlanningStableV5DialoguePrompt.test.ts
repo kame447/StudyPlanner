@@ -83,7 +83,6 @@ describe('Stable V5 dialogue prompt', () => {
 
     expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
     expect(prompt.systemPrompt).toContain('共有理解に必要な場合に自然に示してください');
-    expect(prompt.userPrompt).toContain('statusがproposedの解釈');
     expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
@@ -94,15 +93,19 @@ describe('Stable V5 dialogue prompt', () => {
     expect(payload).toMatchObject({
       actionId: input().actionId,
       currentUserMessage: input().currentUserMessage,
-      planningStateSummary: expect.objectContaining({
-        groundingContext: expect.any(Array),
-      }),
+      planningStateSummary: {
+        groundingContext: [expect.objectContaining({ status: 'proposed' })],
+      },
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
+        questionTarget: null,
+        questionIntent: null,
+        previewPromotionControlLabel: null,
         relevantLabels: ['院試の第2分野'],
         previewCount: 0,
       },
+      request: expect.any(String),
     });
     expect(payload).not.toHaveProperty('planningInformation');
   });
