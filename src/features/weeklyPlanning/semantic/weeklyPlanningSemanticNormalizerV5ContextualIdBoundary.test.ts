@@ -147,7 +147,7 @@ describe('Stable V5 contextual ID boundary', () => {
     const systemPrompt = calls[1]?.messages[0]?.content ?? '';
     expect(systemPrompt).toContain('pendingQuestion as authoritative');
     expect(systemPrompt).toContain('exact target');
-    expect(systemPrompt).toContain('fresh localIds');
+    expect(systemPrompt).not.toContain('fresh localIds');
 
     const repairMessages = calls[2]?.messages ?? [];
     const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '{}';
