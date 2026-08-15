@@ -95,14 +95,11 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
           decompositionStatus: _taskDecompositionStatus,
           ...taskRest
         } = task;
-        if (!isRecord(taskRest.study) || !Array.isArray(taskRest.study.components)) {
+        const study = taskRest.study;
+        if (!isRecord(study) || !Array.isArray(study.components)) {
           return taskRest;
         }
-        const {
-          activityKind: _activityKind,
-          ...studyRest
-        } = taskRest.study;
-        const components = studyRest.components.map((component) => {
+        const components = study.components.map((component: unknown) => {
           if (!isRecord(component)) return component;
           const {
             durableContextSignals: _componentSignals,
@@ -111,6 +108,11 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
           } = component;
           return componentRest;
         });
+        const {
+          activityKind: _activityKind,
+          components: _components,
+          ...studyRest
+        } = study;
         return {
           ...taskRest,
           study: { ...studyRest, components },
