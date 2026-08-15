@@ -14,6 +14,9 @@ import {
   type WeeklyPlanningGenericWorkGraphView,
 } from './weeklyPlanningGenericWorkItems';
 import {
+  allocateWeeklyPlanningEffort,
+} from './weeklyPlanningEffortAllocation';
+import {
   calibrateGenericPlanningWorkItemsV5,
 } from './weeklyPlanningGenericWorkItemCalibrationV5';
 import {
@@ -346,12 +349,15 @@ function applyObservedEstimateOverrides(params: {
     const override = overrides.get(item.workloadFactId);
     if (!override) return { ...item };
     appliedWorkloadFactIds.add(item.workloadFactId);
+    const allocation = allocateWeeklyPlanningEffort({
+      baseEstimateMinutes: override.estimatedMinutes,
+    });
     return {
       ...item,
-      estimatedMinutes: override.estimatedMinutes,
+      estimatedMinutes: allocation.allocationMinutes,
       baseEstimatedMinutes: override.estimatedMinutes,
-      calibrationMultiplier: null,
-      roundingStepMinutes: null,
+      calibrationMultiplier: allocation.calibrationMultiplier,
+      roundingStepMinutes: allocation.roundingStepMinutes,
       estimateBasis: 'observed_pace' as const,
       estimateSourceFactIds: [],
       estimateSourceWorkloadFactIds: [],
