@@ -32,8 +32,8 @@ export function renderWeeklyPlanningEffortQuestionV5(params: {
     return `${label}について、1${workload.unitLabel}あたりどれくらい時間がかかりますか？`;
   }
 
-  if (workload.unitCode === 'word' && plan.kind === 'total_duration') {
-    return `${label}について、${quantityText(workload.amount, workload.unitLabel)}を一通り覚えるために、合計でどれくらい時間がかかりそうですか？`;
+  if (workload.unitCode === 'word' && plan.kind === 'session_duration') {
+    return `${label}は、1回あたり何分くらいなら無理なく続けられそうですか？`;
   }
 
   return `${label}について、指定した量を進めるのに合計でどれくらい時間がかかりますか？`;
