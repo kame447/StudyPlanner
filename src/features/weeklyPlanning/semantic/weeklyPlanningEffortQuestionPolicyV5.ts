@@ -1,5 +1,3 @@
-export const WEEKLY_PLANNING_VOCABULARY_SESSION_MAX_WORDS_V5 = 100;
-
 export interface WeeklyPlanningEffortQuestionWorkloadV5 {
   amount: number;
   unitCode: string;
@@ -13,58 +11,19 @@ export interface WeeklyPlanningEffortQuestionPlanV5 {
   sessionQuantities: number[];
 }
 
-function balancedIntegerSplit(total: number, count: number): number[] {
-  const base = Math.floor(total / count);
-  const remainder = total % count;
-  return Array.from({ length: count }, (_, index) =>
-    base + (index >= count - remainder ? 1 : 0));
-}
-
+/**
+ * Vocabulary word count describes the learning scope, not a fixed session-size rule.
+ * Keep one full-scope learning session here; scheduler/review policy decides temporal
+ * distribution from session duration, availability, explicit constraints, and reviews.
+ *
+ * The historical function name remains as a small compatibility facade for callers;
+ * it no longer splits at an arbitrary word-count threshold.
+ */
 export function splitVocabularyIntoLearningSessionsV5(
   totalWords: number,
 ): number[] {
   if (!Number.isInteger(totalWords) || totalWords <= 0) return [];
-  const sessionCount = Math.ceil(
-    totalWords / WEEKLY_PLANNING_VOCABULARY_SESSION_MAX_WORDS_V5,
-  );
-  if (sessionCount <= 1) return [totalWords];
-  if (totalWords % sessionCount === 0) {
-    return Array(sessionCount).fill(totalWords / sessionCount);
-  }
-
-  const average = totalWords / sessionCount;
-  const cleanBase = Math.floor(average / 10) * 10;
-  let remaining = totalWords - cleanBase * sessionCount;
-  if (cleanBase <= 0 || remaining < 10) {
-    return balancedIntegerSplit(totalWords, sessionCount);
-  }
-
-  const sessions = Array(sessionCount).fill(cleanBase);
-  for (let index = sessionCount - 1; index >= 0 && remaining >= 10; index -= 1) {
-    const capacity = WEEKLY_PLANNING_VOCABULARY_SESSION_MAX_WORDS_V5 - sessions[index];
-    if (capacity < 10) continue;
-    sessions[index] += 10;
-    remaining -= 10;
-  }
-
-  while (remaining > 0) {
-    let targetIndex = -1;
-    let targetValue = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < sessions.length; index += 1) {
-      if (
-        sessions[index] < WEEKLY_PLANNING_VOCABULARY_SESSION_MAX_WORDS_V5
-        && sessions[index] < targetValue
-      ) {
-        targetIndex = index;
-        targetValue = sessions[index];
-      }
-    }
-    if (targetIndex < 0) return balancedIntegerSplit(totalWords, sessionCount);
-    sessions[targetIndex] += 1;
-    remaining -= 1;
-  }
-
-  return sessions.sort((left, right) => left - right);
+  return [totalWords];
 }
 
 export function createWeeklyPlanningEffortQuestionPlanV5(
@@ -87,18 +46,10 @@ export function createWeeklyPlanningEffortQuestionPlanV5(
   }
 
   if (workload.unitCode === 'word') {
-    const sessionQuantities = splitVocabularyIntoLearningSessionsV5(workload.amount);
-    if (sessionQuantities.length > 1) {
-      return {
-        kind: 'session_duration',
-        unitCode: 'word',
-        sessionQuantities,
-      };
-    }
     return {
-      kind: 'total_duration',
-      unitCode: null,
-      sessionQuantities,
+      kind: 'session_duration',
+      unitCode: 'word',
+      sessionQuantities: splitVocabularyIntoLearningSessionsV5(workload.amount),
     };
   }
 
