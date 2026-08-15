@@ -159,11 +159,9 @@ turn 7 attempt 2は修正ファイルを誤った複製パスへpublishした実
 
 attempt 3はprovider 1回・repair 0回、9.3秒、26,677 bytesでsemantic correctionを受理した。Graph revision 9、旧workloadのsupersede、active daily recurrence、8月17日〜23日の90分候補7件、数学ワーク75分、古典105分、合計9件とrecurrence provenanceはattempt 1と一致する。最終文はrendererの「模試対策の数学を、毎日2時間から1時間半に変更しました。来週分の仮予定候補を9件作成しています。内容を確認して、問題なければ『この内容で仮予定にする』を押してください。」だけになり、決定論的noticeの二重前置は消えた。意味・候補・操作案内が一致し、同じ修正を繰り返さないため合格とする。
 
-
 turn 8 attempt 1のrun `31790894628`では、「ありがとうございます。この内容で大丈夫です。」をLunaがproposalへの`accept` decisionとしてprovider 1回・repair 0回で正しく構造化した一方、deterministic canonicalizerがそのapplication-level decisionをFact Graphへ追加し、revisionを9から10へ進めて同じ9件を再previewした。これはno-op turnでrevisionを増やさず既存previewを保持する現行contractへの違反である。修正はraw textではなくstructured `target.kind=proposal`だけを用い、proposal decisionをsemantic request/response/validation traceには保持しつつ、Fact Graphへは永続化しない境界に限定した。planning-window等のGraph factを対象とするdecision、approval/saveのUI境界、applied turn keyは変更しない。
 
 同じcheckpoint・入力のattempt 2 run `31791667885`では、provider 1回・repair 0回で同じproposal acceptを返した後、canonical diffはrevision 9→9、added/superseded/removedすべて0、`preview_unchanged` branchとなり、preview schedulerは実行されなかった。checkpointはrevision 9の同じstable key・同じ9候補を保持し、`shouldSavePlan=false`のまま、rendererは9件の内容と「この内容で仮予定にする」ボタンを自然に案内した。localはfocused 13件、TypeScript、全333 test files（1,547 tests）、production buildがgreenで、commit `07b6750`のnormal CI run `31791670915`、Browser Regression run `31791670932`、実API run `31791667885`もすべてgreenである。
-
 
 turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方にしてください。」をexact既存task/componentへのsoft `preferred_window=evening`としてprovider 1回・repair 0回で受理した。Graph revision 9→10でtemporal constraintだけを一件追加し、daily recurrence、1.5 hours per occurrence、数学ワーク、古典には変更がない。re-previewは合計9件のまま、模試数学7件を8月17日〜23日の各日17:00–18:30へ配置し、rendererも夕方希望、毎日1時間半、9件を一致して説明した。normal CI run `31791955975`、Browser Regression run `31791956014`、実API run `31791952338`はすべてgreenであり、modifier target、soft preference、re-previewのhistorical contractは合格した。
 
@@ -178,6 +176,83 @@ turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方
 - focused contextual answer request: 2,263 bytes
 
 現在のgeneric requestはbudget内であり、最大部分はprovider schemaである。したがって単純な文字数削減を目的に安全指示を落とさない。
+
+### 6.1 追加監査: internal ID、focused answer、repair、renderer、schema
+
+#### semantic prompt内のinternal ID指示
+
+`fresh localIds`、`existingPublicId`、`title/contextLabel`を同じ種類のprompt規則として扱わない。
+
+`fresh localIds`は高優先度の削除ablation候補である。schemaは各semantic objectに`localId`を要求し、runtime validatorは空ID・response内のduplicate local ID・`targetLocalId`等の参照整合性を検査している。したがって「fresh localIdを使え」という自然言語promptは、意味理解ではなくrepresentation scaffoldingであり、Lunaで一要素ずつ削除しても同じvalidator contractが保たれるか確認する。削除後に同種の失敗が増えないならpromptから外す。
+
+`existingPublicId`は現時点では単純削除しない。schema自体はstring/nullという形しか保証できず、「現在activeな既存task/componentのどれを指したか」はpublic stateとの照合が必要である。existing-entity validatorはunknown ID、親taskとの不一致、既存候補なのにnullを返した場合を拒否できるが、一般会話で複数候補からどれを意味したかの選択そのものはsemantic責務である。一方、`pendingQuestion.targetFactId`のようにapplicationが質問対象をすでに一意に決めているturnでは、そのIDをAIに再コピーさせる必要はない。pending questionのexact targetはapplicationがdeterministicにbindingし、AIは回答意味だけを返す形へ寄せる。一般の曖昧参照では、自由なID文字列をpromptで転記させるより、typed candidate referenceまたはrequestごとの有限enumを選ばせる設計を優先する。
+
+`title/contextLabel`も現時点で即削除しない。現在のschemaは文字列であることしか保証せず、既存entityの呼称が以前のpartner-specific labelと同一であることはprompt依存が強い。exact `existingPublicId`で既存entityを継続している場合は、明示的なrename/correctionがない限り保存済みtitle/contextLabelをdeterministicに再利用する境界へ移す。その境界を作った後に「既存呼称を維持せよ」というprompt行をablationする。ユーザーが明示的に名前を変えた場合だけtyped correction/renameとして例外を通し、raw text比較でrenameを推測しない。
+
+#### focused contextual answerのtyped scale
+
+現在のeffort質問policyにはすでに`total_duration`、`duration_per_unit`、`session_duration`の区別がある。一方、focused contextual answer routeへ渡されるpending stateは主にquestion codeとworkload amount/unitであり、回答から文書を組み立てる際にeffortを`total_duration`として生成する経路が残っている。このため「5分」という同じ回答でも、「全部で5分」「1ページ5分」「1問30分」「1年分90分」「1回15分」のどの尺度に対する回答かをfocused routeが十分保持していない。
+
+ここでいうtyped state化とは、自然言語promptへ「pageならper-unit、wordならsession」と規則を追加することではない。applicationが質問を生成した時点で、その質問の測定尺度をmachine stateへ保存することである。例としてpending questionへ次の意味情報を保持する。
+
+- page: `kind=duration_per_unit`, `unitCode=page`
+- problem: `kind=duration_per_unit`, `unitCode=problem`
+- exam_year: `kind=duration_per_unit`, `unitCode=exam_year`
+- vocabulary session: `kind=session_duration`, `unitCode=word`
+- completed workloadの実績確認: `kind=total_duration`
+
+その後Lunaは「5分くらい」のような現在発話からdurationとprecisionを読むだけにし、`duration_per_unit`等の尺度はAIに再判断させない。applicationがpending questionに保存されたkind/unitを使ってEffort Factを組み立てる。これによりfocused promptを長くせず、質問と回答の尺度ずれも防ぐ。
+
+#### planning-window focused AI repair
+
+専用のplanning-window AI repairは削除ablation対象とする。relative day/weekはprovider schemaの有限値で閉じ、absolute windowについても有効な`start/end`が得られていれば`value=<start>/<end>`はすでにdeterministic canonicalizationで導出できる。
+
+一方、現在のfocused planning-window repairは`sourceText`とcalendar contextを再度AIへ渡し、`start/end`自体を作り直せる。これは「表記だけの修正」ではなく、場合によっては日付意味の再解釈になる。したがってrepresentation repairという名前だけを理由に残さない。
+
+実装時は一要素ablationとして専用focused planning-window repairを無効化し、provider schema、既存calendar resolver、valid absolute rangeからのdeterministic value canonicalization、通常のvalidation/rejection境界は維持する。同じLuna scenarioで「来週」「明日」「明示absolute range」「単一日」「named period」と既存のinvalid fixtureを比較する。accepted Graphと具体日付が同一で、generic repair回数やrejectionが増えず、provider callが減るなら専用repairを削除する。退行が出た場合も、特定日本語を読む新しいdeterministic parserやprompt guardを先に足さず、どの意味情報が未確定だったかを確認する。
+
+#### generic semantic repairの日本語監査
+
+現行のerror別英語directiveの意味は次のとおりである。
+
+1. temporal bounds不足: 「開始・終了・締切の根拠が足りない時間制約は削除または意味を弱め、存在しない日付や時刻を捏造しない」
+2. explicit clock encoding: 「明示された時計時刻はstartTime/endTimeへ入れ、namedTimePeriodへ重ねて入れない」
+3. `targetLocalId`: 「今回response内で宣言したlocal IDを参照し、過去のpublic Fact IDをlocal参照として使わない」
+4. `replacementLocalId`: 「訂正で置換するfactだけを今回response内に作り、そのfresh local IDをreplacementへ参照させる。既存親identityだけexistingPublicIdで継続する」
+5. existing entity binding: 「既存task/componentを継続するならactiveなexact existingPublicIdへbindし、新規entityのときだけnullにする」
+6. recurrence: 「現在発話に反復が明示されているなら、その対象にrecurrence factを出す。periodExpressionだけで反復を代用しない」
+7. relation reference: 「順序・依存・優先関係が実際に述べられた場合だけrelationを出し、relationはtask local IDを参照する」
+8. default: 「列挙されたvalidation failureだけ直し、無関係な現在turnの意味を変えない」
+
+このうち2、3、4、7は主にrepresentation/reference構造であり、schema/validatorまたは意味を変えないdeterministic normalizationへ移せる可能性が高い。5はbinding意味を含むため一般turnでは単純な構造修正ではないが、pending targetが一意なturnではapplication bindingへ移す。6は「ユーザーが反復を述べた」というsemantic contractなので、Luna ablationで安全性を確認するまでは他と同列に消さない。1は捏造防止を含むため、単なる内部表記規則より慎重に扱う。
+
+最終的な狙いは、過去の失敗ごとの修正方法を大量に教えるpromptではなく、true semantic failureだけをAI repairへ回すこととする。structural failureはschema/validator/deterministic normalizationで処理し、generic repairが必要な場合も「validation errorだけを修正し、他の意味を変えない」という小さい一般指示とmachine-readable errorsを中心にする。repair後に無関係な意味が変わっていないことは既存のrepair-preservation validationでも検査するため、同じ保護をpromptとvalidatorへ二重に持つ必要があるかablationする。
+
+#### renderer簡素化
+
+現行rendererではsystem promptの「質問では一度に一つだけ確認」と、user requestの「questionCode/questionTarget/questionIntentを変えず、一つだけ聞く」が重複している。まずsystem側の一般文を一要素削除し、同じquestion scenarioで一問だけになるかをLuna比較する。specificなquestion contractを持つuser request側を先に残す。
+
+`actionId/actionKind/questionCode`はrenderer response validationが入力とexact一致を検査し、未groundedな時刻・日付・preview件数・未実行action主張もvalidatorが拒否する。この機械的validationと重なる説明は削減候補にできる。ただしvalidatorは質問対象の意味内容全体や「一問だけ」を完全には検査していないため、typed contractがまだ検査できない意味指示まで一括削除しない。
+
+当面残す優先度が高いのは「入力にない具体情報を補わない」、proposed/contested grounding、preview promotion controlの案内である。`decidedFactsは確定、undecidedItemsは未確定`はfield名自体をより明確なtyped nameへできれば削除候補になるが、名前変更前に説明だけ消して意味混同が増えないかablationする。
+
+#### provider schemaがrequestの最大部分である意味
+
+開始時点の実測ではprovider JSON Schemaは11,333 bytes、representative generic requestは17,351 bytesであり、schema単体が約65%を占める。generic system prompt 5,002 bytesは約29%で、両者を合わせると代表request bytesの約94%である。これはbyte計測であり、そのまま請求token数や推論負荷の厳密な比率を意味しないが、「文章promptだけ短くしてもrequest全体は大きく減らない」ことを示す。
+
+schemaが大きい理由は、Stable V5がtask、study/component、workload、effort、temporal constraint、recurrence、relation、availability、uncertainty、correction、decision等を一つのstrict structured outputで扱い、各objectのrequired field、enum、reference field、`sourceText`をproviderへ毎回渡すためである。これは型安全性の代償なので、長いという理由だけで安全contractを削らない。
+
+ただし意味・表現が重複している候補は別に監査する。
+
+- absolute planning windowの`value`はvalidな`start/end`から完全に導出できるため、model outputとして二重に持つ必要があるか検討する
+- known workload unitの`unitLabel`は`unitCode`から一意に表示名を導けるなら重複であり、`custom`だけ自由labelを必要とする形へできるか検討する
+- exact pending questionで`targetFactId`をapplicationが知っているのに、同じpublic IDをstateからmodelへ送り、modelから`existingPublicId`としてコピーして返させる往復は削減候補である
+- focused routeではapplicationが最終semantic documentを組み立てられるため、generic schemaのlocalId/reference machineryをAIに毎回答させない
+- `sourceText`はevidence/provenanceとrepair-preservationに使われているため、単なる文字重複として削除しない。削るならroot evidence poolやspan reference等の別設計が必要で、このPRでは安易に外さない
+
+schema簡素化は「schemaを短くする」こと自体を目的にせず、「AIが意味を選ぶ必要がないfieldをAIの出力責務から外す」ことを目的とする。generic schemaの安全性を弱めるより、pending questionやauthorizationのようにapplicationが文脈を一意に決めているturnを小さいfocused schemaへ分ける方を優先する。
+
+実装順は、(1) internal ID promptの一要素ablation、(2) focused answerへeffort scaleをtyped handoff、(3) dedicated planning-window repair削除ablation、(4) generic repair directiveのstructural/semantic分類に沿った削減、(5) renderer重複一要素削除、(6) schema field重複の実測監査、とする。各段階で同じ実API scenario、provider call数、request bytes、repair count、accepted Graph、preview、最終文を比較し、複数要素を同時に削らない。
 
 監査では規則を、意味・domain・安全contract、schemaと重複するrepresentation contract、historical model weakness向けscaffolding、deterministicで意味を変えず扱えるnormalizationへ分類する。Luna ablation前後で同じscenarioを比較し、明確な退行がなく、schema/validator/repairとの重複も減る場合だけ削除する。通常CIへmodel比較oracleや一時的ablation artifactを残さない。
 
@@ -213,6 +288,7 @@ prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trac
 - vocabularyは明示制約がない場合に朝・夜、必要なら昼へsoft preferenceで分散し、利用者の明示時刻やavailabilityを上書きしない
 - cold-start heuristicは本人データがない場合のprior/fallbackに限定され、明示時間・本人のobserved pace/session実績が優先される
 - 長時間作業のsession分割と休憩方針は維持しつつ、固定時間を絶対規則にせず本人実績へpersonalizeできる
+- internal ID、focused answer scale、planning-window repair、generic repair、renderer重複、provider schemaの削減候補が一要素ずつablationされ、意味・安全・binding・previewを壊さず削れるものだけが残っている
 - 最終HEADの通し実API会話がpreviewまで完走する
 - Browser Regressionとnormal CIが最終HEADでgreenである
 - `npm run typecheck`、`npm run test:run`、`npm run build`がlocalでもgreenである
