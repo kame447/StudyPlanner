@@ -93,6 +93,22 @@ export function preferredPlacementsForWorkItem(params: {
     });
 }
 
+export function preferredNamedTimePeriodPlacementV5(params: {
+  dates: string[];
+  namedTimePeriod: string;
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
+}): PreferredPlacement[] {
+  const periods = params.namedTimePeriods ?? DEFAULT_NAMED_TIME_PERIODS;
+  const resolved = periods[params.namedTimePeriod];
+  if (!resolved || params.dates.length === 0) return [];
+  const window = {
+    start: minutesFromPlacementTime(resolved.startTime),
+    end: minutesFromPlacementTime(resolved.endTime),
+  };
+  if (window.end <= window.start) return [];
+  return [{ dates: [...params.dates], window }];
+}
+
 function nextBusyAfter(params: {
   date: string;
   after: number;
