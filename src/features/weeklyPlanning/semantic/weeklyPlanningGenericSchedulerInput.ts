@@ -67,6 +67,13 @@ export type WeeklyPlanningGenericSchedulerGraphView =
     readonly uncertainties: ReadonlyArray<UncertaintyFactV5>;
   };
 
+export interface GenericSchedulerObservedEstimateOverride {
+  workloadFactId: string;
+  estimatedMinutes: number;
+  evidenceKind: 'observed_memory_pace';
+  observationCount: number;
+}
+
 export interface GenericSchedulerPlanningHorizon {
   startDate: string;
   endDate: string;
@@ -210,11 +217,11 @@ function validateHorizon(params: {
   if (params.graph.planningWindows.length > 1) {
     issues.push({
       domain: 'planning_horizon',
-      code: 'ambiguous_planning_window',
+      code: 'ambiguous_planning_horizon',
       blocking: true,
       factId: null,
       details: { planningWindowCount: params.graph.planningWindows.length },
-    });
+    } as GenericSchedulerInputIssue);
   }
   return issues;
 }
@@ -301,11 +308,64 @@ function collectSourceFactRefs(params: {
   return [...refs].sort();
 }
 
+function uniqueObservedEstimateOverrides(
+  overrides: readonly GenericSchedulerObservedEstimateOverride[],
+): Map<string, GenericSchedulerObservedEstimateOverride> {
+  const grouped = new Map<string, GenericSchedulerObservedEstimateOverride[]>();
+  overrides.forEach((override) => {
+    if (
+      !override.workloadFactId.trim()
+      || !Number.isFinite(override.estimatedMinutes)
+      || override.estimatedMinutes <= 0
+      || !Number.isFinite(override.observationCount)
+      || override.observationCount <= 0
+    ) return;
+    grouped.set(override.workloadFactId, [
+      ...(grouped.get(override.workloadFactId) ?? []),
+      override,
+    ]);
+  });
+  return new Map(
+    [...grouped.entries()]
+      .filter(([, values]) => values.length === 1)
+      .map(([workloadFactId, values]) => [workloadFactId, values[0]]),
+  );
+}
+
+function applyObservedEstimateOverrides(params: {
+  items: readonly GenericPlanningWorkItem[];
+  overrides: readonly GenericSchedulerObservedEstimateOverride[];
+}): {
+  items: GenericPlanningWorkItem[];
+  appliedWorkloadFactIds: Set<string>;
+} {
+  const overrides = uniqueObservedEstimateOverrides(params.overrides);
+  const appliedWorkloadFactIds = new Set<string>();
+  const items = params.items.map((item) => {
+    if (item.estimatedMinutes !== null) return { ...item };
+    const override = overrides.get(item.workloadFactId);
+    if (!override) return { ...item };
+    appliedWorkloadFactIds.add(item.workloadFactId);
+    return {
+      ...item,
+      estimatedMinutes: override.estimatedMinutes,
+      baseEstimatedMinutes: override.estimatedMinutes,
+      calibrationMultiplier: null,
+      roundingStepMinutes: null,
+      estimateBasis: 'observed_pace' as const,
+      estimateSourceFactIds: [],
+      estimateSourceWorkloadFactIds: [],
+    };
+  });
+  return { items, appliedWorkloadFactIds };
+}
+
 export function compileGenericSchedulerInput(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
   estimateCalibrationMultiplier?: number | null;
+  observedEstimateOverrides?: readonly GenericSchedulerObservedEstimateOverride[];
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
@@ -379,10 +439,18 @@ export function compileGenericSchedulerInput(params: {
       ?? runtimeCalibration?.multiplier
       ?? null,
   });
+  const observedEstimateApplication = applyObservedEstimateOverrides({
+    items: calibratedAggregateMovableWorkItems,
+    overrides: params.observedEstimateOverrides ?? [],
+  });
 
   for (const issue of work.issues) {
     const issueTaskId = workloadTaskById.get(issue.workloadFactId);
     if (issueTaskId && fixedTaskIds.has(issueTaskId)) continue;
+    if (
+      issue.code === 'missing_effort_estimate'
+      && observedEstimateApplication.appliedWorkloadFactIds.has(issue.workloadFactId)
+    ) continue;
     issues.push({
       domain: 'work_item',
       code: issue.code,
@@ -424,7 +492,7 @@ export function compileGenericSchedulerInput(params: {
 
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
-    items: calibratedAggregateMovableWorkItems,
+    items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
   });
