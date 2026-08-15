@@ -93,13 +93,14 @@ function graph(params: {
 }
 
 describe('generic work item observed pace estimation', () => {
-  it('derives 150 minutes for remaining 50 pages from 30 pages completed in 90 minutes', () => {
+  it('derives a 150-minute pace estimate and allocates 165 minutes with safety buffer', () => {
     const result = compileGenericPlanningWorkItems(graph());
     const remaining = result.items.find((item) => item.workloadFactId === 'remaining-50');
 
     expect(result.readiness).toBe('ready');
     expect(remaining).toMatchObject({
-      estimatedMinutes: 150,
+      baseEstimatedMinutes: 150,
+      estimatedMinutes: 165,
       estimateBasis: 'observed_pace',
       estimateSourceFactIds: ['completed-duration-90'],
       estimateSourceWorkloadFactIds: ['completed-30'],
@@ -126,7 +127,8 @@ describe('generic work item observed pace estimation', () => {
     expect(work.items[0]).toMatchObject({
       workloadFactId: 'target-50',
       quantity: { amount: 50, unitCode: 'page' },
-      estimatedMinutes: 150,
+      baseEstimatedMinutes: 150,
+      estimatedMinutes: 165,
       estimateBasis: 'observed_pace',
       sourceFactRefs: expect.arrayContaining([
         'target-50',
@@ -166,7 +168,7 @@ describe('generic work item observed pace estimation', () => {
     expect(scheduler.input?.movableWorkItems.reduce(
       (sum, item) => sum + (item.estimatedMinutes ?? 0),
       0,
-    )).toBe(150);
+    )).toBe(165);
   });
 
   it('asks once for completed pace when remaining context and an explicit target coexist', () => {
@@ -272,7 +274,7 @@ describe('generic work item observed pace estimation', () => {
     });
   });
 
-  it('keeps a direct remaining estimate ahead of completed-work pace', () => {
+  it('keeps a direct remaining estimate ahead of completed-work pace and buffers it', () => {
     const value = graph({
       estimates: [
         totalDuration('completed-duration-90', 'completed-30', 90),
@@ -284,7 +286,8 @@ describe('generic work item observed pace estimation', () => {
     );
 
     expect(remaining).toMatchObject({
-      estimatedMinutes: 180,
+      baseEstimatedMinutes: 180,
+      estimatedMinutes: 210,
       estimateBasis: 'direct_effort',
       estimateSourceFactIds: ['remaining-direct-180'],
       estimateSourceWorkloadFactIds: [],
