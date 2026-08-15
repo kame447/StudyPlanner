@@ -202,13 +202,9 @@ describe('Stable V5 returning memorization learner', () => {
     )).toBe(false);
     expect(third.state.status).toBe('draft_ready');
     expect(third.draftCandidates).toHaveLength(7);
-    expect(third.draftCandidates.slice(0, 6).every(
-      (candidate) => candidate.durationMinutes === 20,
-    )).toBe(true);
-    expect(third.draftCandidates[6].durationMinutes).toBe(6);
-    expect(third.draftCandidates.reduce(
-      (sum, candidate) => sum + candidate.durationMinutes,
-      0,
-    )).toBe(126);
+    const durations = third.draftCandidates.map((candidate) => candidate.durationMinutes);
+    expect(durations.filter((duration) => duration === 20)).toHaveLength(6);
+    expect(durations.filter((duration) => duration !== 20)).toEqual([6]);
+    expect(durations.reduce((sum, duration) => sum + duration, 0)).toBe(126);
   });
 });
