@@ -1,326 +1,251 @@
 # 週間計画 会話品質・Luna簡素化監査
 
-Status: active / second and final PR in the current two-PR scope
-Date: 2026-08-14
+Status: active / PR #130
+Updated: 2026-08-15
 Branch: `agent/weekly-conversation-quality-luna-audit`
-Primary existing issue: #118
-Explicitly excluded: #52, #115
+
+Mandatory references:
+
+- [Human Grounding / Dynamic Dialogue Policy](20260815-weekly-planning-human-grounding-dialogue-policy.md)
+- [Adaptive Memory Learning Policy](../strategy/weekly-planning-adaptive-memory-learning-policy.md)
+- [Semantic V5 Roadmap](../strategy/weekly-planning-semantic-v5-roadmap.md)
+- [Current Contract](../weekly-planning-current-contract-v5.md)
 
 ## 1. 目的
 
-PR #129でfile-by-file refactorとその最終検証はmainへmerge済みである。このtaskは、残っている会話品質改善を過去のtask、Issue、PR、実装、回帰から再棚卸しし、Stable V5の実API会話を一対話ずつLunaで再観測する。
+Stable V5の実API会話をLunaで一turnずつ観測し、会話品質、semantic ownership、deterministic application boundary、scheduler、previewを確認する。
 
-明確な失敗を見つけた場合は次のturnへ進まず、semantic AI、schema/validator、formal binding、dialogue decision、renderer、scheduler、previewのどの層が原因かを特定する。修正はその層に限定し、対象回帰、full CI、同じ会話地点からの再実行を行う。
+明確な失敗を見つけた場合は次turnへ進まず、原因層を特定して一般化した修正を行う。
 
-最後に最終HEADで通し会話をpreviewまで完走させ、ブラウザ上のpreview昇格、承認入口、保存境界まで既存contractどおりに接続されることを確認する。
+同時に、旧model時代に追加されたprompt scaffolding、固定heuristic、AIへ返させなくてよいrepresentationをone-element ablationで削減する。
 
 ## 2. 固定する責務境界
 
-自然言語、会話文脈、訂正、quantity role、日付・曜日・時間帯、authorization intentの意味理解はAIが担当する。
+AI:
 
-deterministic codeはschema/reference/evidence validation、formal binding、Fact Graph lifecycle、revision/idempotency、質問必要性と優先度、readiness、scheduler、preview、approval/save、persistence/recovery、安全境界を担当する。
+- natural language / conversation meaning
+- contextual reference / correction
+- quantity role / date-time intent
+- proposal response meaning
+- scope meaning (`今回は` / `今後も` 等)
 
-raw Japanese textをregex、keyword、dictionary、legacy parserで再解釈してAI出力を上書きしない。renderer文面からmachine stateを逆推定しない。repairは最大1回とする。
+Application:
 
-モデルがLunaへ更新されたことは、意味責務や安全境界を移す理由にはしない。削除候補は、JSON Schemaと重複する表現指示、現在のmodelで不要になったhistorical repair scaffolding、同じ規則のprompt間重複に限定して実API ablationで評価する。
+- schema / evidence / reference validation
+- formal binding / IDs
+- Fact Graph lifecycle / revision / idempotency
+- question / confirmation necessity
+- proposal candidate / acceptance lifecycle
+- accepted scope
+- readiness / scheduler
+- preview / approval / save
+- persistence / recovery
+- arithmetic / calibration / learning evidence derived calculation
 
-### 2.1 日付・相対期間の責務
+raw Japaneseを後段regex / keyword / parserで再解釈してAI semantic meaningを上書きしない。
 
-「来週」「今週」「明日」「月曜日」のような自然言語表現がどの時間関係を意味するかの理解だけをAIの責務とする。AIに基準日から具体的な年月日を計算させない。
+## 3. Human grounding acceptance
 
-具体的な日付範囲は、turn開始時に取得した実際の発話日時、利用者のtime zone、week-start設定、および既存のcalendar resolverを用いてdeterministic codeが解決する。selectedDateを「今日」の代用にしない。たとえばAIが「次の週」という意味を返した後、何月何日から何月何日かを決めるのはapplication側である。
-
-相対日のcanonical wire表現も、promptで特定文字列の綴りを反復指示して守らせない。`relative_week`なら「今週」「次週」に対応する有限のtyped valueだけをschema上で選べる形を優先し、意味が正しいのに「来週」と返したためgeneric AI repairを再呼び出しするようなrepresentation failureを減らす。schemaまたはdeterministic normalizationだけで一意に直せるrepresentationはモデルへ戻さない。ただしraw Japanese textをapplication側で再解釈して意味を決め直すことはしない。
-
-### 2.2 学習量と所要時間推定の責務
-
-教材上の構造、進捗量、作業速度、calendarへ配置するsession時間を同じ概念として扱わない。
-
-`chapter`、`section`、`lesson`などの大きい単位は、原則として「どこを学習するか」を示す教材構造・範囲として保持する。これらをそのまま「1章あたり何分」のような時間推定単位へ使わず、可能ならpageまたはproblemへ分解してから所要時間を推定する。章や節の大きさ・難易度は一定でないため、直接の時間推定単位にすると予測誤差が大きくなりやすい。
-
-pageとproblemは、時間推定に使う基礎単位を原則1単位とする。利用者が「30ページ」「10問」のように量を明示し、利用可能なobserved paceやdirect per-unit estimateがない場合は、「全部で何分か」より「1ページあたり大体何分か」「1問あたり大体何分か」を確認する方向を優先する。重要問題集のような教材名や難易度をheuristicで推測する必要はなく、problem単位ならproblemあたりの時間を尋ねればよい。
-
-1ページ・1問を基礎単位にすることは、1ページ・1問ごとにcalendar candidateを作ることを意味しない。内部では単位あたり速度から総所要時間を算出し、schedulerが利用可能時間に応じて複数ページ・複数問題を一つのsessionへまとめる。計算粒度とcalendar上のsession粒度を分離する。
-
-`exam_year`はpage/problemへ機械的に分解しない例外とする。過去問の「3年分」「5年分」のように利用者自身が年度を自然な実行単位として扱っている場合は、1年分を基礎単位として「1年分あたり大体何分か」を確認・学習できるようにする。年度内のページ数や問題数は試験ごとの差が大きく、利用者が自らより細かい単位を提示していない限り、application側で勝手にpage/problemへ分解しない。
-
-すでに実績が存在する場合は、自己予測や一般的な初期heuristicより観測値を優先できる。たとえば30ページを実際に90分で終えたというevidenceがあれば、1ページあたり約3分というobserved paceをdeterministicに導出し、残り量や新しいtargetの見積りへ再利用する。Issue #118で導入したcompleted workloadとcompleted durationからremaining effortを導く方針は、この原則と矛盾しない。
-
-wordは例外として扱う。単語数は進捗量として保持できるが、通常の語彙学習は1語ずつ独立にscheduleする作業ではないため、既定では「1語あたり何分」を要求しない。語彙学習では語数の固定境界でsessionを分けず、「1回あたり何分やるか」というsession durationを優先して確認する。word countはそのsessionで扱う範囲・進捗の情報として残す。利用者自身が「毎日20語」のような明示targetを与えた場合はその量を保持するが、calendar配置はsession durationと分離する。既存の「100語以下／超過」で質問方式やsession数を切り替える固定heuristicは、実装監査で削除・置換候補として扱う。
-
-語彙学習のcalendar配置は、利用者の明示時刻、availability、既存予定を最優先したうえで、明示指定がない場合のsoft preferenceとして同日の朝と夜へ分散する方向を優先する。必要session数が多い場合は昼にも分散候補を増やす。これは「必ず朝・夜に置く」というhard constraintではなく、利用者の生活制約や本人の時間帯prefererenceで上書き可能なscheduler heuristicとする。単語量そのものから朝・昼・夜の回数を機械的に決めず、必要な総session時間と利用可能枠から分散する。
-
-初回の利用では本人の速度や集中持続時間が未知であるため、一般的な学習heuristicをcold-startの初期値として用いることは許容する。ただし初回から完全な推定を要求しない。予定実行後の実記録が蓄積するにつれて、同じ教材・component・単位のobserved paceや実際のsession lengthを一般heuristicより強く使い、個人実績の比重を段階的に高める。一般heuristicは恒久的な正解ではなく、個人データがないときのprior/fallbackである。
-
-時間推定・session分割のevidence優先順位は、原則として「利用者が今回明示した時間・回数・制約 > 同じ教材/作業scopeの本人実績 > より広い本人実績 > 一般的なcold-start heuristic > 最終fallback」とする。明示的に「毎日20分」「1問30分」「1回90分」のように指定されている場合、一般heuristicがそれを上書きしない。実績は同じ教材・component・unitに近いものほど強く扱い、十分な実績がある場合は一般heuristicの影響を小さくする。
-
-総所要時間が長い場合は、人間の集中持続と休憩の必要性を考慮して複数sessionへ分割すること自体はapplication側heuristicとして維持できる。ただし「常に90分」「30分未満は禁止」のような固定値を絶対規則にしない。本人が明示したsession時間または蓄積された実記録があればそれを優先し、データがないcold startだけ一般的なsession長を使う。休憩を含む分割方針も利用実績からpersonalizeできる余地を残す。
-
-利用者がすでにtotal duration、per-unit duration、session durationのいずれかを明示している場合は、同じ情報を別表現で聞き直さない。application側がどのevidenceで十分かを決定し、AIには必要な質問意図だけを渡す。単位変換、整数ページ・整数問題への丸め、残量から所要時間への計算、sessionへの分割はdeterministic codeの責務とする。
-
-## 3. 開始時点の棚卸し
-
-過去の2026-08-07会話品質task群は、component parent、cross-turn binding、recurrence、current-turn delta、durable concern、goal eventとdeadline、failure artifact、実APItimeout、provenanceの実装と回帰が現コードに存在する。一方でtask文書がactiveのまま残っているため、実装漏れとは決めつけずLuna再観測scenarioのinventoryとして扱う。
-
-PR #109のhuman-reviewed conversation loopはbaselineとして完了しているが、root task queueに残っている。今回の最終再観測後にclosedへ移し、現在taskとの関係を明記する。
-
-Issue #118は部分実装である。completed workloadからremaining effortを導くdeterministic計算、provenance、5分/15分単位の切り上げ回帰は存在するが、remaining workloadの直接所要時間を聞く前にcompleted duration evidenceを尋ねる会話policyが未完了である。今回の既知feature差分はここに限定する。
-
-Issue #52の週間計画UI大規模責務分離とIssue #115のraw-text regex routingは独立scopeを維持し、このPRへ混在させない。
-
-## 4. 実行順序
+application内部のheuristicをユーザーとの共有済み前提として話さない。
 
 ```text
-roadmap / current contract / task正本を同期
-→ stale task・Issue・PRと現コード回帰を対応付け
-→ deterministic baselineとprompt byte実測を記録
-→ historical scenarioをresumable実APIで1 turnずつLuna再観測
-→ 明確な失敗ごとに停止、原因層修正、対象回帰、full CI、同地点再実行
-→ Issue #118の未完了会話policyを実装・実API確認
-→ production heuristic inventoryと敵対的回帰を再確認
-→ prompt簡素化候補をLuna ablationし、安全に削れるものだけ反映
-→ 最終HEADで通し実API会話をpreviewまで完走
-→ Browser Regression、normal CI、trace persistence、文書closeout
+internal heuristic
+→ proposal becomes observable
+→ accept / reject / modify
+→ accepted scope only becomes shared ground
 ```
 
-## 5. 一対話ずつ再観測するscenario
+会話品質の確認では、ユーザーを「必要情報を最初から全部まとめてくれる人」と仮定しない。短答、省略、後出し、訂正を通常ケースとする。
 
-最低限、次の意味境界を別conversationまたは明示したcheckpoint系列で観測する。
+## 4. 暗記・想起系policyの更新
 
-1. broad study/projectが`needs_breakdown`となり、対象に合う単位で全体範囲と進捗を一度に確認する会話
-2. breakdown回答がexact accepted taskへbindingされ、過去factや古いuncertaintyを再送しない会話
-3. total、completed、remainingのquantity roleとcross-turn entity binding
-4. recurrenceとcomponent parent identityの保持
-5. goal event dateをwork deadlineへ強めず、durable concernとprovenanceを保持する会話
-6. correction/no-op/re-previewでrevision、idempotency、previewを壊さない会話
-7. completed workloadとcompleted durationからremaining effortを導くIssue #118会話
-8. calendar/availability、explicit time、relation、session splittingを含む代表会話
-9. vocabularyを語数固定境界ではなくsession時間で扱い、明示制約がない場合に朝・夜、必要なら昼へsoft preferenceで分散する会話
-10. chapter/sectionをpage/problemへ具体化する一方、past examのexam_yearは1年分単位を維持する会話
-11. cold-start heuristicから始め、実記録がある場合に本人実績を優先し、明示時間がある場合はさらにそれを優先する会話
+2026-08-15の会話レビューにより、旧vocabulary policyを撤回した。
 
-各turnでtranscriptだけでなく、semantic raw response、accepted document、validation/repair、formal binding、Fact Graph、dialogue decision、renderer、preview、trace persistenceを確認する。AI文面や一つのsemantic output shapeを固定oracleにはしない。
+撤回対象:
 
-## 6. Prompt / Luna監査
+- word countからtotal durationをユーザーへ予測させることを標準にする。
+- 100語等の固定境界でsession数を切り替える。
+- word countだけからsession数 / 語数配分を決める。
+- vocabularyだから朝・昼・夜へ自動分散する。
+- 3周や固定復習間隔を必須規則にする。
 
-[OpenAIのGPT-5.6移行ガイド](https://developers.openai.com/api/docs/guides/upgrading-to-gpt-5p6-sol)は、Lunaをefficient/high-volume workload向けとして位置付け、代表taskで同一設定と簡素化候補を比較すること、promptは一群ずつ削って同じevalを再実行することを求めている。今回もモデルをminiへ戻さず、Lunaの実runをbaselineとして扱う。
+現在の正本:
 
-最初のIssue #118会話turn 1は、run `31785259304`でprovider 400となった。response bodyを保持していなかったため、この地点では原因を確定できず、構造化されたprovider errorのtype/code/param/messageだけをbounded diagnosticsへ保存するよう直結clientを修正した。同一turnの再試行run `31785552702`により、`code=unsupported_value`、`param=temperature`、`temperature: 0`はこのモデルで非対応で既定値1のみ対応、というOpenAI応答を確認した。どちらもgraph revision 0、未commitであり、会話checkpointは汚染されていない。
+- vocabularyだけでなく暗記・想起中心の学習全般へ一般化する。
+- spacing / retrievalの一般原則をcold-start proposalとして利用する。
+- 15〜30分はproposal候補であり自動採用しない。
+- 1日複数回への分散もproposalとし、了承後のみ適用する。
+- 新規学習と復習を分離する。
+- 量・期限・空き時間から短時間だけでは不足すると判断できる場合、新規学習を長め、復習を短く分散するmixed planを提案できる。
+- それでも不足する場合、全範囲一巡 / 重要範囲へ絞る / 目標変更等を提示する。
+- 一般priorより本人実績を徐々に優先する。
 
-この実測に基づき、`gpt-5.6-luna`を維持したまま、直結clientと本番Cloudflare proxyのOpenAI上流requestからtemperatureだけを省略する共有parameter policyを追加した。他モデルへの既存temperature指定は維持する。対象回帰17件とTypeScriptを通した後、同じturnをattempt 3として再実行する。
+詳細はAdaptive Memory Learning Policyを正とする。
 
-attempt 3のrun `31786044289`はLunaで成功した。Graph revision 1に、数学→ワークのcomponent階層、completed 30 pages、remaining 50 pages、同じ週のtarget 50 pagesがcurrent-turn evidence付きで入り、質問targetはcompleted workloadになった。利用者向け文面は「ワークについて、完了した30ページには、合計でどれくらい時間がかかりましたか？」であり、remaining 50 pagesの所要時間を先に尋ねていない。
+## 5. Memory policy
 
-初回semantic出力はtotal 80 pagesを`declared`のままcompleted 30 pagesと併存させ、既存validatorが拒否した。1回のAI repairでcompleted 30、remaining 50、target 50へ修正されて受理されたため機能上は合格とするが、17.6秒・2 provider callsを要した。この事実はprompt簡素化/structured normalizationのablation候補として保持し、固定文面や特定発話専用ruleは追加しない。
+三層を区別する。
 
-turn 2のrun `31786200882`はworkflow上はgreenだったが、意味上は不採用とした。90分はcompleted 30 pagesの`total_duration`へ正しくbindingされ、各50 pagesの見積りも150分だった一方、work-item compilerがremaining 50とtarget 50を別々に配置し、合計100 pages・300分・4候補を作ったためである。
+1. current week / conversation accepted policy
+2. durable owner-scoped user preference
+3. observed learning profile
 
-修正はscheduler入力のquantity-role選択へ限定した。同じtask/component/unitに明示targetがある場合、targetをplanned work、remainingを進捗contextとして扱い、remainingから別work itemを作らない。Fact Graphからremainingを削除せず、target候補の`sourceFactRefs`へremaining、completed、observed effortと共に残す。component/unitが異なる場合は抑制しない。pure compiler、distribution、2-turn application、trace exportを含む対象42件とTypeScriptを通し、同じturn 1 checkpointからturn 2を再試行する。
+一回の`今回はそうして`をdurable preferenceへ自動昇格させない。
 
-turn 2の再試行run `31786546124`はLunaで意味上も合格した。accepted graphにはcompleted 30 pagesへ`total_duration=90`が入り、schedulerはcompletedを非計画、同一scopeのremainingを明示targetのcontextとして非計画にした。previewは25 pagesずつ2件、75分ずつ、合計50 pages・150分であり、二重計上はない。両候補の`sourceFactRefs`にはtask、material component、target、remaining、completed、observed effortがすべて残った。利用者向け文面も実績ペースを根拠に2件を作ったことを説明している。これによりIssue #118の未完了acceptanceは、対象回帰と2-turn実API会話の双方で満たした。
+`今後もその方針を基本にする`ことまで共有された場合にdurableへpromotionできる。
 
-historical scenario turn 1のrun `31786921036`も会話品質として合格した。「来週の勉強計画を一緒に考えてほしいです。」からrelative planning windowを作り、8月17日〜23日と説明したうえで、予定へ入れる作業を一つ尋ねた。初回Luna出力はrelative-week valueをcanonical enumの`next_week`ではなく「来週」としたためvalidatorが拒否し、1回のAI repairで受理された。Graphやcheckpointは正しくrevision 1へ進んだが、約17〜18KBのgeneric requestを2回送る必要はないため、機能failureではなくfocused repairまたはstructural normalizationのablation候補として保持する。
+本人が明示したpreferenceと、actual session / progress / recall等から観測したprofileを別contractにする。
 
-historical turn 2のrun `31787045539`は、夏休みの課題を`needs_breakdown`、共通テスト模試の勉強を別task、数学を模試taskのcomponentとして受理した。2週間後の模試はowner-level goal event、数学がまずいという発話はowner-level concernへcurrent-turn provenance付きで保存され、goal eventをwork deadlineへ強めていない。dialogueは課題の中身を一つの答えやすい質問で尋ねた。初回出力のdateExpressionがunsupportedだったため1回repairしたが、意味・Graph・質問は合格である。次turnは実際の質問へ答え、過去に失敗したexact breakdown bindingと、量の比較をschedule priorityへ誤昇格しない境界を再観測する。
+## 6. これまでのLuna evidence
 
-historical turn 3のrun `31787183640`では、semantic層は既存の夏休み課題taskへ数学ワークと古典課題を追加し、breakdown uncertaintyを閉じ、関係factを作らなかった。したがってexact target binding、current-turn delta、quantity comparisonをpriorityへ誤昇格しない境界は合格した。一方、次の質問が具体componentではなく旧umbrella componentの「夏休みの課題」全体へ範囲と進捗を尋ね、異なる単位の2教材を再び一括回答させる形になったため、会話品質上は不採用とした。
+### 6.1 Prompt scaffolding削除
 
-原因はsemantic AIではなくapplicationのmissing-work question target選択である。解消済み`work_breakdown` uncertaintyより後に追加されたcomponentだけを具体候補とし、component階層ではworkloadのないleafを優先し、一度に一件だけ質問する。選択したcomponent/task Fact IDを`lastQuestionContext.topicId`へ保持し、次turnの`pendingQuestion.targetFactId`へ渡す。特定の教材名や日本語表現は判定に使わない。pure question selection、runtime projection、breakdown/current-delta contractの対象18件とTypeScriptを通し、turn 2 checkpointから同じturn 3を再試行する。
+Run `31859623464`
 
-turn 3再試行run `31787630567`は合格した。Graphは数学ワークと古典課題を同じ既存taskの具体componentとして保持し、relationは空、旧breakdown uncertaintyはinactiveのままである。質問は数学ワーク一件だけを対象にし、`lastQuestionContext.topicId`もそのcomponent Fact IDを保持した。
+- `fresh localIds`という内部管理向けprompt文言を削除後に実行。
+- semantic call 1回。
+- repair 0回。
+- existing mock-exam math componentを正しく継続。
+- daily 2hを正しく構造化しpreviewへ到達。
 
-historical turn 4のrun `31787781166`は、数学ワークへcompleted 30 pages、derived remaining 50 pages、next-week target 25 pages、completed workloadのobserved total 90 minutesを正確に追加し、次の具体componentである古典課題だけを質問した。初回Luna出力はtotal 80を`declared`としてcompleted 30と併存させ、validator後の1回repairでremaining 50へ直した。Issue #118初回と同じ形が再現したため、会話baseline完了後に意味を推測しないstructural normalizationでこのprovider再呼び出しを除けるかablationする。
+結論: AIへ内部local-ID運用を説明する冗長promptは不要。
 
-historical turn 5のrun `31787953951`は、古典課題へcompleted 3 sheets、remaining/target 7 sheets、15 minutes per sheetを正確に追加し、次に模試task内の数学component一件だけを質問した。ここでもtotal 10を`declared`とした初回出力を1回repairしており、同じstructural inefficiencyは3回再現した。
+### 6.2 Vocabulary total-duration experiments — historical only
 
-historical turn 6のrun `31788110631`は`stable_v5_normalization_rejected`となり、成功済みturn 5 checkpointとGraph revision 6を保った。Lunaは模試数学のtarget 2 hours per occurrenceとdaily recurrenceを意味上は正しく出力し、pending targetのcomponent public IDも正確に転記したが、その親task public IDだけを1文字列として壊した。generic repairはtask/componentの両IDをさらに別文字列へ変え、2回ともexisting-entity validationが拒否した。
+Run `31860330719`
 
-修正はexact pending bindingのrepresentation normalizationに限定した。`missing_schedulable_work`のpending targetがactive componentで、出力が一つのtask/componentを既存Factへbindしようとし、親子の片方がexact ID、もう片方だけがどのactive IDにも一致しない場合に限り、public graphのcomponent→task関係から未知側IDを復元する。両方が未知、または別のvalid public IDなら変更しない。label similarity、編集距離、raw textは使わない。normalizer/cross-turn/trace exportを含む対象16件とTypeScriptを通し、turn 5 checkpointからturn 6を再試行する。
+- 220語targetは正しく保存。
+- renderer質問が「学習時間の目安」でmeasurement scopeが曖昧だった。
 
-turn 6 attempt 2のrun `31788424582`もnormalization rejectedとなったが、今回はtask/component public IDは両方exactだった。Lunaはdaily recurrenceの`targetLocalId`をschemaが許可するtask/component local IDではなく、同じcomponent内のworkload local IDにしており、generic repairでも同じ形を返した。workload local IDがJSON内で一つのownerへだけ解決できる場合に限り、そのtask/component local IDへrecurrence targetを移すstructural normalizationを追加した。曖昧または非workload targetは変更しない。binding、recurrence、trace persistenceを含む対象19件とTypeScriptを通し、同じcheckpointからattempt 3を実行する。
+Run `31860578812`
 
-turn 6 attempt 3のrun `31788647370`はsemantic normalizationとworkflow自体は成功した。Graph revision 7には模試数学componentへのtarget 2 hours、`perOccurrence=true`、daily recurrenceがexact IDとcurrent-turn provenance付きで入り、workload-local recurrence targetも一意なcomponentへ決定論的に正規化された。しかし人手判定では不採用とした。assistantは「模試対策の数学を毎日2時間」と説明した一方、schedulerは数学ワーク25ページ、古典7枚、模試数学2時間を各1件だけ、合計3件としてpreviewし、daily recurrenceを7回へ展開していなかった。
+- typed measurementをrendererへ渡し「合計でどれくらい時間」が明確になった。
+- semantic 1 call / repair 0。
 
-原因はsemantic AIではなくscheduler work distributionである。aggregate work-item compilerは`perOccurrence`とrecurrenceを配置単位へ反映せず、placementもwork item固有の日付を持っていなかった。修正では、同じtaskかつexact component/task targetに一つだけ対応するsimple recurrence (`daily` / `weekdays` / `weekends`) がある`perOccurrence` workloadに限り、planning horizon内の各該当日へ決定論的に展開し、その日を`requiredDate`としてplacementへ渡す。recurrence Fact IDを各work itemとpreview candidateの`sourceFactRefs`へ残し、非`perOccurrence`、異なるtarget、複数recurrence、advanced recurrenceを流用または推測しない。該当日がhorizon内に0件なら一回分を捏造せず、予定対象も0件とする。
+Run `31860642579`
 
-対象回帰ではdaily 2 hoursが7 work items・7 exact dates・合計840分となり、previewも8月17日から23日まで各日1件になった。非`perOccurrence`、target mismatch、weekend、horizon内0件、task exclusionとの交差を敵対条件として固定し、一日でも配置不能ならpartial previewを返さず`insufficient_capacity`になる。attempt 3 artifactの実Graphを修正後コードへそのまま入力したlocal再生でも、scheduler inputが9 work items、previewがready、数学ワーク1件・古典1件・模試数学7件の合計9候補となった。追加したtrace persistence回帰は、生成された7候補の日付とrecurrence provenanceがclient document上限内で記録され、初回append失敗後のpersistent outbox再送、Worker preparation、server document上限を通ること、将来fieldを保持し巨大値を明示的にtruncateすることまで確認する。full scheduler inputは既存のsize/privacy方針どおりtraceへ複製せず、配置結果の日付とmaterial provenanceを診断上の代替情報とする。
+- `180分くらいです`をfocused routeで受理。
+- 74 / 73 / 73語 × 60分 + reviewで9 preview candidates。
 
-turn 6 attempt 4のrun `31789525607`は実API経路でもpreviewまで成功し、利用者向け文面は「来週の仮予定候補を9件作成しました。数学のワーク25ページ、古典の課題7枚、模試対策の数学は毎日2時間の内容です」と、実際の候補数・内容に一致した。候補は数学ワーク75分が1件、古典105分が1件、模試数学120分が8月17日から23日まで各日1件の7件である。各daily候補はtask、component、workload、recurrence Fact IDをprovenanceに持つ。CI run `31789528526`とBrowser Regression run `31789528489`もgreenであり、historical baselineのrecurrence/component-parent境界は合格した。
+これらは当時のtotal-duration設計が技術的に動いたevidenceではあるが、2026-08-15にproduct policy自体を変更したため、**現在のvocabulary / memorization UXのacceptance evidenceとしては使用しない**。
 
-ただしattempt 4の初回Luna出力はexact existing taskを参照しながらtask titleを空文字にし、`document.tasks[0].title`で1回repairした。さらにrecurrence targetは再びworkload local IDだったが、これは既存の一意なstructural normalizationでcomponentへ移された。機能上の不合格ではないが、26,036 bytesと27,903 bytesのprovider requestを2回、19.0秒要したため、空titleのexact-public-ID復元と反復するtotal/completed normalizationをprompt/structural ablation候補へ追加する。historical会話を先へ進める前に、この修正を含む最終scheduler HEADでも同じcheckpointを再確認する。
+## 7. 現在の実装負債
 
-turn 7 attempt 1のrun `31789809229`は、2 hoursから1.5 hoursへのexact workload correctionをprovider 1回・repair 0回で受理した。旧workloadだけをsupersedeし、daily recurrenceはactiveのまま保持した。Graph revision 9のre-previewは引き続き9件で、模試数学は7日すべて90分、旧120分候補は残らない。semantic、correction lifecycle、schedulerは合格した。
+文書正本とproduction codeを再同期する必要がある。
 
-ただし最終表示は不採用とした。Luna renderer自身が「模試対策の数学を毎日1時間半に変更し」と自然に説明した後へ、旧来の決定論的self-repair notice「共通テスト模試の勉強を進めるは2時間ではなく1.5時間ですね。修正しました。」を再び前置し、同じ訂正を二度述べた。final messageは410 bytes、renderer単体は303 bytesで、107 bytes（26.1%）が重複だった。
+最優先inventory:
 
-一要素ablationとして、成功したAI renderer応答をcomplete presentationとして採用し、決定論的noticeの後段連結を外した。Fact correction、lifecycle、preview、approval/saveは引き続きdeterministicであり、provider/validation失敗時のdeterministic fallbackにはnoticeを残す。prompt、schema、provider call数は変更しない。成功経路とfallback経路の回帰、renderer trace、persistent outbox、Worker preparationを含む全335 test files（1,551 passed、14 skipped、5 todo）、TypeScript、production buildを通し、同じturn 6 checkpointから自然さを再比較する。
+- vocabulary effort questionがtotal durationを要求する残存経路
+- word workloadをtotal durationでdistributeする処理
+- vocabulary専用planned session compilation
+- automatic vocabulary daypart preference
+- unused review-daypart heuristic
+- 100-word threshold由来のhelper / test / wording
+- vocabulary-specific behaviorを一般暗記policyへ移すための境界
 
-turn 7 attempt 2は修正ファイルを誤った複製パスへpublishした実行であり、active runtimeの比較標本には採用しない。誤配置した2ファイルを除去して実所有パスへ同じ一要素変更を反映し、attempt 3のrun `31790596070`で再比較した。
+テストを新仕様に書き換えて古いproduction regressionを隠さない。まずproduction ownerを直し、それからcontractに合わなくなったfixtureを更新する。
 
-attempt 3はprovider 1回・repair 0回、9.3秒、26,677 bytesでsemantic correctionを受理した。Graph revision 9、旧workloadのsupersede、active daily recurrence、8月17日〜23日の90分候補7件、数学ワーク75分、古典105分、合計9件とrecurrence provenanceはattempt 1と一致する。最終文はrendererの「模試対策の数学を、毎日2時間から1時間半に変更しました。来週分の仮予定候補を9件作成しています。内容を確認して、問題なければ『この内容で仮予定にする』を押してください。」だけになり、決定論的noticeの二重前置は消えた。意味・候補・操作案内が一致し、同じ修正を繰り返さないため合格とする。
+## 8. 次の実装loop
 
-turn 8 attempt 1のrun `31790894628`では、「ありがとうございます。この内容で大丈夫です。」をLunaがproposalへの`accept` decisionとしてprovider 1回・repair 0回で正しく構造化した一方、deterministic canonicalizerがそのapplication-level decisionをFact Graphへ追加し、revisionを9から10へ進めて同じ9件を再previewした。これはno-op turnでrevisionを増やさず既存previewを保持する現行contractへの違反である。修正はraw textではなくstructured `target.kind=proposal`だけを用い、proposal decisionをsemantic request/response/validation traceには保持しつつ、Fact Graphへは永続化しない境界に限定した。planning-window等のGraph factを対象とするdecision、approval/saveのUI境界、applied turn keyは変更しない。
+### Loop A — stale vocabulary behavior removal
 
-同じcheckpoint・入力のattempt 2 run `31791667885`では、provider 1回・repair 0回で同じproposal acceptを返した後、canonical diffはrevision 9→9、added/superseded/removedすべて0、`preview_unchanged` branchとなり、preview schedulerは実行されなかった。checkpointはrevision 9の同じstable key・同じ9候補を保持し、`shouldSavePlan=false`のまま、rendererは9件の内容と「この内容で仮予定にする」ボタンを自然に案内した。localはfocused 13件、TypeScript、全333 test files（1,547 tests）、production buildがgreenで、commit `07b6750`のnormal CI run `31791670915`、Browser Regression run `31791670932`、実API run `31791667885`もすべてgreenである。
+1. current HEADを再取得。
+2. vocabulary-specific total-duration / automatic placementのproduction reachabilityを棚卸し。
+3. one-elementずつ撤回。
+4. targeted regression。
+5. full CI / Browser Regression。
 
-turn 9のrun `31791952338`は、「模試対策の数学は、できれば夕方にしてください。」をexact既存task/componentへのsoft `preferred_window=evening`としてprovider 1回・repair 0回で受理した。Graph revision 9→10でtemporal constraintだけを一件追加し、daily recurrence、1.5 hours per occurrence、数学ワーク、古典には変更がない。re-previewは合計9件のまま、模試数学7件を8月17日〜23日の各日17:00–18:30へ配置し、rendererも夕方希望、毎日1時間半、9件を一致して説明した。normal CI run `31791955975`、Browser Regression run `31791956014`、実API run `31791952338`はすべてgreenであり、modifier target、soft preference、re-previewのhistorical contractは合格した。
+このloopではまだ新しい大きなadaptive memory機能を一気に追加しない。旧仕様を安全に除去してclean baselineへ戻すことを優先する。
 
-開始時点の代表request実測は次である。
+### Loop B — typed memorization proposal
 
-- meaning policy: 3,575 bytes
-- generic supplemental policy: 1,427 bytes
-- generic system prompt: 5,002 bytes
-- provider JSON Schema: 11,333 bytes
-- representative generic request: 17,351 bytes
-- focused authorization request: 1,202 bytes
-- focused contextual answer request: 2,263 bytes
+- `memorization / recall centered`というsemantic traitをkeywordではなくAI semantic意味として扱う。
+- applicationがcold-start proposal候補を生成する。
+- rendererがshared-groundを壊さず自然に提示する。
+- proposalは了承前にschedulerへ反映しない。
 
-現在のgeneric requestはbudget内であり、最大部分はprovider schemaである。したがって単純な文字数削減を目的に安全指示を落とさない。
+### Loop C — accept / reject / modify lifecycle
 
-### 6.1 追加監査: internal ID、focused answer、repair、renderer、schema
+- current week / current task等のaccepted scopeをtyped stateへ保持。
+- short session / spaced review / mixed acquisition-review等のpolicyを了承後だけschedulerへ渡す。
 
-#### semantic prompt内のinternal ID指示
+### Loop D — durable preference promotion
 
-`fresh localIds`、`existingPublicId`、`title/contextLabel`を同じ種類のprompt規則として扱わない。
+- existing owner-scoped user contextを一般化。
+- current-only acceptanceとdurable preferenceを区別。
+- 明示的durable scopeの了承後だけpromotion。
 
-`fresh localIds`は高優先度の削除ablation候補である。schemaは各semantic objectに`localId`を要求し、runtime validatorは空ID・response内のduplicate local ID・`targetLocalId`等の参照整合性を検査している。したがって「fresh localIdを使え」という自然言語promptは、意味理解ではなくrepresentation scaffoldingであり、Lunaで一要素ずつ削除しても同じvalidator contractが保たれるか確認する。削除後に同種の失敗が増えないならpromptから外す。
+### Loop E — observed learning profile
 
-`existingPublicId`は現時点では単純削除しない。schema自体はstring/nullという形しか保証できず、「現在activeな既存task/componentのどれを指したか」はpublic stateとの照合が必要である。existing-entity validatorはunknown ID、親taskとの不一致、既存候補なのにnullを返した場合を拒否できるが、一般会話で複数候補からどれを意味したかの選択そのものはsemantic責務である。一方、`pendingQuestion.targetFactId`のようにapplicationが質問対象をすでに一意に決めているturnでは、そのIDをAIに再コピーさせる必要はない。pending questionのexact targetはapplicationがdeterministicにbindingし、AIは回答意味だけを返す形へ寄せる。一般の曖昧参照では、自由なID文字列をpromptで転記させるより、typed candidate referenceまたはrequestごとの有限enumを選ばせる設計を優先する。
+raw observationsを保存しderived estimateを計算する。
 
-`title/contextLabel`も現時点で即削除しない。現在のschemaは文字列であることしか保証せず、既存entityの呼称が以前のpartner-specific labelと同一であることはprompt依存が強い。exact `existingPublicId`で既存entityを継続している場合は、明示的なrename/correctionがない限り保存済みtitle/contextLabelをdeterministicに再利用する境界へ移す。その境界を作った後に「既存呼称を維持せよ」というprompt行をablationする。ユーザーが明示的に名前を変えた場合だけtyped correction/renameとして例外を通し、raw text比較でrenameを推測しない。
+- actual duration
+- progressed quantity
+- acquisition / review
+- recall outcome
+- elapsed interval
 
-#### focused contextual answerのtyped scale
+単一倍率だけをsource of truthにしない。
 
-現在のeffort質問policyにはすでに`total_duration`、`duration_per_unit`、`session_duration`の区別がある。一方、focused contextual answer routeへ渡されるpending stateは主にquestion codeとworkload amount/unitであり、回答から文書を組み立てる際にeffortを`total_duration`として生成する経路が残っている。このため「5分」という同じ回答でも、「全部で5分」「1ページ5分」「1問30分」「1年分90分」「1回15分」のどの尺度に対する回答かをfocused routeが十分保持していない。
+### Loop F — adaptive review
 
-ここでいうtyped state化とは、自然言語promptへ「pageならper-unit、wordならsession」と規則を追加することではない。applicationが質問を生成した時点で、その質問の測定尺度をmachine stateへ保存することである。例としてpending questionへ次の意味情報を保持する。
+一般的なforgetting / spacing heuristicをcold-start priorにし、本人実績に応じてinterval proposalを伸縮する。
 
-- page: `kind=duration_per_unit`, `unitCode=page`
-- problem: `kind=duration_per_unit`, `unitCode=problem`
-- exam_year: `kind=duration_per_unit`, `unitCode=exam_year`
-- vocabulary session: `kind=session_duration`, `unitCode=word`
-- completed workloadの実績確認: `kind=total_duration`
+固定3周 / 固定1-3-7日にはしない。
 
-その後Lunaは「5分くらい」のような現在発話からdurationとprecisionを読むだけにし、`duration_per_unit`等の尺度はAIに再判断させない。applicationがpending questionに保存されたkind/unitを使ってEffort Factを組み立てる。これによりfocused promptを長くせず、質問と回答の尺度ずれも防ぐ。
+## 9. Prompt simplification continuation
 
-#### planning-window focused AI repair
+adaptive memory baselineがgreenになった後、以前のprompt simplification loopへ戻る。
 
-専用のplanning-window AI repairは削除ablation対象とする。relative day/weekはprovider schemaの有限値で閉じ、absolute windowについても有効な`start/end`が得られていれば`value=<start>/<end>`はすでにdeterministic canonicalizationで導出できる。
+次の強い候補:
 
-一方、現在のfocused planning-window repairは`sourceText`とcalendar contextを再度AIへ渡し、`start/end`自体を作り直せる。これは「表記だけの修正」ではなく、場合によっては日付意味の再解釈になる。したがってrepresentation repairという名前だけを理由に残さない。
+- focused planning-window AI repair
 
-実装時は一要素ablationとして専用focused planning-window repairを無効化し、provider schema、既存calendar resolver、valid absolute rangeからのdeterministic value canonicalization、通常のvalidation/rejection境界は維持する。同じLuna scenarioで「来週」「明日」「明示absolute range」「単一日」「named period」と既存のinvalid fixtureを比較する。accepted Graphと具体日付が同一で、generic repair回数やrejectionが増えず、provider callが減るなら専用repairを削除する。退行が出た場合も、特定日本語を読む新しいdeterministic parserやprompt guardを先に足さず、どの意味情報が未確定だったかを確認する。
+現在の問題:
 
-#### generic semantic repairの日本語監査
+```text
+AIが日付意味を理解
+→ representation validation failure
+→ raw date phraseをもう一度AIへ送る
+→ canonical absolute windowを再生成
+```
 
-現行のerror別英語directiveの意味は次のとおりである。
+意味がtyped evidenceから一意に導出できるならapplication converterへ移す。typed evidence自体が不足する場合はfail closed / uncertaintyへ戻し、raw-text deterministic parserを追加しない。
 
-1. temporal bounds不足: 「開始・終了・締切の根拠が足りない時間制約は削除または意味を弱め、存在しない日付や時刻を捏造しない」
-2. explicit clock encoding: 「明示された時計時刻はstartTime/endTimeへ入れ、namedTimePeriodへ重ねて入れない」
-3. `targetLocalId`: 「今回response内で宣言したlocal IDを参照し、過去のpublic Fact IDをlocal参照として使わない」
-4. `replacementLocalId`: 「訂正で置換するfactだけを今回response内に作り、そのfresh local IDをreplacementへ参照させる。既存親identityだけexistingPublicIdで継続する」
-5. existing entity binding: 「既存task/componentを継続するならactiveなexact existingPublicIdへbindし、新規entityのときだけnullにする」
-6. recurrence: 「現在発話に反復が明示されているなら、その対象にrecurrence factを出す。periodExpressionだけで反復を代用しない」
-7. relation reference: 「順序・依存・優先関係が実際に述べられた場合だけrelationを出し、relationはtask local IDを参照する」
-8. default: 「列挙されたvalidation failureだけ直し、無関係な現在turnの意味を変えない」
+## 10. Real-API protocol
 
-このうち2、3、4、7は主にrepresentation/reference構造であり、schema/validatorまたは意味を変えないdeterministic normalizationへ移せる可能性が高い。5はbinding意味を含むため一般turnでは単純な構造修正ではないが、pending targetが一意なturnではapplication bindingへ移す。6は「ユーザーが反復を述べた」というsemantic contractなので、Luna ablationで安全性を確認するまでは他と同列に消さない。1は捏造防止を含むため、単なる内部表記規則より慎重に扱う。
+```text
+assistant turnを観測
+→ semantic raw output
+→ validation / repair
+→ binding / Fact Graph
+→ proposal / dialogue decision
+→ renderer
+→ scheduler / preview
+→ 人間視点で共有前提を確認
+```
 
-最終的な狙いは、過去の失敗ごとの修正方法を大量に教えるpromptではなく、true semantic failureだけをAI repairへ回すこととする。structural failureはschema/validator/deterministic normalizationで処理し、generic repairが必要な場合も「validation errorだけを修正し、他の意味を変えない」という小さい一般指示とmachine-readable errorsを中心にする。repair後に無関係な意味が変わっていないことは既存のrepair-preservation validationでも検査するため、同じ保護をpromptとvalidatorへ二重に持つ必要があるかablationする。
+明確な失敗があれば、そのturnで停止する。
 
-#### renderer簡素化
+特に確認すること:
 
-現行rendererではsystem promptの「質問では一度に一つだけ確認」と、user requestの「questionCode/questionTarget/questionIntentを変えず、一つだけ聞く」が重複している。まずsystem側の一般文を一要素削除し、同じquestion scenarioで一問だけになるかをLuna比較する。specificなquestion contractを持つuser request側を先に残す。
+- internal heuristicが共有済み前提として話されていないか。
+- proposalが了承前に適用されていないか。
+- acceptance scopeが正しいか。
+- durable memoryへ過剰昇格していないか。
+- 同じ質問を別表現で聞き直していないか。
+- rendererが自然でもapplication stateと矛盾していないか。
 
-`actionId/actionKind/questionCode`はrenderer response validationが入力とexact一致を検査し、未groundedな時刻・日付・preview件数・未実行action主張もvalidatorが拒否する。この機械的validationと重なる説明は削減候補にできる。ただしvalidatorは質問対象の意味内容全体や「一問だけ」を完全には検査していないため、typed contractがまだ検査できない意味指示まで一括削除しない。
+## 11. Completion gate
 
-当面残す優先度が高いのは「入力にない具体情報を補わない」、proposed/contested grounding、preview promotion controlの案内である。`decidedFactsは確定、undecidedItemsは未確定`はfield名自体をより明確なtyped nameへできれば削除候補になるが、名前変更前に説明だけ消して意味混同が増えないかablationする。
+- stale vocabulary total-duration / word-threshold / automatic-daypart behaviorがproductionから除去または新policyへ置換
+- proposal lifecycle regression green
+- durable promotion boundary regression green
+- observed learning evidence boundary green
+- prompt budget green
+- full TypeScript / Vitest / build green
+- Browser Regression green
+- final Luna dynamic conversationがhuman-reviewedでpreviewへ到達
+- roadmap / contract / taskが最終HEADと一致
 
-#### provider schemaがrequestの最大部分である意味
-
-開始時点の実測ではprovider JSON Schemaは11,333 bytes、representative generic requestは17,351 bytesであり、schema単体が約65%を占める。generic system prompt 5,002 bytesは約29%で、両者を合わせると代表request bytesの約94%である。これはbyte計測であり、そのまま請求token数や推論負荷の厳密な比率を意味しないが、「文章promptだけ短くしてもrequest全体は大きく減らない」ことを示す。
-
-schemaが大きい理由は、Stable V5がtask、study/component、workload、effort、temporal constraint、recurrence、relation、availability、uncertainty、correction、decision等を一つのstrict structured outputで扱い、各objectのrequired field、enum、reference field、`sourceText`をproviderへ毎回渡すためである。これは型安全性の代償なので、長いという理由だけで安全contractを削らない。
-
-ただし意味・表現が重複している候補は別に監査する。
-
-- absolute planning windowの`value`はvalidな`start/end`から完全に導出できるため、model outputとして二重に持つ必要があるか検討する
-- known workload unitの`unitLabel`は`unitCode`から一意に表示名を導けるなら重複であり、`custom`だけ自由labelを必要とする形へできるか検討する
-- exact pending questionで`targetFactId`をapplicationが知っているのに、同じpublic IDをstateからmodelへ送り、modelから`existingPublicId`としてコピーして返させる往復は削減候補である
-- focused routeではapplicationが最終semantic documentを組み立てられるため、generic schemaのlocalId/reference machineryをAIに毎回答させない
-- `sourceText`はevidence/provenanceとrepair-preservationに使われているため、単なる文字重複として削除しない。削るならroot evidence poolやspan reference等の別設計が必要で、このPRでは安易に外さない
-
-schema簡素化は「schemaを短くする」こと自体を目的にせず、「AIが意味を選ぶ必要がないfieldをAIの出力責務から外す」ことを目的とする。generic schemaの安全性を弱めるより、pending questionやauthorizationのようにapplicationが文脈を一意に決めているturnを小さいfocused schemaへ分ける方を優先する。
-
-実装順は、(1) internal ID promptの一要素ablation、(2) focused answerへeffort scaleをtyped handoff、(3) dedicated planning-window repair削除ablation、(4) generic repair directiveのstructural/semantic分類に沿った削減、(5) renderer重複一要素削除、(6) schema field重複の実測監査、とする。各段階で同じ実API scenario、provider call数、request bytes、repair count、accepted Graph、preview、最終文を比較し、複数要素を同時に削らない。
-
-監査では規則を、意味・domain・安全contract、schemaと重複するrepresentation contract、historical model weakness向けscaffolding、deterministicで意味を変えず扱えるnormalizationへ分類する。Luna ablation前後で同じscenarioを比較し、明確な退行がなく、schema/validator/repairとの重複も減る場合だけ削除する。通常CIへmodel比較oracleや一時的ablation artifactを残さない。
-
-## 7. Heuristic監査
-
-過去に導入したheuristicは、raw textの意味解釈ではなくaccepted structured factsに対するdeterministic policyであることを確認する。対象はhuman-scale effort質問、per-unit/total/session effort、vocabulary session分割、tiny-tail抑制、長いfree segment優先、existing plan/timetable buffer、relation ordering、request-time not-before、reserve/review policy、observed pace derivation、5分/15分allocation granularityである。
-
-human-scale effort質問については、page/problemを原則1単位の推定基礎にし、大きい教材構造単位を直接の時間予測へ使わない方針を追加確認する。page/problemの量がある場合、observed paceまたは既存direct estimateがなければper-unit durationを優先して取得し、総量の時間はdeterministicに導く。chapter/section/lessonは可能ならpage/problemへ具体化する一方、past examの`exam_year`は自然な1年分単位を維持し、利用者が明示しない限りpage/problemへ自動分解しない。
-
-wordはsession-based effortを既定とし、固定の語数閾値でsession数や質問方式を切り替えない。既存の100-word boundaryは削除・置換候補とする。明示制約がなければvocabulary sessionは同日の朝・夜をsoft preferenceとして分散し、必要session数が多い場合は昼も候補にする。ただし利用者の明示時刻、availability、既存予定、本人の時間帯preferenceを常に優先する。
-
-時間推定とsession lengthは、cold startだけ一般heuristicを使い、実行記録が蓄積するほど同じ教材・component・unitの本人実績を優先する。利用者が今回明示した時間・回数・制約はさらに上位に置く。30/60/90/120分等の既定値、短いsessionへのpenalty、study-purpose由来のshort/deep-work推定は、個人evidenceを上書きする規則ではなくfallback/priorとして監査する。長時間作業を分割し休憩を確保する方針自体は維持できるが、分割長は本人の実記録へpersonalizeできるようにする。
-
-これらの質問要否・evidence優先順位・丸め・session分割はapplication側で決め、教材名やraw textから難易度を推測するheuristicは追加しない。
-
-calendar関連では、相対日・相対週の自然言語意味だけをAIが構造化し、具体日付への展開はrequest clock、time zone、week-start設定とcalendar resolverで決定論的に行うことを再確認する。canonical wire literalの綴りを守らせるためだけのprompt guardを増やさず、有限値ならschemaで閉じる。
-
-happy pathだけでなく、unit/component mismatch、曖昧なprovenance、既存のdirect estimate優先、今日の過去時刻、partial placement、cycle、stale previewを敵対的回帰で確認する。
-
-## 8. Trace persistence gate
-
-prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trace fieldを変更した場合は、実際のrequest/diagnosticsがtraceへ入り、client byte target、outbox retry、worker preparation、server size limit、unknown sentinel、truncation metadataを既存の強いpersistence regressionで確認する。新しいfieldを追加しただけで完了扱いにしない。
-
-## 9. 完了条件
-
-- stale task、Issue、PRの棚卸しが現コード根拠と一致する
-- historical scenarioを一対話ずつLunaで再観測し、明確な失敗を未処理のまま次へ送っていない
-- Issue #118の未完了acceptanceが実装、回帰、実API会話で確認されている
-- promptの長さと複雑さを実測し、削除・維持の判断にLuna ablationの根拠がある
-- production heuristic inventoryが対象回帰と敵対的回帰でgreenである
-- 日付の具体化がAIのカレンダー計算ではなくdeterministic calendar resolverで行われ、相対表現のwire綴りだけを守らせるprompt guardに依存しない
-- page/problemは1単位あたりの速度を推定基礎とし、chapter/section等は原則scopeへ分離、exam_yearは1年分単位を維持、wordは語数固定境界ではなくsession duration中心というworkload方針が回帰と実会話で確認されている
-- vocabularyは明示制約がない場合に朝・夜、必要なら昼へsoft preferenceで分散し、利用者の明示時刻やavailabilityを上書きしない
-- cold-start heuristicは本人データがない場合のprior/fallbackに限定され、明示時間・本人のobserved pace/session実績が優先される
-- 長時間作業のsession分割と休憩方針は維持しつつ、固定時間を絶対規則にせず本人実績へpersonalizeできる
-- internal ID、focused answer scale、planning-window repair、generic repair、renderer重複、provider schemaの削減候補が一要素ずつablationされ、意味・安全・binding・previewを壊さず削れるものだけが残っている
-- 最終HEADの通し実API会話がpreviewまで完走する
-- Browser Regressionとnormal CIが最終HEADでgreenである
-- `npm run typecheck`、`npm run test:run`、`npm run build`がlocalでもgreenである
-- roadmap、current contract、current status、task queue、関連Issueが最終状態と一致する
-
-途中のstepsが0件だったことはpassでもfailでもない。最終transcriptとtraceを人間が読んで会話品質を確認するまでは完了扱いにしない。
-
-## 10. AI意味理解から決定論的変換へ渡す境界
-
-今後の簡素化では、AIに最終的なFact Graph用JSONを全面的に組み立てさせること自体を前提にしない。AIの責務は「複数の意味候補が残っている自然言語を、後段が一意に処理できる意味表現まで落とすこと」で止める。意味が一意になった後の表記変換、参照結合、日付計算、単位変換、回数展開、derived field生成はdeterministic codeへ戻す。
-
-現在のOpenAI呼び出しは永続的な会話sessionをprovider側へ保持しているわけではなく、turnごとに独立したchat completionを呼び、StudyPlannerがrecent conversation、Fact Graph、pending question等の必要な状態を再度requestへ渡している。したがって「直前にアプリが何を質問したか」「どの対象について聞いているか」「どの尺度の回答を待っているか」はAIの会話記憶へ依存させず、StudyPlanner自身のtyped stateとして保持する。
-
-境界の基本原則は次のとおりとする。
-
-- raw Japaneseから複数解釈のうちどれが意図かを決める必要がある部分はAIが担当する
-- AIが意味を一意なtyped valueへ落とした後は、同じ意味をparserやpromptで再解釈しない
-- applicationがpending questionや既存stateから対象・尺度を既に一意に知っている場合、その情報をAIに再推論・再コピーさせない
-- internal ID、canonical string、display label、ISO date、曜日コード、回数展開など、入力typed valueから一意に導けるものは原則としてAI出力責務から外す
-- 後段のconverter/normalizer/resolverはraw user textを読まず、AIが確定したtyped semantic valueとapplication stateだけを入力にする
-- converter側で意味が一意に決まらない場合は推測して補わず、semantic layerへ責務を戻すかapplicationが確認を要求する
-
-たとえば「毎日は無理だから月水金で」のような発話では、文字列中に「毎日」が存在することをregexで拾ってdailyを採用してはいけない。AIは文脈から最終的に採用された反復条件が月・水・金であることまで意味理解する。その後、月・水・金をcanonical weekdayへ変換し、planning horizon内の具体日付へ展開する処理はdeterministic codeが行う。「毎日」という意味が採用済みである場合も、`daily`へのcanonicalizationや開始日〜終了日への全日展開はAIへ再度説明させる必要がない。
-
-同様に「来週」はAIが現在発話で次の週を指すという意味まで返せばよく、具体的な年月日範囲はrequest clock、time zone、week-start設定とcalendar resolverから導く。「それ5分くらい」のような短い回答も、pending questionが数学ワークの1ページあたり時間を尋ねていたなら、AIには約5分という値・precisionだけを理解させ、対象教材と`duration_per_unit/page`という尺度はapplication stateから結合する。
-
-旧parser資産は一律に廃棄するものではない。禁止するのは、AI後段でraw Japaneseをregex/keyword/dictionaryに再入力し、AIが確定した意味を別解釈で上書きすることである。旧parser内に存在する純粋な数値変換、単位変換、日付解決、曜日canonicalization、recurrence展開、range計算等は、raw text依存を除去してpure converter/normalizer/resolverとして切り出せるなら積極的に再利用する。production dependencyからlegacy parserを外している既存contractも、「決定論的変換禁止」ではなく「raw textによる第二のsemantic interpreter禁止」として維持する。
-
-この方針により、AIへ要求する中間表現は最終Fact Graphより小さくできる可能性がある。たとえば「来週、数学の問題集を毎日5問ずつ、1問20分くらい」の意味理解結果は、概念的には対象、相対期間、1回あたり量、反復条件、1単位あたり時間という意味情報で足りる。内部Fact ID、具体日付7件、総35問、1日100分、calendar candidate分割等はapplicationが導出する。
-
-schema削減では、単にfield数を減らすのではなく、「このfieldの値を決めるために自然言語・文脈理解が本当に必要か」を基準にする。必要ならAI中間表現専用の小さいschemaを設け、そこから既存のvalidator、binding、Fact Graph canonicalizerへつなぐadapterを用意する。接続部では、AIが確定した意味を落とさず、かつconverterが新しい意味を発明しないことをcontract testで固定する。
-
-実装監査では、まず既存generic schemaの各fieldを `semantic decision required` / `deterministically derivable` / `application state already known` / `provenance or safety required` に分類する。`deterministically derivable` と `application state already known` はAI出力から外せるかを優先的にablationする。特にinternal ID転記、planning-window表記repair、focused answerの尺度再判断、recurrenceの具体日展開、known unit label等を対象とする。
-
-この境界へ移行しても、AIが担当する文脈理解そのものは削らない。「それ」「前のやつ」「毎日は無理」「できれば」「やっぱり」「残り」「終わった」など、発話系列や否定・訂正・修飾関係を読まなければ意味が決まらない部分は引き続きsemantic AIの責務である。削る対象は、その意味が確定した後に同じ情報をもう一度AIへ計算・転記・整形させている部分である。
+PR #130をこのgate前にmerge readyとしない。
