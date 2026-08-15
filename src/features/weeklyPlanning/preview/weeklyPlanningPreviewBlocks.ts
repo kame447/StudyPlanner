@@ -60,6 +60,13 @@ function stableV5MetadataFromCandidate(
     ...metadata,
     conversationId: metadata.conversationId?.trim() ?? '',
     sourceFactRefs: [...metadata.sourceFactRefs],
+    ...(metadata.weeklyPlanningObservationSource
+      ? {
+          weeklyPlanningObservationSource: {
+            ...metadata.weeklyPlanningObservationSource,
+          },
+        }
+      : {}),
   };
 }
 
@@ -83,6 +90,13 @@ function behaviorMetadataFromCandidate(
         schedulerInputSource: 'stable_v5_generic_scheduler_input',
         candidateSource: 'stable_v5',
       },
+      ...(stableV5Metadata.weeklyPlanningObservationSource
+        ? {
+            weeklyPlanningObservationSource: {
+              ...stableV5Metadata.weeklyPlanningObservationSource,
+            },
+          }
+        : {}),
       ...(userId
         ? {
             previewMetadata: {
@@ -203,6 +217,13 @@ export function createWeeklyPlanningPreviewDisplayBlock(
   const behaviorMetadata = block.behaviorMetadata
     ? {
         ...block.behaviorMetadata,
+        ...(block.behaviorMetadata.weeklyPlanningObservationSource
+          ? {
+              weeklyPlanningObservationSource: {
+                ...block.behaviorMetadata.weeklyPlanningObservationSource,
+              },
+            }
+          : {}),
         previewMetadata: {
           previewId: block.behaviorMetadata.conversationId
             ? block.behaviorMetadata.compatibility.candidateSource === 'stable_v5'
