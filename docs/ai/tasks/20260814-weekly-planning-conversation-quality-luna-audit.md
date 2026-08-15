@@ -295,3 +295,32 @@ prompt、AI request/response、renderer、Fact Graph、intake、scheduler、trac
 - roadmap、current contract、current status、task queue、関連Issueが最終状態と一致する
 
 途中のstepsが0件だったことはpassでもfailでもない。最終transcriptとtraceを人間が読んで会話品質を確認するまでは完了扱いにしない。
+
+## 10. AI意味理解から決定論的変換へ渡す境界
+
+今後の簡素化では、AIに最終的なFact Graph用JSONを全面的に組み立てさせること自体を前提にしない。AIの責務は「複数の意味候補が残っている自然言語を、後段が一意に処理できる意味表現まで落とすこと」で止める。意味が一意になった後の表記変換、参照結合、日付計算、単位変換、回数展開、derived field生成はdeterministic codeへ戻す。
+
+現在のOpenAI呼び出しは永続的な会話sessionをprovider側へ保持しているわけではなく、turnごとに独立したchat completionを呼び、StudyPlannerがrecent conversation、Fact Graph、pending question等の必要な状態を再度requestへ渡している。したがって「直前にアプリが何を質問したか」「どの対象について聞いているか」「どの尺度の回答を待っているか」はAIの会話記憶へ依存させず、StudyPlanner自身のtyped stateとして保持する。
+
+境界の基本原則は次のとおりとする。
+
+- raw Japaneseから複数解釈のうちどれが意図かを決める必要がある部分はAIが担当する
+- AIが意味を一意なtyped valueへ落とした後は、同じ意味をparserやpromptで再解釈しない
+- applicationがpending questionや既存stateから対象・尺度を既に一意に知っている場合、その情報をAIに再推論・再コピーさせない
+- internal ID、canonical string、display label、ISO date、曜日コード、回数展開など、入力typed valueから一意に導けるものは原則としてAI出力責務から外す
+- 後段のconverter/normalizer/resolverはraw user textを読まず、AIが確定したtyped semantic valueとapplication stateだけを入力にする
+- converter側で意味が一意に決まらない場合は推測して補わず、semantic layerへ責務を戻すかapplicationが確認を要求する
+
+たとえば「毎日は無理だから月水金で」のような発話では、文字列中に「毎日」が存在することをregexで拾ってdailyを採用してはいけない。AIは文脈から最終的に採用された反復条件が月・水・金であることまで意味理解する。その後、月・水・金をcanonical weekdayへ変換し、planning horizon内の具体日付へ展開する処理はdeterministic codeが行う。「毎日」という意味が採用済みである場合も、`daily`へのcanonicalizationや開始日〜終了日への全日展開はAIへ再度説明させる必要がない。
+
+同様に「来週」はAIが現在発話で次の週を指すという意味まで返せばよく、具体的な年月日範囲はrequest clock、time zone、week-start設定とcalendar resolverから導く。「それ5分くらい」のような短い回答も、pending questionが数学ワークの1ページあたり時間を尋ねていたなら、AIには約5分という値・precisionだけを理解させ、対象教材と`duration_per_unit/page`という尺度はapplication stateから結合する。
+
+旧parser資産は一律に廃棄するものではない。禁止するのは、AI後段でraw Japaneseをregex/keyword/dictionaryに再入力し、AIが確定した意味を別解釈で上書きすることである。旧parser内に存在する純粋な数値変換、単位変換、日付解決、曜日canonicalization、recurrence展開、range計算等は、raw text依存を除去してpure converter/normalizer/resolverとして切り出せるなら積極的に再利用する。production dependencyからlegacy parserを外している既存contractも、「決定論的変換禁止」ではなく「raw textによる第二のsemantic interpreter禁止」として維持する。
+
+この方針により、AIへ要求する中間表現は最終Fact Graphより小さくできる可能性がある。たとえば「来週、数学の問題集を毎日5問ずつ、1問20分くらい」の意味理解結果は、概念的には対象、相対期間、1回あたり量、反復条件、1単位あたり時間という意味情報で足りる。内部Fact ID、具体日付7件、総35問、1日100分、calendar candidate分割等はapplicationが導出する。
+
+schema削減では、単にfield数を減らすのではなく、「このfieldの値を決めるために自然言語・文脈理解が本当に必要か」を基準にする。必要ならAI中間表現専用の小さいschemaを設け、そこから既存のvalidator、binding、Fact Graph canonicalizerへつなぐadapterを用意する。接続部では、AIが確定した意味を落とさず、かつconverterが新しい意味を発明しないことをcontract testで固定する。
+
+実装監査では、まず既存generic schemaの各fieldを `semantic decision required` / `deterministically derivable` / `application state already known` / `provenance or safety required` に分類する。`deterministically derivable` と `application state already known` はAI出力から外せるかを優先的にablationする。特にinternal ID転記、planning-window表記repair、focused answerの尺度再判断、recurrenceの具体日展開、known unit label等を対象とする。
+
+この境界へ移行しても、AIが担当する文脈理解そのものは削らない。「それ」「前のやつ」「毎日は無理」「できれば」「やっぱり」「残り」「終わった」など、発話系列や否定・訂正・修飾関係を読まなければ意味が決まらない部分は引き続きsemantic AIの責務である。削る対象は、その意味が確定した後に同じ情報をもう一度AIへ計算・転記・整形させている部分である。
