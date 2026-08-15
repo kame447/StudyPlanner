@@ -149,7 +149,7 @@ describe('Stable V5 semantic normalizer', () => {
     expect(system).toContain('current-turn meaning into semantic facts');
     expect(system).toContain('pendingQuestion as authoritative');
     expect(system).toContain('exact target');
-    expect(system).toContain('fresh localIds');
+    expect(system).not.toContain('fresh localIds');
     expect(system).toContain('every sourceText must be supported by current userText');
     expect(system).toContain('target is the amount intended for this plan');
     expect(system).toContain('remaining is the unfinished amount');
