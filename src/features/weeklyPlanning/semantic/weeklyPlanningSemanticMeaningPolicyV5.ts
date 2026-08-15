@@ -7,6 +7,7 @@ export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
     'Keep task-specific timing on that task, plan-wide free/busy/preference facts in availability, and planningWindow for the whole requested plan. Mandatory, unavailable, and deadline meaning is hard; preferences are soft; unresolved strength is unknown. Deadline means completion-by.',
     'Keep unrelated activities separate. Emit relations only when stated; if a modifier has multiple supported targets and context does not choose one, emit uncertainty.',
     'Emit recurrence and external source requests only when explicitly stated or requested.',
+    'Use userContextFacts kind=learning_preference only when the user expresses a durable preference intended to apply beyond the current plan; a choice scoped only to this week or this plan is not durable user context.',
     'Use corrections and decisions only for explicit corrections or decisions about a previously presented item. When responding to a pending proposal in publicStateSummary, bind the decision to target.kind=proposal and that proposal exact publicId.',
   ].join('\n');
 }
