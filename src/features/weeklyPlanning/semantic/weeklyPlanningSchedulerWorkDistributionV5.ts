@@ -1,5 +1,4 @@
 import type {
-  EffortEstimateFact,
   PlanningTaskFact,
   RecurrenceFact,
   StudyComponentFact,
@@ -15,7 +14,6 @@ import {
 import {
   distributeDiscreteQuantityAcrossWeeklyBucketsV5,
   distributeMinutesAcrossWeeklyBucketsV5,
-  partitionWeeklyPlanningDatesV5,
   resolveWeeklySpreadSessionCountV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
 import {
@@ -36,7 +34,6 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
   readonly workloads: ReadonlyArray<WorkloadFact>;
-  readonly effortEstimates: ReadonlyArray<EffortEstimateFact>;
   readonly recurrences: ReadonlyArray<RecurrenceFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
 }
@@ -89,19 +86,13 @@ function recurringPerOccurrenceSlices(params: {
   }));
 }
 
-function vocabularySessionEstimate(params: {
-  graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
-  item: GenericPlanningWorkItem;
-}): EffortEstimateFact | null {
-  const workload = params.graph.workloads.find(
-    (candidate) => candidate.id === params.item.workloadFactId,
-  );
-  if (workload?.unitCode !== 'word') return null;
-  const candidates = params.graph.effortEstimates.filter((estimate) =>
-    params.item.estimateSourceFactIds.includes(estimate.id)
-    && estimate.kind === 'session_duration'
-    && estimate.unitCode === 'word');
-  return candidates.length === 1 ? candidates[0] : null;
+function isDistributableDiscreteItem(item: GenericPlanningWorkItem): boolean {
+  return (item.quantity.unitCode === 'page' || item.quantity.unitCode === 'problem')
+    && Number.isInteger(item.quantity.amount)
+    && item.quantity.amount > 1
+    && item.estimatedMinutes !== null
+    && Number.isFinite(item.estimatedMinutes)
+    && item.estimatedMinutes > 0;
 }
 
 function displayTargetLabel(
@@ -113,49 +104,6 @@ function displayTargetLabel(
     if (component?.label.trim()) return component.label.trim();
   }
   return graph.tasks.find((candidate) => candidate.id === item.taskId)?.title.trim() || '予定';
-}
-
-function vocabularyTimeSessionSlices(params: {
-  graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
-  item: GenericPlanningWorkItem;
-  dates: readonly string[];
-}): GenericPlanningWorkItem[] {
-  const estimate = vocabularySessionEstimate(params);
-  if (!estimate || params.item.estimatedMinutes === null || params.item.estimatedMinutes <= 0) {
-    return [params.item];
-  }
-  const label = displayTargetLabel(params.graph, params.item);
-  const sessionItem = (index: number, count: number): GenericPlanningWorkItem => ({
-    ...params.item,
-    id: `${params.item.id}:vocabulary-time-session:${index + 1}`,
-    label: `${label} ${params.item.estimatedMinutes}分（${index + 1}/${count}）`,
-    quantity: {
-      amount: 1,
-      unitCode: 'session',
-      unitLabel: '回',
-      ordinalRange: null,
-      actualRange: null,
-    },
-    plannedSessions: undefined,
-    splitPolicy: 'atomic',
-  });
-
-  if (params.item.requiredDate) return [sessionItem(0, 1)];
-  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
-  const sessionCount = normalDates.length;
-  if (sessionCount <= 1) return [sessionItem(0, 1)];
-  return Array.from({ length: sessionCount }, (_, index) => sessionItem(index, sessionCount));
-}
-
-function isDistributableDiscreteItem(item: GenericPlanningWorkItem): boolean {
-  return (item.quantity.unitCode === 'page'
-      || item.quantity.unitCode === 'problem'
-      || item.quantity.unitCode === 'word')
-    && Number.isInteger(item.quantity.amount)
-    && item.quantity.amount > 1
-    && item.estimatedMinutes !== null
-    && Number.isFinite(item.estimatedMinutes)
-    && item.estimatedMinutes > 0;
 }
 
 function numericActualRange(item: GenericPlanningWorkItem): { start: number; end: number } | null {
@@ -328,16 +276,9 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
         item,
         dates,
       }));
-  const vocabularySessionDistributed = dates.length === 0
-    ? recurrenceDistributed
-    : recurrenceDistributed.flatMap((item) => vocabularyTimeSessionSlices({
-        graph: params.graph,
-        item,
-        dates,
-      }));
   const dayDistributed = dates.length === 0
-    ? vocabularySessionDistributed
-    : vocabularySessionDistributed.flatMap((item) => {
+    ? recurrenceDistributed
+    : recurrenceDistributed.flatMap((item) => {
         if (item.requiredDate) return [item];
         return isDistributableDiscreteItem(item)
           ? distributedSlices({ graph: params.graph, item, dates })
