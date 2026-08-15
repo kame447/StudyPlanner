@@ -214,6 +214,8 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
       kind: 'learning_strategy_proposal',
       proposalKind: 'calibrate_memory_pace',
       targetFactId: proposal.workloadFactId,
+      suggestedSessionDurationMinutes: { min, max },
+      selectedSessionDurationMinutes: sessionDurationMinutes,
       sessionDurationMinutes,
       measurementPlan: {
         observation: 'progress_during_single_session',
