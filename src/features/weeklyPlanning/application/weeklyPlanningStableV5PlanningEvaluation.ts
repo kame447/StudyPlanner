@@ -3,6 +3,9 @@ import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
+  applyAcceptedMemorySessionProjectionV5,
+} from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
+import {
   compileGenericSchedulerInput,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
@@ -147,7 +150,13 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         externalSources,
       })
     : null;
-  const compilation = calibrationCompilation ?? baselineCompilation;
+  const acceptedMemorySessionCompilation = applyAcceptedMemorySessionProjectionV5({
+    compilation: baselineCompilation,
+    graph: observedPaceProjection.graph,
+    acceptedSpacedProposal: learningStrategyProposals.acceptedSpacedProposal,
+    acceptedCalibrationProposal: acceptedCalibration,
+  });
+  const compilation = calibrationCompilation ?? acceptedMemorySessionCompilation;
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
     compilation,
@@ -185,6 +194,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     activeGraph,
     observedPaceProjection,
     baselineCompilation,
+    acceptedMemorySessionCompilation,
     compilation,
     learningStrategyProposals,
     repairDecision,
