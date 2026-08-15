@@ -6,7 +6,6 @@ import {
   preferredTaskDistributedDateV5,
   preferredVocabularyLearningDateV5,
   preferredVocabularyLearningDaypartV5,
-  preferredVocabularyReviewDaypartV5,
   reviewCandidateDatesV5,
   vocabularyLearningCandidateDatesV5,
   vocabularyReviewTargetsV5,
@@ -172,12 +171,6 @@ function addVocabularyReviews(params: {
       preferredDate: review.preferredDate,
       durationMinutes: review.durationMinutes,
     });
-    const reviewDaypart = preferredVocabularyReviewDaypartV5(review.round);
-    const defaultPreferredPlacements = preferredNamedTimePeriodPlacementV5({
-      dates: reviewDates,
-      namedTimePeriod: reviewDaypart,
-      namedTimePeriods: params.context.namedTimePeriods,
-    });
     const reviewSlot = findWorkItemSlot({
       context: params.context,
       item: params.item,
@@ -185,7 +178,6 @@ function addVocabularyReviews(params: {
       duration: review.durationMinutes,
       notBefore: params.effectiveNotBefore,
       preferLongSegment: false,
-      defaultPreferredPlacements,
     });
     if (!reviewSlot) return reviewWorkItemKey;
     usedReviewDates.add(reviewSlot.date);
@@ -277,9 +269,9 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
           sessionCount: params.vocabularyPosition.count,
         })
       : null;
-    const defaultPreferredPlacements = learningDaypart
+    const defaultPreferredPlacements = learningDaypart && preferredDate
       ? preferredNamedTimePeriodPlacementV5({
-          dates: allowedDates,
+          dates: [preferredDate],
           namedTimePeriod: learningDaypart,
           namedTimePeriods: params.context.namedTimePeriods,
         })
