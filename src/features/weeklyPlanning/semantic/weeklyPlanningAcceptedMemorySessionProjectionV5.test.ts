@@ -55,8 +55,8 @@ function compilation(): GenericSchedulerInputCompilationResult {
           amount: 220, unitCode: 'word', unitLabel: '語',
           ordinalRange: { start: 1, end: 220 }, actualRange: null,
         },
-        estimatedMinutes: 126, baseEstimatedMinutes: 126, calibrationMultiplier: 1,
-        roundingStepMinutes: 5, estimateBasis: 'direct_effort',
+        estimatedMinutes: 140, baseEstimatedMinutes: 126, calibrationMultiplier: 1,
+        roundingStepMinutes: 15, estimateBasis: 'observed_pace',
         estimateSourceFactIds: [], estimateSourceWorkloadFactIds: [],
         splitPolicy: 'unknown', periodExpression: null, sourceFactRefs: ['workload'],
       }],
@@ -76,7 +76,7 @@ function proposal(kind: 'spaced_memory_practice' | 'calibrate_memory_pace'): Wee
 }
 
 describe('accepted memory session projection', () => {
-  it('uses the current accepted session duration to split the estimated total', () => {
+  it('buffers inferred effort and rounds up to full accepted sessions', () => {
     const result = applyAcceptedMemorySessionProjectionV5({
       compilation: compilation(), graph: graph(),
       acceptedSpacedProposal: proposal('spaced_memory_practice'),
@@ -84,12 +84,32 @@ describe('accepted memory session projection', () => {
     });
     expect(result.input?.movableWorkItems).toHaveLength(7);
     expect(result.input?.movableWorkItems.map((item) => item.estimatedMinutes)).toEqual([
-      20, 20, 20, 20, 20, 20, 6,
+      20, 20, 20, 20, 20, 20, 20,
     ]);
+    expect(result.input?.movableWorkItems.reduce(
+      (sum, item) => sum + (item.estimatedMinutes ?? 0),
+      0,
+    )).toBe(140);
     expect(result.input?.movableWorkItems.reduce(
       (sum, item) => sum + item.quantity.amount,
       0,
     )).toBe(220);
+  });
+
+  it('uses one full accepted session even when the buffered estimate is shorter', () => {
+    const sourceCompilation = compilation();
+    sourceCompilation.input!.movableWorkItems[0] = {
+      ...sourceCompilation.input!.movableWorkItems[0],
+      estimatedMinutes: 15,
+      baseEstimatedMinutes: 10,
+    };
+    const result = applyAcceptedMemorySessionProjectionV5({
+      compilation: sourceCompilation, graph: graph(),
+      acceptedSpacedProposal: proposal('spaced_memory_practice'),
+      acceptedCalibrationProposal: null,
+    });
+    expect(result.input?.movableWorkItems).toHaveLength(1);
+    expect(result.input?.movableWorkItems[0].estimatedMinutes).toBe(20);
   });
 
   it('does not sessionize before the strategy is accepted', () => {
