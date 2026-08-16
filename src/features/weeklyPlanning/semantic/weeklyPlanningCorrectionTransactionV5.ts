@@ -62,6 +62,24 @@ function canCarryEffortToReplacement(params: {
     && params.target.unitCode === params.replacement.unitCode;
 }
 
+function equivalentCurrentReplacementEfforts(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  effort: EffortEstimateFactV5;
+  replacement: WorkloadFactV5;
+}): EffortEstimateFactV5[] {
+  const activeIds = activeFactIds(params.graph);
+  const expectedUnitCode = params.replacement.unitCode;
+  return params.graph.effortEstimates.filter((candidate) =>
+    candidate.id !== params.effort.id
+    && activeIds.has(candidate.id)
+    && candidate.targetFactId === params.replacement.id
+    && candidate.kind === params.effort.kind
+    && candidate.minutes === params.effort.minutes
+    && candidate.unitCode === expectedUnitCode
+    && candidate.precision === params.effort.precision
+    && candidate.createdRevision === params.replacement.createdRevision);
+}
+
 function prepareWorkloadEffortDependents(params: {
   graph: WeeklyPlanningFactGraphV5;
   correctionIntentFactId: string;
@@ -157,6 +175,50 @@ function prepareWorkloadEffortDependents(params: {
       continue;
     }
 
+    const equivalentReplacementEfforts = equivalentCurrentReplacementEfforts({
+      graph,
+      effort,
+      replacement,
+    });
+    if (equivalentReplacementEfforts.length > 1) {
+      return {
+        status: 'rejected',
+        graph: params.graph,
+        added: [],
+        superseded: [],
+        removed: [],
+        errors: [
+          `workload-dependent-rebase-ambiguous-equivalent:${effort.id}:${equivalentReplacementEfforts.map((candidate) => candidate.id).join(',')}`,
+        ],
+      };
+    }
+    if (equivalentReplacementEfforts.length === 1) {
+      const equivalent = equivalentReplacementEfforts[0];
+      const reused = applyWeeklyPlanningFactLifecycleOperationV5({
+        graph,
+        expectedRevision: graph.revision,
+        operation: {
+          operationKey: `${params.operationKey}:reuse-dependent:${effort.id}`,
+          kind: 'supersede',
+          targetFactId: effort.id,
+          replacementFactId: equivalent.id,
+        },
+      });
+      if (reused.status === 'rejected') {
+        return {
+          status: 'rejected',
+          graph: params.graph,
+          added: [],
+          superseded: [],
+          removed: [],
+          errors: reused.errors,
+        };
+      }
+      graph = reused.graph;
+      superseded.push(...reused.superseded);
+      continue;
+    }
+
     const carriedId = `wpf_effort_carry_${stableHash([
       correction.id,
       effort.id,
@@ -178,7 +240,7 @@ function prepareWorkloadEffortDependents(params: {
       id: carriedId,
       taskId: replacement.taskId,
       targetFactId: replacement.id,
-      unitCode: effort.kind === 'total_duration' ? null : replacement.unitCode,
+      unitCode: replacement.unitCode,
       source: {
         ...effort.source,
         semanticLocalId: `${effort.source.semanticLocalId}:carry:${correction.id}`,
