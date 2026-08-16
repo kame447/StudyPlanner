@@ -139,6 +139,34 @@ function semanticUncertaintyQuestion(
   return `「${sourceText}」の意味を一つに決められませんでした。この部分だけ、もう少し具体的に教えてください。`;
 }
 
+function missingEffortQuestion(
+  graph: WeeklyPlanningFactGraphV5,
+  question: WeeklyPlanningStableQuestionV5,
+): string {
+  const label = stableV5IssueTaskLabel(graph, question);
+  const workload = question.factId
+    ? graph.workloads.find((fact) => fact.id === question.factId) ?? null
+    : null;
+
+  if (question.effortMeasurement === 'session_duration') {
+    return `${label}は、1回の学習を何分くらいにしますか？`;
+  }
+  if (question.effortMeasurement === 'duration_per_unit') {
+    const unitLabel = workload?.unitLabel.trim();
+    return unitLabel
+      ? `${label}は1${unitLabel}あたりどれくらい時間がかかりますか？`
+      : `${label}は1単位あたりどれくらい時間がかかりますか？`;
+  }
+  if (question.effortMeasurement === 'total_duration' && workload?.quantityRole === 'completed') {
+    const unitLabel = workload.unitLabel.trim();
+    const amountLabel = unitLabel
+      ? `${workload.amount}${unitLabel}`
+      : String(workload.amount);
+    return `${label}の完了した${amountLabel}には、合計でどれくらい時間がかかりましたか？`;
+  }
+  return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
+}
+
 export function renderStableV5RuntimeQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
@@ -154,7 +182,7 @@ export function renderStableV5RuntimeQuestion(
     case 'quantity_role_unresolved':
       return `${label}の量は、今回進めたい量ですか、それとも残っている全体量ですか？`;
     case 'missing_effort_estimate':
-      return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
+      return missingEffortQuestion(graph, question);
     case 'ambiguous_effort_estimate':
       return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
     case 'missing_availability_date_scope':
