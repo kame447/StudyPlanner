@@ -1,9 +1,9 @@
 {
-  "scenario": "checkpoint-loop-07-target-specific-deadlines",
-  "turn": 7,
+  "scenario": "checkpoint-loop-08-preference-and-unavailability",
+  "turn": 8,
   "attempt": 1,
-  "user_text": "英単語は金曜まで、数学は日曜までにしたい",
-  "previous_run_id": 31934534102,
+  "user_text": "英単語は夜がいい。火曜18時から20時は勉強できない",
+  "previous_run_id": 31934645433,
   "conversation_id": "weekly-luna-checkpoint-10loop-01",
   "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
