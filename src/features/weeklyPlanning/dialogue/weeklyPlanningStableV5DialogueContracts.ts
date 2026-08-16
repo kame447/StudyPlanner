@@ -47,7 +47,8 @@ export type WeeklyPlanningStableV5DialogueResolutionKind =
   | 'commitment_time_bounds'
   | 'task_date_rule_conflict'
   | 'constraint_source_choice'
-  | 'task_relation';
+  | 'task_relation_reference'
+  | 'task_relation_self_reference';
 
 export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'clarify_ambiguous_meaning'
@@ -62,7 +63,8 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'commitment_start_and_end_time'
   | 'allowed_or_excluded_date_rule'
   | 'constraint_source'
-  | 'valid_task_order_or_relation';
+  | 'identify_relation_endpoints'
+  | 'distinct_relation_endpoints';
 
 export type WeeklyPlanningStableV5DialogueResolutionChoice =
   | 'plan_target_amount'
