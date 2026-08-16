@@ -1,7 +1,7 @@
 {
   "scenario": "context-reference-adult-formal",
   "turn": 2,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "こちらは来週末までに。まだほとんど着手できておりません。",
   "previous_run_id": 31931706634,
   "conversation_id": "weekly-luna-context-adult-formal-01",
