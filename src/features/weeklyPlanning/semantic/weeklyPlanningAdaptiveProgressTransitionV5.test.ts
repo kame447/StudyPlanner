@@ -6,6 +6,9 @@ import {
   type WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   projectWeeklyPlanningPercentageProgressV5,
 } from './weeklyPlanningPercentageProgressProjectionV5';
 import {
@@ -133,6 +136,12 @@ function activeEfforts(value: WeeklyPlanningFactGraphV5) {
   return value.effortEstimates.filter((fact) => ids.has(fact.id));
 }
 
+function compileActive(value: WeeklyPlanningFactGraphV5) {
+  return compileGenericPlanningWorkItems(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+  );
+}
+
 describe('Stable V5 adaptive progress representation transition', () => {
   it('moves from percentage progress to exact fixed-total progress without double scheduling', () => {
     const initial = graph({ revision: 1, workloads: [] });
@@ -190,7 +199,7 @@ describe('Stable V5 adaptive progress representation transition', () => {
         },
       ],
     };
-    expect(compileGenericPlanningWorkItems(withPercentEffort)).toMatchObject({
+    expect(compileActive(withPercentEffort)).toMatchObject({
       readiness: 'ready',
       items: [expect.objectContaining({ workloadFactId: percentRemaining!.id })],
     });
@@ -238,7 +247,7 @@ describe('Stable V5 adaptive progress representation transition', () => {
     expect(activeEfforts(afterTotal.graph)).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: percentEffort.id }),
     ]));
-    expect(compileGenericPlanningWorkItems(afterTotal.graph).items).toHaveLength(0);
+    expect(compileActive(afterTotal.graph).items).toHaveLength(0);
 
     const completed12 = workload({
       id: 'completed-12-exact',
@@ -284,7 +293,7 @@ describe('Stable V5 adaptive progress representation transition', () => {
       expect.objectContaining({ quantityRole: 'remaining', unitLabel: '%' }),
     ]));
     expect(activeEfforts(afterExact.graph)).toHaveLength(0);
-    const compilation = compileGenericPlanningWorkItems(afterExact.graph);
+    const compilation = compileActive(afterExact.graph);
     expect(compilation.readiness).toBe('needs_resolution');
     expect(compilation.items).toHaveLength(1);
     expect(compilation.items[0]).toMatchObject({
