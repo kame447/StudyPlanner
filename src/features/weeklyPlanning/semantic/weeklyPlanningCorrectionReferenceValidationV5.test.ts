@@ -39,6 +39,59 @@ function documentWithTarget(target: {
   };
 }
 
+function documentWithEffortReplacement(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan',
+    planningWindow: null,
+    tasks: [{
+      localId: 'task-vocab',
+      existingPublicId: 'wpf_task_vocab',
+      category: 'study',
+      title: '英単語',
+      decompositionStatus: 'atomic',
+      study: {
+        purpose: 'unknown',
+        activityKind: 'memorization_retrieval',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [],
+      effortEstimates: [{
+        localId: 'effort-session-25',
+        targetLocalId: 'task-vocab',
+        kind: 'session_duration',
+        minutes: 25,
+        unitCode: 'session',
+        precision: 'approximate',
+        sourceText: '英単語は1回25分を目安にしてください',
+      }],
+      temporalConstraints: [],
+      recurrence: [],
+      durableContextSignals: [],
+      sourceText: '英単語は1回25分を目安にしてください',
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [{
+      localId: 'correction-effort',
+      target: {
+        kind: 'effort_estimate',
+        publicId: 'wpf_effort_per_unit',
+        localId: null,
+        mention: '英単語は1語5分くらい',
+      },
+      operation: 'replace',
+      replacementLocalId: 'effort-session-25',
+      sourceText: '英単語は1回25分を目安にしてください',
+    }],
+    decisions: [],
+  };
+}
+
 function repairPayload(errors: string[]): {
   requiredChanges?: string[];
   validationErrors?: string[];
@@ -84,6 +137,32 @@ describe('Stable V5 correction target reference validation', () => {
     )).toEqual([]);
   });
 
+  it('rejects replacing an existing effort with a different measurement kind', () => {
+    expect(validateWeeklyPlanningCorrectionTargetReferencesV5(
+      documentWithEffortReplacement(),
+      {
+        effortEstimates: [{
+          publicId: 'wpf_effort_per_unit',
+          kind: 'duration_per_unit',
+        }],
+      },
+    )).toEqual([
+      'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
+    ]);
+  });
+
+  it('allows replacement when the effort measurement kind is the same', () => {
+    expect(validateWeeklyPlanningCorrectionTargetReferencesV5(
+      documentWithEffortReplacement(),
+      {
+        effortEstimates: [{
+          publicId: 'wpf_effort_per_unit',
+          kind: 'session_duration',
+        }],
+      },
+    )).toEqual([]);
+  });
+
   it('tells repair not to resolve a lifecycle target from mention text', () => {
     const payload = repairPayload([
       'document.corrections[0].target:requires-id',
@@ -94,5 +173,15 @@ describe('Stable V5 correction target reference validation', () => {
     expect(payload.requiredChanges?.[0]).toContain('mention alone is not a target');
     expect(payload.requiredChanges?.[0]).toContain('remove that correction and keep the new fact');
     expect(payload.requiredChanges?.[0]).toContain('Preserve unrelated supported current-turn facts');
+  });
+
+  it('tells repair to keep different effort measurements independent', () => {
+    const payload = repairPayload([
+      'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
+    ]);
+    expect(payload.requiredChanges).toHaveLength(1);
+    expect(payload.requiredChanges?.[0]).toContain('Effort measurement kinds are independent facts');
+    expect(payload.requiredChanges?.[0]).toContain('remove that replace correction and keep the new effort fact');
+    expect(payload.requiredChanges?.[0]).toContain('separate remove correction');
   });
 });
