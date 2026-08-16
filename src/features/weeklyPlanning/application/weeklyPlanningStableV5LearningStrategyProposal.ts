@@ -35,6 +35,35 @@ function proposalId(params: {
   return `wpp_memory_${stableHash(`${params.taskId}|${params.workloadFactId}|${params.kind}`)}`;
 }
 
+function resolvedSupersession(
+  workloadFactId: string,
+  supersessions: Readonly<Record<string, string>>,
+): string {
+  let current = workloadFactId;
+  const visited = new Set<string>();
+  while (supersessions[current] && !visited.has(current)) {
+    visited.add(current);
+    current = supersessions[current];
+  }
+  return current;
+}
+
+function rebaseProposalWorkloadReferences(params: {
+  records: readonly WeeklyPlanningLearningStrategyProposalRecord[];
+  workloadSupersessions: Readonly<Record<string, string>>;
+}): WeeklyPlanningLearningStrategyProposalRecord[] {
+  return params.records.map((record) => {
+    if (record.kind === 'mixed_acquisition_review') return { ...record };
+    const workloadFactId = resolvedSupersession(
+      record.workloadFactId,
+      params.workloadSupersessions,
+    );
+    return workloadFactId === record.workloadFactId
+      ? { ...record }
+      : { ...record, workloadFactId };
+  });
+}
+
 function applyProposalDecisions(params: {
   previousRecords: readonly WeeklyPlanningLearningStrategyProposalRecord[];
   document: WeeklyPlanningSemanticDocumentV5;
@@ -175,11 +204,16 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   localToFactId: Readonly<Record<string, string>>;
   compilation: GenericSchedulerInputCompilationResult;
   effortEstimates?: readonly WeeklyPlanningLearningStrategyEffortFact[];
+  workloadSupersessions?: Readonly<Record<string, string>>;
   graphRevision: number;
   turnId: string;
 }): WeeklyPlanningLearningStrategyProposalEvaluation {
+  const rebasedPreviousRecords = rebaseProposalWorkloadReferences({
+    records: params.previousState?.learningStrategyProposalRecords ?? [],
+    workloadSupersessions: params.workloadSupersessions ?? {},
+  });
   let records = applyProposalDecisions({
-    previousRecords: params.previousState?.learningStrategyProposalRecords ?? [],
+    previousRecords: rebasedPreviousRecords,
     document: params.document,
     turnId: params.turnId,
   });
