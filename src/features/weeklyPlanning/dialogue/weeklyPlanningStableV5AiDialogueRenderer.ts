@@ -1,6 +1,7 @@
 import { getAiConfig, type AiConfig } from '../../../lib/aiConfig';
 import {
   createOpenAiCompatibleClient,
+  type ChatMessage,
   type OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -8,6 +9,8 @@ import {
 } from '../trace/weeklyPlanningDialogueRendererTrace';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+  type WeeklyPlanningStableV5DialogueRenderInput,
+  type WeeklyPlanningStableV5DialogueRenderResult,
   type WeeklyPlanningStableV5DialogueRenderer,
 } from './weeklyPlanningStableV5DialogueContracts';
 import {
@@ -33,6 +36,12 @@ export {
   createWeeklyPlanningStableV5DialogueStateSummary,
 } from './weeklyPlanningStableV5DialoguePrompt';
 
+const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
+  '前回候補がrecentConversation内の直前assistant発話と同一でした。',
+  'applicationDecisionの意味は変えず、直前と異なる自然な表現にしてください。',
+  'ユーザーが質問の意味や理由を尋ねている場合は、必要な情報の目的を短く説明してから尋ね直してください。',
+].join('');
+
 function rendererPromptTraceContext(prompt: {
   systemPrompt: string;
   userPrompt: string;
@@ -47,6 +56,20 @@ function rendererPromptTraceContext(prompt: {
   };
 }
 
+async function requestDialogueRender(params: {
+  client: OpenAiCompatibleClient;
+  input: WeeklyPlanningStableV5DialogueRenderInput;
+  messages: ChatMessage[];
+}): Promise<WeeklyPlanningStableV5DialogueRenderResult> {
+  const rawResponse = await params.client.createChatCompletion({
+    messages: params.messages,
+    temperature: 0.4,
+    responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+    purpose: 'weekly_planning_renderer',
+  });
+  return parseWeeklyPlanningStableV5DialogueRendererResponse(rawResponse, params.input);
+}
+
 export function createAiWeeklyPlanningStableV5DialogueRenderer(
   config: AiConfig = getAiConfig(),
   client: OpenAiCompatibleClient = createOpenAiCompatibleClient(config),
@@ -59,16 +82,25 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           input.actionId,
           rendererPromptTraceContext(prompt),
         );
-        const rawResponse = await client.createChatCompletion({
+        const baseMessages: ChatMessage[] = [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: prompt.userPrompt },
+        ];
+        const initial = await requestDialogueRender({ client, input, messages: baseMessages });
+        if (
+          initial.status !== 'fallback'
+          || initial.reason !== 'repeated_question_text'
+        ) {
+          return initial;
+        }
+        return requestDialogueRender({
+          client,
+          input,
           messages: [
-            { role: 'system', content: prompt.systemPrompt },
-            { role: 'user', content: prompt.userPrompt },
+            ...baseMessages,
+            { role: 'user', content: REPEATED_QUESTION_REPAIR_INSTRUCTION },
           ],
-          temperature: 0.4,
-          responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
-          purpose: 'weekly_planning_renderer',
         });
-        return parseWeeklyPlanningStableV5DialogueRendererResponse(rawResponse, input);
       } catch {
         return { status: 'fallback', reason: 'provider_error', rawResponse: null };
       }
