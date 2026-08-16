@@ -1,9 +1,9 @@
 {
   "scenario": "context-reference-student-ellipsis",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "青チャート100問やっときたい",
-  "previous_run_id": null,
+  "user_text": "来週まで。夜がいい",
+  "previous_run_id": 31931979790,
   "conversation_id": "weekly-luna-context-student-ellipsis-01",
   "owner_id": "real-api-context-student-ellipsis-01",
   "week_start_date": "2026-08-17",
