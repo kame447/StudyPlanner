@@ -1,9 +1,36 @@
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
+
+function isSchedulableWorkload(workload: WorkloadFactV5): boolean {
+  return workload.quantityRole !== 'completed' && workload.quantityRole !== 'scope_total';
+}
+
+function scopeTotalForTarget(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): WorkloadFactV5 | null {
+  const candidates = params.workloads.filter((workload) =>
+    workload.quantityRole === 'scope_total'
+    && (params.targetKind === 'component'
+      ? workload.componentId === params.targetFactId
+      : workload.taskId === params.targetFactId && workload.componentId === null));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function progressQuestion(params: {
+  label: string;
+  scopeTotal: WorkloadFactV5 | null;
+}): string {
+  if (params.scopeTotal) {
+    return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
+  }
+  return `「${params.label}」は、完成を100%とすると今はだいたい何%くらいまで進んでいますか？`;
+}
 
 export function stableV5MissingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
@@ -38,7 +65,7 @@ export function stableV5MissingSchedulableWorkQuestion(
 
   const componentById = new Map(active.components.map((component) => [component.id, component]));
   const componentsCoveredByWorkload = new Set<string>();
-  active.workloads.forEach((workload) => {
+  active.workloads.filter(isSchedulableWorkload).forEach((workload) => {
     let componentId = workload.componentId;
     while (componentId && !componentsCoveredByWorkload.has(componentId)) {
       componentsCoveredByWorkload.add(componentId);
@@ -70,18 +97,34 @@ export function stableV5MissingSchedulableWorkQuestion(
       || (rolePriority.get(left.role) ?? 99) - (rolePriority.get(right.role) ?? 99))[0];
   if (componentWithNoWorkload) {
     return {
-      message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,
+      message: progressQuestion({
+        label: componentWithNoWorkload.label,
+        scopeTotal: scopeTotalForTarget({
+          workloads: active.workloads,
+          targetFactId: componentWithNoWorkload.id,
+          targetKind: 'component',
+        }),
+      }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: componentWithNoWorkload.id,
     };
   }
   const taskWithNoWorkload = active.tasks.find(
-    (task) => !active.workloads.some((workload) => workload.taskId === task.id),
+    (task) => !active.workloads.some(
+      (workload) => workload.taskId === task.id && isSchedulableWorkload(workload),
+    ),
   );
   if (taskWithNoWorkload) {
     return {
-      message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,
+      message: progressQuestion({
+        label: taskWithNoWorkload.title,
+        scopeTotal: scopeTotalForTarget({
+          workloads: active.workloads,
+          targetFactId: taskWithNoWorkload.id,
+          targetKind: 'task',
+        }),
+      }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: taskWithNoWorkload.id,
