@@ -5,7 +5,7 @@ function unique(values: string[]): string[] {
 }
 
 const PRESERVE_VALID_MEANING_CLAUSE =
-  'Correct every listed validation failure. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.';
+  'Correct every listed validation failure. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response.';
 
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
@@ -31,7 +31,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.');
   }
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
-    directives.push('Declare missing replacement facts from currentUserText in a schema-valid task/component and keep valid fields. Point correction.replacementLocalId to each fresh localId. Reuse exact existingPublicIds only for accepted parent identity; targetLocalId must reference a fresh localId declared here.');
+    directives.push('Declare missing replacement facts stated in currentUserText in a schema-valid task/component; keep valid fields. Set correction.replacementLocalId to each fresh localId. Use exact existingPublicIds only for accepted parent identity; targetLocalId uses fresh localIds.');
   }
   if (errors.some((error) => error.includes('.target:requires-id'))) {
     directives.push('A correction target must use an exact existing publicId or a localId declared in this response; mention alone is not a target. If currentUserText introduces a new fact instead of changing an identified fact, remove that correction and keep the new fact.');
