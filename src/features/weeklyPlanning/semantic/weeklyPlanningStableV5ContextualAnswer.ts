@@ -1,7 +1,4 @@
 import {
-  createWeeklyPlanningEffortQuestionPlanV5,
-} from './weeklyPlanningEffortQuestionPolicyV5';
-import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import {
@@ -69,6 +66,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerEvaluation {
   reason:
     | 'reply_shape_not_contextual'
     | 'unsupported_question_code'
+    | 'question_contract_incomplete'
     | 'target_unavailable'
     | 'duration_not_grounded_in_user_text'
     | 'quantity_role_not_grounded_in_user_text'
@@ -295,11 +293,10 @@ function effortPlanForPendingQuestion(
   target: WorkloadFactV5,
 ) {
   const measurement = input.pendingQuestion.effortMeasurement;
-  if (!measurement) return createWeeklyPlanningEffortQuestionPlanV5(target);
+  if (!measurement) return null;
   return {
     kind: measurement,
     unitCode: measurement === 'total_duration' ? null : target.unitCode,
-    sessionQuantities: [],
   };
 }
 
@@ -324,6 +321,7 @@ function applyEffortAnswer(
   ) return null;
 
   const questionPlan = effortPlanForPendingQuestion(input, target);
+  if (!questionPlan) return null;
   const fact: EffortEstimateFactV5 = {
     id,
     taskId: target.taskId,
@@ -592,6 +590,17 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
       ...base,
       status: 'not_contextual',
       reason: 'unsupported_question_code',
+      result: null,
+    };
+  }
+  if (
+    input.pendingQuestion.questionCode === 'missing_effort_estimate'
+    && !input.pendingQuestion.effortMeasurement
+  ) {
+    return {
+      ...base,
+      status: 'not_contextual',
+      reason: 'question_contract_incomplete',
       result: null,
     };
   }
