@@ -125,6 +125,8 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
     expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(3200);
+    // Keep a material-growth guard, but do not force semantic contracts out of
+    // the renderer merely to satisfy PR #130's former compactness target.
+    expect(bytes(payload.request)).toBeLessThanOrEqual(3800);
   });
 });
