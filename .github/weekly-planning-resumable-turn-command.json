@@ -1,9 +1,9 @@
 {
-  "scenario": "checkpoint-loop-01-gradual-intake",
-  "turn": 1,
+  "scenario": "checkpoint-loop-02-short-proposal-acceptance",
+  "turn": 2,
   "attempt": 1,
-  "user_text": "来週、英単語180語と数学の問題40問をやりたい",
-  "previous_run_id": null,
+  "user_text": "うん、それでいい",
+  "previous_run_id": 31934153614,
   "conversation_id": "weekly-luna-checkpoint-10loop-01",
   "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
