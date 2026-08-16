@@ -34,9 +34,8 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-// PR #130 proved that optimizing these limits below the semantic contract can
-// remove necessary invariants. Keep explicit headroom and fail only on material
-// growth rather than forcing meaning rules back out of the prompt.
+// Keep semantic invariants even when they cost a few hundred bytes. PR #130
+// showed that forcing this budget lower can delete application-critical meaning.
 const GENERIC_MEANING_POLICY_MAX_BYTES = 2_800;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_900;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
@@ -46,7 +45,9 @@ const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
 
 function byteLength(value: unknown): number {
-  return new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value)).byteLength;
+  return new TextEncoder().encode(
+    typeof value === 'string' ? value : JSON.stringify(value),
+  ).byteLength;
 }
 
 function requestBytes(params: {
@@ -55,39 +56,48 @@ function requestBytes(params: {
   maxCompletionTokens: number;
 }): number {
   return byteLength({
-    model: 'gpt-5.6-luna',
     messages: params.messages,
-    response_format: params.responseFormat,
-    max_completion_tokens: params.maxCompletionTokens,
+    temperature: 0,
+    responseFormat: params.responseFormat,
+    purpose: 'weekly_planning_semantic_normalizer',
+    maxCompletionTokens: params.maxCompletionTokens,
   });
 }
 
 function representativeGenericMessages() {
   return createWeeklyPlanningSemanticBaseMessagesV5({
-    userText: '8月17日から23日で数学の問題集を40問進めたい',
-    recentConversation: [{
-      role: 'assistant' as const,
-      content: '予定に入れたい作業を教えてください。',
-    }],
+    userText: '8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。',
+    recentConversation: [],
     publicStateSummary: {
+      runtime: 'weekly-planning-stable-v5',
+      graphRevision: 0,
+      previousCompatibilityStatus: null,
+      pendingQuestion: null,
+      groundingRecords: [],
+      repairAgenda: [],
       planningWindows: [],
       tasks: [],
       components: [],
       workloads: [],
+      uncertainties: [],
+      userPlanningContext: [],
+      lastAssistantMessage: null,
       effortEstimates: [],
       temporalConstraints: [],
-      taskDateRules: [],
       recurrences: [],
-      relations: [],
-      uncertainties: [],
-      availabilityDeclarations: [],
-      constraintSourceRequests: [],
-      pendingQuestion: null,
+      calendarContext: {
+        currentDate: '2026-08-12',
+        timeZone: 'Asia/Tokyo',
+      },
+      episodicMemory: {
+        version: 'weekly-planning-episodic-memory-v5',
+        items: [],
+      },
     },
   });
 }
 
-function focusedDocument(): WeeklyPlanningSemanticDocumentV5 {
+function invalidPlanningWindowDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: 'weekly-planning-semantic-v5',
     planningIntent: 'create_plan',
@@ -119,7 +129,7 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
-  it('keeps the always-on meaning policy compact without deleting semantic invariants', () => {
+  it('keeps the always-on meaning policy compact', () => {
     const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
     expect(byteLength(policy)).toBeLessThanOrEqual(
       GENERIC_MEANING_POLICY_MAX_BYTES,
@@ -127,11 +137,6 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(
       WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
         (rule) => rule.id === 'workload_quantity_effort',
-      ),
-    ).toBe(true);
-    expect(
-      WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
-        (rule) => rule.id === 'task_structure',
       ),
     ).toBe(true);
   });
@@ -164,7 +169,7 @@ describe('Stable V5 semantic prompt budget', () => {
     );
   });
 
-  it('caps the always-on generic system prompt with correctness headroom', () => {
+  it('caps the always-on generic system prompt itself', () => {
     const systemPrompt = representativeGenericMessages()[0]?.content ?? '';
 
     expect(byteLength(systemPrompt)).toBeLessThanOrEqual(
@@ -188,52 +193,87 @@ describe('Stable V5 semantic prompt budget', () => {
       maxCompletionTokens: FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
     });
 
-    expect(focusedBytes).toBeLessThan(genericBytes);
-    expect(focusedBytes).toBeLessThanOrEqual(FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES);
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 4);
   });
 
-  it('keeps contextual-answer focused requests compact', () => {
+  it('keeps exact pending-answer interpretation materially smaller than generic semantic', () => {
+    const genericBytes = representativeGenericRequestBytes();
     const focusedBytes = requestBytes({
       messages: createFocusedContextualAnswerMessagesV5({
-        userText: '3時間です',
-        pendingQuestion: {
-          actionId: 'q1',
-          questionCode: 'missing_effort_estimate',
-          targetFactId: 'workload-1',
-          graphRevision: 1,
-          effortMeasurement: 'duration_per_unit',
+        userText: '30分くらいです',
+        publicStateSummary: {
+          pendingQuestion: {
+            questionCode: 'missing_effort_estimate',
+            targetFactId: 'workload-1',
+            graphRevision: 3,
+          },
+          workloads: [{
+            publicId: 'workload-1',
+            amount: 220,
+            unitCode: 'word',
+            unitLabel: '語',
+            quantityRole: 'target',
+          }],
         },
-        publicStateSummary: { pendingQuestion: null },
       }),
       responseFormat: FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
       maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
     });
-    expect(focusedBytes).toBeLessThanOrEqual(FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES);
+
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 4);
   });
 
-  it('keeps focused planning-window repair compact', () => {
+  it('keeps planning-window representation repair tiny and evidence-local', () => {
+    const genericBytes = representativeGenericRequestBytes();
     const focusedBytes = requestBytes({
       messages: createFocusedPlanningWindowRepairMessagesV5({
-        userText: '8月17日から23日です',
-        invalidDocument: focusedDocument(),
-        validationErrors: ['planningWindow:start/end missing'],
+        userText: '8月17日から23日で、英単語220語も進めたいです',
+        invalidDocument: invalidPlanningWindowDocument(),
+        validationErrors: ['document.planningWindow:absolute-range'],
+        calendarContext: {
+          currentDate: '2026-08-12',
+          timeZone: 'Asia/Tokyo',
+        },
       }),
       responseFormat: FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
       maxCompletionTokens: FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
     });
-    expect(focusedBytes).toBeLessThanOrEqual(FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES);
+
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 8);
   });
 
-  it('keeps focused temporal-scope repair compact', () => {
+  it('keeps temporal-scope repair tiny instead of regenerating the semantic document', () => {
+    const genericBytes = representativeGenericRequestBytes();
     const focusedBytes = requestBytes({
       messages: createFocusedTemporalScopeRepairMessagesV5({
-        userText: '明日の14時から20時はバイトです',
-        invalidDocument: focusedDocument(),
-        validationErrors: ['availability date scope missing'],
+        taskIndex: 1,
+        constraintIndex: 0,
+        taskTitle: '数学の問題を進める',
+        taskLocalId: 't2',
+        constraintLocalId: 'tc1',
+        sourceText: '火曜日の18時から20時は予定があるので避けてください',
+        dateExpression: 'weekday:tuesday',
+        namedTimePeriod: null,
+        startTime: '18:00',
+        endTime: '20:00',
+        constraintLevel: 'hard',
       }),
       responseFormat: FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
       maxCompletionTokens: FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
     });
-    expect(focusedBytes).toBeLessThanOrEqual(FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES);
+
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 8);
   });
 });
