@@ -31,14 +31,18 @@ export type WeeklyPlanningStableV5ProgressBasis =
 
 export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
-  mode: 'existing_target_progress' | 'missing_task_identity';
+  mode:
+    | 'existing_target_progress'
+    | 'missing_task_identity'
+    | 'all_requested_work_complete';
   targetFactId: string | null;
   progressBasis: WeeklyPlanningStableV5ProgressBasis | null;
   knownUnitCode: string | null;
   knownUnitLabel: string | null;
   requestedInformation:
     | readonly ['current_progress']
-    | readonly ['task_identity'];
+    | readonly ['task_identity']
+    | readonly ['additional_task_or_constraint'];
 }
 
 export type WeeklyPlanningStableV5DialogueResolutionKind =
