@@ -1,9 +1,9 @@
 {
-  "scenario": "checkpoint-loop-05-per-problem-effort",
-  "turn": 5,
+  "scenario": "checkpoint-loop-06-post-preview-correction",
+  "turn": 6,
   "attempt": 1,
-  "user_text": "5分くらい",
-  "previous_run_id": 31934436229,
+  "user_text": "数学40問じゃなくて30問だった",
+  "previous_run_id": 31934492662,
   "conversation_id": "weekly-luna-checkpoint-10loop-01",
   "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
