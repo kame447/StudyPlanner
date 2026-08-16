@@ -59,6 +59,12 @@ export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
     return { records, pendingProposal: existingPending };
   }
 
+  const proposalUnscheduledWorkItemIds = params.compilation.input.movableWorkItems
+    .filter((item) =>
+      unscheduledIds.has(item.id)
+      && item.workloadFactId === acceptedSpacing.workloadFactId)
+    .map((item) => item.id);
+
   const proposal: WeeklyPlanningLearningStrategyProposalRecord = {
     id: `wpp_capacity_${acceptedSpacing.id}`,
     kind: 'mixed_acquisition_review',
@@ -72,7 +78,7 @@ export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
       trigger: 'insufficient_capacity',
       acquisition: 'longer_sessions',
       review: 'short_distributed_sessions',
-      unscheduledWorkItemIds: [...params.preview.unscheduledWorkItemIds],
+      unscheduledWorkItemIds: proposalUnscheduledWorkItemIds,
     },
     createdRevision: params.graphRevision,
     proposedAtTurnId: params.turnId,
