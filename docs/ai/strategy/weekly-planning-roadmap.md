@@ -1,189 +1,92 @@
 # 週間計画 AI ロードマップ
 
-Status: canonical / conversation quality, Luna simplification, adaptive learning policy
-Updated: 2026-08-15
+Status: canonical / execution order
+Updated: 2026-08-16
 
-Canonical references:
+Current contract: [../weekly-planning-current-contract-v5.md](../weekly-planning-current-contract-v5.md)
+Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
+Current PR task: [../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+Human grounding policy: [../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+Adaptive memory policy: [weekly-planning-adaptive-memory-learning-policy.md](weekly-planning-adaptive-memory-learning-policy.md)
+Decision-ownership audit: [../audits/20260816-pr130-decision-duplication-adversarial-audit.md](../audits/20260816-pr130-decision-duplication-adversarial-audit.md)
+Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
-- [Current status](../weekly-planning-current-contract-status.md)
-- [Current contract](../weekly-planning-current-contract-v5.md)
-- [Semantic V5 roadmap](weekly-planning-semantic-v5-roadmap.md)
-- [Current Luna audit](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
-- [Human grounding policy](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
-- [Adaptive memory learning policy](weekly-planning-adaptive-memory-learning-policy.md)
-- [Test philosophy](../testing/weekly-planning-test-philosophy.md)
-- [Completed SOLID refactor roadmap](20260814-solid-refactor-roadmap.md)
+## 1. この roadmap の役割
 
-## 1. 最上位設計原則
+この文書は architecture の詳細仕様を全文再掲する場所ではなく、現在どの順序で何を片付けるかを決める source of truth である。
 
-複数の意味に解釈できる自然言語の理解まではAI、意味がtyped stateとして一意になった後はapplicationが所有する。
+AI / deterministic application の責務、Fact Graph、scheduler、preview、approval、save、persistence の契約は current contract を正とする。human grounding の詳細は Human Grounding Policy、暗記・想起系の詳細は Adaptive Memory Learning Policy を正とする。
 
-AI:
+## 2. 完了済み基盤
 
-- natural language meaning / conversation context
-- contextual reference / correction
-- quantity role / date-time intent
-- proposal accept / reject / modify
-- current-only / durable scope meaning
+PR #109、#112、#113、#120、#127、#129 までで Stable V5 production 一本化、production 到達不能 legacy runtime / parser / interpreter の削除、semantic ownership 整理、human grounding / correction / Fact lifecycle hardening、scheduler / preview / approval 境界、Browser Regression、file-by-file SOLID hardening、owner / conversation isolation の主要基盤を確立した。
 
-Application:
+これらの詳細履歴は Git history と completed refactor documents を参照し、この roadmap へ重複転記しない。
 
-- schema / evidence / reference validation
-- formal binding / IDs
-- Fact Graph lifecycle / revision / idempotency
-- confirmation necessity / question priority
-- proposal lifecycle / accepted scope
-- readiness / scheduler
-- preview / approval / save
-- persistence / recovery
-- calculations / personalization evidence
+## 3. 現在の architecture 評価
 
-raw Japaneseを後段regex / keyword / parserで再解釈しない。
+2026-08-16 の敵対的監査では、StudyPlanner 全体は「複雑だが構造化されている」と判定した。大きな責務境界は維持されており、全面的なスパゲッティではない。
 
-## 2. Human grounding
+一方、weekly-planning conversation orchestration では「同じ意味の判断が何箇所に存在するか」という観点で局所的な重複が確認された。特に effort question、next conversational action、scheduler readiness、preview authorization compatibility が次の構造 refactor の中心である。
 
-共通基盤は内部stateだけでは成立しない。
-
-application内部のheuristic、推奨、推定結果をユーザーも既に知っている前提で話さない。
+このため PR #130 の残作業では、ファイル分割やコード行数削減だけを成功条件にしない。一つの意味判断に一つの application owner を割り当て、renderer、compatibility、trace は typed decision を再推論せず投影する構造を目標にする。
 
 ```text
-internal candidate
-→ proposal / explanation becomes observable
-→ user accept / reject / modify
-→ accepted scope becomes shared ground
+semantic meaning
+→ canonical typed state
+→ one application decision owner
+→ immutable typed decision
+→ renderer / compatibility / trace projection
 ```
 
-正常系の会話を固定質問文へ戻さない。rendererはtyped decisionとshared-ground contextから自然な発話を生成する。
+## 4. PR #130 current sequence
 
-## 3. Production baseline
+最初に Markdown / contract / docs index を current HEAD へ同期し、decision-ownership audit を正本として残す。これは 2026-08-16 の Markdown-only 監査で実施した。
 
-```text
-user utterance
-→ machine-state semantic route
-→ Luna semantic interpretation
-→ validation / optional max-one repair
-→ deterministic canonical commit
-→ Fact Graph V5
-→ readiness / proposal / scheduler / dialogue decision
-→ Luna renderer
-→ preview
-→ approval / save
-```
+次に effort-question contract を一本化する。`missing_effort_estimate` の必要性、measurement、target、memory proposal による `session_duration` override を一つの typed decision にまとめ、response routing、compatibility projection、renderer context、contextual answer が別 state から同じ意味を再導出しない状態を目標にする。
 
-Stable V5が唯一のproduction runtimeであり、legacy parser / interpreterへ戻さない。
+その次に next conversational action の ownership を整理する。repair、proposal、memory-specific question、missing-work fallback、authorization、preview readiness の優先順位を一つの policy に閉じ、router は action を選び直さず実行するだけにする。
 
-## 4. Adaptive memory learning
+続いて semantic pipeline 内の scheduler compilation と planning evaluation 側の enriched authoritative compilation の二重性を確認する。semantic pipeline 側が diagnostics のためだけならその役割を明示し、不要なら削除候補とする。
 
-詳細SSoTは [Adaptive Memory Learning Policy](weekly-planning-adaptive-memory-learning-policy.md)。
+その後 preview authorization compatibility を整理する。semantic intent、application authorization、compatibility `draftGenerationIntent` の authority を混同しない。compatibility state は projection であり source of truth ではない状態を維持する。
 
-暗記・想起中心の学習を英単語だけの特殊caseとして実装しない。
+これらの構造 cleanup 後に、残っている focused semantic route、repair scaffolding、renderer output guardrail を Luna one-element ablation で評価する。Luna の能力向上だけを理由に application safety を AI へ移さないが、旧 model 時代に必要だった補助経路が不要になっているなら削る。
 
-### Cold start
+最後に Stable V5 の過去会話を一 turn ずつ human review し、固定 transcript を quality oracle にせず dynamic real-API conversation を preview まで通す。各 assistant turn を確認してから次の user utterance を決め、明確な意味誤認、shared-premise 違反、重複質問、誤 binding、未了承 proposal 適用があればその turn で停止する。
 
-一般的なspacing / retrievalの知見から、短めsessionや分散復習をproposalできる。
+## 5. Adaptive memory の順序
 
-15〜30分はproposal候補であり固定値ではない。1日複数回もproposalであり、自動採用しない。
+暗記・想起系は英単語専用 heuristic に戻さない。current-week acceptance、durable preference、observed learning profile を分離し、proposal は了承前に scheduler へ適用しない。
 
-### Large workload / short deadline
+ただし decision-ownership cleanup より先に大きな adaptive memory feature を追加しない。現在の orchestration にさらに例外 branch を積み上げると、今回確認した構造負債を悪化させるためである。
 
-短いsessionだけでは必要量へ到達しにくいとapplicationが判断できる場合、
+既に実装済みの learning proposal / observed pace 基盤を壊さず、owner を整理した後に durable preference promotion、observed learning evidence、adaptive review proposal を進める。
 
-- 新規学習は比較的まとまった時間
-- 復習は短く分散
+## 6. Prompt simplification
 
-というmixed planをproposalできる。
+semantic prompt と dialogue prompt は現時点では一般原則へかなり整理されているため、prompt の総文字数だけを複雑性指標にしない。
 
-それでも現実的でない場合、
+削減候補は、schema と重複する format 指示、model-era repair scaffolding、application が一意に導出できる representation、同じ意味規則の prompt 間重複である。
 
-- 全範囲を一巡
-- 重要範囲へ絞って定着
-- 目標量 / 期限変更
+focused planning-window AI repair など、意味が既に typed evidence から一意に導出できる処理は converter 化を検討する。typed evidence 自体が不足している場合は fail closed / uncertainty に戻し、raw Japanese deterministic parser を追加しない。
 
-等を提示してユーザーに選択させる。無理な長時間予定を自動で詰め込まない。
+renderer validation に残る Japanese regex は raw-user semantic parser と同列に削らず、typed output safety と real-API evidence を見て one-element ごとに判断する。
 
-### Review
+## 7. 検証順序
 
-固定3周、固定1/3/7日、固定朝昼夜をhard ruleにしない。
+各構造変更は targeted regression を先に通し、その後 full TypeScript / Vitest / build を通す。browser behavior に関係する変更では Browser Regression を通し、model behavior に関係する変更では real API を同地点から再実行する。
 
-本人のactual learning / recall evidenceが増えるほど一般priorを弱め、本人のpace / retentionへ適応する。
+exact renderer wording を自動 quality oracle にしない。自動テストは deterministic invariant、実会話は human-reviewed observation として扱う。
 
-## 5. Memory roadmap
+## 8. 別 scope
 
-三層を維持する。
+Issue #52 の大規模 weekly UI 責務分離と Issue #115 の raw-text regex weekly entry routing は PR #130 と独立 scope のまま維持する。
 
-1. week / conversation memory
-   - current planでacceptedされた方針。
-2. durable preference
-   - 今後も利用することまで明示的に共有されたowner-scoped好み。
-3. observed learning profile
-   - actual session / progress / recall / interval等から得た観測・derived estimate。
+PR #130 本文に残る `Closes #115` は current roadmap と矛盾するため merge 前に PR metadata 側で修正する。今回の 2026-08-16 作業は Markdown-only scope のため PR 本文は変更していない。
 
-現在owner-scoped `userPlanningContext`は存在するが、learning preference / observed profileはtyped extensionが必要。
+privacy / personalization broader rollout、cross-device approval uniqueness、saved-preview migration も既存の独立 scope を維持する。
 
-Preferenceとobserved profileを分ける。実績が本人の好みを勝手に書き換えない。
+## 9. Completion gate
 
-## 6. 現在までに完了した基盤
-
-PR #109 / #112 / #113 / #120 / #127 / #129で以下を確立済み。
-
-- Stable V5 production一本化
-- legacy semantic/runtime path削除
-- semantic責務分離
-- human grounding / correction / Fact lifecycle hardening
-- session / scheduler / preview / approval境界
-- Browser Regression
-- file-by-file SOLID refactor
-- owner / conversation-scoped runtime isolation
-- observed effort calibration基盤
-
-詳細な過去refactor履歴はcompleted SOLID refactor roadmapとGit historyを参照し、このcurrent roadmapへ重複転記しない。
-
-## 7. PR #130 active sequence
-
-```text
-1. canonical MD / contract sync
-2. stale vocabulary total-duration / word-threshold / automatic-daypart inventory
-3. one-element removal and regression repair
-4. generic memorization proposal state
-5. accept / reject / modify lifecycle
-6. current-week scheduling integration
-7. durable preference promotion boundary
-8. observed learning evidence / derived profile
-9. adaptive review proposal
-10. Luna prompt / repair ablation
-11. final dynamic conversation → preview
-12. Browser Regression / normal CI / closeout
-```
-
-各段階で targeted regression → full CI → 必要なreal API rerunを実施し、greenになるまで次へ進まない。
-
-## 8. Prompt simplification
-
-Lunaの性能向上を理由にapplication safetyをAIへ移さない。
-
-削減対象:
-
-- schemaと重複するformat指示
-- model-eraのhistorical repair scaffolding
-- applicationが一意に導出できるfieldをAIへ生成させる処理
--同じ意味規則のprompt間重複
-
-次の主要候補はfocused planning-window AI repairである。意味が既にtypedに確定しているrepresentation変換はapplicationへ寄せる。
-
-## 9. 別scope
-
-Issue #52の大規模weekly UI分離、Issue #115のentry routing等は独立scopeを維持する。
-
-PR #130では新branch / 新PR / 新Issueを作らず、現在branchで会話品質・heuristic整理・prompt simplificationを完遂する。
-
-## 10. Completion gate
-
-- internal heuristicをshared premiseとして話さない
-- proposalが了承前に適用されない
-- current-only acceptanceがdurable memoryへ漏れない
-- stale vocabulary-specific fixed behaviorが除去される
-- adaptive memory policy向けtyped boundariesが一般化される
-- prompt / request budget green
-- full typecheck / Vitest / build green
-- Browser Regression green
-- final Luna conversationがhuman-reviewedでpreviewへ到達
+PR #130 を merge ready とする前に、decision-ownership audit で high-risk とした effort question と next-action orchestration の扱いが明確になっていること、Luna prompt / focused-route ablation の結論が記録されていること、final dynamic conversation が human review で preview まで到達すること、full CI と Browser Regression が green であること、current contract / status / roadmap / task / docs index が最終 HEAD と一致していることを確認する。
