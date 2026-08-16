@@ -99,6 +99,21 @@ describe('Stable V5 dialogue renderer validation', () => {
     )).toMatchObject({ status: 'fallback', reason: 'invalid_json' });
   });
 
+  it('rejects premature claims that a task was already put into a plan before preview', () => {
+    const renderInput = input({
+      currentUserMessage: '研究室のレポートを仕上げたいです',
+      questionCode: 'missing_schedulable_work',
+    });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, '明日の予定に、研究室のレポートを仕上げる作業を入れます。全体量を教えてください。'),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, '研究室のレポートを仕上げたいのですね。全体量を教えてください。'),
+      renderInput,
+    )).toMatchObject({ status: 'rendered' });
+  });
+
   it('keeps preview prose dynamic while requiring the typed promotion control', () => {
     const previewInput = input({
       actionId: 'stable-v5:request-preview:preview_ready',
