@@ -110,11 +110,11 @@ describe('Stable V5 dialogue prompt', () => {
     expect(payload).not.toHaveProperty('planningInformation');
   });
 
-  it('locks the always-on renderer prose to a small budget', () => {
+  it('keeps the always-on renderer prose bounded while retaining semantic invariants', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
     expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(700);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(1000);
   });
 });

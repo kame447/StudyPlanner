@@ -141,6 +141,31 @@ export function questionIntentForStableV5Dialogue(params: {
   effortMeasurement?: string | null;
 }) {
   const fact = params.questionTarget?.fact;
+
+  if (params.questionCode === 'missing_schedulable_work') {
+    if (
+      (params.questionTarget?.collection === 'tasks'
+        || params.questionTarget?.collection === 'components')
+      && typeof fact?.id === 'string'
+    ) {
+      return {
+        kind: 'schedulable_work_detail',
+        mode: 'existing_target_scope_progress',
+        targetFactId: fact.id,
+        requestedInformation: ['total_scope', 'current_progress'],
+      } as const;
+    }
+    if (params.questionTarget === null) {
+      return {
+        kind: 'schedulable_work_detail',
+        mode: 'missing_task_identity',
+        targetFactId: null,
+        requestedInformation: ['task_identity'],
+      } as const;
+    }
+    return null;
+  }
+
   const measurement = effortMeasurement(params.effortMeasurement);
   if (
     params.questionCode !== 'missing_effort_estimate'
