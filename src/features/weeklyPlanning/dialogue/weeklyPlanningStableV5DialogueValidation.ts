@@ -12,7 +12,10 @@ const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*[0-5]?\d\s*分)?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
-const EXECUTION_CLAIM_EXPRESSION = /(?:(?:予定|仮予定|計画).{0,16}(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します)|(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します).{0,16}(?:予定|仮予定|計画))/;
+const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
+const EXECUTION_CLAIM_EXPRESSION = new RegExp(
+  `(?:(?:予定|仮予定|計画).{0,20}${EXECUTION_VERB}|${EXECUTION_VERB}.{0,20}(?:予定|仮予定|計画))`,
+);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
