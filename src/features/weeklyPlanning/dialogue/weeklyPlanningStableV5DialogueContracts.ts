@@ -25,6 +25,15 @@ export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
   unitLabel: string | null;
 }
 
+export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
+  kind: 'schedulable_work_detail';
+  mode: 'existing_target_scope_progress' | 'missing_task_identity';
+  targetFactId: string | null;
+  requestedInformation:
+    | readonly ['total_scope', 'current_progress']
+    | readonly ['task_identity'];
+}
+
 export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
   kind: 'learning_strategy_proposal';
   proposalKind: 'spaced_memory_practice';
@@ -77,6 +86,7 @@ export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
 
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
+  | WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent
   | WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent;
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
