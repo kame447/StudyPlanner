@@ -141,11 +141,14 @@ describe('Stable V5 insufficient-capacity learning proposal', () => {
       id: 'wpp_capacity_spacing-1',
       workloadFactId: 'workload-memory',
       status: 'pending',
+      capacityStrategy: {
+        unscheduledWorkItemIds: ['item-memory'],
+      },
     });
     expect(result.records.filter((record) => record.status === 'pending')).toHaveLength(2);
   });
 
-  it('skips an already-covered workload and can propose for another unscheduled workload', () => {
+  it('skips an already-covered workload, proposes for another workload, and scopes evidence to that workload', () => {
     const otherSpacing = acceptedSpacing({
       id: 'spacing-2',
       taskId: 'task-other-memory',
@@ -165,6 +168,9 @@ describe('Stable V5 insufficient-capacity learning proposal', () => {
       taskId: 'task-other-memory',
       workloadFactId: 'workload-other-memory',
       status: 'pending',
+      capacityStrategy: {
+        unscheduledWorkItemIds: ['item-other-memory'],
+      },
     });
     expect(result.records).toHaveLength(4);
   });
