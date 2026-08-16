@@ -177,9 +177,11 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
     .find((record) => record.id === params.actionId && record.status === 'pending');
   if (!proposal) return null;
   const proposalKind = proposal.kind;
-  if (proposalKind !== 'spaced_memory_practice' && proposalKind !== 'calibrate_memory_pace') {
-    return null;
-  }
+  if (
+    proposalKind !== 'spaced_memory_practice'
+    && proposalKind !== 'calibrate_memory_pace'
+    && proposalKind !== 'mixed_acquisition_review'
+  ) return null;
   if (typeof proposal.workloadFactId !== 'string') return null;
   if (!isRecord(proposal.suggestedSessionMinutes)) return null;
   const min = proposal.suggestedSessionMinutes.min;
@@ -214,6 +216,26 @@ export function learningStrategyProposalIntentForStableV5Dialogue(params: {
         objective: 'measure_personal_pace',
         futureUse: 'personalize_future_session_planning',
       },
+      decisionRequested: 'accept_or_reject',
+    } as const;
+  }
+
+  if (proposalKind === 'mixed_acquisition_review') {
+    const strategy = proposal.capacityStrategy;
+    if (
+      !isRecord(strategy)
+      || strategy.trigger !== 'insufficient_capacity'
+      || strategy.acquisition !== 'longer_sessions'
+      || strategy.review !== 'short_distributed_sessions'
+    ) return null;
+    return {
+      kind: 'learning_strategy_proposal',
+      proposalKind: 'mixed_acquisition_review',
+      targetFactId: proposal.workloadFactId,
+      capacityReason: 'insufficient_capacity',
+      acquisitionMode: 'longer_sessions',
+      reviewMode: 'short_distributed_sessions',
+      reviewSessionDurationMinutes: { min, max },
       decisionRequested: 'accept_or_reject',
     } as const;
   }
