@@ -23,6 +23,9 @@ import {
   applyWeeklyPlanningStableV5ContextualAnswer,
 } from './weeklyPlanningStableV5ContextualAnswer';
 import {
+  shouldAttemptWeeklyPlanningContextualAnswerV5,
+} from './weeklyPlanningContextualAnswerRoutingV5';
+import {
   readWeeklyPlanningPendingQuestionV5,
 } from './weeklyPlanningPendingQuestionV5';
 import {
@@ -259,7 +262,13 @@ export function createWeeklyPlanningSemanticPipelineV5(
         userText: input.userText,
         pendingQuestion,
       });
-      const contextualAnswer = pendingQuestion
+      const contextualAnswerEligible = pendingQuestion
+        ? shouldAttemptWeeklyPlanningContextualAnswerV5({
+            document: normalization.document,
+            pendingQuestion,
+          })
+        : false;
+      const contextualAnswer = pendingQuestion && contextualAnswerEligible
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
             document: normalization.document,
@@ -275,6 +284,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         stage: 'contextual_answer_binding_evaluated',
         data: {
           ...bindingObservations,
+          contextualAnswerEligible,
           contextualAnswerApplied: Boolean(contextualAnswer),
           contextualAnswerResult: contextualAnswer,
         },
