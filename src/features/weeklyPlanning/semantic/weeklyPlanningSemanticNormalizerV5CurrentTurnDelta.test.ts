@@ -81,6 +81,9 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).toContain('publicStateSummary and recentConversation are context, not output');
     expect(system).toContain('Emit only facts stated or changed in current userText');
     expect(system).toContain('every sourceText must be supported by current userText');
+    expect(system).toContain(
+      'a new nested fact on an existing task/component needs only a minimal containing shell bound by exact existingPublicId',
+    );
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 
