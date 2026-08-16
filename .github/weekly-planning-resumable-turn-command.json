@@ -1,11 +1,11 @@
 {
-  "scenario": "context-reference-correction-formal",
-  "turn": 2,
+  "scenario": "context-reference-contrastive-other",
+  "turn": 4,
   "attempt": 1,
-  "user_text": "失礼しました。そちらは90問の誤りでした。",
-  "previous_run_id": 31931706634,
-  "conversation_id": "weekly-luna-context-adult-formal-01",
-  "owner_id": "real-api-context-adult-formal-01",
+  "user_text": "じゃあもう片方は日曜まで",
+  "previous_run_id": 31933053329,
+  "conversation_id": "weekly-luna-context-true-ambiguity-01",
+  "owner_id": "real-api-context-true-ambiguity-01",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
