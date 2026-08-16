@@ -154,6 +154,9 @@ function effortFallbackText(
 function schedulableWorkFallbackText(
   intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
 ): string {
+  if (intent.mode === 'all_requested_work_complete') {
+    return '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。';
+  }
   if (intent.mode === 'missing_task_identity') {
     return '予定に入れたい作業を一つ教えてください。';
   }
