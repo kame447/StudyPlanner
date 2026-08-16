@@ -74,7 +74,7 @@ const planningInformation = {
 };
 
 describe('Stable V5 dialogue context', () => {
-  it('projects completed workload effort as total-duration intent', () => {
+  it('projects an application-owned completed-workload total-duration intent', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-math',
@@ -91,18 +91,19 @@ describe('Stable V5 dialogue context', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
+      effortMeasurement: 'total_duration',
     })).toEqual({
       kind: 'effort_measurement',
       measurement: 'total_duration',
       quantityRole: 'completed',
       targetFactId: 'workload-math',
       amount: 30,
-      unitCode: 'page',
+      unitCode: null,
       unitLabel: 'ページ',
     });
   });
 
-  it('projects target page effort as per-unit intent', () => {
+  it('projects an application-owned target-page duration-per-unit intent', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-math-target',
@@ -111,6 +112,7 @@ describe('Stable V5 dialogue context', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
+      effortMeasurement: 'duration_per_unit',
     })).toEqual({
       kind: 'effort_measurement',
       measurement: 'duration_per_unit',
@@ -122,7 +124,7 @@ describe('Stable V5 dialogue context', () => {
     });
   });
 
-  it('does not infer one-session meaning from a vocabulary unit alone', () => {
+  it('does not infer effort measurement from a vocabulary unit alone', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'workload-vocabulary',
@@ -131,10 +133,7 @@ describe('Stable V5 dialogue context', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_effort_estimate',
       questionTarget,
-    })).toEqual(expect.objectContaining({
-      measurement: 'total_duration',
-      targetFactId: 'workload-vocabulary',
-    }));
+    })).toBeNull();
   });
 
   it('projects one-session intent when the application has explicitly established that measurement', () => {
