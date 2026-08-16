@@ -1,9 +1,9 @@
 {
   "scenario": "luna-multiturn-short-answer-correction-20260816",
-  "turn": 4,
+  "turn": 5,
   "attempt": 1,
-  "user_text": "それで",
-  "previous_run_id": 31921608176,
+  "user_text": "220語じゃなくて180語だった",
+  "previous_run_id": 31921658130,
   "conversation_id": "weekly-luna-multiturn-short-answer-correction-20260816-01",
   "owner_id": "real-api-luna-multiturn-short-answer-correction-user-1",
   "week_start_date": "2026-08-17",
