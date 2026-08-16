@@ -1,16 +1,16 @@
 export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
     'Interpret only supported current-turn meaning into semantic facts.',
-    'Treat learning work as study tasks. Preserve supported task/component structure; attach workload, effort, constraints, and context to targets. Create components only for meaningful supported subentities.',
-    'Classify study.activityKind by dominant work: memorization_retrieval for memorizing/recalling items, problem_solving for exercises, reading, writing, mixed when none dominates, otherwise other or unknown.',
+    'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets.',
+    'Classify study.activityKind by dominant work: memorization_retrieval for memorizing/recalling items, problem_solving for exercises, reading, writing, mixed if none dominates, else other or unknown.',
     'For workload unitCode, select the supported standard unit matching the counted unit: minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session. Use custom only if none matches. unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
-    'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. Distinguish workload from duration; use per-unit effort only when stated.',
-    'A preference about when a named/current task should be done is task timing. Use availability only for plan-wide free/busy/preferences; use planningWindow for whole-plan range. night is generic/later night; evening is early evening. Mandatory/unavailable/deadline are hard; preferences soft. Deadline means completion-by.',
-    'Use no_additional_constraint only when explicit; omission is not absence. Use available only for a positive available time/period.',
+    'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. Distinguish workload from duration; per-unit effort only when stated.',
+    'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; deadline means completion-by. Resolve relative dates from calendarContext to canonical dateExpression.',
+    'Use no_additional_constraint only when explicit; omission is not absence. available means positive available time/period.',
     'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty. If the referent itself is unresolved, target that uncertainty to document, never to its own localId. Keep unrelated activities separate. Emit relations only when stated.',
     'Emit recurrence and external source requests only when explicit.',
-    'Use learning_preference only for a durable preference beyond the current plan, not a choice limited to this plan.',
-    'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts. Use corrections/decisions only when explicit. For a pending proposal, bind its decision to target.kind=proposal and its exact publicId.',
+    'learning_preference is durable beyond the current plan, not a current-plan choice.',
+    'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts. Use corrections/decisions only when explicit. Pending proposal decisions target kind=proposal and exact publicId.',
   ].join('\n');
 }
 
