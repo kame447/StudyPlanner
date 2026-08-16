@@ -111,14 +111,11 @@ function routeBeforePreview(params: {
   }
 
   if (dialogue.status === 'ask_question') {
-    const acceptedMemoryProposal = dialogue.question.code === 'missing_effort_estimate'
-      && learningStrategyProposals.acceptedSpacedProposal?.workloadFactId === dialogue.question.factId
-      ? learningStrategyProposals.acceptedSpacedProposal
-      : null;
-    const renderedQuestion = acceptedMemoryProposal
+    const sessionDurationQuestion = dialogue.question.effortMeasurement === 'session_duration';
+    const renderedQuestion = sessionDurationQuestion
       ? ''
       : renderStableV5RuntimeQuestion(graph, dialogue.question);
-    const message = acceptedMemoryProposal
+    const message = sessionDurationQuestion
       ? ''
       : groundedMessage({
           message: renderedQuestion,
@@ -132,7 +129,7 @@ function routeBeforePreview(params: {
       draftCandidates: [],
       questionCode: dialogue.question.code,
       questionFactId: dialogue.question.factId ?? undefined,
-      questionIntent: acceptedMemoryProposal ? 'session_duration' : undefined,
+      questionIntent: dialogue.question.effortMeasurement ?? undefined,
       authorized,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
