@@ -46,7 +46,7 @@ interface ObservedTurn {
   userText: string;
   assistantText: string;
   responseSource: string | null;
-  questionContext: PlanningState['lastQuestionContext'];
+  questionContext: unknown;
   graph: WeeklyPlanningFactGraphV5;
   requestId: string;
   debugTrace: unknown[];
@@ -85,8 +85,16 @@ function activeEfforts(graph: WeeklyPlanningFactGraphV5) {
 }
 
 function questionCode(turn: ObservedTurn): string | null {
-  const slot = turn.questionContext?.targetSlot;
-  return slot?.startsWith('stable_v5:') ? slot.slice('stable_v5:'.length) : null;
+  const context = turn.questionContext;
+  if (
+    typeof context !== 'object'
+    || context === null
+    || !('targetSlot' in context)
+    || typeof context.targetSlot !== 'string'
+  ) return null;
+  return context.targetSlot.startsWith('stable_v5:')
+    ? context.targetSlot.slice('stable_v5:'.length)
+    : null;
 }
 
 function hasClockAck(text: string): boolean {
