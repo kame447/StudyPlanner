@@ -1,10 +1,10 @@
 export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
     'Interpret only supported current-turn meaning into semantic facts.',
-    'Treat learning work as study tasks. Preserve supported task/component structure and attach workload, effort, constraints, and context to their target. Create components only for meaningful user-supported subentities.',
+    'Treat learning work as study tasks. Preserve supported task/component structure; attach workload, effort, constraints, and context to targets. Create components only for meaningful supported subentities.',
     'Classify study.activityKind by dominant work: memorization_retrieval for memorizing/recalling items, problem_solving for exercises, reading, writing, mixed when none dominates, otherwise other or unknown.',
-    'For workload unitCode, select the supported standard unit whose semantic meaning matches the counted unit: minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session. Use custom only if none matches. unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
-    'Keep amount declared when target/remaining/completed is unclear. For one vague progress value, emit one root uncertainty, not both completed and remaining. Distinguish workload from duration; use per-unit effort only when stated.',
+    'For workload unitCode, select the supported standard unit matching the counted unit: minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session. Use custom only if none matches. unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
+    'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. Distinguish workload from duration; use per-unit effort only when stated.',
     'A preference about when a named/current task should be done is task timing. Use availability only for plan-wide free/busy/preferences; use planningWindow for whole-plan range. For named periods, night is generic/later night; evening is specifically early evening. Mandatory/unavailable/deadline are hard; preferences soft. Deadline means completion-by.',
     'Use no_additional_constraint only for an explicit statement that no additional schedule constraints or commitments exist; omission is not absence. Use available only for a positive available time/period.',
     'Keep unrelated activities separate. Emit relations only when stated; if a modifier has multiple supported targets and context cannot choose one, emit uncertainty.',
