@@ -15,6 +15,9 @@ import {
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
+  createWeeklyPlanningStableV5CurrentTurnGrounding,
+} from './weeklyPlanningStableV5CurrentTurnGrounding';
+import {
   createWeeklyPlanningAiRenderedDialogueTrace,
   createWeeklyPlanningFallbackDialogueTrace,
   createWeeklyPlanningSystemDialogueRendererTrace,
@@ -46,6 +49,12 @@ const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
 
 function questionCode(result: WeeklyPlanningTurnExecutionResult): string | null {
   const targetSlot = result.state.lastQuestionContext?.targetSlot;
+  return targetSlot?.startsWith('stable_v5:')
+    ? targetSlot.slice('stable_v5:'.length)
+    : null;
+}
+
+function questionCodeFromTargetSlot(targetSlot: string | undefined): string | null {
   return targetSlot?.startsWith('stable_v5:')
     ? targetSlot.slice('stable_v5:'.length)
     : null;
@@ -203,6 +212,16 @@ function createRenderInput(params: {
     applicationText: params.result.message,
     questionIntent,
   });
+  const previousQuestionCode = questionCodeFromTargetSlot(
+    params.input.previousState?.lastQuestionContext?.targetSlot,
+  );
+  const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({
+    graph: params.result.stableV5Graph,
+    turnId: params.input.traceRequestId,
+    actionKind: params.actionKind,
+    previousQuestionCode,
+    currentQuestionCode: params.questionCode,
+  });
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
@@ -210,6 +229,7 @@ function createRenderInput(params: {
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
+    currentTurnGrounding,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,
