@@ -91,6 +91,45 @@ function repeatsMostRecentAssistantQuestion(
   return previousText.length > 0 && currentText === previousText;
 }
 
+function groundingAcknowledgementMismatch(
+  value: unknown,
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  const mode = input.currentTurnGrounding?.mode ?? 'none';
+  if (value === undefined || value === null) {
+    return mode === 'required_before_resume';
+  }
+  if (!isRecord(value)) return true;
+  if (mode === 'none') return true;
+
+  const factIds = value.factIds;
+  const acknowledgementText = value.text;
+  if (
+    !Array.isArray(factIds)
+    || factIds.length === 0
+    || !factIds.every((factId) => typeof factId === 'string' && factId.length > 0)
+    || typeof acknowledgementText !== 'string'
+    || normalizeDialogueText(acknowledgementText).length === 0
+  ) {
+    return true;
+  }
+
+  const acceptedFactIds = new Set(
+    (input.currentTurnGrounding?.acceptedFacts ?? []).map((fact) => fact.factId),
+  );
+  if (
+    acceptedFactIds.size === 0
+    || factIds.some((factId) => !acceptedFactIds.has(factId as string))
+  ) {
+    return true;
+  }
+
+  return !normalizeDialogueText(text).startsWith(
+    normalizeDialogueText(acknowledgementText),
+  );
+}
+
 function validateRenderedText(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -171,6 +210,14 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
   }
 
   const text = parsed.text.replace(/\r\n/g, '\n').trim();
+  if (groundingAcknowledgementMismatch(
+    parsed.groundingAcknowledgement,
+    text,
+    input,
+  )) {
+    return { status: 'fallback', reason: 'grounding_contract_mismatch', rawResponse };
+  }
+
   const validationError = validateRenderedText(text, input);
   if (validationError) {
     return { status: 'fallback', reason: validationError, rawResponse };
