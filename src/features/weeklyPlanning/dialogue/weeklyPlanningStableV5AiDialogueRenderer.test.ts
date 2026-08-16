@@ -63,6 +63,78 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     }));
   });
 
+  it('retries one identical repeated question and keeps the repaired output AI-rendered', async () => {
+    const previousQuestion = '夏合宿のスライドについて、何を決めたいですか？';
+    const renderInput = input({
+      actionId: 'stable-v5:request-clarify:missing_schedulable_work',
+      currentUserMessage: 'その質問は何を確認したいの？',
+      recentConversation: [
+        { role: 'user', content: '夏合宿のスライドを終わらせたい' },
+        { role: 'assistant', content: previousQuestion },
+      ],
+      planningInformation: {
+        tasks: [{ id: 'task-slides', title: '夏合宿のスライド', category: 'study' }],
+      },
+      actionKind: 'question',
+      questionCode: 'missing_schedulable_work',
+      questionTarget: {
+        collection: 'tasks',
+        fact: { id: 'task-slides', title: '夏合宿のスライド', category: 'study' },
+      },
+      questionIntent: {
+        kind: 'schedulable_work_detail',
+        mode: 'existing_target_scope_progress',
+        targetFactId: 'task-slides',
+        requestedInformation: ['total_scope', 'current_progress'],
+      },
+      requiredLabels: ['夏合宿のスライド'],
+      fallbackText: '夏合宿のスライドの全体の範囲と、今どこまで終わっているかを教えてください。',
+    });
+    const createChatCompletion = vi.fn()
+      .mockResolvedValueOnce(response(renderInput, previousQuestion))
+      .mockResolvedValueOnce(response(
+        renderInput,
+        '予定に入れられる作業量を把握するため、夏合宿のスライドの全体の範囲と今の進捗を確認したいです。まず、全体の範囲と今どこまで終わっているかを教えてください。',
+      ));
+    const client: OpenAiCompatibleClient = { createChatCompletion };
+
+    await expect(
+      createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput),
+    ).resolves.toMatchObject({
+      status: 'rendered',
+      text: expect.stringContaining('全体の範囲'),
+    });
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(createChatCompletion.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('直前と異なる自然な表現'),
+        }),
+      ]),
+    }));
+  });
+
+  it('falls back if the one repair attempt still repeats the same assistant question', async () => {
+    const previousQuestion = 'この範囲は今回進めたい量ですか？';
+    const renderInput = input({
+      currentUserMessage: '質問の意味を教えて',
+      recentConversation: [{ role: 'assistant', content: previousQuestion }],
+    });
+    const createChatCompletion = vi.fn(async () => response(renderInput, previousQuestion));
+
+    await expect(
+      createAiWeeklyPlanningStableV5DialogueRenderer(
+        config,
+        { createChatCompletion },
+      ).render(renderInput),
+    ).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'repeated_question_text',
+    });
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+  });
+
   it('does not own deterministic-vs-AI routing', async () => {
     const renderInput = input();
     const client: OpenAiCompatibleClient = {
