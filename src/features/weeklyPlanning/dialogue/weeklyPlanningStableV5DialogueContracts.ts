@@ -111,7 +111,8 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'action_mismatch'
   | 'action_contract_mismatch'
   | 'unsafe_text'
-  | 'ungrounded_text';
+  | 'ungrounded_text'
+  | 'repeated_question_text';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
