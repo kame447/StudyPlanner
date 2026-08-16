@@ -106,11 +106,12 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     });
   });
 
-  it('uses task-identity mode only when there is no existing target', () => {
+  it('uses task-identity mode only when there is no existing target and the application says the task is missing', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_schedulable_work',
       questionTarget: null,
       planningInformation,
+      effortMeasurement: 'missing_task_identity',
     })).toEqual({
       kind: 'schedulable_work_detail',
       mode: 'missing_task_identity',
@@ -120,6 +121,43 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       knownUnitLabel: null,
       requestedInformation: ['task_identity'],
     });
+  });
+
+  it('preserves the application-owned all-complete reason instead of pretending no task was supplied', () => {
+    const intent = questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget: null,
+      planningInformation,
+      effortMeasurement: 'all_requested_work_complete',
+    });
+
+    expect(intent).toEqual({
+      kind: 'schedulable_work_detail',
+      mode: 'all_requested_work_complete',
+      targetFactId: null,
+      progressBasis: null,
+      knownUnitCode: null,
+      knownUnitLabel: null,
+      requestedInformation: ['additional_task_or_constraint'],
+    });
+
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'stable-v5:complete:missing_schedulable_work',
+      currentUserMessage: 'もう100%終わっています',
+      recentConversation: [],
+      planningInformation,
+      actionKind: 'question',
+      questionCode: 'missing_schedulable_work',
+      questionTarget: null,
+      questionIntent: intent,
+      requiredLabels: [],
+      fallbackText: '指定された作業は完了済みです。',
+      previewCount: 0,
+    });
+    const payload = JSON.parse(prompt.userPrompt) as { request: string };
+    expect(payload.request).toContain('all_requested_work_complete');
+    expect(payload.request).toContain('作業をまだ聞いていないかのように言わず');
+    expect(payload.request).toContain('同じ進捗も聞き直さず');
   });
 
   it('passes the open-ended progress contract to the renderer prompt', () => {
