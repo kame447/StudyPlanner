@@ -1,9 +1,9 @@
 {
   "scenario": "context-reference-proposal-formal",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "資格試験の用語を300語ほど暗記したいと考えております。",
-  "previous_run_id": null,
+  "user_text": "その方針でお願いいたします。期限は金曜日までで。",
+  "previous_run_id": 31932641949,
   "conversation_id": "weekly-luna-context-proposal-formal-01",
   "owner_id": "real-api-context-proposal-formal-01",
   "week_start_date": "2026-08-17",
