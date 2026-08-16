@@ -83,18 +83,21 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       },
       questionIntent: {
         kind: 'schedulable_work_detail',
-        mode: 'existing_target_scope_progress',
+        mode: 'existing_target_progress',
         targetFactId: 'task-slides',
-        requestedInformation: ['total_scope', 'current_progress'],
+        progressBasis: 'completion_progress_without_known_unit',
+        knownUnitCode: null,
+        knownUnitLabel: null,
+        requestedInformation: ['current_progress'],
       },
       requiredLabels: ['夏合宿のスライド'],
-      fallbackText: '夏合宿のスライドの全体の範囲と、今どこまで終わっているかを教えてください。',
+      fallbackText: '夏合宿のスライドは、完成までを100%とすると今どのくらい進んでいますか？',
     });
     const createChatCompletion = vi.fn()
       .mockResolvedValueOnce(response(renderInput, previousQuestion))
       .mockResolvedValueOnce(response(
         renderInput,
-        '予定に入れられる作業量を把握するため、夏合宿のスライドの全体の範囲と今の進捗を確認したいです。まず、全体の範囲と今どこまで終わっているかを教えてください。',
+        '予定に入れるために今の進み具合を知りたいです。完成を100%とすると、今はだいたい何%くらいまで進んでいますか？',
       ));
     const client: OpenAiCompatibleClient = { createChatCompletion };
 
@@ -102,7 +105,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput),
     ).resolves.toMatchObject({
       status: 'rendered',
-      text: expect.stringContaining('全体の範囲'),
+      text: expect.stringContaining('100%'),
     });
     expect(createChatCompletion).toHaveBeenCalledTimes(2);
     expect(createChatCompletion.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
