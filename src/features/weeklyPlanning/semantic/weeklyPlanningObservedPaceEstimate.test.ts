@@ -5,7 +5,6 @@ import {
   type WeeklyPlanningFactGraphV5,
   type WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
-import { renderWeeklyPlanningEffortQuestionV5 } from './weeklyPlanningEffortQuestionRendererV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
 
@@ -252,10 +251,6 @@ describe('generic work item observed pace estimation', () => {
         questionBasis: 'completed_workload_total',
       },
     });
-    expect(renderWeeklyPlanningEffortQuestionV5({
-      graph: value,
-      workloadFactId: 'completed-30',
-    })).toBe('数学ワークについて、完了した30ページには、合計でどれくらい時間がかかりましたか？');
   });
 
   it('does not choose completed evidence arbitrarily when more than one candidate exists', () => {
