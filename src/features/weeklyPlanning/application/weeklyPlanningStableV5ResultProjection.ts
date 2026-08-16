@@ -1,7 +1,4 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import {
-  rewriteWeeklyPlanningEffortQuestionV5,
-} from '../semantic/weeklyPlanningEffortQuestionRendererV5';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import {
@@ -36,37 +33,6 @@ function withFreshestAvailableGraph(
   return {
     ...result,
     stableV5Graph: session.graph,
-  };
-}
-
-function withHumanScaleEffortQuestion(
-  result: WeeklyPlanningTurnExecutionResult,
-): WeeklyPlanningTurnExecutionResult {
-  const context = result.state.lastQuestionContext;
-  const workloadFactId = context?.targetSlot === 'stable_v5:missing_effort_estimate'
-    ? context.topicId
-    : undefined;
-  const graph = result.stableV5Graph;
-  if (!graph || !workloadFactId) return result;
-
-  const message = rewriteWeeklyPlanningEffortQuestionV5({
-    graph,
-    workloadFactId,
-    message: result.message,
-  });
-  if (message === result.message) return result;
-  return {
-    ...result,
-    message,
-    state: {
-      ...result.state,
-      questions: result.state.questions.map((question) =>
-        rewriteWeeklyPlanningEffortQuestionV5({
-          graph,
-          workloadFactId,
-          message: question,
-        })),
-    },
   };
 }
 
@@ -117,9 +83,7 @@ function projectCoreResult(params: {
 }): WeeklyPlanningTurnExecutionResult {
   return withRepairSafePreview(
     params.input,
-    withHumanScaleEffortQuestion(
-      withFreshestAvailableGraph(params.input, params.result),
-    ),
+    withFreshestAvailableGraph(params.input, params.result),
   );
 }
 
