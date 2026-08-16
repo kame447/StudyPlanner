@@ -78,4 +78,22 @@ describe('Stable V5 semantic repair prompt', () => {
       'Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.',
     ]);
   });
+
+  it('repairs a self-referential uncertainty toward document or a supported fact', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.uncertainties[0].targetLocalId:self-reference',
+      ],
+    });
+    const payload = repairPayload(messages);
+
+    expect(payload.requiredChanges).toEqual([
+      'Never target an uncertainty at its own localId. If the referent is unresolved, use targetLocalId=document; otherwise target the supported fact localId.',
+    ]);
+    expect(payload.requiredChanges?.join('\n')).not.toContain(
+      'Use a fresh localId declared in this response as targetLocalId',
+    );
+  });
 });
