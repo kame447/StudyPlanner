@@ -1,5 +1,6 @@
 import {
   validateWeeklyPlanningCorrectionTargetReferencesV5,
+  validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
 import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
@@ -49,6 +50,10 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   algorithmicRepairs: string[];
 }
 
+function uniqueErrors(errors: string[]): string[] {
+  return [...new Set(errors)];
+}
+
 export function validateWeeklyPlanningSemanticResponseV5(
   rawResponse: string,
   input: WeeklyPlanningSemanticResponseValidationInputV5,
@@ -57,17 +62,25 @@ export function validateWeeklyPlanningSemanticResponseV5(
     rawResponse,
     publicStateSummary: input.publicStateSummary,
   });
+  const rawCorrectionErrors = validateWeeklyPlanningRawCorrectionTargetReferencesV5(
+    preParseNormalization.rawResponse,
+    input.publicStateSummary,
+  );
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
     preParseNormalization.rawResponse,
   );
   if (!parsed.document) {
+    const errors = uniqueErrors([
+      ...parsed.errors,
+      ...rawCorrectionErrors,
+    ]);
     return {
       document: null,
       parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
         rawResponse: preParseNormalization.rawResponse,
-        validationErrors: parsed.errors,
+        validationErrors: errors,
       }),
-      errors: parsed.errors,
+      errors,
       algorithmicRepairs: preParseNormalization.repairs,
     };
   }
