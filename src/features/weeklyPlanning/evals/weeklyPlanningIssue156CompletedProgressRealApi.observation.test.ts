@@ -38,9 +38,10 @@ function createStore(initialState: PlanningState) {
   };
 }
 
-function questionTopicId(context: unknown): string | null {
-  if (typeof context !== 'object' || context === null || !('topicId' in context)) return null;
-  return typeof context.topicId === 'string' ? context.topicId : null;
+function questionField(context: unknown, key: 'topicId' | 'intent'): string | null {
+  if (typeof context !== 'object' || context === null || !(key in context)) return null;
+  const value = context[key];
+  return typeof value === 'string' ? value : null;
 }
 
 const run = shouldRun ? describe : describe.skip;
@@ -133,8 +134,10 @@ run('Issue #156 completed open-ended progress real API gate', () => {
       && fact.unitLabel === '%')).toBe(false);
 
     const finalTurn = transcript[2];
-    expect(questionTopicId(finalTurn.questionContext)).not.toBe(task?.id);
+    expect(questionField(finalTurn.questionContext, 'topicId')).not.toBe(task?.id);
+    expect(questionField(finalTurn.questionContext, 'intent')).toBe('all_requested_work_complete');
     expect(finalTurn.assistant.replace(/\s+/g, '')).not.toMatch(/夏合宿.{0,30}(何%|100%とすると|どこまで)/);
+    expect(finalTurn.assistant.replace(/\s+/g, '')).not.toMatch(/(作業|予定).{0,15}(まだ|教えていない|ありません).{0,15}(一つ|何)/);
 
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(
