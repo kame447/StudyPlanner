@@ -48,4 +48,32 @@ describe('Stable V5 semantic repair prompt', () => {
       content: invalidResponse,
     });
   });
+
+  it('requires canonical relative dates even when another validation error triggered repair', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [
+        { role: 'system', content: 'normalize' },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            userText: 'こちらは来週末までに。',
+            publicStateSummary: {
+              calendarContext: {
+                currentDate: '2026-08-16',
+                timeZone: 'Asia/Tokyo',
+              },
+            },
+          }),
+        },
+      ],
+      invalidResponse: '{}',
+      validationErrors: ['document.uncertainties[0].targetLocalId'],
+    });
+
+    const payload = repairPayload(messages);
+
+    expect(payload.requiredChanges).toContain(
+      'If repair emits a relative dateExpression, convert it to a canonical date expression using the provided calendarContext; never leave natural-language relative date text in dateExpression.',
+    );
+  });
 });
