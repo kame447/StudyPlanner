@@ -28,7 +28,7 @@ function hasIndependentSemanticDelta(
     || document.relations.length > 0
     || document.availabilityDeclarations.length > 0
     || document.constraintSourceRequests.length > 0
-    || document.userContextFacts.length > 0
+    || (document.userContextFacts?.length ?? 0) > 0
     || document.uncertainties.length > 0
     || document.corrections.length > 0
     || document.decisions.length > 0
