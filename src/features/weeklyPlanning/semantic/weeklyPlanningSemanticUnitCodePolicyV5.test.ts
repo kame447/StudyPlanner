@@ -8,7 +8,7 @@ describe('Stable V5 workload unit semantic policy', () => {
     expect(policy).toContain(
       'minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session',
     );
-    expect(policy).toContain('Use custom only when none of those standard units matches.');
+    expect(policy).toContain('Use custom only if none matches.');
     expect(policy).toContain(
       'unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
     );
