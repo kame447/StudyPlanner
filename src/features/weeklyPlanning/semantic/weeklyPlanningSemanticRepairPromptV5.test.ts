@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningSemanticBaseMessagesV5,
+} from './weeklyPlanningSemanticPromptAssemblyV5';
+import {
   createWeeklyPlanningSemanticRepairMessagesV5,
 } from './weeklyPlanningSemanticRepairPromptV5';
 
@@ -49,31 +52,30 @@ describe('Stable V5 semantic repair prompt', () => {
     });
   });
 
-  it('requires canonical relative dates even when another validation error triggered repair', () => {
-    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
-      baseMessages: [
-        { role: 'system', content: 'normalize' },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            userText: 'こちらは来週末までに。',
-            publicStateSummary: {
-              calendarContext: {
-                currentDate: '2026-08-16',
-                timeZone: 'Asia/Tokyo',
-              },
-            },
-          }),
+  it('keeps canonical relative-date handling in the shared meaning policy while repair stays local', () => {
+    const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: 'こちらは来週末までに。',
+      publicStateSummary: {
+        calendarContext: {
+          currentDate: '2026-08-16',
+          timeZone: 'Asia/Tokyo',
         },
-      ],
+      },
+    });
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages,
       invalidResponse: '{}',
       validationErrors: ['document.uncertainties[0].targetLocalId'],
     });
 
     const payload = repairPayload(messages);
+    const system = messages[0]?.content ?? '';
 
-    expect(payload.requiredChanges).toContain(
-      'If repair emits a relative dateExpression, convert it to a canonical date expression using the provided calendarContext; never leave natural-language relative date text in dateExpression.',
+    expect(system).toContain(
+      'Resolve relative dates from calendarContext to canonical dateExpression.',
     );
+    expect(payload.requiredChanges).toEqual([
+      'Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.',
+    ]);
   });
 });
