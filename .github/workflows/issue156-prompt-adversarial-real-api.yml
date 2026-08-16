@@ -8,6 +8,7 @@ on:
       - '.github/workflows/issue156-prompt-adversarial-real-api.yml'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AdversarialRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts'
       - 'src/features/weeklyPlanning/dialogue/**'
       - 'src/features/weeklyPlanning/semantic/**'
       - 'src/features/weeklyPlanning/application/**'
@@ -29,7 +30,7 @@ jobs:
       VITE_AI_BASE_URL: https://api.openai.com/v1
       VITE_AI_MODEL: gpt-5.6-luna
       VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      VITE_AI_MAX_PROCESS_REQUESTS: '120'
+      VITE_AI_MAX_PROCESS_REQUESTS: '180'
       VITE_AI_EVAL_CAPTURE_METRICS: '1'
       VITE_CLOUDFLARE_AI_PROXY_URL: ''
 
@@ -61,6 +62,7 @@ jobs:
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156AdversarialRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
