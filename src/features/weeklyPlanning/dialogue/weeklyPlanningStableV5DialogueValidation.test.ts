@@ -30,6 +30,10 @@ function response(
     actionId: string;
     actionKind: string;
     questionCode: string | null;
+    groundingAcknowledgement: null | {
+      factIds: string[];
+      text: string;
+    };
   }> = {},
 ): string {
   return JSON.stringify({
@@ -38,6 +42,9 @@ function response(
     questionCode: overrides.questionCode === undefined
       ? renderInput.questionCode
       : overrides.questionCode,
+    ...(overrides.groundingAcknowledgement === undefined
+      ? {}
+      : { groundingAcknowledgement: overrides.groundingAcknowledgement }),
     text,
   });
 }
@@ -81,6 +88,88 @@ describe('Stable V5 dialogue renderer validation', () => {
       response(renderInput, 'いつからいつまでですか？', { questionCode: 'invalid_planning_horizon' }),
       renderInput,
     )).toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
+  });
+
+  it('requires an observable accepted-fact acknowledgement before resuming a pending question', () => {
+    const renderInput = input({
+      actionId: 'stable-v5:request-complete:missing_schedulable_work',
+      currentUserMessage: 'もう100%終わっています',
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [{
+          factId: 'workload-completed-100',
+          kind: 'workload',
+          sourceText: 'もう100%終わっています',
+          data: {
+            taskId: 'task-slides',
+            quantityRole: 'completed',
+            amount: 100,
+            unitCode: 'custom',
+            unitLabel: '%',
+          },
+        }],
+      },
+      planningInformation: {
+        tasks: [{ id: 'task-slides', title: '夏合宿の発表スライド', category: 'non_study' }],
+        workloads: [{
+          id: 'workload-completed-100',
+          taskId: 'task-slides',
+          quantityRole: 'completed',
+          amount: 100,
+          unitCode: 'custom',
+          unitLabel: '%',
+        }],
+      },
+      questionCode: 'missing_schedulable_work',
+      questionIntent: {
+        kind: 'schedulable_work_detail',
+        mode: 'all_requested_work_complete',
+        targetFactId: null,
+        progressBasis: null,
+        knownUnitCode: null,
+        knownUnitLabel: null,
+        requestedInformation: ['additional_task_or_constraint'],
+      },
+      requiredLabels: [],
+      fallbackText: '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。',
+    });
+    const acknowledgement = 'スライドは100%まで完了しているんですね。';
+    const continuation = 'ほかに予定へ加えたい作業や、考慮したい予定・制約はありますか？';
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, continuation),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'grounding_contract_mismatch' });
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `${acknowledgement}${continuation}`, {
+        groundingAcknowledgement: {
+          factIds: ['other-fact'],
+          text: acknowledgement,
+        },
+      }),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'grounding_contract_mismatch' });
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `${continuation}${acknowledgement}`, {
+        groundingAcknowledgement: {
+          factIds: ['workload-completed-100'],
+          text: acknowledgement,
+        },
+      }),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'grounding_contract_mismatch' });
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `${acknowledgement}${continuation}`, {
+        groundingAcknowledgement: {
+          factIds: ['workload-completed-100'],
+          text: acknowledgement,
+        },
+      }),
+      renderInput,
+    )).toMatchObject({ status: 'rendered' });
   });
 
   it('rejects ungrounded dates, clock times, unsafe content, and malformed JSON', () => {
