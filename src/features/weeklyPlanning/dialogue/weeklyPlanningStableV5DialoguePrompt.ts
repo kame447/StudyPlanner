@@ -12,34 +12,13 @@ function arrayField(
   return Array.isArray(field) ? field : [];
 }
 
-function isResolvedWorkload(value: unknown): boolean {
-  return isRecord(value) && value.quantityRole !== 'unknown';
-}
-
-function isResolvedDeclaration(value: unknown): boolean {
-  return isRecord(value) && value.resolutionStatus !== 'unresolved';
-}
-
-function createDecidedFacts(
+function createAcceptedFacts(
   planningInformation: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (!planningInformation) return null;
-
   return Object.fromEntries(
     Object.entries(planningInformation)
-      .filter(([key]) => key !== 'uncertainties' && key !== 'groundingRecords')
-      .map(([key, value]) => {
-        if (key === 'workloads' && Array.isArray(value)) {
-          return [key, value.filter(isResolvedWorkload)];
-        }
-        if (
-          (key === 'availabilityDeclarations' || key === 'constraintSourceRequests')
-          && Array.isArray(value)
-        ) {
-          return [key, value.filter(isResolvedDeclaration)];
-        }
-        return [key, value];
-      }),
+      .filter(([key]) => key !== 'uncertainties' && key !== 'groundingRecords'),
   );
 }
 
@@ -67,7 +46,7 @@ function unresolvedWorkloadFields(
     }));
 }
 
-function unresolvedDeclarations(
+function resolutionPendingDeclarations(
   planningInformation: Record<string, unknown> | null,
   key: 'availabilityDeclarations' | 'constraintSourceRequests',
 ): Record<string, unknown>[] {
@@ -86,13 +65,13 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
   const planningInformation = input.planningInformation;
 
   return {
-    decidedFacts: createDecidedFacts(planningInformation),
+    acceptedFacts: createAcceptedFacts(planningInformation),
     groundingContext: groundingContext(planningInformation),
-    undecidedItems: [
+    resolutionPendingItems: [
       ...arrayField(planningInformation, 'uncertainties'),
       ...unresolvedWorkloadFields(planningInformation),
-      ...unresolvedDeclarations(planningInformation, 'availabilityDeclarations'),
-      ...unresolvedDeclarations(planningInformation, 'constraintSourceRequests'),
+      ...resolutionPendingDeclarations(planningInformation, 'availabilityDeclarations'),
+      ...resolutionPendingDeclarations(planningInformation, 'constraintSourceRequests'),
     ],
   };
 }
@@ -104,9 +83,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
   userPrompt: string;
 } {
   const systemPrompt = [
-    'あなたは学習計画アプリの対話担当です。アプリが決めた意図を、簡潔で自然な日本語にしてください。',
-    '入力にない具体情報は、例としても補わないでください。',
-    '直前の発話への理解や、アプリが構造化した解釈・確定した帰結は、共有理解に必要な場合に自然に示してください。',
+    'あなたは学習計画アプリの対話担当です。アプリが決めた意味と次の行為を変えず、継続中の相談として自然な日本語にしてください。',
+    '入力にない具体情報は補わず、受理済みの情報を確認し直す質問も勝手に追加しないでください。',
+    '新しく受理した情報を扱った直後に別の未解決質問へ戻る場合は、その理解を短く観察可能にしてから自然につないでください。',
     '質問では一度に一つだけ確認してください。',
   ].join('\n');
 
@@ -114,6 +93,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     actionId: input.actionId,
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
+    currentTurnGrounding: input.currentTurnGrounding ?? { mode: 'none', acceptedFacts: [] },
     planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
     applicationDecision: {
       actionKind: input.actionKind,
@@ -125,14 +105,15 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
     },
     request: [
-      'applicationDecisionを守り、自然な日本語を一つ返してください。',
-      'decidedFactsは確定、undecidedItemsは未確定です。',
-      '質問はquestionTarget/questionIntentの対象・目的・判断要求を変えず、一つだけ聞いてください。',
-      'currentUserMessageが直前の質問の意味・理由・何を答えるべきかを尋ねている場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明し、必要なら別の自然な表現で同じ情報を一つだけ尋ねてください。',
+      'applicationDecisionをsource of truthとして守り、自然な日本語を一つ返してください。',
+      'acceptedFactsは会話上受理済みのFactです。resolutionPendingItemsはscheduler等で追加解決が必要な項目であり、そこに同じFactが現れてもユーザー発話自体が未受理という意味ではありません。',
+      'currentTurnGrounding.acceptedFactsはこのユーザーturnで新たに受理されたFactです。mode=required_before_resumeなら、そのうち会話上重要な内容を短くacknowledge/paraphraseしてからapplicationDecisionの質問へ戻ってください。受理済みFactを再確認質問にはしないでください。mode=recommendedは自然な場合だけ示し、mode=noneでは定型の了解を足さないでください。',
+      '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、modeを別の概念へ置き換えず、一つだけ聞いてください。questionCodeだけから目的を推測し直さないでください。',
+      'currentUserMessageが直前の質問の意味・理由・何を答えるべきかを尋ねている場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明し、必要なら別の表現で同じ情報を一つだけ尋ねてください。',
       'schedulable_work_detailはmodeを厳守してください。existing_target_scope_progressでは既存対象の全体範囲と現在の進捗を聞き、別の作業追加は聞かないでください。missing_task_identityでは予定に入れる作業そのものを聞いてください。',
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
-      'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。',
-      'groundingContextのproposedは短く示し、確認質問は足さないでください。contestedは断言しないでください。',
+      'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relationは既存タスク間の順序・関係を明確にする質問であり、新しいタスクを追加するかどうかの質問に変えないでください。',
+      'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
     ].join(''),
   });
 
