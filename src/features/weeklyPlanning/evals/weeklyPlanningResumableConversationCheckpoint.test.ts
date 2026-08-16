@@ -264,11 +264,10 @@ describe('weeklyPlanningResumableConversationCheckpoint', () => {
   });
 
   it('migrates an older checkpoint without evaluation metadata', () => {
-    const value = checkpoint() as WeeklyPlanningResumableConversationCheckpoint & {
-      evaluation?: WeeklyPlanningResumableEvaluationState;
-    };
-    delete value.evaluation;
-    const parsed = parseWeeklyPlanningResumableConversationCheckpoint(JSON.stringify(value));
+    const { evaluation: _evaluation, ...legacyCheckpoint } = checkpoint();
+    const parsed = parseWeeklyPlanningResumableConversationCheckpoint(
+      JSON.stringify(legacyCheckpoint),
+    );
     expect(parsed.evaluation).toMatchObject({
       stage: 'conversation_in_progress',
       terminal: false,
