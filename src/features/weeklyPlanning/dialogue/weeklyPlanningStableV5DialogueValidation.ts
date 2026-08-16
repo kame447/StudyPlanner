@@ -22,6 +22,10 @@ function normalizeProtectedExpression(value: string): string {
   return value.replace(/[\s：]/g, '').replace(/:/g, '');
 }
 
+function normalizeDialogueText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 function expressions(value: string, pattern: RegExp): string[] {
   return [...value.matchAll(pattern)].map((match) => normalizeProtectedExpression(match[0]));
 }
@@ -70,6 +74,20 @@ function claimsUnexecutedAction(
     && !/[?？]|(?:ますか|でしょうか)/.test(text);
 }
 
+function repeatsMostRecentAssistantQuestion(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  if (input.actionKind !== 'question') return false;
+  const previousAssistant = [...input.recentConversation]
+    .reverse()
+    .find((turn) => turn.role === 'assistant');
+  if (!previousAssistant) return false;
+  const previousText = normalizeDialogueText(previousAssistant.content);
+  const currentText = normalizeDialogueText(text);
+  return previousText.length > 0 && currentText === previousText;
+}
+
 function validateRenderedText(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -84,6 +102,10 @@ function validateRenderedText(
 
   if (missesPreviewPromotionControl(text, input)) {
     return 'action_contract_mismatch';
+  }
+
+  if (repeatsMostRecentAssistantQuestion(text, input)) {
+    return 'repeated_question_text';
   }
 
   const groundingInformation = JSON.stringify({
