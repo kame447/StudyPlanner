@@ -148,6 +148,10 @@ export function fallbackTextForStableV5TypedIntent(params: {
 }): string {
   const intent = params.questionIntent;
   if (intent?.kind === 'learning_strategy_proposal') {
+    if (intent.proposalKind === 'mixed_acquisition_review') {
+      const { min, max } = intent.reviewSessionDurationMinutes;
+      return `今の空き時間では収まりきらないため、新しい範囲は少し長めに学習し、復習は1回${min}〜${max}分で短く分散する方針に切り替えますか？`;
+    }
     const min = intent.suggestedSessionDurationMinutes.min;
     const max = intent.suggestedSessionDurationMinutes.max;
     if (intent.proposalKind === 'calibrate_memory_pace') {
