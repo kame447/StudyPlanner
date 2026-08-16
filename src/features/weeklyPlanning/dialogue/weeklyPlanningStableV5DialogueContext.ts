@@ -141,6 +141,28 @@ function targetFactId(
   return typeof questionTarget?.fact.id === 'string' ? questionTarget.fact.id : null;
 }
 
+function boundedWorkloadForTarget(params: {
+  planningInformation: Record<string, unknown> | null;
+  targetCollection: string | undefined;
+  targetFactId: string;
+}): Record<string, unknown> | null {
+  const workloads = recordArray(params.planningInformation, 'workloads');
+  const candidates = workloads.filter((workload) => {
+    if (params.targetCollection === 'components') {
+      return workload.componentId === params.targetFactId;
+    }
+    return workload.taskId === params.targetFactId && (workload.componentId ?? null) === null;
+  });
+  return candidates.find((workload) =>
+    typeof workload.amount === 'number'
+    && Number.isFinite(workload.amount)
+    && workload.amount > 0
+    && typeof workload.unitCode === 'string'
+    && typeof workload.unitLabel === 'string'
+    && workload.unitLabel.trim().length > 0
+    && workload.quantityRole !== 'unknown') ?? null;
+}
+
 function resolutionIntent(params: {
   questionCode: string;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
@@ -167,65 +189,31 @@ function resolutionIntent(params: {
         ambiguityReason: typeof fact?.reason === 'string' ? fact.reason : null,
       };
     case 'invalid_planning_horizon':
-      return {
-        ...base,
-        resolutionKind: 'planning_horizon' as const,
-        requestedInformation: ['planning_period'] as const,
-      };
+      return { ...base, resolutionKind: 'planning_horizon' as const, requestedInformation: ['planning_period'] as const };
     case 'ambiguous_planning_window':
-      return {
-        ...base,
-        resolutionKind: 'planning_window_choice' as const,
-        requestedInformation: ['single_planning_window'] as const,
-      };
+      return { ...base, resolutionKind: 'planning_window_choice' as const, requestedInformation: ['single_planning_window'] as const };
     case 'quantity_role_unresolved':
       return {
         ...base,
         resolutionKind: 'quantity_role' as const,
         requestedInformation: ['quantity_role'] as const,
         allowedChoices: ['plan_target_amount', 'remaining_total_amount'] as const,
-        knownAmount: typeof fact?.amount === 'number' && Number.isFinite(fact.amount)
-          ? fact.amount
-          : null,
+        knownAmount: typeof fact?.amount === 'number' && Number.isFinite(fact.amount) ? fact.amount : null,
         knownUnitLabel: typeof fact?.unitLabel === 'string' ? fact.unitLabel : null,
       };
     case 'ambiguous_effort_estimate':
-      return {
-        ...base,
-        resolutionKind: 'effort_estimate_choice' as const,
-        requestedInformation: ['choose_effort_estimate'] as const,
-      };
+      return { ...base, resolutionKind: 'effort_estimate_choice' as const, requestedInformation: ['choose_effort_estimate'] as const };
     case 'missing_availability_date_scope':
-      return {
-        ...base,
-        resolutionKind: 'availability_date_scope' as const,
-        requestedInformation: ['availability_date_scope'] as const,
-      };
+      return { ...base, resolutionKind: 'availability_date_scope' as const, requestedInformation: ['availability_date_scope'] as const };
     case 'missing_time_bounds':
     case 'invalid_time_interval':
-      return {
-        ...base,
-        resolutionKind: 'time_bounds' as const,
-        requestedInformation: ['start_and_end_time'] as const,
-      };
+      return { ...base, resolutionKind: 'time_bounds' as const, requestedInformation: ['start_and_end_time'] as const };
     case 'named_time_period_unresolved':
-      return {
-        ...base,
-        resolutionKind: 'named_time_period_bounds' as const,
-        requestedInformation: ['named_time_period_start_and_end'] as const,
-      };
+      return { ...base, resolutionKind: 'named_time_period_bounds' as const, requestedInformation: ['named_time_period_start_and_end'] as const };
     case 'missing_commitment_date_scope':
-      return {
-        ...base,
-        resolutionKind: 'commitment_date_scope' as const,
-        requestedInformation: ['commitment_date'] as const,
-      };
+      return { ...base, resolutionKind: 'commitment_date_scope' as const, requestedInformation: ['commitment_date'] as const };
     case 'invalid_commitment_interval':
-      return {
-        ...base,
-        resolutionKind: 'commitment_time_bounds' as const,
-        requestedInformation: ['commitment_start_and_end_time'] as const,
-      };
+      return { ...base, resolutionKind: 'commitment_time_bounds' as const, requestedInformation: ['commitment_start_and_end_time'] as const };
     case 'conflicting_task_date_rule':
       return {
         ...base,
@@ -242,17 +230,9 @@ function resolutionIntent(params: {
         allowedChoices: ['timetable', 'existing_plans', 'calendar'] as const,
       };
     case 'orphan_relation_task':
-      return {
-        ...base,
-        resolutionKind: 'task_relation_reference' as const,
-        requestedInformation: ['identify_relation_endpoints'] as const,
-      };
+      return { ...base, resolutionKind: 'task_relation_reference' as const, requestedInformation: ['identify_relation_endpoints'] as const };
     case 'self_relation':
-      return {
-        ...base,
-        resolutionKind: 'task_relation_self_reference' as const,
-        requestedInformation: ['distinct_relation_endpoints'] as const,
-      };
+      return { ...base, resolutionKind: 'task_relation_self_reference' as const, requestedInformation: ['distinct_relation_endpoints'] as const };
     default:
       return null;
   }
@@ -261,6 +241,7 @@ function resolutionIntent(params: {
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+  planningInformation?: Record<string, unknown> | null;
   effortMeasurement?: string | null;
 }) {
   const fact = params.questionTarget?.fact;
@@ -271,11 +252,21 @@ export function questionIntentForStableV5Dialogue(params: {
         || params.questionTarget?.collection === 'components')
       && typeof fact?.id === 'string'
     ) {
+      const boundedWorkload = boundedWorkloadForTarget({
+        planningInformation: params.planningInformation ?? null,
+        targetCollection: params.questionTarget.collection,
+        targetFactId: fact.id,
+      });
       return {
         kind: 'schedulable_work_detail',
-        mode: 'existing_target_scope_progress',
+        mode: 'existing_target_progress',
         targetFactId: fact.id,
-        requestedInformation: ['total_scope', 'current_progress'],
+        progressBasis: boundedWorkload
+          ? 'known_bounded_quantity'
+          : 'completion_progress_without_known_unit',
+        knownUnitCode: typeof boundedWorkload?.unitCode === 'string' ? boundedWorkload.unitCode : null,
+        knownUnitLabel: typeof boundedWorkload?.unitLabel === 'string' ? boundedWorkload.unitLabel : null,
+        requestedInformation: ['current_progress'],
       } as const;
     }
     if (params.questionTarget === null) {
@@ -283,6 +274,9 @@ export function questionIntentForStableV5Dialogue(params: {
         kind: 'schedulable_work_detail',
         mode: 'missing_task_identity',
         targetFactId: null,
+        progressBasis: null,
+        knownUnitCode: null,
+        knownUnitLabel: null,
         requestedInformation: ['task_identity'],
       } as const;
     }
@@ -313,10 +307,7 @@ export function questionIntentForStableV5Dialogue(params: {
   }
 
   return params.questionCode
-    ? resolutionIntent({
-        questionCode: params.questionCode,
-        questionTarget: params.questionTarget,
-      })
+    ? resolutionIntent({ questionCode: params.questionCode, questionTarget: params.questionTarget })
     : null;
 }
 
@@ -412,10 +403,7 @@ export function requiredLabelsForStableV5Dialogue(params: {
 }): string[] {
   const labels = new Set<string>();
   if (params.targetFactId) {
-    const targetLabel = ownerLabelForFactId(
-      params.planningInformation,
-      params.targetFactId,
-    );
+    const targetLabel = ownerLabelForFactId(params.planningInformation, params.targetFactId);
     if (targetLabel) labels.add(targetLabel);
   }
   if (params.includePreviewPromotionControl) {
