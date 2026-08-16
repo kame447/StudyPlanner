@@ -112,7 +112,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'currentUserMessageが直前の質問の意味・理由・何を答えるべきかを尋ねている場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明し、必要なら別の表現で同じ情報を一つだけ尋ねてください。',
       'schedulable_work_detailはmodeを厳守してください。existing_target_scope_progressでは既存対象の全体範囲と現在の進捗を聞き、別の作業追加は聞かないでください。missing_task_identityでは予定に入れる作業そのものを聞いてください。',
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
-      'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relationは既存タスク間の順序・関係を明確にする質問であり、新しいタスクを追加するかどうかの質問に変えないでください。',
+      'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
     ].join(''),
   });
