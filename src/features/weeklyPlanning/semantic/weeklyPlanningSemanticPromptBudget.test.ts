@@ -127,8 +127,12 @@ function representativeGenericRequestBytes(): number {
 
 describe('Stable V5 semantic prompt budget', () => {
   it('keeps the always-on meaning policy compact', () => {
-    expect(byteLength(createWeeklyPlanningSemanticMeaningPolicyV5())).toBeLessThanOrEqual(
+    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
+    expect(byteLength(policy)).toBeLessThanOrEqual(
       GENERIC_MEANING_POLICY_MAX_BYTES,
+    );
+    expect(policy).toContain(
+      'For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount.',
     );
   });
 
