@@ -1,9 +1,9 @@
 {
   "scenario": "luna-context-pronoun-clean-20260816",
-  "turn": 2,
-  "attempt": 3,
-  "user_text": "これ来週まで。まだほぼやってない",
-  "previous_run_id": 31923055713,
+  "turn": 3,
+  "attempt": 2,
+  "user_text": "5問終わってる",
+  "previous_run_id": 31923811370,
   "conversation_id": "weekly-luna-context-pronoun-clean-20260816-01",
   "owner_id": "real-api-luna-context-pronoun-clean-user-1",
   "week_start_date": "2026-08-17",
