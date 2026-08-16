@@ -49,7 +49,7 @@ function targetIsComplete(params: {
 function taskIsComplete(params: {
   taskId: string;
   workloads: readonly WorkloadFactV5[];
-  components: readonly WeeklyPlanningFactGraphV5['components'][number][];
+  components: ReadonlyArray<WeeklyPlanningFactGraphV5['components'][number]>;
 }): boolean {
   if (targetIsComplete({
     workloads: params.workloads,
