@@ -49,8 +49,20 @@ function unresolvedProgressErrors(
   ]);
 }
 
+function selfReferentialUncertaintyErrors(
+  document: WeeklyPlanningSemanticDocumentV5,
+): string[] {
+  return document.uncertainties.flatMap((uncertainty, index) =>
+    uncertainty.targetLocalId === uncertainty.localId
+      ? [`document.uncertainties[${index}].targetLocalId:self-reference`]
+      : []);
+}
+
 export function validateWeeklyPlanningSemanticEvidenceV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
 }): string[] {
-  return [...new Set(unresolvedProgressErrors(params.document))];
+  return [...new Set([
+    ...unresolvedProgressErrors(params.document),
+    ...selfReferentialUncertaintyErrors(params.document),
+  ])];
 }
