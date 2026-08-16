@@ -127,21 +127,21 @@ function answer(
 }
 
 describe('Stable V5 human-scale contextual effort answers', () => {
-  it('stores page and problem answers as duration per unit', () => {
-    expect(answer('page', 30, 5)?.graph.effortEstimates[0]).toMatchObject({
+  it('stores page and problem answers from the exact typed duration-per-unit question', () => {
+    expect(answer('page', 30, 5, 'target', 'duration_per_unit')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'duration_per_unit',
       minutes: 5,
       unitCode: 'page',
     });
-    expect(answer('problem', 80, 8)?.graph.effortEstimates[0]).toMatchObject({
+    expect(answer('problem', 80, 8, 'target', 'duration_per_unit')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'duration_per_unit',
       minutes: 8,
       unitCode: 'problem',
     });
   });
 
-  it('stores a completed page answer as the total observed duration', () => {
-    expect(answer('page', 30, 90, 'completed')?.graph.effortEstimates[0]).toMatchObject({
+  it('stores a completed-workload answer from the exact typed total-duration question', () => {
+    expect(answer('page', 30, 90, 'completed', 'total_duration')?.graph.effortEstimates[0]).toMatchObject({
       targetFactId: 'workload-1',
       kind: 'total_duration',
       minutes: 90,
@@ -162,11 +162,8 @@ describe('Stable V5 human-scale contextual effort answers', () => {
     });
   });
 
-  it('does not infer one-session meaning from a word unit without a typed pending measurement', () => {
-    expect(answer('word', 220, 20)?.graph.effortEstimates[0]).toMatchObject({
-      kind: 'total_duration',
-      minutes: 20,
-      unitCode: null,
-    });
+  it('does not re-infer effort measurement when the pending question contract omits it', () => {
+    expect(answer('word', 220, 20)).toBeNull();
+    expect(answer('page', 30, 5)).toBeNull();
   });
 });
