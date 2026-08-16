@@ -24,6 +24,7 @@ export interface WeeklyPlanningCanonicalCorrectionApplicationResultV5 {
   version: typeof WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5;
   status: 'not_applicable' | 'applied' | 'rejected';
   graph: WeeklyPlanningFactGraphV5;
+  added: WeeklyPlanningFactDiffEntryV5[];
   superseded: WeeklyPlanningFactDiffEntryV5[];
   removed: WeeklyPlanningFactDiffEntryV5[];
   errors: string[];
@@ -45,6 +46,7 @@ function reject(
     version: WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5,
     status: 'rejected',
     graph: originalGraph,
+    added: [],
     superseded: [],
     removed: [],
     errors,
@@ -413,6 +415,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
       version: WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5,
       status: 'not_applicable',
       graph: params.canonicalization.graph,
+      added: [],
       superseded: [],
       removed: [],
       errors: [],
@@ -427,6 +430,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
       version: WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5,
       status: 'not_applicable',
       graph: params.canonicalization.graph,
+      added: [],
       superseded: [],
       removed: [],
       errors: [],
@@ -462,6 +466,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     rebased.supportFactIds.forEach((id) => supportFactIds.add(id));
   }
 
+  const added: WeeklyPlanningFactDiffEntryV5[] = [];
   const superseded: WeeklyPlanningFactDiffEntryV5[] = [];
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
   for (const correctionId of correctionIds) {
@@ -473,6 +478,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     });
     if (result.status === 'rejected') return reject(params.originalGraph, result.errors);
     graph = result.graph;
+    added.push(...result.added);
     superseded.push(...result.superseded);
     removed.push(...result.removed);
   }
@@ -510,6 +516,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     version: WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5,
     status: 'applied',
     graph,
+    added,
     superseded,
     removed,
     errors: [],
