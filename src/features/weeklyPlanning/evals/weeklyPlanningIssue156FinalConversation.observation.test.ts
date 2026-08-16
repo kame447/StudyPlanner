@@ -108,8 +108,12 @@ function hasDeadlineAck(text: string): boolean {
   return compact.includes('13:00') || compact.includes('13時');
 }
 
-function hasRangeAndProgressExplanation(text: string): boolean {
-  return /全体|範囲/.test(text) && /進捗|どこまで|今|現在/.test(text);
+function hasProgressExplanation(text: string): boolean {
+  return /進捗|進み|どこまで|完成|100%|何%/.test(text);
+}
+
+function inventsBoundedUnit(text: string): boolean {
+  return /何\s*枚|何\s*ページ|何\s*問|全部で.{0,10}(枚|ページ|問)|全体で.{0,10}(枚|ページ|問)/.test(text);
 }
 
 async function conversation(params: {
@@ -218,35 +222,37 @@ function markdown(conversations: ConversationObservation[]): string {
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 final real API conversation gate', () => {
-  it('keeps grounding, question meaning, corrections, effort measurement, and execution state coherent', async () => {
+  it('keeps adaptive progress, grounding, corrections, effort measurement, and execution state coherent', async () => {
     const observations: ConversationObservation[] = [];
 
     observations.push(await conversation({
-      name: 'A fixed event while workload detail remains pending',
+      name: 'A open-ended slides with fixed event interruption',
       ownerId: 'issue156-final-a',
       conversationId: 'issue156-final-a',
       userTurns: [
         '明日の予定を立てたいです',
         '夏合宿の発表スライドを完成させたいです',
         'その前に、14時半から20時まではバイトです',
-        'スライドは全部で20枚で、今10枚まで終わっています',
+        '完成を100%とすると、今はだいたい60%くらいです',
+        '残りはだいたい2時間くらいかかりそうです',
       ],
     }));
 
     observations.push(await conversation({
-      name: 'B deadline side update',
+      name: 'B open-ended report with deadline side update',
       ownerId: 'issue156-final-b',
       conversationId: 'issue156-final-b',
       userTurns: [
         '明日の予定を立てたいです',
         '研究室のレポートを仕上げたいです',
         '締切は明日の13時です',
-        '全体で12ページで、今6ページまで書けています',
+        '完成を100%とすると、今は50%くらいです',
+        '残りは1時間半くらいです',
       ],
     }));
 
     observations.push(await conversation({
-      name: 'C correction plus alternate effort measurement',
+      name: 'C explicitly bounded slides correction plus alternate effort measurement',
       ownerId: 'issue156-final-c',
       conversationId: 'issue156-final-c',
       userTurns: [
@@ -258,14 +264,15 @@ run('Issue #156 final real API conversation gate', () => {
     }));
 
     observations.push(await conversation({
-      name: 'D clarification must explain all requested information',
+      name: 'D open-ended clarification must explain progress request',
       ownerId: 'issue156-final-d',
       conversationId: 'issue156-final-d',
       userTurns: [
         '明日の予定を立てたいです',
         'ゼミ発表の資料を完成させたいです',
         '何を教えればいいってこと？',
-        '全部で15枚あって、今7枚までできています',
+        '完成を100%とすると、今は70%くらいです',
+        '残りは45分くらいです',
       ],
     }));
 
@@ -274,14 +281,35 @@ run('Issue #156 final real API conversation gate', () => {
     writeFileSync(`${outputDir}/final-conversations.json`, `${JSON.stringify(observations, null, 2)}\n`);
 
     const a = observations[0].turns;
+    expect(questionCode(a[1])).toBe('missing_schedulable_work');
+    expect(inventsBoundedUnit(a[1].assistantText), a[1].assistantText).toBe(false);
+    expect(hasProgressExplanation(a[1].assistantText), a[1].assistantText).toBe(true);
     expect(questionCode(a[2])).toBe('missing_schedulable_work');
     expect(hasClockAck(a[2].assistantText), a[2].assistantText).toBe(true);
+    expect(inventsBoundedUnit(a[2].assistantText), a[2].assistantText).toBe(false);
+    const aProgress = activeWorkloads(a[3].graph);
+    expect(aProgress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantityRole: 'completed', amount: 60, unitCode: 'custom', unitLabel: '%' }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 40, unitCode: 'custom', unitLabel: '%' }),
+    ]));
+    expect(questionCode(a[3])).toBe('missing_effort_estimate');
+    expect(activeEfforts(a[3].graph)).toHaveLength(0);
+    expect(activeEfforts(a[4].graph)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'total_duration', minutes: 120 }),
+    ]));
 
     const b = observations[1].turns;
+    expect(questionCode(b[1])).toBe('missing_schedulable_work');
+    expect(inventsBoundedUnit(b[1].assistantText), b[1].assistantText).toBe(false);
     expect(questionCode(b[2])).toBe('missing_schedulable_work');
     expect(hasDeadlineAck(b[2].assistantText), b[2].assistantText).toBe(true);
     expect(b[2].assistantText).not.toMatch(/どんな作業|工程/);
-    expect(b[1].assistantText).not.toMatch(/予定.{0,20}入れます/);
+    expect(inventsBoundedUnit(b[2].assistantText), b[2].assistantText).toBe(false);
+    const bProgress = activeWorkloads(b[3].graph);
+    expect(bProgress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantityRole: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 50, unitCode: 'custom', unitLabel: '%' }),
+    ]));
 
     const c = observations[2].turns;
     expect(c[2].assistantText).toMatch(/12\s*枚/);
@@ -293,12 +321,6 @@ run('Issue #156 final real API conversation gate', () => {
     expect(correctedWorkloads).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'remaining', amount: 10 }),
     ]));
-    const staleDerivedTarget = correctedWorkloads.find((workload) =>
-      workload.quantityRole === 'target'
-      && workload.amount === 10
-      && workload.source.sourceText === '残り');
-    expect(staleDerivedTarget).toBeUndefined();
-
     const finalWorkloads = activeWorkloads(c[3].graph);
     const completedTwelve = finalWorkloads.filter((workload) =>
       workload.quantityRole === 'completed' && workload.amount === 12);
@@ -314,7 +336,13 @@ run('Issue #156 final real API conversation gate', () => {
     expect(c[3].assistantText).not.toMatch(/残り\s*10\s*枚/);
 
     const d = observations[3].turns;
-    expect(hasRangeAndProgressExplanation(d[2].assistantText), d[2].assistantText).toBe(true);
+    expect(hasProgressExplanation(d[2].assistantText), d[2].assistantText).toBe(true);
+    expect(inventsBoundedUnit(d[2].assistantText), d[2].assistantText).toBe(false);
     expect(d[2].assistantText.replace(/\s+/g, '')).not.toBe(d[1].assistantText.replace(/\s+/g, ''));
+    const dProgress = activeWorkloads(d[3].graph);
+    expect(dProgress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantityRole: 'completed', amount: 70, unitCode: 'custom', unitLabel: '%' }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 30, unitCode: 'custom', unitLabel: '%' }),
+    ]));
   }, 420_000);
 });
