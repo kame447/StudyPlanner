@@ -31,11 +31,21 @@ function input(
   };
 }
 
-function response(renderInput: WeeklyPlanningStableV5DialogueRenderInput, text: string): string {
+type GroundingAcknowledgement = null | {
+  factIds: string[];
+  text: string;
+};
+
+function response(
+  renderInput: WeeklyPlanningStableV5DialogueRenderInput,
+  text: string,
+  groundingAcknowledgement: GroundingAcknowledgement = null,
+): string {
   return JSON.stringify({
     actionId: renderInput.actionId,
     actionKind: renderInput.actionKind,
     questionCode: renderInput.questionCode,
+    groundingAcknowledgement,
     text,
   });
 }
@@ -113,6 +123,82 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
         expect.objectContaining({
           role: 'user',
           content: expect.stringContaining('直前と異なる自然な表現'),
+        }),
+      ]),
+    }));
+  });
+
+  it('retries once when a required current-turn acknowledgement is omitted', async () => {
+    const renderInput = input({
+      actionId: 'stable-v5:request-complete:missing_schedulable_work',
+      currentUserMessage: 'もう100%終わっています',
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [{
+          factId: 'workload-completed-100',
+          kind: 'workload',
+          sourceText: 'もう100%終わっています',
+          data: {
+            taskId: 'task-slides',
+            quantityRole: 'completed',
+            amount: 100,
+            unitCode: 'custom',
+            unitLabel: '%',
+          },
+        }],
+      },
+      planningInformation: {
+        tasks: [{ id: 'task-slides', title: '夏合宿の発表スライド', category: 'non_study' }],
+        workloads: [{
+          id: 'workload-completed-100',
+          taskId: 'task-slides',
+          quantityRole: 'completed',
+          amount: 100,
+          unitCode: 'custom',
+          unitLabel: '%',
+        }],
+      },
+      questionCode: 'missing_schedulable_work',
+      questionIntent: {
+        kind: 'schedulable_work_detail',
+        mode: 'all_requested_work_complete',
+        targetFactId: null,
+        progressBasis: null,
+        knownUnitCode: null,
+        knownUnitLabel: null,
+        requestedInformation: ['additional_task_or_constraint'],
+      },
+      requiredLabels: [],
+      fallbackText: '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。',
+    });
+    const acknowledgement = 'スライドは100%まで完了しているんですね。';
+    const continuation = 'ほかに予定へ加えたい作業や、考慮したい予定・制約はありますか？';
+    const createChatCompletion = vi.fn()
+      .mockResolvedValueOnce(response(renderInput, continuation))
+      .mockResolvedValueOnce(response(
+        renderInput,
+        `${acknowledgement}${continuation}`,
+        {
+          factIds: ['workload-completed-100'],
+          text: acknowledgement,
+        },
+      ));
+
+    await expect(
+      createAiWeeklyPlanningStableV5DialogueRenderer(
+        config,
+        { createChatCompletion },
+      ).render(renderInput),
+    ).resolves.toMatchObject({
+      status: 'rendered',
+      text: expect.stringMatching(/^スライドは100%/),
+    });
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(createChatCompletion.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('ACK契約'),
         }),
       ]),
     }));
