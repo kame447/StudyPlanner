@@ -21,7 +21,7 @@ function input(params: {
 }): WeeklyPlanningStableV5DialogueRenderInput {
   const questionIntent = questionIntentForStableV5Dialogue({
     questionCode: params.questionCode,
-    questionTarget: params.target,
+    questionTarget: params.target as Parameters<typeof questionIntentForStableV5Dialogue>[0]['questionTarget'],
   });
   return {
     actionId: params.actionId,
