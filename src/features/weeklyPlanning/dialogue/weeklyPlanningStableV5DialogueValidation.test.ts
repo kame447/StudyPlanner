@@ -70,7 +70,7 @@ describe('Stable V5 dialogue renderer validation', () => {
       renderInput,
     )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
-      response(renderInput, 'APIキーを送ってください。'),
+      response(renderInput, 'https://example.test を開いてください。'),
       renderInput,
     )).toMatchObject({ status: 'fallback', reason: 'unsafe_text' });
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
@@ -79,22 +79,28 @@ describe('Stable V5 dialogue renderer validation', () => {
     )).toMatchObject({ status: 'fallback', reason: 'invalid_json' });
   });
 
-  it('allows omitting preview counts but rejects a conflicting count', () => {
+  it('keeps preview prose dynamic while requiring the typed promotion control', () => {
     const previewInput = input({
       actionId: 'stable-v5:request-preview:preview_ready',
       currentUserMessage: 'それで作って',
       actionKind: 'preview_ready',
       questionCode: null,
+      previewPromotionControlLabel: 'この内容で仮予定にする',
+      requiredLabels: ['この内容で仮予定にする'],
       fallbackText: '2件の仮予定候補を作りました。',
       previewCount: 2,
     });
 
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
-      response(previewInput, '仮予定を作りました。内容を確認してください。'),
+      response(previewInput, '候補を確認して、よければ「この内容で仮予定にする」を押してください。'),
       previewInput,
     )).toMatchObject({ status: 'rendered' });
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
-      response(previewInput, '3件の仮予定を作りました。'),
+      response(previewInput, '仮予定候補を確認してください。'),
+      previewInput,
+    )).toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(previewInput, '3件の候補です。「この内容で仮予定にする」を押してください。'),
       previewInput,
     )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
   });

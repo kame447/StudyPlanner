@@ -3,6 +3,8 @@ import type {
   TaskRelationFact,
 } from './weeklyPlanningFactGraph';
 import type {
+  AvailabilityDeclarationFactV5,
+  ConstraintSourceRequestFactV5,
   UncertaintyFactV5,
 } from './weeklyPlanningFactGraphV5';
 import {
@@ -11,6 +13,9 @@ import {
   type GenericWorkItemIssue,
   type WeeklyPlanningGenericWorkGraphView,
 } from './weeklyPlanningGenericWorkItems';
+import {
+  allocateWeeklyPlanningEffort,
+} from './weeklyPlanningEffortAllocation';
 import {
   calibrateGenericPlanningWorkItemsV5,
 } from './weeklyPlanningGenericWorkItemCalibrationV5';
@@ -23,11 +28,13 @@ import {
   type AvailabilityWindowFact,
   type ConstraintSourceSelectionFact,
   type ExternalConstraintSourceSnapshot,
-  type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
 import {
   resolveWeeklyPlanningAvailabilityWithFullDayRules,
 } from './weeklyPlanningAvailabilityFullDayAdapter';
+import {
+  createWeeklyPlanningAvailabilityResolverGraphV5,
+} from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 import type {
   TaskCommitmentReservation,
   TaskCommitmentResolutionIssue,
@@ -54,12 +61,21 @@ export const GENERIC_SCHEDULER_INPUT_VERSION =
 export type WeeklyPlanningGenericSchedulerGraphView =
   WeeklyPlanningGenericWorkGraphView
   & WeeklyPlanningTaskCommitmentDateRuleGraphView
-  & WeeklyPlanningAvailabilityGraphView
   & {
+    readonly revision: number;
+    readonly availabilityDeclarations: ReadonlyArray<AvailabilityDeclarationFactV5>;
+    readonly constraintSourceRequests: ReadonlyArray<ConstraintSourceRequestFactV5>;
     readonly planningWindows: ReadonlyArray<PlanningWindowFact>;
     readonly relations: ReadonlyArray<TaskRelationFact>;
     readonly uncertainties: ReadonlyArray<UncertaintyFactV5>;
   };
+
+export interface GenericSchedulerObservedEstimateOverride {
+  workloadFactId: string;
+  estimatedMinutes: number;
+  evidenceKind: 'observed_memory_pace';
+  observationCount: number;
+}
 
 export interface GenericSchedulerPlanningHorizon {
   startDate: string;
@@ -295,11 +311,67 @@ function collectSourceFactRefs(params: {
   return [...refs].sort();
 }
 
+function uniqueObservedEstimateOverrides(
+  overrides: readonly GenericSchedulerObservedEstimateOverride[],
+): Map<string, GenericSchedulerObservedEstimateOverride> {
+  const grouped = new Map<string, GenericSchedulerObservedEstimateOverride[]>();
+  overrides.forEach((override) => {
+    if (
+      !override.workloadFactId.trim()
+      || !Number.isFinite(override.estimatedMinutes)
+      || override.estimatedMinutes <= 0
+      || !Number.isFinite(override.observationCount)
+      || override.observationCount <= 0
+    ) return;
+    grouped.set(override.workloadFactId, [
+      ...(grouped.get(override.workloadFactId) ?? []),
+      override,
+    ]);
+  });
+  return new Map(
+    [...grouped.entries()]
+      .filter(([, values]) => values.length === 1)
+      .map(([workloadFactId, values]) => [workloadFactId, values[0]]),
+  );
+}
+
+function applyObservedEstimateOverrides(params: {
+  items: readonly GenericPlanningWorkItem[];
+  overrides: readonly GenericSchedulerObservedEstimateOverride[];
+}): {
+  items: GenericPlanningWorkItem[];
+  appliedWorkloadFactIds: Set<string>;
+} {
+  const overrides = uniqueObservedEstimateOverrides(params.overrides);
+  const appliedWorkloadFactIds = new Set<string>();
+  const items = params.items.map((item) => {
+    if (item.estimatedMinutes !== null) return { ...item };
+    const override = overrides.get(item.workloadFactId);
+    if (!override) return { ...item };
+    appliedWorkloadFactIds.add(item.workloadFactId);
+    const allocation = allocateWeeklyPlanningEffort({
+      baseEstimateMinutes: override.estimatedMinutes,
+    });
+    return {
+      ...item,
+      estimatedMinutes: allocation.allocationMinutes,
+      baseEstimatedMinutes: override.estimatedMinutes,
+      calibrationMultiplier: allocation.calibrationMultiplier,
+      roundingStepMinutes: allocation.roundingStepMinutes,
+      estimateBasis: 'observed_pace' as const,
+      estimateSourceFactIds: [],
+      estimateSourceWorkloadFactIds: [],
+    };
+  });
+  return { items, appliedWorkloadFactIds };
+}
+
 export function compileGenericSchedulerInput(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
   estimateCalibrationMultiplier?: number | null;
+  observedEstimateOverrides?: readonly GenericSchedulerObservedEstimateOverride[];
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
@@ -373,21 +445,33 @@ export function compileGenericSchedulerInput(params: {
       ?? runtimeCalibration?.multiplier
       ?? null,
   });
+  const observedEstimateApplication = applyObservedEstimateOverrides({
+    items: calibratedAggregateMovableWorkItems,
+    overrides: params.observedEstimateOverrides ?? [],
+  });
 
   for (const issue of work.issues) {
     const issueTaskId = workloadTaskById.get(issue.workloadFactId);
     if (issueTaskId && fixedTaskIds.has(issueTaskId)) continue;
+    if (
+      issue.code === 'missing_effort_estimate'
+      && observedEstimateApplication.appliedWorkloadFactIds.has(issue.workloadFactId)
+    ) continue;
     issues.push({
       domain: 'work_item',
       code: issue.code,
       blocking: issue.blocking,
-      factId: issue.workloadFactId,
+      factId: issue.questionTargetWorkloadFactId ?? issue.workloadFactId,
       details: issue.details,
     });
   }
 
   const availability = resolveWeeklyPlanningAvailabilityWithFullDayRules({
-    graph: params.graph,
+    graph: createWeeklyPlanningAvailabilityResolverGraphV5({
+      revision: params.graph.revision,
+      availabilityDeclarations: params.graph.availabilityDeclarations,
+      constraintSourceRequests: params.graph.constraintSourceRequests,
+    }),
     context: params.context,
     externalSources: params.externalSources,
   });
@@ -414,7 +498,7 @@ export function compileGenericSchedulerInput(params: {
 
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
-    items: calibratedAggregateMovableWorkItems,
+    items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
   });

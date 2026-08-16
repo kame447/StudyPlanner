@@ -3,6 +3,7 @@ import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 import {
   AI_PROXY_CHAT_REQUEST_LIMITS,
   getUtf8ByteLength,
+  resolveOpenAiChatTemperature,
 } from '../../../shared/aiProxyContract';
 import {
   handleWeeklyPlanningTraceApi,
@@ -397,6 +398,10 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1')
     .replace(/\/$/, '');
+  const upstreamTemperature = resolveOpenAiChatTemperature(
+    modelResolution.model,
+    getChatTemperature(payload),
+  );
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -405,7 +410,7 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
     },
     body: JSON.stringify({
       model: modelResolution.model,
-      temperature: getChatTemperature(payload),
+      ...(upstreamTemperature === undefined ? {} : { temperature: upstreamTemperature }),
       messages: payload.messages,
       response_format: payload.response_format,
       max_completion_tokens: getChatOutputTokenLimit(payload),

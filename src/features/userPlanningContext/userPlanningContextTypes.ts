@@ -4,7 +4,13 @@ export const USER_PLANNING_CONTEXT_STORAGE_VERSION =
 export const USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 = [
   'goal_event',
   'concern',
+  'learning_preference',
 ] as const;
+
+export const USER_LEARNING_PREFERENCE_LABELS_V1 = {
+  memorizationSessionDurationMinutes: 'memorization_session_duration_minutes',
+  memorizationSpacedPractice: 'memorization_spaced_practice',
+} as const;
 
 export type UserPlanningContextSemanticKindV1 =
   (typeof USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1)[number];

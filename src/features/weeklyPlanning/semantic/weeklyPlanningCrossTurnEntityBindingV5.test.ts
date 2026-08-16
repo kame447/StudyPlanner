@@ -37,6 +37,92 @@ function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 cross-turn entity binding', () => {
+  it('restores a copied parent ID from the exact pending component without an AI repair call', async () => {
+    const response = JSON.stringify({
+      ...baseDocument(),
+      tasks: [{
+        localId: 'task-local',
+        existingPublicId: 'task-public-corrupted',
+        category: 'study',
+        title: '模試の勉強',
+        study: {
+          purpose: 'exam',
+          contextLabel: '模試',
+          components: [{
+            localId: 'component-local',
+            existingPublicId: 'component-public',
+            parentLocalId: null,
+            role: 'subject',
+            label: '数学',
+            workloads: [{
+              localId: 'workload-local',
+              quantityRole: 'target',
+              amount: 2,
+              unitCode: 'hour',
+              unitLabel: '時間',
+              rangeStart: null,
+              rangeEnd: null,
+              perOccurrence: true,
+              periodExpression: '来週',
+              sourceText: '来週は毎日2時間ずつ取りたいです',
+            }],
+            durableContextSignals: [],
+            sourceText: '模試対策の数学',
+          }],
+        },
+        workloads: [],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [{
+          localId: 'recurrence-local',
+          targetLocalId: 'workload-local',
+          kind: 'daily',
+          count: null,
+          days: [],
+          sourceText: '毎日2時間ずつ',
+        }],
+        durableContextSignals: [],
+        sourceText: '模試対策の数学は、来週は毎日2時間ずつ取りたいです。',
+      }],
+    });
+    let calls = 0;
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion() {
+        calls += 1;
+        return response;
+      },
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '模試対策の数学は、来週は毎日2時間ずつ取りたいです。',
+      publicStateSummary: {
+        pendingQuestion: {
+          questionCode: 'missing_schedulable_work',
+          targetFactId: 'component-public',
+        },
+        tasks: [{ publicId: 'task-public', category: 'study', title: '模試の勉強' }],
+        components: [{
+          publicId: 'component-public',
+          taskPublicId: 'task-public',
+          role: 'subject',
+          label: '数学',
+        }],
+      },
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(calls).toBe(1);
+    expect(result.diagnostics).toMatchObject({ attemptCount: 1, repairAttempted: false });
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'pending-component-parent-task-id-restored:task-local',
+    );
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'recurrence-workload-target-normalized:task-local:recurrence-local:workload-local:component-local',
+    );
+    expect(result.document?.tasks[0]).toMatchObject({ existingPublicId: 'task-public' });
+    expect(result.document?.tasks[0]?.recurrence[0]?.targetLocalId).toBe('component-local');
+  });
+
   it('repairs a duplicate-container delta and missing daily recurrence in one AI repair', async () => {
     const invalid = JSON.stringify({
       ...baseDocument(),

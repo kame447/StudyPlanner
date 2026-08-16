@@ -1,230 +1,233 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-12
+Updated: 2026-08-15
 
 Canonical references:
 
 - [current contract status](weekly-planning-current-contract-status.md)
 - [runtime contract](weekly-planning-stable-v5-runtime-trial-contract.md)
-- [test philosophy](testing/weekly-planning-test-philosophy.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
 - [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
-- [current migration / real-API audit](tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
-- [semantic schema](../architecture/weekly-planning-semantic-schema-v5.md)
-- [dialogue architecture](../architecture/weekly-planning-dialogue-architecture-v5.md)
-
-この文書は週間計画Stable V5のAI/core責務と主要machine contractの正本である。過去のAlpha、feature-flag trial、legacy runtime、固定scenario eval文書と競合する場合は本書を優先する。
+- [human grounding policy](tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+- [adaptive memory learning policy](strategy/weekly-planning-adaptive-memory-learning-policy.md)
+- [test philosophy](testing/weekly-planning-test-philosophy.md)
 
 ## 1. Runtime baseline
 
-Stable V5が唯一のproduction週間計画runtimeである。legacy interpreter、parser fallback、semantic V1/V2、runtime mode selectorへ戻すproduction経路を持たない。
+Stable V5が唯一のproduction週間計画runtimeである。
 
 ```text
 NaturalLanguageAssistant
-→ weeklyPlanningTurnExecutor
-→ Stable V5 semantic AI
-→ validator / optional one-shot AI repair
-→ deterministic Fact Graph V5
-→ readiness / scheduler / dialogue decision
+→ machine-state semantic routing
+→ focused / generic AI semantic interpretation
+→ validation / optional one-shot AI repair
+→ formal binding / canonical Fact Graph commit
+→ readiness / proposal policy / scheduler / dialogue decision
 → AI renderer
-→ preview UI
-→ draft / approval / Plan save
+→ preview
+→ approval / save
 ```
 
-旧保存形式を現在形式へ読むmigration compatibilityと、現行trace/storage decoderに必要な過去形式互換はruntime切替ではない。production dataを安全に読むために必要な間は残してよい。
+legacy parser / interpreter / semantic runtimeへ戻すproduction pathを持たない。
 
-## 2. AI意味理解責務
+## 2. Semantic ownership
 
-raw user textから次を理解する主体はAIである。
+raw user textと会話文脈の意味理解はAIが担当する。
 
-- task / component
-- workloadとquantity role
-- effort estimate
-- planning window
-- 曜日、日付、時間帯、task-local temporal constraint
+AI:
+
+- task / component / workload / quantity role
+- effort information
+- date / weekday / time intent
 - recurrence / availability / relation
-- correction / decision / authorization intent
-- 会話文脈に基づく短答の意味
+- correction / contextual reference
+- authorization intent
+- proposal accept / reject / modify
+- current-only / durable等のscope意味
 
-AIはformal fact ID、revision、lifecycle mutation、readiness、質問優先度、scheduler placement、preview freshness、approval、saveを決めない。
+Deterministic application:
 
-deterministic codeはraw user textを再解析してAIの意味を上書きしない。日本語regex、特定フレーズ、固定scenario分岐で意味を復元しない。
+- schema / evidence / reference validation
+- canonical IDs / formal binding
+- Fact Graph lifecycle / revision / idempotency
+- question / confirmation necessity
+- proposal generation / lifecycle / accepted scope
+- readiness
+- scheduler / placement
+- preview / approval / save
+- persistence / recovery
+- observed pace / retention / feasibility計算
 
-provider failure、空応答、不正JSON、schema rejection、repair failureからparserへfallbackしない。semantic repairは最大1回とする。
-
-focused semanticを使う場合も意味解釈はfocused AIが担当する。deterministic routerはmachine stateから「どの限定責務へ渡すか」を選ぶだけとする。
+AI semantic boundary以後でraw Japaneseをregex、keyword、dictionary、legacy parserにより再解釈しない。
 
 ## 3. Semantic document contract
 
-AI出力はcurrent-turn semantic deltaであり、現在の計画全体のsnapshotではない。
+AI出力はcurrent-turn semantic deltaであり、accepted state snapshotではない。
 
-現在発話で新規に述べた、変更した、訂正した、または判断した内容だけを返す。public state summaryに存在する過去factを根拠なく再出力しない。
+過去Factをcurrent deltaへ根拠なく再コピーしない。`sourceText`はcurrent user turnのevidenceを持つ。
 
-`sourceText`はcurrent user textに根拠を持つ。過去発話をcurrent deltaのevidenceとして扱わない。
-
-主要構造は次である。
-
-```text
-WeeklyPlanningSemanticDocumentV5
-├─ planningIntent
-├─ planningWindow
-├─ tasks
-│  ├─ components
-│  ├─ workloads
-│  ├─ effortEstimates
-│  ├─ temporalConstraints
-│  └─ recurrence
-├─ relations
-├─ availabilityDeclarations
-├─ constraintSourceRequests
-├─ uncertainties
-├─ corrections
-└─ decisions
-```
-
-workloadのquantity roleは次を使用する。
-
-```text
-declared | target | remaining | completed | unknown
-```
-
-総量と完了量が同時に与えられた場合、総量そのものをremainingとして扱わない。構造的一貫性違反はvalidatorで検出し、AI repairへ返す。deterministic codeが自然言語から差分量を再計算して意味を作らない。
+formal IDs、revision、lifecycle mutation、scheduler decisionはAI出力に所有させない。
 
 ## 4. Date / time contract
 
-AI境界で日付、曜日、時間帯をcanonical表現へ構造化する。
+自然言語上の時間意味をAIが構造化し、具体的なcalendar arithmeticはapplicationが行う。
 
-```text
-dateExpression:
-  today | tomorrow | day_after_tomorrow | this_week | next_week
-  | weekday:sunday | weekday:monday | weekday:tuesday
-  | weekday:wednesday | weekday:thursday | weekday:friday | weekday:saturday
-  | YYYY-MM-DD | custom:<原文>
+- `next_week`等の意味選択: AI
+- actual date range resolution: deterministic calendar resolver
+- timezone / weekStartsOn / current turn time: application
 
-weekday recurrence days:
-  weekday:sunday | weekday:monday | weekday:tuesday
-  | weekday:wednesday | weekday:thursday | weekday:friday | weekday:saturday
+selectedDateをcurrent timeの代用にしない。
 
-namedTimePeriod:
-  morning | afternoon | evening | night
-  | before_sleep | before_meal | after_meal | custom:<原文>
-```
-
-標準曜日を`custom:`へ逃がさない。validator以降で日本語曜日を再解釈しない。解決不能な`custom:`は捏造せずreadinessへ返す。
-
-過去のavailability resolverが内部で使用した`sun/mon/tue/...`はmigration compatibilityの内部表現であり、Stable V5 semantic contractではない。production boundaryではcanonical `weekday:<english-day>`を正とする。
-
-scheduler既定時間帯はユーザーの明示preferred windowより弱い。明示された曜日・時間帯を既定09:00–22:00等のヒューリスティックで切り落とさない。
+利用者が明示したtime preferenceはapplication default heuristicより強い。
 
 ## 5. Fact Graph / transaction
 
-AI documentはそのまま永続化せず、deterministic coreが`WeeklyPlanningFactGraphV5`へcanonicalizeする。
+AI documentはそのまま保存せずcanonical Fact Graphへcommitする。
 
-- formal ID / revision / trusted metadataはcoreが発行する。
-- local IDは一response内参照に限定する。
-- correction / delete / decisionはformal referenceとlifecycleへ適用する。
-- canonical commitはatomicとする。
-- validation failure時はaccepted graphを変更しない。
-- no-op turnではfact revisionを進めない。
-- no-opでもapplied turn/idempotency履歴は保持する。
-- staged graphはPlanningState commit成功後だけfinalizeする。
-- stale / cancel / week change / commit rejection / failureではstageを破棄する。
+- formal IDs / revisionはcoreが発行
+- local IDsは一response内参照
+- correction / replacementはlifecycleへ適用
+- canonical commitはatomic
+- validation failure時はaccepted Graph不変
+- no-opではfact revisionを増やさない
+- staged stateはcommit成功時のみfinalize
 
-既存entityのidentity、同一workload、pending targetはformal bindingで扱う。raw textの類似だけで別factを同一視しない。
+## 6. Readiness / proposal / scheduler
 
-## 6. Readiness / scheduler
+readiness、proposal necessity、scheduler placementはaccepted typed stateだけから決める。
 
-readinessはaccepted machine stateだけから決める。
+AIはmissing slot、proposal acceptance、preview gate、placementを決めない。
 
-- 認識済み各taskに予定化可能なworkloadが必要。
-- quantity role未確定はeffort不足より先に解消する。
-- missing情報は原則一件ずつ質問する。
-- partial placementを成功previewとして返さない。
-- existing plan / timetable / fixed commitmentはAIへ本文を送らずschedulerで扱う。
-- task-local weekday / allowed / excluded / preferred timeをplacementへ保持する。
-- session分割・日付分散・負荷ranking・relation orderingはsemantic AIではなくdeterministic policyで行う。
-- cyclic relationなど実行順が矛盾するmachine stateは黙って無視せずresolutionへ戻す。
-- personalization/estimate calibrationはhard constraintを変更しない。
+proposalはscheduler commandではない。
 
-AIはmissing slot、question target、preview gate、placementを決めない。
+```text
+application candidate
+→ renderer presents proposal
+→ AI interprets user response
+→ application accepts / rejects / modifies
+→ accepted policy may affect scheduler
+```
 
-## 7. Dialogue / renderer
+未了承proposalをschedulerへ適用しない。
 
-applicationがtyped dialogue decisionを作り、AI rendererが自然な日本語へ表現する。
+## 7. Human grounding contract
 
-rendererはsemantic meaningを再決定しない。question target、Graph state、preview stateをrenderer textから逆推定しない。
+application内部で知っていることと、ユーザーとの共通基盤にあることを区別する。
 
-AI返答の自然さを固定文言で自動合否にしない。deterministic fallback/UI固定文言だけは必要に応じてexact contractを持てる。
+内部heuristic、一般原則、推定結果を、ユーザーも既に知っている前提で話さない。必要なら会話上へ導入し、accept / reject / modifyを受けたscopeだけshared groundとして再利用する。
 
-## 8. Preview / approval / save
+`今回は`と`今後も`を別scopeとして扱う。
+
+正常系の完成済み日本語をquestion code / proposal codeごとに固定しない。rendererはtyped decisionとgrounded contextから自然に実現する。
+
+## 8. Effort / workload contract
+
+教材構造、進捗量、作業速度、calendar session時間を分離する。
+
+- page / problem: per-unit paceを利用可能
+- completed workload + actual duration: observed paceへ利用可能
+- unit conversion / multiplication / rounding: deterministic
+- session splitting: deterministic scheduling policy
+- explicit current user estimate > applicable observed evidence > cold-start heuristic
+
+同じ情報を別表現で聞き直さない。
+
+## 9. Adaptive memory learning contract
+
+詳細SSoTは [Adaptive Memory Learning Policy](strategy/weekly-planning-adaptive-memory-learning-policy.md) とする。
+
+暗記・想起中心の学習は英単語だけに限定しない。
+
+禁止する固定behavior:
+
+- 100語等のword-count thresholdからsession数を決める。
+- word countだけから必要総時間を推測する。
+- ユーザーへ総単語量のtotal duration予測を必須要求する。
+- 暗記だから自動で朝・昼・夜へ配置する。
+- 1日後 / 3日後 / 7日後や必ず3周をhard ruleにする。
+
+cold startでは短いsessionや分散復習をproposalできるが、了承前に採用しない。
+
+量・期限・availabilityから短時間だけでは必要範囲へ到達しにくい場合、新規学習を長め、復習を短く分散するmixed proposalを提示できる。
+
+さらに現実的に不足する場合、全範囲一巡 / 範囲を絞った定着 / 目標変更等の選択肢をapplicationが提示する。
+
+## 10. Memory contract
+
+三種類を区別する。
+
+### Current planning memory
+
+そのweek / conversationで成立したFact、accepted proposal、current-only policy。
+
+### Durable user preference
+
+今後も利用することまで明示的に共有されたowner-scoped preference。
+
+一回のweek-local acceptanceを自動的にdurableへ昇格させない。
+
+### Observed learning profile
+
+本人が明示した好みではなく、実行結果から得られた観測・derived estimate。
+
+例:
+
+- actual session duration
+- progressed quantity
+- recall success
+- elapsed interval
+- acquisition / reviewの処理速度差
+
+Preferenceとobserved profileを混同しない。実績が好みと衝突する場合、好みを勝手に変更せず影響を説明して別案をproposalする。
+
+既存owner-scoped `userPlanningContext`はdurable storage責務を持つが、learning preference / observed profile向けtyped extensionはPR #130以降の実装単位として追加する。
+
+## 11. Preview / approval / save
 
 previewはowner、conversation、Graph revision、source factsへ拘束する。
 
-- Graph revisionが変わったstale previewは承認しない。
-- preview後の実変更は再previewする。
-- no-op turnではschedulerを再実行せず既存previewを保持する。
-- preview candidateは既存UIからdraft blockへ昇格する。
-- approval/saveはapplicationの決定論的責務である。
-- 二重承認・二重保存・owner mismatch・stale操作を拒否する。
+- stale previewを承認しない
+- preview後の実変更は再preview
+- no-opでは既存previewを保持
+- approval / saveはdeterministic application responsibility
+- duplicate / owner mismatch / stale操作を拒否
 
-チャット文面だけからdeterministic codeが直接保存を実行しない。AIがauthorization intentを理解しても、保存は既存application/UI contractを通す。
+## 12. Persistence / trace
 
-## 9. Persistence / recovery / trace
+Stable V5 sessionはowner・week・conversationへ拘束する。
 
-Stable V5 sessionはowner・week・conversationに拘束する。
+traceはlogical conversation identity、request / turn / revision / sourceを観測可能にする。privacy / retention contractを破らない。
 
-保存・復元対象はconversation identity、完了済みPlanningState、Fact Graph、preview、draft等を一貫したenvelopeとして扱い、部分復元を避ける。pending turn / pending approvalの半端なstateを永続化しない。
+## 13. Testing contract
 
-legacy storage payloadのmigration decoderは、既存利用者データを安全に読むための互換層であり、旧runtimeを再導入する理由にはしない。
+自動テストは決定論的契約を保証する。
 
-traceは同一logical conversationのidentityを維持し、request/turn/revision/sourceを観測可能にする。raw conversationやsemantic payloadのprivacy/retention契約を破らない。
-
-## 10. Testing contract
-
-自動テストで保証するのは決定論的契約である。
-
-対象:
-
-- schema / evidence validation
-- binding / lifecycle / revision / idempotency
+- schema / evidence / binding / lifecycle
+- proposal lifecycle / acceptance scope
+- durable promotion boundary
 - readiness / scheduler / preview
-- correction / approval / save
-- storage / checkpoint / recovery
-- trace / request budget / prompt budget
-- production dependency boundary
-- heuristic policy invariants / adversarial placement cases
+- approval / save / persistence
+- heuristic adversarial cases
+- prompt / request budget
 
-禁止:
+自然なAI返答全文を固定oracleにしない。
 
-- 特定AI返答文を正解に固定する。
-- 固定scenarioのsemantic結果をquality PASSとする。
-- model比較実験を通常CIへ残す。
-- prompt wording自体を回帰契約にする。
+実AI会話はturn-by-turnで人間が読み、明確な意味誤認、共有前提違反、重複質問、誤binding、不自然な提案適用があればそのturnで停止する。
 
-実AIの意味理解・自然さはhuman-reviewed real-API observationで確認し、明確な欠陥は最終ユーザー判断前に開発ループ内で修正する。
-
-重要なscheduler/semantic境界変更後は、対象回帰だけでなくfull CIをgreenに戻してから次の実装単位へ進む。
-
-## 11. Current execution order
-
-旧「legacy削除 → 挙動不変リファクタ → 7視点監査 → 新規改善」はStable V5移行期のhistorical sequenceであり、現在のactive phaseではない。
-
-2026-08-12時点の実行順序は次とする。
+## 14. Current execution order
 
 ```text
-旧pipeline / historical roadmapの概念棚卸し
-→ 現Stable V5とのcapability差分確認
-→ 責務境界を守れる有効概念だけdeterministic policyへ移植
-→ 移植単位ごとの対象回帰
-→ full CI green
-→ 実APIを1 turnずつcheckpoint付きで人手監査
-→ 実APIの通し会話
-→ 7視点敵対的監査
-→ production heuristic inventory確定
-→ roadmap / contract / statusを最終同期
+MD / contract同期
+→ stale vocabulary heuristic削除・一般化
+→ proposal / acceptance typed boundary
+→ current-week memory boundary
+→ durable preference extension
+→ observed learning evidence extension
+→ adaptive review proposal
+→ Luna turn-by-turn revalidation
+→ prompt / repair ablation
+→ final preview / Browser Regression / normal CI
 ```
 
-実API観測で新しい実不具合を見つけた場合はそのturnで停止し、修正→回帰→full CI→新規conversationまたは必要なcheckpointから再検証する。
-
-現在のactive作業正本は`tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md`である。
+各実装単位は targeted regression → full CI → 必要なreal API再観測をgreenにしてから次へ進む。

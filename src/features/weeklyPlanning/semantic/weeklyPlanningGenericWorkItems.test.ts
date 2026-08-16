@@ -188,7 +188,7 @@ function createGraph(): WeeklyPlanningFactGraph {
 }
 
 describe('generic weekly planning work item compiler', () => {
-  it('treats exam_year as one ordinary workload unit', () => {
+  it('treats exam_year as one ordinary workload unit and buffers inferred effort', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>
       candidate.workloadFactId === 'workload-exam-years');
@@ -203,14 +203,14 @@ describe('generic weekly planning work item compiler', () => {
         actualRange: null,
       },
       baseEstimatedMinutes: 240,
-      estimatedMinutes: 240,
+      estimatedMinutes: 270,
       roundingStepMinutes: 15,
     });
     expect(item).not.toHaveProperty('field');
     expect(item).not.toHaveProperty('year');
   });
 
-  it('calculates duration_per_unit without confusing base estimate and calendar allocation', () => {
+  it('calculates duration_per_unit with a safety buffer while preserving the raw estimate', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>
       candidate.workloadFactId === 'workload-problems');
@@ -218,14 +218,14 @@ describe('generic weekly planning work item compiler', () => {
     expect(item).toMatchObject({
       quantity: { amount: 20, unitCode: 'problem' },
       baseEstimatedMinutes: 200,
-      estimatedMinutes: 210,
+      estimatedMinutes: 225,
       calibrationMultiplier: 1,
       roundingStepMinutes: 15,
       estimateSourceFactIds: ['estimate-problem'],
     });
   });
 
-  it('derives duration directly from time workloads', () => {
+  it('derives explicit duration workloads directly without estimate buffering', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>
       candidate.workloadFactId === 'workload-cleaning');

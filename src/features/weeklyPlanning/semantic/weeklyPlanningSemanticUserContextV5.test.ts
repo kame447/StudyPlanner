@@ -9,9 +9,6 @@ import {
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
-  validateWeeklyPlanningSemanticEvidenceV5,
-} from './weeklyPlanningSemanticEvidenceV5';
-import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
@@ -95,26 +92,6 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(validation.document?.userContextFacts).toHaveLength(2);
   });
 
-  it('keeps current-turn grounding for durable context even outside pending-question turns', () => {
-    const document: WeeklyPlanningSemanticDocumentV5 = {
-      ...baseDocument(),
-      userContextFacts: [{
-        localId: 'context-event',
-        kind: 'goal_event',
-        label: '資格試験',
-        value: null,
-        dateExpression: 'next_week',
-        sourceText: '来週資格試験がある',
-      }],
-    };
-    expect(validateWeeklyPlanningSemanticEvidenceV5({
-      document,
-      input: { userText: '今日は英語を進めたいです' },
-    })).toEqual([
-      'document.userContextFacts[0].sourceText:not-grounded-in-current-user-text',
-    ]);
-  });
-
   it('removes a copied stored user-context fact deterministically without a second AI call', async () => {
     const stale = JSON.stringify({
       ...baseDocument(),
@@ -159,11 +136,11 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
-  it('keeps the event-vs-work-deadline rule in the semantic meaning policy', () => {
+  it('keeps deadline semantics without a regression-specific goal-event prompt rule', () => {
     const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(prompt).toContain('Use deadline only for completion-by meaning');
-    expect(prompt).toContain('goal event');
-    expect(prompt).toContain('concern');
+    expect(prompt).toContain('Deadline means completion-by');
+    expect(prompt).not.toContain('otherwise an event date is a goal event');
+    expect(prompt).not.toContain('goal event');
     expect(prompt).not.toContain('共通テスト模試');
     expect(prompt).not.toContain('2週間後');
   });

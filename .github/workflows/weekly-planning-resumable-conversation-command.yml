@@ -3,8 +3,7 @@ name: Weekly Planning Resumable Conversation Command
 on:
   push:
     branches:
-      - agent/weekly-ai-conversation-eval
-      - agent/weekly-planning-human-grounding-repair
+      - agent/weekly-conversation-quality-luna-audit
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
 
@@ -89,7 +88,9 @@ jobs:
           VITE_AI_BASE_URL: https://api.openai.com/v1
           VITE_AI_MODEL: gpt-5.6-luna
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          VITE_AI_MAX_PROCESS_REQUESTS: '3'
+          # One valid turn can use a focused semantic probe, generic semantic pass,
+          # one semantic repair, and the final dialogue renderer.
+          VITE_AI_MAX_PROCESS_REQUESTS: '4'
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: npm run observe:weekly-ai:conversation:turn
 

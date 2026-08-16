@@ -8,25 +8,6 @@ export type DraftGenerationAuthorizationValidation =
   | { accepted: true; command: AuthorizeDraftGenerationCommand }
   | { accepted: false; reason: 'invalid-command' | 'unsupported-command' };
 
-const EXPLICIT_DRAFT_AUTHORIZATION =
-  /(?:仮(?:の)?予定|予定|計画)(?:を|で|も)?(?:組んで|作って|立てて|出して|生成して|お願い)|(?:仮で|この条件で)(?:予定を?)?(?:組んで|作って)|予定作成を?(?:始めて|お願い)/;
-const VAGUE_STUDY_GOAL = /(?:やらないと|勉強しないと|進めないと|そろそろ(?:勉強|課題))/;
-
-export function parseDraftGenerationAuthorizationCommand(
-  userText: string,
-): AuthorizeDraftGenerationCommand | null {
-  const normalized = userText.trim();
-  if (!normalized || VAGUE_STUDY_GOAL.test(normalized) || !EXPLICIT_DRAFT_AUTHORIZATION.test(normalized)) {
-    return null;
-  }
-
-  return {
-    type: 'authorize_draft_generation',
-    sourceText: normalized,
-    confidence: 'high',
-  };
-}
-
 export function validateDraftGenerationAuthorizationCommand(
   candidate: unknown,
 ): DraftGenerationAuthorizationValidation {
@@ -79,11 +60,21 @@ export function reduceDraftGenerationAuthorization(
   };
 }
 
+/**
+ * Applies an authorization signal that has already been selected by the semantic
+ * layer. `userText` is retained only as command provenance; this function does
+ * not inspect or classify its natural-language content.
+ */
 export function applyDraftGenerationAuthorizationTurn(params: {
   state: PlanningIntakeState;
   userText: string;
 }): PlanningIntakeState {
-  const candidate = parseDraftGenerationAuthorizationCommand(params.userText);
-  const validation = validateDraftGenerationAuthorizationCommand(candidate);
-  return reduceDraftGenerationAuthorization(params.state, validation);
+  return reduceDraftGenerationAuthorization(
+    params.state,
+    validateDraftGenerationAuthorizationCommand({
+      type: 'authorize_draft_generation',
+      sourceText: params.userText,
+      confidence: 'high',
+    }),
+  );
 }

@@ -138,7 +138,7 @@ describe('Stable V5 graph-backed episodic memory', () => {
     );
   });
 
-  it('surfaces episodic evidence through public state and the actual semantic request payload', () => {
+  it('sends only fact-linked source evidence to the semantic model', () => {
     const graph = graphWithHistory();
     const summary = createWeeklyPlanningSemanticPublicStateSummaryV5({
       pendingQuestion: {
@@ -149,12 +149,16 @@ describe('Stable V5 graph-backed episodic memory', () => {
     }, graph);
 
     const episodicMemory = summary.episodicMemory as {
-      items: Array<{ factIds: string[]; sourceExcerpts: string[] }>;
+      items: Array<Record<string, unknown>>;
     };
-    expect(episodicMemory.items[0]).toMatchObject({
+    expect(episodicMemory.items[0]).toEqual({
       factIds: ['workload-math'],
       sourceExcerpts: ['残り50ページです'],
     });
+    expect(episodicMemory.items[0]).not.toHaveProperty('sourceRequestId');
+    expect(episodicMemory.items[0]).not.toHaveProperty('sourceSequence');
+    expect(episodicMemory.items[0]).not.toHaveProperty('userMessage');
+    expect(episodicMemory.items[0]).not.toHaveProperty('recoveredFrom');
 
     const requestMessages = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: 'それってどれくらいかかりそう？',
@@ -164,12 +168,12 @@ describe('Stable V5 graph-backed episodic memory', () => {
     const requestPayload = JSON.parse(requestMessages[1].content) as {
       publicStateSummary: {
         episodicMemory: {
-          items: Array<{ sourceRequestId: string; sourceExcerpts: string[] }>;
+          items: Array<Record<string, unknown>>;
         };
       };
     };
-    expect(requestPayload.publicStateSummary.episodicMemory.items[0]).toMatchObject({
-      sourceRequestId: `${CONVERSATION_ID}:request:3`,
+    expect(requestPayload.publicStateSummary.episodicMemory.items[0]).toEqual({
+      factIds: ['workload-math'],
       sourceExcerpts: ['残り50ページです'],
     });
   });

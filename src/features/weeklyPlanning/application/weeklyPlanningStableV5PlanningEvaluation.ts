@@ -3,13 +3,26 @@ import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
+  applyAcceptedMemorySessionProjectionV5,
+} from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
+import {
+  createWeeklyPlanningEffortQuestionPlanV5,
+} from '../semantic/weeklyPlanningEffortQuestionPolicyV5';
+import {
   compileGenericSchedulerInput,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
   reconcileWeeklyPlanningGroundingRecordsV5,
 } from '../semantic/weeklyPlanningGroundingV5';
 import {
+  compileWeeklyPlanningMemoryCalibrationSchedulerInputV5,
+} from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
+import {
+  projectWeeklyPlanningMemoryObservedPaceV5,
+} from '../semantic/weeklyPlanningMemoryObservedPaceProjectionV5';
+import {
   decideWeeklyPlanningStableDialogueV5,
+  type WeeklyPlanningStableQuestionV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
   decideWeeklyPlanningStableRepairPolicyV5,
@@ -20,6 +33,9 @@ import {
 import {
   stableV5RelevantContinuationAccepted,
 } from './weeklyPlanningStableV5GroundingFlow';
+import {
+  evaluateWeeklyPlanningLearningStrategyProposalsV5,
+} from './weeklyPlanningStableV5LearningStrategyProposal';
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
@@ -41,12 +57,59 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   previousDraftGenerationIntent: PlanningIntakeState['draftGenerationIntent'] | null;
   planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
   semanticChanged: boolean;
+  hadMachinePendingQuestion?: boolean;
 }): boolean {
-  if (params.planningIntent === 'create_plan') return true;
+  if (params.planningIntent === 'create_plan' && !params.hadMachinePendingQuestion) return true;
   if (params.previousStatus === 'draft_ready') {
     return params.planningIntent === 'update_plan' && params.semanticChanged;
   }
   return params.previousDraftGenerationIntent === 'user_authorized';
+}
+
+function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): boolean {
+  return state?.lastQuestionContext?.targetSlot?.startsWith('stable_v5:') ?? false;
+}
+
+function workloadSupersessions(
+  graph: SuccessfulSemanticTurn['semantic']['graph'],
+): Record<string, string> {
+  const workloadIds = new Set(graph.workloads.map((workload) => workload.id));
+  const result: Record<string, string> = {};
+  for (const lifecycle of graph.factLifecycles) {
+    if (
+      lifecycle.status !== 'superseded'
+      || !lifecycle.supersededByFactId
+      || !workloadIds.has(lifecycle.factId)
+      || !workloadIds.has(lifecycle.supersededByFactId)
+    ) continue;
+    result[lifecycle.factId] = lifecycle.supersededByFactId;
+  }
+  return result;
+}
+
+function withEffortMeasurement(params: {
+  graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
+  question: WeeklyPlanningStableQuestionV5;
+}): WeeklyPlanningStableQuestionV5 {
+  if (
+    params.question.code !== 'missing_effort_estimate'
+    || params.question.effortMeasurement
+  ) return params.question;
+
+  const workload = params.question.factId
+    ? params.graph.workloads.find((fact) => fact.id === params.question.factId) ?? null
+    : null;
+  if (!workload) return params.question;
+
+  return {
+    ...params.question,
+    effortMeasurement: createWeeklyPlanningEffortQuestionPlanV5({
+      amount: workload.amount,
+      unitCode: workload.unitCode,
+      unitLabel: workload.unitLabel,
+      quantityRole: workload.quantityRole,
+    }).kind,
+  };
 }
 
 export function evaluateWeeklyPlanningStableV5Planning(params: {
@@ -94,11 +157,54 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     timeZone: requestContext.timeZone,
   });
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const compilation = compileGenericSchedulerInput({
+  const observedPaceProjection = projectWeeklyPlanningMemoryObservedPaceV5({
+    ownerId: input.userId,
+    graph: activeGraph,
+    document: semantic.normalization.document,
+    localToFactId: semantic.canonicalization?.localToFactId ?? {},
+    previousRecords: input.previousState?.learningStrategyProposalRecords ?? [],
+  });
+  const baselineCompilation = compileGenericSchedulerInput({
     graph: activeGraph,
     context: schedulerContext,
     externalSources,
+    observedEstimateOverrides: observedPaceProjection.estimateOverrides,
   });
+  const learningStrategyProposals = semantic.normalization.document
+    ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
+        previousState: input.previousState,
+        document: semantic.normalization.document,
+        localToFactId: semantic.canonicalization?.localToFactId ?? {},
+        compilation: baselineCompilation,
+        effortEstimates: activeGraph.effortEstimates,
+        workloadSupersessions: workloadSupersessions(semantic.graph),
+        graphRevision: semantic.graph.revision,
+        turnId: input.traceRequestId,
+      })
+    : {
+        records: input.previousState?.learningStrategyProposalRecords ?? [],
+        pendingProposal: null,
+        acceptedProposal: null,
+        acceptedSpacedProposal: null,
+        acceptedCalibrationProposal: null,
+      };
+  const acceptedCalibration = learningStrategyProposals.acceptedCalibrationProposal;
+  const calibrationCompilation = acceptedCalibration?.selectedSessionMinutes
+    ? compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({
+        graph: activeGraph,
+        workloadFactId: acceptedCalibration.workloadFactId,
+        sessionMinutes: acceptedCalibration.selectedSessionMinutes,
+        context: schedulerContext,
+        externalSources,
+      })
+    : null;
+  const acceptedMemorySessionCompilation = applyAcceptedMemorySessionProjectionV5({
+    compilation: baselineCompilation,
+    graph: activeGraph,
+    acceptedSpacedProposal: learningStrategyProposals.acceptedSpacedProposal,
+    acceptedCalibrationProposal: acceptedCalibration,
+  });
+  const compilation = calibrationCompilation ?? acceptedMemorySessionCompilation;
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
     compilation,
@@ -106,9 +212,34 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     graphRevision: semantic.graph.revision,
     turnId: input.traceRequestId,
   });
+  const acceptedSpacedProposal = learningStrategyProposals.acceptedSpacedProposal;
+  const hasAcceptedMemorySessionDuration = acceptedSpacedProposal
+    ? activeGraph.effortEstimates.some((estimate) =>
+        estimate.targetFactId === acceptedSpacedProposal.workloadFactId
+        && estimate.kind === 'session_duration'
+        && Number.isFinite(estimate.minutes)
+        && estimate.minutes > 0)
+    : false;
+  const memorySessionDurationQuestion: WeeklyPlanningStableQuestionV5 | null = acceptedSpacedProposal
+    && !acceptedCalibration
+    && !hasAcceptedMemorySessionDuration
+    ? {
+        domain: 'work_item',
+        code: 'missing_effort_estimate',
+        factId: acceptedSpacedProposal.workloadFactId,
+        details: {},
+        effortMeasurement: 'session_duration',
+      }
+    : null;
   const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
-  const dialogue = repairDecision.question
-    ? { status: 'ask_question' as const, question: repairDecision.question }
+  const selectedQuestion = memorySessionDurationQuestion
+    ?? repairDecision.question
+    ?? (baselineDialogue.status === 'ask_question' ? baselineDialogue.question : null);
+  const dialogue = selectedQuestion
+    ? {
+        status: 'ask_question' as const,
+        question: withEffortMeasurement({ graph: activeGraph, question: selectedQuestion }),
+      }
     : baselineDialogue;
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
   const semanticChanged = Boolean(
@@ -123,6 +254,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     previousDraftGenerationIntent,
     planningIntent,
     semanticChanged,
+    hadMachinePendingQuestion: hadMachinePendingQuestion(input.previousState),
   });
 
   return {
@@ -133,7 +265,11 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     schedulerContext,
     externalSources,
     activeGraph,
+    observedPaceProjection,
+    baselineCompilation,
+    acceptedMemorySessionCompilation,
     compilation,
+    learningStrategyProposals,
     repairDecision,
     dialogue,
     planningIntent,

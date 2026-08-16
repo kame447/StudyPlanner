@@ -140,7 +140,7 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     const initial = document({ canonicalWindow: false });
     const validation = validateWeeklyPlanningSemanticResponseV5(
       JSON.stringify(initial),
-      { userText: USER_TEXT },
+      {},
     );
 
     if (!validation.parsedDocument) {

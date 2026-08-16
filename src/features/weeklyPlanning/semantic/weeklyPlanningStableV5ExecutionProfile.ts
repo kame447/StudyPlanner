@@ -73,19 +73,7 @@ export function inferWeeklyPlanningExecutionProfileV5(params: {
   const studyContext = params.graph.studyContexts?.find((fact) => fact.taskId === params.item.taskId);
   let profile = { ...DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5 };
 
-  // Structured facts, not lexical task labels, are the source of execution traits.
-  if (workload?.unitCode === 'word') {
-    profile = patchProfile(profile, {
-      cognitiveLoad: 2,
-      contextRetentionCost: 2,
-      chunkability: 5,
-      feedbackGranularity: 5,
-      fatigueRisk: 2,
-      switchingCost: 2,
-      repetitionBenefit: 5,
-    });
-  }
-
+  // Execution traits come from explicit structured context, not generic unit codes or labels.
   if (studyContext?.purpose === 'review' || studyContext?.purpose === 'habit') {
     profile = patchProfile(profile, {
       cognitiveLoad: 2,

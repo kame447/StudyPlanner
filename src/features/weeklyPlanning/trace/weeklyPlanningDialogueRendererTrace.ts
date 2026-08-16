@@ -12,7 +12,6 @@ export type WeeklyPlanningDialogueRendererTraceStatus =
 
 export type WeeklyPlanningDialogueRendererTraceBranch =
   | 'ai_rendered'
-  | 'deterministic_question_bypass'
   | 'deterministic_fallback'
   | 'system_message_bypass';
 

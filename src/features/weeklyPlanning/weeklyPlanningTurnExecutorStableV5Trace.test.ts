@@ -13,7 +13,6 @@ const {
   renderDialogueMock: vi.fn(),
 }));
 
-
 vi.mock('./application/weeklyPlanningStableV5InstrumentedRuntimeExecutor', () => ({
   executeWeeklyPlanningStableV5RuntimeTurn: executeRuntimeMock,
 }));
@@ -54,6 +53,11 @@ function runtimeResult() {
       ...createInitialPlanningIntakeState(),
       status: 'revision_pending' as const,
       questions: ['確認してください。'],
+      lastQuestionContext: {
+        kind: 'missing' as const,
+        targetSlot: 'stable_v5:semantic_uncertainty',
+        intent: 'semantic_uncertainty',
+      },
       shouldCreateDraft: false,
       draftGenerationIntent: 'user_authorized' as const,
     },
@@ -67,9 +71,9 @@ function renderedRuntimeResult() {
     ...runtimeResult(),
     responseSource: 'deterministic_fallback' as const,
     dialogueRendererTrace: {
-      actionId: 'stable-v5:conversation-1:request:4:question',
+      actionId: 'stable-v5:conversation-1:request:4:semantic_uncertainty',
       actionKind: 'question' as const,
-      questionCode: null,
+      questionCode: 'semantic_uncertainty',
       request: {
         purpose: 'weekly_planning_renderer' as const,
         requiredLabels: [],

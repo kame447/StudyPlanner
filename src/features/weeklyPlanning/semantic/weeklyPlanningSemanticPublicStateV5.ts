@@ -3,16 +3,8 @@ import type {
 } from './weeklyPlanningFactGraphV5';
 import {
   buildWeeklyPlanningGraphSourceMemoryV5,
+  type WeeklyPlanningEpisodicMemoryV5,
 } from './weeklyPlanningEpisodicMemoryV5';
-
-export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
-  version: 'weekly-planning-correction-targeting-contract-v5',
-  targetIdentity: 'For an explicit correction of an accepted public fact, set correction.target.publicId to the exact publicId from publicStateSummary and set correction.target.kind to the matching fact kind.',
-  replacementIdentity: 'Create only the replacement fact stated by the user in the current semantic document and set correction.replacementLocalId to that fact localId.',
-  minimalDelta: 'Do not copy unrelated accepted facts from publicStateSummary. Include only facts newly stated or changed in the current utterance.',
-  multipleTargets: 'For multiple explicit corrections, emit one correction per exact target and do not exchange targets between tasks.',
-  ambiguity: 'When the corrected target cannot be identified uniquely from publicStateSummary, do not guess a publicId. Emit an uncertainty describing the unresolved correction target.',
-} as const;
 
 function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
   return new Set(
@@ -100,10 +92,16 @@ function correctionTargetPublicFacts(
   };
 }
 
-function hasCorrectionTargets(facts: Record<string, unknown>): boolean {
-  return Object.values(facts).some(
-    (value) => Array.isArray(value) && value.length > 0,
-  );
+function compactEpisodicEvidence(
+  memory: WeeklyPlanningEpisodicMemoryV5,
+): Record<string, unknown> {
+  return {
+    version: memory.version,
+    items: memory.items.map((item) => ({
+      factIds: item.factIds,
+      sourceExcerpts: item.sourceExcerpts,
+    })),
+  };
 }
 
 function pendingQuestionFactId(summary: Record<string, unknown> | undefined): string | null {
@@ -135,14 +133,10 @@ export function createWeeklyPlanningSemanticPublicStateSummaryV5(
     graph,
     priorityFactId: pendingQuestionFactId(summary),
   });
-  const correctionTargets = correctionTargetPublicFacts(graph);
   return {
     ...baseRuntimeSummary(summary),
-    ...correctionTargets,
+    ...correctionTargetPublicFacts(graph),
     graphRevision: graph.revision,
-    ...(hasCorrectionTargets(correctionTargets)
-      ? { correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 }
-      : {}),
-    episodicMemory,
+    episodicMemory: compactEpisodicEvidence(episodicMemory),
   };
 }

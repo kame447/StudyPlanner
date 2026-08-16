@@ -190,6 +190,7 @@ function pendingQuestion(params: {
       questionCode: 'missing_effort_estimate',
       targetFactId: params.targetFactId,
       graphRevision: params.graphRevision,
+      effortMeasurement: 'duration_per_unit',
     },
   };
 }
@@ -268,10 +269,10 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
 
     const workItems = repaired.scheduler?.input?.movableWorkItems ?? [];
     expect(workItems).toHaveLength(6);
-    expect(workItems.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(7200);
+    expect(workItems.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(7920);
     expect(workItems.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
     expect(workItems.map((item) => item.quantity.amount)).toEqual([7, 7, 7, 7, 6, 6]);
-    expect(workItems.every((item) => item.estimatedMinutes === 1200)).toBe(true);
+    expect(workItems.every((item) => item.estimatedMinutes === 1320)).toBe(true);
   });
 
   it('rejects a short reply atomically when the pending target disappeared', async () => {

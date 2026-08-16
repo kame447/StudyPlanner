@@ -69,7 +69,7 @@ const context = {
 afterEach(() => clearWeeklyPlanningEstimateCalibrationRuntimeV5());
 
 describe('actual-backed calibration → scheduler input integration', () => {
-  it('uses the owner-scoped multiplier before page/problem weekly distribution', () => {
+  it('applies the owner-scoped multiplier before the common safety margin', () => {
     setWeeklyPlanningEstimateCalibrationRuntimeV5({
       ownerId: context.ownerId,
       calibration: {
@@ -84,7 +84,7 @@ describe('actual-backed calibration → scheduler input integration', () => {
     expect(result.input?.movableWorkItems.reduce(
       (sum, item) => sum + (item.estimatedMinutes ?? 0),
       0,
-    )).toBe(240);
+    )).toBe(270);
     expect(result.input?.movableWorkItems.every(
       (item) => item.calibrationMultiplier === 1.2,
     )).toBe(true);
@@ -107,6 +107,9 @@ describe('actual-backed calibration → scheduler input integration', () => {
     expect(result.input?.movableWorkItems.reduce(
       (sum, item) => sum + (item.estimatedMinutes ?? 0),
       0,
-    )).toBe(210);
+    )).toBe(225);
+    expect(result.input?.movableWorkItems.every(
+      (item) => item.calibrationMultiplier === 1,
+    )).toBe(true);
   });
 });

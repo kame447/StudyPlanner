@@ -61,10 +61,9 @@ const publicStateSummary = {
   }],
 };
 
-function validate(value: WeeklyPlanningSemanticDocumentV5, userText = '内訳Aが残っている') {
+function validate(value: WeeklyPlanningSemanticDocumentV5) {
   return validateWeeklyPlanningWorkBreakdownResponseContractV5({
     document: value,
-    userText,
     publicStateSummary,
   });
 }
@@ -111,11 +110,8 @@ describe('Stable V5 work breakdown response contract', () => {
     ]);
   });
 
-  it('requires current-turn evidence on the exact target task', () => {
-    expect(validate(
-      document([task({ sourceText: '前のターンの説明' })]),
-      '内訳Aと内訳Bが残っている',
-    )).toContain('document:work-breakdown-target-current-evidence-required');
+  it('does not reinterpret target sourceText against raw user text', () => {
+    expect(validate(document([task({ sourceText: 'AI structured provenance' })]))).toEqual([]);
   });
 
   it('rejects decomposed study target without any constituents', () => {
@@ -124,21 +120,17 @@ describe('Stable V5 work breakdown response contract', () => {
     })]))).toContain('document:work-breakdown-decomposed-without-constituents');
   });
 
-  it('allows needs_breakdown to remain when it is grounded in the current answer', () => {
-    expect(validate(
-      document([task({
-        decompositionStatus: 'needs_breakdown',
-        study: { purpose: 'homework', contextLabel: null, components: [] },
-        sourceText: 'まだ何が残っているか分かりません',
-      })]),
-      'まだ何が残っているか分かりません',
-    )).toEqual([]);
+  it('allows needs_breakdown to remain when the structured answer is still unresolved', () => {
+    expect(validate(document([task({
+      decompositionStatus: 'needs_breakdown',
+      study: { purpose: 'homework', contextLabel: null, components: [] },
+      sourceText: 'まだ何が残っているか分かりません',
+    })]))).toEqual([]);
   });
 
   it('does not apply outside a work_breakdown pending question', () => {
     expect(validateWeeklyPlanningWorkBreakdownResponseContractV5({
       document: document([]),
-      userText: '何か答える',
       publicStateSummary: {
         pendingQuestion: { questionCode: 'missing_schedulable_work', targetFactId: null },
         uncertainties: [],

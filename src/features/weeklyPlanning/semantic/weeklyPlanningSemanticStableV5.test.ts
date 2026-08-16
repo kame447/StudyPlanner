@@ -239,13 +239,14 @@ describe('Stable V5 semantic document', () => {
     expect(result.diff).toBeNull();
   });
 
-  it('keeps AI responsibility limited to semantic normalization', () => {
+  it('keeps model-facing policy about semantic meaning rather than workflow ownership', () => {
     const system = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '来週の予定を作りたい',
     })[0]?.content ?? '';
-    expect(system).toContain('interpret user meaning and context');
-    expect(system).toContain('deterministic code validates representation/state');
-    expect(system).toContain('Do not emit application, scheduling, readiness, preview, save commands');
-    expect(system).toContain('do not reproduce or invent external events');
+    expect(system).toContain('current-turn meaning into semantic facts');
+    expect(system).toContain('Emit relations only when stated');
+    expect(system).not.toContain('schema and deterministic validators own canonical wire shape');
+    expect(system).not.toContain('Do not emit application, scheduling, readiness, preview, save commands');
+    expect(system).not.toContain('A concern requires explicit evidence');
   });
 });

@@ -19,7 +19,6 @@ vi.mock('../../lib/aiConfig', () => ({
   getAiConfigValidationMessage: () => undefined,
 }));
 
-
 vi.mock('./application/weeklyPlanningStableV5InstrumentedRuntimeExecutor', () => ({
   executeWeeklyPlanningStableV5RuntimeTurn: stableV5RuntimeMock,
 }));
@@ -129,6 +128,17 @@ function stableV5Result() {
       ...createInitialPlanningIntakeState(),
       status: 'revision_pending' as const,
       questions: [fallback],
+      groundingRecords: [{
+        id: 'grounding:window-1:2026-08-03:2026-08-09',
+        targetFactId: 'window-1',
+        interpretationKind: 'relative_date_resolution' as const,
+        status: 'proposed' as const,
+        sourceExpression: '来週',
+        startDate: '2026-08-03',
+        endDate: '2026-08-09',
+        proposedAtTurnId: 'turn-1',
+        acceptedAtTurnId: null,
+      }],
       lastQuestionContext: {
         kind: 'missing' as const,
         targetSlot: 'stable_v5:quantity_role_unresolved',
@@ -150,7 +160,7 @@ describe('Stable V5 dialogue context wiring', () => {
     recordStableV5DebugTraceMock.mockReset();
   });
 
-  it('passes the current utterance, the last six turns, and cross-turn planning facts to the renderer', async () => {
+  it('passes recent conversation, typed planning facts, and grounding records to the renderer', async () => {
     const messages = [
       message('1', 'user', 'この発話だけは古いので除外される'),
       message('2', 'assistant', '来週の計画ですね。'),
@@ -181,8 +191,6 @@ describe('Stable V5 dialogue context wiring', () => {
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       currentUserMessage: 'どういうこと？',
       recentConversation: [
-        { role: 'assistant', content: '来週の計画ですね。' },
-        { role: 'user', content: '院試の勉強をしたい' },
         { role: 'assistant', content: '分野を教えてください。' },
         { role: 'user', content: '第1分野と第2分野' },
         { role: 'assistant', content: '作業量を教えてください。' },
@@ -194,6 +202,12 @@ describe('Stable V5 dialogue context wiring', () => {
           value: '来週',
           start: '2026-08-03',
           end: '2026-08-09',
+        })],
+        groundingRecords: [expect.objectContaining({
+          status: 'proposed',
+          sourceExpression: '来週',
+          startDate: '2026-08-03',
+          endDate: '2026-08-09',
         })],
         tasks: [expect.objectContaining({ title: '院試' })],
         components: [expect.objectContaining({ label: '第2分野' })],

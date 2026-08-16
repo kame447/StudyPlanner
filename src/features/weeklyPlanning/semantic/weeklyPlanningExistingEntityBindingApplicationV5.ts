@@ -21,16 +21,22 @@ export interface WeeklyPlanningExistingEntityBindingApplicationResultV5 {
   errors: string[];
 }
 
-function rebaseId(id: string, taskMap: Map<string, string>, componentMap: Map<string, string>): string {
-  return componentMap.get(id) ?? taskMap.get(id) ?? id;
+function rebaseId(
+  id: string,
+  taskMap: Map<string, string>,
+  componentMap: Map<string, string>,
+  workloadMap: Map<string, string>,
+): string {
+  return workloadMap.get(id) ?? componentMap.get(id) ?? taskMap.get(id) ?? id;
 }
 
 function nullableRebaseId(
   id: string | null,
   taskMap: Map<string, string>,
   componentMap: Map<string, string>,
+  workloadMap: Map<string, string>,
 ): string | null {
-  return id ? rebaseId(id, taskMap, componentMap) : null;
+  return id ? rebaseId(id, taskMap, componentMap, workloadMap) : null;
 }
 
 export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
@@ -68,6 +74,7 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
 
   const taskMap = new Map<string, string>();
   const componentMap = new Map<string, string>();
+  const workloadMap = new Map<string, string>();
   const localToFactId = { ...params.canonicalization.localToFactId };
   for (const [localId, existingId] of Object.entries(bindings.taskFactIdByLocalId)) {
     const temporaryId = params.canonicalization.localToFactId[localId];
@@ -109,8 +116,28 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
     componentMap.set(temporaryId, existingId);
     localToFactId[localId] = existingId;
   }
+  for (const [localId, existingId] of Object.entries(bindings.workloadFactIdByLocalId)) {
+    const temporaryId = params.canonicalization.localToFactId[localId];
+    if (!temporaryId) {
+      const error = `missing-temporary-workload-binding:${localId}`;
+      return {
+        version: WEEKLY_PLANNING_EXISTING_ENTITY_BINDING_APPLICATION_VERSION_V5,
+        status: 'rejected',
+        canonicalization: {
+          ...params.canonicalization,
+          status: 'rejected',
+          graph: params.originalGraph,
+          diff: null,
+          errors: [error],
+        },
+        errors: [error],
+      };
+    }
+    workloadMap.set(temporaryId, existingId);
+    localToFactId[localId] = existingId;
+  }
 
-  if (taskMap.size === 0 && componentMap.size === 0) {
+  if (taskMap.size === 0 && componentMap.size === 0 && workloadMap.size === 0) {
     return {
       version: WEEKLY_PLANNING_EXISTING_ENTITY_BINDING_APPLICATION_VERSION_V5,
       status: 'not_applicable',
@@ -120,18 +147,19 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
   }
 
   const graph = params.canonicalization.graph;
-  const transientContainerIds = new Set<string>([
+  const transientEntityIds = new Set<string>([
     ...taskMap.keys(),
     ...componentMap.keys(),
+    ...workloadMap.keys(),
   ]);
   for (const context of graph.studyContexts) {
-    if (taskMap.has(context.taskId)) transientContainerIds.add(context.id);
+    if (taskMap.has(context.taskId)) transientEntityIds.add(context.id);
   }
 
   const reboundGraph: WeeklyPlanningFactGraphV5 = {
     ...graph,
     factLifecycles: graph.factLifecycles.filter(
-      (entry) => !transientContainerIds.has(entry.factId),
+      (entry) => !transientEntityIds.has(entry.factId),
     ),
     tasks: graph.tasks.filter((task) => !taskMap.has(task.id)),
     studyContexts: graph.studyContexts.filter(
@@ -142,32 +170,44 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
       .map((component) => ({
         ...component,
         taskId: taskMap.get(component.taskId) ?? component.taskId,
-        parentComponentId: nullableRebaseId(component.parentComponentId, taskMap, componentMap),
+        parentComponentId: nullableRebaseId(
+          component.parentComponentId,
+          taskMap,
+          componentMap,
+          workloadMap,
+        ),
       })),
-    workloads: graph.workloads.map((workload) => ({
-      ...workload,
-      taskId: taskMap.get(workload.taskId) ?? workload.taskId,
-      componentId: nullableRebaseId(workload.componentId, taskMap, componentMap),
-    })),
+    workloads: graph.workloads
+      .filter((workload) => !workloadMap.has(workload.id))
+      .map((workload) => ({
+        ...workload,
+        taskId: taskMap.get(workload.taskId) ?? workload.taskId,
+        componentId: nullableRebaseId(
+          workload.componentId,
+          taskMap,
+          componentMap,
+          workloadMap,
+        ),
+      })),
     effortEstimates: graph.effortEstimates.map((estimate) => ({
       ...estimate,
       taskId: taskMap.get(estimate.taskId) ?? estimate.taskId,
-      targetFactId: rebaseId(estimate.targetFactId, taskMap, componentMap),
+      targetFactId: rebaseId(estimate.targetFactId, taskMap, componentMap, workloadMap),
     })),
     temporalConstraints: graph.temporalConstraints.map((constraint) => ({
       ...constraint,
       taskId: taskMap.get(constraint.taskId) ?? constraint.taskId,
-      targetFactId: rebaseId(constraint.targetFactId, taskMap, componentMap),
+      targetFactId: rebaseId(constraint.targetFactId, taskMap, componentMap, workloadMap),
     })),
     taskDateRules: graph.taskDateRules.map((rule) => ({
       ...rule,
       taskId: taskMap.get(rule.taskId) ?? rule.taskId,
-      targetFactId: rebaseId(rule.targetFactId, taskMap, componentMap),
+      targetFactId: rebaseId(rule.targetFactId, taskMap, componentMap, workloadMap),
     })),
     recurrences: graph.recurrences.map((recurrence) => ({
       ...recurrence,
       taskId: taskMap.get(recurrence.taskId) ?? recurrence.taskId,
-      targetFactId: rebaseId(recurrence.targetFactId, taskMap, componentMap),
+      targetFactId: rebaseId(recurrence.targetFactId, taskMap, componentMap, workloadMap),
     })),
     relations: graph.relations.map((relation) => ({
       ...relation,
@@ -176,25 +216,41 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
     })),
     uncertainties: graph.uncertainties.map((uncertainty) => ({
       ...uncertainty,
-      targetFactId: nullableRebaseId(uncertainty.targetFactId, taskMap, componentMap),
+      targetFactId: nullableRebaseId(
+        uncertainty.targetFactId,
+        taskMap,
+        componentMap,
+        workloadMap,
+      ),
     })),
     correctionIntents: graph.correctionIntents.map((correction) => ({
       ...correction,
       target: {
         ...correction.target,
-        factId: nullableRebaseId(correction.target.factId, taskMap, componentMap),
+        factId: nullableRebaseId(
+          correction.target.factId,
+          taskMap,
+          componentMap,
+          workloadMap,
+        ),
       },
       replacementFactId: nullableRebaseId(
         correction.replacementFactId,
         taskMap,
         componentMap,
+        workloadMap,
       ),
     })),
     decisionIntents: graph.decisionIntents.map((decision) => ({
       ...decision,
       target: {
         ...decision.target,
-        factId: nullableRebaseId(decision.target.factId, taskMap, componentMap),
+        factId: nullableRebaseId(
+          decision.target.factId,
+          taskMap,
+          componentMap,
+          workloadMap,
+        ),
       },
     })),
   };
@@ -206,7 +262,7 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
     diff: {
       ...params.canonicalization.diff,
       added: params.canonicalization.diff.added.filter(
-        (entry) => !transientContainerIds.has(entry.id),
+        (entry) => !transientEntityIds.has(entry.id),
       ),
     },
   };

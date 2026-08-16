@@ -2,6 +2,8 @@ import type {
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
+  CANONICAL_RELATIVE_DAY_EXPRESSIONS,
+  CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
 } from './weeklyPlanningCalendarResolver';
 import {
@@ -12,11 +14,19 @@ const ISO_DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
 
 const nullableStringSchema = { type: ['string', 'null'] } as const;
 const sourceTextProperty = { sourceText: { type: 'string' } } as const;
+const planningWindowRequired = [
+  'localId',
+  'kind',
+  'value',
+  'start',
+  'end',
+  'sourceText',
+] as const;
 
 const absolutePlanningWindowSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['localId', 'kind', 'value', 'start', 'end', 'sourceText'],
+  required: planningWindowRequired,
   properties: {
     localId: { type: 'string' },
     kind: { type: 'string', const: 'absolute' },
@@ -27,16 +37,47 @@ const absolutePlanningWindowSchema = {
   },
 } as const;
 
-const nonAbsolutePlanningWindowSchema = {
+const relativeDayPlanningWindowSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['localId', 'kind', 'value', 'start', 'end', 'sourceText'],
+  required: planningWindowRequired,
   properties: {
     localId: { type: 'string' },
-    kind: {
+    kind: { type: 'string', const: 'relative_day' },
+    value: {
       type: 'string',
-      enum: ['relative_day', 'relative_week', 'named_period'],
+      enum: CANONICAL_RELATIVE_DAY_EXPRESSIONS,
     },
+    start: nullableStringSchema,
+    end: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
+const relativeWeekPlanningWindowSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: planningWindowRequired,
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', const: 'relative_week' },
+    value: {
+      type: 'string',
+      enum: CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
+    },
+    start: nullableStringSchema,
+    end: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
+const namedPeriodPlanningWindowSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: planningWindowRequired,
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', const: 'named_period' },
     value: { type: 'string' },
     start: nullableStringSchema,
     end: nullableStringSchema,
@@ -69,7 +110,9 @@ function buildProviderResponseFormatV5(): JsonSchemaResponseFormat {
   rootProperties.planningWindow = {
     anyOf: [
       absolutePlanningWindowSchema,
-      nonAbsolutePlanningWindowSchema,
+      relativeDayPlanningWindowSchema,
+      relativeWeekPlanningWindowSchema,
+      namedPeriodPlanningWindowSchema,
       { type: 'null' },
     ],
   };
@@ -115,11 +158,11 @@ function buildProviderResponseFormatV5(): JsonSchemaResponseFormat {
  * Provider-only representation overlay.
  *
  * The semantic TypeScript model intentionally remains broad enough to decode
- * historical/checkpoint data. New AI responses are stricter: an absolute
- * planning window must provide ISO-shaped start/end values and recurrence day
- * tokens must already use the canonical weekday:<english-day> vocabulary.
- * This keeps provider formatting rules in JSON Schema instead of repeating the
- * same rule in the semantic prompt and full-document repair prompt.
+ * historical/checkpoint data. New AI responses are stricter: relative date
+ * windows select canonical finite values, absolute windows use ISO-shaped
+ * start/end values, and recurrence days use the canonical
+ * weekday:<english-day> vocabulary. Representation rules therefore live in
+ * JSON Schema instead of being repeated in prompts or semantic repair hints.
  */
 export const WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 =
   buildProviderResponseFormatV5();

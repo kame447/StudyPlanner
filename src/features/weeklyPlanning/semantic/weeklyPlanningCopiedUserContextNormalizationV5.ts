@@ -16,37 +16,14 @@ function normalized(value: unknown): string {
     : '';
 }
 
-function grounded(sourceText: unknown, userText: string): boolean {
-  const evidence = normalized(sourceText);
-  return evidence.length > 0 && normalized(userText).includes(evidence);
-}
-
 function storedContexts(publicStateSummary?: Record<string, unknown>): Record<string, unknown>[] {
   const value = publicStateSummary?.userPlanningContext;
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function storedPlanningWindows(
-  publicStateSummary?: Record<string, unknown>,
-): Record<string, unknown>[] {
-  const value = publicStateSummary?.planningWindows;
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function sameNullable(left: unknown, right: unknown): boolean {
   if (left === null || left === undefined) return right === null || right === undefined;
   return normalized(left) === normalized(right);
-}
-
-function matchesStoredPlanningWindow(
-  fact: Record<string, unknown>,
-  stored: Record<string, unknown>[],
-): boolean {
-  return stored.some((record) =>
-    normalized(record.kind) === normalized(fact.kind)
-    && sameNullable(record.value, fact.value)
-    && sameNullable(record.start, fact.start)
-    && sameNullable(record.end, fact.end));
 }
 
 function matchesStoredFact(
@@ -72,29 +49,16 @@ function matchesStoredConcern(
 }
 
 /**
- * Removes accepted facts that a provider copied back into the current semantic
- * delta without current-turn evidence.
+ * Collapses concern facts that already exist in typed public state so repeated
+ * concern output stays idempotent and keeps its original provenance.
  *
- * This normalization never infers user meaning. It only removes an emitted fact
- * when the same fact already exists in publicStateSummary and the emitted
- * sourceText is not grounded in the current userText. Newly stated facts remain
- * AI-owned and are left untouched.
- *
- * Concern records are value-stable owner facts. Re-emitting the same
- * label/value does not create new information, even if the current utterance
- * mentions the same entity for another reason. Dropping that redundant signal
- * preserves the original source turn instead of allowing old concern content
- * to acquire a new, weaker sourceText.
- *
- * goal_event is different because a relative date expression such as
- * custom:2週間後 can resolve differently at a later observedDate. Therefore an
- * exactly matching stored goal event is removed only when its emitted
- * sourceText is not grounded in the current userText; grounded repetitions are
- * left for normal semantic handling.
+ * This normalization deliberately does not classify planning windows, goal
+ * events, or other semantic facts as "copied" by comparing sourceText with the
+ * current utterance. Current-turn meaning is owned by the AI semantic layer;
+ * deterministic post-processing receives only structured output and typed state.
  */
 export function normalizeCopiedUserContextDeltaV5(params: {
   rawResponse: string;
-  userText: string;
   publicStateSummary?: Record<string, unknown>;
 }): WeeklyPlanningCopiedUserContextNormalizationResultV5 {
   let parsed: unknown;
@@ -106,35 +70,23 @@ export function normalizeCopiedUserContextDeltaV5(params: {
   if (!isRecord(parsed)) return { rawResponse: params.rawResponse, repairs: [] };
 
   const stored = storedContexts(params.publicStateSummary);
-  const windows = storedPlanningWindows(params.publicStateSummary);
+  if (stored.length === 0) return { rawResponse: params.rawResponse, repairs: [] };
+
   const repairs: string[] = [];
   let changed = false;
 
-  if (
-    isRecord(parsed.planningWindow)
-    && windows.length > 0
-    && matchesStoredPlanningWindow(parsed.planningWindow, windows)
-    && !grounded(parsed.planningWindow.sourceText, params.userText)
-  ) {
-    parsed.planningWindow = null;
-    changed = true;
-    repairs.push('copied-planning-window-removed');
-  }
-
-  if (stored.length > 0 && Array.isArray(parsed.userContextFacts)) {
+  if (Array.isArray(parsed.userContextFacts)) {
     parsed.userContextFacts = parsed.userContextFacts.filter((value, index) => {
-      if (!isRecord(value)) return true;
-      const storedMatch = matchesStoredFact(value, stored);
-      if (!storedMatch) return true;
-      const redundantConcern = value.kind === 'concern';
-      if (!redundantConcern && grounded(value.sourceText, params.userText)) return true;
+      if (!isRecord(value) || value.kind !== 'concern' || !matchesStoredFact(value, stored)) {
+        return true;
+      }
       changed = true;
-      repairs.push(`copied-user-context-fact-removed:${index}:${String(value.kind ?? 'unknown')}:${normalized(value.label)}`);
+      repairs.push(`copied-user-context-fact-removed:${index}:concern:${normalized(value.label)}`);
       return false;
     });
   }
 
-  if (stored.length > 0 && Array.isArray(parsed.tasks)) {
+  if (Array.isArray(parsed.tasks)) {
     parsed.tasks = parsed.tasks.map((taskValue, taskIndex) => {
       if (!isRecord(taskValue)) return taskValue;
       let task = taskValue;

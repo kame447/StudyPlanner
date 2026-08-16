@@ -2,20 +2,30 @@ import { describe, expect, it } from 'vitest';
 import {
   allocateWeeklyPlanningEffort,
   allocationStepForBaseEstimate,
+  bufferedWeeklyPlanningEstimateMinutes,
+  WEEKLY_PLANNING_ESTIMATE_SAFETY_BUFFER_MULTIPLIER,
 } from './weeklyPlanningEffortAllocation';
 
 describe('weekly planning effort allocation', () => {
-  it('uses five-minute granularity through a 60-minute base estimate', () => {
-    expect(allocationStepForBaseEstimate(60)).toBe(5);
-    expect(allocateWeeklyPlanningEffort({ baseEstimateMinutes: 58 })).toMatchObject({
+  it('adds a ten-percent safety buffer before upward allocation', () => {
+    expect(WEEKLY_PLANNING_ESTIMATE_SAFETY_BUFFER_MULTIPLIER).toBe(1.1);
+    expect(bufferedWeeklyPlanningEstimateMinutes({ baseEstimateMinutes: 100 })).toBeCloseTo(110);
+    const allocation = allocateWeeklyPlanningEffort({ baseEstimateMinutes: 58 });
+    expect(allocation).toMatchObject({
       baseEstimateMinutes: 58,
       calibrationMultiplier: 1,
+      safetyBufferMultiplier: 1.1,
       roundingStepMinutes: 5,
-      allocationMinutes: 60,
+      allocationMinutes: 65,
     });
+    expect(allocation.bufferedEstimateMinutes).toBeCloseTo(63.8);
+  });
+
+  it('uses five-minute granularity through a 60-minute base estimate', () => {
+    expect(allocationStepForBaseEstimate(60)).toBe(5);
     expect(allocateWeeklyPlanningEffort({ baseEstimateMinutes: 60 })).toMatchObject({
       roundingStepMinutes: 5,
-      allocationMinutes: 60,
+      allocationMinutes: 70,
     });
   });
 
@@ -32,24 +42,39 @@ describe('weekly planning effort allocation', () => {
     });
   });
 
-  it('ceil-rounds calibrated effort instead of rounding to the nearest slot', () => {
+  it('keeps explicit durations exact when the caller opts out of estimate buffering', () => {
     expect(allocateWeeklyPlanningEffort({
+      baseEstimateMinutes: 60,
+      safetyBufferMultiplier: 1,
+    })).toMatchObject({
+      safetyBufferMultiplier: 1,
+      bufferedEstimateMinutes: 60,
+      allocationMinutes: 60,
+    });
+  });
+
+  it('ceil-rounds calibrated and buffered effort instead of rounding to the nearest slot', () => {
+    const fivePercent = allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 60,
       calibrationMultiplier: 1.05,
-    })).toMatchObject({
-      calibratedEstimateMinutes: 63,
-      roundingStepMinutes: 5,
-      allocationMinutes: 65,
     });
-
-    expect(allocateWeeklyPlanningEffort({
-      baseEstimateMinutes: 60,
-      calibrationMultiplier: 1.15,
-    })).toMatchObject({
-      calibratedEstimateMinutes: 69,
+    expect(fivePercent).toMatchObject({
+      calibratedEstimateMinutes: 63,
       roundingStepMinutes: 5,
       allocationMinutes: 70,
     });
+    expect(fivePercent.bufferedEstimateMinutes).toBeCloseTo(69.3);
+
+    const fifteenPercent = allocateWeeklyPlanningEffort({
+      baseEstimateMinutes: 60,
+      calibrationMultiplier: 1.15,
+    });
+    expect(fifteenPercent).toMatchObject({
+      calibratedEstimateMinutes: 69,
+      roundingStepMinutes: 5,
+      allocationMinutes: 80,
+    });
+    expect(fifteenPercent.bufferedEstimateMinutes).toBeCloseTo(75.9);
 
     expect(allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 61,
@@ -60,7 +85,14 @@ describe('weekly planning effort allocation', () => {
     });
   });
 
-  it('never lets an upward calibration disappear into the same base allocation', () => {
+  it('does not add an extra slot when floating-point noise lands on an exact boundary', () => {
+    const allocation = allocateWeeklyPlanningEffort({ baseEstimateMinutes: 7200 });
+    expect(allocation.bufferedEstimateMinutes).toBeCloseTo(7920);
+    expect(allocation.roundingStepMinutes).toBe(15);
+    expect(allocation.allocationMinutes).toBe(7920);
+  });
+
+  it('never lets an upward calibration or safety buffer disappear into a smaller allocation', () => {
     const baseEstimates = [5, 10, 55, 58, 60, 61, 75, 90, 120];
     const multipliers = [1.001, 1.01, 1.05, 1.15, 1.5];
 
@@ -72,9 +104,12 @@ describe('weekly planning effort allocation', () => {
         });
 
         expect(allocation.calibrationMultiplier).toBeGreaterThan(1);
+        expect(allocation.bufferedEstimateMinutes).toBeGreaterThan(
+          allocation.calibratedEstimateMinutes,
+        );
         expect(allocation.allocationMinutes).toBeGreaterThan(baseEstimateMinutes);
         expect(allocation.allocationMinutes).toBeGreaterThanOrEqual(
-          allocation.calibratedEstimateMinutes,
+          allocation.bufferedEstimateMinutes,
         );
       }
     }

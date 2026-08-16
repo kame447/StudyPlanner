@@ -11,6 +11,9 @@ import {
   resolveActualSubject,
   resolveActualTitle,
 } from '../lib/actualDrafts';
+import {
+  validateWeeklyPlanningMemoryPaceObservationResultV5,
+} from '../features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
@@ -64,6 +67,7 @@ export function ActualEditorCard({
   const actualTitle = resolveActualTitle(plan, actual);
   const actualSubject = resolveActualSubject(plan, actual);
   const alignedToPlan = resolveActualAlignedToPlan(plan, actual);
+  const observationSource = plan.weeklyPlanningObservationSource;
   const isActualDateChanged = Boolean(actual && draft.occurrenceDate !== actual.occurrenceDate);
   const candidateActual = actual && isActualDateChanged
     ? createRelinkCandidateActual(actual, draft)
@@ -87,6 +91,7 @@ export function ActualEditorCard({
       subject: nextAligned ? plan.subject : current.subject || plan.subject,
       materialId: nextAligned ? plan.materialId ?? null : current.materialId,
       materialName: nextAligned ? plan.materialName ?? '' : current.materialName,
+      ...(nextAligned ? {} : { weeklyPlanningObservationResult: undefined }),
     }));
   }
 
@@ -110,6 +115,25 @@ export function ActualEditorCard({
       return;
     }
 
+    if (draft.isAlignedToPlan && observationSource) {
+      const observationError = validateWeeklyPlanningMemoryPaceObservationResultV5({
+        source: observationSource,
+        result: draft.weeklyPlanningObservationResult,
+      });
+      if (observationError === 'missing') {
+        setError(`この計測で進んだ${observationSource.unitLabel}数を入力してください。`);
+        return;
+      }
+      if (observationError === 'invalid_amount') {
+        setError(`進んだ量は0〜${observationSource.targetAmount}${observationSource.unitLabel}で入力してください。`);
+        return;
+      }
+      if (observationError === 'unit_mismatch') {
+        setError('計測対象の単位が予定と一致しません。予定を開き直してください。');
+        return;
+      }
+    }
+
     setError('');
     try {
       const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
@@ -118,6 +142,7 @@ export function ActualEditorCard({
             ...draft,
             planId: selectedCandidate?.plan.id ?? null,
             isAlignedToPlan: false,
+            weeklyPlanningObservationResult: undefined,
           }
         : draft;
 
@@ -346,6 +371,37 @@ export function ActualEditorCard({
                 </label>
               </div>
             )}
+
+            {draft.isAlignedToPlan && observationSource ? (
+              <label className="field">
+                <span>今回進んだ量（{observationSource.unitLabel}）</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={observationSource.targetAmount}
+                  step="any"
+                  value={draft.weeklyPlanningObservationResult?.progressAmount ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraft((current) => ({
+                      ...current,
+                      weeklyPlanningObservationResult: value === ''
+                        ? undefined
+                        : {
+                            version: 1,
+                            kind: 'memory_pace_calibration',
+                            progressAmount: Number(value),
+                            unitCode: observationSource.unitCode,
+                            unitLabel: observationSource.unitLabel,
+                          },
+                    }));
+                  }}
+                />
+                <small className="inline-note">
+                  この1回で実際に進んだ量を、次回以降の計画調整に使います。
+                </small>
+              </label>
+            ) : null}
 
             <label className="field">
               <span>{draft.isAlignedToPlan ? 'メモ・気づき' : 'ズレの理由・メモ'}</span>

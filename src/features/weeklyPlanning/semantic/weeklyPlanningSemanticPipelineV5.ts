@@ -23,6 +23,9 @@ import {
   applyWeeklyPlanningStableV5ContextualAnswer,
 } from './weeklyPlanningStableV5ContextualAnswer';
 import {
+  shouldAttemptWeeklyPlanningContextualAnswerV5,
+} from './weeklyPlanningContextualAnswerRoutingV5';
+import {
   readWeeklyPlanningPendingQuestionV5,
 } from './weeklyPlanningPendingQuestionV5';
 import {
@@ -45,13 +48,9 @@ export {
 import {
   createWeeklyPlanningSemanticPublicStateSummaryV5,
 } from './weeklyPlanningSemanticPublicStateV5';
-export {
-  WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
-} from './weeklyPlanningSemanticPublicStateV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5 =
   'weekly-planning-semantic-pipeline-v5' as const;
-
 
 export interface WeeklyPlanningSemanticPipelineInputV5
   extends WeeklyPlanningSemanticNormalizerInputV5 {
@@ -263,7 +262,13 @@ export function createWeeklyPlanningSemanticPipelineV5(
         userText: input.userText,
         pendingQuestion,
       });
-      const contextualAnswer = pendingQuestion
+      const contextualAnswerEligible = pendingQuestion
+        ? shouldAttemptWeeklyPlanningContextualAnswerV5({
+            document: normalization.document,
+            pendingQuestion,
+          })
+        : false;
+      const contextualAnswer = pendingQuestion && contextualAnswerEligible
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
             document: normalization.document,
@@ -279,6 +284,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         stage: 'contextual_answer_binding_evaluated',
         data: {
           ...bindingObservations,
+          contextualAnswerEligible,
           contextualAnswerApplied: Boolean(contextualAnswer),
           contextualAnswerResult: contextualAnswer,
         },

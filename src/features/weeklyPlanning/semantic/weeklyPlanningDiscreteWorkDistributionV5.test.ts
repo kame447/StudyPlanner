@@ -76,7 +76,7 @@ function compileAndDistribute(graph: WeeklyPlanningFactGraph) {
 }
 
 describe('quantity-preserving discrete work distribution', () => {
-  it('keeps the compiler aggregate, then turns 40 problems into five scheduler work items', () => {
+  it('keeps the raw estimate while distributing the safety-buffered allocation', () => {
     const { compiled, distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 40,
       unitCode: 'problem',
@@ -90,25 +90,27 @@ describe('quantity-preserving discrete work distribution', () => {
     expect(compiled.items[0]).toMatchObject({
       quantity: { amount: 40, unitCode: 'problem' },
       baseEstimatedMinutes: 320,
-      estimatedMinutes: 330,
+      estimatedMinutes: 360,
     });
 
-    expect(distributed.map((item) => item.quantity.amount)).toEqual([8, 8, 8, 8, 8]);
-    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([70, 65, 65, 65, 65]);
+    expect(distributed).toHaveLength(6);
+    expect(distributed.map((item) => item.quantity.amount)).toEqual([7, 7, 7, 7, 6, 6]);
+    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([60, 60, 60, 60, 60, 60]);
     expect(distributed.map((item) => item.label)).toEqual([
-      '数学 8問（1〜8問）',
-      '数学 8問（9〜16問）',
-      '数学 8問（17〜24問）',
-      '数学 8問（25〜32問）',
-      '数学 8問（33〜40問）',
+      '数学 7問（1〜7問）',
+      '数学 7問（8〜14問）',
+      '数学 7問（15〜21問）',
+      '数学 7問（22〜28問）',
+      '数学 6問（29〜34問）',
+      '数学 6問（35〜40問）',
     ]);
     expect(distributed.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
-    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(330);
+    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(360);
     expect(distributed.every((item) => item.splitPolicy === 'atomic')).toBe(true);
-    expect(new Set(distributed.map((item) => item.id)).size).toBe(5);
+    expect(new Set(distributed.map((item) => item.id)).size).toBe(6);
   });
 
-  it('preserves an explicit numeric page range across scheduler slices', () => {
+  it('preserves an explicit numeric page range across however many buffered slices are needed', () => {
     const { distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 40,
       unitCode: 'page',
@@ -119,15 +121,12 @@ describe('quantity-preserving discrete work distribution', () => {
     }));
 
     expect(distributed.map((item) => item.quantity.actualRange)).toEqual([
-      { start: '21', end: '40' },
-      { start: '41', end: '60' },
-    ]);
-    expect(distributed.map((item) => item.label)).toEqual([
-      '数学 20ページ（21〜40ページ）',
-      '数学 20ページ（41〜60ページ）',
+      { start: '21', end: '34' },
+      { start: '35', end: '47' },
+      { start: '48', end: '60' },
     ]);
     expect(distributed.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
-    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(165);
+    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(180);
   });
 
   it('does not fake-split one extremely long discrete unit into repeated copies', () => {
@@ -142,7 +141,8 @@ describe('quantity-preserving discrete work distribution', () => {
     expect(distributed).toHaveLength(1);
     expect(distributed[0]).toMatchObject({
       label: '数学 1問',
-      estimatedMinutes: 330,
+      baseEstimatedMinutes: 320,
+      estimatedMinutes: 360,
       quantity: {
         amount: 1,
         ordinalRange: { start: 1, end: 1 },
@@ -166,7 +166,7 @@ describe('quantity-preserving discrete work distribution', () => {
     });
 
     expect(distributed.map((item) => item.quantity.amount)).toEqual([20, 20]);
-    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([165, 165]);
+    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([180, 180]);
     expect(distributed.map((item) => item.label)).toEqual([
       '数学 20問（1〜20問）',
       '数学 20問（21〜40問）',

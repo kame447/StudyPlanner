@@ -7,10 +7,17 @@ import type {
 import type {
   WeeklyPlanningGenericSchedulerGraphView,
 } from './weeklyPlanningGenericSchedulerInput';
+import {
+  projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5,
+} from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 
 export function createWeeklyPlanningActiveSchedulerGraphViewV5(
   graph: WeeklyPlanningFactGraphV5,
 ): WeeklyPlanningGenericSchedulerGraphView {
+  const availabilityDeclarations = projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5(
+    filterActiveWeeklyPlanningFactsV5(graph, graph.availabilityDeclarations),
+  );
+
   return {
     revision: graph.revision,
     planningWindows: filterActiveWeeklyPlanningFactsV5(graph, graph.planningWindows),
@@ -26,10 +33,7 @@ export function createWeeklyPlanningActiveSchedulerGraphViewV5(
     recurrences: filterActiveWeeklyPlanningFactsV5(graph, graph.recurrences),
     relations: filterActiveWeeklyPlanningFactsV5(graph, graph.relations),
     uncertainties: filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties),
-    availabilityDeclarations: filterActiveWeeklyPlanningFactsV5(
-      graph,
-      graph.availabilityDeclarations,
-    ),
+    availabilityDeclarations,
     constraintSourceRequests: filterActiveWeeklyPlanningFactsV5(
       graph,
       graph.constraintSourceRequests,

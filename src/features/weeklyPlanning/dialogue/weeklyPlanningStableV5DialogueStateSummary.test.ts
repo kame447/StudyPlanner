@@ -85,6 +85,7 @@ describe('Stable V5 dialogue state summary', () => {
         availabilityDeclarations: [],
         constraintSourceRequests: [],
       },
+      groundingContext: expect.any(Array),
       undecidedItems: expect.any(Array),
     });
     expect(summary).not.toHaveProperty('currentQuestion');
@@ -124,18 +125,19 @@ describe('Stable V5 dialogue state summary', () => {
       recentConversation: expect.any(Array),
       planningStateSummary: {
         decidedFacts: expect.any(Object),
+        groundingContext: expect.any(Array),
         undecidedItems: expect.any(Array),
       },
       applicationDecision: {
+        actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
+        previewPromotionControlLabel: null,
         relevantLabels: ['院試', '第2分野'],
       },
+      request: expect.any(String),
     });
     expect(
       (payload.planningStateSummary as Record<string, unknown>),
     ).not.toHaveProperty('currentQuestion');
-    expect(prompt.userPrompt).toContain(
-      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です',
-    );
   });
 });

@@ -10,6 +10,75 @@ export interface WeeklyPlanningStableV5DialogueConversationTurn {
   content: string;
 }
 
+export interface WeeklyPlanningStableV5DialogueQuestionTarget {
+  collection: string;
+  fact: Record<string, unknown>;
+}
+
+export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
+  kind: 'effort_measurement';
+  measurement: 'total_duration' | 'duration_per_unit' | 'session_duration';
+  quantityRole: 'declared' | 'target' | 'remaining' | 'completed' | 'unknown';
+  targetFactId: string;
+  amount: number;
+  unitCode: string | null;
+  unitLabel: string | null;
+}
+
+export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'spaced_memory_practice';
+  targetFactId: string;
+  suggestedSessionDurationMinutes: {
+    min: number;
+    max: number;
+  };
+  spacingInterval: 'not_yet_selected';
+  rationale: 'distributed_retrieval_supports_retention';
+  decisionRequested: 'accept_or_reject';
+}
+
+export interface WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'calibrate_memory_pace';
+  targetFactId: string;
+  suggestedSessionDurationMinutes: {
+    min: number;
+    max: number;
+  };
+  selectedSessionDurationMinutes: number;
+  sessionDurationMinutes: number;
+  measurementPlan: {
+    observation: 'progress_during_single_session';
+    objective: 'measure_personal_pace';
+    futureUse: 'personalize_future_session_planning';
+  };
+  decisionRequested: 'accept_or_reject';
+}
+
+export interface WeeklyPlanningStableV5DialogueMixedAcquisitionReviewProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'mixed_acquisition_review';
+  targetFactId: string;
+  capacityReason: 'insufficient_capacity';
+  acquisitionMode: 'longer_sessions';
+  reviewMode: 'short_distributed_sessions';
+  reviewSessionDurationMinutes: {
+    min: number;
+    max: number;
+  };
+  decisionRequested: 'accept_or_reject';
+}
+
+export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
+  | WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent
+  | WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent
+  | WeeklyPlanningStableV5DialogueMixedAcquisitionReviewProposalIntent;
+
+export type WeeklyPlanningStableV5DialogueQuestionIntent =
+  | WeeklyPlanningStableV5DialogueEffortQuestionIntent
+  | WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent;
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
@@ -17,6 +86,9 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   planningInformation: Record<string, unknown> | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
+  questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
+  questionIntent?: WeeklyPlanningStableV5DialogueQuestionIntent | null;
+  previewPromotionControlLabel?: string | null;
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;

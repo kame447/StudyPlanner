@@ -10,7 +10,6 @@ import {
   type WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
-  WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
   createWeeklyPlanningSemanticPipelineV5,
 } from './weeklyPlanningSemanticPipelineV5';
 
@@ -162,7 +161,7 @@ function activeIds(graph: {
 }
 
 describe('Stable V5 semantic pipeline correction application', () => {
-  it('omits correction instructions while the graph has no active correction target', async () => {
+  it('omits prompt-only correction instructions while the graph has no active correction target', async () => {
     const capture: { input: WeeklyPlanningSemanticNormalizerInputV5 | null } = {
       input: null,
     };
@@ -175,6 +174,7 @@ describe('Stable V5 semantic pipeline correction application', () => {
       userText: '数学の時間を訂正したい',
       publicStateSummary: {
         tasks: [{ publicId: 'stale-task-id', title: '古い表示' }],
+        correctionContract: { stale: true },
       },
       schedulerContext,
     });
@@ -194,7 +194,7 @@ describe('Stable V5 semantic pipeline correction application', () => {
     );
   });
 
-  it('applies a prior-turn public workload correction before scheduler compilation', async () => {
+  it('exposes exact active facts without attaching a natural-language correction contract', async () => {
     const first = await createWeeklyPlanningSemanticPipelineV5(
       acceptedNormalizer(initialDocument()),
     ).run({
@@ -231,8 +231,8 @@ describe('Stable V5 semantic pipeline correction application', () => {
           unitCode: 'hour',
         }),
       ],
-      correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
     });
+    expect(correctionCapture.input?.publicStateSummary).not.toHaveProperty('correctionContract');
     expect(second.status).toBe('scheduler_ready');
     expect(second.canonicalization?.status).toBe('applied');
     const active = activeIds(second.graph);

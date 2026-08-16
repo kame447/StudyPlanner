@@ -5,6 +5,9 @@ import {
   normalizeCopiedUserContextDeltaV5,
 } from './weeklyPlanningCopiedUserContextNormalizationV5';
 import {
+  normalizeWeeklyPlanningConstraintAbsenceMetadataV5,
+} from './weeklyPlanningConstraintAbsenceNormalizationV5';
+import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
@@ -13,6 +16,12 @@ import {
 import {
   validateWeeklyPlanningRecurrenceConsistencyV5,
 } from './weeklyPlanningRecurrenceConsistencyV5';
+import {
+  normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5,
+} from './weeklyPlanningRecurrenceTargetNormalizationV5';
+import {
+  normalizeResolvedProgressWorkloadsV5,
+} from './weeklyPlanningResolvedProgressNormalizationV5';
 import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
@@ -29,11 +38,11 @@ import {
   validateWeeklyPlanningSemanticEvidenceV5,
 } from './weeklyPlanningSemanticEvidenceV5';
 import {
-  validateWeeklyPlanningStandaloneModifierTargetsV5,
-} from './weeklyPlanningStandaloneModifierTargetV5';
-import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
+import {
+  normalizePendingQuestionEntityBindingsV5,
+} from './weeklyPlanningPendingEntityBindingNormalizationV5';
 import {
   canonicalizeWeeklyPlanningSemanticRepresentationV5,
 } from './weeklyPlanningSemanticRepresentationCanonicalizationV5';
@@ -49,7 +58,6 @@ import {
 } from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
-  userText: string;
   publicStateSummary?: Record<string, unknown>;
 }
 
@@ -67,31 +75,47 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const decompositionNormalization = normalizeTaskDecompositionUncertaintiesV5(rawResponse);
   const copiedContextNormalization = normalizeCopiedUserContextDeltaV5({
     rawResponse: decompositionNormalization.rawResponse,
-    userText: input.userText,
+    publicStateSummary: input.publicStateSummary,
+  });
+  const pendingBindingNormalization = normalizePendingQuestionEntityBindingsV5({
+    rawResponse: copiedContextNormalization.rawResponse,
     publicStateSummary: input.publicStateSummary,
   });
   const componentParentNormalization = normalizeContainingTaskComponentParentV5(
-    copiedContextNormalization.rawResponse,
+    pendingBindingNormalization.rawResponse,
   );
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
-  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+  const resolvedProgressNormalization = normalizeResolvedProgressWorkloadsV5(
     workloadNormalization.rawResponse,
+  );
+  const recurrenceTargetNormalization = normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(
+    resolvedProgressNormalization.rawResponse,
+  );
+  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+    recurrenceTargetNormalization.rawResponse,
+  );
+  const absenceNormalization = normalizeWeeklyPlanningConstraintAbsenceMetadataV5(
+    clockNormalization.rawResponse,
   );
   const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
+    ...pendingBindingNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
+    ...resolvedProgressNormalization.repairs,
+    ...recurrenceTargetNormalization.repairs,
     ...clockNormalization.repairs,
+    ...absenceNormalization.repairs,
   ];
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(clockNormalization.rawResponse);
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(absenceNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
       parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
-        rawResponse: clockNormalization.rawResponse,
+        rawResponse: absenceNormalization.rawResponse,
         validationErrors: parsed.errors,
       }),
       errors: parsed.errors,
@@ -113,17 +137,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...validateWeeklyPlanningRecurrenceConsistencyV5(document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
       document,
-      userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
-    ...validateWeeklyPlanningSemanticEvidenceV5({
-      document,
-      input,
-    }),
-    ...validateWeeklyPlanningStandaloneModifierTargetsV5({
-      document,
-      userText: input.userText,
-    }),
+    ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
   ];
   return {
     document: errors.length === 0 ? document : null,

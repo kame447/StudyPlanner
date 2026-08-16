@@ -5,7 +5,7 @@ import {
 } from '../../../shared/aiProxyContract';
 import worker from './worker';
 
-function createEnv() {
+function createEnv(allowedChatModels = 'gpt-test') {
   const quotaCalls: unknown[] = [];
   const quotaStub = {
     async checkAndConsume(input: unknown) {
@@ -19,7 +19,7 @@ function createEnv() {
       OPENAI_API_KEY: 'openai-key',
       FIREBASE_WEB_API_KEY: 'firebase-key',
       ALLOWED_ORIGIN: 'https://app.example',
-      ALLOWED_CHAT_MODELS: 'gpt-test',
+      ALLOWED_CHAT_MODELS: allowedChatModels,
       AI_QUOTA: {
         getByName() {
           return quotaStub;
@@ -114,11 +114,49 @@ describe('AI proxy deployed worker request budget', () => {
     expect(upstreamBodies).toHaveLength(1);
     expect(upstreamBodies[0]).toMatchObject({
       model: 'gpt-test',
+      temperature: 0,
       max_completion_tokens: 3_200,
     });
     expect(quotaCalls).toHaveLength(2);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('omits an unsupported custom temperature from Luna upstream requests', async () => {
+    const upstreamBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return new Response(JSON.stringify({
+          users: [{ localId: 'user-1', emailVerified: true }],
+        }), { status: 200 });
+      }
+      if (url.endsWith('/chat/completions')) {
+        upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const { env } = createEnv('gpt-5.6-luna');
+    const response = await worker.fetch(
+      new Request('https://proxy.example/chat/completions', {
+        method: 'POST',
+        headers: createHeaders(),
+        body: JSON.stringify(createPayload({
+          model: 'gpt-5.6-luna',
+          temperature: 0,
+        })),
+      }),
+      env as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamBodies).toHaveLength(1);
+    expect(upstreamBodies[0]).toMatchObject({ model: 'gpt-5.6-luna' });
+    expect(upstreamBodies[0]).not.toHaveProperty('temperature');
   });
 
   it('returns a typed 413 response with the actual and allowed byte counts', async () => {

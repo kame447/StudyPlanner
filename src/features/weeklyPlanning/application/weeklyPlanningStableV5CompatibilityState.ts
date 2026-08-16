@@ -1,6 +1,8 @@
 import type {
   PlanningIntakeState,
   WeeklyPlanningGroundingRecord,
+  WeeklyPlanningLearningStrategyProposalRecord,
+  WeeklyPlanningQuestionContextKind,
   WeeklyPlanningRepairObligation,
 } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
@@ -24,6 +26,7 @@ function emptyCompatibilityState(): PlanningIntakeState {
     draftGenerationIntent: 'not_requested',
     groundingRecords: [],
     repairAgenda: [],
+    learningStrategyProposalRecords: [],
     sourceTurns: [],
   };
 }
@@ -35,10 +38,14 @@ export interface StableV5CompatibilityProjectionInput {
   draftCandidates: WeeklyDraftCandidate[];
   questionCode?: string;
   questionFactId?: string;
+  questionKind?: WeeklyPlanningQuestionContextKind;
+  questionActionId?: string;
+  questionIntent?: string;
   authorized: boolean;
   preserveExistingPreview?: boolean;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
   repairAgenda?: WeeklyPlanningRepairObligation[];
+  learningStrategyProposalRecords?: WeeklyPlanningLearningStrategyProposalRecord[];
 }
 
 export function projectStableV5CompatibilityState(
@@ -51,6 +58,10 @@ export function projectStableV5CompatibilityState(
     || previous.draftGenerationIntent === 'user_authorized'
     ? 'user_authorized'
     : 'not_requested';
+  const learningStrategyProposalRecords =
+    params.learningStrategyProposalRecords
+    ?? previous.learningStrategyProposalRecords
+    ?? [];
 
   return {
     ...previous,
@@ -64,10 +75,11 @@ export function projectStableV5CompatibilityState(
     questions: params.questionCode ? [params.message] : [],
     lastQuestionContext: params.questionCode
       ? {
-          kind: 'missing',
+          kind: params.questionKind ?? 'missing',
           targetSlot: `stable_v5:${params.questionCode}`,
-          intent: params.questionCode,
+          intent: params.questionIntent ?? params.questionCode,
           topicId: params.questionFactId,
+          actionId: params.questionActionId,
         }
       : undefined,
     shouldCreateDraft: params.preserveExistingPreview ? previous.shouldCreateDraft : hasDraft,
@@ -77,6 +89,7 @@ export function projectStableV5CompatibilityState(
       : durableDraftGenerationIntent,
     groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
     repairAgenda: params.repairAgenda ?? previous.repairAgenda ?? [],
+    learningStrategyProposalRecords,
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }

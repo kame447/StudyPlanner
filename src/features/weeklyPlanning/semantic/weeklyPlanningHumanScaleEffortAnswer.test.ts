@@ -4,53 +4,68 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
+  applyWeeklyPlanningStableV5ContextualAnswer,
+} from './weeklyPlanningStableV5ContextualAnswer';
+import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
-import { applyWeeklyPlanningStableV5ContextualAnswer } from './weeklyPlanningStableV5ContextualAnswer';
+import type {
+  WeeklyPlanningEffortMeasurementV5,
+} from './weeklyPlanningPendingQuestionV5';
 
-function graphFor(unitCode: 'page' | 'problem' | 'word', amount: number): WeeklyPlanningFactGraphV5 {
-  const task = {
-    id: 'task-1',
-    category: 'study' as const,
-    title: unitCode === 'word' ? '英単語' : '数学',
-    source: {
-      conversationId: 'conversation-1',
-      turnId: 'turn-1',
-      semanticLocalId: 'task-1',
-      sourceText: 'work',
-      origin: 'user' as const,
-    },
-    createdRevision: 1,
-  };
-  const workload = {
-    id: 'workload-1',
-    taskId: task.id,
-    componentId: null,
-    quantityRole: 'target' as const,
-    amount,
-    unitCode,
-    unitLabel: unitCode === 'page' ? 'ページ' : unitCode === 'problem' ? '問' : '語',
-    rangeStart: null,
-    rangeEnd: null,
-    perOccurrence: false,
-    periodExpression: null,
-    source: task.source,
-    createdRevision: 1,
+function graphFor(
+  unitCode: SemanticWorkloadUnitCodeV5,
+  amount: number,
+  quantityRole: 'target' | 'completed' = 'target',
+): WeeklyPlanningFactGraphV5 {
+  const graph = createEmptyWeeklyPlanningFactGraphV5();
+  const source = {
+    conversationId: 'conversation-1',
+    turnId: 'turn-1',
+    semanticLocalId: 'workload-1',
+    sourceText: 'workload',
+    origin: 'user' as const,
   };
   return {
-    ...createEmptyWeeklyPlanningFactGraphV5(),
+    ...graph,
     revision: 1,
-    appliedTurnKeys: ['conversation-1:turn-1'],
-    tasks: [task],
-    workloads: [workload],
-    factLifecycles: [task, workload].map((fact) => ({
-      factId: fact.id,
-      status: 'active' as const,
+    tasks: [{
+      id: 'task-1',
+      category: 'study',
+      title: '学習',
+      source,
+      createdRevision: 1,
+    }],
+    workloads: [{
+      id: 'workload-1',
+      taskId: 'task-1',
+      componentId: null,
+      quantityRole,
+      amount,
+      unitCode,
+      unitLabel: unitCode === 'page'
+        ? 'ページ'
+        : unitCode === 'problem'
+          ? '問'
+          : unitCode === 'word'
+            ? '語'
+            : '項目',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      source,
+      createdRevision: 1,
+    }],
+    factLifecycles: [{
+      factId: 'workload-1',
+      status: 'active',
       createdRevision: 1,
       terminalRevision: null,
       supersededByFactId: null,
-    })),
+    }],
   };
 }
 
@@ -87,15 +102,22 @@ function durationAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-function answer(unitCode: 'page' | 'problem' | 'word', amount: number, minutes: number) {
+function answer(
+  unitCode: SemanticWorkloadUnitCodeV5,
+  amount: number,
+  minutes: number,
+  quantityRole: 'target' | 'completed' = 'target',
+  effortMeasurement?: WeeklyPlanningEffortMeasurementV5,
+) {
   return applyWeeklyPlanningStableV5ContextualAnswer({
-    graph: graphFor(unitCode, amount),
+    graph: graphFor(unitCode, amount, quantityRole),
     document: durationAnswer(minutes),
     pendingQuestion: {
       actionId: 'question-1',
       questionCode: 'missing_effort_estimate',
       targetFactId: 'workload-1',
       graphRevision: 1,
+      effortMeasurement,
     },
     conversationId: 'conversation-1',
     turnId: 'turn-2',
@@ -105,32 +127,43 @@ function answer(unitCode: 'page' | 'problem' | 'word', amount: number, minutes: 
 }
 
 describe('Stable V5 human-scale contextual effort answers', () => {
-  it('stores page and problem answers as duration per unit', () => {
-    expect(answer('page', 30, 5)?.graph.effortEstimates[0]).toMatchObject({
+  it('stores page and problem answers from the exact typed duration-per-unit question', () => {
+    expect(answer('page', 30, 5, 'target', 'duration_per_unit')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'duration_per_unit',
       minutes: 5,
       unitCode: 'page',
     });
-    expect(answer('problem', 80, 8)?.graph.effortEstimates[0]).toMatchObject({
+    expect(answer('problem', 80, 8, 'target', 'duration_per_unit')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'duration_per_unit',
       minutes: 8,
       unitCode: 'problem',
     });
   });
 
-  it('stores up-to-100 vocabulary answers as the whole-batch duration', () => {
-    expect(answer('word', 80, 35)?.graph.effortEstimates[0]).toMatchObject({
+  it('stores a completed-workload answer from the exact typed total-duration question', () => {
+    expect(answer('page', 30, 90, 'completed', 'total_duration')?.graph.effortEstimates[0]).toMatchObject({
+      targetFactId: 'workload-1',
       kind: 'total_duration',
-      minutes: 35,
+      minutes: 90,
       unitCode: null,
     });
   });
 
-  it('stores large-vocabulary answers as one learning-session duration', () => {
-    expect(answer('word', 150, 30)?.graph.effortEstimates[0]).toMatchObject({
+  it('binds a short duration answer to the exact one-session measurement that was asked', () => {
+    expect(answer('word', 220, 20, 'target', 'session_duration')?.graph.effortEstimates[0]).toMatchObject({
       kind: 'session_duration',
-      minutes: 30,
+      minutes: 20,
       unitCode: 'word',
     });
+    expect(answer('custom', 100, 25, 'target', 'session_duration')?.graph.effortEstimates[0]).toMatchObject({
+      kind: 'session_duration',
+      minutes: 25,
+      unitCode: 'custom',
+    });
+  });
+
+  it('does not re-infer effort measurement when the pending question contract omits it', () => {
+    expect(answer('word', 220, 20)).toBeNull();
+    expect(answer('page', 30, 5)).toBeNull();
   });
 });

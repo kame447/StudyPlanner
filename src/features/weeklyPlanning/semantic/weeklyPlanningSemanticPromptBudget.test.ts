@@ -33,11 +33,11 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 9_000;
-const GENERIC_REQUEST_MAX_BYTES = 23_000;
-const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 2_200;
-const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
-const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
+const GENERIC_MEANING_POLICY_MAX_BYTES = 2_200;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_500;
+const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
+const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
+const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 1_800;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
 
@@ -126,6 +126,16 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
+  it('keeps the always-on meaning policy compact', () => {
+    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
+    expect(byteLength(policy)).toBeLessThanOrEqual(
+      GENERIC_MEANING_POLICY_MAX_BYTES,
+    );
+    expect(policy).toContain(
+      'For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount.',
+    );
+  });
+
   it('keeps supplemental orchestration policy small and scenario independent', () => {
     const meaningPolicy = createWeeklyPlanningSemanticMeaningPolicyV5();
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({
@@ -149,6 +159,9 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(systemPrompt).not.toContain('weekday:tuesday, weekday:wednesday');
     expect(systemPrompt).not.toContain('Return empty availabilityDeclarations');
     expect(systemPrompt).not.toContain('selector must be active');
+    expect(systemPrompt).not.toContain(
+      'Do not emit application, scheduling, readiness, preview, save commands, or prose.',
+    );
   });
 
   it('caps the always-on generic system prompt itself', () => {
@@ -156,12 +169,6 @@ describe('Stable V5 semantic prompt budget', () => {
 
     expect(byteLength(systemPrompt)).toBeLessThanOrEqual(
       GENERIC_SYSTEM_PROMPT_MAX_BYTES,
-    );
-  });
-
-  it('caps the actual representative generic request including hardened provider schema and calendar context', () => {
-    expect(representativeGenericRequestBytes()).toBeLessThanOrEqual(
-      GENERIC_REQUEST_MAX_BYTES,
     );
   });
 

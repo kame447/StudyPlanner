@@ -49,14 +49,8 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'You are a focused semantic interpreter for exactly one machine-pending planning clarification.',
-  'Meaning interpretation is your responsibility. Deterministic code has already selected the exact pending fact target and will bind your semantic value to that target.',
-  'The machine pending question is authoritative context. Do not require the current utterance to repeat the task name or unit when it is a direct answer to that question.',
-  'Return effort_answer only when the current utterance is solely an answer giving the requested effort/duration. Convert the duration to minutes. Do not decide whether it is total, per-unit, or per-session; deterministic policy already knows the question scale.',
-  'Return quantity_role_answer only when the pending question asks what a stated quantity means and the current utterance clearly says target, remaining, or completed.',
-  'Return fallback when the utterance adds, changes, removes, corrects, qualifies, or discusses any other planning fact, when it answers a different question, or when the answer value is ambiguous.',
-  'Never copy prior tasks, workloads, dates, constraints, effort estimates, or identifiers. Never decide readiness, scheduling, placement, persistence, or wording.',
-  'Return only the response schema.',
+  'Interpret only the current answer to the machine-selected pending question; state already fixes the target identity and scale.',
+  'For missing_effort_estimate, return effort_answer only for a direct duration answer and convert it to minutes. For quantity_role_unresolved, return quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =

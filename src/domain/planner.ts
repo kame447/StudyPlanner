@@ -122,6 +122,9 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
     memo: plan.memo,
     materialId: plan.materialId ?? null,
     materialName: plan.materialName ?? '',
+    ...(plan.weeklyPlanningObservationSource
+      ? { weeklyPlanningObservationSource: { ...plan.weeklyPlanningObservationSource } }
+      : {}),
   };
 }
 
@@ -243,6 +246,9 @@ export function createActualFromDraft(
     materialId: draft.materialId ?? null,
     materialName: draft.materialName?.trim() ?? '',
     materialProgressUpdates: draft.materialProgressUpdates,
+    weeklyPlanningObservationResult: draft.weeklyPlanningObservationResult
+      ? { ...draft.weeklyPlanningObservationResult }
+      : undefined,
     updatedAt: new Date().toISOString(),
   };
 }

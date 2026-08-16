@@ -4,16 +4,18 @@ import {
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
+import type {
+  WeeklyPlanningStableV5DialogueQuestionIntent,
+} from './weeklyPlanningStableV5DialogueContracts';
 import {
-  isStableV5QuestionLikeText,
+  learningStrategyProposalIntentForStableV5Dialogue,
+  questionIntentForStableV5Dialogue,
+  questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
+  WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
-  shouldUseAiWeeklyPlanningStableV5DialogueRenderer,
-} from './weeklyPlanningStableV5DialogueRouting';
-import {
   createWeeklyPlanningAiRenderedDialogueTrace,
-  createWeeklyPlanningDeterministicQuestionDialogueTrace,
   createWeeklyPlanningFallbackDialogueTrace,
   createWeeklyPlanningSystemDialogueRendererTrace,
   recordWeeklyPlanningDialogueDecisionV5,
@@ -34,7 +36,7 @@ import type {
 
 export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
-const RECENT_TURN_LIMIT = 6;
+const RECENT_TURN_LIMIT = 4;
 const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
   'AIに接続できなかったため',
   '入力内容は保持していますが、予定条件の構造化処理に失敗しました',
@@ -53,9 +55,7 @@ function dialogueActionKind(
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningStableV5DialogueActionKind {
   if (result.draftCandidates.length > 0) return 'preview_ready';
-  if (result.state.questions.length > 0 || isStableV5QuestionLikeText(result.message)) {
-    return 'question';
-  }
+  if (questionCode(result)) return 'question';
   return 'status';
 }
 
@@ -111,37 +111,59 @@ function withAssistantMessage(params: {
   };
 }
 
-function deterministicQuestionBypass(params: {
-  input: WeeklyPlanningTurnExecutionInput;
-  result: WeeklyPlanningTurnExecutionResult;
-  notice: string | null;
-  actionKind: WeeklyPlanningStableV5DialogueActionKind;
-  questionCode: string | null;
-  actionId: string;
-}): WeeklyPlanningTurnExecutionResult {
-  const finalMessage = withSelfRepairNotice(params.result.message, params.notice);
-  const dialogueRendererTrace = createWeeklyPlanningDeterministicQuestionDialogueTrace({
-    actionId: params.actionId,
-    actionKind: params.actionKind,
-    questionCode: params.questionCode,
-    finalMessage,
-  });
-  const result = withAssistantMessage({
-    result: params.result,
-    message: finalMessage,
-    responseSource: 'rules',
-    dialogueRendererTrace,
-  });
-  recordWeeklyPlanningDialogueDecisionV5({
-    requestId: params.input.traceRequestId,
-    branch: 'deterministic_question_bypass',
-    actionId: params.actionId,
-    questionCode: params.questionCode,
-    responseSource: result.responseSource,
-    message: result.message,
-    selfRepairNotice: params.notice,
-  });
-  return result;
+function groundingRecords(
+  result: WeeklyPlanningTurnExecutionResult,
+): Array<Record<string, unknown>> {
+  return (result.state.groundingRecords ?? []).map((record) => ({
+    targetFactId: record.targetFactId,
+    interpretationKind: record.interpretationKind,
+    status: record.status,
+    sourceExpression: record.sourceExpression,
+    startDate: record.startDate,
+    endDate: record.endDate,
+  }));
+}
+
+function effortFallbackText(
+  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'effort_measurement' }>,
+): string {
+  if (intent.measurement === 'session_duration') {
+    return '1回の学習時間を教えてください。';
+  }
+  if (intent.measurement === 'duration_per_unit') {
+    const unit = intent.unitLabel?.trim();
+    return unit
+      ? `1${unit}あたりどれくらい時間がかかりますか？`
+      : '1単位あたりどれくらい時間がかかりますか？';
+  }
+  if (intent.quantityRole === 'completed' && intent.unitLabel?.trim()) {
+    return `完了した${intent.amount}${intent.unitLabel.trim()}には、合計でどれくらい時間がかかりましたか？`;
+  }
+  return '指定した量を進めるのに、合計でどれくらい時間がかかりますか？';
+}
+
+export function fallbackTextForStableV5TypedIntent(params: {
+  applicationText: string;
+  questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
+}): string {
+  const intent = params.questionIntent;
+  if (intent?.kind === 'learning_strategy_proposal') {
+    if (intent.proposalKind === 'mixed_acquisition_review') {
+      const { min, max } = intent.reviewSessionDurationMinutes;
+      return `今の空き時間では収まりきらないため、新しい範囲は少し長めに学習し、復習は1回${min}〜${max}分で短く分散する方針に切り替えますか？`;
+    }
+    const min = intent.suggestedSessionDurationMinutes.min;
+    const max = intent.suggestedSessionDurationMinutes.max;
+    if (intent.proposalKind === 'calibrate_memory_pace') {
+      const minutes = intent.selectedSessionDurationMinutes ?? min;
+      return `学習ペース計測の提案（${minutes}分）について、採用するか教えてください。`;
+    }
+    return `分散学習の提案（1回${min}〜${max}分）について、採用するか教えてください。`;
+  }
+  if (intent?.kind === 'effort_measurement') {
+    return effortFallbackText(intent);
+  }
+  return params.applicationText;
 }
 
 function createRenderInput(params: {
@@ -152,25 +174,53 @@ function createRenderInput(params: {
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
+  const planningInformation = params.result.stableV5Graph
+    ? {
+        ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
+        groundingRecords: groundingRecords(params.result),
+        selfRepairNotice: params.notice,
+      }
+    : null;
+  const targetFactId = params.result.state.lastQuestionContext?.topicId ?? null;
+  const questionTarget = questionTargetForStableV5Dialogue({
+    planningInformation,
+    targetFactId,
+  });
+  const proposalIntent = learningStrategyProposalIntentForStableV5Dialogue({
+    questionCode: params.questionCode,
+    actionId: params.result.state.lastQuestionContext?.actionId ?? null,
+    proposalRecords: params.result.state.learningStrategyProposalRecords ?? [],
+  });
+  const questionIntent = proposalIntent ?? questionIntentForStableV5Dialogue({
+    questionCode: params.questionCode,
+    questionTarget,
+    effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
+  });
+  const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
+    ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
+    : null;
+  const fallbackText = fallbackTextForStableV5TypedIntent({
+    applicationText: params.result.message,
+    questionIntent,
+  });
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
     recentConversation: params.input.messages
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
-    planningInformation: params.result.stableV5Graph
-      ? {
-          ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
-          selfRepairNotice: params.notice,
-        }
-      : null,
+    planningInformation,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
+    questionTarget,
+    questionIntent,
+    previewPromotionControlLabel,
     requiredLabels: requiredLabelsForStableV5Dialogue({
-      questionCode: params.questionCode,
-      fallbackText: params.result.message,
+      planningInformation,
+      targetFactId,
+      includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
-    fallbackText: withSelfRepairNotice(params.result.message, params.notice),
+    fallbackText: withSelfRepairNotice(fallbackText, params.notice),
     previewCount: params.result.draftCandidates.length,
   };
 }
@@ -206,21 +256,6 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     actionKind,
     questionCode: currentQuestionCode,
   });
-
-  if (!shouldUseAiWeeklyPlanningStableV5DialogueRenderer({
-    actionKind,
-    questionCode: currentQuestionCode,
-    currentUserMessage: params.input.userText,
-  })) {
-    return deterministicQuestionBypass({
-      ...params,
-      notice,
-      actionKind,
-      questionCode: currentQuestionCode,
-      actionId: currentActionId,
-    });
-  }
-
   const renderInput = createRenderInput({
     ...params,
     notice,
@@ -272,7 +307,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
-  const finalMessage = withSelfRepairNotice(rendered.text, notice);
+  const finalMessage = rendered.text;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,

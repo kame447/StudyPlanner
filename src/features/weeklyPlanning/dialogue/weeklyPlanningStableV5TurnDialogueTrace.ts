@@ -41,31 +41,6 @@ export function createWeeklyPlanningSystemDialogueRendererTrace(
   };
 }
 
-export function createWeeklyPlanningDeterministicQuestionDialogueTrace(params: {
-  actionId: string;
-  actionKind: WeeklyPlanningStableV5DialogueActionKind;
-  questionCode: string | null;
-  finalMessage: string;
-}): WeeklyPlanningDialogueRendererTrace {
-  return {
-    actionId: params.actionId,
-    actionKind: params.actionKind,
-    questionCode: params.questionCode,
-    request: null,
-    response: {
-      status: 'bypassed',
-      reason: 'deterministic_question',
-      rawResponse: null,
-      renderedText: null,
-    },
-    decision: {
-      branch: 'deterministic_question_bypass',
-      responseSource: 'rules',
-      finalMessage: params.finalMessage,
-    },
-  };
-}
-
 export function createWeeklyPlanningFallbackDialogueTrace(params: {
   actionId: string;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
@@ -156,7 +131,7 @@ export function recordWeeklyPlanningDialogueRendererResponseV5(params: {
 
 export function recordWeeklyPlanningDialogueDecisionV5(params: {
   requestId: string;
-  branch: 'system_message_bypass' | 'deterministic_question_bypass' | 'deterministic_fallback' | 'ai_rendered';
+  branch: 'system_message_bypass' | 'deterministic_fallback' | 'ai_rendered';
   actionId?: string | null;
   questionCode?: string | null;
   responseSource: WeeklyPlanningDialogueRendererTrace['decision']['responseSource'] | undefined;

@@ -4,6 +4,7 @@ import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningEffortMeasurementV5 } from './weeklyPlanningPendingQuestionV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -140,12 +141,18 @@ function pendingQuestion(params: {
   code: 'missing_effort_estimate' | 'quantity_role_unresolved';
   targetFactId?: string | null;
   graphRevision?: number;
+  effortMeasurement?: WeeklyPlanningEffortMeasurementV5 | null;
 }) {
   return {
     actionId: 'stable-v5:question-1',
     questionCode: params.code,
     targetFactId: params.targetFactId === undefined ? 'workload-1' : params.targetFactId,
     graphRevision: params.graphRevision ?? 1,
+    ...(params.code === 'missing_effort_estimate'
+      ? { effortMeasurement: params.effortMeasurement === undefined
+          ? 'duration_per_unit' as const
+          : params.effortMeasurement }
+      : {}),
   };
 }
 
@@ -156,7 +163,7 @@ const multipleTargetCase = fc.integer({ min: 2, max: 8 }).chain((workloadCount) 
   }));
 
 describe('Stable V5 contextual answers', () => {
-  it('binds an AI duration answer to the exact workload named by pending question', () => {
+  it('binds an AI duration answer using the exact typed pending-question measurement and target', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
@@ -171,6 +178,8 @@ describe('Stable V5 contextual answers', () => {
       expect.objectContaining({
         taskId: 'task-1',
         targetFactId: 'workload-1',
+        kind: 'duration_per_unit',
+        unitCode: 'page',
         minutes: 180,
       }),
     ]);
@@ -236,7 +245,7 @@ describe('Stable V5 contextual answers', () => {
     }), { numRuns: 100 });
   });
 
-  it('returns null for stale, missing, or non-minimal machine/document shapes', () => {
+  it('returns null for stale, missing, non-minimal, or incomplete machine question contracts', () => {
     const base = {
       graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
@@ -265,6 +274,13 @@ describe('Stable V5 contextual answers', () => {
         ...base,
         pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
         document: answerDocument({ minutes: 180, includeAdditionalTask: true }),
+      },
+      {
+        ...base,
+        pendingQuestion: pendingQuestion({
+          code: 'missing_effort_estimate',
+          effortMeasurement: null,
+        }),
       },
     ];
 

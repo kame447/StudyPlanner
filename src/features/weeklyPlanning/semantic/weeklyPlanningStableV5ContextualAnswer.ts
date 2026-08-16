@@ -1,7 +1,4 @@
 import {
-  createWeeklyPlanningEffortQuestionPlanV5,
-} from './weeklyPlanningEffortQuestionPolicyV5';
-import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import {
@@ -69,6 +66,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerEvaluation {
   reason:
     | 'reply_shape_not_contextual'
     | 'unsupported_question_code'
+    | 'question_contract_incomplete'
     | 'target_unavailable'
     | 'duration_not_grounded_in_user_text'
     | 'quantity_role_not_grounded_in_user_text'
@@ -170,8 +168,7 @@ function isSemanticUncertaintyReplyEnvelope(
     && input.pendingQuestion.graphRevision === input.graph.revision
     && isSemanticUncertaintyQuestion(input.pendingQuestion.questionCode)
     && typeof input.pendingQuestion.targetFactId === 'string'
-    && input.pendingQuestion.targetFactId.length > 0
-    && input.document.planningIntent !== 'create_plan';
+    && input.pendingQuestion.targetFactId.length > 0;
 }
 
 function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean {
@@ -207,6 +204,37 @@ function targetUncertainty(
   const targetFactId = input.pendingQuestion.targetFactId;
   if (!targetFactId || !isActiveFact(input.graph, targetFactId)) return null;
   return input.graph.uncertainties.find((fact) => fact.id === targetFactId) ?? null;
+}
+
+function semanticLocalIdsForExistingFact(
+  document: WeeklyPlanningSemanticDocumentV5,
+  publicId: string | null,
+): Set<string> {
+  if (!publicId) return new Set();
+  const localIds = new Set<string>();
+  for (const task of document.tasks) {
+    if (task.existingPublicId === publicId) localIds.add(task.localId);
+    for (const component of task.study?.components ?? []) {
+      if (component.existingPublicId === publicId) localIds.add(component.localId);
+    }
+  }
+  return localIds;
+}
+
+function retainsPendingSemanticUncertainty(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: UncertaintyFactV5,
+): boolean {
+  const targetLocalIds = semanticLocalIdsForExistingFact(
+    input.document,
+    target.targetFactId,
+  );
+  return input.document.uncertainties.some((uncertainty) => {
+    if (uncertainty.field !== target.field) return false;
+    if (!uncertainty.targetLocalId) return true;
+    if (targetLocalIds.size === 0) return true;
+    return targetLocalIds.has(uncertainty.targetLocalId);
+  });
 }
 
 function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
@@ -260,6 +288,18 @@ function appliedResult(params: {
   };
 }
 
+function effortPlanForPendingQuestion(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: WorkloadFactV5,
+) {
+  const measurement = input.pendingQuestion.effortMeasurement;
+  if (!measurement) return null;
+  return {
+    kind: measurement,
+    unitCode: measurement === 'total_duration' ? null : target.unitCode,
+  };
+}
+
 function applyEffortAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
   target: WorkloadFactV5,
@@ -280,7 +320,8 @@ function applyEffortAnswer(
     || input.graph.appliedTurnKeys.includes(turnKey(input))
   ) return null;
 
-  const questionPlan = createWeeklyPlanningEffortQuestionPlanV5(target);
+  const questionPlan = effortPlanForPendingQuestion(input, target);
+  if (!questionPlan) return null;
   const fact: EffortEstimateFactV5 = {
     id,
     taskId: target.taskId,
@@ -515,7 +556,7 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
       };
     }
     if (
-      input.document.uncertainties.length > 0
+      retainsPendingSemanticUncertainty(input, target)
       || !containsResolvedSemanticDelta(input.document)
     ) {
       return {
@@ -549,6 +590,17 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
       ...base,
       status: 'not_contextual',
       reason: 'unsupported_question_code',
+      result: null,
+    };
+  }
+  if (
+    input.pendingQuestion.questionCode === 'missing_effort_estimate'
+    && !input.pendingQuestion.effortMeasurement
+  ) {
+    return {
+      ...base,
+      status: 'not_contextual',
+      reason: 'question_contract_incomplete',
       result: null,
     };
   }

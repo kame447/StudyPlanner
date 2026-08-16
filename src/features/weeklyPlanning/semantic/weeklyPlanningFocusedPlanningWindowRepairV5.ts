@@ -92,11 +92,7 @@ export function createFocusedPlanningWindowRepairMessagesV5(
   return [
     {
       role: 'system',
-      content: [
-        'Repair only the canonical representation of one already-interpreted absolute planning window.',
-        'Preserve its existing scope and source meaning. Do not reinterpret tasks, availability, relations, intent, or any other planning fact.',
-        'Return only value/start/end. start and end must be YYYY-MM-DD, start must not be after end, and value must be exactly <start>/<end>.',
-      ].join('\n'),
+      content: 'Canonicalize this already-interpreted absolute planning window without changing its meaning; set value to <start>/<end>.',
     },
     {
       role: 'user',

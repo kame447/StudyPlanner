@@ -4,10 +4,6 @@ import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import {
   preferredTaskDistributedDateV5,
-  preferredVocabularyLearningDateV5,
-  reviewCandidateDatesV5,
-  vocabularyLearningCandidateDatesV5,
-  vocabularyReviewTargetsV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
 import { isHeavyWeeklyPlanningWorkItemV5 } from './weeklyPlanningStableV5ExecutionPolicy';
 import type { MinuteInterval, PlacementWindow } from './weeklyPlanningStableV5PlacementAvailability';
@@ -77,7 +73,10 @@ function eligibleDates(params: {
     ? [...params.dates]
     : eligibility.allowedDates;
   const excluded = new Set(eligibility?.excludedDates ?? []);
-  return allowed.filter((date) => params.dates.includes(date) && !excluded.has(date));
+  return allowed.filter((date) =>
+    params.dates.includes(date)
+    && !excluded.has(date)
+    && (!params.item.requiredDate || date === params.item.requiredDate));
 }
 
 function findWorkItemSlot(params: {
@@ -88,15 +87,15 @@ function findWorkItemSlot(params: {
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment: boolean;
 }): MinuteInterval | null {
-  const preferences = preferredPlacementsForWorkItem({
+  const explicitPreferences = preferredPlacementsForWorkItem({
     graph: params.context.graph,
     item: params.item,
     dates: params.dates,
     namedTimePeriods: params.context.namedTimePeriods,
   });
-  const preferredSlot = preferences.length > 0
+  const preferredSlot = explicitPreferences.length > 0
     ? findPreferredPlacementSlot({
-        placements: preferences,
+        placements: explicitPreferences,
         duration: params.duration,
         windowsByDate: params.context.windowsByDate,
         hardAvailableByDate: params.context.hardAvailableByDate,
@@ -104,6 +103,7 @@ function findWorkItemSlot(params: {
         breakMinutes: params.context.breakMinutes,
         notBefore: params.notBefore,
         preferLongSegment: params.preferLongSegment,
+        restrictToBaseWindows: false,
       })
     : null;
   return preferredSlot ?? findPlacementSlot({
@@ -133,71 +133,10 @@ function orderedDates(params: {
   });
 }
 
-function addVocabularyReviews(params: {
-  context: WeeklyPlanningPlacementRuntimeContextV5;
-  item: GenericPlanningWorkItem;
-  learningSlot: MinuteInterval;
-  learningDuration: number;
-  rawAllowedDates: string[];
-  effectiveNotBefore?: WeeklyPlanningPlacementNotBeforeV5;
-  itemCandidates: WeeklyDraftCandidate[];
-}): string | null {
-  const reviewTargets = vocabularyReviewTargetsV5({
-    learningDate: params.learningSlot.date,
-    learningDurationMinutes: params.learningDuration,
-    dates: params.context.dates,
-  });
-  const usedReviewDates = new Set<string>();
-
-  for (const review of reviewTargets) {
-    const reviewWorkItemKey = `${params.item.id}:review-${review.round}`;
-    const reviewRawDates = reviewCandidateDatesV5({
-      preferredDate: review.preferredDate,
-      dates: params.context.dates,
-    }).filter((date) => params.rawAllowedDates.includes(date) && !usedReviewDates.has(date));
-    const reviewDates = orderedDates({
-      context: params.context,
-      allowedDates: reviewRawDates,
-      preferredDate: review.preferredDate,
-      durationMinutes: review.durationMinutes,
-    });
-    const reviewSlot = findWorkItemSlot({
-      context: params.context,
-      item: params.item,
-      dates: reviewDates,
-      duration: review.durationMinutes,
-      notBefore: params.effectiveNotBefore,
-      preferLongSegment: false,
-    });
-    if (!reviewSlot) return reviewWorkItemKey;
-    usedReviewDates.add(reviewSlot.date);
-
-    params.itemCandidates.push(createPlacementCandidate({
-      input: params.context.input,
-      graph: params.context.graph,
-      item: params.item,
-      slot: reviewSlot,
-      duration: review.durationMinutes,
-      chunkIndex: 0,
-      title: `${params.item.label}・復習${review.round}回目`,
-      workItemKey: reviewWorkItemKey,
-      sessionRole: 'review',
-      reviewRound: review.round,
-    }));
-    addPlacedSlot({
-      slot: reviewSlot,
-      busy: params.context.busy,
-      dayLoads: params.context.dayLoads,
-    });
-  }
-  return null;
-}
-
 export function scheduleWeeklyPlanningWorkItemV5(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
   taskPosition: { index: number; count: number };
-  vocabularyPosition: { index: number; count: number };
   taskOrdinal: number;
   fixedEnds: Map<string, WeeklyPlanningPlacementNotBeforeV5>;
   globalCandidates: WeeklyDraftCandidate[];
@@ -226,30 +165,17 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const duration = chunks[chunkIndex];
-    const isVocabulary = params.item.quantity.unitCode === 'word';
     const sessionIndex = chunks.length > 1 ? chunkIndex : params.taskPosition.index;
     const sessionCount = chunks.length > 1 ? chunks.length : params.taskPosition.count;
-    const preferredDate = isVocabulary
-      ? preferredVocabularyLearningDateV5({
-          sessionIndex: params.vocabularyPosition.index,
-          sessionCount: params.vocabularyPosition.count,
-          dates: params.context.dates,
-        })
-      : preferredTaskDistributedDateV5({
-          taskIndex: params.taskOrdinal,
-          sessionIndex,
-          sessionCount,
-          dates: params.context.dates,
-        });
-    const candidateDates = isVocabulary
-      ? vocabularyLearningCandidateDatesV5({
-          preferredDate,
-          dates: params.context.dates,
-        }).filter((date) => rawAllowedDates.includes(date))
-      : [...rawAllowedDates];
+    const preferredDate = preferredTaskDistributedDateV5({
+      taskIndex: params.taskOrdinal,
+      sessionIndex,
+      sessionCount,
+      dates: params.context.dates,
+    });
     const allowedDates = orderedDates({
       context: params.context,
-      allowedDates: candidateDates,
+      allowedDates: rawAllowedDates,
       preferredDate,
       durationMinutes: duration,
     });
@@ -270,22 +196,8 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       slot,
       duration,
       chunkIndex,
-      ...(isVocabulary ? { sessionRole: 'learning' as const } : {}),
     }));
     addPlacedSlot({ slot, busy: params.context.busy, dayLoads: params.context.dayLoads });
-
-    if (isVocabulary) {
-      const failedReviewId = addVocabularyReviews({
-        context: params.context,
-        item: params.item,
-        learningSlot: slot,
-        learningDuration: duration,
-        rawAllowedDates,
-        effectiveNotBefore,
-        itemCandidates,
-      });
-      if (failedReviewId) return { candidates: itemCandidates, failedWorkItemId: failedReviewId };
-    }
   }
 
   return { candidates: itemCandidates, failedWorkItemId: null };

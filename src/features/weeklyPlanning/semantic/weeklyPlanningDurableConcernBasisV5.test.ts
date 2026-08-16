@@ -15,11 +15,11 @@ describe('Stable V5 durable concern basis contract', () => {
     expect(signal.properties.basis.enum).toEqual([...SEMANTIC_DURABLE_CONCERN_BASES_V5]);
   });
 
-  it('has no generic catch-all basis and keeps the semantic boundary domain-independent', () => {
+  it('keeps the closed concern basis without a regression-specific prompt guard', () => {
     expect(SEMANTIC_DURABLE_CONCERN_BASES_V5).not.toContain('other' as any);
     const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(prompt).toContain('A concern requires explicit evidence');
-    expect(prompt).toContain('workload size alone');
-    expect(prompt).not.toContain('数学のワークの方が量は多い');
+    expect(prompt).not.toContain('A concern requires explicit evidence');
+    expect(prompt).not.toContain('workload size alone');
+    expect(prompt).not.toContain('must not imply priority');
   });
 });

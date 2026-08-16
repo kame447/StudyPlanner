@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CANONICAL_RELATIVE_DAY_EXPRESSIONS,
+  CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
 } from './weeklyPlanningCalendarResolver';
 import {
@@ -20,15 +22,31 @@ function rootProperties(): Record<string, unknown> {
   );
 }
 
+function planningWindowBranch(kind: string): Record<string, unknown> {
+  const planningWindow = record(rootProperties().planningWindow);
+  const anyOf = planningWindow.anyOf;
+  if (!Array.isArray(anyOf)) throw new Error('planningWindow.anyOf missing');
+
+  const branch = anyOf
+    .filter((value) => typeof value === 'object' && value !== null)
+    .map(record)
+    .find((value) => {
+      const properties = value.properties;
+      if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) {
+        return false;
+      }
+      return record(record(properties).kind).const === kind;
+    });
+
+  if (!branch) throw new Error(`planningWindow branch missing: ${kind}`);
+  return branch;
+}
+
 describe('Stable V5 provider representation schema', () => {
   it('requires ISO-shaped start/end fields for absolute planning windows', () => {
-    const planningWindow = record(rootProperties().planningWindow);
-    const anyOf = planningWindow.anyOf;
-    if (!Array.isArray(anyOf)) throw new Error('planningWindow.anyOf missing');
-    const absolute = record(anyOf[0]);
+    const absolute = planningWindowBranch('absolute');
     const properties = record(absolute.properties);
 
-    expect(record(properties.kind)).toMatchObject({ const: 'absolute' });
     expect(record(properties.start)).toMatchObject({
       type: 'string',
       pattern: '^\\d{4}-\\d{2}-\\d{2}$',
@@ -37,6 +55,25 @@ describe('Stable V5 provider representation schema', () => {
       type: 'string',
       pattern: '^\\d{4}-\\d{2}-\\d{2}$',
     });
+  });
+
+  it('restricts relative planning windows to canonical finite values', () => {
+    const relativeDay = planningWindowBranch('relative_day');
+    const relativeDayProperties = record(relativeDay.properties);
+    const relativeWeek = planningWindowBranch('relative_week');
+    const relativeWeekProperties = record(relativeWeek.properties);
+    const namedPeriod = planningWindowBranch('named_period');
+    const namedPeriodProperties = record(namedPeriod.properties);
+
+    expect(record(relativeDayProperties.value).enum).toEqual(
+      CANONICAL_RELATIVE_DAY_EXPRESSIONS,
+    );
+    expect(record(relativeWeekProperties.value).enum).toEqual(
+      CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
+    );
+    expect(record(relativeWeekProperties.value).enum).not.toContain('next week');
+    expect(record(relativeWeekProperties.value).enum).not.toContain('来週');
+    expect(record(namedPeriodProperties.value)).toEqual({ type: 'string' });
   });
 
   it('restricts availability and recurrence days to canonical weekday tokens', () => {

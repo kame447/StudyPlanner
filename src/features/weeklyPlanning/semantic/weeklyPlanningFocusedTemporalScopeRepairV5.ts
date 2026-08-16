@@ -126,9 +126,8 @@ export function createFocusedTemporalScopeRepairMessagesV5(
     {
       role: 'system',
       content: [
-        'Interpret the scope of one already-extracted temporal statement.',
-        'Return plan_unavailable only when the sourceText itself says the user is busy/unavailable or the time should be avoided for the plan generally, rather than constraining the named task specifically.',
-        'Return uncertain when that plan-wide scope is not clear. Do not infer task scheduling policy or rewrite any other semantic fact.',
+        'Classify only the scope of this extracted temporal statement.',
+        'Return plan_unavailable only when sourceText itself clearly makes the time plan-wide unavailable/avoid; otherwise uncertain.',
       ].join('\n'),
     },
     {

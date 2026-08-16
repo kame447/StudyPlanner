@@ -21,6 +21,14 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput {
     recentConversation: [],
     planningInformation: {
       planningWindows: [{ kind: 'relative_week', value: 'next_week' }],
+      groundingRecords: [{
+        targetFactId: 'window-1',
+        interpretationKind: 'relative_date_resolution',
+        status: 'proposed',
+        sourceExpression: '来週',
+        startDate: '2026-08-17',
+        endDate: '2026-08-23',
+      }],
       tasks: [],
     },
     actionKind: 'question',
@@ -53,6 +61,13 @@ describe('Stable V5 dialogue grounding boundary', () => {
     expect(payload).not.toHaveProperty('planningInformation');
     expect(payload).toHaveProperty('planningStateSummary');
     expect(payload).toHaveProperty('applicationDecision');
+    expect(payload.planningStateSummary).toEqual(expect.objectContaining({
+      groundingContext: [expect.objectContaining({
+        status: 'proposed',
+        startDate: '2026-08-17',
+        endDate: '2026-08-23',
+      })],
+    }));
     expect(typeof payload.request).toBe('string');
     expect(String(payload.request).length).toBeGreaterThan(0);
   });
@@ -63,7 +78,7 @@ describe('Stable V5 dialogue grounding boundary', () => {
       config,
       clientReturning(
         renderInput,
-        '来週の予定に入れたい作業と、それぞれどれくらい進めたいかを教えてください。',
+        '来週は8月17日から8月23日として考えます。予定に入れたい作業を一つ教えてください。',
       ),
     );
     const inventedExamples = createAiWeeklyPlanningStableV5DialogueRenderer(

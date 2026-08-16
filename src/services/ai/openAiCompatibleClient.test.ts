@@ -115,6 +115,65 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
+  it('omits temperature on the direct Luna path while preserving it for other models', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+
+    const lunaClient = createOpenAiCompatibleClient({
+      ...config,
+      model: 'gpt-5.6-luna',
+    });
+    await lunaClient.createChatCompletion({
+      messages: [{ role: 'user', content: 'luna' }],
+      temperature: 0,
+    });
+    expect(lastRequestBody(fetchMock)).not.toHaveProperty('temperature');
+
+    const miniClient = createOpenAiCompatibleClient(config);
+    await miniClient.createChatCompletion({
+      messages: [{ role: 'user', content: 'mini' }],
+      temperature: 0,
+    });
+    expect(lastRequestBody(fetchMock).temperature).toBe(0);
+  });
+
+  it('preserves bounded structured provider diagnostics for a rejected direct request', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({
+        error: {
+          type: 'invalid_request_error',
+          code: 'unsupported_value',
+          param: 'temperature',
+          message: 'Unsupported value for temperature.',
+        },
+      }),
+    })));
+
+    const client = createOpenAiCompatibleClient(config);
+    await expect(client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+    })).rejects.toThrow(
+      'AI request failed with status 400. type=invalid_request_error; code=unsupported_value; param=temperature; message=Unsupported value for temperature.',
+    );
+  });
+
+  it('does not persist an arbitrary non-JSON provider error body', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      text: async () => 'unstructured upstream body that must not enter diagnostics',
+    })));
+
+    const client = createOpenAiCompatibleClient(config);
+    await expect(client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+    })).rejects.toThrow(/^AI request failed with status 502\.$/);
+  });
+
   it('overrides only the direct semantic model when the eval override is explicitly enabled', async () => {
     vi.stubEnv('VITE_AI_EVAL_ENABLE_PURPOSE_MODEL_OVERRIDE', '1');
     vi.stubEnv('VITE_AI_EVAL_SEMANTIC_MODEL', 'gpt-5.4-nano');

@@ -171,6 +171,12 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
   const validation = validateWeeklyPlanningSemanticValueV5(params.document);
   if (!validation.document) return rejected(validation.errors);
   const document = validation.document;
+  // Proposal acceptance belongs to the application/UI approval boundary, not
+  // the Fact Graph. Keep it in the accepted semantic document for traceability,
+  // but do not turn it into a durable fact that invalidates an unchanged preview.
+  const graphDecisions = document.decisions.filter(
+    (decision) => decision.target.kind !== 'proposal',
+  );
   const nextRevision = graph.revision + 1;
   const existingFactIds = collectExistingFactIds(graph);
   const localToFactId = new Map<string, string>();
@@ -218,7 +224,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
   }
   for (const uncertainty of document.uncertainties) register(uncertainty.localId, 'uncertainty');
   for (const correction of document.corrections) register(correction.localId, 'correction');
-  for (const decision of document.decisions) register(decision.localId, 'decision');
+  for (const decision of graphDecisions) register(decision.localId, 'decision');
 
   if (errors.length > 0) return rejected(errors);
 
@@ -527,7 +533,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
     return fact;
   });
 
-  const decisionIntents = document.decisions.map((decision) => {
+  const decisionIntents = graphDecisions.map((decision) => {
     const fact = {
       id: requireFactId(decision.localId),
       target: mapSemanticReference(decision.target, localToFactId),

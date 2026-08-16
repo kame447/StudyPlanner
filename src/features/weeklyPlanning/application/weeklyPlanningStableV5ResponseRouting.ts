@@ -3,6 +3,7 @@ import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSch
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
+import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
 import type {
@@ -71,6 +72,7 @@ function routeBeforePreview(params: {
   const {
     groundingRecords,
     compilation,
+    learningStrategyProposals,
     repairDecision,
     dialogue,
     planningIntent,
@@ -80,12 +82,47 @@ function routeBeforePreview(params: {
   } = evaluation;
   const schedulerInput = compilation.input;
 
-  if (dialogue.status === 'ask_question') {
-    const message = groundedMessage({
-      message: renderStableV5RuntimeQuestion(graph, dialogue.question),
-      records: groundingRecords,
-      currentTurnId: input.traceRequestId,
+  if (learningStrategyProposals.pendingProposal) {
+    const proposal = learningStrategyProposals.pendingProposal;
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
+      message: '',
+      draftCandidates: [],
+      questionCode: 'learning_strategy_proposal',
+      questionFactId: proposal.workloadFactId,
+      questionKind: 'options',
+      questionActionId: proposal.id,
+      authorized,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
+    traceRuntimeBranch({
+      requestId: input.traceRequestId,
+      branch: 'learning_strategy_proposal',
+      basis: {
+        proposal,
+        groundingRecords,
+        repairDecision,
+      },
+      output,
+    });
+    return respond(output);
+  }
+
+  if (dialogue.status === 'ask_question') {
+    const sessionDurationQuestion = dialogue.question.effortMeasurement === 'session_duration';
+    const renderedQuestion = sessionDurationQuestion
+      ? ''
+      : renderStableV5RuntimeQuestion(graph, dialogue.question);
+    const message = sessionDurationQuestion
+      ? ''
+      : groundedMessage({
+          message: renderedQuestion,
+          records: groundingRecords,
+          currentTurnId: input.traceRequestId,
+        });
     const output = projectStableV5CompatibilityOutput({
       previousState: input.previousState,
       userText: input.userText,
@@ -93,19 +130,22 @@ function routeBeforePreview(params: {
       draftCandidates: [],
       questionCode: dialogue.question.code,
       questionFactId: dialogue.question.factId ?? undefined,
+      questionIntent: dialogue.question.effortMeasurement ?? undefined,
       authorized,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'ask_question',
       basis: {
         dialogue,
-        renderedQuestion: message,
+        renderedQuestion: message || null,
         issueLabel: stableV5IssueTaskLabel(graph, dialogue.question),
         groundingRecords,
         repairDecision,
+        learningStrategyProposals,
       },
       output,
       severity: 'warn',
@@ -126,9 +166,11 @@ function routeBeforePreview(params: {
       message,
       draftCandidates: [],
       questionCode: missingWork.questionCode,
+      questionFactId: missingWork.targetFactId ?? undefined,
       authorized,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
@@ -139,6 +181,7 @@ function routeBeforePreview(params: {
         compilationInputExists: Boolean(schedulerInput),
         recognizedTaskTitles: missingWork.taskTitles,
         questionCode: missingWork.questionCode,
+        questionFactId: missingWork.targetFactId,
         groundingRecords,
         repairDecision,
       },
@@ -163,6 +206,7 @@ function routeBeforePreview(params: {
       preserveExistingPreview: true,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
@@ -193,6 +237,7 @@ function routeBeforePreview(params: {
       authorized: false,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
@@ -226,12 +271,46 @@ function routeAfterPreview(params: {
   const {
     groundingRecords,
     compilation,
+    learningStrategyProposals,
     repairDecision,
     dialogue,
     authorized,
   } = evaluation;
 
   if (preview.status === 'insufficient_capacity') {
+    const capacityProposal = evaluateWeeklyPlanningInsufficientCapacityProposalV5({
+      records: learningStrategyProposals.records,
+      compilation,
+      preview,
+      graphRevision: semantic.graph.revision,
+      turnId: input.traceRequestId,
+    });
+    if (capacityProposal.pendingProposal) {
+      const proposal = capacityProposal.pendingProposal;
+      const output = projectStableV5CompatibilityOutput({
+        previousState: input.previousState,
+        userText: input.userText,
+        message: '',
+        draftCandidates: [],
+        questionCode: 'learning_strategy_proposal',
+        questionFactId: proposal.workloadFactId,
+        questionKind: 'options',
+        questionActionId: proposal.id,
+        authorized: true,
+        groundingRecords,
+        repairAgenda: repairDecision.agenda,
+        learningStrategyProposalRecords: capacityProposal.records,
+      });
+      traceRuntimeBranch({
+        requestId: input.traceRequestId,
+        branch: 'capacity_learning_strategy_proposal',
+        basis: { preview, proposal, groundingRecords, repairDecision },
+        output,
+        severity: 'warn',
+      });
+      return output;
+    }
+
     const message = groundedMessage({
       message: '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。',
       records: groundingRecords,
@@ -246,6 +325,7 @@ function routeAfterPreview(params: {
       authorized: true,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: capacityProposal.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
@@ -258,8 +338,9 @@ function routeAfterPreview(params: {
   }
 
   if (preview.status === 'empty') {
+    const missingWork = stableV5MissingSchedulableWorkQuestion(semantic.graph);
     const message = groundedMessage({
-      message: '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。',
+      message: missingWork.message,
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
@@ -268,14 +349,23 @@ function routeAfterPreview(params: {
       userText: input.userText,
       message,
       draftCandidates: [],
+      questionCode: missingWork.questionCode,
+      questionFactId: missingWork.targetFactId ?? undefined,
       authorized: true,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'preview_empty',
-      basis: { preview, groundingRecords, repairDecision },
+      basis: {
+        preview,
+        questionCode: missingWork.questionCode,
+        questionFactId: missingWork.targetFactId,
+        groundingRecords,
+        repairDecision,
+      },
       output,
       severity: 'warn',
     });
@@ -303,6 +393,7 @@ function routeAfterPreview(params: {
     authorized: true,
     groundingRecords,
     repairAgenda: repairDecision.agenda,
+    learningStrategyProposalRecords: learningStrategyProposals.records,
   });
   traceRuntimeBranch({
     requestId: input.traceRequestId,

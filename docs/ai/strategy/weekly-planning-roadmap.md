@@ -1,256 +1,92 @@
 # 週間計画 AI ロードマップ
 
-Status: canonical / PR #120 hardening and selective orchestration
-最終更新: 2026-08-13
+Status: canonical / execution order
+Updated: 2026-08-16
 
-- Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-- Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
-- Current execution task: [../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md](../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
-- Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
+Current contract: [../weekly-planning-current-contract-v5.md](../weekly-planning-current-contract-v5.md)
+Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
+Current PR task: [../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+Human grounding policy: [../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+Adaptive memory policy: [weekly-planning-adaptive-memory-learning-policy.md](weekly-planning-adaptive-memory-learning-policy.md)
+Decision-ownership audit: [../audits/20260816-pr130-decision-duplication-adversarial-audit.md](../audits/20260816-pr130-decision-duplication-adversarial-audit.md)
+Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
 
-## 0. 最上位設計原則
+## 1. この roadmap の役割
 
-ユーザーの自然言語、会話文脈、訂正、quantity role、日付・曜日・時間帯、authorization intentの意味理解はAIが担当する。
+この文書は architecture の詳細仕様を全文再掲する場所ではなく、現在どの順序で何を片付けるかを決める source of truth である。
 
-deterministic codeはschema/reference/evidence validation、formal binding、Fact Graph lifecycle、revision/idempotency、readiness、scheduler、preview、approval、save、persistence、安全境界を担当する。raw user textをregex・keyword・dictionary・parserで再解釈してAIの意味を上書きしない。
+AI / deterministic application の責務、Fact Graph、scheduler、preview、approval、save、persistence の契約は current contract を正とする。human grounding の詳細は Human Grounding Policy、暗記・想起系の詳細は Adaptive Memory Learning Policy を正とする。
 
-AI orchestrationはmachine stateからsemantic責務を狭めるために使う。deterministic routerがユーザー発話の意味を判定してはならない。
+## 2. 完了済み基盤
 
-rendererはtyped application decisionを自然な日本語へ変換する。renderer文面からsemantic stateを逆推定しない。
+PR #109、#112、#113、#120、#127、#129 までで Stable V5 production 一本化、production 到達不能 legacy runtime / parser / interpreter の削除、semantic ownership 整理、human grounding / correction / Fact lifecycle hardening、scheduler / preview / approval 境界、Browser Regression、file-by-file SOLID hardening、owner / conversation isolation の主要基盤を確立した。
 
-## 1. Production基準線
+これらの詳細履歴は Git history と completed refactor documents を参照し、この roadmap へ重複転記しない。
 
-Stable V5が唯一のproduction週間計画runtimeである。
+## 3. 現在の architecture 評価
 
-```text
-user utterance
-→ machine-state semantic router
-   ├─ focused authorization AI
-   ├─ focused contextual-answer AI
-   └─ generic open-ended semantic AI
-→ structural / evidence / reference validation
-→ 必要時AI repair 最大1回
-→ formal binding / canonical commit
-→ Fact Graph V5
-→ readiness / scheduler / dialogue decision
-→ AI renderer
-→ preview
-→ approval / save
-```
+2026-08-16 の敵対的監査では、StudyPlanner 全体は「複雑だが構造化されている」と判定した。大きな責務境界は維持されており、全面的なスパゲッティではない。
 
-PR #109でStable V5主要経路を固定し、PR #112でproductionから到達不能なlegacy interpreter/parser/runtime/semantic experimentを削除した。PR #113でsemantic責務境界をmoduleへ分離した。
+一方、weekly-planning conversation orchestration では「同じ意味の判断が何箇所に存在するか」という観点で局所的な重複が確認された。特に effort question、next conversational action、scheduler readiness、preview authorization compatibility が次の構造 refactor の中心である。
 
-現在のPR #120では、旧実装思想の選別移植、human grounding / repair、real API hardening、scheduler human-scale化、prompt / orchestration監査を同じStable V5上で行っている。
-
-## 2. 現在の実行順序
-
-古いPhase 4 / Phase 5表記はcurrent execution sequenceではない。
+このため PR #130 の残作業では、ファイル分割やコード行数削減だけを成功条件にしない。一つの意味判断に一つの application owner を割り当て、renderer、compatibility、trace は typed decision を再推論せず投影する構造を目標にする。
 
 ```text
-1. legacy実装・historical roadmap棚卸し
-2. Stable V5へ採用する思想だけを選別移植
-3. deterministic regression
-4. full CI
-5. 逐次real API conversation
-6. 通しreal API conversation
-7. prompt / orchestration監査
-8. 7視点敵対的監査
-9. current MD同期
-10. production heuristic inventory確定
-11. final CI / real API再確認
+semantic meaning
+→ canonical typed state
+→ one application decision owner
+→ immutable typed decision
+→ renderer / compatibility / trace projection
 ```
 
-詳細はcurrent execution taskを正とする。
+## 4. PR #130 current sequence
 
-## 3. 現在までに確立した会話・計画能力
+最初に Markdown / contract / docs index を current HEAD へ同期し、decision-ownership audit を正本として残す。これは 2026-08-16 の Markdown-only 監査で実施した。
 
-- selectedDateと現実の発話日時を分離
-- `来週`等のplanning range grounding
-- weekStartsOn反映
-- 今日の過去時刻への配置禁止
-- corrected factのactive-only projection
-- proposal acceptance / rejection grounding
-- repair agendaによる確認優先度
-- 局所self-repair
-- human-scale effort質問
-- page/problemのper-unit effort
-- vocabularyのtotal/session effort
-- vocabulary 100語上限session分割
-- vocabulary sessionをpreviewまで保持
-- session chunking / daily load distribution
-- tiny-tail抑制
-- heavy taskの長いfree segment優先
-- existing plan / timetable buffer
-- task relation ordering / cycle blocking
-- request-time not-before
-- reserve / review policy
-- owner-scoped actual-derived effort calibration
+次に effort-question contract を一本化する。`missing_effort_estimate` の必要性、measurement、target、memory proposal による `session_duration` override を一つの typed decision にまとめ、response routing、compatibility projection、renderer context、contextual answer が別 state から同じ意味を再導出しない状態を目標にする。
 
-旧実装にあった科目名→固定時刻、raw Japanese parser、根拠のない認知profile等は復活させない。
+その次に next conversational action の ownership を整理する。repair、proposal、memory-specific question、missing-work fallback、authorization、preview readiness の優先順位を一つの policy に閉じ、router は action を選び直さず実行するだけにする。
 
-### 3.1 構造負債 hardening loop
+続いて semantic pipeline 内の scheduler compilation と planning evaluation 側の enriched authoritative compilation の二重性を確認する。semantic pipeline 側が diagnostics のためだけならその役割を明示し、不要なら削除候補とする。
 
-構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離または明示的安全境界修正 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
+その後 preview authorization compatibility を整理する。semantic intent、application authorization、compatibility `draftGenerationIntent` の authority を混同しない。compatibility state は projection であり source of truth ではない状態を維持する。
 
-関連・類似する機能は、単に同じファイルへ集約するのではなく、共通責務を内部へ隠し、利用側には小さく安定したapplication API / facadeだけを公開する。callerが内部条件、singleton、fallback順序、個別実装moduleを知る必要がある構造を避ける。型で表せる状態遷移はnullable値やnon-null assertionではなくdiscriminated union等の明示的contractを優先する。
+これらの構造 cleanup 後に、残っている focused semantic route、repair scaffolding、renderer output guardrail を Luna one-element ablation で評価する。Luna の能力向上だけを理由に application safety を AI へ移さないが、旧 model 時代に必要だった補助経路が不要になっているなら削る。
 
-完了済みの分離・hardening:
+最後に Stable V5 の過去会話を一 turn ずつ human review し、固定 transcript を quality oracle にせず dynamic real-API conversation を preview まで通す。各 assistant turn を確認してから次の user utterance を決め、明確な意味誤認、shared-premise 違反、重複質問、誤 binding、未了承 proposal 適用があればその turn で停止する。
 
-- execution profile / session policy / session splittingを分離し、旧public APIはfacadeで維持
-- generic work item compilationからeffort estimation strategyを分離
-- weekly placement orchestrationから単一work item placementを分離
-- turn dialogue orchestrationからrenderer trace組み立て・記録を分離
-- work distributionからtask relation orderingを分離し、full CI #2578 green
-- approval persistence policyをrepository I/Oから分離し、full CI #2581 green
-- session codecをlocalStorage transportから分離し、full CI #2585 green
-- semantic turn phaseをRuntimeExecutorから分離し、full CI #2591 green
-- turn trace persistenceをcommit/rollback side effectsから分離し、full CI #2595 green
-- approval Firestore adapterをcomposition rootから分離し、full CI #2598 green
-- approval memory adapterをcomposition rootから分離し、full CI #2601 green
-- approval local planner adapterをcomposition rootから分離し、full CI #2604 green
-- approval repository contractをcomposition rootから分離し、全adapterとcompositionが共通抽象へ依存するDIPへ修正。full CI #2610 green
-- runtime session registryからrequest単位のFact Graph staging bufferを`weeklyPlanningStableV5GraphStaging.ts`へ分離。既存facade/APIとfinalize publication順序を維持し、full CI #2614 green
-- graph staging bufferへ128件上限とoldest eviction、同一request置換contractを追加し、resource leakを防止。full CI #2617 green
-- Stable V5 preview candidate metadataへcanonical task Fact由来のconversation provenanceを必須伝播し、ambient global stateからconversationを補わなくてもproduction候補が自己記述できるようにした。full CI #2622 green
-- Stable V5 approval availabilityをpreview自身のconversationIdからconversation-scoped runtime sessionへ接続。別conversationのcurrent snapshotに影響されず、owner/revisionを対象conversationで検証する。初回CI #2625でproduction isolation登録漏れを検出し、監査を弱めず正式接続点として登録したうえでfull CI #2627 green
-- Stable V5 preview変換からambient global runtimeによるconversation補完を削除。conversation欠落旧候補は別conversationを推測せずfail closedし、初回CI #2630で古いtest fixtureの暗黙依存を検出、fixtureを現production contractへ修正したうえでfull CI #2632 green
-- 保存直前のapproval guardからglobal runtime参照を削除し、application境界が検証対象runtimeを明示入力する純粋contractへ変更。Stable V5は対象conversation以外へfallbackせず、actual saveの回帰も追加してfull CI #2644 green
-- approval runtime選択を`weeklyPlanningApprovalRuntimeResolver.ts`へ集約し、availabilityとactual saveの二重実装を解消。Stable V5への直接接続点も2箇所から1箇所へ狭め、production isolation監査を縮小したうえでfull CI #2651 green
-- Stable V5 runtime sessionからlegacy global runtimeへのpublish/clear bridgeを削除し、新旧runtimeを独立管理へ変更。hydrate/finalize/clear/resetでlegacy snapshotを上書き・消去しない回帰を追加してfull CI #2657 green
-- Stable V5 scheduler candidateとpreview/draftで重複していたprovenance型を`weeklyPlanningPreviewProvenance.ts`へ単一化。既存型名はaliasで維持し、review情報を含む同一contractを生成からpreviewまで利用してfull CI #2662 green
-- RuntimeExecutorからsemantic成功後のdeterministic planning evaluationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ分離。horizon、grounding、scheduler compilation、repair/dialogue、authorizationの所有者を明確化し、architecture testも新ownerへ追従させてfull CI #2667 green
-- RuntimeExecutorからpreview scheduler実行を`weeklyPlanningStableV5PreviewExecution.ts`へ分離。scheduler inputから配置、not-before、version/default/result traceまでを専用責務へ移し、full CI #2671 green
-- RuntimeExecutorからsemantic成功後のuser planning context / Fact Graph staging副作用を`weeklyPlanningStableV5TurnStaging.ts`へ分離。durable context収集、transactional graph staging、対応traceの所有者を明確化し、full CI #2675 green
-- ask-question / authorization / preview result等のresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へ集約し、`beforePreview` / `afterPreview`の小さいfacadeとして公開。pre-preview遷移は`respond` / `schedule_preview`のdiscriminated unionにし、caller側のnullable判定と内部条件重複を除去。初回CI #2676ではproduction isolation登録漏れだけを検出し、正式接続点として追従後full CI #2681 green
-- planning evaluationと`runtime_scheduler_dialogue_evaluated` observabilityを`weeklyPlanningStableV5PlanningStage.ts`へカプセル化。pure evaluatorを副作用なしで維持し、RuntimeExecutorからevaluation内部fieldとtrace schemaを隠した。blocking-issue互換helperもstage経由へ寄せてfull CI #2687 green
-- response facadeのplanning evaluator実装依存を除去し、`WeeklyPlanningStableV5PlanningEvaluation`出力contractへのtype-only依存へ変更。policy実装とresponse projectionの変更理由を分離し、full CI #2690 green
-- RuntimeExecutor / planning stageの公開surfaceを監査し、実利用のない`getWeeklyPlanningStableV5BlockingIssueCode` wrapper/re-exportを削除。authorization互換re-exportは既存contractとして維持し、不要APIだけを選別して閉じてfull CI #2695 green
-- InstrumentedRuntimeExecutorのfreshest graph付与・human-scale effort question rewrite・repair-safe preview保持を`weeklyPlanningStableV5ResultProjection.ts`へ集約。`core` / `duplicate`の小さいProjector facadeを公開し、graph non-null assertionも除去してfull CI #2700 green
-- InstrumentedRuntimeExecutorからduplicate detection/result constructionを`weeklyPlanningStableV5TurnIdempotency.ts`へ分離。初回CI #2703で構造監査の旧期待とtrace文字列経由の`appliedTurnKeys`漏出を検出し、duplicate専用projection/traceをidempotency境界へ移してfull CI #2709 green
-- InstrumentedRuntimeExecutorのtrace開始、turn input/output/error trace、final decision projection、error detail projectionを`weeklyPlanningStableV5RuntimeTraceLifecycle.ts`へ集約。`start / complete / fail`の小さいfacadeだけを公開し、duplicate固有traceはidempotency境界に残してfull CI #2714 green
-- `weeklyPlanningTurnExecutor.ts`のfailure diagnostics lifecycle、failure state/code projection、AI renderer、最終result traceを`weeklyPlanningStableV5TurnResultProjection.ts`へ集約。公開executorは`begin / project` facadeとinstrumented runtimeだけを組み合わせ、failure status→codeも型付き対応表へ変更してfull CI #2719 green
-- `weeklyPlanningTurnApplication.ts`のflatなside-effect service surfaceを、transactionalな`WeeklyPlanningTurnStagingLifecycle`とbest-effortな`WeeklyPlanningTurnOutcomeLifecycle`へ分割。初回CI #2726で旧test fixtureとmock typingの追従漏れを検出し、facadeを戻さずreal API observationを含むfixtureを新contractへ移行してfull CI #2731 green
-- `weeklyPlanningTurnSideEffects.ts`からtrace function re-exportとpublic finalize/discard helperを除去し、factory + staging lifecycle facadeだけを公開。初回CI #2736でrenderer-trace testの旧re-export依存を検出し、test owner自体をtrace side-effect側へ移してfull CI #2739 green
-- Stable V5 session bind・request clock生成・turn executor input mappingを`weeklyPlanningTurnRuntimeGateway.ts`へ集約。applicationは`runtimeGateway.execute()`だけを使い、full/resumable real API observationも同じgateway境界へ統一。production isolationのStable V5直接接続点もgeneric applicationからgatewayへ移し、full CI #2751 green
-- approval preview source分類と具体runtime singleton取得を分離し、`weeklyPlanningApprovalRuntimeLookup.ts`へStable V5 / legacy compatibility lookupを集約。resolverはsource分類だけを担当し、既存behavior-aware承認互換を維持したままfull CI #2758 green
-- `weeklyPlanningBehaviorAware*` clusterへのproduction依存をTypeScript ASTで監査。初回CI #2760で外部import 3本を検出したが、全て`import type`でruntime実行入口ではないことを確認した。監査をruntime edgeとtype-only edgeへ分離し、runtime edge 0本、既知type-only edge 3本を固定してfull CI #2761 green
-- behavior-aware preview metadataを保存済み/旧preview互換の中立contract `weeklyPlanningPreviewCompatibility.ts`へ単一化。legacy preview bridgeは旧型名のtype re-exportだけを残し、production `weeklyPlanningPreviewBlocks.ts`は中立contractを直接参照するよう変更した。architecture監査はruntime edge 0本を維持し、既知type-only edgeを3本から2本へ縮小。コード変更時full CI #2767、roadmap同期後full CI #2768 green
-- `weeklyPlanningRenderedQuestionContext.ts`のimport graphを確認し、現行productionで共有されるmoduleではなくbehavior-aware intake pipeline専用supportであることを確認。型をshared化せずlegacy closureの明示的support sourceとしてarchitecture contractへ含め、新たなproduction callerが生えれば検出する境界に変更した。runtime edge 0本を維持し、外部type-only edgeを2本から1本へ縮小。コード変更時full CI #2769 green
+## 5. Adaptive memory の順序
 
-現在のloop:
+暗記・想起系は英単語専用 heuristic に戻さない。current-week acceptance、durable preference、observed learning profile を分離し、proposal は了承前に scheduler へ適用しない。
 
-- 第36ループでは、`weeklyPlanningRenderedQuestionContext.ts`をshared contractへ延命せず、実際のimport graphに沿ってlegacy behavior-aware closureへ分類した。現在のarchitecture監査でruntime edgeは0本、外部type-only edgeは`weeklyPlanningTraceRuntime.ts`から`weeklyPlanningBehaviorAwareIntakePipeline.ts`への1本だけである。
-- 第37ループは、このroadmap同期後の最終HEADがfull CI greenであることを確認し、roadmapとcurrent execution taskを再読してから選ぶ。
-- 残る`weeklyPlanningTraceRuntime.ts`は現行productionでも利用されるmoduleだが、behavior-aware pipeline型を使う`prepareWeeklyPlanningTraceOptions` / `recordWeeklyPlanningPipelineTrace`は旧pipeline専用である。型だけをshared化する前に、legacy trace adapterを現行trace runtimeから分離できるか、trace側の狭いcontractへ依存反転すべきか、旧pipeline closureとともに削除できるかをimport graphと利用箇所から判定する。
-- 旧behavior-aware approval compatibilityは保存済みpreview metadata/runtime互換の問題であり、behavior-aware実行clusterのruntime到達性とは別に扱う。import isolationだけを根拠に削除しない。
+ただし decision-ownership cleanup より先に大きな adaptive memory feature を追加しない。現在の orchestration にさらに例外 branch を積み上げると、今回確認した構造負債を悪化させるためである。
 
-## 4. Prompt / orchestration方針
+既に実装済みの learning proposal / observed pace 基盤を壊さず、owner を整理した後に durable preference promotion、observed learning evidence、adaptive review proposal を進める。
 
-2026-08-12のreal API traceではopen-ended generic semantic requestが23,014 bytesだった。focused contextual route導入前には`8分くらいです。`というmachine-pending短答にも25,239 bytesのgeneric semantic requestを送っていた。
+## 6. Prompt simplification
 
-このため、generic promptは「まだcontext上限に余裕がある」ことを理由に拡張しない。問題はcontext上限よりinstruction density、相互制約、repair時の意味保持である。
+semantic prompt と dialogue prompt は現時点では一般原則へかなり整理されているため、prompt の総文字数だけを複雑性指標にしない。
 
-追加仕様の判断順序:
+削減候補は、schema と重複する format 指示、model-era repair scaffolding、application が一意に導出できる representation、同じ意味規則の prompt 間重複である。
 
-1. JSON Schemaで表現可能ならschema
-2. 意味を変えないrepresentation normalizationならdeterministic canonicalizer
-3. exact pending targetがmachine stateで既知ならfocused AI
-4. AI修復対象fieldが限定されるならfield-scoped focused repair
-5. 複数意味を同時に統合する自由入力だけgeneric AI
+focused planning-window AI repair など、意味が既に typed evidence から一意に導出できる処理は converter 化を検討する。typed evidence 自体が不足している場合は fail closed / uncertainty に戻し、raw Japanese deterministic parser を追加しない。
 
-validator errorが増えたという理由だけで、同じ規則をsystem prompt、validator、repair promptへ重複追加しない。
+renderer validation に残る Japanese regex は raw-user semantic parser と同列に削らず、typed output safety と real-API evidence を見て one-element ごとに判断する。
 
-Prompt budget gate:
+## 7. 検証順序
 
-- generic system prompt <= 11,000 bytes
-- representative generic request including schema <= 24,000 bytes
-- focused authorization <= 2,500 bytes
-- focused contextual answer <= 4,000 bytes
-- focused request < representative generic request / 4
+各構造変更は targeted regression を先に通し、その後 full TypeScript / Vitest / build を通す。browser behavior に関係する変更では Browser Regression を通し、model behavior に関係する変更では real API を同地点から再実行する。
 
-上限超過時は閾値を緩める前に責務分離を検討する。
+exact renderer wording を自動 quality oracle にしない。自動テストは deterministic invariant、実会話は human-reviewed observation として扱う。
 
-## 5. オーケストレーションの次候補
+## 8. 別 scope
 
-既にfocused化済み:
+Issue #52 の大規模 weekly UI 責務分離と Issue #115 の raw-text regex weekly entry routing は PR #130 と独立 scope のまま維持する。
 
-- create-plan authorization
-- missing effort answer
-- quantity-role answer
+PR #130 本文に残る `Closes #115` は current roadmap と矛盾するため merge 前に PR metadata 側で修正する。今回の 2026-08-16 作業は Markdown-only scope のため PR 本文は変更していない。
 
-次に評価する:
+privacy / personalization broader rollout、cross-device approval uniqueness、saved-preview migration も既存の独立 scope を維持する。
 
-- pending work_breakdown
-  - exact targetPublicIdがmachine stateで既知
-  - 現在generic prompt / validator / repairに専用規則が分散している
-- field-scoped temporal representation repair
-  - planningWindow / exact clock / weekday representationなど、修復対象が局所化できる場合
+## 9. Completion gate
 
-初回自由入力を無条件に複数AI callへfan-outしない。task、量、期間、availability、modifier、relationが同じ発話内で相互参照するため、根拠なく分割するとidentity統合が不安定になる。
-
-## 6. Real API hardening
-
-real APIで観測されたoutput shapeを固定scenario oracleにはしないが、明確なcontract違反はvalidator / schema / orchestration境界の回帰へ変換する。
-
-現在までに検出・対処した主な境界:
-
-- canonical weekday token vs resolver compatibility
-- pending短答がgeneric semanticで過去factを再掲する問題
-- exact clockをcustom namedTimePeriodへ逃がす表現
-- absolute planning windowの非ISO表現
-- bare weekday token
-- targeted repairが無関係task / availabilityを消すdestructive repair
-
-成功するまでAPIを再実行するだけではなく、失敗shapeをtraceから取り出してformal contractへ落とす。
-
-## 7. Testing gate
-
-自動テストは決定論的contractを保証する。
-
-禁止:
-
-- fixed semantic quality oracle
-- exact renderer wordingをAI品質contractにする
-- prompt wordingそのものをexpectedにする
-- prompt budgetを通すために上限だけ緩める
-- failing regressionを削ってgreenにする
-
-必須:
-
-- typecheck
-- full Vitest
-- production build
-- diff check
-- semantic prompt budget
-- focused/generic request budget差
-- real API逐次会話
-- real API通し会話
-- final 7-view audit
-
-## 8. PR #120完了gate
-
-- current execution taskのfinal gateを全て満たす
-- full CI green
-- 最終HEADで逐次real APIがpreviewまで完走
-- 最終HEADで通しreal APIがpreviewまで完走
-- prompt / orchestration auditで新たなBLOCKER/MAJORなし
-- roadmap / semantic roadmap / current status / current contractが現コードと一致
-- production heuristic inventoryがコード根拠付きで確定
-
-このgateを満たすまで「完全に完了」としない。
-
-## 9. PR #120後の候補
-
-PR #120後も、古いroadmapをそのまま継承しない。現コード・real API観測・product goalから再評価する。
-
-候補:
-
-- focused work-breakdown semantic
-- field-scoped semantic repair
-- external source production adapter
-- cross-tab / cross-device conflict handling
-- trace production operations
-- approval rollout
-- personalization
-
-現在のproduction contractを壊してまでhistorical designへ戻さない。
+PR #130 を merge ready とする前に、decision-ownership audit で high-risk とした effort question と next-action orchestration の扱いが明確になっていること、Luna prompt / focused-route ablation の結論が記録されていること、final dynamic conversation が human review で preview まで到達すること、full CI と Browser Regression が green であること、current contract / status / roadmap / task / docs index が最終 HEAD と一致していることを確認する。

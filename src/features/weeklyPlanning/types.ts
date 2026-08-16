@@ -1,4 +1,7 @@
-import type { PlanType } from '../../types/domain';
+import type {
+  PlanType,
+  WeeklyPlanningMemoryPaceObservationSourceV1,
+} from '../../types/domain';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
@@ -40,6 +43,7 @@ export interface WeeklyPlanningBehaviorMetadata {
   };
   previewMetadata?: WeeklyPreviewMetadata;
   estimateMetadata?: WeeklyPlanningEstimateMetadataV1;
+  weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }
 
 export interface WeeklyPlanDraftBlock {

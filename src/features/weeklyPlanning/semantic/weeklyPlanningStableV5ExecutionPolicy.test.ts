@@ -25,35 +25,18 @@ function graph(params: {
   purpose?: StudyContextFact['purpose'];
 }) {
   const task: PlanningTaskFact = {
-    id: 'task-1',
-    category: 'study',
-    title: '任意の名前',
-    source,
-    createdRevision: 1,
+    id: 'task-1', category: 'study', title: '任意の名前', source, createdRevision: 1,
   };
   const workload: WorkloadFact = {
-    id: 'workload-1',
-    taskId: task.id,
-    componentId: null,
-    quantityRole: 'target',
-    amount: 1,
-    unitCode: params.unitCode ?? 'hour',
-    unitLabel: '単位',
-    rangeStart: null,
-    rangeEnd: null,
-    perOccurrence: false,
-    periodExpression: null,
-    source,
-    createdRevision: 1,
+    id: 'workload-1', taskId: task.id, componentId: null, quantityRole: 'target',
+    amount: 1, unitCode: params.unitCode ?? 'hour', unitLabel: '単位',
+    rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+    source, createdRevision: 1,
   };
   const studyContexts: StudyContextFact[] = params.purpose
     ? [{
-        id: 'study-context-1',
-        taskId: task.id,
-        purpose: params.purpose,
-        contextLabel: null,
-        source,
-        createdRevision: 1,
+        id: 'study-context-1', taskId: task.id, purpose: params.purpose,
+        contextLabel: null, source, createdRevision: 1,
       }]
     : [];
   return { tasks: [task], studyContexts, workloads: [workload] };
@@ -61,27 +44,15 @@ function graph(params: {
 
 function item(): GenericPlanningWorkItem {
   return {
-    version: 'weekly-planning-generic-work-item-v1',
-    id: 'item-1',
-    taskId: 'task-1',
-    componentId: null,
-    workloadFactId: 'workload-1',
-    label: '任意の名前 1単位',
-    quantityRole: 'target',
-    actionability: 'actionable',
+    version: 'weekly-planning-generic-work-item-v1', id: 'item-1', taskId: 'task-1',
+    componentId: null, workloadFactId: 'workload-1', label: '任意の名前 1単位',
+    quantityRole: 'target', actionability: 'actionable',
     quantity: {
-      amount: 1,
-      unitCode: 'hour',
-      unitLabel: '単位',
-      ordinalRange: null,
-      actualRange: null,
+      amount: 1, unitCode: 'hour', unitLabel: '単位', ordinalRange: null, actualRange: null,
     },
-    estimatedMinutes: 180,
-    estimateBasis: 'intrinsic_duration',
-    estimateSourceFactIds: [],
-    estimateSourceWorkloadFactIds: [],
-    splitPolicy: 'splittable',
-    periodExpression: null,
+    estimatedMinutes: 180, estimateBasis: 'intrinsic_duration',
+    estimateSourceFactIds: [], estimateSourceWorkloadFactIds: [],
+    splitPolicy: 'splittable', periodExpression: null,
     sourceFactRefs: ['task-1', 'workload-1'],
   };
 }
@@ -91,48 +62,40 @@ describe('Stable V5 structured execution policy', () => {
     const value = inferWeeklyPlanningExecutionProfileV5({ graph: graph({}), item: item() });
     expect(value).toEqual(DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5);
     expect(deriveWeeklyPlanningSessionPolicyV5({ profile: value })).toMatchObject({
-      mode: 'balanced',
-      minSessionMinutes: 45,
-      targetSessionMinutes: 90,
-      maxSessionMinutes: 120,
-      allowSmallRemainder: false,
+      mode: 'balanced', minSessionMinutes: 45, targetSessionMinutes: 90,
+      maxSessionMinutes: 120, allowSmallRemainder: false,
     });
   });
 
-  it('maps word workloads to the legacy short-focus characteristics without lexical matching', () => {
+  it('keeps a word unit neutral instead of treating the unit code as learning semantics', () => {
     const value = inferWeeklyPlanningExecutionProfileV5({
-      graph: graph({ unitCode: 'word' }),
-      item: item(),
+      graph: graph({ unitCode: 'word' }), item: item(),
+    });
+    expect(value).toEqual(DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5);
+  });
+
+  it('maps explicit structured review purpose to short-focus policy', () => {
+    const value = inferWeeklyPlanningExecutionProfileV5({
+      graph: graph({ purpose: 'review' }), item: item(),
     });
     expect(value).toMatchObject({
-      cognitiveLoad: 2,
-      contextRetentionCost: 2,
-      chunkability: 5,
-      feedbackGranularity: 5,
-      fatigueRisk: 2,
-      switchingCost: 2,
+      cognitiveLoad: 2, contextRetentionCost: 2, chunkability: 5,
+      feedbackGranularity: 4, fatigueRisk: 2, switchingCost: 2,
       repetitionBenefit: 5,
     });
     expect(deriveWeeklyPlanningSessionPolicyV5({ profile: value })).toMatchObject({
-      mode: 'short_focus',
-      minSessionMinutes: 30,
-      targetSessionMinutes: 60,
-      maxSessionMinutes: 90,
-      allowSmallRemainder: true,
+      mode: 'short_focus', minSessionMinutes: 30, targetSessionMinutes: 60,
+      maxSessionMinutes: 90, allowSmallRemainder: true,
     });
   });
 
   it('maps structured research purpose to deep-work policy', () => {
     const value = inferWeeklyPlanningExecutionProfileV5({
-      graph: graph({ purpose: 'research' }),
-      item: item(),
+      graph: graph({ purpose: 'research' }), item: item(),
     });
     expect(deriveWeeklyPlanningSessionPolicyV5({ profile: value })).toMatchObject({
-      mode: 'deep_work',
-      minSessionMinutes: 60,
-      targetSessionMinutes: 105,
-      maxSessionMinutes: 120,
-      allowSmallRemainder: false,
+      mode: 'deep_work', minSessionMinutes: 60, targetSessionMinutes: 105,
+      maxSessionMinutes: 120, allowSmallRemainder: false,
     });
   });
 
@@ -142,9 +105,7 @@ describe('Stable V5 structured execution policy', () => {
       preferredSessionMinutes: 73,
     });
     expect(policy).toMatchObject({
-      mode: 'balanced',
-      targetSessionMinutes: 75,
-      personalizedTargetApplied: true,
+      mode: 'balanced', targetSessionMinutes: 75, personalizedTargetApplied: true,
     });
     expect(splitWeeklyPlanningSessionMinutesV5({
       totalMinutes: 150,
@@ -153,7 +114,7 @@ describe('Stable V5 structured execution policy', () => {
     })).toEqual([75, 75]);
   });
 
-  it('matches the legacy balanced scorer for 220 minutes without a tiny tail', () => {
+  it('matches the balanced scorer for 220 minutes without a tiny tail', () => {
     const policy = deriveWeeklyPlanningSessionPolicyV5({
       profile: DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5,
     });
@@ -167,7 +128,7 @@ describe('Stable V5 structured execution policy', () => {
   it('preserves total minutes and max-session bound across an adversarial range', () => {
     const profiles = [
       DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5,
-      inferWeeklyPlanningExecutionProfileV5({ graph: graph({ unitCode: 'word' }), item: item() }),
+      inferWeeklyPlanningExecutionProfileV5({ graph: graph({ purpose: 'review' }), item: item() }),
       inferWeeklyPlanningExecutionProfileV5({ graph: graph({ purpose: 'research' }), item: item() }),
     ];
     for (const profile of profiles) {

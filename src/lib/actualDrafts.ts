@@ -33,6 +33,13 @@ export function createActualDraftForPlan(plan: Plan, actual?: Actual): ActualDra
     note: actual?.note ?? '',
     materialId: actual?.materialId ?? plan.materialId ?? null,
     materialName: actual?.materialName ?? plan.materialName ?? '',
+    ...(actual?.weeklyPlanningObservationResult
+      ? {
+          weeklyPlanningObservationResult: {
+            ...actual.weeklyPlanningObservationResult,
+          },
+        }
+      : {}),
   };
 }
 
@@ -49,5 +56,6 @@ export function createRelinkCandidateActual(
     subject: draft.subject,
     isAlignedToPlan: false,
     note: draft.note,
+    weeklyPlanningObservationResult: undefined,
   };
 }

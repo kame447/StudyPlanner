@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   applyDraftGenerationAuthorizationTurn,
-  parseDraftGenerationAuthorizationCommand,
   reduceDraftGenerationAuthorization,
   validateDraftGenerationAuthorizationCommand,
 } from './weeklyPlanningDraftGenerationAuthorization';
@@ -27,16 +26,18 @@ function state(): PlanningIntakeState {
 }
 
 describe('draft generation authorization command', () => {
-  it('does not parse a vague study goal as preview authorization', () => {
-    expect(parseDraftGenerationAuthorizationCommand('英語やらないといけない')).toBeNull();
-    expect(parseDraftGenerationAuthorizationCommand('そろそろ勉強しないと')).toBeNull();
-  });
-
-  it('parses an explicit preview request into a typed command', () => {
-    expect(parseDraftGenerationAuthorizationCommand('この条件で仮の予定を組んで')).toEqual({
+  it('validates only the typed authorization command shape', () => {
+    expect(validateDraftGenerationAuthorizationCommand({
       type: 'authorize_draft_generation',
       sourceText: 'この条件で仮の予定を組んで',
       confidence: 'high',
+    })).toEqual({
+      accepted: true,
+      command: {
+        type: 'authorize_draft_generation',
+        sourceText: 'この条件で仮の予定を組んで',
+        confidence: 'high',
+      },
     });
   });
 
@@ -49,10 +50,10 @@ describe('draft generation authorization command', () => {
     })).toEqual({ accepted: false, reason: 'invalid-command' });
   });
 
-  it('sets authorization only at the current canonical revision and resets it on other turns', () => {
+  it('applies an already-selected authorization signal without parsing its wording', () => {
     const authorized = applyDraftGenerationAuthorizationTurn({
       state: state(),
-      userText: '仮の予定を組んで',
+      userText: 'semantic layer selected authorization',
     });
     expect(authorized).toMatchObject({
       draftGenerationIntent: 'user_authorized',

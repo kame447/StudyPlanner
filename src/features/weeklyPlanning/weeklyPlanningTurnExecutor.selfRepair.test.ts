@@ -53,19 +53,50 @@ describe('Stable V5 self-repair rendering integration', () => {
     failureMock.mockReturnValue(null);
   });
 
-  it('keeps the exact correction acknowledgement even when the AI renderer omits it', async () => {
+  it('lets a successful renderer produce one complete correction acknowledgement', async () => {
     runtimeMock.mockResolvedValue({
       state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
       stableV5Graph: correctedGraph(),
     });
-    rendererMock.mockResolvedValue({ status: 'rendered', text: '次の条件を確認します。', rawResponse: '{}' });
+    rendererMock.mockResolvedValue({
+      status: 'rendered',
+      text: '英単語を80語に修正し、次の条件を確認します。',
+      rawResponse: '{}',
+    });
 
     const result = await executeWeeklyPlanningTurn({
       messages: [], userText: '80語だよ', selectedDate: '2026-08-11', userId: 'user-1',
       plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
     });
 
-    expect(result.message).toBe('英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。');
+    expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
+      fallbackText: '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+      planningInformation: expect.objectContaining({
+        selfRepairNotice: '英単語は80ページではなく80語ですね。修正しました。',
+      }),
+    }));
+    expect(result.message).toBe('英単語を80語に修正し、次の条件を確認します。');
+    expect(result.message).not.toContain('修正しました。 英単語');
     expect(result.message).not.toContain('数学');
+  });
+
+  it('keeps the exact correction acknowledgement in the deterministic fallback', async () => {
+    runtimeMock.mockResolvedValue({
+      state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
+      stableV5Graph: correctedGraph(),
+    });
+    rendererMock.mockResolvedValue({
+      status: 'fallback', reason: 'provider_error', rawResponse: null,
+    });
+
+    const result = await executeWeeklyPlanningTurn({
+      messages: [], userText: '80語だよ', selectedDate: '2026-08-11', userId: 'user-1',
+      plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
+    });
+
+    expect(result.message).toBe(
+      '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+    );
+    expect(result.responseSource).toBe('deterministic_fallback');
   });
 });

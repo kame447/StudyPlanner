@@ -1,23 +1,26 @@
 # 週間計画 Stable V5 Semantic / Orchestration ロードマップ
 
-Status: canonical / PR #120 semantic hardening
-最終更新: 2026-08-12
+Status: canonical / PR #130 conversation grounding and Luna simplification audit
+Updated: 2026-08-15
 
-- Main roadmap: [weekly-planning-roadmap.md](weekly-planning-roadmap.md)
-- Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-- Current execution task: [../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md](../tasks/20260812-weekly-planning-legacy-concept-migration-and-real-api-audit.md)
-- Test philosophy: [../testing/weekly-planning-test-philosophy.md](../testing/weekly-planning-test-philosophy.md)
+Canonical references:
 
-## 0. Semantic ownership
+- [Main roadmap](weekly-planning-roadmap.md)
+- [Current status](../weekly-planning-current-contract-status.md)
+- [Current contract](../weekly-planning-current-contract-v5.md)
+- [Current Luna audit](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
+- [Human grounding policy](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+- [Adaptive memory learning policy](weekly-planning-adaptive-memory-learning-policy.md)
+- [Test philosophy](../testing/weekly-planning-test-philosophy.md)
 
-ユーザー発話と会話文脈の意味理解はAIが担当する。
+## 1. Semantic ownership
 
 ```text
-user utterance + relevant conversation + machine-readable state
-→ machine-state semantic routing
-→ focused または generic AI semantic interpretation
+raw user utterance + relevant conversation + typed machine state
+→ machine-state route selection
+→ focused or generic AI semantic interpretation
 → structural / evidence / reference validation
-→ formal binding / canonical commit
+→ deterministic binding / canonicalization
 → Fact Graph V5
 ```
 
@@ -26,221 +29,141 @@ user utterance + relevant conversation + machine-readable state
 ```text
 raw user utterance
 → regex / keyword / dictionary / deterministic parser
-→ AI意味の置換・補完・上書き
+→ AI semantic meaningの補完・上書き
 ```
 
-deterministic routerはpending question、target fact、runtime phase等のmachine stateだけでrouteを選ぶ。focused routeでも意味解釈はAIに残す。
+AIは複数解釈があり得る自然言語の意味理解を担当する。意味がtyped representationとして一意になった後のID、calendar arithmetic、unit conversion、lifecycle、readiness、scheduler、proposal state、preview、saveはapplicationが担当する。
 
-## 1. Current semantic routes
+## 2. Current semantic routes
 
 ```text
 machine-state routing
 ├─ focused authorization AI
 ├─ focused contextual-answer AI
-│  ├─ missing_effort_estimate
-│  └─ quantity_role_unresolved
 └─ generic open-ended semantic AI
-   → response normalization
+   → normalization
    → validation
-   → 必要時AI repair 最大1回
+   → optional AI repair max 1
 → accepted current-turn delta
-→ existing entity binding / correction / no-op
-→ canonical commit
-→ Fact Graph V5
+→ formal binding / correction / no-op
+→ canonical Fact Graph V5
 ```
 
-SemanticDocumentはcurrent-turn deltaでありaccepted state snapshotではない。publicStateSummary / recentConversation / episodicMemoryは意味解釈contextであり、過去Factをcurrent deltaへ再コピーする根拠ではない。
+machine stateでexact pending targetが分かっているturnはfocused routeを優先する。focused routeでもraw textの意味解釈はAIに残す。
 
-## 2. Current semantic contracts
+## 3. Dialogue / proposal semantics
 
-- workloadをeffort estimateのformal targetにできる。
-- pending effort / quantity-roleの短答はmachine pending targetへformal bindingする。
-- creation authorizationはfocused AIが意味判定する。
-- current-turnに根拠のない過去Factコピーをvalidatorで拒否する。
-- existing entity continuationはpublic IDを明示的に扱う。
-- no-op turnでFact revisionを増やさずidempotency履歴は保持する。
-- standard date / weekday / clockの意味構造化はAIが担当する。
-- representation contractはvalidator / canonical contractで検査する。
-- renderer文面をsemantic targetのsource of truthにしない。
-- provider / validation failureからraw-text parserへfallbackしない。
+PR #130では次をsemantic contractへ含める。
 
-## 3. Prompt complexity audit
+- proposalへのaccept / reject / modification
+- `今回は` / `今週は` / `いつも` / `今後も`等のscope
+- current-week policyとdurable preferenceを区別するための意味情報
 
-2026-08-12のreal API trace:
+applicationはproposal候補の生成とlifecycleを所有する。AI semantic layerはユーザー返答の意味を構造化するだけで、了承を勝手に確定しない。
 
-- generic initial semantic request: 23,014 bytes
-- generic system prompt: 10,404 bytes / 53 lines
-- generic response: 1,957 chars
-- repair: なし
-- focused contextual導入前の`8分くらいです。`: 25,239 bytes generic request
+## 4. Shared-ground boundary
 
-system prompt 53行のうち38行には`never` / `must` / `only` / `do not`のいずれかが含まれている。すべてが過剰制約という意味ではないが、instruction densityが高いことは明確である。
+application内部で知るheuristicはsemantic public stateとしてユーザーとの共通基盤に自動昇格しない。
 
-現在generic一回に含まれる主な意味責務:
+rendererへ渡すcontextは最低限次を区別できるようにする。
 
-- task / study classification
-- decompositionStatus
-- component hierarchy
-- workload / effort
-- quantity role
-- planning window
-- date / weekday / clock
-- recurrence
-- hard / soft constraint
-- event occurrence / task deadline
-- durable context / concern
-- existing entity continuation
-- modifier scope / ambiguity
-- relations
-- external source request
-- correction / decision
-- current-turn delta / sourceText grounding
+- internal candidate / recommendation
+- already presented proposal
+- accepted current-week policy
+- durable accepted preference
+- observed learning evidence
 
-context-window不足より、同時に守るsemantic / representation contractの多さが主要リスクである。
+これによりrendererが未共有のheuristicを「当然知っている前提」で話すことを防ぐ。
 
-## 4. Prompt肥大化防止contract
+## 5. Adaptive memory learning semantic direction
 
-新しいreal API failureを見つけても、generic system promptへ規則を追加することを第一選択にしない。
+詳細は [Adaptive Memory Learning Policy](weekly-planning-adaptive-memory-learning-policy.md) を正とする。
+
+暗記・想起系は`word`だけに限定しない。教科名やtask labelのkeywordで暗記判定せず、semantic AIが学習目的・活動の意味として構造化する。
+
+意味レイヤで必要なのは「暗記・想起中心か」「新規学習か復習か」「ユーザーがどのproposalをどう受けたか」等であり、次はAIへ返させない方向を優先する。
+
+- scheduler用session ID
+- review date arithmetic
+- fixed review count
+- fixed daypart placement
+- total-session expansion
+- durable storage ID
+- personalization multiplier
+
+これらはtyped meaningからapplicationが導出する。
+
+## 6. Prompt complexity contract
+
+新しいfailureを見つけてもgeneric system promptへ規則を足すことを第一選択にしない。
 
 判断順序:
 
-1. JSON Schemaで表現できるrepresentation constraintか。
-   - schemaへ寄せる。
-2. 意味を選び直さないdeterministic normalizationか。
-   - canonicalizerへ寄せる。
-3. machine pending stateがexact targetを既に持つか。
-   - focused semanticへ分離する。
-4. AIによる修復が必要だが変更対象fieldが限定できるか。
-   - field-scoped focused repairを優先する。
-5. 自由入力の複数意味を統合する必要がある場合だけgeneric semanticを使う。
+1. schemaで有限表現にできるか。
+2. 意味を選び直さないdeterministic conversionか。
+3. machine pending stateがexact targetを持つか。
+4. AI repairが本当にsemantic再解釈を必要とするか。
+5. generic AIが必要な自由入力か。
 
-同じrepresentation ruleをsystem prompt、validator、repair promptへ無条件に三重実装しない。
+AIへ返させなくてもapplicationが一意に作れるfieldはschema / AI outputから削る方向で監査する。
 
-Prompt budget:
+## 7. Repair policy
 
-- generic system prompt <= 11,000 bytes
-- representative generic request including JSON Schema <= 24,000 bytes
-- focused authorization <= 2,500 bytes
-- focused contextual answer <= 4,000 bytes
-- focused request < generic / 4
+repairは最大1回。
 
-`weeklyPlanningSemanticPromptBudget.test.ts`でCI gate化する。閾値を超えたら、まず責務分離を行い、上限を安易に緩めない。
+意味がすでに一意でrepresentationだけ直せる場合はdeterministic converterを優先する。raw user textを後段で再解析してrepairすることは禁止する。
 
-## 5. Public state budget
+PR #130の次のablation候補はfocused planning-window AI repairである。
 
-AIへ渡すpublic stateもpromptの一部である。
+- typed start/end等の十分なsemantic evidenceがある場合はapplication canonicalizationへ寄せる。
+- raw `8月17日から23日`を後段AIへ再送して二度目のsemantic interpretationを行う経路は削除候補。
+- typed evidence自体が欠ける場合はfail closed / uncertaintyへ戻し、raw-text parserで補わない。
 
-初回real API user prompt 1,603 bytesのうち、訂正対象が存在しないにもかかわらず`correctionContract`が約908 bytesを占めていた。
+## 8. Memory architecture direction
 
-現在はactive correction targetが存在する場合だけcorrectionContractを渡し、empty Graphでは省略する。stale summary由来のcorrectionContract / episodicMemoryをそのまま再送せず、current Graphから再構築する。
+既存:
 
-今後もpublicStateSummaryへ説明文を足す前に、machine-readable compact representationで代替できないか確認する。
+- weekly Fact Graph / episodic memory
+- owner-scoped `userPlanningContext`
 
-## 6. Repair policy
+追加方向:
 
-repairは最大1回を維持する。
+- learning preferenceをowner-scoped durable contextでtypedに扱う。
+- observed learning evidenceをpreferenceと別contractで保持する。
+- raw observationsからpace / retention / confidence等をdeterministicに導出する。
+- one-week acceptanceをdurable preferenceへ自動昇格しない。
 
-ただし「full documentを書き直すrepair」に新しいspecial caseを積み続けない。
+既存`userPlanningContext`の現行`goal_event` / `concern`へ無理に文字列詰め込みせず、責務に合うtyped extensionを設計する。
 
-real APIで既に観測したrepresentation failure:
-
-- absolute planningWindowがnon-ISO / missing range
-- exact clockをcustom namedTimePeriodへ格納
-- bare weekday token
-
-これらは意味全体を再解釈する問題ではない。
-
-現在はrepresentation-only repair preservation guardで、修復対象外のtask / availability / intent等が変化したrepairをrejectする。
-
-次の改善候補は、対象fieldだけをAIに再解釈させdeterministic mergeするfield-scoped repairである。これによりfull-document destructive repair自体を減らす。
-
-## 7. Selective orchestration
-
-初回自由入力は当面generic一回を維持する。
-
-理由:
-
-- task / workload / period / availability / modifier / relationが同じ発話で相互参照する。
-- 根拠なく複数callへfan-outするとentity identityとmodifier scopeの統合が難しくなる。
-- call数増加はlatency / cost / merge failure pointも増やす。
-
-一方、machine stateでsemantic targetが確定した継続turnはfocused routeを優先する。
-
-既に分離済み:
-
-- authorization
-- effort answer
-- quantity-role answer
-
-次の有力候補:
-
-### pending work_breakdown
-
-exact targetPublicIdがmachine stateで分かっている。現状はgeneric prompt、work-breakdown validator、repair directiveへ同じ責務が分散しているため、focused semantic schemaへ切り出す価値が高い。
-
-ただしtask constituent extraction自体はAI意味理解なので、deterministic breakdown parserへ置き換えない。
-
-### field-scoped temporal repair
-
-planningWindow / weekday / clockの対象fieldがvalidation errorから確定している場合、全SemanticDocumentを再生成させず局所AI repairする。
-
-## 8. Overconstraint review
-
-hard contractとして残すもの:
-
-- schema / type / ID / reference validity
-- current-turn evidence
-- exact machine pending target
-- no application/scheduler/save command
-- deterministic readiness / scheduling / persistence ownership
-
-AI semantic guidelineとして簡潔に残すもの:
-
-- workload vs effort
-- quantity meaning
-- task vs goal event
-- hard vs soft preference
-- ambiguity / uncertainty
-- modifier scope
-
-promptから追い出す方向で検討するもの:
-
-- schemaで表現可能なtoken spelling
-- provider formattingだけを補う詳細規則
-- machine-pending subtype専用の長いgeneric instruction
-- validator errorごとのfull-document repair special case
-
-AIの意味理解を弱めるのではなく、意味理解以外のformat / state責務をAI promptから外すことを目的とする。
-
-## 9. Real API investigation protocol
+## 9. PR #130 execution order
 
 ```text
-machine route
-→ actual AI input bytes / context
-→ AI raw semantic output
-→ schema表現可能性
-→ validation
-→ repair route / repair scope
-→ formal binding
-→ canonical commit / revision
-→ scheduler / dialogue
-→ renderer
-→ preview / approval / save
+MD / contract sync
+→ stale vocabulary behavior inventory
+→ remove total-duration / word-count / automatic daypart assumptions
+→ typed memorization proposal state
+→ accept / reject / modify lifecycle
+→ current-week scheduler integration
+→ durable preference promotion boundary
+→ observed learning evidence
+→ adaptive review proposal
+→ focused planning-window repair ablation
+→ remaining prompt simplification
+→ final Luna conversation + preview
+→ Browser Regression + normal CI
 ```
 
-問題発生時はこの順序を確認する。自然言語ルール追加を最初の修正にしない。
+各loopはone-element changeを基本とし、targeted regression → full CI → relevant real-API rerunをgreenにしてから次へ進む。
 
-成功するまでAPIを再試行するだけの検証は禁止する。失敗shapeを保存し、契約漏れかmodel varianceかを分離する。
+## 10. Acceptance gate
 
-## 10. PR #120 semantic gate
-
-- prompt budget tests green
-- focused/generic orchestration regression green
-- representation-only repair preservation green
-- current-turn evidence / entity continuation / correction / no-op回帰green
-- typecheck / full Vitest / build / diff check green
-- 最終HEADの逐次real API preview到達
-- 最終HEADの通しreal API preview到達
-- prompt / orchestration final auditでBLOCKER/MAJORなし
-
-このgate完了前にsemantic layerを「完成」としない。
+- raw-text semantic fallbackなし
+- proposalが了承前にschedulerへ適用されない
+- internal heuristicをshared premiseとしてrendererが話さない
+- current-only acceptanceがdurable preferenceへ漏れない
+- vocabulary-specific historical threshold / automatic daypart ruleがproductionから除去される
+- prompt budget green
+- focused/generic semantic regression green
+- full Vitest / typecheck / build green
+- Browser Regression green
+- final Luna dynamic conversationがpreviewへ到達

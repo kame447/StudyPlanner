@@ -54,8 +54,12 @@ async function createPreview(page, text = 'previewを作る条件') {
 }
 
 async function promoteAndApprovePreview(page) {
+  expect(await events(page, 'real-save-approved-plan')).toHaveLength(0);
+
   await page.getByRole('button', { name: 'この内容で仮予定にする' }).click();
   await expect(page.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
+  expect(await events(page, 'real-save-approved-plan')).toHaveLength(0);
+
   await page.getByRole('button', { name: '一括承認して保存' }).click();
   await expect.poll(async () => (await events(page, 'real-save-approved-plan')).length).toBe(1);
   await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);

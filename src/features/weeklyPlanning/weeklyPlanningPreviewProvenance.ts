@@ -1,4 +1,7 @@
-import type { PlanType } from '../../types/domain';
+import type {
+  PlanType,
+  WeeklyPlanningMemoryPaceObservationSourceV1,
+} from '../../types/domain';
 
 export interface WeeklyPlanningStableV5PreviewProvenance {
   runtime: 'stable_v5';
@@ -9,4 +12,5 @@ export interface WeeklyPlanningStableV5PreviewProvenance {
   planType: PlanType;
   sessionRole?: 'learning' | 'review';
   reviewRound?: 1 | 2;
+  weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }

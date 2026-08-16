@@ -6,6 +6,9 @@ import {
   resolveWeeklyPlanningAvailability,
 } from './weeklyPlanningAvailabilityResolver';
 import {
+  createWeeklyPlanningAvailabilityResolverGraphV5,
+} from './weeklyPlanningSchedulerAvailabilityProjectionV5';
+import {
   canonicalizeWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
 import {
@@ -57,7 +60,7 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 availability resolver compatibility', () => {
-  it('passes Fact Graph V5 directly while preserving source ownership checks', () => {
+  it('projects scheduler-relevant V5 facts while preserving source ownership checks', () => {
     const canonical = canonicalizeWeeklyPlanningSemanticDocumentV5({
       graph: createEmptyWeeklyPlanningFactGraphV5(),
       document: document(),
@@ -70,7 +73,11 @@ describe('Stable V5 availability resolver compatibility', () => {
     expect(canonical.status).toBe('applied');
 
     const resolved = resolveWeeklyPlanningAvailability({
-      graph: canonical.graph,
+      graph: createWeeklyPlanningAvailabilityResolverGraphV5({
+        revision: canonical.graph.revision,
+        availabilityDeclarations: canonical.graph.availabilityDeclarations,
+        constraintSourceRequests: canonical.graph.constraintSourceRequests,
+      }),
       context: {
         ownerId: 'owner-1',
         currentDate: '2026-07-22',

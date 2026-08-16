@@ -139,6 +139,29 @@ export interface RecurrenceRule {
 
 export type RecurringPlanScope = 'single' | 'future' | 'all';
 
+export interface WeeklyPlanningMemoryPaceObservationSourceV1 {
+  version: 1;
+  kind: 'memory_pace_calibration';
+  conversationId: string;
+  graphRevision: number;
+  taskId: string;
+  workloadFactId: string;
+  sessionEffortFactId: string;
+  activityKind: 'memorization_retrieval';
+  targetAmount: number;
+  unitCode: string;
+  unitLabel: string;
+  plannedSessionMinutes: number;
+}
+
+export interface WeeklyPlanningMemoryPaceObservationResultV1 {
+  version: 1;
+  kind: 'memory_pace_calibration';
+  progressAmount: number;
+  unitCode: string;
+  unitLabel: string;
+}
+
 export interface Plan {
   id: string;
   seriesId: string;
@@ -163,6 +186,7 @@ export interface Plan {
   occurrenceKey?: string;
   materialId?: string | null;
   materialName?: string;
+  weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }
 
 export interface Actual {
@@ -180,6 +204,7 @@ export interface Actual {
   materialId?: string | null;
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
+  weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
 }
 
 export interface ActualMaterialProgressUpdate {
@@ -208,6 +233,7 @@ export interface PlanDraft {
   sourceId?: string | null;
   materialId?: string | null;
   materialName?: string;
+  weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }
 
 export interface ActualDraft {
@@ -223,6 +249,7 @@ export interface ActualDraft {
   materialId?: string | null;
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
+  weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
 }
 
 export interface StudySubject {

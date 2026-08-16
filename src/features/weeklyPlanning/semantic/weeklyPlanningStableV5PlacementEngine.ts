@@ -99,10 +99,6 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     params.input.movableWorkItems,
     (item) => item.taskId,
   );
-  const vocabularyPositions = workItemGroupPositions(
-    params.input.movableWorkItems.filter((item) => item.quantity.unitCode === 'word'),
-    (item) => item.workloadFactId,
-  );
   const taskOrdinals = taskOrdinalMapV5(
     params.input.movableWorkItems.map((item) => item.taskId),
   );
@@ -115,7 +111,6 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
       context,
       item,
       taskPosition: taskPositions.get(item.id) ?? { index: 0, count: 1 },
-      vocabularyPosition: vocabularyPositions.get(item.id) ?? { index: 0, count: 1 },
       taskOrdinal: taskOrdinals.get(item.taskId) ?? 0,
       fixedEnds,
       globalCandidates: candidates,

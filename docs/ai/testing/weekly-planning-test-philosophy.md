@@ -1,24 +1,140 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-08-13
+Updated: 2026-08-15
 
-週間計画の自動テストは、AIの自然言語理解や会話品質に唯一の正解があるとは仮定しない。自動化する対象は、決定論的に正誤を定義できる内部契約に限定する。
+Canonical references:
 
-自動テストで保証するのは、schemaと型、参照整合性、Fact Graph revisionとlifecycle、pending questionのformal target、transaction、scheduler input、preview、approval、save、persistence、recovery、trace、安全境界、request budgetである。日本語のfixtureを使う場合も、その文からAIが特定の意味構造を必ず返すことを正解として固定しない。fixtureは、deterministic codeがraw user textを再解釈しないこと、または既に与えられたAI出力を構造的に正しく検証することの確認にだけ使う。
+- [Human Grounding Policy](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
+- [Adaptive Memory Learning Policy](../strategy/weekly-planning-adaptive-memory-learning-policy.md)
+- [Current Luna Audit](../tasks/20260814-weekly-planning-conversation-quality-luna-audit.md)
 
-AI rendererについても、特定の日本語文面や語句を正解としてassertしない。自動テストではtyped application decisionとの整合、未根拠情報の拒否、action identity、安全性などの機械判定可能な境界だけを検証する。
+## 1. 自動テストの対象
 
-実APIを使う会話確認は、固定シナリオを自動採点するquality testとして扱わない。実際の発話を一ターンずつ与え、同一conversation checkpointを継続し、生成されたtranscriptと内部状態を読んで自然さ、文脈理解、聞き返し、訂正、予定作成までの流れを評価する。ハーネスが失敗として扱ってよいのは、turn rejection、provider failure、state corruption、checkpoint破損、request budget超過、必要なAI経路のbypassなど、実行上または決定論的契約上の失敗だけである。
+AIの自然言語理解や自然な日本語に唯一の正解があるとは仮定しない。
 
-ただし、実API会話を人間の最終確認まで無監査で通し切るわけではない。開発エージェントは各turnでtranscript、semantic raw response、accepted document、validator/repair、formal binding、Fact Graph、dialogue decision、renderer resultを確認する。明確な意味誤認、文脈欠落、重複質問、誤binding、根拠のない具体化、不自然な反復、利用者が次に答える内容を判断できない質問、previewや保存状態との矛盾があれば、そのturnで会話進行を止め、原因層を特定して一般化した修正を行い、同じ会話地点を再実行する。
+自動化するのは決定論的に正誤を定義できる内部contractである。
 
-修正先は症状ではなく原因層で決める。semantic raw responseが誤っている場合はsemantic context/prompt/contract、raw responseが正しくschemaやvalidatorが拒否する場合はschema/validator、formal targetやFact Graphで壊れる場合はbinding/lifecycle、machine dialogue decisionが不適切な場合はquestion/readiness policy、decisionは正しく文面だけ不自然な場合はrendererを修正する。raw user textを後段のregex、keyword、dictionaryで再解釈してAI出力を上書きしない。
+- schema / type
+- evidence / reference validity
+- formal binding
+- Fact Graph revision / lifecycle / idempotency
+- pending question target
+- proposal candidate / state / acceptance lifecycle
+- acceptance scope
+- current-week policy / durable preference promotion boundary
+- observed learning evidence / derived calculations
+- readiness / scheduler
+- preview / approval / save
+- persistence / recovery / trace
+- safety / request budget / prompt budget
 
-OpenAIを使う内部AI経路は、interpreter、semantic normalization、validator後のsemantic repair、rendererを含めてgpt-5.6-lunaへ統一する。OCRだけはGemini経路を維持する。AI出力のstructural/reference/contract violationに対する通常repairは最大1回とし、semantic ambiguityをrepairで無理に確定させない。広範なdeterministic repairは導入せず、意味保存を機械的に保証できるcanonicalizationを実測に基づいて限定的に扱う場合だけ例外とする。
+raw Japanese fixtureからdeterministic codeが意味を再解釈するtestをproduction behaviorとして追加しない。
 
-会話品質に関する最終意思決定は人間が行う。開発エージェントはその前段で明確な問題を修正して一定水準まで持ち上げ、最終的な実API transcriptを人間へ提示する。単なる文体の好みだけを理由にAIの表現を固定化しない。
+## 2. Renderer test
 
-過去のmodel比較、旧semantic schema、scenario固有oracle、固定期待文面を持つevalはcanonicalな回帰テストに含めない。モデル比較が再度必要になった場合は一時的な実験として分離し、結論が得られた後はactive test suiteから除去する。
+AI rendererの完成済み日本語全文を正解としてassertしない。
 
-実API改善ループの詳細は `docs/ai/tasks/20260810-weekly-planning-human-reviewed-conversation-improvement-loop.md` を正とする。
+検査するのは、
+
+- typed application decisionとの整合
+- 未根拠factを発明しない
+- 未了承proposalをacceptedとして話さない
+- internal heuristicをshared premiseとして扱うための誤ったmachine contextを渡さない
+- action identity / safety boundary
+
+である。
+
+自然な表現差は許容する。
+
+## 3. Proposal / shared-ground test
+
+proposalを提示したことと、ユーザーが了承したことを別stateとして検査する。
+
+必須回帰:
+
+```text
+proposal generated
+≠ accepted policy
+```
+
+- 提示前にschedulerへ反映されない。
+- 提示しただけでacceptedにならない。
+- rejectで反映されない。
+- modifyで変更内容だけが採用される。
+- current-week acceptanceがdurable memoryへ自動昇格しない。
+- durable scopeを明示的にacceptした場合だけowner-scoped preferenceへpromotionできる。
+
+## 4. Adaptive memory learning test
+
+暗記系policyでは固定文面ではなくpolicy invariantを検査する。
+
+禁止behaviorの回帰:
+
+- 100語等の固定word threshold
+- word countだけからsession数決定
+- vocabulary total durationの必須自己予測
+- 暗記だから自動で朝昼夜へ配置
+- 必ず3周 / 固定1-3-7日
+
+検査対象:
+
+- short-session proposalはcold-start候補であり未了承では適用されない。
+- explicit user session lengthがgeneral heuristicより優先される。
+- large workload / short deadlineではmixed acquisition-review proposalを生成できる。
+- infeasible caseでは無理なscheduleを作らず方針選択へ戻せる。
+- preferenceとobserved learning profileを別stateとして扱う。
+
+## 5. Real API conversation
+
+実APIは固定scenarioの自動quality scoreとして扱わない。
+
+一turnずつ会話を進め、各assistant turnの後に次のuser utteranceを決める。
+
+各turnで読むもの:
+
+- semantic raw response
+- accepted semantic delta
+- validator / repair
+- formal binding
+- Fact Graph
+- proposal / dialogue decision
+- renderer output
+- scheduler / preview
+- trace
+
+明確な意味誤認、文脈欠落、重複質問、誤binding、根拠のない具体化、internal heuristicをshared premiseとして話す、未了承proposalを適用する、memory scopeを越える等があればそのturnで停止する。
+
+## 6. 原因層を直す
+
+- semantic raw output誤り → semantic context / schema / prompt
+- representation-only問題 → schema / deterministic converterを検討
+- validator誤拒否 → validator
+- target / identity誤り → binding / lifecycle
+- proposal / question判断誤り → deterministic dialogue policy
+- placement誤り → scheduler
+- decisionは正しく文面だけ不自然 → renderer / renderer context
+- memory scope誤り → promotion / persistence boundary
+
+症状を隠すためraw user text regexや特定日本語専用prompt ruleを追加しない。
+
+## 7. AI repair
+
+通常AI semantic repairは最大1回。
+
+意味保存を機械的に保証できるrepresentation normalizationはdeterministicに寄せてよいが、raw textを後段で再解釈しない。
+
+## 8. Gate
+
+重要なsemantic / proposal / scheduler / memory境界変更後は、
+
+```text
+targeted regression
+→ full TypeScript / Vitest / build
+→ Browser Regression when relevant
+→ real API rerun when model behavior is relevant
+```
+
+をgreenにしてから次loopへ進む。
+
+会話品質の最終意思決定は人間が行う。開発エージェントは明確な問題を先に除去し、最終real-API transcriptを人間へ提示する。

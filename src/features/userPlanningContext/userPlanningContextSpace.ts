@@ -127,7 +127,9 @@ function isRecordValue(value: unknown, ownerId: string): value is UserPlanningCo
   ])) return false;
   return isNonEmptyBoundedString(value.id, 160)
     && value.ownerId === ownerId
-    && (value.kind === 'goal_event' || value.kind === 'concern')
+    && (value.kind === 'goal_event'
+      || value.kind === 'concern'
+      || value.kind === 'learning_preference')
     && isNonEmptyBoundedString(value.label, MAX_LABEL_LENGTH)
     && isNullableBoundedString(value.value, MAX_VALUE_LENGTH)
     && isNullableBoundedString(value.dateExpression, 240)

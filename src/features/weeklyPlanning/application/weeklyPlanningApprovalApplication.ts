@@ -157,6 +157,10 @@ export async function approveWeeklyPlanningDraftBlocks({
           if (estimateMetadata) {
             draft.weeklyPlanningEstimate = estimateMetadata;
           }
+          const observationSource = block.behaviorMetadata?.weeklyPlanningObservationSource;
+          if (observationSource) {
+            draft.weeklyPlanningObservationSource = { ...observationSource };
+          }
           const sourceId = buildWeeklyPlanningPlanSourceId({
             approvalOperationId: source.approvalOperationId,
             sourceDraftBlockId: source.sourceDraftBlockId,

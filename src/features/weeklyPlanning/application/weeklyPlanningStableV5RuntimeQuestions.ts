@@ -7,17 +7,73 @@ const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
 export function stableV5MissingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
-): { message: string; questionCode: 'missing_schedulable_work'; taskTitles: string[] } {
+): {
+  message: string;
+  questionCode: 'missing_schedulable_work';
+  taskTitles: string[];
+  targetFactId: string | null;
+} {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
-  const componentWithNoWorkload = active.components.find(
-    (component) => !active.workloads.some((workload) => workload.componentId === component.id),
+  const lifecycleByFactId = new Map(
+    graph.factLifecycles.map((entry) => [entry.factId, entry] as const),
   );
+  const resolvedBreakdownRevisionByTask = new Map<string, number>();
+  graph.uncertainties.forEach((uncertainty) => {
+    const lifecycle = lifecycleByFactId.get(uncertainty.id);
+    if (
+      uncertainty.field !== 'work_breakdown'
+      || !uncertainty.targetFactId
+      || !lifecycle
+      || lifecycle.status === 'active'
+    ) return;
+    resolvedBreakdownRevisionByTask.set(
+      uncertainty.targetFactId,
+      Math.max(
+        resolvedBreakdownRevisionByTask.get(uncertainty.targetFactId) ?? -1,
+        uncertainty.createdRevision,
+      ),
+    );
+  });
+
+  const componentById = new Map(active.components.map((component) => [component.id, component]));
+  const componentsCoveredByWorkload = new Set<string>();
+  active.workloads.forEach((workload) => {
+    let componentId = workload.componentId;
+    while (componentId && !componentsCoveredByWorkload.has(componentId)) {
+      componentsCoveredByWorkload.add(componentId);
+      componentId = componentById.get(componentId)?.parentComponentId ?? null;
+    }
+  });
+  const parentComponentIds = new Set(
+    active.components
+      .map((component) => component.parentComponentId)
+      .filter((componentId): componentId is string => Boolean(componentId)),
+  );
+  const rolePriority = new Map([
+    'material', 'topic', 'chapter', 'section', 'skill', 'custom', 'subject', 'field',
+  ].map((role, index) => [role, index]));
+  const workloadlessComponents = active.components.filter((component) => {
+    if (componentsCoveredByWorkload.has(component.id)) return false;
+    const resolvedBreakdownRevision = resolvedBreakdownRevisionByTask.get(component.taskId);
+    return resolvedBreakdownRevision === undefined
+      || component.createdRevision > resolvedBreakdownRevision;
+  });
+  const leafComponents = workloadlessComponents.filter(
+    (component) => !parentComponentIds.has(component.id),
+  );
+  const componentWithNoWorkload = (leafComponents.length > 0
+    ? leafComponents
+    : workloadlessComponents)
+    .sort((left, right) =>
+      right.createdRevision - left.createdRevision
+      || (rolePriority.get(left.role) ?? 99) - (rolePriority.get(right.role) ?? 99))[0];
   if (componentWithNoWorkload) {
     return {
       message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,
       questionCode: 'missing_schedulable_work',
       taskTitles,
+      targetFactId: componentWithNoWorkload.id,
     };
   }
   const taskWithNoWorkload = active.tasks.find(
@@ -28,12 +84,14 @@ export function stableV5MissingSchedulableWorkQuestion(
       message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,
       questionCode: 'missing_schedulable_work',
       taskTitles,
+      targetFactId: taskWithNoWorkload.id,
     };
   }
   return {
     message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
+    targetFactId: null,
   };
 }
 
@@ -81,6 +139,34 @@ function semanticUncertaintyQuestion(
   return `「${sourceText}」の意味を一つに決められませんでした。この部分だけ、もう少し具体的に教えてください。`;
 }
 
+function missingEffortQuestion(
+  graph: WeeklyPlanningFactGraphV5,
+  question: WeeklyPlanningStableQuestionV5,
+): string {
+  const label = stableV5IssueTaskLabel(graph, question);
+  const workload = question.factId
+    ? graph.workloads.find((fact) => fact.id === question.factId) ?? null
+    : null;
+
+  if (question.effortMeasurement === 'session_duration') {
+    return `${label}は、1回の学習を何分くらいにしますか？`;
+  }
+  if (question.effortMeasurement === 'duration_per_unit') {
+    const unitLabel = workload?.unitLabel.trim();
+    return unitLabel
+      ? `${label}は1${unitLabel}あたりどれくらい時間がかかりますか？`
+      : `${label}は1単位あたりどれくらい時間がかかりますか？`;
+  }
+  if (question.effortMeasurement === 'total_duration' && workload?.quantityRole === 'completed') {
+    const unitLabel = workload.unitLabel.trim();
+    const amountLabel = unitLabel
+      ? `${workload.amount}${unitLabel}`
+      : String(workload.amount);
+    return `${label}の完了した${amountLabel}には、合計でどれくらい時間がかかりましたか？`;
+  }
+  return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
+}
+
 export function renderStableV5RuntimeQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
@@ -96,7 +182,7 @@ export function renderStableV5RuntimeQuestion(
     case 'quantity_role_unresolved':
       return `${label}の量は、今回進めたい量ですか、それとも残っている全体量ですか？`;
     case 'missing_effort_estimate':
-      return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
+      return missingEffortQuestion(graph, question);
     case 'ambiguous_effort_estimate':
       return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
     case 'missing_availability_date_scope':

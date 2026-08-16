@@ -4,6 +4,7 @@ import {
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
+import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -29,7 +30,7 @@ export interface JsonSchemaResponseFormat {
 
 interface ChatCompletionRequest {
   model: string;
-  temperature: number;
+  temperature?: number;
   messages: ChatMessage[];
   response_format?: JsonSchemaResponseFormat;
   max_completion_tokens?: number;
@@ -58,6 +59,8 @@ interface AiProxyResponse {
 }
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 90_000;
+const PROVIDER_ERROR_LABEL_MAX_CHARS = 120;
+const PROVIDER_ERROR_MESSAGE_MAX_CHARS = 500;
 let processAiRequestCount = 0;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,6 +90,39 @@ function extractUnknownErrorMessage(
   }
 
   return fallbackMessage;
+}
+
+function boundedProviderErrorField(
+  value: unknown,
+  maxChars: number,
+): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, maxChars)}…`;
+}
+
+async function directProviderErrorMessage(response: Response): Promise<string> {
+  const fallback = `AI request failed with status ${response.status}.`;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await response.text()) as unknown;
+  } catch {
+    return fallback;
+  }
+  if (!isRecord(parsed)) return fallback;
+  const error = isRecord(parsed.error) ? parsed.error : parsed;
+  const details = [
+    ['type', boundedProviderErrorField(error.type, PROVIDER_ERROR_LABEL_MAX_CHARS)],
+    ['code', boundedProviderErrorField(error.code, PROVIDER_ERROR_LABEL_MAX_CHARS)],
+    ['param', boundedProviderErrorField(error.param, PROVIDER_ERROR_LABEL_MAX_CHARS)],
+    ['message', boundedProviderErrorField(error.message, PROVIDER_ERROR_MESSAGE_MAX_CHARS)],
+  ]
+    .filter((entry): entry is [string, string] => entry[1] !== null)
+    .map(([key, value]) => `${key}=${value}`);
+  return details.length > 0 ? `${fallback} ${details.join('; ')}` : fallback;
 }
 
 function resolvedTimeoutMs(configured: number | undefined): number {
@@ -274,9 +310,10 @@ export function createOpenAiCompatibleClient(
 
       const semanticRepair = isSemanticRepairRequest(purpose, messages);
       const directModel = evalSemanticModel(purpose, messages) ?? config.model;
+      const directTemperature = resolveOpenAiChatTemperature(directModel, temperature);
       const payload: ChatCompletionRequest = {
         model: directModel,
-        temperature,
+        ...(directTemperature === undefined ? {} : { temperature: directTemperature }),
         messages,
         response_format: responseFormat,
         ...(maxCompletionTokens === undefined
@@ -297,7 +334,7 @@ export function createOpenAiCompatibleClient(
         requestTimeoutMs,
         async (response) => {
           if (!response.ok) {
-            throw new Error(`AI request failed with status ${response.status}.`);
+            throw new Error(await directProviderErrorMessage(response));
           }
 
           const data = (await response.json()) as ChatCompletionResponse;

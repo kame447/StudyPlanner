@@ -2,7 +2,6 @@ import type {
   EffortEstimateFact,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
-import { splitVocabularyIntoLearningSessionsV5 } from './weeklyPlanningEffortQuestionPolicyV5';
 
 export type GenericWorkItemEstimateBasis =
   | 'intrinsic_duration'
@@ -98,29 +97,10 @@ function directEstimate(params: {
 
   const session = matching.filter((estimate) =>
     estimate.kind === 'session_duration' && estimate.unitCode === params.workload.unitCode);
-  if (params.workload.unitCode === 'word' && session.length === 1) {
-    const sessionCount = splitVocabularyIntoLearningSessionsV5(params.workload.amount).length;
-    return {
-      estimatedMinutes: session[0].minutes * sessionCount,
-      basis: 'direct_effort',
-      sourceFactIds: [session[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
-  }
-  if (params.workload.unitCode === 'word' && session.length > 1) {
-    return {
-      estimatedMinutes: null,
-      basis: null,
-      sourceFactIds: session.map((value) => value.id),
-      sourceWorkloadFactIds: [],
-      ambiguous: true,
-    };
-  }
   if (params.workload.unitCode === 'session' && session.length === 1) {
     return {
       estimatedMinutes: session[0].minutes * params.workload.amount,
-      basis: 'direct_effort',
+      basis: 'intrinsic_duration',
       sourceFactIds: [session[0].id],
       sourceWorkloadFactIds: [],
       ambiguous: false,
@@ -149,6 +129,24 @@ function samePaceScope(left: WorkloadFact, right: WorkloadFact): boolean {
   return left.taskId === right.taskId
     && left.componentId === right.componentId
     && left.unitCode === right.unitCode;
+}
+
+export function findObservedPaceEvidenceQuestionTarget(params: {
+  workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): WorkloadFact | null {
+  const completed = params.workloads.filter((candidate) =>
+    candidate.quantityRole === 'completed'
+    && candidate.amount > 0
+    && samePaceScope(candidate, params.workload));
+  if (completed.length !== 1) return null;
+
+  const [candidate] = completed;
+  const alreadyHasEstimate = params.estimates.some((estimate) =>
+    estimate.taskId === candidate.taskId
+    && estimate.targetFactId === candidate.id);
+  return alreadyHasEstimate ? null : candidate;
 }
 
 function observedPaceEstimate(params: {

@@ -66,6 +66,10 @@ function applyCanonicalCorrectionResult(params: {
       diff: {
         ...params.canonicalization.diff,
         toRevision: application.graph.revision,
+        added: uniqueDiffEntries([
+          ...params.canonicalization.diff.added,
+          ...application.added,
+        ]),
         superseded: uniqueDiffEntries([
           ...params.canonicalization.diff.superseded,
           ...application.superseded,

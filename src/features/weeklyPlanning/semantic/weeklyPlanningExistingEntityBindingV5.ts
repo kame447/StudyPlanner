@@ -1,8 +1,10 @@
 import type {
+  SemanticWorkloadV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
   WeeklyPlanningFactGraphV5,
+  WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
@@ -95,7 +97,21 @@ export function validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5
 export interface WeeklyPlanningExistingEntityGraphBindingsV5 {
   taskFactIdByLocalId: Record<string, string>;
   componentFactIdByLocalId: Record<string, string>;
+  workloadFactIdByLocalId: Record<string, string>;
   errors: string[];
+}
+
+function sameWorkloadMeaning(
+  semantic: SemanticWorkloadV5,
+  fact: WorkloadFactV5,
+): boolean {
+  return semantic.quantityRole === fact.quantityRole
+    && semantic.amount === fact.amount
+    && semantic.unitCode === fact.unitCode
+    && semantic.rangeStart === fact.rangeStart
+    && semantic.rangeEnd === fact.rangeEnd
+    && semantic.perOccurrence === fact.perOccurrence
+    && semantic.periodExpression === fact.periodExpression;
 }
 
 export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
@@ -105,8 +121,10 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   const tasks = new Map(active.tasks.map((task) => [task.id, task]));
   const components = new Map(active.components.map((component) => [component.id, component]));
+  const workloads = new Map(active.workloads.map((workload) => [workload.id, workload]));
   const taskFactIdByLocalId: Record<string, string> = {};
   const componentFactIdByLocalId: Record<string, string> = {};
+  const workloadFactIdByLocalId: Record<string, string> = {};
   const boundFactIds = new Set<string>();
   const errors: string[] = [];
 
@@ -150,5 +168,59 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
     }
   }
 
-  return { taskFactIdByLocalId, componentFactIdByLocalId, errors };
+  const bindWorkload = (paramsForWorkload: {
+    semantic: SemanticWorkloadV5;
+    taskId: string | null;
+    componentId: string | null;
+  }): void => {
+    if (!paramsForWorkload.taskId) return;
+    const exactIdCandidate = workloads.get(paramsForWorkload.semantic.localId);
+    const candidates = exactIdCandidate
+      && exactIdCandidate.taskId === paramsForWorkload.taskId
+      && exactIdCandidate.componentId === paramsForWorkload.componentId
+      && sameWorkloadMeaning(paramsForWorkload.semantic, exactIdCandidate)
+      ? [exactIdCandidate]
+      : active.workloads.filter((candidate) =>
+          candidate.taskId === paramsForWorkload.taskId
+          && candidate.componentId === paramsForWorkload.componentId
+          && sameWorkloadMeaning(paramsForWorkload.semantic, candidate));
+    if (candidates.length === 0) return;
+    if (candidates.length > 1) {
+      errors.push(
+        `existing-workload-binding-ambiguous:${paramsForWorkload.semantic.localId}:${candidates.map((candidate) => candidate.id).join(',')}`,
+      );
+      return;
+    }
+    const candidate = candidates[0];
+    if (boundFactIds.has(candidate.id)) {
+      errors.push(`existing-fact-bound-twice:${candidate.id}`);
+      return;
+    }
+    boundFactIds.add(candidate.id);
+    workloadFactIdByLocalId[paramsForWorkload.semantic.localId] = candidate.id;
+  };
+
+  for (const task of params.document.tasks) {
+    const resolvedTaskId = taskFactIdByLocalId[task.localId] ?? null;
+    for (const workload of task.workloads) {
+      bindWorkload({ semantic: workload, taskId: resolvedTaskId, componentId: null });
+    }
+    for (const component of task.study?.components ?? []) {
+      const resolvedComponentId = componentFactIdByLocalId[component.localId] ?? null;
+      for (const workload of component.workloads) {
+        bindWorkload({
+          semantic: workload,
+          taskId: resolvedTaskId,
+          componentId: resolvedComponentId,
+        });
+      }
+    }
+  }
+
+  return {
+    taskFactIdByLocalId,
+    componentFactIdByLocalId,
+    workloadFactIdByLocalId,
+    errors,
+  };
 }
