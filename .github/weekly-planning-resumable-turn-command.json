@@ -1,9 +1,9 @@
 {
   "scenario": "context-reference-adult-formal",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "資格試験の問題集を120問進めたいと考えております。",
-  "previous_run_id": null,
+  "user_text": "こちらは来週末までに。まだほとんど着手できておりません。",
+  "previous_run_id": 31931706634,
   "conversation_id": "weekly-luna-context-adult-formal-01",
   "owner_id": "real-api-context-adult-formal-01",
   "week_start_date": "2026-08-17",
