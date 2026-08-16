@@ -73,14 +73,14 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     }));
   });
 
-  it('preserves an already structured bounded unit instead of replacing it with percentage', () => {
+  it('uses a fixed total-scope fact as the bounded progress unit', () => {
     const boundedPlanningInformation = {
       ...planningInformation,
       workloads: [{
-        id: 'workload-problems',
+        id: 'workload-total-problems',
         taskId: 'task-slides',
         componentId: null,
-        quantityRole: 'target',
+        quantityRole: 'scope_total',
         amount: 40,
         unitCode: 'problem',
         unitLabel: '問',
