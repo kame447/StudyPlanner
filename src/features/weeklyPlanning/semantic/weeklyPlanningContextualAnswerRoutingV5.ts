@@ -5,9 +5,10 @@ import type {
   WeeklyPlanningPendingQuestionV5,
 } from './weeklyPlanningPendingQuestionV5';
 
-function hasDurationAnswer(document: WeeklyPlanningSemanticDocumentV5): boolean {
-  return document.tasks.some((task) => task.effortEstimates.some((estimate) =>
-    Number.isFinite(estimate.minutes) && estimate.minutes > 0));
+function effortKinds(document: WeeklyPlanningSemanticDocumentV5): string[] {
+  return document.tasks.flatMap((task) => task.effortEstimates
+    .filter((estimate) => Number.isFinite(estimate.minutes) && estimate.minutes > 0)
+    .map((estimate) => estimate.kind));
 }
 
 function hasQuantityRoleAnswer(document: WeeklyPlanningSemanticDocumentV5): boolean {
@@ -50,7 +51,16 @@ export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
   if (params.pendingQuestion.questionCode === 'semantic_uncertainty') return true;
 
   if (params.pendingQuestion.questionCode === 'missing_effort_estimate') {
-    if (hasDurationAnswer(params.document)) return true;
+    const kinds = effortKinds(params.document);
+    if (kinds.length > 0) {
+      // The pending question may provide a binding target, but it must never
+      // overwrite the semantic AI's explicit measurement. A reply such as
+      // "1枚あたり8分" is duration_per_unit even when the pending question
+      // asked for total_duration. Route a different explicit measurement
+      // through normal canonicalization so the fact is preserved as stated.
+      return kinds.length === 1
+        && kinds[0] === params.pendingQuestion.effortMeasurement;
+    }
     return !hasIndependentSemanticDelta(params.document);
   }
 
