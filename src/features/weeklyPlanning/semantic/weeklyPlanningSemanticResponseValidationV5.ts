@@ -82,7 +82,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...planningWindowCanonicalValueErrors(document.planningWindow),
     ...validateWeeklyPlanningTemporalClockEncodingV5(document),
     ...validateWeeklyPlanningWeekdayEncodingV5(document),
-    ...validateWeeklyPlanningCorrectionTargetReferencesV5(document),
+    ...validateWeeklyPlanningCorrectionTargetReferencesV5(
+      document,
+      input.publicStateSummary,
+    ),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
       document,
       publicStateSummary: input.publicStateSummary,

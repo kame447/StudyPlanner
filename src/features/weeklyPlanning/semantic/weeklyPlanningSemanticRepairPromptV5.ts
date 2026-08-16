@@ -36,6 +36,9 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('.target:requires-id'))) {
     directives.push('A correction target must use an exact existing publicId or a localId declared in this response; mention alone is not a target. If currentUserText introduces a new fact instead of changing an identified fact, remove that correction and keep the new fact.');
   }
+  if (errors.some((error) => error.includes('effort-measurement-mismatch'))) {
+    directives.push('Effort measurement kinds are independent facts. Do not replace one measurement kind with a different kind. If currentUserText adds another measurement, remove that replace correction and keep the new effort fact; if it explicitly retracts the old measurement, use a separate remove correction for the exact old target.');
+  }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
     directives.push('Bind continued accepted task/component identity with its exact existingPublicId; null is only for a genuinely new entity.');
   }
