@@ -33,6 +33,9 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
     directives.push('Declare missing replacement facts from currentUserText in a schema-valid task/component and keep valid fields. Point correction.replacementLocalId to each fresh localId. Reuse exact existingPublicIds only for accepted parent identity; targetLocalId must reference a fresh localId declared here.');
   }
+  if (errors.some((error) => error.includes('.target:requires-id'))) {
+    directives.push('A correction target must use an exact existing publicId or a localId declared in this response; mention alone is not a target. If currentUserText introduces a new fact instead of changing an identified fact, remove that correction and keep the new fact.');
+  }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
     directives.push('Bind continued accepted task/component identity with its exact existingPublicId; null is only for a genuinely new entity.');
   }

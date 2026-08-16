@@ -1,4 +1,7 @@
 import {
+  validateWeeklyPlanningCorrectionTargetReferencesV5,
+} from './weeklyPlanningCorrectionReferenceValidationV5';
+import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -79,6 +82,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...planningWindowCanonicalValueErrors(document.planningWindow),
     ...validateWeeklyPlanningTemporalClockEncodingV5(document),
     ...validateWeeklyPlanningWeekdayEncodingV5(document),
+    ...validateWeeklyPlanningCorrectionTargetReferencesV5(document),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
       document,
       publicStateSummary: input.publicStateSummary,
