@@ -1,11 +1,11 @@
 {
-  "scenario": "context-reference-proposal-formal",
-  "turn": 2,
+  "scenario": "context-reference-true-ambiguity",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "その方針でお願いいたします。期限は金曜日までで。",
-  "previous_run_id": 31932641949,
-  "conversation_id": "weekly-luna-context-proposal-formal-01",
-  "owner_id": "real-api-context-proposal-formal-01",
+  "user_text": "数学の問題集80問と物理の問題集60問やりたい",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-context-true-ambiguity-01",
+  "owner_id": "real-api-context-true-ambiguity-01",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
