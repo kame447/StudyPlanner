@@ -1,9 +1,9 @@
 {
-  "scenario": "checkpoint-loop-03-short-duration-answer",
-  "turn": 3,
+  "scenario": "checkpoint-loop-04-calibration-acceptance",
+  "turn": 4,
   "attempt": 1,
-  "user_text": "20分くらい",
-  "previous_run_id": 31934206598,
+  "user_text": "うん、それで",
+  "previous_run_id": 31934253679,
   "conversation_id": "weekly-luna-checkpoint-10loop-01",
   "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
