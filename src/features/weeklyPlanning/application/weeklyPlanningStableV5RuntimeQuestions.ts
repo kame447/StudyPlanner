@@ -9,6 +9,69 @@ function isSchedulableWorkload(workload: WorkloadFactV5): boolean {
   return workload.quantityRole !== 'completed' && workload.quantityRole !== 'scope_total';
 }
 
+function workloadsForTarget(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): WorkloadFactV5[] {
+  return params.workloads.filter((workload) =>
+    params.targetKind === 'component'
+      ? workload.componentId === params.targetFactId
+      : workload.taskId === params.targetFactId && workload.componentId === null);
+}
+
+function isPercentageCompletion(workload: WorkloadFactV5): boolean {
+  return workload.quantityRole === 'completed'
+    && workload.unitCode === 'custom'
+    && workload.unitLabel.trim() === '%'
+    && workload.amount >= 100;
+}
+
+function sameBoundedUnit(left: WorkloadFactV5, right: WorkloadFactV5): boolean {
+  return left.unitCode === right.unitCode
+    && left.unitLabel.trim() === right.unitLabel.trim();
+}
+
+function targetIsComplete(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): boolean {
+  const scoped = workloadsForTarget(params);
+  if (scoped.some(isPercentageCompletion)) return true;
+
+  const totals = scoped.filter((workload) => workload.quantityRole === 'scope_total');
+  const completed = scoped.filter((workload) => workload.quantityRole === 'completed');
+  return totals.some((total) => completed.some((done) =>
+    sameBoundedUnit(total, done) && done.amount >= total.amount));
+}
+
+function taskIsComplete(params: {
+  taskId: string;
+  workloads: readonly WorkloadFactV5[];
+  components: readonly WeeklyPlanningFactGraphV5['components'][number][];
+}): boolean {
+  if (targetIsComplete({
+    workloads: params.workloads,
+    targetFactId: params.taskId,
+    targetKind: 'task',
+  })) return true;
+
+  const taskComponents = params.components.filter((component) => component.taskId === params.taskId);
+  if (taskComponents.length === 0) return false;
+  const parentIds = new Set(
+    taskComponents
+      .map((component) => component.parentComponentId)
+      .filter((componentId): componentId is string => Boolean(componentId)),
+  );
+  const leaves = taskComponents.filter((component) => !parentIds.has(component.id));
+  return leaves.length > 0 && leaves.every((component) => targetIsComplete({
+    workloads: params.workloads,
+    targetFactId: component.id,
+    targetKind: 'component',
+  }));
+}
+
 function scopeTotalForTarget(params: {
   workloads: readonly WorkloadFactV5[];
   targetFactId: string;
@@ -65,13 +128,26 @@ export function stableV5MissingSchedulableWorkQuestion(
 
   const componentById = new Map(active.components.map((component) => [component.id, component]));
   const componentsCoveredByWorkload = new Set<string>();
-  active.workloads.filter(isSchedulableWorkload).forEach((workload) => {
-    let componentId = workload.componentId;
+  const markComponentAndAncestorsCovered = (initialComponentId: string | null): void => {
+    let componentId = initialComponentId;
     while (componentId && !componentsCoveredByWorkload.has(componentId)) {
       componentsCoveredByWorkload.add(componentId);
       componentId = componentById.get(componentId)?.parentComponentId ?? null;
     }
+  };
+  active.workloads.filter(isSchedulableWorkload).forEach((workload) => {
+    markComponentAndAncestorsCovered(workload.componentId);
   });
+  active.components.forEach((component) => {
+    if (targetIsComplete({
+      workloads: active.workloads,
+      targetFactId: component.id,
+      targetKind: 'component',
+    })) {
+      markComponentAndAncestorsCovered(component.id);
+    }
+  });
+
   const parentComponentIds = new Set(
     active.components
       .map((component) => component.parentComponentId)
@@ -113,7 +189,11 @@ export function stableV5MissingSchedulableWorkQuestion(
   const taskWithNoWorkload = active.tasks.find(
     (task) => !active.workloads.some(
       (workload) => workload.taskId === task.id && isSchedulableWorkload(workload),
-    ),
+    ) && !taskIsComplete({
+      taskId: task.id,
+      workloads: active.workloads,
+      components: active.components,
+    }),
   );
   if (taskWithNoWorkload) {
     return {
