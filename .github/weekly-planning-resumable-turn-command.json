@@ -1,11 +1,11 @@
 {
-  "scenario": "context-reference-slang-deictic",
-  "turn": 2,
+  "scenario": "context-reference-proposal-casual",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "こいつ金曜までな。できれば夜",
-  "previous_run_id": 31932213049,
-  "conversation_id": "weekly-luna-context-slang-deictic-01",
-  "owner_id": "real-api-context-slang-deictic-01",
+  "user_text": "TOEIC単語300語覚えたい",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-context-proposal-casual-01",
+  "owner_id": "real-api-context-proposal-casual-01",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
