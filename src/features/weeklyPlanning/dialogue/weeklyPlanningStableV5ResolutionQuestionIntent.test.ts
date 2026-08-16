@@ -39,8 +39,8 @@ describe('Stable V5 resolution question intents', () => {
     ['conflicting_task_date_rule', 'task_date_rule_conflict', 'allowed_or_excluded_date_rule'],
     ['constraint_source_unavailable', 'constraint_source_choice', 'constraint_source'],
     ['active_constraint_source_missing', 'constraint_source_choice', 'constraint_source'],
-    ['orphan_relation_task', 'task_relation', 'valid_task_order_or_relation'],
-    ['self_relation', 'task_relation', 'valid_task_order_or_relation'],
+    ['orphan_relation_task', 'task_relation_reference', 'identify_relation_endpoints'],
+    ['self_relation', 'task_relation_self_reference', 'distinct_relation_endpoints'],
   ] as const)('maps %s to an explicit typed purpose', (questionCode, resolutionKind, requested) => {
     const intent = questionIntentForStableV5Dialogue({
       questionCode,
@@ -53,14 +53,26 @@ describe('Stable V5 resolution question intents', () => {
     }));
   });
 
-  it('does not turn relation repair into a task-addition decision', () => {
+  it('does not turn orphan relation repair into approval or task addition', () => {
     const intent = questionIntentForStableV5Dialogue({
       questionCode: 'orphan_relation_task',
       questionTarget: null,
     });
     expect(intent).toEqual(expect.objectContaining({
-      resolutionKind: 'task_relation',
-      requestedInformation: ['valid_task_order_or_relation'],
+      resolutionKind: 'task_relation_reference',
+      requestedInformation: ['identify_relation_endpoints'],
+      allowedChoices: [],
+    }));
+  });
+
+  it('asks for distinct endpoints when a relation points to the same task twice', () => {
+    const intent = questionIntentForStableV5Dialogue({
+      questionCode: 'self_relation',
+      questionTarget: null,
+    });
+    expect(intent).toEqual(expect.objectContaining({
+      resolutionKind: 'task_relation_self_reference',
+      requestedInformation: ['distinct_relation_endpoints'],
       allowedChoices: [],
     }));
   });
