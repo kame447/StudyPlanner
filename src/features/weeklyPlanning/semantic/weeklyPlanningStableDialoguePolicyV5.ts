@@ -2,6 +2,9 @@ import type {
   GenericSchedulerInputCompilationResult,
   GenericSchedulerInputIssue,
 } from './weeklyPlanningGenericSchedulerInput';
+import type {
+  WeeklyPlanningEffortMeasurementV5,
+} from './weeklyPlanningEffortQuestionPolicyV5';
 
 export const WEEKLY_PLANNING_STABLE_DIALOGUE_POLICY_VERSION_V5 =
   'weekly-planning-stable-dialogue-policy-v5' as const;
@@ -11,6 +14,7 @@ export interface WeeklyPlanningStableQuestionV5 {
   code: GenericSchedulerInputIssue['code'];
   factId: string | null;
   details: Record<string, string | number | boolean | null>;
+  effortMeasurement: WeeklyPlanningEffortMeasurementV5 | null;
 }
 
 export type WeeklyPlanningStableDialogueDecisionV5 =
@@ -78,6 +82,7 @@ function normalizeQuestion(
     code: issue.code,
     factId: issue.factId,
     details: { ...(issue.details ?? {}) },
+    effortMeasurement: null,
   };
 }
 
