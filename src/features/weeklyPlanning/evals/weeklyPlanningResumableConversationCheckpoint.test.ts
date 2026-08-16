@@ -109,6 +109,7 @@ export function createWeeklyPlanningResumableEvaluationState(params: {
     ...(params.savedPlanIds ?? []),
   ].filter((value, index, values) => value.trim() && values.indexOf(value) === index);
   const completed = params.lastAction === 'approve_drafts'
+    && params.previous?.stage === 'awaiting_approval'
     && savedPlanIds.length > 0
     && !params.planningState.pendingApproval
     && params.planningState.draftBlocks.every((block) => block.status !== 'draft');
@@ -276,11 +277,17 @@ describe('weeklyPlanningResumableConversationCheckpoint', () => {
     });
   });
 
-  it('marks approval with saved plan evidence as terminal completion', () => {
+  it('marks approval with saved plan evidence as terminal only after awaiting approval', () => {
     const value = checkpoint();
+    const awaitingApproval: WeeklyPlanningResumableEvaluationState = {
+      ...value.evaluation,
+      stage: 'awaiting_approval',
+      terminal: false,
+      lastAction: 'promote_preview',
+    };
     const completed = createWeeklyPlanningResumableEvaluationState({
       planningState: value.planningState,
-      previous: value.evaluation,
+      previous: awaitingApproval,
       lastAction: 'approve_drafts',
       savedPlanIds: ['plan-1'],
       now: '2026-08-06T14:05:00.000Z',
@@ -288,6 +295,22 @@ describe('weeklyPlanningResumableConversationCheckpoint', () => {
     expect(completed).toMatchObject({
       stage: 'completed_saved',
       terminal: true,
+      savedPlanIds: ['plan-1'],
+    });
+  });
+
+  it('does not allow saved-plan evidence to skip the preview and approval stages', () => {
+    const value = checkpoint();
+    const notCompleted = createWeeklyPlanningResumableEvaluationState({
+      planningState: value.planningState,
+      previous: value.evaluation,
+      lastAction: 'approve_drafts',
+      savedPlanIds: ['plan-1'],
+      now: '2026-08-06T14:05:00.000Z',
+    });
+    expect(notCompleted).toMatchObject({
+      stage: 'conversation_in_progress',
+      terminal: false,
       savedPlanIds: ['plan-1'],
     });
   });
