@@ -62,7 +62,6 @@ function pendingQuestionFromState(
   graphRevision: number,
 ): Record<string, unknown> | null {
   const context = state?.lastQuestionContext;
-  if (context?.kind === 'options') return null;
   const targetSlot = context?.targetSlot;
   if (!targetSlot?.startsWith('stable_v5:')) return null;
   const questionCode = targetSlot.slice('stable_v5:'.length).trim();
