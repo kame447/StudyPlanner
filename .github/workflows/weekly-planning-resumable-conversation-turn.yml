@@ -158,12 +158,25 @@ jobs:
           VITE_AI_MODEL: gpt-5.6-luna
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_MAX_PROCESS_REQUESTS: '4'
+          VITE_AI_EVAL_CAPTURE_METRICS: '1'
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
-        run: npm run observe:weekly-ai:conversation:turn
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          set -o pipefail
+          npm run observe:weekly-ai:conversation:turn 2>&1 | tee "$OUTPUT_DIR/ai-request-metrics.log"
+
+      - name: Summarize AI request metrics
+        if: ${{ always() && inputs.execute_action }}
+        run: |
+          if [ -f "$OUTPUT_DIR/ai-request-metrics.log" ]; then
+            node scripts/summarize-ai-eval-metrics.mjs \
+              "$OUTPUT_DIR/ai-request-metrics.log" \
+              "$OUTPUT_DIR/ai-request-metrics-summary.json"
+          fi
 
       - name: Record evaluation completion
         if: always()
-        run: echo "Evaluation details and the next required action are available in the uploaded artifact."
+        run: echo "Evaluation details, the next required action, and AI request metrics are available in the uploaded artifact."
 
       - name: Upload evaluation artifact
         if: always()

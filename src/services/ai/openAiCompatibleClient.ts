@@ -5,6 +5,10 @@ import {
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
+import {
+  recordOpenAiCompatibleRequestMetric,
+  utf8ByteLength,
+} from './openAiCompatibleClientMetrics';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -56,6 +60,7 @@ interface ChatCompletionResponse {
 interface AiProxyResponse {
   content?: string;
   error?: string;
+  usage?: ChatCompletionUsage;
 }
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 90_000;
@@ -175,6 +180,49 @@ function shouldCaptureEvalUsage(): boolean {
     .VITE_AI_EVAL_CAPTURE_USAGE?.trim() === '1';
 }
 
+function shouldCaptureEvalMetrics(): boolean {
+  const env = import.meta.env as Record<string, string | undefined>;
+  return env.VITE_AI_EVAL_CAPTURE_METRICS?.trim() === '1'
+    || env.VITE_AI_EVAL_CAPTURE_USAGE?.trim() === '1';
+}
+
+function requestPhase(
+  purpose: AiChatPurpose | undefined,
+  messages: ChatMessage[],
+): 'initial' | 'repair' | 'single' {
+  if (purpose !== 'weekly_planning_semantic_normalizer') return 'single';
+  return isSemanticRepairRequest(purpose, messages) ? 'repair' : 'initial';
+}
+
+function recordRequestMetric(params: {
+  purpose: AiChatPurpose | undefined;
+  messages: ChatMessage[];
+  model: string;
+  transport: 'direct' | 'proxy';
+  status: 'success' | 'failure';
+  requestBody: string;
+  responseContent?: string | null;
+  usage?: ChatCompletionUsage | null;
+  startedAtMs: number;
+}): void {
+  if (!shouldCaptureEvalMetrics()) return;
+  recordOpenAiCompatibleRequestMetric({
+    purpose: params.purpose ?? 'general',
+    phase: requestPhase(params.purpose, params.messages),
+    model: params.model,
+    transport: params.transport,
+    status: params.status,
+    requestBytes: utf8ByteLength(params.requestBody),
+    responseBytes: params.responseContent === undefined || params.responseContent === null
+      ? null
+      : utf8ByteLength(params.responseContent),
+    promptTokens: params.usage?.prompt_tokens ?? null,
+    completionTokens: params.usage?.completion_tokens ?? null,
+    totalTokens: params.usage?.total_tokens ?? null,
+    durationMs: Math.max(0, Date.now() - params.startedAtMs),
+  });
+}
+
 function claimProcessAiRequestBudget(): void {
   const limit = configuredProcessRequestLimit();
   if (limit === null) return;
@@ -254,6 +302,7 @@ export function createOpenAiCompatibleClient(
             ? {}
             : { max_completion_tokens: maxCompletionTokens }),
         };
+        const requestBody = JSON.stringify(proxyBody);
         const logModel = purpose ? `purpose:${purpose}` : config.model;
 
         try {
@@ -261,37 +310,58 @@ export function createOpenAiCompatibleClient(
             ? proxyUrl
             : `${proxyUrl.replace(/\/$/, '')}/chat/completions`;
           claimProcessAiRequestBudget();
-          return await runFetchWithTimeout(
-            endpoint,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+          const startedAtMs = Date.now();
+          try {
+            const result = await runFetchWithTimeout(
+              endpoint,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: requestBody,
               },
-              body: JSON.stringify(proxyBody),
-            },
-            requestTimeoutMs,
-            async (response) => {
-              const result = (await response.json()) as AiProxyResponse;
-              const proxiedContent = result.content?.trim();
+              requestTimeoutMs,
+              async (response) => (await response.json()) as AiProxyResponse,
+            );
+            const proxiedContent = result.content?.trim();
 
-              if (!proxiedContent) {
-                const responseMessage =
-                  result.error || `AI proxy request failed with status ${response.status}.`;
+            if (!proxiedContent) {
+              const responseMessage =
+                result.error || 'AI proxy response did not include content.';
+              console.error('[AI Proxy] response content missing', {
+                proxyUrl: endpoint,
+                responseMessage,
+                model: logModel,
+              });
+              throw new Error(responseMessage);
+            }
 
-                console.error('[AI Proxy] response content missing', {
-                  proxyUrl: endpoint,
-                  responseMessage,
-                  model: logModel,
-                });
-
-                throw new Error(responseMessage);
-              }
-
-              return proxiedContent;
-            },
-          );
+            recordRequestMetric({
+              purpose,
+              messages,
+              model: logModel,
+              transport: 'proxy',
+              status: 'success',
+              requestBody,
+              responseContent: proxiedContent,
+              usage: result.usage ?? null,
+              startedAtMs,
+            });
+            return proxiedContent;
+          } catch (error) {
+            recordRequestMetric({
+              purpose,
+              messages,
+              model: logModel,
+              transport: 'proxy',
+              status: 'failure',
+              requestBody,
+              startedAtMs,
+            });
+            throw error;
+          }
         } catch (error) {
           const responseMessage = extractUnknownErrorMessage(
             error,
@@ -320,44 +390,71 @@ export function createOpenAiCompatibleClient(
           ? {}
           : { max_completion_tokens: maxCompletionTokens }),
       };
+      const requestBody = JSON.stringify(payload);
       claimProcessAiRequestBudget();
-      return runFetchWithTimeout(
-        `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
+      const startedAtMs = Date.now();
+      try {
+        const result = await runFetchWithTimeout(
+          `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${config.apiKey}`,
+            },
+            body: requestBody,
           },
-          body: JSON.stringify(payload),
-        },
-        requestTimeoutMs,
-        async (response) => {
-          if (!response.ok) {
-            throw new Error(await directProviderErrorMessage(response));
-          }
+          requestTimeoutMs,
+          async (response) => {
+            if (!response.ok) {
+              throw new Error(await directProviderErrorMessage(response));
+            }
 
-          const data = (await response.json()) as ChatCompletionResponse;
-          const content = data.choices?.[0]?.message?.content?.trim();
+            const data = (await response.json()) as ChatCompletionResponse;
+            const content = data.choices?.[0]?.message?.content?.trim();
 
-          if (shouldCaptureEvalUsage()) {
-            console.info('[AI Eval Usage]', JSON.stringify({
-              purpose: purpose ?? 'general',
-              phase: purpose === 'weekly_planning_semantic_normalizer'
-                ? (semanticRepair ? 'repair' : 'initial')
-                : 'single',
-              model: directModel,
-              usage: data.usage ?? null,
-            }));
-          }
+            if (!content) {
+              throw new Error('AI response was empty.');
+            }
 
-          if (!content) {
-            throw new Error('AI response was empty.');
-          }
+            return { content, usage: data.usage ?? null };
+          },
+        );
 
-          return content;
-        },
-      );
+        if (shouldCaptureEvalUsage()) {
+          console.info('[AI Eval Usage]', JSON.stringify({
+            purpose: purpose ?? 'general',
+            phase: purpose === 'weekly_planning_semantic_normalizer'
+              ? (semanticRepair ? 'repair' : 'initial')
+              : 'single',
+            model: directModel,
+            usage: result.usage,
+          }));
+        }
+        recordRequestMetric({
+          purpose,
+          messages,
+          model: directModel,
+          transport: 'direct',
+          status: 'success',
+          requestBody,
+          responseContent: result.content,
+          usage: result.usage,
+          startedAtMs,
+        });
+        return result.content;
+      } catch (error) {
+        recordRequestMetric({
+          purpose,
+          messages,
+          model: directModel,
+          transport: 'direct',
+          status: 'failure',
+          requestBody,
+          startedAtMs,
+        });
+        throw error;
+      }
     },
   };
 }
