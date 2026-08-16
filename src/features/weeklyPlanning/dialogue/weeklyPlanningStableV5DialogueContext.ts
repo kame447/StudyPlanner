@@ -135,6 +135,124 @@ function effortMeasurement(value: unknown) {
     : null;
 }
 
+function targetFactId(
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>,
+): string | null {
+  return typeof questionTarget?.fact.id === 'string' ? questionTarget.fact.id : null;
+}
+
+function resolutionIntent(params: {
+  questionCode: string;
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+}) {
+  const fact = params.questionTarget?.fact;
+  const id = targetFactId(params.questionTarget);
+  const base = {
+    kind: 'resolution_question' as const,
+    targetFactId: id,
+    allowedChoices: [] as const,
+    knownAmount: null as number | null,
+    knownUnitLabel: null as string | null,
+    ambiguityField: null as string | null,
+    ambiguityReason: null as string | null,
+  };
+
+  switch (params.questionCode) {
+    case 'semantic_uncertainty':
+      return {
+        ...base,
+        resolutionKind: 'semantic_clarification' as const,
+        requestedInformation: ['clarify_ambiguous_meaning'] as const,
+        ambiguityField: typeof fact?.field === 'string' ? fact.field : null,
+        ambiguityReason: typeof fact?.reason === 'string' ? fact.reason : null,
+      };
+    case 'invalid_planning_horizon':
+      return {
+        ...base,
+        resolutionKind: 'planning_horizon' as const,
+        requestedInformation: ['planning_period'] as const,
+      };
+    case 'ambiguous_planning_window':
+      return {
+        ...base,
+        resolutionKind: 'planning_window_choice' as const,
+        requestedInformation: ['single_planning_window'] as const,
+      };
+    case 'quantity_role_unresolved':
+      return {
+        ...base,
+        resolutionKind: 'quantity_role' as const,
+        requestedInformation: ['quantity_role'] as const,
+        allowedChoices: ['plan_target_amount', 'remaining_total_amount'] as const,
+        knownAmount: typeof fact?.amount === 'number' && Number.isFinite(fact.amount)
+          ? fact.amount
+          : null,
+        knownUnitLabel: typeof fact?.unitLabel === 'string' ? fact.unitLabel : null,
+      };
+    case 'ambiguous_effort_estimate':
+      return {
+        ...base,
+        resolutionKind: 'effort_estimate_choice' as const,
+        requestedInformation: ['choose_effort_estimate'] as const,
+      };
+    case 'missing_availability_date_scope':
+      return {
+        ...base,
+        resolutionKind: 'availability_date_scope' as const,
+        requestedInformation: ['availability_date_scope'] as const,
+      };
+    case 'missing_time_bounds':
+    case 'invalid_time_interval':
+      return {
+        ...base,
+        resolutionKind: 'time_bounds' as const,
+        requestedInformation: ['start_and_end_time'] as const,
+      };
+    case 'named_time_period_unresolved':
+      return {
+        ...base,
+        resolutionKind: 'named_time_period_bounds' as const,
+        requestedInformation: ['named_time_period_start_and_end'] as const,
+      };
+    case 'missing_commitment_date_scope':
+      return {
+        ...base,
+        resolutionKind: 'commitment_date_scope' as const,
+        requestedInformation: ['commitment_date'] as const,
+      };
+    case 'invalid_commitment_interval':
+      return {
+        ...base,
+        resolutionKind: 'commitment_time_bounds' as const,
+        requestedInformation: ['commitment_start_and_end_time'] as const,
+      };
+    case 'conflicting_task_date_rule':
+      return {
+        ...base,
+        resolutionKind: 'task_date_rule_conflict' as const,
+        requestedInformation: ['allowed_or_excluded_date_rule'] as const,
+        allowedChoices: ['allowed_date', 'excluded_date'] as const,
+      };
+    case 'constraint_source_unavailable':
+    case 'active_constraint_source_missing':
+      return {
+        ...base,
+        resolutionKind: 'constraint_source_choice' as const,
+        requestedInformation: ['constraint_source'] as const,
+        allowedChoices: ['timetable', 'existing_plans', 'calendar'] as const,
+      };
+    case 'orphan_relation_task':
+    case 'self_relation':
+      return {
+        ...base,
+        resolutionKind: 'task_relation' as const,
+        requestedInformation: ['valid_task_order_or_relation'] as const,
+      };
+    default:
+      return null;
+  }
+}
+
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
@@ -168,27 +286,33 @@ export function questionIntentForStableV5Dialogue(params: {
 
   const measurement = effortMeasurement(params.effortMeasurement);
   if (
-    params.questionCode !== 'missing_effort_estimate'
-    || params.questionTarget?.collection !== 'workloads'
-    || typeof fact?.id !== 'string'
-    || typeof fact.amount !== 'number'
-    || !Number.isFinite(fact.amount)
-    || fact.amount <= 0
-    || typeof fact.unitCode !== 'string'
-    || measurement === null
+    params.questionCode === 'missing_effort_estimate'
+    && params.questionTarget?.collection === 'workloads'
+    && typeof fact?.id === 'string'
+    && typeof fact.amount === 'number'
+    && Number.isFinite(fact.amount)
+    && fact.amount > 0
+    && typeof fact.unitCode === 'string'
+    && measurement !== null
   ) {
-    return null;
+    const role = quantityRole(fact.quantityRole);
+    return {
+      kind: 'effort_measurement',
+      measurement,
+      quantityRole: role,
+      targetFactId: fact.id,
+      amount: fact.amount,
+      unitCode: measurement === 'total_duration' ? null : fact.unitCode,
+      unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
+    } as const;
   }
-  const role = quantityRole(fact.quantityRole);
-  return {
-    kind: 'effort_measurement',
-    measurement,
-    quantityRole: role,
-    targetFactId: fact.id,
-    amount: fact.amount,
-    unitCode: measurement === 'total_duration' ? null : fact.unitCode,
-    unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
-  } as const;
+
+  return params.questionCode
+    ? resolutionIntent({
+        questionCode: params.questionCode,
+        questionTarget: params.questionTarget,
+      })
+    : null;
 }
 
 export function learningStrategyProposalIntentForStableV5Dialogue(params: {
