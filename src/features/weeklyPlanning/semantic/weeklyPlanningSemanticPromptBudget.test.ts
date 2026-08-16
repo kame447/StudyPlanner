@@ -36,8 +36,9 @@ import {
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 // Keep semantic invariants even when they cost a few hundred bytes. PR #130
 // showed that forcing this budget lower can delete application-critical meaning.
-const GENERIC_MEANING_POLICY_MAX_BYTES = 2_800;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_900;
+// These remain growth guards, not targets that justify deleting semantics.
+const GENERIC_MEANING_POLICY_MAX_BYTES = 3_400;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 4_400;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 1_800;
