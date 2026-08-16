@@ -56,9 +56,24 @@ export interface WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent {
   decisionRequested: 'accept_or_reject';
 }
 
+export interface WeeklyPlanningStableV5DialogueMixedAcquisitionReviewProposalIntent {
+  kind: 'learning_strategy_proposal';
+  proposalKind: 'mixed_acquisition_review';
+  targetFactId: string;
+  capacityReason: 'insufficient_capacity';
+  acquisitionMode: 'longer_sessions';
+  reviewMode: 'short_distributed_sessions';
+  reviewSessionDurationMinutes: {
+    min: number;
+    max: number;
+  };
+  decisionRequested: 'accept_or_reject';
+}
+
 export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
   | WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent
-  | WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent;
+  | WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent
+  | WeeklyPlanningStableV5DialogueMixedAcquisitionReviewProposalIntent;
 
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
