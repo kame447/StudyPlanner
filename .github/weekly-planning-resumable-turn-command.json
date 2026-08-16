@@ -1,7 +1,7 @@
 {
   "scenario": "luna-multiturn-short-answer-correction-20260816",
   "turn": 2,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "うん",
   "previous_run_id": 31920531732,
   "conversation_id": "weekly-luna-multiturn-short-answer-correction-20260816-01",
