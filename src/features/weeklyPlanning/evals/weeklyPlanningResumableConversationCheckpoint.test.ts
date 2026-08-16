@@ -15,6 +15,29 @@ import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanning
 export const WEEKLY_PLANNING_RESUMABLE_CONVERSATION_VERSION =
   'weekly-planning-resumable-conversation-v1' as const;
 
+export const WEEKLY_PLANNING_EVALUATION_STAGES = [
+  'conversation_in_progress',
+  'preview_ready',
+  'awaiting_approval',
+  'completed_saved',
+] as const;
+
+export type WeeklyPlanningEvaluationStage =
+  (typeof WEEKLY_PLANNING_EVALUATION_STAGES)[number];
+
+export type WeeklyPlanningEvaluationAction =
+  | 'submit_turn'
+  | 'promote_preview'
+  | 'approve_drafts';
+
+export interface WeeklyPlanningResumableEvaluationState {
+  stage: WeeklyPlanningEvaluationStage;
+  terminal: boolean;
+  lastAction: WeeklyPlanningEvaluationAction | null;
+  savedPlanIds: string[];
+  updatedAt: string;
+}
+
 export interface WeeklyPlanningResumableConversationTurn {
   index: number;
   userText: string;
@@ -35,6 +58,7 @@ export interface WeeklyPlanningResumableConversationCheckpoint {
   graph: WeeklyPlanningFactGraphV5;
   userPlanningContext: UserPlanningContextSnapshotV1;
   turns: WeeklyPlanningResumableConversationTurn[];
+  evaluation: WeeklyPlanningResumableEvaluationState;
   savedAt: string;
 }
 
@@ -65,6 +89,84 @@ function isTurn(value: unknown): value is WeeklyPlanningResumableConversationTur
     && Number.isSafeInteger(value.graphRevision)
     && Number(value.graphRevision) >= 0
     && isTimestamp(value.createdAt);
+}
+
+function evaluationStageFromPlanningState(state: PlanningState): WeeklyPlanningEvaluationStage {
+  if (state.draftBlocks.some((block) => block.status === 'draft')) return 'awaiting_approval';
+  if ((state.previewCandidates?.length ?? 0) > 0) return 'preview_ready';
+  return 'conversation_in_progress';
+}
+
+export function createWeeklyPlanningResumableEvaluationState(params: {
+  planningState: PlanningState;
+  previous?: WeeklyPlanningResumableEvaluationState;
+  lastAction: WeeklyPlanningEvaluationAction | null;
+  savedPlanIds?: readonly string[];
+  now?: string;
+}): WeeklyPlanningResumableEvaluationState {
+  const savedPlanIds = [
+    ...(params.previous?.savedPlanIds ?? []),
+    ...(params.savedPlanIds ?? []),
+  ].filter((value, index, values) => value.trim() && values.indexOf(value) === index);
+  const completed = params.lastAction === 'approve_drafts'
+    && savedPlanIds.length > 0
+    && !params.planningState.pendingApproval
+    && params.planningState.draftBlocks.every((block) => block.status !== 'draft');
+  return {
+    stage: completed
+      ? 'completed_saved'
+      : evaluationStageFromPlanningState(params.planningState),
+    terminal: completed,
+    lastAction: params.lastAction,
+    savedPlanIds,
+    updatedAt: params.now ?? new Date().toISOString(),
+  };
+}
+
+function parseEvaluationState(
+  value: unknown,
+  planningState: PlanningState,
+  savedAt: string,
+): WeeklyPlanningResumableEvaluationState {
+  if (value === undefined) {
+    return createWeeklyPlanningResumableEvaluationState({
+      planningState,
+      lastAction: null,
+      now: savedAt,
+    });
+  }
+  if (!isRecord(value)) throw new Error('Checkpoint evaluation state is invalid.');
+  if (!(WEEKLY_PLANNING_EVALUATION_STAGES as readonly unknown[]).includes(value.stage)) {
+    throw new Error('Checkpoint evaluation stage is invalid.');
+  }
+  if (typeof value.terminal !== 'boolean') {
+    throw new Error('Checkpoint evaluation terminal flag is invalid.');
+  }
+  if (
+    value.lastAction !== null
+    && value.lastAction !== 'submit_turn'
+    && value.lastAction !== 'promote_preview'
+    && value.lastAction !== 'approve_drafts'
+  ) {
+    throw new Error('Checkpoint evaluation action is invalid.');
+  }
+  if (
+    !Array.isArray(value.savedPlanIds)
+    || !value.savedPlanIds.every((id) => typeof id === 'string' && id.trim())
+    || !isTimestamp(value.updatedAt)
+  ) {
+    throw new Error('Checkpoint evaluation saved result is invalid.');
+  }
+  if (value.terminal !== (value.stage === 'completed_saved')) {
+    throw new Error('Checkpoint evaluation terminal stage is inconsistent.');
+  }
+  return {
+    stage: value.stage as WeeklyPlanningEvaluationStage,
+    terminal: value.terminal,
+    lastAction: value.lastAction as WeeklyPlanningEvaluationAction | null,
+    savedPlanIds: [...value.savedPlanIds] as string[],
+    updatedAt: value.updatedAt as string,
+  };
 }
 
 export function parseWeeklyPlanningResumableConversationCheckpoint(
@@ -110,6 +212,7 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
   if (planningState.pendingTurn || planningState.pendingApproval) {
     throw new Error('Checkpoint contains an in-flight operation.');
   }
+  const evaluation = parseEvaluationState(parsed.evaluation, planningState, parsed.savedAt);
   return {
     version: WEEKLY_PLANNING_RESUMABLE_CONVERSATION_VERSION,
     ownerId: parsed.ownerId,
@@ -120,6 +223,7 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
     graph: graphResult.graph,
     userPlanningContext,
     turns,
+    evaluation,
     savedAt: parsed.savedAt,
   };
 }
@@ -131,16 +235,22 @@ export function serializeWeeklyPlanningResumableConversationCheckpoint(
 }
 
 function checkpoint(): WeeklyPlanningResumableConversationCheckpoint {
+  const planningState = createInitialPlanningState('2026-08-03');
   return {
     version: WEEKLY_PLANNING_RESUMABLE_CONVERSATION_VERSION,
     ownerId: 'owner-1',
     conversationId: 'conversation-1',
     weekStartDate: '2026-08-03',
     selectedDate: '2026-08-06',
-    planningState: createInitialPlanningState('2026-08-03'),
+    planningState,
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     userPlanningContext: createEmptyUserPlanningContextSnapshotV1('owner-1'),
     turns: [],
+    evaluation: createWeeklyPlanningResumableEvaluationState({
+      planningState,
+      lastAction: null,
+      now: '2026-08-06T14:00:00.000Z',
+    }),
     savedAt: '2026-08-06T14:00:00.000Z',
   };
 }
@@ -151,6 +261,36 @@ describe('weeklyPlanningResumableConversationCheckpoint', () => {
     expect(parseWeeklyPlanningResumableConversationCheckpoint(
       serializeWeeklyPlanningResumableConversationCheckpoint(value),
     )).toEqual(value);
+  });
+
+  it('migrates an older checkpoint without evaluation metadata', () => {
+    const value = checkpoint() as WeeklyPlanningResumableConversationCheckpoint & {
+      evaluation?: WeeklyPlanningResumableEvaluationState;
+    };
+    delete value.evaluation;
+    const parsed = parseWeeklyPlanningResumableConversationCheckpoint(JSON.stringify(value));
+    expect(parsed.evaluation).toMatchObject({
+      stage: 'conversation_in_progress',
+      terminal: false,
+      lastAction: null,
+      savedPlanIds: [],
+    });
+  });
+
+  it('marks approval with saved plan evidence as terminal completion', () => {
+    const value = checkpoint();
+    const completed = createWeeklyPlanningResumableEvaluationState({
+      planningState: value.planningState,
+      previous: value.evaluation,
+      lastAction: 'approve_drafts',
+      savedPlanIds: ['plan-1'],
+      now: '2026-08-06T14:05:00.000Z',
+    });
+    expect(completed).toMatchObject({
+      stage: 'completed_saved',
+      terminal: true,
+      savedPlanIds: ['plan-1'],
+    });
   });
 
   it('rejects a checkpoint with a non-contiguous transcript', () => {
