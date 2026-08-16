@@ -82,7 +82,6 @@ function normalizeQuestion(
     code: issue.code,
     factId: issue.factId,
     details: { ...(issue.details ?? {}) },
-    effortMeasurement: null,
   };
 }
 
