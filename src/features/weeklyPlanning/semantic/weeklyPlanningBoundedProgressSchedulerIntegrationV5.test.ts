@@ -66,7 +66,12 @@ const remaining: WorkloadFactV5 = {
 describe('Stable V5 bounded progress scheduler integration', () => {
   it('never asks effort for the fixed total scope itself', () => {
     expect(scopeTotal.quantityRole).toBe('scope_total');
-    expect(createWeeklyPlanningEffortQuestionPlanV5(remaining)).toEqual({
+    expect(createWeeklyPlanningEffortQuestionPlanV5({
+      amount: remaining.amount,
+      unitCode: remaining.unitCode,
+      unitLabel: remaining.unitLabel,
+      quantityRole: 'remaining',
+    })).toEqual({
       kind: 'duration_per_unit',
       unitCode: 'page',
       sessionQuantities: [],
