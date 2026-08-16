@@ -160,7 +160,7 @@ function boundedWorkloadForTarget(params: {
     && typeof workload.unitCode === 'string'
     && typeof workload.unitLabel === 'string'
     && workload.unitLabel.trim().length > 0
-    && workload.quantityRole !== 'unknown') ?? null;
+    && (workload.quantityRole === 'target' || workload.quantityRole === 'remaining')) ?? null;
 }
 
 function resolutionIntent(params: {
