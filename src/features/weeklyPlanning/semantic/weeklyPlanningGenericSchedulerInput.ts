@@ -491,7 +491,7 @@ export function compileGenericSchedulerInput(params: {
 
   const movableTasksWithoutWorkload = params.graph.tasks.filter((task) =>
     !fixedTaskIds.has(task.id)
-    && !params.graph.workloads.some((workload) => workload.taskId === task.id));
+    && !aggregateMovableWorkItems.some((item) => item.taskId === task.id));
   if (movableTasksWithoutWorkload.length > 0) {
     return { status: 'needs_resolution', input: null, issues };
   }
