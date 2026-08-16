@@ -34,6 +34,10 @@ function sameScope(left: WorkloadFactV5, right: WorkloadFactV5): boolean {
   return left.taskId === right.taskId && left.componentId === right.componentId;
 }
 
+function scopeKey(fact: WorkloadFactV5): string {
+  return `${fact.taskId}|${fact.componentId ?? ''}`;
+}
+
 function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
   return new Set(
     graph.factLifecycles
@@ -113,6 +117,52 @@ function rejected(params: {
   };
 }
 
+function supersedePriorPercentageSnapshots(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  completed: WorkloadFactV5;
+  operationKeyPrefix: string;
+}): {
+  status: 'applied' | 'rejected';
+  graph: WeeklyPlanningFactGraphV5;
+  superseded: WeeklyPlanningFactDiffEntryV5[];
+  errors: string[];
+} {
+  let graph = params.graph;
+  const superseded: WeeklyPlanningFactDiffEntryV5[] = [];
+  const activeIds = activeFactIds(graph);
+  const previous = graph.workloads.filter((fact) =>
+    fact.id !== params.completed.id
+    && activeIds.has(fact.id)
+    && sameScope(fact, params.completed)
+    && fact.quantityRole === 'completed'
+    && isPercentageWorkload(fact));
+
+  for (const fact of previous) {
+    const lifecycle = applyWeeklyPlanningFactLifecycleOperationV5({
+      graph,
+      expectedRevision: graph.revision,
+      operation: {
+        operationKey: `${params.operationKeyPrefix}:percent-progress-snapshot:${fact.id}`,
+        kind: 'supersede',
+        targetFactId: fact.id,
+        replacementFactId: params.completed.id,
+      },
+    });
+    if (lifecycle.status === 'rejected') {
+      return {
+        status: 'rejected',
+        graph: params.graph,
+        superseded: [],
+        errors: lifecycle.errors,
+      };
+    }
+    graph = lifecycle.graph;
+    superseded.push(...lifecycle.superseded);
+  }
+
+  return { status: 'applied', graph, superseded, errors: [] };
+}
+
 export function projectWeeklyPlanningPercentageProgressV5(params: {
   originalGraph: WeeklyPlanningFactGraphV5;
   canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
@@ -131,19 +181,43 @@ export function projectWeeklyPlanningPercentageProgressV5(params: {
     diff.added.filter((entry) => entry.kind === 'workload').map((entry) => entry.id),
   );
   const activeIds = activeFactIds(graph);
-  const newCompletedPercentages = graph.workloads
-    .filter((fact) =>
-      newlyAddedIds.has(fact.id)
-      && activeIds.has(fact.id)
-      && fact.quantityRole === 'completed'
-      && isPercentageWorkload(fact))
-    .sort((left, right) => right.createdRevision - left.createdRevision);
+  const newCompletedPercentages = graph.workloads.filter((fact) =>
+    newlyAddedIds.has(fact.id)
+    && activeIds.has(fact.id)
+    && fact.quantityRole === 'completed'
+    && isPercentageWorkload(fact));
 
-  const processedScopes = new Set<string>();
+  const newByScope = new Map<string, WorkloadFactV5[]>();
   for (const completed of newCompletedPercentages) {
-    const scopeKey = `${completed.taskId}|${completed.componentId ?? ''}`;
-    if (processedScopes.has(scopeKey)) continue;
-    processedScopes.add(scopeKey);
+    const key = scopeKey(completed);
+    newByScope.set(key, [...(newByScope.get(key) ?? []), completed]);
+  }
+  for (const [key, candidates] of newByScope) {
+    if (candidates.length > 1) {
+      return rejected({
+        originalGraph: params.originalGraph,
+        canonicalization: params.canonicalization,
+        error: `percentage-progress-ambiguous-current-snapshot:${key}`,
+      });
+    }
+  }
+
+  for (const completed of newCompletedPercentages) {
+    const key = scopeKey(completed);
+    const snapshotUpdate = supersedePriorPercentageSnapshots({
+      graph,
+      completed,
+      operationKeyPrefix: params.operationKeyPrefix,
+    });
+    if (snapshotUpdate.status === 'rejected') {
+      return rejected({
+        originalGraph: params.originalGraph,
+        canonicalization: params.canonicalization,
+        error: `percentage-progress-snapshot:${snapshotUpdate.errors.join(',')}`,
+      });
+    }
+    graph = snapshotUpdate.graph;
+    superseded.push(...snapshotUpdate.superseded);
 
     const activeNow = activeFactIds(graph);
     const hasBoundedSchedulableWork = graph.workloads.some((fact) =>
@@ -162,7 +236,7 @@ export function projectWeeklyPlanningPercentageProgressV5(params: {
       return rejected({
         originalGraph: params.originalGraph,
         canonicalization: params.canonicalization,
-        error: `percentage-progress-ambiguous-remaining:${scopeKey}`,
+        error: `percentage-progress-ambiguous-remaining:${key}`,
       });
     }
 
