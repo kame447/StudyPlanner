@@ -72,25 +72,25 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput {
 }
 
 describe('Stable V5 dialogue state summary', () => {
-  it('separates durable decided facts from unresolved items', () => {
+  it('keeps accepted facts observable while separately marking downstream resolution needs', () => {
     const summary = createWeeklyPlanningStableV5DialogueStateSummary(input());
 
     expect(summary).toMatchObject({
-      decidedFacts: {
+      acceptedFacts: {
         revision: 4,
         planningWindows: expect.any(Array),
         tasks: [{ id: 'task-1', category: 'study', title: '院試' }],
         components: expect.any(Array),
-        workloads: [],
-        availabilityDeclarations: [],
-        constraintSourceRequests: [],
+        workloads: [expect.objectContaining({ quantityRole: 'unknown', amount: 3 })],
+        availabilityDeclarations: [expect.objectContaining({ resolutionStatus: 'unresolved' })],
+        constraintSourceRequests: [expect.objectContaining({ resolutionStatus: 'unresolved' })],
       },
       groundingContext: expect.any(Array),
-      undecidedItems: expect.any(Array),
+      resolutionPendingItems: expect.any(Array),
     });
     expect(summary).not.toHaveProperty('currentQuestion');
-    expect(summary.decidedFacts).not.toHaveProperty('uncertainties');
-    expect(summary.undecidedItems).toEqual(expect.arrayContaining([
+    expect(summary.acceptedFacts).not.toHaveProperty('uncertainties');
+    expect(summary.resolutionPendingItems).toEqual(expect.arrayContaining([
       expect.objectContaining({
         targetFactId: 'workload-1',
         field: 'quantityRole',
@@ -123,10 +123,14 @@ describe('Stable V5 dialogue state summary', () => {
     expect(payload).toMatchObject({
       currentUserMessage: 'どういうこと？',
       recentConversation: expect.any(Array),
+      currentTurnGrounding: {
+        mode: 'none',
+        acceptedFacts: [],
+      },
       planningStateSummary: {
-        decidedFacts: expect.any(Object),
+        acceptedFacts: expect.any(Object),
         groundingContext: expect.any(Array),
-        undecidedItems: expect.any(Array),
+        resolutionPendingItems: expect.any(Array),
       },
       applicationDecision: {
         actionKind: 'question',
