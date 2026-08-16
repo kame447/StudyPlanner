@@ -57,6 +57,27 @@ function graphWith(workloads: WorkloadFactV5[], revision = 2): WeeklyPlanningFac
   };
 }
 
+function withSemanticSnapshot(
+  graph: WeeklyPlanningFactGraphV5,
+  fact: WorkloadFactV5,
+): WeeklyPlanningFactGraphV5 {
+  return {
+    ...graph,
+    revision: fact.createdRevision,
+    workloads: [...graph.workloads, fact],
+    factLifecycles: [
+      ...graph.factLifecycles,
+      {
+        factId: fact.id,
+        status: 'active',
+        createdRevision: fact.createdRevision,
+        terminalRevision: null,
+        supersededByFactId: null,
+      },
+    ],
+  };
+}
+
 function applied(original: WeeklyPlanningFactGraphV5, next: WeeklyPlanningFactGraphV5, addedIds: string[]) {
   return {
     status: 'applied' as const,
@@ -148,6 +169,53 @@ describe('Stable V5 percentage progress projection', () => {
     expect(result.diff?.superseded).toEqual(expect.arrayContaining([
       { kind: 'workload', id: 'completed-60' },
       { kind: 'workload', id: 'remaining-40' },
+    ]));
+  });
+
+  it('can reopen remaining work after a 100 percent snapshot is corrected back below completion', () => {
+    const original = graphWith([], 1);
+    const completed60 = workload({ id: 'completed-60', role: 'completed', amount: 60, createdRevision: 2 });
+    const sixty = projectWeeklyPlanningPercentageProgressV5({
+      originalGraph: original,
+      canonicalization: applied(original, withSemanticSnapshot(original, completed60), [completed60.id]),
+      operationKeyPrefix: 'turn-60',
+    });
+    expect(activeWorkloads(sixty.graph)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'completed-60', amount: 60 }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 40, unitLabel: '%' }),
+    ]));
+
+    const completed100 = workload({
+      id: 'completed-100', role: 'completed', amount: 100, createdRevision: sixty.graph.revision + 1,
+    });
+    const hundredSemantic = withSemanticSnapshot(sixty.graph, completed100);
+    const hundred = projectWeeklyPlanningPercentageProgressV5({
+      originalGraph: sixty.graph,
+      canonicalization: applied(sixty.graph, hundredSemantic, [completed100.id]),
+      operationKeyPrefix: 'turn-100',
+    });
+    expect(activeWorkloads(hundred.graph)).toEqual([
+      expect.objectContaining({ id: 'completed-100', quantityRole: 'completed', amount: 100 }),
+    ]);
+
+    const completed90 = workload({
+      id: 'completed-90', role: 'completed', amount: 90, createdRevision: hundred.graph.revision + 1,
+    });
+    const ninetySemantic = withSemanticSnapshot(hundred.graph, completed90);
+    const ninety = projectWeeklyPlanningPercentageProgressV5({
+      originalGraph: hundred.graph,
+      canonicalization: applied(hundred.graph, ninetySemantic, [completed90.id]),
+      operationKeyPrefix: 'turn-correct-to-90',
+    });
+    const finalActive = activeWorkloads(ninety.graph);
+    expect(finalActive).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'completed-90', quantityRole: 'completed', amount: 90 }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 10, unitLabel: '%' }),
+    ]));
+    expect(finalActive).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'completed-100' }),
+      expect.objectContaining({ id: 'completed-60' }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 40 }),
     ]));
   });
 
