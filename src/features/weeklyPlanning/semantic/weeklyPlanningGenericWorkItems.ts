@@ -20,9 +20,9 @@ export type { GenericWorkItemEstimateBasis } from './weeklyPlanningGenericWorkEs
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
-export type GenericWorkloadFact = Omit<WorkloadFact, 'quantityRole'> & {
-  quantityRole: WorkloadFact['quantityRole'] | 'scope_total';
-};
+export type GenericWorkloadFact = WorkloadFact | (Omit<WorkloadFact, 'quantityRole'> & {
+  quantityRole: 'scope_total';
+});
 
 export interface WeeklyPlanningGenericWorkGraphView {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
