@@ -101,13 +101,21 @@ export interface WeeklyPlanningExistingEntityGraphBindingsV5 {
   errors: string[];
 }
 
+function sameWorkloadUnit(
+  semantic: SemanticWorkloadV5,
+  fact: WorkloadFactV5,
+): boolean {
+  return semantic.unitCode === fact.unitCode
+    || normalized(semantic.unitLabel) === normalized(fact.unitLabel);
+}
+
 function sameWorkloadMeaning(
   semantic: SemanticWorkloadV5,
   fact: WorkloadFactV5,
 ): boolean {
   return semantic.quantityRole === fact.quantityRole
     && semantic.amount === fact.amount
-    && semantic.unitCode === fact.unitCode
+    && sameWorkloadUnit(semantic, fact)
     && semantic.rangeStart === fact.rangeStart
     && semantic.rangeEnd === fact.rangeEnd
     && semantic.perOccurrence === fact.perOccurrence
