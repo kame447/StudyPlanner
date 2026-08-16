@@ -44,6 +44,35 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     });
   });
 
+  it('does not mistake a completed-only quantity for the total bounded scope', () => {
+    const completedOnly = {
+      ...planningInformation,
+      workloads: [{
+        id: 'workload-completed-pages',
+        taskId: 'task-slides',
+        componentId: null,
+        quantityRole: 'completed',
+        amount: 5,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      }],
+    };
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation: completedOnly,
+      targetFactId: 'task-slides',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget,
+      planningInformation: completedOnly,
+    })).toEqual(expect.objectContaining({
+      progressBasis: 'completion_progress_without_known_unit',
+      knownUnitCode: null,
+      knownUnitLabel: null,
+    }));
+  });
+
   it('preserves an already structured bounded unit instead of replacing it with percentage', () => {
     const boundedPlanningInformation = {
       ...planningInformation,
