@@ -5,6 +5,11 @@ import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningS
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
+export type WeeklyPlanningStableV5MissingWorkIntent =
+  | 'existing_target_progress'
+  | 'missing_task_identity'
+  | 'all_requested_work_complete';
+
 function isSchedulableWorkload(workload: WorkloadFactV5): boolean {
   return workload.quantityRole !== 'completed' && workload.quantityRole !== 'scope_total';
 }
@@ -102,6 +107,7 @@ export function stableV5MissingSchedulableWorkQuestion(
   questionCode: 'missing_schedulable_work';
   taskTitles: string[];
   targetFactId: string | null;
+  intent: WeeklyPlanningStableV5MissingWorkIntent;
 } {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
@@ -184,6 +190,7 @@ export function stableV5MissingSchedulableWorkQuestion(
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: componentWithNoWorkload.id,
+      intent: 'existing_target_progress',
     };
   }
   const taskWithNoWorkload = active.tasks.find(
@@ -208,13 +215,31 @@ export function stableV5MissingSchedulableWorkQuestion(
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: taskWithNoWorkload.id,
+      intent: 'existing_target_progress',
     };
   }
+
+  const allRequestedWorkComplete = active.tasks.length > 0 && active.tasks.every((task) => taskIsComplete({
+    taskId: task.id,
+    workloads: active.workloads,
+    components: active.components,
+  }));
+  if (allRequestedWorkComplete) {
+    return {
+      message: '指定された作業は完了済みです。予定に加えたい別の作業や、考慮したい予定・制約があれば教えてください。',
+      questionCode: 'missing_schedulable_work',
+      taskTitles,
+      targetFactId: null,
+      intent: 'all_requested_work_complete',
+    };
+  }
+
   return {
     message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
     targetFactId: null,
+    intent: 'missing_task_identity',
   };
 }
 
