@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  learningStrategyProposalIntentForStableV5Dialogue,
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
@@ -154,6 +155,35 @@ describe('Stable V5 dialogue context', () => {
       amount: 220,
       unitCode: 'word',
       unitLabel: '語',
+    });
+  });
+
+  it('projects the typed insufficient-capacity strategy without exposing scheduler internals', () => {
+    expect(learningStrategyProposalIntentForStableV5Dialogue({
+      questionCode: 'learning_strategy_proposal',
+      actionId: 'capacity-1',
+      proposalRecords: [{
+        id: 'capacity-1',
+        kind: 'mixed_acquisition_review',
+        workloadFactId: 'workload-vocabulary',
+        status: 'pending',
+        suggestedSessionMinutes: { min: 15, max: 30 },
+        capacityStrategy: {
+          trigger: 'insufficient_capacity',
+          acquisition: 'longer_sessions',
+          review: 'short_distributed_sessions',
+          unscheduledWorkItemIds: ['internal-item-1'],
+        },
+      }],
+    })).toEqual({
+      kind: 'learning_strategy_proposal',
+      proposalKind: 'mixed_acquisition_review',
+      targetFactId: 'workload-vocabulary',
+      capacityReason: 'insufficient_capacity',
+      acquisitionMode: 'longer_sessions',
+      reviewMode: 'short_distributed_sessions',
+      reviewSessionDurationMinutes: { min: 15, max: 30 },
+      decisionRequested: 'accept_or_reject',
     });
   });
 
