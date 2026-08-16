@@ -14,7 +14,7 @@ export interface WeeklyPlanningStableQuestionV5 {
   code: GenericSchedulerInputIssue['code'];
   factId: string | null;
   details: Record<string, string | number | boolean | null>;
-  effortMeasurement: WeeklyPlanningEffortMeasurementV5 | null;
+  effortMeasurement?: WeeklyPlanningEffortMeasurementV5 | null;
 }
 
 export type WeeklyPlanningStableDialogueDecisionV5 =
