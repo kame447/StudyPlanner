@@ -17,8 +17,8 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Choosing whether language denotes a task, subordinate component, or attachment target requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets.',
+    retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
+    instruction: 'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets. When an existingPublicId task/component appears only as the minimal containing shell for a newly stated nested fact, do not create a new breakdown requirement from that wrapper. If the current utterance itself newly makes an existing task structure unclear, represent that ambiguity explicitly as a work_breakdown uncertainty.',
   },
   {
     id: 'study_activity_kind',
