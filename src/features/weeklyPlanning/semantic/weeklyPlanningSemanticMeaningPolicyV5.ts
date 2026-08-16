@@ -35,8 +35,8 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Distinguishing target/progress quantities from duration or per-unit effort is meaning disambiguation, while validators only check a represented choice.',
-    instruction: 'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. When the user explicitly states completion progress as a percentage, represent that current progress as quantityRole=completed, unitCode=custom, unitLabel="%", with amount between 0 and 100; do not invent a page/problem/slide count. Distinguish workload from duration; per-unit effort only when stated.',
+    retentionReason: 'Distinguishing fixed total scope, plan target, current progress, remaining work, duration, and per-unit effort is meaning disambiguation, while validators only check a represented choice.',
+    instruction: 'Use quantityRole=scope_total only when the user states an externally/objectively bounded total size of the task itself (for example the whole assigned problem/page/item count), not merely the amount to do in this plan. target is the amount the user intends to advance in this plan; remaining is the amount currently left; completed is current completed progress. Keep stated amounts as declared/unknown when that role cannot be determined. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. When the user explicitly states completion progress as a percentage, represent that current progress as quantityRole=completed, unitCode=custom, unitLabel="%", with amount between 0 and 100; do not invent a page/problem/slide count. Distinguish workload from duration; per-unit effort only when stated.',
   },
   {
     id: 'temporal_scope_and_deadline',
