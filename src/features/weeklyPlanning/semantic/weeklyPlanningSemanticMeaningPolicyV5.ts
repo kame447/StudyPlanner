@@ -1,7 +1,7 @@
 export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
   return [
     'Interpret only supported current-turn meaning into semantic facts.',
-    'Treat learning work as study tasks. Preserve supported task/component structure; attach workload, effort, constraints, and context to what they modify. Create a component only for a separately meaningful user-supported subentity, not to duplicate a task or hold its sole workload.',
+    'Treat learning work as study tasks. Preserve supported task/component structure and attach workload, effort, constraints, and context to their target. Create components only for separately meaningful user-supported subentities.',
     'Classify study.activityKind by dominant work: memorization_retrieval for memorizing/recalling items, problem_solving for exercises, reading, writing, mixed when none dominates, otherwise other or unknown.',
     'For workload unitCode, select the supported standard unit whose semantic meaning matches the counted unit: minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session. Use custom only when none of those standard units matches. unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
     'Keep amount declared when target/remaining/completed is unclear. For one vague progress value, emit one root uncertainty, not both completed and remaining. Distinguish workload from duration; use per-unit effort only when stated.',
