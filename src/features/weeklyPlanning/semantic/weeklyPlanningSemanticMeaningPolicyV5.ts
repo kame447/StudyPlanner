@@ -10,7 +10,7 @@ export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
     'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty. Keep unrelated activities separate. Emit relations only when stated.',
     'Emit recurrence and external source requests only when explicit.',
     'Use learning_preference only for a durable preference beyond the current plan, not a choice limited to this plan.',
-    'Use corrections/decisions only when explicit. For a pending proposal, bind its decision to target.kind=proposal and its exact publicId.',
+    'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts. Use corrections/decisions only when explicit. For a pending proposal, bind its decision to target.kind=proposal and its exact publicId.',
   ].join('\n');
 }
 
