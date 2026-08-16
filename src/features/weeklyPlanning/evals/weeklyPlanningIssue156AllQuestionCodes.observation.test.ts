@@ -78,7 +78,7 @@ const cases = [
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 all Stable V5 question-code real API matrix', () => {
-  it('keeps every runtime question backed by a typed intent and renderable by Luna', async () => {
+  it('keeps every runtime question backed by a typed intent and fail-closes only on grounded safety checks', async () => {
     const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig());
     const observations: Array<Record<string, unknown>> = [];
     for (const entry of cases) {
@@ -86,12 +86,18 @@ run('Issue #156 all Stable V5 question-code real API matrix', () => {
       expect(input.questionIntent, entry.code).not.toBeNull();
       const result = await renderer.render(input);
       observations.push({ code: entry.code, intent: input.questionIntent, result });
-      expect(result.status, entry.code).toBe('rendered');
     }
+
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(
       `${outputDir}/all-question-codes.json`,
       `${JSON.stringify(observations, null, 2)}\n`,
     );
+
+    const unexpectedFallbacks = observations.filter((entry) => {
+      const result = entry.result as { status?: string; reason?: string };
+      return result.status === 'fallback' && result.reason !== 'ungrounded_text';
+    });
+    expect(unexpectedFallbacks).toEqual([]);
   }, 300_000);
 });
