@@ -5,10 +5,14 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   validateWeeklyPlanningCorrectionTargetReferencesV5,
+  validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
 import {
   createWeeklyPlanningSemanticRepairMessagesV5,
 } from './weeklyPlanningSemanticRepairPromptV5';
+import {
+  validateWeeklyPlanningSemanticResponseV5,
+} from './weeklyPlanningSemanticResponseValidationV5';
 
 function documentWithTarget(target: {
   publicId: string | null;
@@ -92,6 +96,13 @@ function documentWithEffortReplacement(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+const publicStateSummary = {
+  effortEstimates: [{
+    publicId: 'wpf_effort_per_unit',
+    kind: 'duration_per_unit',
+  }],
+};
+
 function repairPayload(errors: string[]): {
   requiredChanges?: string[];
   validationErrors?: string[];
@@ -140,12 +151,7 @@ describe('Stable V5 correction target reference validation', () => {
   it('rejects replacing an existing effort with a different measurement kind', () => {
     expect(validateWeeklyPlanningCorrectionTargetReferencesV5(
       documentWithEffortReplacement(),
-      {
-        effortEstimates: [{
-          publicId: 'wpf_effort_per_unit',
-          kind: 'duration_per_unit',
-        }],
-      },
+      publicStateSummary,
     )).toEqual([
       'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
     ]);
@@ -163,6 +169,40 @@ describe('Stable V5 correction target reference validation', () => {
     )).toEqual([]);
   });
 
+  it('detects a correction invariant even when an unrelated schema field is invalid', () => {
+    const document = documentWithEffortReplacement();
+    const rawResponse = JSON.stringify({
+      ...document,
+      tasks: document.tasks.map((task) => ({
+        ...task,
+        study: null,
+      })),
+    });
+
+    expect(validateWeeklyPlanningRawCorrectionTargetReferencesV5(
+      rawResponse,
+      publicStateSummary,
+    )).toEqual([
+      'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
+    ]);
+
+    const result = validateWeeklyPlanningSemanticResponseV5(rawResponse, {
+      publicStateSummary,
+    });
+    expect(result.document).toBeNull();
+    expect(result.errors).toEqual(expect.arrayContaining([
+      'document.tasks[0].study:required',
+      'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
+    ]));
+  });
+
+  it('does not turn malformed provider JSON into a correction-specific error', () => {
+    expect(validateWeeklyPlanningRawCorrectionTargetReferencesV5(
+      '{not-json',
+      publicStateSummary,
+    )).toEqual([]);
+  });
+
   it('tells repair not to resolve a lifecycle target from mention text', () => {
     const payload = repairPayload([
       'document.corrections[0].target:requires-id',
@@ -175,13 +215,15 @@ describe('Stable V5 correction target reference validation', () => {
     expect(payload.requiredChanges?.[0]).toContain('Preserve unrelated supported current-turn facts');
   });
 
-  it('tells repair to keep different effort measurements independent', () => {
+  it('tells repair to keep different effort measurements independent and fix every listed error', () => {
     const payload = repairPayload([
+      'document.tasks[0].study:required',
       'document.corrections[0]:effort-measurement-mismatch:duration_per_unit->session_duration',
     ]);
     expect(payload.requiredChanges).toHaveLength(1);
     expect(payload.requiredChanges?.[0]).toContain('Effort measurement kinds are independent facts');
     expect(payload.requiredChanges?.[0]).toContain('remove that replace correction and keep the new effort fact');
     expect(payload.requiredChanges?.[0]).toContain('separate remove correction');
+    expect(payload.requiredChanges?.[0]).toContain('Correct every listed validation failure');
   });
 });
