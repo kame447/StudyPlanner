@@ -8,6 +8,9 @@ import type {
 import {
   applyWeeklyPlanningExistingEntityBindingsV5,
 } from './weeklyPlanningExistingEntityBindingApplicationV5';
+import {
+  reconcileWeeklyPlanningProgressCorrectionsV5,
+} from './weeklyPlanningProgressCorrectionReconciliationV5';
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
@@ -137,9 +140,14 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: boundCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const progressReconciledCanonicalization = reconcileWeeklyPlanningProgressCorrectionsV5({
     originalGraph: params.originalGraph,
     canonicalization: correctionResult.canonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+    originalGraph: params.originalGraph,
+    canonicalization: progressReconciledCanonicalization,
   });
   return {
     entityBindingApplication,
