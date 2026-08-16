@@ -151,6 +151,18 @@ function effortFallbackText(
   return '指定した量を進めるのに、合計でどれくらい時間がかかりますか？';
 }
 
+function schedulableWorkFallbackText(
+  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
+): string {
+  if (intent.mode === 'missing_task_identity') {
+    return '予定に入れたい作業を一つ教えてください。';
+  }
+  if (intent.progressBasis === 'known_bounded_quantity' && intent.knownUnitLabel?.trim()) {
+    return `今は${intent.knownUnitLabel.trim()}でどのくらいまで進んでいますか？`;
+  }
+  return '完成を100%とすると、今はだいたい何%くらいまで進んでいますか？';
+}
+
 export function fallbackTextForStableV5TypedIntent(params: {
   applicationText: string;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
@@ -171,6 +183,9 @@ export function fallbackTextForStableV5TypedIntent(params: {
   }
   if (intent?.kind === 'effort_measurement') {
     return effortFallbackText(intent);
+  }
+  if (intent?.kind === 'schedulable_work_detail') {
+    return schedulableWorkFallbackText(intent);
   }
   return params.applicationText;
 }
@@ -203,6 +218,7 @@ function createRenderInput(params: {
   const questionIntent = proposalIntent ?? questionIntentForStableV5Dialogue({
     questionCode: params.questionCode,
     questionTarget,
+    planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
   });
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
