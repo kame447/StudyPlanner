@@ -1,11 +1,11 @@
 {
-  "scenario": "context-reference-student-ellipsis",
-  "turn": 2,
-  "attempt": 2,
-  "user_text": "来週まで。夜がいい",
-  "previous_run_id": 31931979790,
-  "conversation_id": "weekly-luna-context-student-ellipsis-01",
-  "owner_id": "real-api-context-student-ellipsis-01",
+  "scenario": "context-reference-slang-deictic",
+  "turn": 1,
+  "attempt": 1,
+  "user_text": "物理の問題集60問やる",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-context-slang-deictic-01",
+  "owner_id": "real-api-context-slang-deictic-01",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
