@@ -40,33 +40,53 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-function pendingEffort(): WeeklyPlanningPendingQuestionV5 {
+function pendingEffort(
+  effortMeasurement: WeeklyPlanningPendingQuestionV5['effortMeasurement'] = 'duration_per_unit',
+): WeeklyPlanningPendingQuestionV5 {
   return {
     actionId: null,
     questionCode: 'missing_effort_estimate',
     targetFactId: 'workload-public',
     graphRevision: 1,
-    effortMeasurement: 'duration_per_unit',
+    effortMeasurement,
   };
 }
 
 describe('Stable V5 contextual-answer routing', () => {
-  it('attempts exact effort binding when the semantic document contains one duration answer', () => {
+  it('attempts exact effort binding only when the semantic measurement matches the pending question', () => {
     const value = document();
     value.tasks[0].effortEstimates.push({
       localId: 'effort-1',
       targetLocalId: 'task-1',
-      kind: 'total_duration',
+      kind: 'duration_per_unit',
       minutes: 5,
-      unitCode: null,
+      unitCode: 'problem',
       precision: 'approximate',
-      sourceText: '5分くらい',
+      sourceText: '1問5分くらい',
     });
 
     expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
       document: value,
-      pendingQuestion: pendingEffort(),
+      pendingQuestion: pendingEffort('duration_per_unit'),
     })).toBe(true);
+  });
+
+  it('routes an explicitly different effort measurement through normal canonicalization', () => {
+    const value = document();
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-1',
+      targetLocalId: 'task-1',
+      kind: 'duration_per_unit',
+      minutes: 8,
+      unitCode: 'page',
+      precision: 'approximate',
+      sourceText: '1枚あたり8分くらい',
+    });
+
+    expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
+      document: value,
+      pendingQuestion: pendingEffort('total_duration'),
+    })).toBe(false);
   });
 
   it('routes deadline and progress meaning through normal canonicalization while effort remains unanswered', () => {
