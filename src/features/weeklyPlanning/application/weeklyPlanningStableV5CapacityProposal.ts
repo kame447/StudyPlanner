@@ -4,9 +4,11 @@ import type {
 import type {
   GenericSchedulerInputCompilationResult,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import type {
-  WeeklyPlanningStableV5PreviewSchedulerResult,
-} from '../semantic/weeklyPlanningStableV5PreviewScheduler';
+
+export interface WeeklyPlanningCapacityPreviewEvidenceV5 {
+  status: 'ready' | 'empty' | 'insufficient_capacity';
+  unscheduledWorkItemIds: readonly string[];
+}
 
 export interface WeeklyPlanningCapacityProposalEvaluationV5 {
   records: WeeklyPlanningLearningStrategyProposalRecord[];
@@ -16,7 +18,7 @@ export interface WeeklyPlanningCapacityProposalEvaluationV5 {
 export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
   records: readonly WeeklyPlanningLearningStrategyProposalRecord[];
   compilation: GenericSchedulerInputCompilationResult;
-  preview: WeeklyPlanningStableV5PreviewSchedulerResult;
+  preview: WeeklyPlanningCapacityPreviewEvidenceV5;
   graphRevision: number;
   turnId: string;
 }): WeeklyPlanningCapacityProposalEvaluationV5 {
