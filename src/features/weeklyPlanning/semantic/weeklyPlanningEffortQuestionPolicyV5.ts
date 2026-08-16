@@ -1,3 +1,8 @@
+export type WeeklyPlanningEffortMeasurementV5 =
+  | 'total_duration'
+  | 'duration_per_unit'
+  | 'session_duration';
+
 export interface WeeklyPlanningEffortQuestionWorkloadV5 {
   amount: number;
   unitCode: string;
@@ -6,9 +11,17 @@ export interface WeeklyPlanningEffortQuestionWorkloadV5 {
 }
 
 export interface WeeklyPlanningEffortQuestionPlanV5 {
-  kind: 'total_duration' | 'duration_per_unit' | 'session_duration';
+  kind: WeeklyPlanningEffortMeasurementV5;
   unitCode: string | null;
   sessionQuantities: number[];
+}
+
+export function isWeeklyPlanningEffortMeasurementV5(
+  value: unknown,
+): value is WeeklyPlanningEffortMeasurementV5 {
+  return value === 'total_duration'
+    || value === 'duration_per_unit'
+    || value === 'session_duration';
 }
 
 export function createWeeklyPlanningEffortQuestionPlanV5(
