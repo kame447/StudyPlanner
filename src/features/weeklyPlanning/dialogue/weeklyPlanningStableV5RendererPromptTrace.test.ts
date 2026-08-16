@@ -100,7 +100,7 @@ afterEach(() => {
 });
 
 describe('Stable V5 renderer prompt trace', () => {
-  it('captures the exact compact messages sent to the renderer', async () => {
+  it('captures the exact messages sent to the renderer', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => rawResponse()),
     };
@@ -117,13 +117,17 @@ describe('Stable V5 renderer prompt trace', () => {
     expect(userPayload).toMatchObject({
       currentUserMessage: 'どういうこと？',
       recentConversation: renderInput.recentConversation,
+      currentTurnGrounding: {
+        mode: 'none',
+        acceptedFacts: [],
+      },
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
       },
       planningStateSummary: {
-        decidedFacts: expect.any(Object),
-        undecidedItems: expect.any(Array),
+        acceptedFacts: expect.any(Object),
+        resolutionPendingItems: expect.any(Array),
       },
     });
     expect(
