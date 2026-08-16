@@ -52,7 +52,7 @@ describe('Stable V5 semantic repair prompt', () => {
     });
   });
 
-  it('keeps canonical relative-date handling in the shared meaning policy while repair stays local', () => {
+  it('keeps symbolic relative-date meaning in the shared policy while repair stays local', () => {
     const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: 'こちらは来週末までに。',
       publicStateSummary: {
@@ -72,7 +72,7 @@ describe('Stable V5 semantic repair prompt', () => {
     const system = messages[0]?.content ?? '';
 
     expect(system).toContain(
-      'Resolve relative dates from calendarContext to canonical dateExpression.',
+      'Keep relative dates symbolic; deterministic calendar code resolves them.',
     );
     expect(payload.requiredChanges).toEqual([
       'Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.',
