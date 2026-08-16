@@ -6,6 +6,9 @@ import {
   applyAcceptedMemorySessionProjectionV5,
 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
 import {
+  createWeeklyPlanningEffortQuestionPlanV5,
+} from '../semantic/weeklyPlanningEffortQuestionPolicyV5';
+import {
   compileGenericSchedulerInput,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
@@ -19,6 +22,7 @@ import {
 } from '../semantic/weeklyPlanningMemoryObservedPaceProjectionV5';
 import {
   decideWeeklyPlanningStableDialogueV5,
+  type WeeklyPlanningStableQuestionV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
   decideWeeklyPlanningStableRepairPolicyV5,
@@ -64,6 +68,31 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
 
 function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): boolean {
   return state?.lastQuestionContext?.targetSlot?.startsWith('stable_v5:') ?? false;
+}
+
+function withEffortMeasurement(params: {
+  graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
+  question: WeeklyPlanningStableQuestionV5;
+}): WeeklyPlanningStableQuestionV5 {
+  if (
+    params.question.code !== 'missing_effort_estimate'
+    || params.question.effortMeasurement
+  ) return params.question;
+
+  const workload = params.question.factId
+    ? params.graph.workloads.find((fact) => fact.id === params.question.factId) ?? null
+    : null;
+  if (!workload) return params.question;
+
+  return {
+    ...params.question,
+    effortMeasurement: createWeeklyPlanningEffortQuestionPlanV5({
+      amount: workload.amount,
+      unitCode: workload.unitCode,
+      unitLabel: workload.unitLabel,
+      quantityRole: workload.quantityRole,
+    }).kind,
+  };
 }
 
 export function evaluateWeeklyPlanningStableV5Planning(params: {
@@ -173,22 +202,27 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         && Number.isFinite(estimate.minutes)
         && estimate.minutes > 0)
     : false;
-  const memorySessionDurationQuestion = acceptedSpacedProposal
+  const memorySessionDurationQuestion: WeeklyPlanningStableQuestionV5 | null = acceptedSpacedProposal
     && !acceptedCalibration
     && !hasAcceptedMemorySessionDuration
     ? {
-        domain: 'work_item' as const,
-        code: 'missing_effort_estimate' as const,
+        domain: 'work_item',
+        code: 'missing_effort_estimate',
         factId: acceptedSpacedProposal.workloadFactId,
-        details: { measurement: 'session_duration' },
+        details: {},
+        effortMeasurement: 'session_duration',
       }
     : null;
   const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
-  const dialogue = repairDecision.question
-    ? { status: 'ask_question' as const, question: repairDecision.question }
-    : memorySessionDurationQuestion
-      ? { status: 'ask_question' as const, question: memorySessionDurationQuestion }
-      : baselineDialogue;
+  const selectedQuestion = repairDecision.question
+    ?? memorySessionDurationQuestion
+    ?? (baselineDialogue.status === 'ask_question' ? baselineDialogue.question : null);
+  const dialogue = selectedQuestion
+    ? {
+        status: 'ask_question' as const,
+        question: withEffortMeasurement({ graph: activeGraph, question: selectedQuestion }),
+      }
+    : baselineDialogue;
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
   const semanticChanged = Boolean(
     semanticDiff
