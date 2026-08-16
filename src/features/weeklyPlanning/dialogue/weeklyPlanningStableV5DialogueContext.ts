@@ -242,11 +242,16 @@ function resolutionIntent(params: {
         allowedChoices: ['timetable', 'existing_plans', 'calendar'] as const,
       };
     case 'orphan_relation_task':
+      return {
+        ...base,
+        resolutionKind: 'task_relation_reference' as const,
+        requestedInformation: ['identify_relation_endpoints'] as const,
+      };
     case 'self_relation':
       return {
         ...base,
-        resolutionKind: 'task_relation' as const,
-        requestedInformation: ['valid_task_order_or_relation'] as const,
+        resolutionKind: 'task_relation_self_reference' as const,
+        requestedInformation: ['distinct_relation_endpoints'] as const,
       };
     default:
       return null;
