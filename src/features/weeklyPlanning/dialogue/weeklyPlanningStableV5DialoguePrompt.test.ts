@@ -107,6 +107,12 @@ describe('Stable V5 dialogue prompt', () => {
       },
       request: expect.any(String),
     });
+    expect(String((payload as { request: string }).request)).toContain(
+      '直前の質問の意味・理由・何を答えるべきか',
+    );
+    expect(String((payload as { request: string }).request)).toContain(
+      '同じ質問を繰り返さず',
+    );
     expect(payload).not.toHaveProperty('planningInformation');
   });
 
@@ -115,6 +121,6 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
     expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(1000);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(1400);
   });
 });

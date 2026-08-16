@@ -51,6 +51,26 @@ describe('Stable V5 dialogue renderer validation', () => {
     )).toMatchObject({ status: 'rendered' });
   });
 
+  it('rejects an identical repeat of the most recent assistant question', () => {
+    const previousQuestion = '院試の第2分野について、今回進めたい量ですか？';
+    const renderInput = input({
+      currentUserMessage: 'その質問は何を確認したいの？',
+      recentConversation: [
+        { role: 'user', content: '院試を進めたい' },
+        { role: 'assistant', content: previousQuestion },
+      ],
+    });
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `  ${previousQuestion}\n`),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'repeated_question_text' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, '予定に入れる量を決めるための確認です。今回はどれくらい進めたいですか？'),
+      renderInput,
+    )).toMatchObject({ status: 'rendered' });
+  });
+
   it('rejects action identity and question contract changes', () => {
     const renderInput = input();
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(

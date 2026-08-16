@@ -128,6 +128,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'applicationDecisionを守り、自然な日本語を一つ返してください。',
       'decidedFactsは確定、undecidedItemsは未確定です。',
       '質問はquestionTarget/questionIntentの対象・目的・判断要求を変えず、一つだけ聞いてください。',
+      'currentUserMessageが直前の質問の意味・理由・何を答えるべきかを尋ねている場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明し、必要なら別の自然な表現で同じ情報を一つだけ尋ねてください。',
       'schedulable_work_detailはmodeを厳守してください。existing_target_scope_progressでは既存対象の全体範囲と現在の進捗を聞き、別の作業追加は聞かないでください。missing_task_identityでは予定に入れる作業そのものを聞いてください。',
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。',
