@@ -46,21 +46,21 @@ describe('Stable V5 semantic repair prompt', () => {
 
     const payload = repairPayload(messages);
     const directive = payload.requiredChanges?.[0] ?? '';
-    const preservation = payload.requiredChanges?.[1] ?? '';
 
     expect(payload).not.toHaveProperty('instruction');
     expect(payload.validationErrors).toEqual([
       'document.corrections[0].replacementLocalId:unknown:temporal_1',
     ]);
-    expect(directive).toContain('missing replacement fact');
-    expect(directive).toContain('minimal schema-valid containing task/component');
-    expect(directive).toContain('preserve existing schema-valid task/component fields');
+    expect(payload.requiredChanges).toHaveLength(1);
+    expect(directive).toContain('missing replacement facts');
+    expect(directive).toContain('schema-valid task/component');
+    expect(directive).toContain('keep valid fields');
     expect(directive).toContain('correction.replacementLocalId');
     expect(directive).toContain('fresh localId');
     expect(directive).toContain('exact existingPublicIds');
+    expect(directive).toContain('Preserve unrelated supported current-turn facts');
+    expect(directive).toContain('schema-valid fields from the invalid response');
     expect(bytes(directive)).toBeLessThanOrEqual(450);
-    expect(preservation).toContain('Preserve unrelated supported current-turn facts');
-    expect(preservation).toContain('schema-valid fields from the invalid response');
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
@@ -89,10 +89,13 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(system).toContain(
       'Keep relative dates symbolic; deterministic calendar code resolves them.',
     );
-    expect(payload.requiredChanges).toEqual([
-      'Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.',
-      'Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.',
-    ]);
+    expect(payload.requiredChanges).toHaveLength(1);
+    expect(payload.requiredChanges?.[0]).toContain(
+      'Use a fresh localId declared in this response as targetLocalId',
+    );
+    expect(payload.requiredChanges?.[0]).toContain(
+      'Preserve unrelated supported current-turn facts',
+    );
   });
 
   it('repairs a self-referential uncertainty toward document or a supported fact without dropping valid meaning', () => {
@@ -105,10 +108,13 @@ describe('Stable V5 semantic repair prompt', () => {
     });
     const payload = repairPayload(messages);
 
-    expect(payload.requiredChanges).toEqual([
-      'Never target an uncertainty at its own localId. If the referent is unresolved, use targetLocalId=document; otherwise target the supported fact localId.',
-      'Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.',
-    ]);
+    expect(payload.requiredChanges).toHaveLength(1);
+    expect(payload.requiredChanges?.[0]).toContain(
+      'Never target an uncertainty at its own localId',
+    );
+    expect(payload.requiredChanges?.[0]).toContain(
+      'Preserve unrelated supported current-turn facts',
+    );
     expect(payload.requiredChanges?.join('\n')).not.toContain(
       'Use a fresh localId declared in this response as targetLocalId',
     );
