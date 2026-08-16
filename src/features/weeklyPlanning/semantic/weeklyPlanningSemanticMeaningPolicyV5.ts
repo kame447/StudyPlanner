@@ -36,7 +36,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing target/progress quantities from duration or per-unit effort is meaning disambiguation, while validators only check a represented choice.',
-    instruction: 'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. Distinguish workload from duration; per-unit effort only when stated.',
+    instruction: 'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. When the user explicitly states completion progress as a percentage, represent that current progress as quantityRole=completed, unitCode=custom, unitLabel="%", with amount between 0 and 100; do not invent a page/problem/slide count. Distinguish workload from duration; per-unit effort only when stated.',
   },
   {
     id: 'temporal_scope_and_deadline',
