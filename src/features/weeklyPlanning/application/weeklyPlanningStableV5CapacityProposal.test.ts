@@ -5,11 +5,9 @@ import type {
 import type {
   GenericSchedulerInputCompilationResult,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import type {
-  WeeklyPlanningStableV5PreviewSchedulerResult,
-} from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import {
   evaluateWeeklyPlanningInsufficientCapacityProposalV5,
+  type WeeklyPlanningCapacityPreviewEvidenceV5,
 } from './weeklyPlanningStableV5CapacityProposal';
 
 function acceptedSpacing(): WeeklyPlanningLearningStrategyProposalRecord {
@@ -42,15 +40,10 @@ function compilation(): GenericSchedulerInputCompilationResult {
 }
 
 function preview(
-  status: WeeklyPlanningStableV5PreviewSchedulerResult['status'],
+  status: WeeklyPlanningCapacityPreviewEvidenceV5['status'],
   unscheduledWorkItemIds: string[],
-): WeeklyPlanningStableV5PreviewSchedulerResult {
-  return {
-    schedulerVersion: 'weekly-planning-stable-v5-preview-scheduler-v1',
-    status,
-    candidates: [],
-    unscheduledWorkItemIds,
-  };
+): WeeklyPlanningCapacityPreviewEvidenceV5 {
+  return { status, unscheduledWorkItemIds };
 }
 
 describe('Stable V5 insufficient-capacity learning proposal', () => {
