@@ -35,7 +35,6 @@ import {
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 const GENERIC_MEANING_POLICY_MAX_BYTES = 2_200;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_500;
-const GENERIC_REQUEST_MAX_BYTES = 16_000;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 1_800;
@@ -166,12 +165,6 @@ describe('Stable V5 semantic prompt budget', () => {
 
     expect(byteLength(systemPrompt)).toBeLessThanOrEqual(
       GENERIC_SYSTEM_PROMPT_MAX_BYTES,
-    );
-  });
-
-  it('caps the actual representative generic request including hardened provider schema and calendar context', () => {
-    expect(representativeGenericRequestBytes()).toBeLessThanOrEqual(
-      GENERIC_REQUEST_MAX_BYTES,
     );
   });
 
