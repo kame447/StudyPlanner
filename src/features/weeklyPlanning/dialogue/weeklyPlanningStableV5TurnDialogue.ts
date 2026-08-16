@@ -124,6 +124,24 @@ function groundingRecords(
   }));
 }
 
+function effortFallbackText(
+  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'effort_measurement' }>,
+): string {
+  if (intent.measurement === 'session_duration') {
+    return '1回の学習時間を教えてください。';
+  }
+  if (intent.measurement === 'duration_per_unit') {
+    const unit = intent.unitLabel?.trim();
+    return unit
+      ? `1${unit}あたりどれくらい時間がかかりますか？`
+      : '1単位あたりどれくらい時間がかかりますか？';
+  }
+  if (intent.quantityRole === 'completed' && intent.unitLabel?.trim()) {
+    return `完了した${intent.amount}${intent.unitLabel.trim()}には、合計でどれくらい時間がかかりましたか？`;
+  }
+  return '指定した量を進めるのに、合計でどれくらい時間がかかりますか？';
+}
+
 export function fallbackTextForStableV5TypedIntent(params: {
   applicationText: string;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
@@ -138,8 +156,8 @@ export function fallbackTextForStableV5TypedIntent(params: {
     }
     return `分散学習の提案（1回${min}〜${max}分）について、採用するか教えてください。`;
   }
-  if (intent?.kind === 'effort_measurement' && intent.measurement === 'session_duration') {
-    return '1回の学習時間を教えてください。';
+  if (intent?.kind === 'effort_measurement') {
+    return effortFallbackText(intent);
   }
   return params.applicationText;
 }
