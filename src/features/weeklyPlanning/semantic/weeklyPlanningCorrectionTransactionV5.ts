@@ -1,4 +1,8 @@
 import {
+  activeWeeklyPlanningWorkloadDependentsV5,
+  decideWeeklyPlanningWorkloadDependentMigrationV5,
+} from './weeklyPlanningCorrectionDependentMigrationPolicyV5';
+import {
   applyWeeklyPlanningCorrectionIntentV5,
   applyWeeklyPlanningFactLifecycleOperationV5,
   type WeeklyPlanningFactLifecycleResultV5,
@@ -52,16 +56,6 @@ function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
   );
 }
 
-function canCarryEffortToReplacement(params: {
-  effort: EffortEstimateFactV5;
-  target: WorkloadFactV5;
-  replacement: WorkloadFactV5;
-}): boolean {
-  if (params.effort.kind === 'session_duration') return true;
-  return params.effort.kind === 'duration_per_unit'
-    && params.target.unitCode === params.replacement.unitCode;
-}
-
 function equivalentCurrentReplacementEfforts(params: {
   graph: WeeklyPlanningFactGraphV5;
   effort: EffortEstimateFactV5;
@@ -80,7 +74,7 @@ function equivalentCurrentReplacementEfforts(params: {
     && candidate.createdRevision === params.replacement.createdRevision);
 }
 
-function prepareWorkloadEffortDependents(params: {
+function prepareWorkloadDependents(params: {
   graph: WeeklyPlanningFactGraphV5;
   correctionIntentFactId: string;
   operationKey: string;
@@ -129,11 +123,11 @@ function prepareWorkloadEffortDependents(params: {
     };
   }
 
-  const activeIds = activeFactIds(params.graph);
-  const dependentEfforts = params.graph.effortEstimates.filter(
-    (effort) => activeIds.has(effort.id) && effort.targetFactId === target.id,
-  );
-  if (dependentEfforts.length === 0) {
+  const dependents = activeWeeklyPlanningWorkloadDependentsV5({
+    graph: params.graph,
+    workloadFactId: target.id,
+  });
+  if (dependents.length === 0) {
     return {
       status: 'not_applicable',
       graph: params.graph,
@@ -144,13 +138,50 @@ function prepareWorkloadEffortDependents(params: {
     };
   }
 
+  const migrations = dependents.map((dependent) => ({
+    dependent,
+    decision: decideWeeklyPlanningWorkloadDependentMigrationV5({
+      graph: params.graph,
+      dependent,
+      target,
+      replacement,
+    }),
+  }));
+  const rejected = migrations.filter(({ decision }) => decision.action === 'reject');
+  if (rejected.length > 0) {
+    return {
+      status: 'rejected',
+      graph: params.graph,
+      added: [],
+      superseded: [],
+      removed: [],
+      errors: rejected.map(({ dependent, decision }) =>
+        `workload-dependent-migration-rejected:${dependent.kind}:${dependent.factId}:${decision.reason}`),
+    };
+  }
+
   let graph = params.graph;
   const added: WeeklyPlanningFactDiffEntryV5[] = [];
   const superseded: WeeklyPlanningFactDiffEntryV5[] = [];
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
 
-  for (const effort of dependentEfforts) {
-    if (!canCarryEffortToReplacement({ effort, target, replacement })) {
+  for (const migration of migrations) {
+    if (migration.dependent.kind !== 'effort_estimate') continue;
+    const effort = graph.effortEstimates.find(
+      (fact) => fact.id === migration.dependent.factId,
+    );
+    if (!effort) {
+      return {
+        status: 'rejected',
+        graph: params.graph,
+        added: [],
+        superseded: [],
+        removed: [],
+        errors: [`workload-dependent-migration-missing-effort:${migration.dependent.factId}`],
+      };
+    }
+
+    if (migration.decision.action === 'invalidate') {
       const invalidated = applyWeeklyPlanningFactLifecycleOperationV5({
         graph,
         expectedRevision: graph.revision,
@@ -309,7 +340,7 @@ export function applyWeeklyPlanningCorrectionTransactionV5(params: {
     ]);
   }
 
-  const prepared = prepareWorkloadEffortDependents({
+  const prepared = prepareWorkloadDependents({
     graph: params.graph,
     correctionIntentFactId: params.correctionIntentFactId,
     operationKey: params.operationKey,
