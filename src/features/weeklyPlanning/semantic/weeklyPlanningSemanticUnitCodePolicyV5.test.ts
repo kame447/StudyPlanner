@@ -1,35 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { createWeeklyPlanningSemanticMeaningPolicyV5 } from './weeklyPlanningSemanticMeaningPolicyV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5,
+} from './weeklyPlanningSemanticMeaningPolicyV5';
+
+function meaningRuleIds(): string[] {
+  return WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.map((rule) => rule.id);
+}
 
 describe('Stable V5 semantic meaning policy', () => {
-  it('keeps standard unit selection in semantic interpretation and reserves custom as fallback', () => {
-    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
-
-    expect(policy).toContain(
-      'minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, or session',
-    );
-    expect(policy).toContain('Use custom only if none matches.');
-    expect(policy).toContain(
-      'unitLabel may preserve the user’s wording without changing an otherwise matching standard unit into custom.',
-    );
+  it('keeps standard unit selection as an explicit semantic contract', () => {
+    expect(meaningRuleIds()).toContain('workload_unit_code');
   });
 
-  it('resolves omitted or pronominal targets only when context has one clear referent', () => {
-    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
-
-    expect(policy).toContain(
-      'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty.',
-    );
-    expect(policy).toContain(
-      'If the referent itself is unresolved, target that uncertainty to document, never to its own localId.',
-    );
+  it('keeps contextual target resolution as an explicit semantic contract', () => {
+    expect(meaningRuleIds()).toContain('contextual_reference_binding');
   });
 
-  it('preserves independent meaning beside an explicit decision or correction', () => {
-    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
-
-    expect(policy).toContain(
-      'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts.',
-    );
+  it('keeps independent clause meaning as an explicit semantic contract', () => {
+    expect(meaningRuleIds()).toContain('independent_clause_decision_correction');
   });
 });

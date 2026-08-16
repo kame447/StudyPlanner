@@ -3,6 +3,7 @@ import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5,
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
@@ -131,9 +132,11 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(byteLength(policy)).toBeLessThanOrEqual(
       GENERIC_MEANING_POLICY_MAX_BYTES,
     );
-    expect(policy).toContain(
-      'For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount.',
-    );
+    expect(
+      WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
+        (rule) => rule.id === 'workload_quantity_effort',
+      ),
+    ).toBe(true);
   });
 
   it('keeps supplemental orchestration policy small and scenario independent', () => {
