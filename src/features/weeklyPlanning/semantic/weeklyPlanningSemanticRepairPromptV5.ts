@@ -19,7 +19,12 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     || error.includes('do not encode clock times as a custom namedTimePeriod'))) {
     directives.push('Put explicit clock evidence in startTime/endTime, keep namedTimePeriod null, and invent no bounds.');
   }
-  if (errors.some((error) => error.includes('targetLocalId'))) {
+  const selfReferentialUncertainty = errors.some((error) =>
+    error.includes('document.uncertainties')
+    && error.includes('.targetLocalId:self-reference'));
+  if (selfReferentialUncertainty) {
+    directives.push('Never target an uncertainty at its own localId. If the referent is unresolved, use targetLocalId=document; otherwise target the supported fact localId.');
+  } else if (errors.some((error) => error.includes('targetLocalId'))) {
     directives.push('Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.');
   }
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
