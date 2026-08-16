@@ -53,17 +53,13 @@ function resolutionPendingDeclarations(
   return arrayField(planningInformation, key)
     .filter(isRecord)
     .filter((entry) => entry.resolutionStatus === 'unresolved')
-    .map((entry) => ({
-      sourceCollection: key,
-      ...entry,
-    }));
+    .map((entry) => ({ sourceCollection: key, ...entry }));
 }
 
 export function createWeeklyPlanningStableV5DialogueStateSummary(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): Record<string, unknown> {
   const planningInformation = input.planningInformation;
-
   return {
     acceptedFacts: createAcceptedFacts(planningInformation),
     groundingContext: groundingContext(planningInformation),
@@ -78,10 +74,7 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
 
 export function createWeeklyPlanningStableV5DialoguePrompt(
   input: WeeklyPlanningStableV5DialogueRenderInput,
-): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
+): { systemPrompt: string; userPrompt: string } {
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。アプリが決めた意味と次の行為を変えず、継続中の相談として自然な日本語にしてください。',
     '入力にない具体情報は補わず、受理済みの情報を確認し直す質問も勝手に追加しないでください。',
@@ -108,9 +101,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'applicationDecisionをsource of truthとして守り、自然な日本語を一つ返してください。preview_readyになる前は、予定・仮予定・計画への追加、登録、保存、反映、作成が完了または実行されると断言しないでください。',
       'acceptedFactsは会話上受理済みのFactです。resolutionPendingItemsはscheduler等で追加解決が必要な項目であり、そこに同じFactが現れてもユーザー発話自体が未受理という意味ではありません。',
       'currentTurnGrounding.acceptedFactsはこのユーザーturnで新たに受理されたFactです。mode=required_before_resumeなら、そのうち会話上重要な内容を短くacknowledge/paraphraseしてからapplicationDecisionの質問へ戻ってください。受理済みFactを再確認質問にはしないでください。mode=recommendedは自然な場合だけ示し、mode=noneでは定型の了解を足さないでください。',
-      '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、modeを別の概念へ置き換えず、一つだけ聞いてください。questionCodeだけから目的を推測し直さないでください。',
+      '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、mode、progressBasisを別の概念へ置き換えず、一つだけ聞いてください。questionCodeだけから目的を推測し直さないでください。',
       'currentUserMessageが直前の質問の意味・理由・何を答えるべきかを尋ねている場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明してください。その際もrequestedInformationに複数の必要情報があるなら一部を落とさず、同じ一つの確認として全部を分かるようにしてください。',
-      'schedulable_work_detailはmodeを厳守してください。existing_target_scope_progressでは既存対象の全体範囲と現在の進捗を聞き、別の作業追加は聞かないでください。missing_task_identityでは予定に入れる作業そのものを聞いてください。',
+      'schedulable_work_detailはmodeとprogressBasisを厳守してください。existing_target_progressでは既存対象の現在の進捗を聞き、別の作業追加は聞かないでください。progressBasis=known_bounded_quantityのときだけknownUnitLabelの数量単位を使えます。progressBasis=completion_progress_without_known_unitでは枚数・ページ数・問題数など具体的な総量や単位を推測・発明せず、完成を100%とした概算進捗、または今どの工程まで進んでいるかのように、ユーザー自身が答えられる進捗表現で聞いてください。ユーザーが自発的に数量単位を示した場合は以後そのFactを優先してください。missing_task_identityでは予定に入れる作業そのものを聞いてください。',
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
