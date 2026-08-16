@@ -1,9 +1,9 @@
 {
   "scenario": "context-reference-true-ambiguity",
-  "turn": 3,
-  "attempt": 1,
-  "user_text": "数学の方",
-  "previous_run_id": 31932773999,
+  "turn": 2,
+  "attempt": 2,
+  "user_text": "片方は金曜まで",
+  "previous_run_id": 31932735140,
   "conversation_id": "weekly-luna-context-true-ambiguity-01",
   "owner_id": "real-api-context-true-ambiguity-01",
   "week_start_date": "2026-08-17",
