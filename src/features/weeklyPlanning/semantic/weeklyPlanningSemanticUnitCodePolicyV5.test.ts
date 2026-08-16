@@ -20,6 +20,9 @@ describe('Stable V5 semantic meaning policy', () => {
     expect(policy).toContain(
       'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty.',
     );
+    expect(policy).toContain(
+      'If the referent itself is unresolved, target that uncertainty to document, never to its own localId.',
+    );
   });
 
   it('preserves independent meaning beside an explicit decision or correction', () => {
