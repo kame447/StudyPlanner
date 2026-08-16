@@ -1,9 +1,9 @@
 {
-  "scenario": "checkpoint-loop-06-post-preview-correction",
-  "turn": 6,
+  "scenario": "checkpoint-loop-07-target-specific-deadlines",
+  "turn": 7,
   "attempt": 1,
-  "user_text": "数学40問じゃなくて30問だった",
-  "previous_run_id": 31934492662,
+  "user_text": "英単語は金曜まで、数学は日曜までにしたい",
+  "previous_run_id": 31934534102,
   "conversation_id": "weekly-luna-checkpoint-10loop-01",
   "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
