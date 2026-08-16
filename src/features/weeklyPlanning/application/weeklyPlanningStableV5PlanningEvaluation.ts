@@ -99,7 +99,7 @@ function withEffortMeasurement(params: {
   const workload = params.question.factId
     ? params.graph.workloads.find((fact) => fact.id === params.question.factId) ?? null
     : null;
-  if (!workload) return params.question;
+  if (!workload || workload.quantityRole === 'scope_total') return params.question;
 
   return {
     ...params.question,
