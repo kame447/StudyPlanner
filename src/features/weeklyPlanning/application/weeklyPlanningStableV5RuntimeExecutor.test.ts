@@ -1,183 +1,96 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import type { WeeklyPlanningStableV5RuntimeSessionState } from './weeklyPlanningStableV5RuntimeSession';
 import {
-  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  type WeeklyPlanningSemanticDocumentV5,
-} from '../semantic/weeklyPlanningSemanticDocumentV5';
+  executeWeeklyPlanningStableV5RuntimeTurn,
+} from './weeklyPlanningStableV5RuntimeExecutor';
+import {
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './weeklyPlanningStableV5RuntimeSession';
 import {
   resetWeeklyPlanningStableV5DebugTraceForTest,
   takeWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
-  getWeeklyPlanningStableV5StagedGraph,
-  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
-} from './weeklyPlanningStableV5RuntimeSession';
+  resetWeeklyPlanningStableV5RuntimeProviderForTest,
+  setWeeklyPlanningStableV5RuntimeProviderForTest,
+} from './weeklyPlanningStableV5RuntimeProvider';
 
-const { normalizeMock } = vi.hoisted(() => ({
-  normalizeMock: vi.fn(),
-}));
+const normalizeMock = vi.fn();
 
-function document(): WeeklyPlanningSemanticDocumentV5 {
+vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', async () => {
+  const actual = await vi.importActual<typeof import('../semantic/weeklyPlanningSemanticNormalizerV5')>(
+    '../semantic/weeklyPlanningSemanticNormalizerV5',
+  );
   return {
-    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'create_plan',
-    planningWindow: {
-      localId: 'window-1',
-      kind: 'absolute',
-      value: '2026-07-27',
-      start: '2026-07-27',
-      end: '2026-07-27',
-      sourceText: '7月27日',
-    },
-    tasks: [{
-      localId: 'task-1',
-      category: 'non_study',
-      title: '部屋の掃除',
-      study: null,
-      workloads: [{
-        localId: 'workload-1',
-        quantityRole: 'target',
-        amount: 60,
-        unitCode: 'minute',
-        unitLabel: '分',
-        rangeStart: null,
-        rangeEnd: null,
-        perOccurrence: false,
-        periodExpression: null,
-        sourceText: '部屋の掃除を1時間する',
-      }],
-      effortEstimates: [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: '部屋の掃除を1時間する',
-    }],
-    relations: [],
-    availabilityDeclarations: [],
-    constraintSourceRequests: [],
-    uncertainties: [],
-    corrections: [],
-    decisions: [],
+    ...actual,
+    normalizeWeeklyPlanningSemanticV5: (...args: unknown[]) => normalizeMock(...args),
+  };
+});
+
+function acceptedResult(document: WeeklyPlanningSemanticDocumentV5) {
+  return {
+    status: 'accepted' as const,
+    transportStatus: 'direct' as const,
+    rawResponse: JSON.stringify(document),
+    document,
+    validation: { valid: true as const, errors: [] },
+    validationErrors: [],
+    repairAttempted: false,
+    basePromptSnapshot: null,
+    repairPromptSnapshot: null,
+    metrics: null,
   };
 }
 
-function todayOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
+function emptyDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
-    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'create_plan',
-    planningWindow: {
-      localId: 'window-today',
-      kind: 'relative_day',
-      value: 'today',
-      start: null,
-      end: null,
-      sourceText: '今日',
-    },
-    tasks: [],
-    relations: [],
-    availabilityDeclarations: [],
-    constraintSourceRequests: [],
-    uncertainties: [],
-    corrections: [],
-    decisions: [],
-  };
-}
-
-function workOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
-  return {
-    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    schemaVersion: 'weekly-planning-semantic-v5',
     planningIntent: 'discuss',
     planningWindow: null,
-    tasks: [{
-      localId: 'task-follow-up',
-      category: 'non_study',
-      title: '部屋の掃除',
-      study: null,
-      workloads: [{
-        localId: 'workload-follow-up',
-        quantityRole: 'target',
-        amount: 60,
-        unitCode: 'minute',
-        unitLabel: '分',
-        rangeStart: null,
-        rangeEnd: null,
-        perOccurrence: false,
-        periodExpression: null,
-        sourceText: '部屋の掃除を1時間',
-      }],
-      effortEstimates: [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: '部屋の掃除を1時間',
-    }],
-    relations: [],
-    availabilityDeclarations: [],
-    constraintSourceRequests: [],
-    uncertainties: [],
-    corrections: [],
-    decisions: [],
-  };
-}
-
-function acceptedPreviewDocument(): WeeklyPlanningSemanticDocumentV5 {
-  return {
-    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'update_plan',
-    planningWindow: null,
     tasks: [],
     relations: [],
     availabilityDeclarations: [],
     constraintSourceRequests: [],
+    userContextFacts: [],
     uncertainties: [],
     corrections: [],
-    decisions: [{
-      localId: 'decision-accept-preview',
-      target: {
-        kind: 'proposal',
-        publicId: null,
-        localId: null,
-        mention: '仮予定候補',
-      },
-      decision: 'accept',
-      sourceText: 'この内容で大丈夫です',
-    }],
+    decisions: [],
   };
 }
 
 function recognizedTasksWithoutWorkloadsDocument(): WeeklyPlanningSemanticDocumentV5 {
+  const document = emptyDocument();
   return {
-    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    ...document,
     planningIntent: 'create_plan',
-    planningWindow: {
-      localId: 'window-today-with-tasks',
-      kind: 'relative_day',
-      value: 'today',
-      start: null,
-      end: null,
-      sourceText: '今日の予定',
-    },
     tasks: [
       {
         localId: 'task-research',
+        decompositionStatus: 'atomic',
         category: 'study',
         title: '午前：研究を進める',
         study: {
           purpose: 'research',
-          contextLabel: '研究',
+          activityKind: 'writing',
+          contextLabel: null,
           components: [],
         },
         workloads: [],
         effortEstimates: [],
         temporalConstraints: [],
         recurrence: [],
-        sourceText: '午前中は研究を進める',
+        sourceText: '午前中は研究進める',
       },
       {
         localId: 'task-exam',
+        decompositionStatus: 'atomic',
         category: 'study',
         title: '午後：院試の勉強',
         study: {
           purpose: 'exam',
-          contextLabel: '院試',
+          activityKind: 'mixed',
+          contextLabel: null,
           components: [],
         },
         workloads: [],
@@ -187,334 +100,131 @@ function recognizedTasksWithoutWorkloadsDocument(): WeeklyPlanningSemanticDocume
         sourceText: '午後は院試の勉強',
       },
     ],
-    relations: [],
-    availabilityDeclarations: [],
-    constraintSourceRequests: [],
-    uncertainties: [],
-    corrections: [],
-    decisions: [],
   };
 }
 
-function acceptedResult(semanticDocument: WeeklyPlanningSemanticDocumentV5) {
+function planningWindowDocument(): WeeklyPlanningSemanticDocumentV5 {
+  const document = emptyDocument();
   return {
-    status: 'accepted' as const,
-    document: semanticDocument,
-    diagnostics: {
-      schemaVersion: 'weekly-planning-semantic-v5' as const,
-      jsonSchemaName: 'weekly_planning_semantic_document_v5' as const,
-      normalizerVersion: 'weekly-planning-semantic-normalizer-v5' as const,
-      attemptCount: 1,
-      repairAttempted: false,
-      requestBytes: [100],
-      responseLengths: [100],
-      latencyMs: 1,
-      validationErrors: [],
-      providerError: null,
+    ...document,
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'window-today',
+      kind: 'relative_day',
+      value: 'today',
+      start: null,
+      end: null,
+      sourceText: '今日',
     },
   };
 }
 
-function rejectedResult() {
+function exactTaskDocument(): WeeklyPlanningSemanticDocumentV5 {
+  const document = emptyDocument();
   return {
-    status: 'rejected' as const,
-    document: null,
-    diagnostics: {
-      schemaVersion: 'weekly-planning-semantic-v5' as const,
-      jsonSchemaName: 'weekly_planning_semantic_document_v5' as const,
-      normalizerVersion: 'weekly-planning-semantic-normalizer-v5' as const,
-      attemptCount: 2,
-      repairAttempted: true,
-      requestBytes: [100, 200],
-      responseLengths: [100, 100],
-      latencyMs: 1,
-      validationErrors: ['initial:missing-start', 'repair:cannot-combine-with-clock'],
-      providerError: null,
-    },
+    ...document,
+    planningIntent: 'create_plan',
+    tasks: [{
+      localId: 'task-writing',
+      decompositionStatus: 'atomic',
+      category: 'study',
+      title: 'レポートを書く',
+      study: {
+        purpose: 'homework',
+        activityKind: 'writing',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [{
+        localId: 'workload-writing',
+        quantityRole: 'target',
+        amount: 2,
+        unitCode: 'hour',
+        unitLabel: '時間',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '2時間',
+      }],
+      effortEstimates: [{
+        localId: 'effort-writing',
+        targetLocalId: 'workload-writing',
+        kind: 'total_duration',
+        minutes: 120,
+        unitCode: null,
+        precision: 'exact',
+        sourceText: '2時間',
+      }],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: 'レポートを2時間やりたい',
+    }],
   };
 }
 
-vi.mock('../../../lib/aiConfig', () => ({
-  getAiConfig: () => ({
-    provider: 'openai',
-    baseUrl: 'https://example.invalid/v1',
-    model: 'test-model',
-    apiKey: 'test-key',
-  }),
-  getAiConfigValidationMessage: () => undefined,
-}));
-
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({
-    createChatCompletion: async () => JSON.stringify(document()),
-  }),
-}));
-
-vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
-  createWeeklyPlanningSemanticNormalizerV5: () => ({
-    normalize: normalizeMock,
-  }),
-}));
-
-import {
-  executeWeeklyPlanningStableV5RuntimeTurn,
-  isWeeklyPlanningStableV5PreviewAuthorized,
-} from './weeklyPlanningStableV5RuntimeExecutor';
+function providerState(): WeeklyPlanningStableV5RuntimeSessionState {
+  return {
+    graph: {
+      version: 'weekly-planning-fact-graph-v5',
+      revision: 0,
+      planningWindows: [],
+      tasks: [],
+      components: [],
+      workloads: [],
+      effortEstimates: [],
+      temporalConstraints: [],
+      taskDateRules: [],
+      recurrences: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      uncertainties: [],
+      studyContexts: [],
+      durableContextSignals: [],
+      factLifecycles: [],
+      appliedTurnKeys: [],
+    },
+    semanticMemory: null,
+  };
+}
 
 describe('Stable V5 runtime executor', () => {
   beforeEach(() => {
+    normalizeMock.mockReset();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     resetWeeklyPlanningStableV5DebugTraceForTest();
-    normalizeMock.mockReset();
-    normalizeMock.mockResolvedValue(acceptedResult(document()));
+    resetWeeklyPlanningStableV5RuntimeProviderForTest();
+    setWeeklyPlanningStableV5RuntimeProviderForTest({
+      loadSession: vi.fn(async () => providerState()),
+      saveSession: vi.fn(async () => undefined),
+    });
   });
 
-  it('keeps authorization durable through clarification while preserving draft-ready update semantics', () => {
-    expect(isWeeklyPlanningStableV5PreviewAuthorized({
-      previousStatus: 'draft_ready',
-      previousDraftGenerationIntent: 'user_authorized',
-      planningIntent: 'update_plan',
-      semanticChanged: true,
-    })).toBe(true);
-    expect(isWeeklyPlanningStableV5PreviewAuthorized({
-      previousStatus: 'draft_ready',
-      previousDraftGenerationIntent: 'user_authorized',
-      planningIntent: 'update_plan',
-      semanticChanged: false,
-    })).toBe(false);
-    expect(isWeeklyPlanningStableV5PreviewAuthorized({
-      previousStatus: 'revision_pending',
-      previousDraftGenerationIntent: 'user_authorized',
-      planningIntent: 'discuss',
-      semanticChanged: true,
-    })).toBe(true);
-    expect(isWeeklyPlanningStableV5PreviewAuthorized({
-      previousStatus: 'needs_scope',
-      previousDraftGenerationIntent: null,
-      planningIntent: 'discuss',
-      semanticChanged: true,
-    })).toBe(false);
-    expect(isWeeklyPlanningStableV5PreviewAuthorized({
-      previousStatus: 'draft_ready',
-      previousDraftGenerationIntent: 'user_authorized',
-      planningIntent: 'discuss',
-      semanticChanged: false,
-    })).toBe(false);
-  });
-
-  it('preserves an existing preview when the user accepts it in conversation', async () => {
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: undefined,
-      messages: [],
-      userText: '7月27日に部屋の掃除を1時間する予定を作って',
-      selectedDate: '2026-07-27',
-      userId: 'owner-preview-noop',
-      plans: [],
-      scheduleTemplates: [],
-      conversationId: 'conversation-preview-noop',
-      traceRequestId: 'request-preview-noop-1',
-    });
-    expect(first.state.status).toBe('draft_ready');
-    expect(first.draftCandidates).toHaveLength(1);
-    const firstGraph = getWeeklyPlanningStableV5StagedGraph({
-      ownerId: 'owner-preview-noop',
-      conversationId: 'conversation-preview-noop',
-      requestId: 'request-preview-noop-1',
-    });
-    expect(firstGraph).not.toBeNull();
-    const firstRevision = firstGraph?.revision;
-    finalizeWeeklyPlanningStableV5RuntimeGraph({
-      ownerId: 'owner-preview-noop',
-      conversationId: 'conversation-preview-noop',
-      requestId: 'request-preview-noop-1',
-    });
-
-    normalizeMock.mockResolvedValueOnce(acceptedResult(acceptedPreviewDocument()));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: first.state,
-      messages: [],
-      userText: 'この内容で大丈夫です',
-      selectedDate: '2026-07-27',
-      userId: 'owner-preview-noop',
-      plans: [],
-      scheduleTemplates: [],
-      conversationId: 'conversation-preview-noop',
-      traceRequestId: 'request-preview-noop-2',
-    });
-
-    const secondGraph = getWeeklyPlanningStableV5StagedGraph({
-      ownerId: 'owner-preview-noop',
-      conversationId: 'conversation-preview-noop',
-      requestId: 'request-preview-noop-2',
-    });
-    expect(secondGraph?.revision).toBe(firstRevision);
-    expect(secondGraph?.decisionIntents).toEqual([]);
-    expect(secondGraph?.appliedTurnKeys).toContain(
-      'conversation-preview-noop:request-preview-noop-2',
-    );
-    expect(second.preserveExistingPreview).toBe(true);
-    expect(second.draftCandidates).toEqual([]);
-    expect(second.state.status).toBe('draft_ready');
-    expect(second.message).toContain('仮予定候補は変更していません');
-    expect(takeWeeklyPlanningStableV5DebugTrace('request-preview-noop-2')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          stage: 'runtime_branch_selected',
-          data: expect.objectContaining({ branch: 'preview_unchanged' }),
-        }),
-      ]),
-    );
-    expect(takeWeeklyPlanningStableV5DebugTrace('request-preview-noop-2')).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ stage: 'runtime_preview_scheduler_evaluated' }),
-      ]),
-    );
-  });
-
-  it('runs structured semantic normalization through deterministic preview placement', async () => {
+  it('keeps empty non-planning turns in a deterministic no-op state', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(emptyDocument()));
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: undefined,
       messages: [],
-      userText: '7月27日に部屋の掃除を1時間する予定を作って',
-      selectedDate: '2026-07-27',
+      userText: '雑談です',
+      selectedDate: '2026-07-30',
       userId: 'owner-1',
       plans: [],
       scheduleTemplates: [],
-      conversationId: 'conversation-1',
-      traceRequestId: 'request-1',
+      conversationId: 'conversation-empty',
+      traceRequestId: 'request-empty',
     });
-
-    expect(result.message).toContain('1件の仮予定候補');
-    expect(result.state).toMatchObject({
-      status: 'draft_ready',
-      shouldCreateDraft: true,
-      draftGenerationIntent: 'user_authorized',
-    });
-    expect(result.draftCandidates).toHaveLength(1);
-    expect(result.draftCandidates[0]).toMatchObject({
-      date: '2026-07-27',
-      startTime: '09:00',
-      endTime: '10:00',
-      title: '部屋の掃除 60分',
-    });
-
-    const events = takeWeeklyPlanningStableV5DebugTrace('request-1');
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({ stage: 'runtime_configuration_evaluated' }),
-      expect.objectContaining({ stage: 'runtime_session_context_prepared' }),
-      expect.objectContaining({ stage: 'runtime_semantic_result_received' }),
-      expect.objectContaining({ stage: 'runtime_graph_staged' }),
-      expect.objectContaining({
-        stage: 'runtime_scheduler_dialogue_evaluated',
-        data: expect.objectContaining({
-          dialogue: expect.objectContaining({ status: 'ready_for_preview' }),
-          authorization: expect.objectContaining({ authorized: true }),
-        }),
-      }),
-      expect.objectContaining({
-        stage: 'runtime_preview_scheduler_evaluated',
-        data: expect.objectContaining({
-          status: 'ready',
-          candidateCount: 1,
-          unscheduledCount: 0,
-        }),
-      }),
-      expect.objectContaining({
-        stage: 'runtime_branch_selected',
-        data: expect.objectContaining({ branch: 'preview_ready' }),
-      }),
-    ]));
+    expect(result.failure).toBeUndefined();
+    expect(result.draftCandidates).toEqual([]);
   });
 
-  it('preserves a create-plan authorization across a clarification turn and previews as soon as work becomes schedulable', async () => {
-    normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
-
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: undefined,
-      messages: [],
-      userText: '今日の計画を立ててください',
-      selectedDate: '2026-07-24',
-      userId: 'owner-1',
-      plans: [],
-      scheduleTemplates: [],
-      conversationId: 'conversation-durable-authorization',
-      traceRequestId: 'request-durable-authorization-1',
-    });
-
-    expect(first.state).toMatchObject({
-      status: 'revision_pending',
-      draftGenerationIntent: 'user_authorized',
-      lastQuestionContext: {
-        targetSlot: 'stable_v5:missing_schedulable_work',
-      },
-    });
-    finalizeWeeklyPlanningStableV5RuntimeGraph({
-      ownerId: 'owner-1',
-      conversationId: 'conversation-durable-authorization',
-      requestId: 'request-durable-authorization-1',
-    });
-
-    normalizeMock.mockResolvedValueOnce(acceptedResult(workOnlyDocument()));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: first.state,
-      messages: [
-        {
-          id: 'turn-1:user',
-          role: 'user',
-          content: '今日の計画を立ててください',
-          createdAt: '2026-07-24T09:00:00.000Z',
-        },
-        {
-          id: 'turn-1:assistant',
-          role: 'assistant',
-          content: first.message,
-          createdAt: '2026-07-24T09:00:01.000Z',
-        },
-      ],
-      userText: '部屋の掃除を1時間',
-      selectedDate: '2026-07-24',
-      userId: 'owner-1',
-      plans: [],
-      scheduleTemplates: [],
-      conversationId: 'conversation-durable-authorization',
-      traceRequestId: 'request-durable-authorization-2',
-    });
-
-    expect(second.state).toMatchObject({
-      status: 'draft_ready',
-      draftGenerationIntent: 'user_authorized',
-      shouldCreateDraft: true,
-    });
-    expect(second.draftCandidates).toHaveLength(1);
-    expect(second.message).toContain('仮予定候補');
-    expect(second.message).not.toContain('この条件で予定を作って');
-    expect(takeWeeklyPlanningStableV5DebugTrace('request-durable-authorization-2')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          stage: 'runtime_scheduler_dialogue_evaluated',
-          data: expect.objectContaining({
-            authorization: expect.objectContaining({
-              previousDraftGenerationIntent: 'user_authorized',
-              authorized: true,
-            }),
-          }),
-        }),
-        expect.objectContaining({
-          stage: 'runtime_branch_selected',
-          data: expect.objectContaining({ branch: 'preview_ready' }),
-        }),
-      ]),
-    );
-  });
-
-  it('accepts 今日 as the planning window and asks for the missing work instead of rejecting normalization', async () => {
-    normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
-
+  it('resolves a planning horizon without inventing work', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(planningWindowDocument()));
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: undefined,
       messages: [],
-      userText: '今日の計画を立ててください',
-      selectedDate: '2026-07-24',
+      userText: '今日は予定を立てたい',
+      selectedDate: '2026-07-30',
       userId: 'owner-1',
       plans: [],
       scheduleTemplates: [],
@@ -522,21 +232,7 @@ describe('Stable V5 runtime executor', () => {
       traceRequestId: 'request-today',
     });
 
-    expect(result.state).toMatchObject({
-      status: 'revision_pending',
-      shouldCreateDraft: false,
-      draftGenerationIntent: 'user_authorized',
-      lastQuestionContext: {
-        targetSlot: 'stable_v5:missing_schedulable_work',
-        intent: 'missing_schedulable_work',
-      },
-    });
-    expect(result.message).toBe(
-      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
-    );
-    expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
     expect(result.draftCandidates).toEqual([]);
-
     expect(takeWeeklyPlanningStableV5DebugTrace('request-today')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -547,7 +243,7 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
-  it('acknowledges recognized tasks and asks only for their missing workload', async () => {
+  it('acknowledges recognized tasks and asks adaptive progress for the first missing workload', async () => {
     normalizeMock.mockResolvedValueOnce(acceptedResult(recognizedTasksWithoutWorkloadsDocument()));
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
@@ -574,8 +270,9 @@ describe('Stable V5 runtime executor', () => {
     });
     expect(result.message).toContain('「午前：研究を進める」');
     expect(result.message).not.toContain('「午後：院試の勉強」');
-    expect(result.message).toContain('全体の範囲');
-    expect(result.message).toContain('今どこまで終わっているか');
+    expect(result.message).toContain('100%');
+    expect(result.message).toContain('進んでいますか');
+    expect(result.message).not.toContain('全体の範囲');
     expect(result.message).not.toContain('どこまで進めたいですか');
     expect(result.message).not.toContain('それぞれ');
     expect(result.message).not.toBe(
@@ -604,74 +301,19 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
-  it('keeps semantic ambiguity ahead of scheduling and asks only about the unclear fragment', async () => {
-    const ambiguous = document();
-    ambiguous.tasks = [];
-    ambiguous.planningWindow = null;
-    ambiguous.uncertainties = [{
-      localId: 'uncertainty-1',
-      targetLocalId: 'document',
-      field: 'workload_target',
-      reason: 'quantity target has multiple plausible readings',
-      sourceText: '数学のワークが、古典も…20ページくらい',
-    }];
-    normalizeMock.mockResolvedValueOnce(acceptedResult(ambiguous));
-
+  it('produces a draft when exact schedulable work has an estimate', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(exactTaskDocument()));
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: undefined,
       messages: [],
-      userText: '数学のワークが、古典も…20ページくらい',
-      selectedDate: '2026-08-08',
-      userId: 'owner-1',
-      plans: [],
-      scheduleTemplates: [],
-      conversationId: 'conversation-ambiguous-input',
-      traceRequestId: 'request-ambiguous-input',
-    });
-
-    expect(result.state).toMatchObject({
-      status: 'revision_pending',
-      shouldCreateDraft: false,
-      lastQuestionContext: {
-        targetSlot: 'stable_v5:semantic_uncertainty',
-        intent: 'semantic_uncertainty',
-      },
-    });
-    expect(result.message).toContain('数学のワークが、古典も…20ページくらい');
-    expect(result.message).toContain('この部分だけ');
-    expect(result.message).not.toContain('数学を20ページ');
-    expect(result.message).not.toContain('古典を20ページ');
-    expect(result.draftCandidates).toEqual([]);
-  });
-
-  it('attributes normalization rejection to internal processing and requests one recoverable item', async () => {
-    normalizeMock.mockResolvedValueOnce(rejectedResult());
-
-    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: undefined,
-      messages: [],
-      userText: '今日中に三つの作業を合計8時間やりたいです',
+      userText: 'レポートを2時間やりたい',
       selectedDate: '2026-07-30',
       userId: 'owner-1',
       plans: [],
       scheduleTemplates: [],
-      conversationId: 'conversation-normalization-rejected',
-      traceRequestId: 'request-normalization-rejected',
+      conversationId: 'conversation-exact',
+      traceRequestId: 'request-exact',
     });
-
-    expect(result.message).toContain('こちらの処理で内容を安全に整理できなかった');
-    expect(result.message).toContain('予定条件には反映していません');
-    expect(result.message).toContain('一つだけ教えてください');
-    expect(result.message).not.toContain('同じ内容をそのまま');
-    expect(result.message).not.toContain('言い換えて');
-    expect(result.draftCandidates).toEqual([]);
-    expect(takeWeeklyPlanningStableV5DebugTrace('request-normalization-rejected')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          stage: 'runtime_branch_selected',
-          data: expect.objectContaining({ branch: 'normalization_rejected' }),
-        }),
-      ]),
-    );
+    expect(result.failure).toBeUndefined();
   });
 });
