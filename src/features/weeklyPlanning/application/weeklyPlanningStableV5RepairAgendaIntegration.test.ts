@@ -93,7 +93,10 @@ describe('Stable V5 repair agenda runtime integration', () => {
       conversationId: 'conversation-repair', traceRequestId: 'request-repair-1', requestContext,
     });
 
-    expect(result.message).toContain('合計でどれくらい時間');
+    expect(result.state.lastQuestionContext).toMatchObject({
+      targetSlot: 'stable_v5:missing_effort_estimate',
+      intent: 'duration_per_unit',
+    });
     expect(result.message).not.toContain('意味を一つに決められません');
     expect(result.state.repairAgenda).toEqual([
       expect.objectContaining({
