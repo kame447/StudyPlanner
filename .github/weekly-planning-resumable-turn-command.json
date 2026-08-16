@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-gradual-convergence-20260816",
-  "turn": 5,
-  "attempt": 1,
-  "user_text": "できれば夜にやりたい",
-  "previous_run_id": 31924207375,
-  "conversation_id": "weekly-luna-gradual-convergence-20260816-01",
-  "owner_id": "real-api-luna-gradual-convergence-user-1",
+  "scenario": "luna-one-shot-convergence-20260816",
+  "turn": 1,
+  "attempt": 2,
+  "user_text": "来週までに青チャートの数学の問題を80問やりたい。今は5問終わってる。火曜18時から20時は予定がある。できれば夜にやりたい。",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-one-shot-convergence-20260816-02",
+  "owner_id": "real-api-luna-one-shot-convergence-user-2",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
