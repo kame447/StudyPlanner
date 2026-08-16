@@ -3,6 +3,7 @@ import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSch
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
+import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
 import type {
@@ -277,6 +278,39 @@ function routeAfterPreview(params: {
   } = evaluation;
 
   if (preview.status === 'insufficient_capacity') {
+    const capacityProposal = evaluateWeeklyPlanningInsufficientCapacityProposalV5({
+      records: learningStrategyProposals.records,
+      compilation,
+      preview,
+      graphRevision: semantic.graph.revision,
+      turnId: input.traceRequestId,
+    });
+    if (capacityProposal.pendingProposal) {
+      const proposal = capacityProposal.pendingProposal;
+      const output = projectStableV5CompatibilityOutput({
+        previousState: input.previousState,
+        userText: input.userText,
+        message: '',
+        draftCandidates: [],
+        questionCode: 'learning_strategy_proposal',
+        questionFactId: proposal.workloadFactId,
+        questionKind: 'options',
+        questionActionId: proposal.id,
+        authorized: true,
+        groundingRecords,
+        repairAgenda: repairDecision.agenda,
+        learningStrategyProposalRecords: capacityProposal.records,
+      });
+      traceRuntimeBranch({
+        requestId: input.traceRequestId,
+        branch: 'capacity_learning_strategy_proposal',
+        basis: { preview, proposal, groundingRecords, repairDecision },
+        output,
+        severity: 'warn',
+      });
+      return output;
+    }
+
     const message = groundedMessage({
       message: '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。',
       records: groundingRecords,
@@ -291,7 +325,7 @@ function routeAfterPreview(params: {
       authorized: true,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
-      learningStrategyProposalRecords: learningStrategyProposals.records,
+      learningStrategyProposalRecords: capacityProposal.records,
     });
     traceRuntimeBranch({
       requestId: input.traceRequestId,
