@@ -70,6 +70,23 @@ function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): bool
   return state?.lastQuestionContext?.targetSlot?.startsWith('stable_v5:') ?? false;
 }
 
+function workloadSupersessions(
+  graph: SuccessfulSemanticTurn['semantic']['graph'],
+): Record<string, string> {
+  const workloadIds = new Set(graph.workloads.map((workload) => workload.id));
+  const result: Record<string, string> = {};
+  for (const lifecycle of graph.factLifecycles) {
+    if (
+      lifecycle.status !== 'superseded'
+      || !lifecycle.supersededByFactId
+      || !workloadIds.has(lifecycle.factId)
+      || !workloadIds.has(lifecycle.supersededByFactId)
+    ) continue;
+    result[lifecycle.factId] = lifecycle.supersededByFactId;
+  }
+  return result;
+}
+
 function withEffortMeasurement(params: {
   graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
   question: WeeklyPlanningStableQuestionV5;
@@ -160,6 +177,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         localToFactId: semantic.canonicalization?.localToFactId ?? {},
         compilation: baselineCompilation,
         effortEstimates: activeGraph.effortEstimates,
+        workloadSupersessions: workloadSupersessions(semantic.graph),
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
       })
