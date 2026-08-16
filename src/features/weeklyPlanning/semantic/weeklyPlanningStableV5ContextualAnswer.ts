@@ -177,6 +177,19 @@ function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean
   );
 }
 
+function hasActiveEffortForPendingMeasurement(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  workload: WorkloadFactV5,
+): boolean {
+  if (input.pendingQuestion.questionCode !== 'missing_effort_estimate') return false;
+  const measurement = input.pendingQuestion.effortMeasurement;
+  if (!measurement) return false;
+  return input.graph.effortEstimates.some((estimate) =>
+    isActiveFact(input.graph, estimate.id)
+    && estimate.targetFactId === workload.id
+    && estimate.kind === measurement);
+}
+
 function targetWorkload(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WorkloadFactV5 | null {
@@ -189,12 +202,7 @@ function targetWorkload(
     && workload.quantityRole !== 'declared'
     && workload.quantityRole !== 'unknown'
   ) return null;
-  if (
-    input.pendingQuestion.questionCode === 'missing_effort_estimate'
-    && input.graph.effortEstimates.some((estimate) =>
-      isActiveFact(input.graph, estimate.id)
-      && estimate.targetFactId === workload.id)
-  ) return null;
+  if (hasActiveEffortForPendingMeasurement(input, workload)) return null;
   return workload;
 }
 
