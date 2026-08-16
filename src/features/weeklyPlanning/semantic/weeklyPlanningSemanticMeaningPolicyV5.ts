@@ -72,7 +72,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'independent_clause_decision_correction',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Clause independence, corrections, and proposal decisions are discourse semantics; deterministic lifecycle code applies them only after the model identifies them.',
-    instruction: 'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts. Use corrections/decisions only when explicit. Pending proposal decisions target kind=proposal and exact publicId.',
+    instruction: 'Interpret clauses independently. Each explicit correction emits its replacement fact and replacementLocalId. Corrections/decisions do not suppress facts. Decisions only when explicit. Pending proposal decisions target kind=proposal and exact publicId.',
   },
 ] as const satisfies readonly {
   id: string;

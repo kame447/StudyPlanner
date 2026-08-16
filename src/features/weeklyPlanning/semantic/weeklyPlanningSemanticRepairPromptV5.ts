@@ -4,6 +4,9 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+const PRESERVE_VALID_MEANING_CLAUSE =
+  'Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.';
+
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
 
@@ -28,7 +31,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.');
   }
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
-    directives.push('Create only the replacement fact stated in currentUserText inside the minimal schema-valid containing task/component, then point correction.replacementLocalId to its fresh localId. Reuse exact existingPublicIds only for accepted parent identity; every targetLocalId must reference a fresh localId declared in this response.');
+    directives.push('Declare missing replacement facts from currentUserText in a schema-valid task/component and keep valid fields. Point correction.replacementLocalId to each fresh localId. Reuse exact existingPublicIds only for accepted parent identity; targetLocalId must reference a fresh localId declared here.');
   }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
     directives.push('Bind continued accepted task/component identity with its exact existingPublicId; null is only for a genuinely new entity.');
@@ -39,10 +42,15 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
     directives.push('Emit relations only for stated order/dependency/priority and reference task localIds only.');
   }
-  if (directives.length === 0) {
-    directives.push('Correct only the listed validation failures; preserve unrelated current-turn meaning.');
+
+  const result = unique(directives);
+  if (result.length === 0) {
+    return [
+      'Correct only the listed validation failures; preserve unrelated current-turn meaning and schema-valid fields from the invalid response.',
+    ];
   }
-  return unique(directives);
+  result[0] = `${result[0]} ${PRESERVE_VALID_MEANING_CLAUSE}`;
+  return result;
 }
 
 export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
