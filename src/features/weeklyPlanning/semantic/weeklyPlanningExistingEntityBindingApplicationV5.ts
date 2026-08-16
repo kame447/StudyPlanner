@@ -2,6 +2,7 @@ import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
+  EffortEstimateFactV5,
   WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type {
@@ -192,7 +193,7 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
           workloadMap,
         ),
       })),
-    effortEstimates: graph.effortEstimates.map((estimate) => {
+    effortEstimates: graph.effortEstimates.map((estimate): EffortEstimateFactV5 => {
       const reboundTarget = rebaseId(
         estimate.targetFactId,
         taskMap,
