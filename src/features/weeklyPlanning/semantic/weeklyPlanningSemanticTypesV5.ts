@@ -54,6 +54,7 @@ export type SemanticComponentRoleV5 = (typeof SEMANTIC_COMPONENT_ROLES_V5)[numbe
 
 export const SEMANTIC_QUANTITY_ROLES_V5 = [
   'declared',
+  'scope_total',
   'target',
   'remaining',
   'completed',
