@@ -1,6 +1,9 @@
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
+import {
+  projectWeeklyPlanningBoundedProgressV5,
+} from './weeklyPlanningBoundedProgressProjectionV5';
 import type {
   WeeklyPlanningFactDiffEntryV5,
   WeeklyPlanningFactGraphV5,
@@ -153,9 +156,14 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: progressReconciledCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const boundedProjectedCanonicalization = projectWeeklyPlanningBoundedProgressV5({
     originalGraph: params.originalGraph,
     canonicalization: percentageProjectedCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+    originalGraph: params.originalGraph,
+    canonicalization: boundedProjectedCanonicalization,
   });
   return {
     entityBindingApplication,
