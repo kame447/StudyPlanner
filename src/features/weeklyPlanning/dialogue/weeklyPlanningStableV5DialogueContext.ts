@@ -1,7 +1,3 @@
-import {
-  createWeeklyPlanningEffortQuestionPlanV5,
-} from '../semantic/weeklyPlanningEffortQuestionPolicyV5';
-
 export const WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL = 'この内容で仮予定にする';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -145,6 +141,7 @@ export function questionIntentForStableV5Dialogue(params: {
   effortMeasurement?: string | null;
 }) {
   const fact = params.questionTarget?.fact;
+  const measurement = effortMeasurement(params.effortMeasurement);
   if (
     params.questionCode !== 'missing_effort_estimate'
     || params.questionTarget?.collection !== 'workloads'
@@ -153,23 +150,18 @@ export function questionIntentForStableV5Dialogue(params: {
     || !Number.isFinite(fact.amount)
     || fact.amount <= 0
     || typeof fact.unitCode !== 'string'
+    || measurement === null
   ) {
     return null;
   }
   const role = quantityRole(fact.quantityRole);
-  const plan = createWeeklyPlanningEffortQuestionPlanV5({
-    amount: fact.amount,
-    unitCode: fact.unitCode,
-    unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : fact.unitCode,
-    quantityRole: role,
-  });
   return {
     kind: 'effort_measurement',
-    measurement: effortMeasurement(params.effortMeasurement) ?? plan.kind,
+    measurement,
     quantityRole: role,
     targetFactId: fact.id,
     amount: fact.amount,
-    unitCode: fact.unitCode,
+    unitCode: measurement === 'total_duration' ? null : fact.unitCode,
     unitLabel: typeof fact.unitLabel === 'string' ? fact.unitLabel : null,
   } as const;
 }
