@@ -6,7 +6,7 @@ on:
       - agent/issue156-prompt-simplification-adversarial-audit
     paths:
       - '.github/workflows/issue156-prompt-adversarial-real-api.yml'
-      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AdversarialRealApi.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts'
       - 'src/features/weeklyPlanning/dialogue/**'
@@ -60,7 +60,7 @@ jobs:
           mkdir -p "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR"
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
-            src/features/weeklyPlanning/evals/weeklyPlanningIssue156AdversarialRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
