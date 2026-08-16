@@ -122,7 +122,7 @@ describe('Stable V5 percentage progress projection', () => {
     ]));
   });
 
-  it('rebases an existing derived remainder when a newer percentage is accepted', () => {
+  it('supersedes the old progress snapshot and rebases its derived remainder', () => {
     const completed60 = workload({ id: 'completed-60', role: 'completed', amount: 60, createdRevision: 2 });
     const remaining40 = workload({ id: 'remaining-40', role: 'remaining', amount: 40, createdRevision: 3 });
     const original = graphWith([completed60, remaining40], 3);
@@ -138,10 +138,39 @@ describe('Stable V5 percentage progress projection', () => {
 
     const active = activeWorkloads(result.graph);
     expect(active).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'completed-70', quantityRole: 'completed', amount: 70, unitLabel: '%' }),
       expect.objectContaining({ quantityRole: 'remaining', amount: 30, unitLabel: '%' }),
     ]));
     expect(active).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'completed-60' }),
       expect.objectContaining({ id: 'remaining-40' }),
     ]));
+    expect(result.diff?.superseded).toEqual(expect.arrayContaining([
+      { kind: 'workload', id: 'completed-60' },
+      { kind: 'workload', id: 'remaining-40' },
+    ]));
+  });
+
+  it('rejects two competing current percentage snapshots for one scope in the same semantic turn', () => {
+    const original = graphWith([], 1);
+    const completed60 = workload({ id: 'completed-60', role: 'completed', amount: 60, createdRevision: 2 });
+    const completed70 = workload({ id: 'completed-70', role: 'completed', amount: 70, createdRevision: 2 });
+    const canonical = applied(
+      original,
+      graphWith([completed60, completed70], 2),
+      [completed60.id, completed70.id],
+    );
+
+    const result = projectWeeklyPlanningPercentageProgressV5({
+      originalGraph: original,
+      canonicalization: canonical,
+      operationKeyPrefix: 'turn-progress-ambiguous',
+    });
+
+    expect(result.status).toBe('rejected');
+    expect(result.errors).toEqual([
+      'percentage-progress-ambiguous-current-snapshot:task-1|',
+    ]);
+    expect(result.graph).toEqual(original);
   });
 });
