@@ -1,41 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import type { WeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
-import { createWeeklyPlanningSemanticPipelineV5 } from './weeklyPlanningSemanticPipelineV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+  type WeeklyPlanningSemanticNormalizerResultV5,
+  type WeeklyPlanningSemanticNormalizerV5,
+} from './weeklyPlanningSemanticNormalizerV5';
+import {
+  createWeeklyPlanningSemanticPipelineV5,
+} from './weeklyPlanningSemanticPipelineV5';
 
 function acceptedNormalizer(
   document: WeeklyPlanningSemanticDocumentV5,
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
-    normalize: async () => ({
-      status: 'accepted',
-      document,
-      diagnostics: {
-        schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-        attemptCount: 1,
-        repairAttempted: false,
-        repairReason: null,
-        parseErrors: [],
-        validationErrors: [],
-        rawResponse: JSON.stringify(document),
-        normalizedResponse: JSON.stringify(document),
-      },
-    }),
+    async normalize(): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+      return {
+        status: 'accepted',
+        document,
+        diagnostics: {
+          schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+          jsonSchemaName: 'weekly_planning_semantic_document_v5',
+          normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+          attemptCount: 1,
+          repairAttempted: false,
+          requestBytes: [1],
+          responseLengths: [1],
+          latencyMs: 1,
+          validationErrors: [],
+          providerError: null,
+        },
+      };
+    },
   };
 }
 
 function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'create_plan',
+    planningIntent: 'update_plan',
     planningWindow: {
-      kind: 'relative_week',
-      value: 'next_week',
-      start: null,
-      end: null,
+      localId: 'window-1',
+      kind: 'absolute',
+      value: '2026-08-10',
+      start: '2026-08-10',
+      end: '2026-08-16',
       sourceText: '来週',
     },
     tasks: [{
@@ -43,8 +54,8 @@ function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
       category: 'study',
       title: '数学',
       study: {
-        subject: '数学',
-        activityKind: 'problem_solving',
+        purpose: 'self_study',
+        contextLabel: null,
         components: [],
       },
       workloads: [{
@@ -56,13 +67,13 @@ function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
         rangeStart: null,
         rangeEnd: null,
         perOccurrence: false,
-        periodExpression: '来週',
-        sourceText: '40問',
+        periodExpression: null,
+        sourceText: '数学の問題を40問',
       }],
       effortEstimates: [],
       temporalConstraints: [],
       recurrence: [],
-      sourceText: '数学の問題を40問進めたいです',
+      sourceText: '数学の問題を40問進めたい',
     }],
     relations: [],
     availabilityDeclarations: [],
@@ -76,16 +87,20 @@ function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
 function incompatiblePageReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'discuss',
+    planningIntent: 'update_plan',
     planningWindow: null,
     tasks: [{
-      localId: 'reply-task',
+      localId: 'reply-task-page',
       category: 'study',
-      title: '直前の質問対象',
-      study: null,
+      title: '数学',
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
       workloads: [{
-        localId: 'reply-workload',
-        quantityRole: 'declared',
+        localId: 'reply-workload-page',
+        quantityRole: 'unknown',
         amount: 3,
         unitCode: 'page',
         unitLabel: 'ページ',
@@ -112,17 +127,32 @@ function incompatiblePageReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
 function durationReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'discuss',
+    planningIntent: 'update_plan',
     planningWindow: null,
     tasks: [{
-      localId: 'reply-task',
+      localId: 'reply-task-duration',
       category: 'study',
-      title: '直前の質問対象',
-      study: null,
-      workloads: [],
+      title: '数学',
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [{
+        localId: 'reply-workload-problems',
+        quantityRole: 'target',
+        amount: 40,
+        unitCode: 'problem',
+        unitLabel: '問',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '数学の問題40問',
+      }],
       effortEstimates: [{
-        localId: 'reply-effort',
-        targetLocalId: 'reply-task',
+        localId: 'reply-effort-duration',
+        targetLocalId: 'reply-workload-problems',
         kind: 'total_duration',
         minutes: 180,
         unitCode: null,
