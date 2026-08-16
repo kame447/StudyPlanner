@@ -15,7 +15,7 @@ const SEMANTIC_DELTA_CONTEXT_INSTRUCTION_V5 = [
   'publicStateSummary and recentConversation are context, not output. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText. Do not replay unchanged existing workloads just to carry context, inactive facts, or episodic memory.',
   'Treat pendingQuestion as authoritative. Bind an actual answer only to its exact target. If userText does not answer it but supplies other meaning, emit that meaning and leave the question pending; do not create an uncertainty merely to restate the unanswered field.',
   'For an accepted existingPublicId, keep the established partner-specific title/contextLabel unless the user renames it.',
-  'Quantity roles: target is intended for this plan; remaining is unfinished; completed is already done. Approximate current progress is workload state, not effort or durable concern; if no exact amount is supported, use uncertainty for completed/remaining amount. An effortEstimate may target the exact task, component, or workload localId.',
+  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is already done. Approximate current progress is workload state, not effort or durable concern; if no exact amount is supported, use uncertainty for completed/remaining amount. An effortEstimate may target the exact task, component, or workload localId.',
 ].join('\n');
 
 export function createWeeklyPlanningSemanticBaseMessagesV5(
