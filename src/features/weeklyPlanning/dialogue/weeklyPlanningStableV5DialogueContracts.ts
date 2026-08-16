@@ -199,6 +199,7 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_shape'
   | 'action_mismatch'
   | 'action_contract_mismatch'
+  | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
   | 'repeated_question_text';
@@ -235,7 +236,13 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['actionId', 'actionKind', 'questionCode', 'text'],
+      required: [
+        'actionId',
+        'actionKind',
+        'questionCode',
+        'groundingAcknowledgement',
+        'text',
+      ],
       properties: {
         actionId: stringSchema(),
         actionKind: {
@@ -244,6 +251,27 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
         },
         questionCode: {
           anyOf: [stringSchema(), { type: 'null' }],
+        },
+        groundingAcknowledgement: {
+          anyOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['factIds', 'text'],
+              properties: {
+                factIds: {
+                  type: 'array',
+                  minItems: 1,
+                  items: stringSchema(),
+                },
+                text: {
+                  type: 'string',
+                  minLength: 1,
+                },
+              },
+            },
+            { type: 'null' },
+          ],
         },
         text: stringSchema(),
       },
