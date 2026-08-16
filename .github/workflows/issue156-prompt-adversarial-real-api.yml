@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/issue156-prompt-adversarial-real-api.yml'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts'
       - 'src/features/weeklyPlanning/dialogue/**'
@@ -76,6 +77,7 @@ jobs:
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
