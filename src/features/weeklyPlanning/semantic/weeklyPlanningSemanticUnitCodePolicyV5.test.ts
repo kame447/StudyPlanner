@@ -21,4 +21,12 @@ describe('Stable V5 semantic meaning policy', () => {
       'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty.',
     );
   });
+
+  it('preserves independent meaning beside an explicit decision or correction', () => {
+    const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
+
+    expect(policy).toContain(
+      'Interpret independent clauses independently; corrections/decisions do not suppress other supported current-turn facts.',
+    );
+  });
 });
