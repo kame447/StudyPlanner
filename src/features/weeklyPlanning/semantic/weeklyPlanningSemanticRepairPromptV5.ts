@@ -5,7 +5,7 @@ function unique(values: string[]): string[] {
 }
 
 const PRESERVE_VALID_MEANING_CLAUSE =
-  'Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.';
+  'Correct every listed validation failure. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response unless a listed error requires changing them.';
 
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
