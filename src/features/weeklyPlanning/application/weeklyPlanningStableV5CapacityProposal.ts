@@ -15,6 +15,15 @@ export interface WeeklyPlanningCapacityProposalEvaluationV5 {
   pendingProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
 }
 
+function existingCapacityProposalForWorkload(
+  records: readonly WeeklyPlanningLearningStrategyProposalRecord[],
+  workloadFactId: string,
+): WeeklyPlanningLearningStrategyProposalRecord | null {
+  return records.find((record) =>
+    record.kind === 'mixed_acquisition_review'
+    && record.workloadFactId === workloadFactId) ?? null;
+}
+
 export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
   records: readonly WeeklyPlanningLearningStrategyProposalRecord[];
   compilation: GenericSchedulerInputCompilationResult;
@@ -26,9 +35,6 @@ export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
   if (params.preview.status !== 'insufficient_capacity' || !params.compilation.input) {
     return { records, pendingProposal: null };
   }
-  if (records.some((record) => record.status === 'pending')) {
-    return { records, pendingProposal: null };
-  }
 
   const unscheduledIds = new Set(params.preview.unscheduledWorkItemIds);
   const unscheduledWorkloadIds = new Set(
@@ -36,20 +42,21 @@ export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
       .filter((item) => unscheduledIds.has(item.id))
       .map((item) => item.workloadFactId),
   );
-  const acceptedSpacing = records.find((record) =>
+  const eligibleSpacingRecords = records.filter((record) =>
     record.kind === 'spaced_memory_practice'
     && record.status === 'accepted'
     && unscheduledWorkloadIds.has(record.workloadFactId));
-  if (!acceptedSpacing) return { records, pendingProposal: null };
+  if (eligibleSpacingRecords.length === 0) {
+    return { records, pendingProposal: null };
+  }
 
-  const existing = records.find((record) =>
-    record.kind === 'mixed_acquisition_review'
-    && record.workloadFactId === acceptedSpacing.workloadFactId);
-  if (existing) {
-    return {
-      records,
-      pendingProposal: existing.status === 'pending' ? existing : null,
-    };
+  const acceptedSpacing = eligibleSpacingRecords.find((record) =>
+    !existingCapacityProposalForWorkload(records, record.workloadFactId));
+  if (!acceptedSpacing) {
+    const existingPending = eligibleSpacingRecords
+      .map((record) => existingCapacityProposalForWorkload(records, record.workloadFactId))
+      .find((record) => record?.status === 'pending') ?? null;
+    return { records, pendingProposal: existingPending };
   }
 
   const proposal: WeeklyPlanningLearningStrategyProposalRecord = {
