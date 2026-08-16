@@ -34,6 +34,57 @@ export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
     | readonly ['task_identity'];
 }
 
+export type WeeklyPlanningStableV5DialogueResolutionKind =
+  | 'semantic_clarification'
+  | 'planning_horizon'
+  | 'planning_window_choice'
+  | 'quantity_role'
+  | 'effort_estimate_choice'
+  | 'availability_date_scope'
+  | 'time_bounds'
+  | 'named_time_period_bounds'
+  | 'commitment_date_scope'
+  | 'commitment_time_bounds'
+  | 'task_date_rule_conflict'
+  | 'constraint_source_choice'
+  | 'task_relation';
+
+export type WeeklyPlanningStableV5DialogueRequestedInformation =
+  | 'clarify_ambiguous_meaning'
+  | 'planning_period'
+  | 'single_planning_window'
+  | 'quantity_role'
+  | 'choose_effort_estimate'
+  | 'availability_date_scope'
+  | 'start_and_end_time'
+  | 'named_time_period_start_and_end'
+  | 'commitment_date'
+  | 'commitment_start_and_end_time'
+  | 'allowed_or_excluded_date_rule'
+  | 'constraint_source'
+  | 'valid_task_order_or_relation';
+
+export type WeeklyPlanningStableV5DialogueResolutionChoice =
+  | 'plan_target_amount'
+  | 'remaining_total_amount'
+  | 'allowed_date'
+  | 'excluded_date'
+  | 'timetable'
+  | 'existing_plans'
+  | 'calendar';
+
+export interface WeeklyPlanningStableV5DialogueResolutionQuestionIntent {
+  kind: 'resolution_question';
+  resolutionKind: WeeklyPlanningStableV5DialogueResolutionKind;
+  targetFactId: string | null;
+  requestedInformation: readonly WeeklyPlanningStableV5DialogueRequestedInformation[];
+  allowedChoices: readonly WeeklyPlanningStableV5DialogueResolutionChoice[];
+  knownAmount: number | null;
+  knownUnitLabel: string | null;
+  ambiguityField: string | null;
+  ambiguityReason: string | null;
+}
+
 export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
   kind: 'learning_strategy_proposal';
   proposalKind: 'spaced_memory_practice';
@@ -87,13 +138,38 @@ export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
   | WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent
+  | WeeklyPlanningStableV5DialogueResolutionQuestionIntent
   | WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent;
+
+export interface WeeklyPlanningStableV5DialogueGroundingFact {
+  factId: string;
+  kind:
+    | 'planning_window'
+    | 'task'
+    | 'component'
+    | 'workload'
+    | 'effort_estimate'
+    | 'temporal_constraint'
+    | 'task_date_rule'
+    | 'recurrence'
+    | 'relation'
+    | 'availability_declaration'
+    | 'constraint_source_request';
+  sourceText: string;
+  data: Record<string, unknown>;
+}
+
+export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
+  mode: 'none' | 'recommended' | 'required_before_resume';
+  acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
+}
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
   planningInformation: Record<string, unknown> | null;
+  currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
