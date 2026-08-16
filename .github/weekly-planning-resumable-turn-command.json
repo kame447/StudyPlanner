@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-persona-high-school-20260816",
+  "scenario": "luna-persona-adult-formal-20260816",
   "turn": 1,
   "attempt": 1,
-  "user_text": "高2です。来週、英単語220語覚えたいです。ほか予定ないです",
+  "user_text": "来週、資格試験の用語を220語暗記したいと考えております。ほかに予定上の制約はございません。",
   "previous_run_id": null,
-  "conversation_id": "weekly-luna-persona-high-school-20260816-01",
-  "owner_id": "real-api-luna-persona-high-school-user-1",
+  "conversation_id": "weekly-luna-persona-adult-formal-20260816-01",
+  "owner_id": "real-api-luna-persona-adult-formal-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
