@@ -100,7 +100,47 @@ const source = {
 
 function graphWithEffort(
   kind: EffortEstimateFactV5['kind'],
+  includeEquivalentReplacement = false,
 ): WeeklyPlanningFactGraphV5 {
+  const oldEffort: EffortEstimateFactV5 = {
+    id: 'effort-20',
+    taskId: 'task-1',
+    targetFactId: 'workload-220',
+    kind,
+    minutes: 20,
+    unitCode: kind === 'total_duration' ? null : 'word',
+    precision: 'approximate',
+    source: {
+      ...source,
+      turnId: 'turn-2',
+      semanticLocalId: 'effort-20',
+      sourceText: '20分くらい',
+    },
+    createdRevision: 2,
+  };
+  const replacementEffort: EffortEstimateFactV5 = {
+    ...oldEffort,
+    id: 'effort-20-current-turn',
+    targetFactId: 'workload-180',
+    source: {
+      ...source,
+      turnId: 'turn-3',
+      semanticLocalId: 'effort-current-turn',
+      sourceText: '20分くらい',
+    },
+    createdRevision: 3,
+  };
+  const lifecycleFacts: Array<[string, number]> = [
+    ['task-1', 1],
+    ['workload-220', 1],
+    ['effort-20', 2],
+    ['workload-180', 3],
+    ['correction-1', 3],
+  ];
+  if (includeEquivalentReplacement) {
+    lifecycleFacts.push(['effort-20-current-turn', 3]);
+  }
+
   return {
     ...createEmptyWeeklyPlanningFactGraphV5(),
     revision: 3,
@@ -148,22 +188,9 @@ function graphWithEffort(
         createdRevision: 3,
       },
     ],
-    effortEstimates: [{
-      id: 'effort-20',
-      taskId: 'task-1',
-      targetFactId: 'workload-220',
-      kind,
-      minutes: 20,
-      unitCode: kind === 'total_duration' ? null : 'word',
-      precision: 'approximate',
-      source: {
-        ...source,
-        turnId: 'turn-2',
-        semanticLocalId: 'effort-20',
-        sourceText: '20分くらい',
-      },
-      createdRevision: 2,
-    }],
+    effortEstimates: includeEquivalentReplacement
+      ? [oldEffort, replacementEffort]
+      : [oldEffort],
     correctionIntents: [{
       id: 'correction-1',
       target: {
@@ -182,16 +209,10 @@ function graphWithEffort(
       },
       createdRevision: 3,
     }],
-    factLifecycles: [
-      ['task-1', 1],
-      ['workload-220', 1],
-      ['effort-20', 2],
-      ['workload-180', 3],
-      ['correction-1', 3],
-    ].map(([factId, createdRevision]) => ({
-      factId: String(factId),
+    factLifecycles: lifecycleFacts.map(([factId, createdRevision]) => ({
+      factId,
       status: 'active' as const,
-      createdRevision: Number(createdRevision),
+      createdRevision,
       terminalRevision: null,
       supersededByFactId: null,
     })),
@@ -307,6 +328,42 @@ describe('Stable V5 correction transaction', () => {
         unitCode: 'word',
       }),
     ]);
+  });
+
+  it('reuses an equivalent current-turn effort instead of creating a duplicate carry fact', () => {
+    const result = applyWeeklyPlanningCorrectionTransactionV5({
+      graph: graphWithEffort('session_duration', true),
+      expectedRevision: 3,
+      correctionIntentFactId: 'correction-1',
+      operationKey: 'replace-workload-existing-effort',
+    });
+
+    expect(result.status).toBe('applied');
+    expect(result.added).toEqual([]);
+    expect(result.superseded).toEqual(expect.arrayContaining([
+      { kind: 'workload', id: 'workload-220' },
+      { kind: 'effort_estimate', id: 'effort-20' },
+    ]));
+    expect(result.graph.factLifecycles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        factId: 'effort-20',
+        status: 'superseded',
+        supersededByFactId: 'effort-20-current-turn',
+      }),
+    ]));
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph);
+    expect(active.workloads).toEqual([
+      expect.objectContaining({ id: 'workload-180', amount: 180 }),
+    ]);
+    expect(active.effortEstimates).toEqual([
+      expect.objectContaining({
+        id: 'effort-20-current-turn',
+        targetFactId: 'workload-180',
+        kind: 'session_duration',
+        minutes: 20,
+      }),
+    ]);
+    expect(validateWeeklyPlanningFactGraphValueV5(result.graph).errors).toEqual([]);
   });
 
   it('invalidates a total-duration estimate when the total workload changes', () => {
