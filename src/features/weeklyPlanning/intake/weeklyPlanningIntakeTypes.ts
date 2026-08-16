@@ -83,7 +83,15 @@ export type WeeklyPlanningLearningStrategyProposalStatus =
 
 export type WeeklyPlanningLearningStrategyProposalKind =
   | 'spaced_memory_practice'
-  | 'calibrate_memory_pace';
+  | 'calibrate_memory_pace'
+  | 'mixed_acquisition_review';
+
+export interface WeeklyPlanningMixedAcquisitionReviewCapacityStrategy {
+  trigger: 'insufficient_capacity';
+  acquisition: 'longer_sessions';
+  review: 'short_distributed_sessions';
+  unscheduledWorkItemIds: string[];
+}
 
 export interface WeeklyPlanningLearningStrategyProposalRecord {
   id: string;
@@ -97,6 +105,7 @@ export interface WeeklyPlanningLearningStrategyProposalRecord {
     max: number;
   };
   selectedSessionMinutes?: number | null;
+  capacityStrategy?: WeeklyPlanningMixedAcquisitionReviewCapacityStrategy | null;
   createdRevision: number;
   proposedAtTurnId: string;
   decidedAtTurnId: string | null;
@@ -167,168 +176,58 @@ export type TaskDistributionPolicy =
   | 'single_block'
   | 'contiguous'
   | 'splittable'
-  | 'spaced'
-  | 'sequential_units';
-
-export type StudyCognitiveLoad = 'light' | 'medium' | 'heavy' | 'unknown';
-
-export interface StudyTaskExecutionProfile {
-  activityKind: StudyActivityKind;
-  distributionPolicy: TaskDistributionPolicy;
-  cognitiveLoad: StudyCognitiveLoad;
-}
-
-export interface ExamPrepScope {
-  examType?: string;
-  fields: string[];
-  totalFields?: number;
-  totalYears?: number;
-  yearRange?: {
-    startYear: number;
-    endYear: number;
-    sourceText: string;
-  };
-  strategyHint?: ExamPrepStrategyHint;
-  unitModel?: StudyScopeUnit;
-  unitCountHint?: number;
-  rawText: string[];
-}
+  | 'spaced';
 
 export interface StudyTaskScope {
-  title: string;
   subject?: string;
-  examType?: string;
-  field?: string;
-  year?: number;
-  deadlineDeclared?: true;
-  deadlineDate?: string;
-  deadlineTime?: string;
-  executionProfile?: StudyTaskExecutionProfile;
-  unit: StudyScopeUnit;
-  amount?: number;
-  rawText: string;
-  requiresTimeEstimate: boolean;
-  source: StudyTaskSource;
+  label?: string;
+  unit?: StudyScopeUnit;
+  totalAmount?: number;
+  completedAmount?: number;
+  remainingAmount?: number;
+  rangeStart?: number;
+  rangeEnd?: number;
+  source?: StudyTaskSource;
+  activityKind?: StudyActivityKind;
+  distributionPolicy?: TaskDistributionPolicy;
 }
-
-export type StudyProgressAmbiguity =
-  | 'completion_direction'
-  | 'year_range'
-  | 'field_scope'
-  | 'scope_range'
-  | 'none';
-
-export type CompletionTarget =
-  | { kind: 'all'; rawText: string }
-  | { kind: 'latest_n_years'; count: number; rawText: string }
-  | { kind: 'up_to_reachable'; rawText: string }
-  | { kind: 'year_range'; startYear: number; endYear: number; rawText: string };
 
 export interface StudyProgress {
-  field?: string;
-  completedYears?: number[];
-  completionTarget?: CompletionTarget;
-  completionBoundaryYear?: number;
-  current?: string;
-  incomplete?: string[];
-  ambiguity: StudyProgressAmbiguity;
-  rawText: string;
+  taskId?: string;
+  completedAmount?: number;
+  remainingAmount?: number;
+  sourceText?: string;
 }
 
-export interface UnitRateEstimate {
-  unit: StudyScopeUnit;
-  minutesPerUnit?: number;
-  source: 'user' | 'assumption' | 'default';
-  uncertainty?: 'low' | 'medium' | 'high';
-  rawText?: string;
+export interface UnitRate {
+  taskId?: string;
+  unit?: StudyScopeUnit;
+  amount?: number;
+  minutes?: number;
+  sourceText?: string;
 }
 
-export type LifeConstraintKind =
-  | 'sleep'
-  | 'meal'
-  | 'bath'
-  | 'commute'
-  | 'club'
-  | 'cram_school'
-  | 'fixed_event'
-  | 'unavailable'
-  | 'buffer';
-
-export interface LifeConstraint {
-  kind: LifeConstraintKind;
+export interface PlanningConstraint {
+  kind?: string;
   date?: string;
-  start?: string;
-  end?: string;
-  durationMinutes?: number;
-  studyAvailableStart?: string;
-  hardness: 'hard' | 'soft';
-  rawText?: string;
+  startTime?: string;
+  endTime?: string;
+  sourceText?: string;
 }
 
-export type StudyTimePreferenceKind = 'avoid_morning' | 'prefer_before_sleep';
-
-export interface StudyTimePreference {
-  kind: StudyTimePreferenceKind;
-  taskRef?: string;
-  rawText: string;
-  confidence: 'high' | 'medium';
+export interface PlanningPriorityPolicy {
+  kind: 'unknown' | string;
 }
-
-export type ConstraintSourceKind = 'timetable' | 'existing_plans' | 'calendar';
-
-export interface ConstraintSourceRef {
-  kind: ConstraintSourceKind;
-  selector: 'active';
-}
-
-export type PriorityPolicy =
-  | { kind: 'field_first'; order: string[] }
-  | { kind: 'deadline_first' }
-  | { kind: 'weakness_first' }
-  | { kind: 'score_weight_first' }
-  | { kind: 'balanced' }
-  | { kind: 'unknown' };
-
-export type PlanningIntakeMissing =
-  | 'planning_period'
-  | 'planning_start_date'
-  | 'planning_duration'
-  | 'tasks_or_goals'
-  | 'fixed_events'
-  | 'sleep_cycle'
-  | 'meal_bath_constraints'
-  | 'year_range'
-  | 'progress'
-  | 'completion_direction'
-  | 'unit_duration_estimate'
-  | 'priority_policy'
-  | 'next_field_after_math'
-  | 'life_constraints';
-
-export interface PlanningAssumption {
-  slot: PlanningIntakeMissing;
-  source: 'default' | 'derived';
-  description: string;
-}
-
-export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
 
 export type WeeklyPlanningQuestionContextKind =
   | 'missing'
-  | 'feasibility_adjustment'
   | 'options'
-  | 'preview'
-  | 'approval'
-  | 'ambiguity';
+  | 'confirmation';
 
-/**
- * 直前に実際にユーザーへ提示した質問の意味的な参照。
- * missing状態から再計算せず、次turnの短い聞き返しを解釈するためにsession-localで保持する。
- */
-export interface WeeklyPlanningQuestionContext {
+export interface WeeklyPlanningLastQuestionContext {
   kind: WeeklyPlanningQuestionContextKind;
-  targetSlot?: string;
-  intent?: string;
+  targetSlot: string;
+  intent: string;
   topicId?: string;
   actionId?: string;
 }
@@ -337,41 +236,24 @@ export interface PlanningIntakeState {
   status: PlanningIntakeStatus;
   intent: PlanningIntent;
   range?: PlanningRange;
-  pendingPlanningRange?: PendingPlanningRangeClarification;
-  examPrepScope?: ExamPrepScope;
+  pendingRangeClarification?: PendingPlanningRangeClarification;
   tasks: StudyTaskScope[];
   progress: StudyProgress[];
-  unitRates: UnitRateEstimate[];
-  constraints: LifeConstraint[];
-  studyTimePreferences?: StudyTimePreference[];
-  constraintSourcesInUse?: ConstraintSourceRef[];
-  fixedEventsDeclaredNone?: true;
-  priorityPolicy: PriorityPolicy;
-  priorityPolicySource?: 'user' | 'derived_single_field';
-  missing: PlanningIntakeMissing[];
+  unitRates: UnitRate[];
+  constraints: PlanningConstraint[];
+  priorityPolicy: PlanningPriorityPolicy;
+  missing: string[];
   assumptions: string[];
-  uncertainties: PlanningIntakeUncertainty[];
+  uncertainties: string[];
   questions: string[];
-  lastQuestionContext?: WeeklyPlanningQuestionContext;
+  lastQuestionContext?: WeeklyPlanningLastQuestionContext;
   shouldCreateDraft: boolean;
-  shouldSavePlan: false;
+  shouldSavePlan: boolean;
   draftGenerationIntent?: PlanningDraftGenerationIntent;
-  draftGenerationAuthorizedAtRevision?: number;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
   repairAgenda?: WeeklyPlanningRepairObligation[];
   learningStrategyProposalRecords?: WeeklyPlanningLearningStrategyProposalRecord[];
-  /**
-   * Session-local proposal ledger for legacy slot assumptions. UI stateと一緒に次turnへ渡すが、
-   * repository/localStorageへは保存しない。Stable V5 learning strategy proposals use the
-   * dedicated learningStrategyProposalRecords field instead.
-   */
-  assumptionProposalRecords?: AssumptionProposalRecord[];
   sourceTurns: string[];
-}
-
-export interface WeeklyPlanningIntakeContext {
-  selectedDate: string;
-  planningDayCount?: number;
-  currentDateTime?: string;
+  assumptionProposals?: AssumptionProposalRecord[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
 }
