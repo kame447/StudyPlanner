@@ -9,6 +9,9 @@ import {
   applyWeeklyPlanningExistingEntityBindingsV5,
 } from './weeklyPlanningExistingEntityBindingApplicationV5';
 import {
+  projectWeeklyPlanningPercentageProgressV5,
+} from './weeklyPlanningPercentageProgressProjectionV5';
+import {
   reconcileWeeklyPlanningProgressCorrectionsV5,
 } from './weeklyPlanningProgressCorrectionReconciliationV5';
 import type {
@@ -145,9 +148,14 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: correctionResult.canonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const percentageProjectedCanonicalization = projectWeeklyPlanningPercentageProgressV5({
     originalGraph: params.originalGraph,
     canonicalization: progressReconciledCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+    originalGraph: params.originalGraph,
+    canonicalization: percentageProjectedCanonicalization,
   });
   return {
     entityBindingApplication,
