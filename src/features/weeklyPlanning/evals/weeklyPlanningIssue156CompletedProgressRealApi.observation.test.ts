@@ -39,8 +39,9 @@ function createStore(initialState: PlanningState) {
 }
 
 function questionField(context: unknown, key: 'topicId' | 'intent'): string | null {
-  if (typeof context !== 'object' || context === null || !(key in context)) return null;
-  const value = context[key];
+  if (typeof context !== 'object' || context === null) return null;
+  const record = context as Record<string, unknown>;
+  const value = record[key];
   return typeof value === 'string' ? value : null;
 }
 
