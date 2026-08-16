@@ -1,11 +1,11 @@
 {
-  "scenario": "luna-context-pronoun-20260816",
-  "turn": 2,
+  "scenario": "luna-context-pronoun-clean-20260816",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "これ来週まで。まだほぼやってない",
-  "previous_run_id": 31922417053,
-  "conversation_id": "weekly-luna-context-pronoun-20260816-01",
-  "owner_id": "real-api-luna-context-pronoun-user-1",
+  "user_text": "数学の問題集80問をやりたい",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-context-pronoun-clean-20260816-01",
+  "owner_id": "real-api-luna-context-pronoun-clean-user-1",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
