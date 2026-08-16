@@ -38,6 +38,11 @@ function createStore(initialState: PlanningState) {
   };
 }
 
+function questionTopicId(context: unknown): string | null {
+  if (typeof context !== 'object' || context === null || !('topicId' in context)) return null;
+  return typeof context.topicId === 'string' ? context.topicId : null;
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 completed open-ended progress real API gate', () => {
@@ -72,7 +77,7 @@ run('Issue #156 completed open-ended progress real API gate', () => {
     const transcript: Array<{
       user: string;
       assistant: string;
-      questionContext: PlanningState['intakeState']['lastQuestionContext'] | null;
+      questionContext: unknown;
     }> = [];
     for (const userText of [
       '明日の予定を立てたいです',
@@ -93,13 +98,14 @@ run('Issue #156 completed open-ended progress real API gate', () => {
         dispatch: store.dispatch,
       }, services);
       expect(submission.accepted).toBe(true);
-      if (!capturedResult) throw new Error('runtime result missing');
-      if (capturedResult.failure) {
-        throw new Error(`${capturedResult.failure.code} ${capturedResult.failure.traceCode}`);
+      if (capturedResult === null) throw new Error('runtime result missing');
+      const result: WeeklyPlanningTurnExecutionResult = capturedResult;
+      if (result.failure) {
+        throw new Error(`${result.failure.code} ${result.failure.traceCode}`);
       }
       transcript.push({
         user: userText,
-        assistant: store.getState().lastAssistantMessage ?? capturedResult.message,
+        assistant: store.getState().lastAssistantMessage ?? result.message,
         questionContext: store.getState().intakeState?.lastQuestionContext ?? null,
       });
     }
@@ -127,7 +133,7 @@ run('Issue #156 completed open-ended progress real API gate', () => {
       && fact.unitLabel === '%')).toBe(false);
 
     const finalTurn = transcript[2];
-    expect(finalTurn.questionContext?.topicId).not.toBe(task?.id);
+    expect(questionTopicId(finalTurn.questionContext)).not.toBe(task?.id);
     expect(finalTurn.assistant.replace(/\s+/g, '')).not.toMatch(/夏合宿.{0,30}(何%|100%とすると|どこまで)/);
 
     mkdirSync(outputDir, { recursive: true });
