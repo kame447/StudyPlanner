@@ -1,9 +1,9 @@
 {
   "scenario": "luna-multiturn-short-answer-correction-20260816",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "来週、英単語220語覚えたい。ほか予定ない",
-  "previous_run_id": null,
+  "user_text": "うん",
+  "previous_run_id": 31920531732,
   "conversation_id": "weekly-luna-multiturn-short-answer-correction-20260816-01",
   "owner_id": "real-api-luna-multiturn-short-answer-correction-user-1",
   "week_start_date": "2026-08-17",
