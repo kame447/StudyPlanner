@@ -1,7 +1,7 @@
 {
   "scenario": "context-reference-student-ellipsis",
   "turn": 2,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "来週まで。夜がいい",
   "previous_run_id": 31931979790,
   "conversation_id": "weekly-luna-context-student-ellipsis-01",
