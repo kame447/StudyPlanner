@@ -1,8 +1,8 @@
 {
-  "scenario": "context-reference-contrastive-other",
+  "scenario": "context-reference-nonrecent-description",
   "turn": 4,
   "attempt": 1,
-  "user_text": "じゃあもう片方は日曜まで",
+  "user_text": "最初に言った方は夜にやりたい",
   "previous_run_id": 31933053329,
   "conversation_id": "weekly-luna-context-true-ambiguity-01",
   "owner_id": "real-api-context-true-ambiguity-01",
