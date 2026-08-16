@@ -95,6 +95,7 @@ function pendingQuestion() {
     questionCode: 'missing_effort_estimate' as const,
     targetFactId: 'workload-english',
     graphRevision: 1,
+    effortMeasurement: 'duration_per_unit' as const,
   };
 }
 
