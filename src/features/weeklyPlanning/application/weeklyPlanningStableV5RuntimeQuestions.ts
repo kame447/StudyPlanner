@@ -29,7 +29,7 @@ function progressQuestion(params: {
   if (params.scopeTotal) {
     return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
   }
-  return `「${params.label}」は、完成を100%とすると今はだいたい何%くらいまで進んでいますか？`;
+  return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
 }
 
 export function stableV5MissingSchedulableWorkQuestion(
