@@ -273,6 +273,7 @@ describe('Stable V5 multi-turn pipeline', () => {
           questionCode: 'missing_effort_estimate',
           targetFactId: missingEffortIssue?.factId ?? null,
           graphRevision: first.graph.revision,
+          effortMeasurement: 'duration_per_unit',
         },
       },
       schedulerContext,
