@@ -25,12 +25,19 @@ export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
   unitLabel: string | null;
 }
 
+export type WeeklyPlanningStableV5ProgressBasis =
+  | 'known_bounded_quantity'
+  | 'completion_progress_without_known_unit';
+
 export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
-  mode: 'existing_target_scope_progress' | 'missing_task_identity';
+  mode: 'existing_target_progress' | 'missing_task_identity';
   targetFactId: string | null;
+  progressBasis: WeeklyPlanningStableV5ProgressBasis | null;
+  knownUnitCode: string | null;
+  knownUnitLabel: string | null;
   requestedInformation:
-    | readonly ['total_scope', 'current_progress']
+    | readonly ['current_progress']
     | readonly ['task_identity'];
 }
 
