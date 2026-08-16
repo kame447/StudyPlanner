@@ -214,8 +214,8 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
       }
     : null;
   const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
-  const selectedQuestion = repairDecision.question
-    ?? memorySessionDurationQuestion
+  const selectedQuestion = memorySessionDurationQuestion
+    ?? repairDecision.question
     ?? (baselineDialogue.status === 'ask_question' ? baselineDialogue.question : null);
   const dialogue = selectedQuestion
     ? {
