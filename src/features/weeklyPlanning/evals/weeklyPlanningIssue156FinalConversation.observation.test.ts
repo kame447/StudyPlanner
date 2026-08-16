@@ -289,16 +289,25 @@ run('Issue #156 final real API conversation gate', () => {
     expect(correctedWorkloads).toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'completed', amount: 12 }),
       expect.objectContaining({ quantityRole: 'remaining', amount: 8 }),
-      expect.objectContaining({ quantityRole: 'target', amount: 8, periodExpression: 'tomorrow' }),
     ]));
     expect(correctedWorkloads).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'remaining', amount: 10 }),
-      expect.objectContaining({ quantityRole: 'target', amount: 10 }),
     ]));
+    const staleDerivedTarget = correctedWorkloads.find((workload) =>
+      workload.quantityRole === 'target'
+      && workload.amount === 10
+      && workload.source.sourceText === '残り');
+    expect(staleDerivedTarget).toBeUndefined();
+
+    const finalWorkloads = activeWorkloads(c[3].graph);
+    const completedTwelve = finalWorkloads.filter((workload) =>
+      workload.quantityRole === 'completed' && workload.amount === 12);
+    expect(completedTwelve).toHaveLength(1);
     const finalEfforts = activeEfforts(c[3].graph);
-    expect(finalEfforts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'duration_per_unit', minutes: 8 }),
-    ]));
+    const perUnitEight = finalEfforts.find((effort) =>
+      effort.kind === 'duration_per_unit' && effort.minutes === 8);
+    expect(perUnitEight).toBeDefined();
+    expect(perUnitEight?.targetFactId).toBe(completedTwelve[0].id);
     expect(finalEfforts).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'total_duration', minutes: 8 }),
     ]));
