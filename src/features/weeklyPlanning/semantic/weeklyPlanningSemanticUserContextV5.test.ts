@@ -6,6 +6,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5,
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
@@ -136,9 +137,13 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
-  it('keeps deadline semantics without a regression-specific goal-event prompt rule', () => {
+  it('keeps deadline semantics without pinning the contract to one English sentence', () => {
     const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(prompt).toContain('Deadline means completion-by');
+    expect(
+      WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
+        (rule) => rule.id === 'temporal_scope_and_deadline',
+      ),
+    ).toBe(true);
     expect(prompt).not.toContain('otherwise an event date is a goal event');
     expect(prompt).not.toContain('goal event');
     expect(prompt).not.toContain('共通テスト模試');
