@@ -1,11 +1,11 @@
 {
-  "scenario": "context-reference-nonrecent-description",
-  "turn": 4,
+  "scenario": "checkpoint-loop-01-gradual-intake",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "最初に言った方は夜にやりたい",
-  "previous_run_id": 31933053329,
-  "conversation_id": "weekly-luna-context-true-ambiguity-01",
-  "owner_id": "real-api-context-true-ambiguity-01",
+  "user_text": "来週、英単語180語と数学の問題40問をやりたい",
+  "previous_run_id": null,
+  "conversation_id": "weekly-luna-checkpoint-10loop-01",
+  "owner_id": "real-api-checkpoint-10loop-01",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
