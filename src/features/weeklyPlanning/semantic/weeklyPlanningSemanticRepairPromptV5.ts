@@ -37,7 +37,6 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (directives.length === 0) {
     directives.push('Correct only the listed validation failures; preserve unrelated current-turn meaning.');
   }
-  directives.push('If repair emits a relative dateExpression, convert it to a canonical date expression using the provided calendarContext; never leave natural-language relative date text in dateExpression.');
   return unique(directives);
 }
 
