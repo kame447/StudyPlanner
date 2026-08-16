@@ -7,7 +7,7 @@ export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
     'Keep amount declared when target/remaining/completed is unclear. Distinguish workload from duration; use per-unit effort only when stated.',
     'Keep task timing on the task, plan-wide free/busy/preferences in availability, and whole-plan range in planningWindow. Mandatory/unavailable/deadline are hard; preferences soft; unresolved strength unknown. Deadline means completion-by.',
     'No schedule constraints or commitments means availability kind=no_additional_constraint; use kind=available only for a positive available time/period.',
-    'Keep unrelated activities separate. Emit stated relations only; if a modifier has multiple supported targets and context cannot choose one, emit uncertainty.',
+    'Keep unrelated activities separate. Emit relations only when stated; if a modifier has multiple supported targets and context cannot choose one, emit uncertainty.',
     'Emit recurrence and external source requests only when explicit.',
     'Use userContextFacts kind=learning_preference only for a durable preference beyond the current plan, not a choice limited to this week/plan.',
     'Use corrections/decisions only for explicit corrections or decisions about a presented item. For a pending proposal in publicStateSummary, bind the decision to target.kind=proposal and its exact publicId.',
