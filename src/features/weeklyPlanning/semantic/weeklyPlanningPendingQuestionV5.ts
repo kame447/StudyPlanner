@@ -1,7 +1,9 @@
-export type WeeklyPlanningEffortMeasurementV5 =
-  | 'total_duration'
-  | 'duration_per_unit'
-  | 'session_duration';
+import {
+  isWeeklyPlanningEffortMeasurementV5,
+  type WeeklyPlanningEffortMeasurementV5,
+} from './weeklyPlanningEffortQuestionPolicyV5';
+
+export type { WeeklyPlanningEffortMeasurementV5 } from './weeklyPlanningEffortQuestionPolicyV5';
 
 export interface WeeklyPlanningPendingQuestionV5 {
   actionId: string | null;
@@ -13,12 +15,6 @@ export interface WeeklyPlanningPendingQuestionV5 {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isEffortMeasurement(value: unknown): value is WeeklyPlanningEffortMeasurementV5 {
-  return value === 'total_duration'
-    || value === 'duration_per_unit'
-    || value === 'session_duration';
 }
 
 export function readWeeklyPlanningPendingQuestionV5(
@@ -34,7 +30,7 @@ export function readWeeklyPlanningPendingQuestionV5(
     || (value.targetFactId !== null && typeof value.targetFactId !== 'string')
     || !Number.isInteger(value.graphRevision)
     || Number(value.graphRevision) < 0
-    || !(effortMeasurement === null || isEffortMeasurement(effortMeasurement))
+    || !(effortMeasurement === null || isWeeklyPlanningEffortMeasurementV5(effortMeasurement))
   ) {
     return null;
   }
