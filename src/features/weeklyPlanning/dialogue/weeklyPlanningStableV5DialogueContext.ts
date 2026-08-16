@@ -270,6 +270,17 @@ export function questionIntentForStableV5Dialogue(params: {
       } as const;
     }
     if (params.questionTarget === null) {
+      if (params.effortMeasurement === 'all_requested_work_complete') {
+        return {
+          kind: 'schedulable_work_detail',
+          mode: 'all_requested_work_complete',
+          targetFactId: null,
+          progressBasis: null,
+          knownUnitCode: null,
+          knownUnitLabel: null,
+          requestedInformation: ['additional_task_or_constraint'],
+        } as const;
+      }
       return {
         kind: 'schedulable_work_detail',
         mode: 'missing_task_identity',
