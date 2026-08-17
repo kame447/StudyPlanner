@@ -38,6 +38,16 @@ Default repetition: 3–5 generations per affected stochastic surface.
 
 Run only scenarios affected by the checkpoint plus a small invariant smoke set. If the real-model run exposes a defect, reproduce it deterministically where possible before the next checkpoint run.
 
+## Assistant-triggered execution
+
+The repository supports repeated real-Luna execution from an AI-assisted GitHub workflow without requiring a person to open the Actions UI.
+
+The canonical trigger is `.github/weekly-planning-real-api-command.json`. Updating that file on an `agent/**` branch starts `Weekly Planning Real API Checkpoint`. Change `profile` to either `checkpoint` or `merge-gate`, and change `request_id` for each requested run so the trigger commit is explicit and auditable. `reason` records why the run was requested.
+
+This command-file trigger is the preferred route when ChatGPT is actively auditing a PR. `workflow_dispatch` remains available for manual use. A normal source push still does not run the full real-API matrix unless the command file itself is updated.
+
+After each run, inspect the workflow conclusion and uploaded observation artifact. A green workflow is not sufficient by itself for a merge gate; visible transcripts and resulting machine state still require review.
+
 ## Tier 3 — merge gate
 
 Before merging a PR that materially changes weekly-planning AI behavior, run the full real-API audit on the final product head.
