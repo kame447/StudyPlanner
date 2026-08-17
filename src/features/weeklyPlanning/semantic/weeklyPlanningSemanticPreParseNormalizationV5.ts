@@ -27,6 +27,7 @@ import {
 } from './weeklyPlanningTemporalClockEncodingV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
+  'empty_semantic_delta_envelope',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
   'pending_question_entity_binding',
@@ -57,6 +58,10 @@ Record<
   WeeklyPlanningSemanticPreParseNormalizationStageIdV5,
   WeeklyPlanningSemanticPreParseNormalizationStageDefinitionV5
 > = {
+  empty_semantic_delta_envelope: {
+    category: 'representation_repair',
+    owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
+  },
   task_decomposition_uncertainty: {
     category: 'semantic_invariant_derivation',
     owningInvariant: 'needs_breakdown tasks must expose one work_breakdown uncertainty',
@@ -113,6 +118,71 @@ interface RawNormalizationResult {
   repairs: string[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormalizationResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { rawResponse, repairs: [] };
+  }
+  if (!isRecord(parsed) || 'schemaVersion' in parsed) {
+    return { rawResponse, repairs: [] };
+  }
+
+  const topLevelKeys = Object.keys(parsed).sort();
+  const expectedKeys = [
+    'corrections',
+    'execution',
+    'facts',
+    'grounding',
+    'notes',
+    'uncertainties',
+  ];
+  if (
+    topLevelKeys.length !== expectedKeys.length
+    || topLevelKeys.some((key, index) => key !== expectedKeys[index])
+    || !isEmptyArray(parsed.facts)
+    || !isEmptyArray(parsed.corrections)
+    || !isEmptyArray(parsed.uncertainties)
+    || !isEmptyArray(parsed.notes)
+    || !isRecord(parsed.execution)
+    || Object.keys(parsed.execution).length !== 1
+    || !isEmptyArray(parsed.execution.approvalRequests)
+    || !isRecord(parsed.grounding)
+    || Object.keys(parsed.grounding).sort().join('|') !== 'needsGrounding|note|targetFactIds'
+    || parsed.grounding.needsGrounding !== false
+    || !isEmptyArray(parsed.grounding.targetFactIds)
+    || parsed.grounding.note !== null
+  ) {
+    return { rawResponse, repairs: [] };
+  }
+
+  return {
+    rawResponse: JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    }),
+    repairs: ['empty-semantic-delta-envelope-canonicalized'],
+  };
+}
+
 /**
  * Stable V5 provider-output normalization boundary.
  *
@@ -145,6 +215,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     });
   };
 
+  applyStage('empty_semantic_delta_envelope', (value) =>
+    normalizeEmptySemanticDeltaEnvelopeV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
