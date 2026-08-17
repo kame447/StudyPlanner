@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260818-pr157-merge-gate-05",
-  "reason": "Final parallel revalidation after distinguishing omitted workload from semantic ambiguity"
+  "request_id": "20260818-pr157-merge-gate-06",
+  "reason": "Final parallel revalidation after preserving per-unit effort answers, retiring stale duplicate remaining facts, and correcting relation intent evaluation"
 }
