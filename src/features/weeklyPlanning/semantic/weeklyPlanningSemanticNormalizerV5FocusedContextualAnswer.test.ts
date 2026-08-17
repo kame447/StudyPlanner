@@ -62,7 +62,9 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(result.document?.tasks[0].workloads).toEqual([]);
     expect(result.document?.tasks[0].effortEstimates).toEqual([
       expect.objectContaining({
+        kind: 'total_duration',
         minutes: 30,
+        unitCode: null,
         precision: 'approximate',
         sourceText: '30分くらいです。',
       }),
@@ -74,6 +76,33 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
       json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
     });
     expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
+  });
+
+  it('preserves a per-unit effort answer without multiplying it into a total duration', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'effort_per_unit_answer',
+        minutes: 8,
+        precision: 'approximate',
+        quantityRole: null,
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '1語あたりだいたい8分くらいです。',
+      publicStateSummary: publicStateSummary('missing_effort_estimate'),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks[0].effortEstimates).toEqual([
+      expect.objectContaining({
+        kind: 'duration_per_unit',
+        minutes: 8,
+        unitCode: 'word',
+        sourceText: '1語あたりだいたい8分くらいです。',
+      }),
+    ]);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('interprets a direct quantity-role reply through the same exact-pending-target route', async () => {
