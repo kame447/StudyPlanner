@@ -11,6 +11,11 @@ on:
         options:
           - checkpoint
           - merge-gate
+  push:
+    branches:
+      - agent/issue156-prompt-simplification-adversarial-audit
+    paths:
+      - '.github/workflows/weekly-planning-real-api-checkpoint.yml'
 
 permissions:
   contents: read
@@ -70,7 +75,7 @@ jobs:
           test "$status" -ge 200 -a "$status" -lt 300
 
       - name: Run checkpoint real API audit
-        if: ${{ inputs.profile == 'checkpoint' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'checkpoint' }}
         run: |
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
@@ -79,7 +84,7 @@ jobs:
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Run merge-gate real API audit
-        if: ${{ inputs.profile == 'merge-gate' }}
+        if: ${{ github.event_name == 'push' || inputs.profile == 'merge-gate' }}
         run: |
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
@@ -93,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-real-api-${{ inputs.profile }}
+          name: weekly-planning-real-api-${{ github.event_name == 'push' && 'merge-gate' || inputs.profile }}
           path: artifacts/weekly-planning-real-api/
           if-no-files-found: warn
           retention-days: 30
