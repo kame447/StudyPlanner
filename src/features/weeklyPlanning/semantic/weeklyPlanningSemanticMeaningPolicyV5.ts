@@ -12,7 +12,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'current_turn_scope',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'Schema and validators can reject malformed output, but cannot decide which supported meanings belong to the current utterance rather than copied context.',
-    instruction: 'Interpret only supported current-turn meaning into semantic facts.',
+    instruction: 'Interpret every supported explicit current-turn contribution independently into semantic facts; do not let one active conversational agenda suppress another stated contribution.',
   },
   {
     id: 'task_structure',
