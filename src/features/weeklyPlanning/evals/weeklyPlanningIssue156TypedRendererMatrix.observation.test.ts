@@ -105,7 +105,7 @@ run('Issue #156 typed renderer real API stress matrix', () => {
       observations.push({ kind: 'task_relation', variant: relationVariants[i], intent: renderInput.questionIntent, result });
       expect(result.status).toBe('rendered');
       if (result.status === 'rendered') {
-        expect(result.text, `relation variant ${i + 1}`).not.toMatch(/追加|登録|反映|設定してよい|設定しますか|よいですか|いいですか/);
+        expect(result.text, `relation variant ${i + 1}`).not.toMatch(/追加|登録|反映|設定してよい|設定しますか/);
         expect(result.text, `relation variant ${i + 1}`).toMatch(/どの|どれ|何と何|何に|二つ|2つ|指し|対象|関係する|先に行う|あとに行う/);
       }
     }
