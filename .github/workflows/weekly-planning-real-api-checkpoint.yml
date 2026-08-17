@@ -13,19 +13,21 @@ on:
           - merge-gate
   push:
     branches:
-      - agent/issue156-prompt-simplification-adversarial-audit
+      - 'agent/**'
     paths:
-      - '.github/workflows/weekly-planning-real-api-checkpoint.yml'
+      - '.github/weekly-planning-real-api-command.json'
 
 permissions:
   contents: read
 
 jobs:
   real-api:
+    if: ${{ github.actor == github.repository_owner }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       TZ: Asia/Tokyo
+      COMMAND_FILE: .github/weekly-planning-real-api-command.json
       WEEKLY_PLANNING_ISSUE156_REAL_API: '1'
       WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR: artifacts/weekly-planning-real-api
       WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS: '420000'
@@ -46,6 +48,22 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+
+      - name: Resolve requested profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            profile='${{ inputs.profile }}'
+          else
+            test -f "$COMMAND_FILE"
+            profile=$(jq -r '.profile' "$COMMAND_FILE")
+          fi
+          case "$profile" in
+            checkpoint|merge-gate) ;;
+            *) echo "unsupported profile: $profile" >&2; exit 1 ;;
+          esac
+          echo "REAL_API_PROFILE=$profile" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -75,7 +93,7 @@ jobs:
           test "$status" -ge 200 -a "$status" -lt 300
 
       - name: Run checkpoint real API audit
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'checkpoint' }}
+        if: ${{ env.REAL_API_PROFILE == 'checkpoint' }}
         run: |
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
@@ -84,7 +102,7 @@ jobs:
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Run merge-gate real API audit
-        if: ${{ github.event_name == 'push' || inputs.profile == 'merge-gate' }}
+        if: ${{ env.REAL_API_PROFILE == 'merge-gate' }}
         run: |
           set -o pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
@@ -98,7 +116,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-real-api-${{ github.event_name == 'push' && 'merge-gate' || inputs.profile }}
+          name: weekly-planning-real-api
           path: artifacts/weekly-planning-real-api/
           if-no-files-found: warn
           retention-days: 30
