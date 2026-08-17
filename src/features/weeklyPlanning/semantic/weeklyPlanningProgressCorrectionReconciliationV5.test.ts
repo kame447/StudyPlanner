@@ -91,6 +91,13 @@ function correctedCanonicalization() {
   };
 }
 
+function activeWorkloads(graph: WeeklyPlanningFactGraphV5) {
+  const activeIds = new Set(graph.factLifecycles
+    .filter((entry) => entry.status === 'active')
+    .map((entry) => entry.factId));
+  return graph.workloads.filter((fact) => activeIds.has(fact.id));
+}
+
 describe('Stable V5 progress correction reconciliation', () => {
   it('recomputes remaining work and a target derived from the same semantic clause', () => {
     const original = originalGraph();
@@ -100,10 +107,7 @@ describe('Stable V5 progress correction reconciliation', () => {
       operationKeyPrefix: 'turn-3',
     });
     expect(result.status).toBe('applied');
-    const activeIds = new Set(result.graph.factLifecycles
-      .filter((entry) => entry.status === 'active')
-      .map((entry) => entry.factId));
-    const active = result.graph.workloads.filter((fact) => activeIds.has(fact.id));
+    const active = activeWorkloads(result.graph);
     expect(active).toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'completed', amount: 12 }),
       expect.objectContaining({ quantityRole: 'remaining', amount: 8 }),
@@ -112,6 +116,54 @@ describe('Stable V5 progress correction reconciliation', () => {
     expect(active).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'remaining', amount: 10 }),
       expect.objectContaining({ quantityRole: 'target', amount: 10 }),
+    ]));
+  });
+
+  it('retires a duplicate stale remaining fact even when the model gave it temporal wording', () => {
+    const original = originalGraph();
+    const duplicateRemaining = {
+      ...original.workloads[1],
+      id: 'remaining-10-tomorrow',
+      periodExpression: 'tomorrow',
+      source: {
+        ...source,
+        semanticLocalId: 'explicit-remaining',
+        sourceText: '残りを終わらせたい',
+      },
+    };
+    original.workloads.push(duplicateRemaining);
+    original.factLifecycles.push({
+      factId: duplicateRemaining.id,
+      status: 'active',
+      createdRevision: 2,
+      terminalRevision: null,
+      supersededByFactId: null,
+    });
+
+    const canonical = correctedCanonicalization();
+    canonical.graph.workloads.splice(3, 0, duplicateRemaining);
+    canonical.graph.factLifecycles.splice(3, 0, {
+      factId: duplicateRemaining.id,
+      status: 'active',
+      createdRevision: 2,
+      terminalRevision: null,
+      supersededByFactId: null,
+    });
+
+    const result = reconcileWeeklyPlanningProgressCorrectionsV5({
+      originalGraph: original,
+      canonicalization: canonical,
+      operationKeyPrefix: 'turn-3-duplicate-remaining',
+    });
+
+    expect(result.status).toBe('applied');
+    const active = activeWorkloads(result.graph);
+    expect(active).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantityRole: 'completed', amount: 12 }),
+      expect.objectContaining({ quantityRole: 'remaining', amount: 8 }),
+    ]));
+    expect(active).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantityRole: 'remaining', amount: 10 }),
     ]));
   });
 
