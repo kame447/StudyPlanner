@@ -88,10 +88,10 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).toContain(
       'a new nested fact on an existing task/component needs only a minimal containing shell bound by exact existingPublicId',
     );
-    expect(system).toContain('Interpret current userText clause-by-clause before using pendingQuestion');
-    expect(system).toContain('pendingQuestion only binds clauses that actually answer it');
-    expect(system).toContain('it must not filter or suppress side contributions');
-    expect(system).toContain('Leave an unanswered pending question pending');
+    expect(system).toContain('Interpret current-turn meaning into semantic facts independently');
+    expect(system).toContain('pendingQuestion as authoritative only for an actual answer');
+    expect(system).toContain('It must not suppress other explicit contributions');
+    expect(system).toContain('leave an unanswered question pending');
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 
