@@ -1,19 +1,11 @@
 name: Issue 156 Prompt Adversarial Real API
 
+# Historical Issue #156 audit entry point.
+# Heavy real-model coverage is intentionally manual. See:
+# docs/ai/testing/weekly-planning-real-api-eval-policy.md
+# Prefer the staged Weekly Planning Real API Checkpoint workflow for ongoing work.
 on:
-  push:
-    branches:
-      - agent/issue156-prompt-simplification-adversarial-audit
-    paths:
-      - '.github/workflows/issue156-prompt-adversarial-real-api.yml'
-      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts'
-      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts'
-      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts'
-      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts'
-      - 'src/features/weeklyPlanning/dialogue/**'
-      - 'src/features/weeklyPlanning/semantic/**'
-      - 'src/features/weeklyPlanning/application/**'
-      - '.github/issue156-real-api-trigger.json'
+  workflow_dispatch:
 
 permissions:
   contents: read
