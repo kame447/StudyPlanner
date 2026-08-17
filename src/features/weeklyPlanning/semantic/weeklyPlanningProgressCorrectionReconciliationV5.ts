@@ -226,6 +226,13 @@ export function reconcileWeeklyPlanningProgressCorrectionsV5(params: {
     }
     if (nextRemaining === oldRemaining.amount) continue;
 
+    const siblingRemainingCandidates = params.originalGraph.workloads.filter((fact) =>
+      originalActiveIds.has(fact.id)
+      && fact.id !== oldRemaining.id
+      && fact.quantityRole === 'remaining'
+      && fact.amount === oldRemaining.amount
+      && sameTargetBasis(oldRemaining, fact));
+
     const targetCandidates = params.originalGraph.workloads.filter((fact) =>
       originalActiveIds.has(fact.id)
       && fact.quantityRole === 'target'
@@ -249,6 +256,23 @@ export function reconcileWeeklyPlanningProgressCorrectionsV5(params: {
       }
       graph = remainingRemoval.graph;
       removed.push(...remainingRemoval.removed);
+      for (const sibling of siblingRemainingCandidates) {
+        if (!activeFactIds(graph).has(sibling.id)) continue;
+        const siblingRemoval = removeWorkload({
+          graph,
+          fact: sibling,
+          operationKey: `${params.operationKeyPrefix}:progress-remove-sibling:${sibling.id}`,
+        });
+        if (siblingRemoval.status === 'rejected') {
+          return rejected({
+            originalGraph: params.originalGraph,
+            canonicalization: params.canonicalization,
+            error: `progress-sibling-reconciliation:${siblingRemoval.errors.join(',')}`,
+          });
+        }
+        graph = siblingRemoval.graph;
+        removed.push(...siblingRemoval.removed);
+      }
       for (const target of targetCandidates) {
         const targetRemoval = removeWorkload({
           graph,
@@ -285,6 +309,27 @@ export function reconcileWeeklyPlanningProgressCorrectionsV5(params: {
     added.push(...remainingResult.added);
     superseded.push(...remainingResult.superseded);
     removed.push(...remainingResult.removed);
+
+    // A bounded correction has one current remaining amount. A model may emit
+    // the same old remaining amount twice with different temporal wording;
+    // retire those duplicate stale variants instead of preserving conflicts.
+    for (const sibling of siblingRemainingCandidates) {
+      if (!activeFactIds(graph).has(sibling.id)) continue;
+      const siblingRemoval = removeWorkload({
+        graph,
+        fact: sibling,
+        operationKey: `${params.operationKeyPrefix}:progress-remove-sibling:${sibling.id}`,
+      });
+      if (siblingRemoval.status === 'rejected') {
+        return rejected({
+          originalGraph: params.originalGraph,
+          canonicalization: params.canonicalization,
+          error: `progress-sibling-reconciliation:${siblingRemoval.errors.join(',')}`,
+        });
+      }
+      graph = siblingRemoval.graph;
+      removed.push(...siblingRemoval.removed);
+    }
 
     // A target is rebased only when provenance shows it was emitted from the
     // exact same semantic clause as the old remaining fact. This preserves an
