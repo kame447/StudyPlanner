@@ -329,7 +329,7 @@ run('Issue #156 final real API conversation gate', () => {
     const perUnitEight = finalEfforts.find((effort) =>
       effort.kind === 'duration_per_unit' && effort.minutes === 8);
     expect(perUnitEight).toBeDefined();
-    expect(perUnitEight?.targetFactId).toBe(completedTwelve[0].id);
+    expect(perUnitEight?.taskId).toBe(completedTwelve[0].taskId);
     expect(finalEfforts).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'total_duration', minutes: 8 }),
     ]));
