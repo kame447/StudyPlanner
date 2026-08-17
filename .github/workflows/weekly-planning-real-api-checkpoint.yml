@@ -12,7 +12,7 @@ on:
           - checkpoint
           - merge-gate
       repetitions:
-        description: 'Repeat the selected real-Luna suite 1-10 times'
+        description: 'Run 1-10 independent repetitions in parallel'
         required: true
         default: '3'
         type: string
@@ -21,18 +21,60 @@ on:
       - 'agent/**'
     paths:
       - '.github/weekly-planning-real-api-command.json'
+      - '.github/workflows/weekly-planning-real-api-checkpoint.yml'
 
 permissions:
   contents: read
 
 jobs:
-  real-api:
+  prepare:
     if: ${{ github.actor == github.repository_owner }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    outputs:
+      profile: ${{ steps.resolve.outputs.profile }}
+      iterations: ${{ steps.resolve.outputs.iterations }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: resolve
+        name: Resolve requested audit matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            profile='${{ inputs.profile }}'
+            repetitions='${{ inputs.repetitions }}'
+          else
+            profile=$(jq -r '.profile' .github/weekly-planning-real-api-command.json)
+            repetitions=$(jq -r '.repetitions // 3' .github/weekly-planning-real-api-command.json)
+          fi
+          case "$profile" in
+            checkpoint|merge-gate) ;;
+            *) echo "unsupported profile: $profile" >&2; exit 1 ;;
+          esac
+          case "$repetitions" in
+            ''|*[!0-9]*) echo "repetitions must be an integer" >&2; exit 1 ;;
+          esac
+          if [ "$repetitions" -lt 1 ] || [ "$repetitions" -gt 10 ]; then
+            echo "repetitions must be between 1 and 10" >&2
+            exit 1
+          fi
+          iterations=$(jq -cn --argjson n "$repetitions" '[range(1; $n + 1)]')
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          echo "iterations=$iterations" >> "$GITHUB_OUTPUT"
+
+  real-api:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJSON(needs.prepare.outputs.iterations) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     env:
       TZ: Asia/Tokyo
-      COMMAND_FILE: .github/weekly-planning-real-api-command.json
+      REAL_API_PROFILE: ${{ needs.prepare.outputs.profile }}
       WEEKLY_PLANNING_ISSUE156_REAL_API: '1'
       WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR: artifacts/weekly-planning-real-api
       WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS: '420000'
@@ -53,32 +95,6 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-
-      - name: Resolve requested profile
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            profile='${{ inputs.profile }}'
-            repetitions='${{ inputs.repetitions }}'
-          else
-            test -f "$COMMAND_FILE"
-            profile=$(jq -r '.profile' "$COMMAND_FILE")
-            repetitions=$(jq -r '.repetitions // 3' "$COMMAND_FILE")
-          fi
-          case "$profile" in
-            checkpoint|merge-gate) ;;
-            *) echo "unsupported profile: $profile" >&2; exit 1 ;;
-          esac
-          case "$repetitions" in
-            ''|*[!0-9]*) echo "repetitions must be an integer" >&2; exit 1 ;;
-          esac
-          if [ "$repetitions" -lt 1 ] || [ "$repetitions" -gt 10 ]; then
-            echo "repetitions must be between 1 and 10" >&2
-            exit 1
-          fi
-          echo "REAL_API_PROFILE=$profile" >> "$GITHUB_ENV"
-          echo "REAL_API_REPETITIONS=$repetitions" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -112,42 +128,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base_dir="$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR"
-          for iteration in $(seq 1 "$REAL_API_REPETITIONS"); do
-            run_dir="$base_dir/run-$iteration"
-            mkdir -p "$run_dir"
-            echo "checkpoint iteration $iteration/$REAL_API_REPETITIONS"
-            WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR="$run_dir" \
-              node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
-              2>&1 | tee "$run_dir/run.log"
-          done
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Run merge-gate real API audit
         if: ${{ env.REAL_API_PROFILE == 'merge-gate' }}
         shell: bash
         run: |
           set -euo pipefail
-          base_dir="$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR"
-          for iteration in $(seq 1 "$REAL_API_REPETITIONS"); do
-            run_dir="$base_dir/run-$iteration"
-            mkdir -p "$run_dir"
-            echo "merge-gate iteration $iteration/$REAL_API_REPETITIONS"
-            WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR="$run_dir" \
-              node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
-                src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
-              2>&1 | tee "$run_dir/run.log"
-          done
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-real-api
+          name: weekly-planning-real-api-${{ matrix.iteration }}
           path: artifacts/weekly-planning-real-api/
           if-no-files-found: warn
           retention-days: 30
