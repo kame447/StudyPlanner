@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260818-pr157-merge-gate-04",
-  "reason": "Final revalidation of PR #157 after compact side-contribution prompt and synchronized contract test"
+  "request_id": "20260818-pr157-merge-gate-05",
+  "reason": "Final parallel revalidation after distinguishing omitted workload from semantic ambiguity"
 }
