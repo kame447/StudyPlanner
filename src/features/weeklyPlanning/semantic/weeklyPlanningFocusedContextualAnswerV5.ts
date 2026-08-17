@@ -23,7 +23,12 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
       properties: {
         decision: {
           type: 'string',
-          enum: ['effort_answer', 'quantity_role_answer', 'fallback'],
+          enum: [
+            'effort_answer',
+            'effort_per_unit_answer',
+            'quantity_role_answer',
+            'fallback',
+          ],
         },
         minutes: {
           anyOf: [
@@ -49,8 +54,8 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'Interpret only the current answer to the machine-selected pending question; state already fixes the target identity and scale.',
-  'For missing_effort_estimate, return effort_answer only for a direct duration answer and convert it to minutes. For quantity_role_unresolved, return quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback.',
+  'Interpret only the current answer to the machine-selected pending question; state fixes the target identity, but the user may answer effort in a different measurement scale.',
+  'For missing_effort_estimate, use effort_answer for a total duration and effort_per_unit_answer for an explicit per-unit duration; convert the stated duration to minutes without multiplying by workload amount. For quantity_role_unresolved, use quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =
@@ -67,7 +72,11 @@ export interface FocusedContextualTargetV5 {
 }
 
 export interface FocusedContextualAnswerDecisionV5 {
-  decision: 'effort_answer' | 'quantity_role_answer' | 'fallback';
+  decision:
+    | 'effort_answer'
+    | 'effort_per_unit_answer'
+    | 'quantity_role_answer'
+    | 'fallback';
   minutes: number | null;
   precision: 'exact' | 'approximate' | 'unspecified' | null;
   quantityRole: 'target' | 'remaining' | 'completed' | null;
@@ -188,11 +197,12 @@ export function parseFocusedContextualAnswerDecisionV5(
 
     if (
       decision !== 'effort_answer'
+      && decision !== 'effort_per_unit_answer'
       && decision !== 'quantity_role_answer'
       && decision !== 'fallback'
     ) return null;
 
-    if (decision === 'effort_answer') {
+    if (decision === 'effort_answer' || decision === 'effort_per_unit_answer') {
       if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) return null;
       if (precision !== 'exact' && precision !== 'approximate' && precision !== 'unspecified') {
         return null;
@@ -239,8 +249,12 @@ export function createFocusedContextualAnswerDocumentV5(params: {
   if (!target || params.decision.decision === 'fallback') return null;
 
   const sourceText = params.input.userText;
-  if (params.decision.decision === 'effort_answer') {
+  if (
+    params.decision.decision === 'effort_answer'
+    || params.decision.decision === 'effort_per_unit_answer'
+  ) {
     if (target.questionCode !== 'missing_effort_estimate') return null;
+    const perUnit = params.decision.decision === 'effort_per_unit_answer';
     return {
       ...emptyDocument(),
       tasks: [{
@@ -254,9 +268,9 @@ export function createFocusedContextualAnswerDocumentV5(params: {
         effortEstimates: [{
           localId: 'focused_contextual_effort',
           targetLocalId: 'focused_contextual_task',
-          kind: 'total_duration',
+          kind: perUnit ? 'duration_per_unit' : 'total_duration',
           minutes: params.decision.minutes as number,
-          unitCode: null,
+          unitCode: perUnit ? target.unitCode : null,
           precision: params.decision.precision as 'exact' | 'approximate' | 'unspecified',
           sourceText,
         }],
