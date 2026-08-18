@@ -84,6 +84,11 @@ function activeEfforts(graph: WeeklyPlanningFactGraphV5) {
   return graph.effortEstimates.filter((fact) => ids.has(fact.id));
 }
 
+function activeUncertainties(graph: WeeklyPlanningFactGraphV5) {
+  const ids = activeIds(graph);
+  return graph.uncertainties.filter((fact) => ids.has(fact.id));
+}
+
 function questionCode(turn: ObservedTurn): string | null {
   const context = turn.questionContext;
   if (
@@ -114,6 +119,10 @@ function hasProgressExplanation(text: string): boolean {
 
 function inventsBoundedUnit(text: string): boolean {
   return /何\s*枚|何\s*ページ|何\s*問|全部で.{0,10}(枚|ページ|問)|全体で.{0,10}(枚|ページ|問)/.test(text);
+}
+
+function asksForTaskIdentityInsteadOfProgress(text: string): boolean {
+  return /どんな作業|どのような作業|何の作業|何をする作業/.test(text);
 }
 
 async function conversation(params: {
@@ -303,13 +312,15 @@ run('Issue #156 final real API conversation gate', () => {
     expect(inventsBoundedUnit(b[1].assistantText), b[1].assistantText).toBe(false);
     expect(questionCode(b[2])).toBe('missing_schedulable_work');
     expect(hasDeadlineAck(b[2].assistantText), b[2].assistantText).toBe(true);
-    expect(b[2].assistantText).not.toMatch(/どんな作業|工程/);
+    expect(asksForTaskIdentityInsteadOfProgress(b[2].assistantText), b[2].assistantText).toBe(false);
     expect(inventsBoundedUnit(b[2].assistantText), b[2].assistantText).toBe(false);
     const bProgress = activeWorkloads(b[3].graph);
     expect(bProgress).toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' }),
       expect.objectContaining({ quantityRole: 'remaining', amount: 50, unitCode: 'custom', unitLabel: '%' }),
     ]));
+    expect(activeUncertainties(b[3].graph)).toHaveLength(0);
+    expect(questionCode(b[3])).toBe('missing_effort_estimate');
 
     const c = observations[2].turns;
     expect(c[2].assistantText).toMatch(/12\s*枚/);
@@ -320,11 +331,16 @@ run('Issue #156 final real API conversation gate', () => {
     ]));
     expect(correctedWorkloads).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ quantityRole: 'remaining', amount: 10 }),
+      expect.objectContaining({ quantityRole: 'target', amount: 10 }),
     ]));
+    expect(correctedWorkloads.some((workload) =>
+      workload.quantityRole === 'target' && workload.amount === 10)).toBe(false);
     const finalWorkloads = activeWorkloads(c[3].graph);
     const completedTwelve = finalWorkloads.filter((workload) =>
       workload.quantityRole === 'completed' && workload.amount === 12);
     expect(completedTwelve).toHaveLength(1);
+    expect(finalWorkloads.some((workload) =>
+      workload.quantityRole === 'target' && workload.amount === 10)).toBe(false);
     const finalEfforts = activeEfforts(c[3].graph);
     const perUnitEight = finalEfforts.find((effort) =>
       effort.kind === 'duration_per_unit' && effort.minutes === 8);
@@ -333,6 +349,7 @@ run('Issue #156 final real API conversation gate', () => {
     expect(finalEfforts).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'total_duration', minutes: 8 }),
     ]));
+    expect(questionCode(c[3])).toBeNull();
     expect(c[3].assistantText).not.toMatch(/残り\s*10\s*枚/);
 
     const d = observations[3].turns;
