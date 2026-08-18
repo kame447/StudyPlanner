@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260818-pr157-merge-gate-08",
-  "reason": "Observable final revalidation after exact pending-workload effort rebinding, one focused-call retry for transient provider errors, and semantic evaluation-oracle corrections"
+  "request_id": "20260818-pr157-merge-gate-09",
+  "reason": "Re-run final Real Luna gate and manually verify bounded slide effort flows from 8 remaining slides x 8 minutes = 64 base minutes through 1.1 safety buffer and 15-minute rounding to 75 scheduler allocation minutes"
 }
