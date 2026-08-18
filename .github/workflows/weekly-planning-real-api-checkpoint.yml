@@ -16,9 +16,9 @@ on:
         required: true
         default: '3'
         type: string
-  push:
+  pull_request:
     branches:
-      - 'agent/**'
+      - main
     paths:
       - '.github/weekly-planning-real-api-command.json'
       - '.github/workflows/weekly-planning-real-api-checkpoint.yml'
@@ -28,26 +28,32 @@ permissions:
 
 jobs:
   prepare:
-    if: ${{ github.actor == github.repository_owner }}
     runs-on: ubuntu-22.04
     outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
       profile: ${{ steps.resolve.outputs.profile }}
       iterations: ${{ steps.resolve.outputs.iterations }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
           persist-credentials: false
       - id: resolve
         name: Resolve requested audit matrix
         shell: bash
         run: |
           set -euo pipefail
+          should_run=true
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             profile='${{ inputs.profile }}'
             repetitions='${{ inputs.repetitions }}'
           else
             profile=$(jq -r '.profile' .github/weekly-planning-real-api-command.json)
             repetitions=$(jq -r '.repetitions // 3' .github/weekly-planning-real-api-command.json)
+            if ! git diff-tree --no-commit-id --name-only -r HEAD | grep -Fxq '.github/weekly-planning-real-api-command.json'; then
+              should_run=false
+            fi
           fi
           case "$profile" in
             checkpoint|merge-gate) ;;
@@ -61,11 +67,13 @@ jobs:
             exit 1
           fi
           iterations=$(jq -cn --argjson n "$repetitions" '[range(1; $n + 1)]')
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
           echo "profile=$profile" >> "$GITHUB_OUTPUT"
           echo "iterations=$iterations" >> "$GITHUB_OUTPUT"
 
   real-api:
     needs: prepare
+    if: ${{ needs.prepare.outputs.should_run == 'true' }}
     strategy:
       fail-fast: false
       matrix:
