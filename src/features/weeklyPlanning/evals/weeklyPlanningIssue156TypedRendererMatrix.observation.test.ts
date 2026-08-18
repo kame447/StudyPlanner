@@ -108,7 +108,8 @@ run('Issue #156 typed renderer real API stress matrix', () => {
         expect(result.text, `relation variant ${i + 1}`).not.toMatch(
           /追加してよい|登録してよい|反映してよい|設定してよい|追加しますか|登録しますか|反映しますか/,
         );
-        expect(result.text, `relation variant ${i + 1}`).toMatch(/どの|どれ|何と何|何に|二つ|2つ|指し|対象|関係する|先に行う|あとに行う/);
+        expect(result.text, `relation variant ${i + 1}`).toMatch(/どの|どれ|何|課題|作業|予定|対象/);
+        expect(result.text, `relation variant ${i + 1}`).toMatch(/先|後|あと|順番|関係/);
       }
     }
 
