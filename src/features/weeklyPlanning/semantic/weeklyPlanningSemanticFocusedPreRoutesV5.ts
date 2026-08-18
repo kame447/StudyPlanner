@@ -23,6 +23,8 @@ import {
   type WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
 
+const FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS = 2;
+
 export async function tryFocusedContextualAnswerRouteV5(
   run: WeeklyPlanningSemanticNormalizerRunV5,
 ): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
@@ -51,50 +53,58 @@ export async function tryFocusedContextualAnswerRouteV5(
     },
   });
 
-  try {
-    const response = await run.client.createChatCompletion(request);
-    const decision = parseFocusedContextualAnswerDecisionV5(response);
-    const document = decision
-      ? createFocusedContextualAnswerDocumentV5({ input: run.input, decision })
-      : null;
-    recordWeeklyPlanningStableV5DebugTrace({
-      requestId: run.input.traceRequestId,
-      stage: 'semantic_focused_contextual_answer_result',
-      data: {
-        decision: decision?.decision ?? 'invalid_response',
-        responseLength: response.length,
-        rawResponse: response,
-        documentCreated: Boolean(document),
-      },
-    });
-    if (!document) return null;
+  for (let attempt = 1; attempt <= FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await run.client.createChatCompletion(request);
+      const decision = parseFocusedContextualAnswerDecisionV5(response);
+      const document = decision
+        ? createFocusedContextualAnswerDocumentV5({ input: run.input, decision })
+        : null;
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: run.input.traceRequestId,
+        stage: 'semantic_focused_contextual_answer_result',
+        data: {
+          attempt,
+          decision: decision?.decision ?? 'invalid_response',
+          responseLength: response.length,
+          rawResponse: response,
+          documentCreated: Boolean(document),
+        },
+      });
+      if (!document) return null;
 
-    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-      status: 'accepted',
-      document,
-      diagnostics: run.diagnostics({
-        attemptCount: 1,
-        repairAttempted: false,
-        validationErrors: [],
-        providerError: null,
-        requestBytes: [requestBytes],
-        responseLengths: [response.length],
-      }),
-    };
-    run.recordDecision(result, { route: 'focused_contextual_answer' });
-    return result;
-  } catch (error) {
-    recordWeeklyPlanningStableV5DebugTrace({
-      requestId: run.input.traceRequestId,
-      stage: 'semantic_focused_contextual_answer_error',
-      severity: 'warn',
-      data: {
-        error: semanticNormalizerErrorDetails(error),
-        fallback: 'generic_semantic',
-      },
-    });
-    return null;
+      const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+        status: 'accepted',
+        document,
+        diagnostics: run.diagnostics({
+          attemptCount: attempt,
+          repairAttempted: false,
+          validationErrors: [],
+          providerError: null,
+          requestBytes: Array.from({ length: attempt }, () => requestBytes),
+          responseLengths: [response.length],
+        }),
+      };
+      run.recordDecision(result, { route: 'focused_contextual_answer' });
+      return result;
+    } catch (error) {
+      const retrying = attempt < FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS;
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: run.input.traceRequestId,
+        stage: 'semantic_focused_contextual_answer_error',
+        severity: 'warn',
+        data: {
+          attempt,
+          error: semanticNormalizerErrorDetails(error),
+          retrying,
+          fallback: retrying ? 'retry_focused_contextual_answer' : 'generic_semantic',
+        },
+      });
+      if (!retrying) return null;
+    }
   }
+
+  return null;
 }
 
 export interface FocusedAuthorizationRouteResultV5 {
