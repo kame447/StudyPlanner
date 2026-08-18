@@ -36,7 +36,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing fixed total scope, plan target, current progress, remaining work, duration, and per-unit effort is meaning disambiguation, while validators only check a represented choice.',
-    instruction: 'Use scope_total only for an explicitly bounded total task size. target is an explicitly stated plan amount; remaining is unfinished work; completed is current progress. Do not arithmetically derive a target from total/completed quantities: when the user intends to finish all remaining work without stating a separate plan amount, omit target and let deterministic progress projection derive remaining. Omitted workload/progress is absence, not uncertainty. Emit uncertainty only for genuinely ambiguous stated meaning. Explicit numeric completion percentages, including approximate values, use completed with custom "%" and amount 0..100. Distinguish workload from duration; per-unit effort only when stated.',
+    instruction: 'Use scope_total only for an explicit bounded total. target requires an explicit plan amount; never derive it from total/completed. If the user intends all remaining work without a separate amount, omit target; deterministic progress projection derives remaining. Explicit numeric progress, including approximate percentages, is workload state; use completed custom "%" 0..100. Omission is absence, not uncertainty; emit uncertainty only for ambiguous stated meaning. Distinguish workload from duration; per-unit effort only when stated.',
   },
   {
     id: 'temporal_scope_and_deadline',
