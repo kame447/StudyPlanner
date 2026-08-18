@@ -45,6 +45,12 @@ function questionField(context: unknown, key: 'topicId' | 'intent'): string | nu
   return typeof value === 'string' ? value : null;
 }
 
+function asksForProgressAgain(text: string): boolean {
+  const compact = text.replace(/\s+/g, '');
+  return /(何%|どこまで|進捗).{0,24}(ですか|でしょうか|教えて|聞かせて)/.test(compact)
+    || /(ですか|でしょうか).{0,24}(何%|どこまで|進捗)/.test(compact);
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 completed open-ended progress real API gate', () => {
@@ -137,7 +143,7 @@ run('Issue #156 completed open-ended progress real API gate', () => {
     const finalTurn = transcript[2];
     expect(questionField(finalTurn.questionContext, 'topicId')).not.toBe(task?.id);
     expect(questionField(finalTurn.questionContext, 'intent')).toBe('all_requested_work_complete');
-    expect(finalTurn.assistant.replace(/\s+/g, '')).not.toMatch(/夏合宿.{0,30}(何%|100%とすると|どこまで)/);
+    expect(asksForProgressAgain(finalTurn.assistant), finalTurn.assistant).toBe(false);
     expect(finalTurn.assistant.replace(/\s+/g, '')).not.toMatch(/(作業|予定).{0,15}(まだ|教えていない|ありません).{0,15}(一つ|何)/);
 
     mkdirSync(outputDir, { recursive: true });
