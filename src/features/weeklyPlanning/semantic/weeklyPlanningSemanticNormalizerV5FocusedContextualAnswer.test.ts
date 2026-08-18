@@ -20,9 +20,28 @@ function publicStateSummary(questionCode: 'missing_effort_estimate' | 'quantity_
       amount: 220,
       unitCode: 'word',
       unitLabel: '語',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
     }],
     tasks: [{ publicId: 'task-vocab', category: 'study', title: '英単語を進める' }],
+    components: [{
+      publicId: 'component-vocab',
+      taskPublicId: 'task-vocab',
+      parentComponentPublicId: null,
+      role: 'material',
+      label: '英単語帳',
+    }],
   };
+}
+
+function focusedWorkloads(result: Awaited<ReturnType<ReturnType<typeof createWeeklyPlanningSemanticNormalizerV5>['normalize']>>) {
+  const task = result.document?.tasks[0];
+  return [
+    ...(task?.workloads ?? []),
+    ...(task?.study?.components ?? []).flatMap((component) => component.workloads),
+  ];
 }
 
 describe('Stable V5 focused contextual-answer semantic route', () => {
@@ -59,9 +78,29 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
       decisions: [],
     });
     expect(result.document?.tasks).toHaveLength(1);
-    expect(result.document?.tasks[0].workloads).toEqual([]);
+    expect(result.document?.tasks[0]).toMatchObject({
+      existingPublicId: 'task-vocab',
+      category: 'study',
+      title: '英単語を進める',
+      study: {
+        components: [expect.objectContaining({
+          existingPublicId: 'component-vocab',
+          role: 'material',
+          label: '英単語帳',
+        })],
+      },
+    });
+    expect(focusedWorkloads(result)).toEqual([
+      expect.objectContaining({
+        localId: 'workload-vocab',
+        quantityRole: 'target',
+        amount: 220,
+        unitCode: 'word',
+      }),
+    ]);
     expect(result.document?.tasks[0].effortEstimates).toEqual([
       expect.objectContaining({
+        targetLocalId: 'workload-vocab',
         kind: 'total_duration',
         minutes: 30,
         unitCode: null,
@@ -78,7 +117,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
   });
 
-  it('preserves a per-unit effort answer without multiplying it into a total duration', async () => {
+  it('preserves a per-unit effort answer and keeps it bound to the pending workload', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => JSON.stringify({
         decision: 'effort_per_unit_answer',
@@ -94,8 +133,13 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     });
 
     expect(result.status).toBe('accepted');
+    expect(result.document?.tasks[0].existingPublicId).toBe('task-vocab');
+    expect(focusedWorkloads(result)).toEqual([
+      expect.objectContaining({ localId: 'workload-vocab', amount: 220, unitCode: 'word' }),
+    ]);
     expect(result.document?.tasks[0].effortEstimates).toEqual([
       expect.objectContaining({
+        targetLocalId: 'workload-vocab',
         kind: 'duration_per_unit',
         minutes: 8,
         unitCode: 'word',
@@ -121,8 +165,10 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.document?.tasks[0].workloads).toEqual([
+    expect(result.document?.tasks[0].existingPublicId).toBe('task-vocab');
+    expect(focusedWorkloads(result)).toEqual([
       expect.objectContaining({
+        localId: 'workload-vocab',
         quantityRole: 'remaining',
         amount: 220,
         unitCode: 'word',
