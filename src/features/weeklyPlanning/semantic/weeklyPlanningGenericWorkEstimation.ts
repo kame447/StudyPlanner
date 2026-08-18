@@ -172,7 +172,13 @@ function observedPaceEstimate(params: {
       .filter((estimate) =>
         estimate.taskId === completedWorkload.taskId
         && estimate.targetFactId === completedWorkload.id
-        && estimate.kind === 'total_duration')
+        && (
+          estimate.kind === 'total_duration'
+          || (
+            estimate.kind === 'duration_per_unit'
+            && estimate.unitCode === completedWorkload.unitCode
+          )
+        ))
       .map((estimate) => ({ completedWorkload, estimate })));
   if (evidence.length !== 1) {
     return {
@@ -184,8 +190,11 @@ function observedPaceEstimate(params: {
     };
   }
   const [{ completedWorkload, estimate }] = evidence;
+  const paceMinutes = estimate.kind === 'duration_per_unit'
+    ? estimate.minutes
+    : estimate.minutes / completedWorkload.amount;
   return {
-    estimatedMinutes: (estimate.minutes / completedWorkload.amount) * params.workload.amount,
+    estimatedMinutes: paceMinutes * params.workload.amount,
     basis: 'observed_pace',
     sourceFactIds: [estimate.id],
     sourceWorkloadFactIds: [completedWorkload.id],
