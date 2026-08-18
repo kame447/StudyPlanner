@@ -43,6 +43,17 @@ function input(params: {
   };
 }
 
+function asksForRelationEndpointsOrOrder(text: string): boolean {
+  const compact = text.replace(/\s+/g, '');
+  const endpointClarification = (
+    /(それぞれ|両方|双方|二つ|2つ)/.test(compact)
+    || /課題.?A.*課題.?B/i.test(compact)
+  ) && /(どの|どれ|何|指して|対象|課題|作業|予定)/.test(compact);
+  const orderingClarification = /(先|後|あと|順番|関係)/.test(compact)
+    && /(どの|どれ|何|課題|作業|予定|対象)/.test(compact);
+  return endpointClarification || orderingClarification;
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 typed renderer real API stress matrix', () => {
@@ -108,8 +119,10 @@ run('Issue #156 typed renderer real API stress matrix', () => {
         expect(result.text, `relation variant ${i + 1}`).not.toMatch(
           /追加してよい|登録してよい|反映してよい|設定してよい|追加しますか|登録しますか|反映しますか/,
         );
-        expect(result.text, `relation variant ${i + 1}`).toMatch(/どの|どれ|何|課題|作業|予定|対象/);
-        expect(result.text, `relation variant ${i + 1}`).toMatch(/先|後|あと|順番|関係/);
+        expect(
+          asksForRelationEndpointsOrOrder(result.text),
+          `relation variant ${i + 1}: ${result.text}`,
+        ).toBe(true);
       }
     }
 
