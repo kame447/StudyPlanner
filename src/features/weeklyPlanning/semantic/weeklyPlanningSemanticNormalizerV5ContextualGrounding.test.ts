@@ -18,6 +18,7 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
       category: 'study',
       title: 'レポート執筆',
     }],
+    components: [],
     workloads: [{
       publicId: 'workload-writing',
       taskPublicId: 'task-writing',
@@ -26,6 +27,10 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
       amount: 4,
       unitCode: 'page',
       unitLabel: 'ページ',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
     }],
   };
 }
