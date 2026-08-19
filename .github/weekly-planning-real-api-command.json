@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-15",
-  "reason": "Final Real Luna 3x gate after two run-14 findings: strengthen schema-valid semantic no-op completeness retry so existing-entity shells/sourceText cannot stand in for typed side-contribution facts, and broaden only the evaluation oracle to accept equivalent relation wording using task terminology. Revalidate the complete final conversation, completed-progress, typed-renderer, and all-question-code matrices on the final product head."
+  "request_id": "20260819-pr157-merge-gate-16",
+  "reason": "Final Real Luna 3x gate after resolving all gate-15 findings: exact bounded progress is order-independent when completed arrives before total; schema-valid semantic no-op completeness retries are rechecked once before fallback so explicit side contributions such as task deadlines are not silently lost; percentage scope totals no longer let bounded projection retire the percentage remaining fact; and the relation renderer oracle accepts equivalent task terminology without changing product routing. Revalidate final conversation, completed-progress, typed-renderer, all-question-code, transcript, and Fact Graph invariants on this final product code state."
 }
