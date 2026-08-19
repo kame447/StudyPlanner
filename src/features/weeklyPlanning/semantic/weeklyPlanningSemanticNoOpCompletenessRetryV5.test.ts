@@ -52,12 +52,38 @@ function recoveredDeadline(): WeeklyPlanningSemanticDocumentV5 {
     constraintLevel: 'hard',
     dateExpression: 'tomorrow',
     namedTimePeriod: null,
-    startTime: null,
-    endTime: '13:00',
+    startTime: '13:00',
+    endTime: null,
     precision: 'exact',
     sourceText: userText,
   });
   return value;
+}
+
+function focusedDeadline(): string {
+  return JSON.stringify({
+    decision: 'temporal_constraint',
+    kind: 'deadline',
+    constraintLevel: 'hard',
+    dateExpression: 'tomorrow',
+    namedTimePeriod: null,
+    startTime: '13:00',
+    endTime: null,
+    precision: 'exact',
+  });
+}
+
+function focusedFallback(): string {
+  return JSON.stringify({
+    decision: 'fallback',
+    kind: null,
+    constraintLevel: null,
+    dateExpression: null,
+    namedTimePeriod: null,
+    startTime: null,
+    endTime: null,
+    precision: null,
+  });
 }
 
 function publicStateSummary() {
@@ -122,10 +148,10 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     })).toBe(false);
   });
 
-  it('re-reads a valid semantic no-op and accepts a fact omitted by the first Luna response', async () => {
+  it('uses a focused typed route to recover a task temporal side contribution', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),
-      JSON.stringify(recoveredDeadline()),
+      focusedDeadline(),
     ]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
       userText,
@@ -142,22 +168,22 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       expect.objectContaining({
         kind: 'deadline',
         dateExpression: 'tomorrow',
-        endTime: '13:00',
+        startTime: '13:00',
         constraintLevel: 'hard',
       }),
     ]);
-    const retryMessages = fake.calls[1].messages;
-    const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
-    expect(retryInstruction).toContain('Re-read that exact current userText');
-    expect(retryInstruction).toContain(userText);
-    expect(retryInstruction).toContain('side contributions unrelated to the pending question');
-    expect(retryInstruction).toContain('deadline temporalConstraint');
+    expect(fake.calls[1].responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_task_temporal_side_contribution_v5' },
+    });
+    const focusedPrompt = fake.calls[1].messages.map((message) => message.content).join('\n');
+    expect(focusedPrompt).toContain('task-scoped temporal constraint');
+    expect(focusedPrompt).toContain(userText);
   });
 
-  it('uses a fresh semantic context for the final retry when the first completeness retry is still a no-op', async () => {
+  it('falls through to the generic completeness retry when focused temporal meaning is absent', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),
-      JSON.stringify(existingTaskShell()),
+      focusedFallback(),
       JSON.stringify(recoveredDeadline()),
     ]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
@@ -175,21 +201,44 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       expect.objectContaining({
         kind: 'deadline',
         dateExpression: 'tomorrow',
-        endTime: '13:00',
+        startTime: '13:00',
       }),
     ]);
-    const finalRetryMessages = fake.calls[2].messages;
-    const finalInstruction = finalRetryMessages[finalRetryMessages.length - 1]?.content ?? '';
+    const retryInstruction = fake.calls[2].messages.at(-1)?.content ?? '';
+    expect(retryInstruction).toContain('Re-read that exact current userText');
+    expect(retryInstruction).toContain('side contributions unrelated to the pending question');
+  });
+
+  it('uses a fresh semantic context for the final generic retry after focused fallback and one no-op', async () => {
+    const fake = fakeClient([
+      JSON.stringify(existingTaskShell()),
+      focusedFallback(),
+      JSON.stringify(existingTaskShell()),
+      JSON.stringify(recoveredDeadline()),
+    ]);
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText,
+      publicStateSummary: publicStateSummary(),
+    });
+
+    expect(fake.calls).toHaveLength(4);
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 4,
+      repairAttempted: false,
+    });
+    const finalRetryMessages = fake.calls[3].messages;
+    const finalInstruction = finalRetryMessages.at(-1)?.content ?? '';
     expect(finalInstruction).toContain('final independent completeness pass');
     expect(finalInstruction).toContain(userText);
-    expect(finalInstruction).toContain('do not copy or preserve the prior empty semantic wrapper');
     expect(finalRetryMessages.some((message) => message.role === 'assistant')).toBe(false);
   });
 
-  it('falls back to the original schema-valid no-op only after both completeness passes remain empty', async () => {
+  it('falls back to the original schema-valid no-op only after focused and both generic passes are empty', async () => {
     const initial = existingTaskShell();
     const fake = fakeClient([
       JSON.stringify(initial),
+      focusedFallback(),
       JSON.stringify(existingTaskShell()),
       JSON.stringify(existingTaskShell()),
     ]);
@@ -198,20 +247,20 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       publicStateSummary: publicStateSummary(),
     });
 
-    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls).toHaveLength(4);
     expect(result.status).toBe('accepted');
     expect(result.diagnostics).toMatchObject({
-      attemptCount: 3,
+      attemptCount: 4,
       repairAttempted: false,
     });
     expect(result.document).toEqual(initial);
   });
 
-  it('re-reads a schema-valid semantic no-op produced by repair before accepting the turn', async () => {
+  it('uses the focused temporal route after repair produced a schema-valid no-op', async () => {
     const fake = fakeClient([
       JSON.stringify({ schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 }),
       JSON.stringify(existingTaskShell()),
-      JSON.stringify(recoveredDeadline()),
+      focusedDeadline(),
     ]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
       userText,
@@ -228,13 +277,12 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       expect.objectContaining({
         kind: 'deadline',
         dateExpression: 'tomorrow',
-        endTime: '13:00',
+        startTime: '13:00',
         constraintLevel: 'hard',
       }),
     ]);
-    const retryMessages = fake.calls[2].messages;
-    const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
-    expect(retryInstruction).toContain('Re-read that exact current userText');
-    expect(retryInstruction).toContain(userText);
+    expect(fake.calls[2].responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_task_temporal_side_contribution_v5' },
+    });
   });
 });
