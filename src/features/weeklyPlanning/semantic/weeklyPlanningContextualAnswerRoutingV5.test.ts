@@ -4,7 +4,10 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
-import { shouldAttemptWeeklyPlanningContextualAnswerV5 } from './weeklyPlanningContextualAnswerRoutingV5';
+import {
+  contextualAnswerTargetFactIdV5,
+  shouldAttemptWeeklyPlanningContextualAnswerV5,
+} from './weeklyPlanningContextualAnswerRoutingV5';
 
 function document(): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -49,6 +52,18 @@ function pendingEffort(
     targetFactId: 'workload-public',
     graphRevision: 1,
     effortMeasurement,
+  };
+}
+
+function observedPacePending(): WeeklyPlanningPendingQuestionV5 {
+  return {
+    actionId: null,
+    questionCode: 'missing_effort_estimate',
+    targetFactId: 'completed-70',
+    graphRevision: 4,
+    effortMeasurement: 'total_duration',
+    estimateForWorkloadFactId: 'remaining-30',
+    questionBasis: 'completed_workload_total',
   };
 }
 
@@ -136,5 +151,83 @@ describe('Stable V5 contextual-answer routing', () => {
       document: value,
       pendingQuestion: pendingEffort(),
     })).toBe(true);
+  });
+
+  it('binds remaining total duration to the schedulable estimate target instead of completed evidence', () => {
+    const value = document();
+    value.tasks[0].workloads.push({
+      localId: 'semantic-remaining',
+      quantityRole: 'remaining',
+      amount: 30,
+      unitCode: 'custom',
+      unitLabel: '%',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      sourceText: '残り30%',
+    });
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-remaining',
+      targetLocalId: 'semantic-remaining',
+      kind: 'total_duration',
+      minutes: 45,
+      unitCode: null,
+      precision: 'approximate',
+      sourceText: '残りは45分くらい',
+    });
+
+    expect(contextualAnswerTargetFactIdV5({
+      document: value,
+      pendingQuestion: observedPacePending(),
+    })).toBe('remaining-30');
+  });
+
+  it('binds explicit per-unit alternate effort to the schedulable estimate target', () => {
+    const value = document();
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-per-page',
+      targetLocalId: 'task-1',
+      kind: 'duration_per_unit',
+      minutes: 8,
+      unitCode: 'page',
+      precision: 'approximate',
+      sourceText: '1枚あたり8分くらい',
+    });
+
+    expect(contextualAnswerTargetFactIdV5({
+      document: value,
+      pendingQuestion: observedPacePending(),
+    })).toBe('remaining-30');
+  });
+
+  it('keeps direct historical total duration on the completed evidence target', () => {
+    const value = document();
+    value.tasks[0].workloads.push({
+      localId: 'semantic-completed',
+      quantityRole: 'completed',
+      amount: 70,
+      unitCode: 'custom',
+      unitLabel: '%',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      sourceText: '完了70%',
+    });
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-completed',
+      targetLocalId: 'semantic-completed',
+      kind: 'total_duration',
+      minutes: 90,
+      unitCode: null,
+      precision: 'approximate',
+      sourceText: 'ここまでは90分くらい',
+    });
+
+    expect(contextualAnswerTargetFactIdV5({
+      document: value,
+      pendingQuestion: observedPacePending(),
+    })).toBe('completed-70');
   });
 });
