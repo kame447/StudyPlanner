@@ -172,6 +172,68 @@ describe('Stable V5 dialogue renderer validation', () => {
     )).toMatchObject({ status: 'rendered' });
   });
 
+  it('requires a resumed-question ACK to preserve the accepted concrete clock value', () => {
+    const renderInput = input({
+      actionId: 'stable-v5:request-deadline:missing_schedulable_work',
+      currentUserMessage: '締切は明日の13時です',
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [{
+          factId: 'deadline-13',
+          kind: 'temporal_constraint',
+          sourceText: '締切は明日の13時です',
+          data: {
+            taskId: 'task-report',
+            targetFactId: 'task-report',
+            kind: 'deadline',
+            constraintLevel: 'hard',
+            dateExpression: 'tomorrow',
+            namedTimePeriod: null,
+            startTime: null,
+            endTime: '13:00',
+            precision: 'exact',
+          },
+        }],
+      },
+      planningInformation: {
+        tasks: [{ id: 'task-report', title: '研究室のレポート', category: 'study' }],
+        temporalConstraints: [{
+          id: 'deadline-13',
+          taskId: 'task-report',
+          kind: 'deadline',
+          dateExpression: 'tomorrow',
+          endTime: '13:00',
+        }],
+      },
+      questionCode: 'missing_schedulable_work',
+      requiredLabels: ['研究室のレポート'],
+      fallbackText: '完成を100%とすると、今はだいたい何%くらいまで進んでいますか？',
+    });
+    const continuation = '研究室のレポートは、完成を100%とすると現在どのくらい進んでいますか？';
+    const genericAck = '締切の情報を受け取りました。';
+    const groundedAck = '締切は明日の13時ですね。';
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `${genericAck}${continuation}`, {
+        groundingAcknowledgement: {
+          factIds: ['deadline-13'],
+          text: genericAck,
+        },
+      }),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'grounding_contract_mismatch' });
+
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, `${groundedAck}${continuation}`, {
+        groundingAcknowledgement: {
+          factIds: ['deadline-13'],
+          text: groundedAck,
+        },
+      }),
+      renderInput,
+    )).toMatchObject({ status: 'rendered' });
+  });
+
   it('rejects ungrounded dates, clock times, unsafe content, and malformed JSON', () => {
     const renderInput = input();
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
