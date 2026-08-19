@@ -24,16 +24,29 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['decision', 'minutes', 'precision', 'quantityRole'],
+      required: [
+        'decision',
+        'effortTarget',
+        'effortMeasurement',
+        'minutes',
+        'precision',
+        'quantityRole',
+      ],
       properties: {
         decision: {
           type: 'string',
-          enum: [
-            'effort_answer',
-            'remaining_effort_answer',
-            'effort_per_unit_answer',
-            'quantity_role_answer',
-            'fallback',
+          enum: ['effort_answer', 'quantity_role_answer', 'fallback'],
+        },
+        effortTarget: {
+          anyOf: [
+            { type: 'string', enum: ['question_target', 'estimate_target'] },
+            { type: 'null' },
+          ],
+        },
+        effortMeasurement: {
+          anyOf: [
+            { type: 'string', enum: ['total_duration', 'duration_per_unit'] },
+            { type: 'null' },
           ],
         },
         minutes: {
@@ -60,15 +73,18 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'Interpret only the current answer around the machine-selected pending question. Machine state provides the fact being asked about and, only for completed-work pace questions, a distinct remaining workload that is actually schedulable.',
-  'For missing_effort_estimate, clear effort answers are supported even when they answer a useful alternate measurement instead of the wording of the pending question. effort_answer = total duration explicitly for questionTargetWorkload. remaining_effort_answer = total duration explicitly for estimateForWorkload. effort_per_unit_answer = an explicit per-unit rate for the work being estimated; use estimateForWorkload when present. Convert duration to minutes without multiplying by workload amount.',
-  'When questionBasis=completed_workload_total and estimateForWorkload exists, do not use fallback merely because the user states remaining-work duration or a per-unit rate instead of completed-work total duration. Those are valid focused answers. Never bind remaining-work meaning to completed work. Use fallback only when the meaning is ambiguous between these choices or the turn also carries unsupported independent planning meaning.',
-  'For quantity_role_unresolved, quantity_role_answer is only for clear target, remaining, or completed meaning. Other changes, discussion, or ambiguity are fallback.',
+  'Interpret only currentUserText relative to the typed pendingQuestion. Do not invent planning meaning.',
+  'For missing_effort_estimate, return effort_answer when the user gives a clear effort value. Classify two independent fields: effortTarget and effortMeasurement. question_target means the effort is about questionTargetWorkload. estimate_target means it is about estimateForWorkload and is valid only when that workload is present. total_duration means the whole selected target; duration_per_unit means a rate for one unit of the selected target. Convert duration to minutes without multiplying by workload amount.',
+  'A clear answer may target estimateForWorkload or use a different effortMeasurement from the wording of the pending question. That is still effort_answer. Use fallback only for ambiguity or independent planning meaning.',
+  'For quantity_role_unresolved, return quantity_role_answer only for clear target, remaining, or completed meaning. All effort fields must then be null.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =
   | 'missing_effort_estimate'
   | 'quantity_role_unresolved';
+
+type FocusedContextualEffortTargetV5 = 'question_target' | 'estimate_target';
+type FocusedContextualEffortMeasurementV5 = 'total_duration' | 'duration_per_unit';
 
 interface FocusedContextualComponentV5 {
   publicId: string;
@@ -100,12 +116,9 @@ export interface FocusedContextualTargetV5 extends FocusedContextualWorkloadV5 {
 }
 
 export interface FocusedContextualAnswerDecisionV5 {
-  decision:
-    | 'effort_answer'
-    | 'remaining_effort_answer'
-    | 'effort_per_unit_answer'
-    | 'quantity_role_answer'
-    | 'fallback';
+  decision: 'effort_answer' | 'quantity_role_answer' | 'fallback';
+  effortTarget: FocusedContextualEffortTargetV5 | null;
+  effortMeasurement: FocusedContextualEffortMeasurementV5 | null;
   minutes: number | null;
   precision: 'exact' | 'approximate' | 'unspecified' | null;
   quantityRole: 'target' | 'remaining' | 'completed' | null;
@@ -339,43 +352,76 @@ export function parseFocusedContextualAnswerDecisionV5(
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
     const decision = value.decision;
+    const effortTarget = value.effortTarget;
+    const effortMeasurement = value.effortMeasurement;
     const minutes = value.minutes;
     const precision = value.precision;
     const parsedQuantityRole = value.quantityRole;
 
     if (
       decision !== 'effort_answer'
-      && decision !== 'remaining_effort_answer'
-      && decision !== 'effort_per_unit_answer'
       && decision !== 'quantity_role_answer'
       && decision !== 'fallback'
     ) return null;
 
-    if (
-      decision === 'effort_answer'
-      || decision === 'remaining_effort_answer'
-      || decision === 'effort_per_unit_answer'
-    ) {
+    if (decision === 'effort_answer') {
+      if (effortTarget !== 'question_target' && effortTarget !== 'estimate_target') return null;
+      if (
+        effortMeasurement !== 'total_duration'
+        && effortMeasurement !== 'duration_per_unit'
+      ) return null;
       if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) return null;
       if (precision !== 'exact' && precision !== 'approximate' && precision !== 'unspecified') {
         return null;
       }
       if (parsedQuantityRole !== null) return null;
-      return { decision, minutes, precision, quantityRole: null };
+      return {
+        decision,
+        effortTarget,
+        effortMeasurement,
+        minutes,
+        precision,
+        quantityRole: null,
+      };
     }
 
     if (decision === 'quantity_role_answer') {
-      if (minutes !== null || precision !== null) return null;
+      if (
+        effortTarget !== null
+        || effortMeasurement !== null
+        || minutes !== null
+        || precision !== null
+      ) return null;
       if (
         parsedQuantityRole !== 'target'
         && parsedQuantityRole !== 'remaining'
         && parsedQuantityRole !== 'completed'
       ) return null;
-      return { decision, minutes: null, precision: null, quantityRole: parsedQuantityRole };
+      return {
+        decision,
+        effortTarget: null,
+        effortMeasurement: null,
+        minutes: null,
+        precision: null,
+        quantityRole: parsedQuantityRole,
+      };
     }
 
-    if (minutes !== null || precision !== null || parsedQuantityRole !== null) return null;
-    return { decision: 'fallback', minutes: null, precision: null, quantityRole: null };
+    if (
+      effortTarget !== null
+      || effortMeasurement !== null
+      || minutes !== null
+      || precision !== null
+      || parsedQuantityRole !== null
+    ) return null;
+    return {
+      decision: 'fallback',
+      effortTarget: null,
+      effortMeasurement: null,
+      minutes: null,
+      precision: null,
+      quantityRole: null,
+    };
   } catch {
     return null;
   }
@@ -486,20 +532,13 @@ function taskForTarget(params: {
 
 function effortTargetForDecision(params: {
   target: FocusedContextualTargetV5;
-  decision: FocusedContextualAnswerDecisionV5['decision'];
+  effortTarget: FocusedContextualEffortTargetV5;
 }): FocusedContextualTargetV5 | null {
-  if (params.decision === 'effort_answer') return params.target;
-  if (params.decision === 'remaining_effort_answer') {
-    const estimateTarget = params.target.estimateForWorkload;
-    if (!estimateTarget || estimateTarget.quantityRole !== 'remaining') return null;
-    return targetWithWorkload(params.target, estimateTarget);
-  }
-  if (params.decision === 'effort_per_unit_answer') {
-    return params.target.estimateForWorkload
-      ? targetWithWorkload(params.target, params.target.estimateForWorkload)
-      : params.target;
-  }
-  return null;
+  if (params.effortTarget === 'question_target') return params.target;
+  const estimateTarget = params.target.estimateForWorkload;
+  return estimateTarget
+    ? targetWithWorkload(params.target, estimateTarget)
+    : null;
 }
 
 export function createFocusedContextualAnswerDocumentV5(params: {
@@ -510,28 +549,30 @@ export function createFocusedContextualAnswerDocumentV5(params: {
   if (!target || params.decision.decision === 'fallback') return null;
 
   const sourceText = params.input.userText;
-  if (
-    params.decision.decision === 'effort_answer'
-    || params.decision.decision === 'remaining_effort_answer'
-    || params.decision.decision === 'effort_per_unit_answer'
-  ) {
-    if (target.questionCode !== 'missing_effort_estimate') return null;
+  if (params.decision.decision === 'effort_answer') {
+    if (
+      target.questionCode !== 'missing_effort_estimate'
+      || !params.decision.effortTarget
+      || !params.decision.effortMeasurement
+      || params.decision.minutes === null
+      || params.decision.precision === null
+    ) return null;
     const effortTarget = effortTargetForDecision({
       target,
-      decision: params.decision.decision,
+      effortTarget: params.decision.effortTarget,
     });
     if (!effortTarget) return null;
-    const perUnit = params.decision.decision === 'effort_per_unit_answer';
+    const perUnit = params.decision.effortMeasurement === 'duration_per_unit';
     return {
       ...emptyDocument(),
       tasks: [taskForTarget({
         target: effortTarget,
         sourceText,
         effortEstimate: {
-          kind: perUnit ? 'duration_per_unit' : 'total_duration',
-          minutes: params.decision.minutes as number,
+          kind: params.decision.effortMeasurement,
+          minutes: params.decision.minutes,
           unitCode: perUnit ? effortTarget.unitCode : null,
-          precision: params.decision.precision as 'exact' | 'approximate' | 'unspecified',
+          precision: params.decision.precision,
         },
       })],
     };
