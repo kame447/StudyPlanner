@@ -204,7 +204,8 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
         startTime: '13:00',
       }),
     ]);
-    const retryInstruction = fake.calls[2].messages.at(-1)?.content ?? '';
+    const retryMessages = fake.calls[2].messages;
+    const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
     expect(retryInstruction).toContain('Re-read that exact current userText');
     expect(retryInstruction).toContain('side contributions unrelated to the pending question');
   });
@@ -228,7 +229,7 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       repairAttempted: false,
     });
     const finalRetryMessages = fake.calls[3].messages;
-    const finalInstruction = finalRetryMessages.at(-1)?.content ?? '';
+    const finalInstruction = finalRetryMessages[finalRetryMessages.length - 1]?.content ?? '';
     expect(finalInstruction).toContain('final independent completeness pass');
     expect(finalInstruction).toContain(userText);
     expect(finalRetryMessages.some((message) => message.role === 'assistant')).toBe(false);
