@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
+import { tryWeeklyPlanningSemanticNoOpCompletenessRetryV5 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
 import {
   semanticNormalizerErrorMessage,
   type WeeklyPlanningSemanticNormalizerRunV5,
@@ -94,6 +95,17 @@ export async function runGenericSemanticRepairRouteV5(params: {
     params.run.recordDecision(result, { severity: 'error' });
     return result;
   }
+
+  const completenessRetry = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({
+    run: params.run,
+    baseMessages: params.baseMessages,
+    initialResponse: repairedResponse,
+    initialDocument: repairedValidation.document,
+    attemptCountBeforeRetry: 2,
+    repairAttempted: true,
+    validationErrors: params.initialValidation.errors,
+  });
+  if (completenessRetry) return completenessRetry;
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',
