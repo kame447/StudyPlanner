@@ -60,9 +60,9 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'Interpret only the current answer around the machine-selected pending question. Machine state provides both the fact being asked about and, when different, the schedulable workload whose estimate is actually needed.',
-  'For missing_effort_estimate: effort_answer means the stated total duration applies to questionTargetWorkload. remaining_effort_answer means it applies directly to estimateForWorkload, which is the remaining schedulable work. effort_per_unit_answer means an explicit per-unit rate for the work being estimated; when estimateForWorkload exists, bind the rate there. Convert duration to minutes without multiplying by workload amount.',
-  'Never bind a statement about remaining work to completed work merely because completed work is questionTargetWorkload. If the current text does not clearly fit these focused choices or contains another unsupported side contribution, use fallback.',
+  'Interpret only the current answer around the machine-selected pending question. Machine state provides the fact being asked about and, only for completed-work pace questions, a distinct remaining workload that is actually schedulable.',
+  'For missing_effort_estimate, clear effort answers are supported even when they answer a useful alternate measurement instead of the wording of the pending question. effort_answer = total duration explicitly for questionTargetWorkload. remaining_effort_answer = total duration explicitly for estimateForWorkload. effort_per_unit_answer = an explicit per-unit rate for the work being estimated; use estimateForWorkload when present. Convert duration to minutes without multiplying by workload amount.',
+  'When questionBasis=completed_workload_total and estimateForWorkload exists, do not use fallback merely because the user states remaining-work duration or a per-unit rate instead of completed-work total duration. Those are valid focused answers. Never bind remaining-work meaning to completed work. Use fallback only when the meaning is ambiguous between these choices or the turn also carries unsupported independent planning meaning.',
   'For quantity_role_unresolved, quantity_role_answer is only for clear target, remaining, or completed meaning. Other changes, discussion, or ambiguity are fallback.',
 ].join('\n');
 
@@ -265,17 +265,18 @@ export function focusedContextualTargetV5(
     };
   }
 
-  const estimateForWorkload = workloadByPublicId({
-    workloads: summary.workloads,
-    publicId: pending.estimateForWorkloadFactId,
-  });
-  if (estimateForWorkload && estimateForWorkload.publicId === parsedTarget.publicId) {
-    return null;
-  }
-
   const questionBasis = pending.questionBasis === 'completed_workload_total'
     ? 'completed_workload_total' as const
     : null;
+  const estimateForWorkload = questionBasis
+    ? workloadByPublicId({
+        workloads: summary.workloads,
+        publicId: pending.estimateForWorkloadFactId,
+      })
+    : null;
+  if (estimateForWorkload && estimateForWorkload.publicId === parsedTarget.publicId) {
+    return null;
+  }
   if (questionBasis && !estimateForWorkload) return null;
 
   return {
