@@ -154,11 +154,22 @@ function groundingAcknowledgementMismatch(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
   const mode = input.currentTurnGrounding?.mode ?? 'none';
+
+  /*
+   * groundingAcknowledgement is control metadata for facts accepted on the
+   * current turn. When mode=none there are no such facts to bind, so a model
+   * may redundantly populate the metadata without changing the visible text's
+   * meaning. Ignore that unused object and continue to validate the text itself
+   * against the normal grounding and safety checks below.
+   */
+  if (mode === 'none') {
+    return value !== undefined && value !== null && !isRecord(value);
+  }
+
   if (value === undefined || value === null) {
     return mode === 'required_before_resume';
   }
   if (!isRecord(value)) return true;
-  if (mode === 'none') return true;
 
   const factIds = value.factIds;
   const acknowledgementText = value.text;
