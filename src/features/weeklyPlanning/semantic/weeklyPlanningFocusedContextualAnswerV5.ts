@@ -60,9 +60,10 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'Interpret only the current answer around the machine-selected pending question. Typed state fixes entity identity, but the current utterance may contribute a fact about a different typed workload of the same task.',
-  'For missing_effort_estimate: use effort_answer only when the stated total duration applies to the exact pending target; use remaining_effort_answer only when the user explicitly states expected duration for the supplied remainingWorkload; use effort_per_unit_answer only for explicit per-unit duration on the exact pending target. Convert duration to minutes without multiplying by workload amount. If remaining work is mentioned but no unique remainingWorkload is supplied, use fallback. Never rebind duration for remaining work to completed work merely because completed work is the pending target.',
-  'For quantity_role_unresolved, use quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, side contribution that cannot be represented by the focused choices, discussion, or ambiguity is fallback.',
+  'Interpret only the current answer around the machine-selected pending question. Machine state provides both the fact being asked about and, when different, the schedulable workload whose estimate is actually needed.',
+  'For missing_effort_estimate: effort_answer means the stated total duration applies to questionTargetWorkload. remaining_effort_answer means it applies directly to estimateForWorkload, which is the remaining schedulable work. effort_per_unit_answer means an explicit per-unit rate for the work being estimated; when estimateForWorkload exists, bind the rate there. Convert duration to minutes without multiplying by workload amount.',
+  'Never bind a statement about remaining work to completed work merely because completed work is questionTargetWorkload. If the current text does not clearly fit these focused choices or contains another unsupported side contribution, use fallback.',
+  'For quantity_role_unresolved, quantity_role_answer is only for clear target, remaining, or completed meaning. Other changes, discussion, or ambiguity are fallback.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =
@@ -94,7 +95,8 @@ export interface FocusedContextualTargetV5 extends FocusedContextualWorkloadV5 {
   taskCategory: SemanticTaskCategoryV5;
   taskTitle: string;
   component: FocusedContextualComponentV5 | null;
-  remainingWorkload: FocusedContextualWorkloadV5 | null;
+  estimateForWorkload: FocusedContextualWorkloadV5 | null;
+  questionBasis: 'completed_workload_total' | null;
 }
 
 export interface FocusedContextualAnswerDecisionV5 {
@@ -202,6 +204,16 @@ function parsedWorkloadV5(value: Record<string, unknown>): FocusedContextualWork
   };
 }
 
+function workloadByPublicId(params: {
+  workloads: unknown[];
+  publicId: unknown;
+}): FocusedContextualWorkloadV5 | null {
+  if (typeof params.publicId !== 'string' || !params.publicId) return null;
+  const candidate = params.workloads.find((value) =>
+    isRecord(value) && value.publicId === params.publicId);
+  return isRecord(candidate) ? parsedWorkloadV5(candidate) : null;
+}
+
 export function focusedContextualTargetV5(
   input: FocusedContextualAnswerInputV5,
 ): FocusedContextualTargetV5 | null {
@@ -216,64 +228,66 @@ export function focusedContextualTargetV5(
   if (!Number.isInteger(pending.graphRevision) || Number(pending.graphRevision) < 0) return null;
   if (!Array.isArray(summary.workloads) || !Array.isArray(summary.tasks)) return null;
 
-  const target = summary.workloads.find((candidate) =>
+  const targetRecord = summary.workloads.find((candidate) =>
     isRecord(candidate) && candidate.publicId === pending.targetFactId);
-  if (!isRecord(target)) return null;
-  const parsedTarget = parsedWorkloadV5(target);
+  if (!isRecord(targetRecord)) return null;
+  const parsedTarget = parsedWorkloadV5(targetRecord);
   if (
     !parsedTarget
-    || typeof target.taskPublicId !== 'string'
-    || !target.taskPublicId
+    || typeof targetRecord.taskPublicId !== 'string'
+    || !targetRecord.taskPublicId
   ) return null;
 
   const task = summary.tasks.find((candidate) =>
-    isRecord(candidate) && candidate.publicId === target.taskPublicId);
+    isRecord(candidate) && candidate.publicId === targetRecord.taskPublicId);
   if (!isRecord(task)) return null;
   const category = taskCategory(task.category);
   if (!category || typeof task.title !== 'string') return null;
 
   let component: FocusedContextualComponentV5 | null = null;
-  if (target.componentPublicId !== null) {
+  if (targetRecord.componentPublicId !== null) {
     if (
-      typeof target.componentPublicId !== 'string'
-      || !target.componentPublicId
+      typeof targetRecord.componentPublicId !== 'string'
+      || !targetRecord.componentPublicId
       || !Array.isArray(summary.components)
     ) return null;
     const matchingComponent = summary.components.find((candidate) =>
       isRecord(candidate)
-      && candidate.publicId === target.componentPublicId
-      && candidate.taskPublicId === target.taskPublicId);
+      && candidate.publicId === targetRecord.componentPublicId
+      && candidate.taskPublicId === targetRecord.taskPublicId);
     if (!isRecord(matchingComponent)) return null;
     const role = componentRole(matchingComponent.role);
     if (!role || typeof matchingComponent.label !== 'string') return null;
     component = {
-      publicId: target.componentPublicId,
+      publicId: targetRecord.componentPublicId,
       role,
       label: matchingComponent.label,
     };
   }
 
-  const remainingCandidates = summary.workloads.filter((candidate) =>
-    isRecord(candidate)
-    && candidate.publicId !== parsedTarget.publicId
-    && candidate.taskPublicId === target.taskPublicId
-    && candidate.componentPublicId === target.componentPublicId
-    && candidate.quantityRole === 'remaining');
-  let remainingWorkload: FocusedContextualWorkloadV5 | null = null;
-  if (remainingCandidates.length === 1 && isRecord(remainingCandidates[0])) {
-    remainingWorkload = parsedWorkloadV5(remainingCandidates[0]);
-    if (remainingWorkload?.quantityRole !== 'remaining') remainingWorkload = null;
+  const estimateForWorkload = workloadByPublicId({
+    workloads: summary.workloads,
+    publicId: pending.estimateForWorkloadFactId,
+  });
+  if (estimateForWorkload && estimateForWorkload.publicId === parsedTarget.publicId) {
+    return null;
   }
+
+  const questionBasis = pending.questionBasis === 'completed_workload_total'
+    ? 'completed_workload_total' as const
+    : null;
+  if (questionBasis && !estimateForWorkload) return null;
 
   return {
     ...parsedTarget,
     questionCode,
     graphRevision: Number(pending.graphRevision),
-    taskPublicId: target.taskPublicId,
+    taskPublicId: targetRecord.taskPublicId,
     taskCategory: category,
     taskTitle: task.title,
     component,
-    remainingWorkload,
+    estimateForWorkload,
+    questionBasis,
   };
 }
 
@@ -281,6 +295,16 @@ export function focusedContextualAnswerEligibleV5(
   input: FocusedContextualAnswerInputV5,
 ): boolean {
   return focusedContextualTargetV5(input) !== null;
+}
+
+function workloadPromptView(workload: FocusedContextualWorkloadV5) {
+  return {
+    publicId: workload.publicId,
+    amount: workload.amount,
+    unitCode: workload.unitCode,
+    unitLabel: workload.unitLabel,
+    quantityRole: workload.quantityRole,
+  };
 }
 
 export function createFocusedContextualAnswerMessagesV5(
@@ -296,21 +320,10 @@ export function createFocusedContextualAnswerMessagesV5(
         currentUserText: input.userText,
         pendingQuestion: {
           questionCode: target.questionCode,
-          targetWorkload: {
-            publicId: target.publicId,
-            amount: target.amount,
-            unitCode: target.unitCode,
-            unitLabel: target.unitLabel,
-            quantityRole: target.quantityRole,
-          },
-          remainingWorkload: target.remainingWorkload
-            ? {
-                publicId: target.remainingWorkload.publicId,
-                amount: target.remainingWorkload.amount,
-                unitCode: target.remainingWorkload.unitCode,
-                unitLabel: target.remainingWorkload.unitLabel,
-                quantityRole: target.remainingWorkload.quantityRole,
-              }
+          questionBasis: target.questionBasis,
+          questionTargetWorkload: workloadPromptView(target),
+          estimateForWorkload: target.estimateForWorkload
+            ? workloadPromptView(target.estimateForWorkload)
             : null,
         },
       }),
@@ -389,7 +402,7 @@ function targetWithWorkload(
   return {
     ...target,
     ...workload,
-    remainingWorkload: target.remainingWorkload,
+    estimateForWorkload: target.estimateForWorkload,
   };
 }
 
@@ -470,6 +483,24 @@ function taskForTarget(params: {
   };
 }
 
+function effortTargetForDecision(params: {
+  target: FocusedContextualTargetV5;
+  decision: FocusedContextualAnswerDecisionV5['decision'];
+}): FocusedContextualTargetV5 | null {
+  if (params.decision === 'effort_answer') return params.target;
+  if (params.decision === 'remaining_effort_answer') {
+    const estimateTarget = params.target.estimateForWorkload;
+    if (!estimateTarget || estimateTarget.quantityRole !== 'remaining') return null;
+    return targetWithWorkload(params.target, estimateTarget);
+  }
+  if (params.decision === 'effort_per_unit_answer') {
+    return params.target.estimateForWorkload
+      ? targetWithWorkload(params.target, params.target.estimateForWorkload)
+      : params.target;
+  }
+  return null;
+}
+
 export function createFocusedContextualAnswerDocumentV5(params: {
   input: FocusedContextualAnswerInputV5;
   decision: FocusedContextualAnswerDecisionV5;
@@ -484,12 +515,11 @@ export function createFocusedContextualAnswerDocumentV5(params: {
     || params.decision.decision === 'effort_per_unit_answer'
   ) {
     if (target.questionCode !== 'missing_effort_estimate') return null;
-    if (params.decision.decision === 'remaining_effort_answer' && !target.remainingWorkload) {
-      return null;
-    }
-    const effortTarget = params.decision.decision === 'remaining_effort_answer'
-      ? targetWithWorkload(target, target.remainingWorkload as FocusedContextualWorkloadV5)
-      : target;
+    const effortTarget = effortTargetForDecision({
+      target,
+      decision: params.decision.decision,
+    });
+    if (!effortTarget) return null;
     const perUnit = params.decision.decision === 'effort_per_unit_answer';
     return {
       ...emptyDocument(),
