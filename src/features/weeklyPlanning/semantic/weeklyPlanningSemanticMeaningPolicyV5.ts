@@ -42,7 +42,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; Deadline means completion-by. Keep relative dates symbolic; deterministic calendar code resolves them.',
+    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. A task-scoped completion-by date or time must be emitted as that task\'s temporalConstraint with kind=deadline and hard constraint level; for an existing task, use its minimal existingPublicId shell plus the new temporalConstraint. Do not treat such timing as a no-op merely because it does not answer a pending question. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; Deadline means completion-by. Keep relative dates symbolic; deterministic calendar code resolves them.',
   },
   {
     id: 'availability_absence',
