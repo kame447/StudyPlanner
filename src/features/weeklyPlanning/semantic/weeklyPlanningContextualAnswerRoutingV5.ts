@@ -1,6 +1,7 @@
 import type {
   SemanticEffortEstimateV5,
   SemanticQuantityRoleV5,
+  SemanticWorkloadV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
@@ -22,9 +23,19 @@ function hasQuantityRoleAnswer(document: WeeklyPlanningSemanticDocumentV5): bool
     || workload.quantityRole === 'completed'));
 }
 
-function hasIndependentSemanticDelta(
-  document: WeeklyPlanningSemanticDocumentV5,
-): boolean {
+function inheritedMachineWorkload(params: {
+  workload: SemanticWorkloadV5;
+  pendingQuestion: WeeklyPlanningPendingQuestionV5;
+}): boolean {
+  return params.workload.localId === params.pendingQuestion.targetFactId
+    || params.workload.localId === params.pendingQuestion.estimateForWorkloadFactId;
+}
+
+function hasIndependentSemanticDelta(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  pendingQuestion: WeeklyPlanningPendingQuestionV5;
+}): boolean {
+  const { document, pendingQuestion } = params;
   if (
     document.planningWindow !== null
     || document.relations.length > 0
@@ -36,13 +47,26 @@ function hasIndependentSemanticDelta(
     || document.decisions.length > 0
   ) return true;
 
-  return document.tasks.some((task) =>
-    task.temporalConstraints.length > 0
-    || task.recurrence.length > 0
-    || (task.durableContextSignals?.length ?? 0) > 0
-    || (task.study?.components.length ?? 0) > 0
-    || task.workloads.some((workload) =>
-      workload.quantityRole === 'remaining' || workload.quantityRole === 'completed'));
+  return document.tasks.some((task) => {
+    if (!task.existingPublicId) return true;
+    if (
+      task.temporalConstraints.length > 0
+      || task.recurrence.length > 0
+      || (task.durableContextSignals?.length ?? 0) > 0
+    ) return true;
+
+    const workloads = [
+      ...task.workloads,
+      ...(task.study?.components ?? []).flatMap((component) => component.workloads),
+    ];
+    if (workloads.some((workload) =>
+      (workload.quantityRole === 'remaining' || workload.quantityRole === 'completed')
+      && !inheritedMachineWorkload({ workload, pendingQuestion }))) {
+      return true;
+    }
+
+    return (task.study?.components ?? []).some((component) => !component.existingPublicId);
+  });
 }
 
 function isExplicitAlternateMeasurement(params: {
@@ -109,23 +133,27 @@ export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
 }): boolean {
   if (params.pendingQuestion.questionCode === 'semantic_uncertainty') return true;
 
+  const independentDelta = hasIndependentSemanticDelta(params);
+
   if (params.pendingQuestion.questionCode === 'missing_effort_estimate') {
     const estimates = effortEstimates(params.document);
     if (estimates.length === 1) {
+      if (independentDelta) return false;
       if (estimates[0].kind === params.pendingQuestion.effortMeasurement) return true;
       if (isExplicitAlternateMeasurement({
         estimate: estimates[0],
         pendingMeasurement: params.pendingQuestion.effortMeasurement,
       })) return true;
-      return !hasIndependentSemanticDelta(params.document);
+      return true;
     }
     if (estimates.length > 1) return false;
-    return !hasIndependentSemanticDelta(params.document);
+    return !independentDelta;
   }
 
   if (params.pendingQuestion.questionCode === 'quantity_role_unresolved') {
+    if (independentDelta) return false;
     if (hasQuantityRoleAnswer(params.document)) return true;
-    return !hasIndependentSemanticDelta(params.document);
+    return true;
   }
 
   return true;
