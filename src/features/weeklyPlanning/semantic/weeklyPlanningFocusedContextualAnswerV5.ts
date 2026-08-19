@@ -14,7 +14,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
-export const FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS = 140;
+export const FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS = 320;
 
 export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
