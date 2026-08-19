@@ -48,9 +48,9 @@ function asksForRelationEndpointsOrOrder(text: string): boolean {
   const endpointClarification = (
     /(それぞれ|両方|双方|二つ|2つ)/.test(compact)
     || /課題.?A.*課題.?B/i.test(compact)
-  ) && /(どの|どれ|何|指して|対象|課題|作業|予定)/.test(compact);
-  const orderingClarification = /(先|後|あと|順番|関係)/.test(compact)
-    && /(どの|どれ|何|課題|作業|予定|対象)/.test(compact);
+  ) && /(どの|どれ|何|指して|対象|課題|タスク|作業|予定)/.test(compact);
+  const orderingClarification = /(先|後|あと|順番|順|関係)/.test(compact)
+    && /(どの|どれ|何|課題|タスク|作業|予定|対象)/.test(compact);
   return endpointClarification || orderingClarification;
 }
 
