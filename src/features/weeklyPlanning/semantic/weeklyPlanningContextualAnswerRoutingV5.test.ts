@@ -53,7 +53,7 @@ function pendingEffort(
 }
 
 describe('Stable V5 contextual-answer routing', () => {
-  it('attempts exact effort binding only when the semantic measurement matches the pending question', () => {
+  it('attempts exact effort binding when the semantic measurement matches the pending question', () => {
     const value = document();
     value.tasks[0].effortEstimates.push({
       localId: 'effort-1',
@@ -71,7 +71,7 @@ describe('Stable V5 contextual-answer routing', () => {
     })).toBe(true);
   });
 
-  it('routes an explicitly different effort measurement through normal canonicalization', () => {
+  it('keeps an explicit per-unit alternate measurement on the exact contextual target', () => {
     const value = document();
     value.tasks[0].effortEstimates.push({
       localId: 'effort-1',
@@ -86,7 +86,7 @@ describe('Stable V5 contextual-answer routing', () => {
     expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
       document: value,
       pendingQuestion: pendingEffort('total_duration'),
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('routes deadline and progress meaning through normal canonicalization while effort remains unanswered', () => {
