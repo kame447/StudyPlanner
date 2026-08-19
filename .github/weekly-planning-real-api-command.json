@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-12",
-  "reason": "Final Real Luna 3x revalidation after applying schema-valid semantic no-op completeness recovery after repair. Require tomorrow 13:00 deadline preservation and acknowledgement, approximate progress acceptance, corrected completed 12 plus remaining 8 with no active stale 10, per-unit 8-minute pace yielding a 75-minute scheduled candidate after safety buffer, no duplicate task, and all typed renderer/completion gates passing."
+  "request_id": "20260819-pr157-merge-gate-13",
+  "reason": "Final Real Luna 3x gate after exact contextual binding now preserves an explicit duration-per-unit answer even when the pending effort question requested total duration. Require tomorrow 13:00 deadline preservation, approximate progress acceptance, completed 12 plus remaining 8 with no active stale 10, 8 minutes per slide bound to the completed workload, scheduler-ready 75-minute allocation for the remaining 8 slides after safety buffer and rounding, no duplicate task, and all typed renderer/completion gates passing."
 }
