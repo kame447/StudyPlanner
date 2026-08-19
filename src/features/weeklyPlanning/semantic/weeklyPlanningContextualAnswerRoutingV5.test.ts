@@ -86,6 +86,47 @@ describe('Stable V5 contextual-answer routing', () => {
     })).toBe(true);
   });
 
+  it('keeps a temporary answer task shell on the guarded contextual path', () => {
+    const value = document();
+    delete value.tasks[0].existingPublicId;
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-1',
+      targetLocalId: 'task-1',
+      kind: 'total_duration',
+      minutes: 30,
+      unitCode: null,
+      precision: 'approximate',
+      sourceText: '30分くらい',
+    });
+
+    expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
+      document: value,
+      pendingQuestion: pendingEffort('total_duration'),
+    })).toBe(true);
+  });
+
+  it('keeps a new target-only task as an independent semantic delta', () => {
+    const value = document();
+    delete value.tasks[0].existingPublicId;
+    value.tasks[0].workloads.push({
+      localId: 'new-target',
+      quantityRole: 'target',
+      amount: 20,
+      unitCode: 'problem',
+      unitLabel: '問',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      sourceText: '別の問題を20問',
+    });
+
+    expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
+      document: value,
+      pendingQuestion: pendingEffort('total_duration'),
+    })).toBe(false);
+  });
+
   it('keeps an explicit per-unit alternate measurement on the exact contextual target', () => {
     const value = document();
     value.tasks[0].effortEstimates.push({
@@ -229,6 +270,26 @@ describe('Stable V5 contextual-answer routing', () => {
       document: value,
       pendingQuestion: observedPacePending(),
     })).toBe('remaining-30');
+  });
+
+  it('does not activate the estimate target without the completed-work question basis', () => {
+    const value = document();
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-per-page',
+      targetLocalId: 'task-1',
+      kind: 'duration_per_unit',
+      minutes: 8,
+      unitCode: 'page',
+      precision: 'approximate',
+      sourceText: '1枚あたり8分くらい',
+    });
+    const pending = observedPacePending();
+    pending.questionBasis = null;
+
+    expect(contextualAnswerTargetFactIdV5({
+      document: value,
+      pendingQuestion: pending,
+    })).toBe('completed-70');
   });
 
   it('keeps direct historical total duration on the completed evidence target', () => {
