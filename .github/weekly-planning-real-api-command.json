@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-14",
-  "reason": "Final Real Luna 3x gate after bounded-progress projection was made order-independent for exact fixed totals. Deterministic regression now covers completed 12 first, then scope_total 20 later, requiring derived remaining 8 instead of re-asking existing_target_progress. Revalidate the full typed renderer/completion matrix on this final product state with no stale progress facts, no duplicate task, correct fixed-total handling, and no dialogue regressions."
+  "request_id": "20260819-pr157-merge-gate-15",
+  "reason": "Final Real Luna 3x gate after two run-14 findings: strengthen schema-valid semantic no-op completeness retry so existing-entity shells/sourceText cannot stand in for typed side-contribution facts, and broaden only the evaluation oracle to accept equivalent relation wording using task terminology. Revalidate the complete final conversation, completed-progress, typed-renderer, and all-question-code matrices on the final product head."
 }
