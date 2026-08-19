@@ -148,11 +148,13 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     ]);
     const retryMessages = fake.calls[1].messages;
     const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
-    expect(retryInstruction).toContain('Re-read current userText');
+    expect(retryInstruction).toContain('Re-read that exact current userText');
+    expect(retryInstruction).toContain(userText);
     expect(retryInstruction).toContain('side contributions unrelated to the pending question');
+    expect(retryInstruction).toContain('deadline temporalConstraint');
   });
 
-  it('rechecks a completeness retry that is still a semantic no-op before accepting fallback meaning', async () => {
+  it('uses a fresh semantic context for the final retry when the first completeness retry is still a no-op', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),
       JSON.stringify(existingTaskShell()),
@@ -179,6 +181,9 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     const finalRetryMessages = fake.calls[2].messages;
     const finalInstruction = finalRetryMessages[finalRetryMessages.length - 1]?.content ?? '';
     expect(finalInstruction).toContain('final independent completeness pass');
+    expect(finalInstruction).toContain(userText);
+    expect(finalInstruction).toContain('do not copy or preserve the prior empty semantic wrapper');
+    expect(finalRetryMessages.some((message) => message.role === 'assistant')).toBe(false);
   });
 
   it('falls back to the original schema-valid no-op only after both completeness passes remain empty', async () => {
@@ -229,6 +234,7 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     ]);
     const retryMessages = fake.calls[2].messages;
     const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
-    expect(retryInstruction).toContain('Re-read current userText');
+    expect(retryInstruction).toContain('Re-read that exact current userText');
+    expect(retryInstruction).toContain(userText);
   });
 });
