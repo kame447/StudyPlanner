@@ -201,6 +201,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
           quantityRole: null,
         }))
         .mockResolvedValueOnce(genericDocument)
+        .mockResolvedValueOnce(genericDocument)
         .mockResolvedValueOnce(genericDocument),
     };
 
@@ -211,14 +212,20 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
 
     expect(result.status).toBe('accepted');
     expect(result.document?.tasks).toEqual([]);
-    expect(client.createChatCompletion).toHaveBeenCalledTimes(3);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(4);
     const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
     const thirdRequest = vi.mocked(client.createChatCompletion).mock.calls[2][0];
+    const fourthRequest = vi.mocked(client.createChatCompletion).mock.calls[3][0];
     expect(secondRequest.responseFormat).toMatchObject({
       json_schema: { name: 'weekly_planning_semantic_document_v5' },
     });
     expect(thirdRequest.responseFormat).toMatchObject({
       json_schema: { name: 'weekly_planning_semantic_document_v5' },
     });
+    expect(fourthRequest.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_semantic_document_v5' },
+    });
+    expect(thirdRequest.messages.at(-1)?.content).toContain('Re-read current userText');
+    expect(fourthRequest.messages.at(-1)?.content).toContain('final independent completeness pass');
   });
 });
