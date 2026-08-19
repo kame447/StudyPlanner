@@ -9,7 +9,7 @@ import type {
 
 const MAX_RENDERED_TEXT_LENGTH = 800;
 const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
-const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*[0-5]?\d\s*分)?/g;
+const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
@@ -31,6 +31,63 @@ function normalizeDialogueText(value: string): string {
 
 function expressions(value: string, pattern: RegExp): string[] {
   return [...value.matchAll(pattern)].map((match) => normalizeProtectedExpression(match[0]));
+}
+
+function clockMinutes(value: string): number | null {
+  const compact = value.replace(/\s+/g, '').replace('：', ':');
+  const colon = /^(\d{1,2}):(\d{2})$/.exec(compact);
+  if (colon) {
+    const hour = Number(colon[1]);
+    const minute = Number(colon[2]);
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+      ? hour * 60 + minute
+      : null;
+  }
+
+  const japanese = /^(午前|午後)?(\d{1,2})時(?:(\d{1,2})分|半)?$/.exec(compact);
+  if (!japanese) return null;
+  let hour = Number(japanese[2]);
+  const minute = japanese[3] !== undefined
+    ? Number(japanese[3])
+    : compact.endsWith('半')
+      ? 30
+      : 0;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  if (japanese[1] === '午前' && hour === 12) hour = 0;
+  if (japanese[1] === '午後' && hour < 12) hour += 12;
+  return hour * 60 + minute;
+}
+
+function clockValues(value: string): number[] {
+  return [...value.matchAll(CLOCK_EXPRESSION)]
+    .map((match) => clockMinutes(match[0]))
+    .filter((minutes): minutes is number => minutes !== null);
+}
+
+function structuredClockValues(data: Record<string, unknown>): number[] {
+  return ['startTime', 'endTime']
+    .map((key) => data[key])
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => clockMinutes(value))
+    .filter((minutes): minutes is number => minutes !== null);
+}
+
+function missesAcknowledgedClockValue(params: {
+  factIds: string[];
+  acknowledgementText: string;
+  input: WeeklyPlanningStableV5DialogueRenderInput;
+}): boolean {
+  const acceptedFacts = params.input.currentTurnGrounding?.acceptedFacts ?? [];
+  const actual = new Set(clockValues(params.acknowledgementText));
+  return params.factIds.some((factId) => {
+    const fact = acceptedFacts.find((candidate) => candidate.factId === factId);
+    if (!fact) return true;
+    const structured = structuredClockValues(fact.data);
+    const expected = structured.length > 0
+      ? structured
+      : clockValues(fact.sourceText);
+    return expected.some((minutes) => !actual.has(minutes));
+  });
 }
 
 function addsUnsupportedExpression(
@@ -122,6 +179,14 @@ function groundingAcknowledgementMismatch(
     acceptedFactIds.size === 0
     || factIds.some((factId) => !acceptedFactIds.has(factId as string))
   ) {
+    return true;
+  }
+
+  if (missesAcknowledgedClockValue({
+    factIds: factIds as string[],
+    acknowledgementText,
+    input,
+  })) {
     return true;
   }
 
