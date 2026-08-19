@@ -27,8 +27,9 @@ import {
 const FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS = 2;
 const DUAL_TARGET_CONTEXTUAL_REPAIR_INSTRUCTION = [
   'Re-evaluate only the current user text against the typed pending-question choices.',
-  'For questionBasis=completed_workload_total with estimateForWorkload, an explicit total duration for remaining work is remaining_effort_answer, and an explicit per-unit rate for the work being estimated is effort_per_unit_answer.',
-  'Do not return fallback solely because either answer differs from the completed-work total duration originally asked for. Use fallback only for ambiguity or independent planning meaning.',
+  'If it gives effort, return decision=effort_answer and classify effortTarget independently: question_target for questionTargetWorkload or estimate_target for estimateForWorkload.',
+  'Classify effortMeasurement independently as total_duration or duration_per_unit. A clear estimate_target answer is valid even when the pending question originally asked about question_target.',
+  'Use fallback only for ambiguity or independent planning meaning.',
 ].join(' ');
 
 export async function tryFocusedContextualAnswerRouteV5(
@@ -88,6 +89,8 @@ export async function tryFocusedContextualAnswerRouteV5(
         data: {
           attempt,
           decision: decision?.decision ?? 'invalid_response',
+          effortTarget: decision?.effortTarget ?? null,
+          effortMeasurement: decision?.effortMeasurement ?? null,
           responseLength: response.length,
           rawResponse: response,
           documentCreated: Boolean(document),
