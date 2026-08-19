@@ -5,7 +5,7 @@ function unique(values: string[]): string[] {
 }
 
 const PRESERVE_VALID_MEANING_CLAUSE =
-  'Correct every listed validation failure. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response.';
+  'Correct every listed validation failure. Re-read current userText and preserve every supported current-turn fact, including facts omitted from the invalid response; never invent unsupported facts. Preserve unrelated schema-valid fields from the invalid response.';
 
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
@@ -51,9 +51,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
 
   const result = unique(directives);
   if (result.length === 0) {
-    return [
-      'Correct only the listed validation failures; preserve unrelated current-turn meaning and schema-valid fields from the invalid response.',
-    ];
+    return [PRESERVE_VALID_MEANING_CLAUSE];
   }
   result[0] = `${result[0]} ${PRESERVE_VALID_MEANING_CLAUSE}`;
   return result;
