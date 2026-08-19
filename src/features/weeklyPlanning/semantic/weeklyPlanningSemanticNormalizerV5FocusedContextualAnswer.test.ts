@@ -225,7 +225,9 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(fourthRequest.responseFormat).toMatchObject({
       json_schema: { name: 'weekly_planning_semantic_document_v5' },
     });
-    expect(thirdRequest.messages.at(-1)?.content).toContain('Re-read current userText');
-    expect(fourthRequest.messages.at(-1)?.content).toContain('final independent completeness pass');
+    const thirdInstruction = thirdRequest.messages[thirdRequest.messages.length - 1]?.content ?? '';
+    const fourthInstruction = fourthRequest.messages[fourthRequest.messages.length - 1]?.content ?? '';
+    expect(thirdInstruction).toContain('Re-read current userText');
+    expect(fourthInstruction).toContain('final independent completeness pass');
   });
 });
