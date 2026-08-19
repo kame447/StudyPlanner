@@ -51,8 +51,8 @@ function isExplicitAlternateMeasurement(params: {
   if (params.estimate.kind === params.pendingMeasurement) return false;
 
   // A non-null unit on duration_per_unit is structured evidence that the user
-  // explicitly supplied a per-unit measurement, rather than a bare duration
-  // whose meaning should inherit the pending machine question.
+  // explicitly supplied a per-unit measurement. The machine still owns the
+  // exact target identity, while the AI owns this measurement meaning.
   return params.estimate.kind === 'duration_per_unit'
     && params.estimate.unitCode !== null;
 }
@@ -70,7 +70,7 @@ export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
       if (isExplicitAlternateMeasurement({
         estimate: estimates[0],
         pendingMeasurement: params.pendingQuestion.effortMeasurement,
-      })) return false;
+      })) return true;
       return !hasIndependentSemanticDelta(params.document);
     }
     if (estimates.length > 1) return false;
