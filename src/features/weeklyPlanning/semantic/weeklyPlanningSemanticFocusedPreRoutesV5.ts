@@ -25,6 +25,11 @@ import {
 } from './weeklyPlanningSemanticNormalizerRunV5';
 
 const FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS = 2;
+const DUAL_TARGET_CONTEXTUAL_REPAIR_INSTRUCTION = [
+  'Re-evaluate only the current user text against the typed pending-question choices.',
+  'For questionBasis=completed_workload_total with estimateForWorkload, an explicit total duration for remaining work is remaining_effort_answer, and an explicit per-unit rate for the work being estimated is effort_per_unit_answer.',
+  'Do not return fallback solely because either answer differs from the completed-work total duration originally asked for. Use fallback only for ambiguity or independent planning meaning.',
+].join(' ');
 
 export async function tryFocusedContextualAnswerRouteV5(
   run: WeeklyPlanningSemanticNormalizerRunV5,
@@ -36,15 +41,15 @@ export async function tryFocusedContextualAnswerRouteV5(
   const retryDualTargetInterpretation = target.questionCode === 'missing_effort_estimate'
     && target.questionBasis === 'completed_workload_total'
     && target.estimateForWorkload !== null;
-  const messages = createFocusedContextualAnswerMessagesV5(run.input);
-  const request = {
-    messages,
+  const baseMessages = createFocusedContextualAnswerMessagesV5(run.input);
+  let attemptMessages = baseMessages;
+  const initialRequest = {
+    messages: baseMessages,
     temperature: 0,
     responseFormat: FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
     purpose: 'weekly_planning_semantic_normalizer' as const,
     maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
   };
-  const requestBytes = semanticNormalizerByteLength(request);
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: run.input.traceRequestId,
     stage: 'semantic_orchestrator_route',
@@ -55,12 +60,18 @@ export async function tryFocusedContextualAnswerRouteV5(
         'route_from_machine_pending_question',
         'bind_ai_semantic_value_to_exact_pending_target',
       ],
-      requestBytes,
+      requestBytes: semanticNormalizerByteLength(initialRequest),
     },
   });
 
   const responseLengths: number[] = [];
+  const requestBytes: number[] = [];
   for (let attempt = 1; attempt <= FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS; attempt += 1) {
+    const request = {
+      ...initialRequest,
+      messages: attemptMessages,
+    };
+    requestBytes.push(semanticNormalizerByteLength(request));
     try {
       const response = await run.client.createChatCompletion(request);
       responseLengths.push(response.length);
@@ -84,7 +95,13 @@ export async function tryFocusedContextualAnswerRouteV5(
         },
       });
       if (!document) {
-        if (retrying) continue;
+        if (retrying) {
+          attemptMessages = [
+            ...baseMessages,
+            { role: 'user', content: DUAL_TARGET_CONTEXTUAL_REPAIR_INSTRUCTION },
+          ];
+          continue;
+        }
         return null;
       }
 
@@ -96,7 +113,7 @@ export async function tryFocusedContextualAnswerRouteV5(
           repairAttempted: false,
           validationErrors: [],
           providerError: null,
-          requestBytes: Array.from({ length: attempt }, () => requestBytes),
+          requestBytes,
           responseLengths,
         }),
       };
