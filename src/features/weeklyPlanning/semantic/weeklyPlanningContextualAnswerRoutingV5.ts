@@ -41,6 +41,21 @@ function inheritedMachineWorkload(params: {
     || params.workload.localId === progressEstimateTargetFactId(params.pendingQuestion);
 }
 
+function isDualTargetEffortAnswerWorkload(params: {
+  workload: SemanticWorkloadV5;
+  task: WeeklyPlanningSemanticDocumentV5['tasks'][number];
+  pendingQuestion: WeeklyPlanningPendingQuestionV5;
+}): boolean {
+  if (!progressEstimateTargetFactId(params.pendingQuestion)) return false;
+  if (
+    params.workload.quantityRole !== 'remaining'
+    && params.workload.quantityRole !== 'completed'
+  ) return false;
+  return params.task.effortEstimates.some(
+    (estimate) => estimate.targetLocalId === params.workload.localId,
+  );
+}
+
 function taskHasIndependentSemanticDelta(params: {
   task: WeeklyPlanningSemanticDocumentV5['tasks'][number];
   pendingQuestion: WeeklyPlanningPendingQuestionV5;
@@ -58,7 +73,8 @@ function taskHasIndependentSemanticDelta(params: {
   ];
   if (workloads.some((workload) =>
     (workload.quantityRole === 'remaining' || workload.quantityRole === 'completed')
-    && !inheritedMachineWorkload({ workload, pendingQuestion }))) {
+    && !inheritedMachineWorkload({ workload, pendingQuestion })
+    && !isDualTargetEffortAnswerWorkload({ workload, task, pendingQuestion }))) {
     return true;
   }
 
