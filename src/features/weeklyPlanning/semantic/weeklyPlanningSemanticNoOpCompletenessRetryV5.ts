@@ -16,7 +16,15 @@ const COMPLETENESS_RETRY_INSTRUCTION = [
   'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn proposition in its typed field.',
   'For example, task-specific timing belongs in temporalConstraints, plan-wide availability in availabilityDeclarations, workload state in workloads, effort in effortEstimates, and task ordering in relations.',
   'Include every supported explicit current-turn fact, including side contributions unrelated to the pending question. Do not invent facts.',
-  'If the current turn truly contains no supported new fact, return equivalent no-op meaning.',
+  'Return equivalent no-op meaning only if current userText genuinely contains no supported new fact.',
+].join(' ');
+
+const FINAL_COMPLETENESS_RETRY_INSTRUCTION = [
+  'The completeness retry still produced no typed semantic content.',
+  'Perform one final independent completeness pass over current userText instead of copying the prior empty wrapper.',
+  'Encode every supported current-turn proposition in the corresponding typed field, even when it does not answer the pending question.',
+  'Existing entity shells, titles, and sourceText alone do not count as semantic content.',
+  'Return equivalent no-op meaning only if current userText genuinely contains no supported new fact.',
 ].join(' ');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,93 +108,138 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     publicStateSummary: params.run.input.publicStateSummary,
   })) return null;
 
-  const attemptCount = (params.attemptCountBeforeRetry ?? 1) + 1;
+  const attemptCountBeforeRetry = params.attemptCountBeforeRetry ?? 1;
   const repairAttempted = params.repairAttempted ?? false;
   const validationErrors = params.validationErrors ?? [];
-  const messages: ChatMessage[] = [
-    ...params.baseMessages,
-    { role: 'assistant', content: params.initialResponse },
-    { role: 'user', content: COMPLETENESS_RETRY_INSTRUCTION },
-  ];
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: params.run.input.traceRequestId,
-    stage: 'semantic_orchestrator_route',
-    data: {
-      route: 'schema_valid_noop_completeness_retry',
-      meaningOwner: 'ai',
-      deterministicResponsibilities: [
-        'detect_schema_valid_semantic_noop_under_machine_pending_question',
-      ],
-      attemptCountBeforeRetry: params.attemptCountBeforeRetry ?? 1,
-      repairAttempted,
-    },
-  });
+  let previousResponse = params.initialResponse;
 
-  let response: string;
-  try {
-    response = await params.run.callTracked({
-      messages,
-      temperature: 0,
-      responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
-      purpose: 'weekly_planning_semantic_normalizer',
-      maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
-    }, 'completeness_retry');
-  } catch (error) {
+  for (let retryIndex = 0; retryIndex < 2; retryIndex += 1) {
+    const instruction = retryIndex === 0
+      ? COMPLETENESS_RETRY_INSTRUCTION
+      : FINAL_COMPLETENESS_RETRY_INSTRUCTION;
+    const attempt = retryIndex === 0
+      ? 'completeness_retry'
+      : 'completeness_retry_final';
+    const attemptCount = attemptCountBeforeRetry + retryIndex + 1;
+    const messages: ChatMessage[] = [
+      ...params.baseMessages,
+      { role: 'assistant', content: previousResponse },
+      { role: 'user', content: instruction },
+    ];
+
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId,
+      stage: 'semantic_orchestrator_route',
+      data: {
+        route: retryIndex === 0
+          ? 'schema_valid_noop_completeness_retry'
+          : 'schema_valid_noop_completeness_retry_final',
+        meaningOwner: 'ai',
+        deterministicResponsibilities: [
+          'detect_schema_valid_semantic_noop_under_machine_pending_question',
+          'recheck_completeness_retry_before_accepting_semantic_noop',
+        ],
+        attemptCountBeforeRetry: attemptCount - 1,
+        repairAttempted,
+      },
+    });
+
+    let response: string;
+    try {
+      response = await params.run.callTracked({
+        messages,
+        temperature: 0,
+        responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+        purpose: 'weekly_planning_semantic_normalizer',
+        maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+      }, attempt);
+    } catch (error) {
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: params.run.input.traceRequestId,
+        stage: 'semantic_noop_completeness_retry_result',
+        severity: 'warn',
+        data: {
+          retryIndex: retryIndex + 1,
+          accepted: false,
+          fallback: 'initial_schema_valid_document',
+          error: semanticNormalizerErrorDetails(error),
+        },
+      });
+      return acceptedPriorResult({
+        run: params.run,
+        document: params.initialDocument,
+        attemptCount,
+        repairAttempted,
+        validationErrors,
+      });
+    }
+
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      response,
+      { publicStateSummary: params.run.input.publicStateSummary },
+    );
+    params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
+    const stillNoOp = validation.document
+      ? isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+          document: validation.document,
+          publicStateSummary: params.run.input.publicStateSummary,
+        })
+      : false;
+    const shouldRetryAgain = retryIndex === 0 && (!validation.document || stillNoOp);
+
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_noop_completeness_retry_result',
-      severity: 'warn',
+      severity: validation.document && !stillNoOp ? 'info' : 'warn',
       data: {
-        accepted: false,
-        fallback: 'initial_schema_valid_document',
-        error: semanticNormalizerErrorDetails(error),
+        retryIndex: retryIndex + 1,
+        accepted: Boolean(validation.document) && !stillNoOp,
+        stillNoOp,
+        errors: validation.errors,
+        parsedDocument: validation.parsedDocument,
+        retryAgain: shouldRetryAgain,
+        fallback: retryIndex === 1 && (!validation.document || stillNoOp)
+          ? 'initial_schema_valid_document'
+          : null,
       },
     });
-    return acceptedPriorResult({
-      run: params.run,
-      document: params.initialDocument,
-      attemptCount,
-      repairAttempted,
-      validationErrors,
-    });
+
+    if (validation.document && !stillNoOp) {
+      const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+        status: 'accepted',
+        document: validation.document,
+        diagnostics: params.run.diagnostics({
+          attemptCount,
+          repairAttempted,
+          validationErrors,
+          providerError: null,
+        }),
+      };
+      params.run.recordDecision(result, {
+        route: retryIndex === 0
+          ? 'schema_valid_noop_completeness_retry'
+          : 'schema_valid_noop_completeness_retry_final',
+      });
+      return result;
+    }
+
+    if (!shouldRetryAgain) {
+      return acceptedPriorResult({
+        run: params.run,
+        document: params.initialDocument,
+        attemptCount,
+        repairAttempted,
+        validationErrors,
+      });
+    }
+    previousResponse = response;
   }
 
-  const validation = validateWeeklyPlanningSemanticResponseV5(
-    response,
-    { publicStateSummary: params.run.input.publicStateSummary },
-  );
-  params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: params.run.input.traceRequestId,
-    stage: 'semantic_noop_completeness_retry_result',
-    severity: validation.document ? 'info' : 'warn',
-    data: {
-      accepted: Boolean(validation.document),
-      errors: validation.errors,
-      parsedDocument: validation.parsedDocument,
-      fallback: validation.document ? null : 'initial_schema_valid_document',
-    },
+  return acceptedPriorResult({
+    run: params.run,
+    document: params.initialDocument,
+    attemptCount: attemptCountBeforeRetry + 2,
+    repairAttempted,
+    validationErrors,
   });
-  if (!validation.document) {
-    return acceptedPriorResult({
-      run: params.run,
-      document: params.initialDocument,
-      attemptCount,
-      repairAttempted,
-      validationErrors,
-    });
-  }
-
-  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-    status: 'accepted',
-    document: validation.document,
-    diagnostics: params.run.diagnostics({
-      attemptCount,
-      repairAttempted,
-      validationErrors,
-      providerError: null,
-    }),
-  };
-  params.run.recordDecision(result, { route: 'schema_valid_noop_completeness_retry' });
-  return result;
 }
