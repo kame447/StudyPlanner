@@ -38,6 +38,8 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
 function focusedQuantityRoleAnswer(): string {
   return JSON.stringify({
     decision: 'quantity_role_answer',
+    effortTarget: null,
+    effortMeasurement: null,
     minutes: null,
     precision: null,
     quantityRole: 'target',
@@ -47,6 +49,8 @@ function focusedQuantityRoleAnswer(): string {
 function focusedEffortAnswer(): string {
   return JSON.stringify({
     decision: 'effort_answer',
+    effortTarget: 'question_target',
+    effortMeasurement: 'total_duration',
     minutes: 180,
     precision: 'exact',
     quantityRole: null,
