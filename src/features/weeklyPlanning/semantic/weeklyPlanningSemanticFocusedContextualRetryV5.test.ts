@@ -141,10 +141,9 @@ describe('Stable V5 focused contextual-answer retry', () => {
     expect(result.diagnostics.attemptCount).toBe(2);
     expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
     const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
-    expect(secondRequest.messages.at(-1)?.content).toContain(
-      'Re-evaluate only the current user text',
-    );
-    expect(secondRequest.messages.at(-1)?.content).toContain('remaining_effort_answer');
+    const repairMessage = secondRequest.messages[secondRequest.messages.length - 1];
+    expect(repairMessage?.content).toContain('Re-evaluate only the current user text');
+    expect(repairMessage?.content).toContain('remaining_effort_answer');
     expect(result.document?.tasks[0]).toMatchObject({
       existingPublicId: 'task-report',
       workloads: [expect.objectContaining({
