@@ -142,54 +142,54 @@ Repetitions: 3
 Result: 1/3 fully passed
 Provider status: available; provider smoke returned HTTP 200 in all repetitions
 Deterministic CI on the same head: green
-Browser Regression on the same head: still running when the gate-21 defect analysis began; it is not counted as passed until the run completes
 
-Gate 21 confirms that the gate-20 target-direction repair materially worked, but the PR remains merge-blocked by two independent semantic-orchestration failures in the final conversation.
+Gate 21 confirmed that the gate-20 target-direction repair materially worked, but the PR remained merge-blocked by two independent semantic-orchestration failures in the final conversation.
 
 ### What remained stable
 
 The dedicated remaining-effort test passed in both failed repetitions. In particular, explicit remaining duration was bound to the remaining progress fact rather than completed progress. The dedicated 100% completion test also passed, as did the typed renderer stress matrix and the all-question-code matrix. One of the three complete merge-gate repetitions passed end to end.
 
-This narrows the remaining work away from the previously observed silent completed/remaining target corruption.
-
 ### Repetition 2: alternate 8 min/unit was lost
 
-The bounded-slide conversation reached:
+The bounded-slide conversation reached scope total 20 slides, corrected completed count 12, derived remaining count 8, then asked a completed-work total-duration question while exposing the remaining-8 workload as `estimateForWorkload`. The user supplied about 8 minutes per slide. Both focused contextual attempts errored, generic normalization returned no effort delta, and the pending question remained unresolved.
 
-- scope total 20 slides;
-- corrected completed count 12;
-- derived remaining count 8;
-- pending completed-work total-duration question with the remaining-8 workload exposed as `estimateForWorkload`.
+### Repetition 3: deadline retry boundary
 
-The user then supplied an explicit per-unit pace of about 8 minutes per slide. The assistant rejected it as an answer to the pending question and asked again for the total time spent on the completed 12 slides. The final Fact Graph contained no `duration_per_unit=8` effort fact, so the final invariant failed.
+The report conversation had an existing pending progress question when the user supplied `deadline = tomorrow 13:00`. A retry produced the intended deadline shape, but the response used a minimal existing task shell with `study=null`. The strict response schema permits that delta shape while the base semantic validator had required study metadata as if the existing task were new. This exposed a schema/delta-validation mismatch.
 
-The trace shows that both focused contextual attempts ended in `semantic_focused_contextual_answer_error`. Generic normalization then ran three times; the initial response and both completeness retries returned the existing task shell with no workload or effort delta. Contextual binding therefore had no typed effort to apply and left the pending question unresolved.
+### Repair after gate 21
 
-This is not a target-binding regression: no incorrect effort fact was committed. It is a robustness failure in the focused semantic path/fallback path for a valid alternate measurement.
+Two narrow architectural repairs followed:
 
-### Repetition 3: deadline was extracted and then discarded
+- the focused contextual response token cap was raised from 140 to 320 because successful real responses were already consuming close to the old ceiling; prompt semantics were unchanged;
+- a verified `existingPublicId` study-task delta shell may receive transient unknown study metadata before structural validation. The shell is filled only when public state confirms the existing study task, and existing-entity rebasing removes this transient context before commit.
 
-The report conversation had an existing pending progress question when the user supplied the side contribution `deadline = tomorrow 13:00`.
+A deterministic regression reproduces the exact deadline retry shape with `study=null`. CI and Browser Regression were green on implementation head `ffc968e2a978e60f97ee9d67cff6dc5f2888751a` before gate 22.
 
-The generic semantic trace is especially important:
+## Real Luna merge gate 22
 
-1. the initial semantic response returned the existing report task but omitted the deadline;
-2. the first completeness retry correctly returned a hard deadline temporal constraint with `dateExpression=tomorrow`, `startTime=13:00`, and `precision=exact`;
-3. a later completeness retry again returned a no-op task shell without the deadline;
-4. the final canonicalization diff was empty, the graph revision did not advance, and the assistant resumed the progress question without acknowledging 13:00.
+Requested checkpoint: `20260819-pr157-merge-gate-22`
+Gate head: `410a356a3ded560be6bdc9f1e673e0dae0e43a23`
+Repetitions: 3
+Result: 2/3 fully passed
+Provider status: available; provider smoke returned HTTP 200 in all repetitions
+Deterministic CI on the same head: green
 
-Therefore the visible ACK failure is downstream of a semantic-orchestration defect: a meaningful accepted retry can be followed by another no-op retry and the valid semantic delta can be lost before canonicalization. The next fix should make completeness retry monotonic: once a valid retry resolves the no-op by producing a meaningful typed delta, that result must be adopted rather than replaced by a later no-op attempt.
+Gate 22 shows that the gate-21 effort repair worked. The bounded-slide 8-minutes-per-unit path no longer failed in the merge-gate run, the dedicated remaining-effort gate remained green, the 100% completion gate remained green, and the typed renderer/all-question-code matrices remained green. Two complete final-conversation repetitions passed end to end.
 
-### Gate-21 repair boundary
+### Remaining failure: deadline side contribution can still be lost as semantic no-op
 
-The next code repair should stay general and typed:
+The only failing repetition again occurred when the report conversation had a pending progress question and the user supplied a task deadline of tomorrow at 13:00. The final graph revision stayed unchanged, no temporal constraint was committed, and the assistant resumed the progress question without acknowledging 13:00.
 
-- make no-op completeness retry stop/adopt as soon as a valid meaningful semantic delta is obtained;
-- determine why the focused contextual effort path throws on the valid alternate per-unit response, and repair the typed response/validation boundary rather than adding Japanese wording cases;
-- preserve the current dual-target fail-close rule and existing remaining/completed target invariants;
-- preserve strict `required_before_resume` grounding once the side-contribution fact actually reaches the graph.
+This time the structural validator was not the cause. The initial generic semantic response and both completeness retries were schema-valid existing-task shells with no temporal constraint. In the successful repetition, the first completeness retry emitted the expected typed deadline and was immediately adopted. In the failed repetition, all three generic passes omitted the deadline despite explicit retry instructions.
 
-Do not weaken the final conversation assertions merely because one of three stochastic runs passed.
+The remaining defect is therefore stochastic semantic extraction under a pending question, not target binding, canonicalization, grounding validation, or schema validation. Repeating the same full semantic document request is not a sufficiently stable recovery mechanism for this side-contribution class.
+
+### Gate-22 repair boundary
+
+The next repair should add a small AI-owned focused temporal side-contribution route that is entered only from machine state: a schema-valid semantic no-op while a pending question and a resolvable existing task target are present. The route must ask whether the current turn contains a task-scoped temporal constraint and, if so, return its typed kind/date/time/constraint-level fields. Deterministic code may bind that typed result to the already-resolved existing task, but must not inspect Japanese words or infer temporal meaning from raw text.
+
+If the focused temporal route returns fallback or uncertainty, the existing generic completeness retry remains available for other side-contribution classes. The focused route must be general across supported task temporal constraints rather than hard-coded to the 13:00 fixture.
 
 ## Prohibited fixes
 
@@ -229,7 +229,7 @@ If a real-Luna run exposes a meaningful defect, stop the merge path, add determi
 
 ## Next gate
 
-After the gate-21 semantic-orchestration defects are fixed and deterministic CI plus Browser Regression are green, request a fresh 3x Real Luna merge gate. Manual review must specifically inspect:
+After the gate-22 temporal side-contribution defect is fixed and deterministic CI plus Browser Regression are green, request a fresh 3x Real Luna merge gate. Manual review must specifically inspect:
 
 - open-ended 60% progress → remaining 40% → explicit remaining duration;
 - deadline side contribution → concrete deadline acknowledgement → resumed progress question;
