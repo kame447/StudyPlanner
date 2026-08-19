@@ -297,14 +297,34 @@ run('Issue #156 final real API conversation gate', () => {
     expect(hasClockAck(a[2].assistantText), a[2].assistantText).toBe(true);
     expect(inventsBoundedUnit(a[2].assistantText), a[2].assistantText).toBe(false);
     const aProgress = activeWorkloads(a[3].graph);
-    expect(aProgress).toEqual(expect.arrayContaining([
-      expect.objectContaining({ quantityRole: 'completed', amount: 60, unitCode: 'custom', unitLabel: '%' }),
-      expect.objectContaining({ quantityRole: 'remaining', amount: 40, unitCode: 'custom', unitLabel: '%' }),
-    ]));
+    const aCompleted = aProgress.find((workload) =>
+      workload.quantityRole === 'completed'
+      && workload.amount === 60
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    const aRemaining = aProgress.find((workload) =>
+      workload.quantityRole === 'remaining'
+      && workload.amount === 40
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    expect(aCompleted).toBeDefined();
+    expect(aRemaining).toBeDefined();
     expect(questionCode(a[3])).toBe('missing_effort_estimate');
     expect(activeEfforts(a[3].graph)).toHaveLength(0);
-    expect(activeEfforts(a[4].graph)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'total_duration', minutes: 120 }),
+    const aFinalEfforts = activeEfforts(a[4].graph);
+    expect(aFinalEfforts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 120,
+        targetFactId: aRemaining?.id,
+      }),
+    ]));
+    expect(aFinalEfforts).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 120,
+        targetFactId: aCompleted?.id,
+      }),
     ]));
 
     const b = observations[1].turns;
@@ -315,12 +335,35 @@ run('Issue #156 final real API conversation gate', () => {
     expect(asksForTaskIdentityInsteadOfProgress(b[2].assistantText), b[2].assistantText).toBe(false);
     expect(inventsBoundedUnit(b[2].assistantText), b[2].assistantText).toBe(false);
     const bProgress = activeWorkloads(b[3].graph);
-    expect(bProgress).toEqual(expect.arrayContaining([
-      expect.objectContaining({ quantityRole: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' }),
-      expect.objectContaining({ quantityRole: 'remaining', amount: 50, unitCode: 'custom', unitLabel: '%' }),
-    ]));
+    const bCompleted = bProgress.find((workload) =>
+      workload.quantityRole === 'completed'
+      && workload.amount === 50
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    const bRemaining = bProgress.find((workload) =>
+      workload.quantityRole === 'remaining'
+      && workload.amount === 50
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    expect(bCompleted).toBeDefined();
+    expect(bRemaining).toBeDefined();
     expect(activeUncertainties(b[3].graph)).toHaveLength(0);
     expect(questionCode(b[3])).toBe('missing_effort_estimate');
+    const bFinalEfforts = activeEfforts(b[4].graph);
+    expect(bFinalEfforts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 90,
+        targetFactId: bRemaining?.id,
+      }),
+    ]));
+    expect(bFinalEfforts).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 90,
+        targetFactId: bCompleted?.id,
+      }),
+    ]));
 
     const c = observations[2].turns;
     expect(c[2].assistantText).toMatch(/12\s*枚/);
@@ -338,7 +381,10 @@ run('Issue #156 final real API conversation gate', () => {
     const finalWorkloads = activeWorkloads(c[3].graph);
     const completedTwelve = finalWorkloads.filter((workload) =>
       workload.quantityRole === 'completed' && workload.amount === 12);
+    const remainingEight = finalWorkloads.filter((workload) =>
+      workload.quantityRole === 'remaining' && workload.amount === 8);
     expect(completedTwelve).toHaveLength(1);
+    expect(remainingEight).toHaveLength(1);
     expect(finalWorkloads.some((workload) =>
       workload.quantityRole === 'target' && workload.amount === 10)).toBe(false);
     const finalEfforts = activeEfforts(c[3].graph);
@@ -346,6 +392,8 @@ run('Issue #156 final real API conversation gate', () => {
       effort.kind === 'duration_per_unit' && effort.minutes === 8);
     expect(perUnitEight).toBeDefined();
     expect(perUnitEight?.taskId).toBe(completedTwelve[0].taskId);
+    expect(perUnitEight?.targetFactId).toBe(remainingEight[0].id);
+    expect(perUnitEight?.targetFactId).not.toBe(completedTwelve[0].id);
     expect(finalEfforts).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'total_duration', minutes: 8 }),
     ]));
@@ -357,9 +405,32 @@ run('Issue #156 final real API conversation gate', () => {
     expect(inventsBoundedUnit(d[2].assistantText), d[2].assistantText).toBe(false);
     expect(d[2].assistantText.replace(/\s+/g, '')).not.toBe(d[1].assistantText.replace(/\s+/g, ''));
     const dProgress = activeWorkloads(d[3].graph);
-    expect(dProgress).toEqual(expect.arrayContaining([
-      expect.objectContaining({ quantityRole: 'completed', amount: 70, unitCode: 'custom', unitLabel: '%' }),
-      expect.objectContaining({ quantityRole: 'remaining', amount: 30, unitCode: 'custom', unitLabel: '%' }),
+    const dCompleted = dProgress.find((workload) =>
+      workload.quantityRole === 'completed'
+      && workload.amount === 70
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    const dRemaining = dProgress.find((workload) =>
+      workload.quantityRole === 'remaining'
+      && workload.amount === 30
+      && workload.unitCode === 'custom'
+      && workload.unitLabel === '%');
+    expect(dCompleted).toBeDefined();
+    expect(dRemaining).toBeDefined();
+    const dFinalEfforts = activeEfforts(d[4].graph);
+    expect(dFinalEfforts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 45,
+        targetFactId: dRemaining?.id,
+      }),
+    ]));
+    expect(dFinalEfforts).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'total_duration',
+        minutes: 45,
+        targetFactId: dCompleted?.id,
+      }),
     ]));
   }, 420_000);
 });
