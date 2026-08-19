@@ -158,14 +158,23 @@ export function contextualAnswerTargetFactIdV5(params: {
     return estimateTarget;
   }
   if (estimate.targetLocalId === estimateTarget) return estimateTarget;
+  if (estimate.targetLocalId === pendingTarget) return pendingTarget;
 
   const semanticTargetRole = workloadRoleForLocalId({
     document: params.document,
     localId: estimate.targetLocalId,
   });
-  return semanticTargetRole === 'remaining'
-    ? estimateTarget
-    : pendingTarget;
+  if (semanticTargetRole === 'remaining') return estimateTarget;
+  if (semanticTargetRole === 'completed') return pendingTarget;
+
+  /*
+   * A generic semantic fallback can preserve the effort value while losing
+   * whether a total duration referred to completed evidence or schedulable
+   * remaining work. Do not default that directional ambiguity to the question
+   * target: doing so silently corrupts the Fact Graph. The focused typed route
+   * is responsible for choosing one of the two workload targets.
+   */
+  return null;
 }
 
 export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
@@ -180,6 +189,12 @@ export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
     const estimates = effortEstimates(params.document);
     if (estimates.length === 1) {
       if (independentDelta) return false;
+      if (
+        progressEstimateTargetFactId(params.pendingQuestion)
+        && contextualAnswerTargetFactIdV5(params) === null
+      ) {
+        return false;
+      }
       if (estimates[0].kind === params.pendingQuestion.effortMeasurement) return true;
       if (isExplicitAlternateMeasurement({
         estimate: estimates[0],
