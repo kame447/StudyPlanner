@@ -14,6 +14,7 @@ import {
   createFocusedContextualAnswerDocumentV5,
   createFocusedContextualAnswerMessagesV5,
   focusedContextualAnswerEligibleV5,
+  focusedContextualTargetV5,
   parseFocusedContextualAnswerDecisionV5,
 } from './weeklyPlanningFocusedContextualAnswerV5';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
@@ -30,6 +31,11 @@ export async function tryFocusedContextualAnswerRouteV5(
 ): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
   if (!focusedContextualAnswerEligibleV5(run.input)) return null;
 
+  const target = focusedContextualTargetV5(run.input);
+  if (!target) return null;
+  const retryDualTargetInterpretation = target.questionCode === 'missing_effort_estimate'
+    && target.questionBasis === 'completed_workload_total'
+    && target.estimateForWorkload !== null;
   const messages = createFocusedContextualAnswerMessagesV5(run.input);
   const request = {
     messages,
@@ -53,13 +59,18 @@ export async function tryFocusedContextualAnswerRouteV5(
     },
   });
 
+  const responseLengths: number[] = [];
   for (let attempt = 1; attempt <= FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await run.client.createChatCompletion(request);
+      responseLengths.push(response.length);
       const decision = parseFocusedContextualAnswerDecisionV5(response);
       const document = decision
         ? createFocusedContextualAnswerDocumentV5({ input: run.input, decision })
         : null;
+      const retrying = !document
+        && retryDualTargetInterpretation
+        && attempt < FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS;
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: run.input.traceRequestId,
         stage: 'semantic_focused_contextual_answer_result',
@@ -69,9 +80,13 @@ export async function tryFocusedContextualAnswerRouteV5(
           responseLength: response.length,
           rawResponse: response,
           documentCreated: Boolean(document),
+          retrying,
         },
       });
-      if (!document) return null;
+      if (!document) {
+        if (retrying) continue;
+        return null;
+      }
 
       const result: WeeklyPlanningSemanticNormalizerResultV5 = {
         status: 'accepted',
@@ -82,7 +97,7 @@ export async function tryFocusedContextualAnswerRouteV5(
           validationErrors: [],
           providerError: null,
           requestBytes: Array.from({ length: attempt }, () => requestBytes),
-          responseLengths: [response.length],
+          responseLengths,
         }),
       };
       run.recordDecision(result, { route: 'focused_contextual_answer' });
