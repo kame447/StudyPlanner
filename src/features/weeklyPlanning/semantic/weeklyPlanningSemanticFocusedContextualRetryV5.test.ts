@@ -82,16 +82,41 @@ function completedWorkPaceState() {
   };
 }
 
+function effortAnswer(params: {
+  effortTarget: 'question_target' | 'estimate_target';
+  effortMeasurement: 'total_duration' | 'duration_per_unit';
+  minutes: number;
+}) {
+  return JSON.stringify({
+    decision: 'effort_answer',
+    effortTarget: params.effortTarget,
+    effortMeasurement: params.effortMeasurement,
+    minutes: params.minutes,
+    precision: 'approximate',
+    quantityRole: null,
+  });
+}
+
+function fallbackAnswer() {
+  return JSON.stringify({
+    decision: 'fallback',
+    effortTarget: null,
+    effortMeasurement: null,
+    minutes: null,
+    precision: null,
+    quantityRole: null,
+  });
+}
+
 describe('Stable V5 focused contextual-answer retry', () => {
   it('retries the same focused interpretation once before generic fallback after provider failure', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn()
         .mockRejectedValueOnce(new Error('temporary provider failure'))
-        .mockResolvedValueOnce(JSON.stringify({
-          decision: 'effort_per_unit_answer',
+        .mockResolvedValueOnce(effortAnswer({
+          effortTarget: 'question_target',
+          effortMeasurement: 'duration_per_unit',
           minutes: 8,
-          precision: 'approximate',
-          quantityRole: null,
         })),
     };
 
@@ -114,20 +139,14 @@ describe('Stable V5 focused contextual-answer retry', () => {
     });
   });
 
-  it('retries a dual-target completed-work pace question with a focused repair when the first result falls back', async () => {
+  it('retries a dual-target completed-work pace question with an explicit target repair when the first result falls back', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn()
-        .mockResolvedValueOnce(JSON.stringify({
-          decision: 'fallback',
-          minutes: null,
-          precision: null,
-          quantityRole: null,
-        }))
-        .mockResolvedValueOnce(JSON.stringify({
-          decision: 'remaining_effort_answer',
+        .mockResolvedValueOnce(fallbackAnswer())
+        .mockResolvedValueOnce(effortAnswer({
+          effortTarget: 'estimate_target',
+          effortMeasurement: 'total_duration',
           minutes: 45,
-          precision: 'approximate',
-          quantityRole: null,
         })),
     };
 
@@ -143,7 +162,8 @@ describe('Stable V5 focused contextual-answer retry', () => {
     const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
     const repairMessage = secondRequest.messages[secondRequest.messages.length - 1];
     expect(repairMessage?.content).toContain('Re-evaluate only the current user text');
-    expect(repairMessage?.content).toContain('remaining_effort_answer');
+    expect(repairMessage?.content).toContain('effortTarget');
+    expect(repairMessage?.content).toContain('estimate_target');
     expect(result.document?.tasks[0]).toMatchObject({
       existingPublicId: 'task-report',
       workloads: [expect.objectContaining({
@@ -160,11 +180,10 @@ describe('Stable V5 focused contextual-answer retry', () => {
 
   it('accepts an alternate per-unit answer for the schedulable remaining workload', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn().mockResolvedValueOnce(JSON.stringify({
-        decision: 'effort_per_unit_answer',
+      createChatCompletion: vi.fn().mockResolvedValueOnce(effortAnswer({
+        effortTarget: 'estimate_target',
+        effortMeasurement: 'duration_per_unit',
         minutes: 8,
-        precision: 'approximate',
-        quantityRole: null,
       })),
     };
 
