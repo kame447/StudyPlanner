@@ -240,14 +240,18 @@ export function projectWeeklyPlanningBoundedProgressV5(params: {
   }
 
   const idsAfterRetirement = activeIds(graph);
-  const newCompleted = graph.workloads.filter((fact) =>
-    newWorkloadIds.has(fact.id)
-    && idsAfterRetirement.has(fact.id)
+  const completedToProject = graph.workloads.filter((fact) =>
+    idsAfterRetirement.has(fact.id)
     && fact.quantityRole === 'completed'
-    && !isPercentage(fact));
+    && !isPercentage(fact)
+    && (
+      newWorkloadIds.has(fact.id)
+      || newTotals.some((total) =>
+        idsAfterRetirement.has(total.id) && sameBoundedBasis(total, fact))
+    ));
 
   const grouped = new Map<string, WorkloadFactV5[]>();
-  for (const completed of newCompleted) {
+  for (const completed of completedToProject) {
     const key = [
       completed.taskId,
       completed.componentId ?? '',
@@ -270,7 +274,7 @@ export function projectWeeklyPlanningBoundedProgressV5(params: {
     }
   }
 
-  for (const completed of newCompleted) {
+  for (const completed of completedToProject) {
     let activeNow = activeIds(graph);
     const totals = graph.workloads.filter((fact) =>
       activeNow.has(fact.id)
