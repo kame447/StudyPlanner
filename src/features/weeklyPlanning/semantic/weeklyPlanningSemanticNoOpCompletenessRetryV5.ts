@@ -44,17 +44,20 @@ function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boo
   });
 }
 
-function acceptedInitialResult(params: {
+function acceptedPriorResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   document: WeeklyPlanningSemanticDocumentV5;
+  attemptCount: number;
+  repairAttempted: boolean;
+  validationErrors: string[];
 }): WeeklyPlanningSemanticNormalizerResultV5 {
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',
     document: params.document,
     diagnostics: params.run.diagnostics({
-      attemptCount: 2,
-      repairAttempted: false,
-      validationErrors: [],
+      attemptCount: params.attemptCount,
+      repairAttempted: params.repairAttempted,
+      validationErrors: params.validationErrors,
       providerError: null,
     }),
   };
@@ -86,12 +89,18 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   baseMessages: ChatMessage[];
   initialResponse: string;
   initialDocument: WeeklyPlanningSemanticDocumentV5;
+  attemptCountBeforeRetry?: number;
+  repairAttempted?: boolean;
+  validationErrors?: string[];
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
   if (!isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
     document: params.initialDocument,
     publicStateSummary: params.run.input.publicStateSummary,
   })) return null;
 
+  const attemptCount = (params.attemptCountBeforeRetry ?? 1) + 1;
+  const repairAttempted = params.repairAttempted ?? false;
+  const validationErrors = params.validationErrors ?? [];
   const messages: ChatMessage[] = [
     ...params.baseMessages,
     { role: 'assistant', content: params.initialResponse },
@@ -106,6 +115,8 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       deterministicResponsibilities: [
         'detect_schema_valid_semantic_noop_under_machine_pending_question',
       ],
+      attemptCountBeforeRetry: params.attemptCountBeforeRetry ?? 1,
+      repairAttempted,
     },
   });
 
@@ -129,7 +140,13 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         error: semanticNormalizerErrorDetails(error),
       },
     });
-    return acceptedInitialResult({ run: params.run, document: params.initialDocument });
+    return acceptedPriorResult({
+      run: params.run,
+      document: params.initialDocument,
+      attemptCount,
+      repairAttempted,
+      validationErrors,
+    });
   }
 
   const validation = validateWeeklyPlanningSemanticResponseV5(
@@ -149,16 +166,22 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     },
   });
   if (!validation.document) {
-    return acceptedInitialResult({ run: params.run, document: params.initialDocument });
+    return acceptedPriorResult({
+      run: params.run,
+      document: params.initialDocument,
+      attemptCount,
+      repairAttempted,
+      validationErrors,
+    });
   }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',
     document: validation.document,
     diagnostics: params.run.diagnostics({
-      attemptCount: 2,
-      repairAttempted: false,
-      validationErrors: [],
+      attemptCount,
+      repairAttempted,
+      validationErrors,
       providerError: null,
     }),
   };
