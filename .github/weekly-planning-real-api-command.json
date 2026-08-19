@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-16",
-  "reason": "Final Real Luna 3x gate after resolving all gate-15 findings: exact bounded progress is order-independent when completed arrives before total; schema-valid semantic no-op completeness retries are rechecked once before fallback so explicit side contributions such as task deadlines are not silently lost; percentage scope totals no longer let bounded projection retire the percentage remaining fact; and the relation renderer oracle accepts equivalent task terminology without changing product routing. Revalidate final conversation, completed-progress, typed-renderer, all-question-code, transcript, and Fact Graph invariants on this final product code state."
+  "request_id": "20260819-pr157-merge-gate-17",
+  "reason": "Final Real Luna 3x merge gate after gate-16 reached 2/3 success and exposed one remaining stochastic side-contribution drop for a task deadline. The semantic meaning policy now explicitly represents task-scoped completion-by timing as a deadline temporalConstraint on the existing task, and schema-valid semantic no-op completeness recovery now re-extracts the exact current userText, with the final retry using fresh semantic context rather than inheriting the prior empty wrapper. Revalidate the complete final-conversation, completed-progress, typed-renderer, all-question-code, transcript, and Fact Graph invariants, including deadline grounding and the previously fixed exact/percentage progress transitions."
 }
