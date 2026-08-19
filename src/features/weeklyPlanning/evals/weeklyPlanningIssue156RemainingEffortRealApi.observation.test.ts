@@ -108,6 +108,26 @@ run('Issue #156 remaining-effort real API gate', () => {
 
     const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
     if (!runtime) throw new Error('runtime session missing');
+
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(
+      `${outputDir}/remaining-effort-conversation.json`,
+      `${JSON.stringify({ transcript, graph: runtime.graph }, null, 2)}\n`,
+    );
+    writeFileSync(
+      `${outputDir}/remaining-effort-conversation.md`,
+      transcript.flatMap((turn, index) => [
+        `## Turn ${index + 1}`,
+        '',
+        `ユーザー: ${turn.user}`,
+        '',
+        `アプリ: ${turn.assistant}`,
+        '',
+        `machine question: ${JSON.stringify(turn.questionContext)}`,
+        '',
+      ]).join('\n'),
+    );
+
     const activeIds = new Set(runtime.graph.factLifecycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId));
@@ -129,6 +149,13 @@ run('Issue #156 remaining-effort real API gate', () => {
       && fact.amount === 30);
     expect(completed).toBeDefined();
     expect(remaining).toBeDefined();
+    expect(transcript[2]?.questionContext).toEqual(expect.objectContaining({
+      targetSlot: 'stable_v5:missing_effort_estimate',
+      intent: 'total_duration',
+      topicId: completed?.id,
+      estimateForWorkloadFactId: remaining?.id,
+      questionBasis: 'completed_workload_total',
+    }));
     expect(taskWorkloads.some((fact) =>
       (fact.unitCode === 'minute' || fact.unitCode === 'hour')
       && fact.amount === 45)).toBe(false);
@@ -144,24 +171,5 @@ run('Issue #156 remaining-effort real API gate', () => {
       fact.kind === 'total_duration'
       && fact.minutes === 45
       && fact.targetFactId === completed?.id)).toBe(false);
-
-    mkdirSync(outputDir, { recursive: true });
-    writeFileSync(
-      `${outputDir}/remaining-effort-conversation.json`,
-      `${JSON.stringify({ transcript, graph: runtime.graph }, null, 2)}\n`,
-    );
-    writeFileSync(
-      `${outputDir}/remaining-effort-conversation.md`,
-      transcript.flatMap((turn, index) => [
-        `## Turn ${index + 1}`,
-        '',
-        `ユーザー: ${turn.user}`,
-        '',
-        `アプリ: ${turn.assistant}`,
-        '',
-        `machine question: ${JSON.stringify(turn.questionContext)}`,
-        '',
-      ]).join('\n'),
-    );
   }, 240_000);
 });
