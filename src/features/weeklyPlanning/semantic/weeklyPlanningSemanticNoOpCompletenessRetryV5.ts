@@ -13,6 +13,8 @@ import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemant
 const COMPLETENESS_RETRY_INSTRUCTION = [
   'The prior response is schema-valid but contains no new semantic content while a machine pending question exists.',
   'Re-read current userText from the prior user context independently and return the complete semantic document again.',
+  'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn proposition in its typed field.',
+  'For example, task-specific timing belongs in temporalConstraints, plan-wide availability in availabilityDeclarations, workload state in workloads, effort in effortEstimates, and task ordering in relations.',
   'Include every supported explicit current-turn fact, including side contributions unrelated to the pending question. Do not invent facts.',
   'If the current turn truly contains no supported new fact, return equivalent no-op meaning.',
 ].join(' ');
