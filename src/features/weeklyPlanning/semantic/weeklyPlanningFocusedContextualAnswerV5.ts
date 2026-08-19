@@ -30,6 +30,7 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
           type: 'string',
           enum: [
             'effort_answer',
+            'remaining_effort_answer',
             'effort_per_unit_answer',
             'quantity_role_answer',
             'fallback',
@@ -59,8 +60,9 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
 };
 
 const FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT = [
-  'Interpret only the current answer to the machine-selected pending question; state fixes the target identity, but the user may answer effort in a different measurement scale.',
-  'For missing_effort_estimate, use effort_answer for a total duration and effort_per_unit_answer for an explicit per-unit duration; convert the stated duration to minutes without multiplying by workload amount. For quantity_role_unresolved, use quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, discussion, or ambiguity is fallback.',
+  'Interpret only the current answer around the machine-selected pending question. Typed state fixes entity identity, but the current utterance may contribute a fact about a different typed workload of the same task.',
+  'For missing_effort_estimate: use effort_answer only when the stated total duration applies to the exact pending target; use remaining_effort_answer only when the user explicitly states expected duration for the supplied remainingWorkload; use effort_per_unit_answer only for explicit per-unit duration on the exact pending target. Convert duration to minutes without multiplying by workload amount. If remaining work is mentioned but no unique remainingWorkload is supplied, use fallback. Never rebind duration for remaining work to completed work merely because completed work is the pending target.',
+  'For quantity_role_unresolved, use quantity_role_answer only for clear target, remaining, or completed meaning. Any other change, side contribution that cannot be represented by the focused choices, discussion, or ambiguity is fallback.',
 ].join('\n');
 
 type FocusedContextualQuestionCodeV5 =
@@ -73,14 +75,8 @@ interface FocusedContextualComponentV5 {
   label: string;
 }
 
-export interface FocusedContextualTargetV5 {
-  questionCode: FocusedContextualQuestionCodeV5;
-  graphRevision: number;
+interface FocusedContextualWorkloadV5 {
   publicId: string;
-  taskPublicId: string;
-  taskCategory: SemanticTaskCategoryV5;
-  taskTitle: string;
-  component: FocusedContextualComponentV5 | null;
   quantityRole: SemanticQuantityRoleV5;
   amount: number;
   unitCode: SemanticWorkloadUnitCodeV5;
@@ -91,9 +87,20 @@ export interface FocusedContextualTargetV5 {
   periodExpression: string | null;
 }
 
+export interface FocusedContextualTargetV5 extends FocusedContextualWorkloadV5 {
+  questionCode: FocusedContextualQuestionCodeV5;
+  graphRevision: number;
+  taskPublicId: string;
+  taskCategory: SemanticTaskCategoryV5;
+  taskTitle: string;
+  component: FocusedContextualComponentV5 | null;
+  remainingWorkload: FocusedContextualWorkloadV5 | null;
+}
+
 export interface FocusedContextualAnswerDecisionV5 {
   decision:
     | 'effort_answer'
+    | 'remaining_effort_answer'
     | 'effort_per_unit_answer'
     | 'quantity_role_answer'
     | 'fallback';
@@ -162,6 +169,39 @@ function nullableString(value: unknown): string | null | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function parsedWorkloadV5(value: Record<string, unknown>): FocusedContextualWorkloadV5 | null {
+  const unitCode = workloadUnitCode(value.unitCode);
+  const parsedQuantityRole = quantityRole(value.quantityRole);
+  const rangeStart = nullableString(value.rangeStart);
+  const rangeEnd = nullableString(value.rangeEnd);
+  const periodExpression = nullableString(value.periodExpression);
+  if (
+    !unitCode
+    || !parsedQuantityRole
+    || typeof value.publicId !== 'string'
+    || !value.publicId
+    || typeof value.amount !== 'number'
+    || !Number.isFinite(value.amount)
+    || value.amount <= 0
+    || typeof value.unitLabel !== 'string'
+    || rangeStart === undefined
+    || rangeEnd === undefined
+    || typeof value.perOccurrence !== 'boolean'
+    || periodExpression === undefined
+  ) return null;
+  return {
+    publicId: value.publicId,
+    quantityRole: parsedQuantityRole,
+    amount: value.amount,
+    unitCode,
+    unitLabel: value.unitLabel,
+    rangeStart,
+    rangeEnd,
+    perOccurrence: value.perOccurrence,
+    periodExpression,
+  };
+}
+
 export function focusedContextualTargetV5(
   input: FocusedContextualAnswerInputV5,
 ): FocusedContextualTargetV5 | null {
@@ -179,27 +219,11 @@ export function focusedContextualTargetV5(
   const target = summary.workloads.find((candidate) =>
     isRecord(candidate) && candidate.publicId === pending.targetFactId);
   if (!isRecord(target)) return null;
-
-  const unitCode = workloadUnitCode(target.unitCode);
-  const targetQuantityRole = quantityRole(target.quantityRole);
-  const rangeStart = nullableString(target.rangeStart);
-  const rangeEnd = nullableString(target.rangeEnd);
-  const periodExpression = nullableString(target.periodExpression);
+  const parsedTarget = parsedWorkloadV5(target);
   if (
-    !unitCode
-    || !targetQuantityRole
-    || typeof target.publicId !== 'string'
-    || !target.publicId
+    !parsedTarget
     || typeof target.taskPublicId !== 'string'
     || !target.taskPublicId
-    || typeof target.amount !== 'number'
-    || !Number.isFinite(target.amount)
-    || target.amount <= 0
-    || typeof target.unitLabel !== 'string'
-    || rangeStart === undefined
-    || rangeEnd === undefined
-    || typeof target.perOccurrence !== 'boolean'
-    || periodExpression === undefined
   ) return null;
 
   const task = summary.tasks.find((candidate) =>
@@ -229,22 +253,27 @@ export function focusedContextualTargetV5(
     };
   }
 
+  const remainingCandidates = summary.workloads.filter((candidate) =>
+    isRecord(candidate)
+    && candidate.publicId !== parsedTarget.publicId
+    && candidate.taskPublicId === target.taskPublicId
+    && candidate.componentPublicId === target.componentPublicId
+    && candidate.quantityRole === 'remaining');
+  let remainingWorkload: FocusedContextualWorkloadV5 | null = null;
+  if (remainingCandidates.length === 1 && isRecord(remainingCandidates[0])) {
+    remainingWorkload = parsedWorkloadV5(remainingCandidates[0]);
+    if (remainingWorkload?.quantityRole !== 'remaining') remainingWorkload = null;
+  }
+
   return {
+    ...parsedTarget,
     questionCode,
     graphRevision: Number(pending.graphRevision),
-    publicId: target.publicId,
     taskPublicId: target.taskPublicId,
     taskCategory: category,
     taskTitle: task.title,
     component,
-    quantityRole: targetQuantityRole,
-    amount: target.amount,
-    unitCode,
-    unitLabel: target.unitLabel,
-    rangeStart,
-    rangeEnd,
-    perOccurrence: target.perOccurrence,
-    periodExpression,
+    remainingWorkload,
   };
 }
 
@@ -268,11 +297,21 @@ export function createFocusedContextualAnswerMessagesV5(
         pendingQuestion: {
           questionCode: target.questionCode,
           targetWorkload: {
+            publicId: target.publicId,
             amount: target.amount,
             unitCode: target.unitCode,
             unitLabel: target.unitLabel,
             quantityRole: target.quantityRole,
           },
+          remainingWorkload: target.remainingWorkload
+            ? {
+                publicId: target.remainingWorkload.publicId,
+                amount: target.remainingWorkload.amount,
+                unitCode: target.remainingWorkload.unitCode,
+                unitLabel: target.remainingWorkload.unitLabel,
+                quantityRole: target.remainingWorkload.quantityRole,
+              }
+            : null,
         },
       }),
     },
@@ -288,33 +327,40 @@ export function parseFocusedContextualAnswerDecisionV5(
     const decision = value.decision;
     const minutes = value.minutes;
     const precision = value.precision;
-    const quantityRole = value.quantityRole;
+    const parsedQuantityRole = value.quantityRole;
 
     if (
       decision !== 'effort_answer'
+      && decision !== 'remaining_effort_answer'
       && decision !== 'effort_per_unit_answer'
       && decision !== 'quantity_role_answer'
       && decision !== 'fallback'
     ) return null;
 
-    if (decision === 'effort_answer' || decision === 'effort_per_unit_answer') {
+    if (
+      decision === 'effort_answer'
+      || decision === 'remaining_effort_answer'
+      || decision === 'effort_per_unit_answer'
+    ) {
       if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) return null;
       if (precision !== 'exact' && precision !== 'approximate' && precision !== 'unspecified') {
         return null;
       }
-      if (quantityRole !== null) return null;
+      if (parsedQuantityRole !== null) return null;
       return { decision, minutes, precision, quantityRole: null };
     }
 
     if (decision === 'quantity_role_answer') {
       if (minutes !== null || precision !== null) return null;
-      if (quantityRole !== 'target' && quantityRole !== 'remaining' && quantityRole !== 'completed') {
-        return null;
-      }
-      return { decision, minutes: null, precision: null, quantityRole };
+      if (
+        parsedQuantityRole !== 'target'
+        && parsedQuantityRole !== 'remaining'
+        && parsedQuantityRole !== 'completed'
+      ) return null;
+      return { decision, minutes: null, precision: null, quantityRole: parsedQuantityRole };
     }
 
-    if (minutes !== null || precision !== null || quantityRole !== null) return null;
+    if (minutes !== null || precision !== null || parsedQuantityRole !== null) return null;
     return { decision: 'fallback', minutes: null, precision: null, quantityRole: null };
   } catch {
     return null;
@@ -333,6 +379,17 @@ function emptyDocument(): Omit<WeeklyPlanningSemanticDocumentV5, 'tasks'> {
     uncertainties: [],
     corrections: [],
     decisions: [],
+  };
+}
+
+function targetWithWorkload(
+  target: FocusedContextualTargetV5,
+  workload: FocusedContextualWorkloadV5,
+): FocusedContextualTargetV5 {
+  return {
+    ...target,
+    ...workload,
+    remainingWorkload: target.remainingWorkload,
   };
 }
 
@@ -423,19 +480,26 @@ export function createFocusedContextualAnswerDocumentV5(params: {
   const sourceText = params.input.userText;
   if (
     params.decision.decision === 'effort_answer'
+    || params.decision.decision === 'remaining_effort_answer'
     || params.decision.decision === 'effort_per_unit_answer'
   ) {
     if (target.questionCode !== 'missing_effort_estimate') return null;
+    if (params.decision.decision === 'remaining_effort_answer' && !target.remainingWorkload) {
+      return null;
+    }
+    const effortTarget = params.decision.decision === 'remaining_effort_answer'
+      ? targetWithWorkload(target, target.remainingWorkload as FocusedContextualWorkloadV5)
+      : target;
     const perUnit = params.decision.decision === 'effort_per_unit_answer';
     return {
       ...emptyDocument(),
       tasks: [taskForTarget({
-        target,
+        target: effortTarget,
         sourceText,
         effortEstimate: {
           kind: perUnit ? 'duration_per_unit' : 'total_duration',
           minutes: params.decision.minutes as number,
-          unitCode: perUnit ? target.unitCode : null,
+          unitCode: perUnit ? effortTarget.unitCode : null,
           precision: params.decision.precision as 'exact' | 'approximate' | 'unspecified',
         },
       })],
