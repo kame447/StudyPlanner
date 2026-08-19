@@ -61,6 +61,19 @@ function existingNoOp(): string {
   });
 }
 
+function focusedFallback(): string {
+  return JSON.stringify({
+    decision: 'fallback',
+    kind: null,
+    constraintLevel: null,
+    dateExpression: null,
+    namedTimePeriod: null,
+    startTime: null,
+    endTime: null,
+    precision: null,
+  });
+}
+
 function minimalDeadlineDelta(): string {
   return JSON.stringify({
     schemaVersion: 'weekly-planning-semantic-v5',
@@ -138,9 +151,9 @@ describe('Stable V5 existing task shell normalization', () => {
     }).repairs).toEqual([]);
   });
 
-  it('accepts the exact gate-21 deadline retry shape instead of discarding it as a no-op', async () => {
+  it('accepts the exact gate-21 deadline retry shape after focused temporal fallback', async () => {
     const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
-    const responses = [existingNoOp(), minimalDeadlineDelta()];
+    const responses = [existingNoOp(), focusedFallback(), minimalDeadlineDelta()];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(input) {
         calls.push(input);
@@ -155,10 +168,10 @@ describe('Stable V5 existing task shell normalization', () => {
       publicStateSummary: publicStateSummary(),
     });
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(result.status).toBe('accepted');
     expect(result.diagnostics).toMatchObject({
-      attemptCount: 2,
+      attemptCount: 3,
       repairAttempted: false,
     });
     expect(result.diagnostics.algorithmicRepairs).toContain(
