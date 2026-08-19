@@ -151,4 +151,34 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(retryInstruction).toContain('Re-read current userText');
     expect(retryInstruction).toContain('side contributions unrelated to the pending question');
   });
+
+  it('re-reads a schema-valid semantic no-op produced by repair before accepting the turn', async () => {
+    const fake = fakeClient([
+      JSON.stringify({ schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 }),
+      JSON.stringify(existingTaskShell()),
+      JSON.stringify(recoveredDeadline()),
+    ]);
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText,
+      publicStateSummary: publicStateSummary(),
+    });
+
+    expect(fake.calls).toHaveLength(3);
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 3,
+      repairAttempted: true,
+    });
+    expect(result.document?.tasks[0].temporalConstraints).toEqual([
+      expect.objectContaining({
+        kind: 'deadline',
+        dateExpression: 'tomorrow',
+        endTime: '13:00',
+        constraintLevel: 'hard',
+      }),
+    ]);
+    const retryMessages = fake.calls[2].messages;
+    const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
+    expect(retryInstruction).toContain('Re-read current userText');
+  });
 });
