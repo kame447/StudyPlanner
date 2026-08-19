@@ -45,6 +45,7 @@ const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
 const GROUNDING_ACK_REPAIR_INSTRUCTION = [
   '前回候補はcurrentTurnGroundingのACK契約を満たしていません。',
   'mode=required_before_resumeなら、acceptedFactsのうち会話上重要なFactをgroundingAcknowledgementに示し、',
+  'そのFactに時刻・日付・数量などユーザーが明示した具体値がある場合はACK本文でもその具体値を落とさず、',
   '最終textをその短いACK本文から始めてからapplicationDecisionの質問へ戻ってください。',
 ].join('');
 
