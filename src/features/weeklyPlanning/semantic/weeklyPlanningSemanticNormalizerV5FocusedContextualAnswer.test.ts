@@ -36,6 +36,49 @@ function publicStateSummary(questionCode: 'missing_effort_estimate' | 'quantity_
   };
 }
 
+function progressPublicStateSummary() {
+  return {
+    graphRevision: 4,
+    previousCompatibilityStatus: 'revision_pending',
+    pendingQuestion: {
+      actionId: null,
+      questionCode: 'missing_effort_estimate',
+      targetFactId: 'workload-completed',
+      graphRevision: 4,
+    },
+    workloads: [
+      {
+        publicId: 'workload-completed',
+        taskPublicId: 'task-report',
+        componentPublicId: null,
+        quantityRole: 'completed',
+        amount: 70,
+        unitCode: 'custom',
+        unitLabel: '%',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+      },
+      {
+        publicId: 'workload-remaining',
+        taskPublicId: 'task-report',
+        componentPublicId: null,
+        quantityRole: 'remaining',
+        amount: 30,
+        unitCode: 'custom',
+        unitLabel: '%',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+      },
+    ],
+    tasks: [{ publicId: 'task-report', category: 'study', title: 'ゼミ発表の資料を完成させる' }],
+    components: [],
+  };
+}
+
 function focusedWorkloads(result: Awaited<ReturnType<ReturnType<typeof createWeeklyPlanningSemanticNormalizerV5>['normalize']>>) {
   const task = result.document?.tasks[0];
   return [
@@ -115,6 +158,50 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
       json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
     });
     expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
+  });
+
+  it('binds an explicit remaining-duration side contribution to the unique remaining workload', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'remaining_effort_answer',
+        minutes: 45,
+        precision: 'approximate',
+        quantityRole: null,
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '残りは45分くらいです。',
+      publicStateSummary: progressPublicStateSummary(),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks[0].existingPublicId).toBe('task-report');
+    expect(focusedWorkloads(result)).toEqual([
+      expect.objectContaining({
+        localId: 'workload-remaining',
+        quantityRole: 'remaining',
+        amount: 30,
+        unitCode: 'custom',
+        unitLabel: '%',
+      }),
+    ]);
+    expect(result.document?.tasks[0].effortEstimates).toEqual([
+      expect.objectContaining({
+        targetLocalId: 'workload-remaining',
+        kind: 'total_duration',
+        minutes: 45,
+        unitCode: null,
+        precision: 'approximate',
+      }),
+    ]);
+    expect(focusedWorkloads(result)).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ unitCode: 'minute', amount: 45 }),
+    ]));
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    expect(JSON.stringify(request.messages)).toContain('workload-remaining');
+    expect(JSON.stringify(request.messages)).toContain('remainingWorkload');
   });
 
   it('preserves a per-unit effort answer and keeps it bound to the pending workload', async () => {
