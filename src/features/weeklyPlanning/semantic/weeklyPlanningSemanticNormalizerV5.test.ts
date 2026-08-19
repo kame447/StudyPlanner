@@ -190,9 +190,8 @@ describe('Stable V5 semantic normalizer', () => {
     expect(fake.calls).toHaveLength(2);
     const payload = repairPayload(fake.calls[1]);
     expect(payload.requiredChanges).toHaveLength(1);
-    expect(payload.requiredChanges?.[0]).toContain('Re-read current userText');
-    expect(payload.requiredChanges?.[0]).toContain('including facts omitted from the invalid response');
-    expect(payload.requiredChanges?.[0]).toContain('never invent unsupported facts');
+    expect(payload.requiredChanges?.[0]).toContain('listed validation failures');
+    expect(payload.requiredChanges?.[0]).toContain('Re-read userText for supported omissions');
     expect(payload.validationErrors).toEqual(['document:invalid-json']);
   });
 
@@ -213,7 +212,7 @@ describe('Stable V5 semantic normalizer', () => {
     expect(requiredChanges).toHaveLength(1);
     expect(requiredChanges[0]).toContain('Remove or change unsupported temporal constraints');
     expect(requiredChanges[0]).toContain('do not invent missing date/time bounds');
-    expect(requiredChanges[0]).toContain('Re-read current userText');
+    expect(requiredChanges[0]).toContain('Re-read userText for supported omissions');
   });
 
   it('rejects when the single repair remains invalid', async () => {
