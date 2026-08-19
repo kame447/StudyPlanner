@@ -132,7 +132,64 @@ When `currentTurnGrounding.mode=none`, `groundingAcknowledgement` is unused cont
 
 `recommended` and `required_before_resume` remain strict. In particular, required acknowledgements still have to reference accepted current-turn facts and preserve concrete clock values such as `13:00`.
 
-The current implementation head after these changes is `8ef2179b63b29dcd4c23539ac0bd0d42e4e88815`. It is not merge-ready until deterministic CI and Browser Regression are green on this state (or its documentation-only successor), followed by a fresh repeated Real Luna gate.
+The implementation then added deterministic coverage for generic explicit completed/remaining direction and updated the observed-pace integration fixture so its mocked 90-minute answer carries the same typed completed-work direction required in production. Deterministic CI was fully green on `153d1acd1e9838421991defba4ad03495c46b64c` before requesting gate 21.
+
+## Real Luna merge gate 21
+
+Requested checkpoint: `20260819-pr157-merge-gate-21`
+Implementation head at request: `d04376eb89c1ff8d9811d9af201680441083416d`
+Repetitions: 3
+Result: 1/3 fully passed
+Provider status: available; provider smoke returned HTTP 200 in all repetitions
+Deterministic CI on the same head: green
+Browser Regression on the same head: still running when the gate-21 defect analysis began; it is not counted as passed until the run completes
+
+Gate 21 confirms that the gate-20 target-direction repair materially worked, but the PR remains merge-blocked by two independent semantic-orchestration failures in the final conversation.
+
+### What remained stable
+
+The dedicated remaining-effort test passed in both failed repetitions. In particular, explicit remaining duration was bound to the remaining progress fact rather than completed progress. The dedicated 100% completion test also passed, as did the typed renderer stress matrix and the all-question-code matrix. One of the three complete merge-gate repetitions passed end to end.
+
+This narrows the remaining work away from the previously observed silent completed/remaining target corruption.
+
+### Repetition 2: alternate 8 min/unit was lost
+
+The bounded-slide conversation reached:
+
+- scope total 20 slides;
+- corrected completed count 12;
+- derived remaining count 8;
+- pending completed-work total-duration question with the remaining-8 workload exposed as `estimateForWorkload`.
+
+The user then supplied an explicit per-unit pace of about 8 minutes per slide. The assistant rejected it as an answer to the pending question and asked again for the total time spent on the completed 12 slides. The final Fact Graph contained no `duration_per_unit=8` effort fact, so the final invariant failed.
+
+The trace shows that both focused contextual attempts ended in `semantic_focused_contextual_answer_error`. Generic normalization then ran three times; the initial response and both completeness retries returned the existing task shell with no workload or effort delta. Contextual binding therefore had no typed effort to apply and left the pending question unresolved.
+
+This is not a target-binding regression: no incorrect effort fact was committed. It is a robustness failure in the focused semantic path/fallback path for a valid alternate measurement.
+
+### Repetition 3: deadline was extracted and then discarded
+
+The report conversation had an existing pending progress question when the user supplied the side contribution `deadline = tomorrow 13:00`.
+
+The generic semantic trace is especially important:
+
+1. the initial semantic response returned the existing report task but omitted the deadline;
+2. the first completeness retry correctly returned a hard deadline temporal constraint with `dateExpression=tomorrow`, `startTime=13:00`, and `precision=exact`;
+3. a later completeness retry again returned a no-op task shell without the deadline;
+4. the final canonicalization diff was empty, the graph revision did not advance, and the assistant resumed the progress question without acknowledging 13:00.
+
+Therefore the visible ACK failure is downstream of a semantic-orchestration defect: a meaningful accepted retry can be followed by another no-op retry and the valid semantic delta can be lost before canonicalization. The next fix should make completeness retry monotonic: once a valid retry resolves the no-op by producing a meaningful typed delta, that result must be adopted rather than replaced by a later no-op attempt.
+
+### Gate-21 repair boundary
+
+The next code repair should stay general and typed:
+
+- make no-op completeness retry stop/adopt as soon as a valid meaningful semantic delta is obtained;
+- determine why the focused contextual effort path throws on the valid alternate per-unit response, and repair the typed response/validation boundary rather than adding Japanese wording cases;
+- preserve the current dual-target fail-close rule and existing remaining/completed target invariants;
+- preserve strict `required_before_resume` grounding once the side-contribution fact actually reaches the graph.
+
+Do not weaken the final conversation assertions merely because one of three stochastic runs passed.
 
 ## Prohibited fixes
 
@@ -172,7 +229,7 @@ If a real-Luna run exposes a meaningful defect, stop the merge path, add determi
 
 ## Next gate
 
-After deterministic CI and Browser Regression are green on the current repair, request a fresh 3x Real Luna merge gate. Manual review must specifically inspect:
+After the gate-21 semantic-orchestration defects are fixed and deterministic CI plus Browser Regression are green, request a fresh 3x Real Luna merge gate. Manual review must specifically inspect:
 
 - open-ended 60% progress → remaining 40% → explicit remaining duration;
 - deadline side contribution → concrete deadline acknowledgement → resumed progress question;
