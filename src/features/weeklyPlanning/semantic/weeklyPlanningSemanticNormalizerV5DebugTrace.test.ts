@@ -96,7 +96,7 @@ describe('Stable V5 semantic normalizer debug trace', () => {
     expect(system).toContain('every sourceText must be supported by current userText');
     expect(system).toContain('target is the amount intended for this plan');
     expect(system).toContain('remaining is the unfinished amount');
-    expect(system).toContain('completed is already done');
+    expect(system).toContain('completed is done');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
       publicStateSummary: {
