@@ -5,7 +5,7 @@ function unique(values: string[]): string[] {
 }
 
 const PRESERVE_VALID_MEANING_CLAUSE =
-  'Correct every listed validation failure. Re-read current userText and preserve every supported current-turn fact, including facts omitted from the invalid response; never invent unsupported facts. Preserve unrelated schema-valid fields from the invalid response.';
+  'Fix listed validation failures. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response. Re-read userText for supported omissions.';
 
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
