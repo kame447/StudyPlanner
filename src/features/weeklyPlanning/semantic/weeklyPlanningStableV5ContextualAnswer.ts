@@ -246,14 +246,18 @@ function retainsPendingSemanticUncertainty(
 }
 
 function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
+  kind: EffortEstimateFactV5['kind'];
   minutes: number;
+  unitCode: EffortEstimateFactV5['unitCode'];
   precision: EffortEstimateFactV5['precision'];
 }> {
   return document.tasks.flatMap((task) =>
     task.effortEstimates
       .filter((estimate) => Number.isFinite(estimate.minutes) && estimate.minutes > 0)
       .map((estimate) => ({
+        kind: estimate.kind,
         minutes: estimate.minutes,
+        unitCode: estimate.unitCode,
         precision: estimate.precision,
       })),
   );
@@ -299,9 +303,22 @@ function appliedResult(params: {
 function effortPlanForPendingQuestion(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
   target: WorkloadFactV5,
+  candidate: {
+    kind: EffortEstimateFactV5['kind'];
+    unitCode: EffortEstimateFactV5['unitCode'];
+  },
 ) {
   const measurement = input.pendingQuestion.effortMeasurement;
   if (!measurement) return null;
+
+  if (candidate.kind === 'duration_per_unit' && candidate.unitCode !== null) {
+    if (candidate.unitCode !== target.unitCode) return null;
+    return {
+      kind: 'duration_per_unit' as const,
+      unitCode: target.unitCode,
+    };
+  }
+
   return {
     kind: measurement,
     unitCode: measurement === 'total_duration' ? null : target.unitCode,
@@ -312,7 +329,9 @@ function applyEffortAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
   target: WorkloadFactV5,
   candidate: {
+    kind: EffortEstimateFactV5['kind'];
     minutes: number;
+    unitCode: EffortEstimateFactV5['unitCode'];
     precision: EffortEstimateFactV5['precision'];
   },
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
@@ -328,7 +347,7 @@ function applyEffortAnswer(
     || input.graph.appliedTurnKeys.includes(turnKey(input))
   ) return null;
 
-  const questionPlan = effortPlanForPendingQuestion(input, target);
+  const questionPlan = effortPlanForPendingQuestion(input, target, candidate);
   if (!questionPlan) return null;
   const fact: EffortEstimateFactV5 = {
     id,
