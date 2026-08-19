@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260818-pr157-merge-gate-09",
-  "reason": "Re-run final Real Luna gate and manually verify bounded slide effort flows from 8 remaining slides x 8 minutes = 64 base minutes through 1.1 safety buffer and 15-minute rounding to 75 scheduler allocation minutes"
+  "request_id": "20260819-pr157-merge-gate-10",
+  "reason": "Final Real Luna revalidation after semantic repair preserves omitted current-turn deadline facts; manually verify tomorrow 13:00 deadline survives repair and bounded slide effort still flows from 8 remaining slides x 8 minutes = 64 base minutes through 1.1 safety buffer and rounding to 75 scheduler allocation minutes"
 }
