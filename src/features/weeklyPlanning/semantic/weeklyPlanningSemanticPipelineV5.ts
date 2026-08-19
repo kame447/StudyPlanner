@@ -354,6 +354,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
           turnId: input.turnId,
           status: 'canonicalization_rejected',
           diagnostics: normalization.diagnostics,
+          canonicalizationErrors: canonicalization.errors,
         });
         const result: WeeklyPlanningSemanticPipelineResultV5 = {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
