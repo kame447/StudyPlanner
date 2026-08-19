@@ -178,7 +178,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to generic semantics when the focused AI says the turn changes other planning facts', async () => {
+  it('falls back to generic semantics and rechecks a schema-valid no-op when the focused AI reports other planning facts', async () => {
     const genericDocument = JSON.stringify({
       schemaVersion: 'weekly-planning-semantic-v5',
       planningIntent: 'discuss',
@@ -200,6 +200,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
           precision: null,
           quantityRole: null,
         }))
+        .mockResolvedValueOnce(genericDocument)
         .mockResolvedValueOnce(genericDocument),
     };
 
@@ -210,9 +211,13 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
 
     expect(result.status).toBe('accepted');
     expect(result.document?.tasks).toEqual([]);
-    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(3);
     const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
+    const thirdRequest = vi.mocked(client.createChatCompletion).mock.calls[2][0];
     expect(secondRequest.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_semantic_document_v5' },
+    });
+    expect(thirdRequest.responseFormat).toMatchObject({
       json_schema: { name: 'weekly_planning_semantic_document_v5' },
     });
   });
