@@ -7,6 +7,9 @@ import {
 } from './weeklyPlanningSemanticFocusedPreRoutesV5';
 import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
 import {
+  tryWeeklyPlanningSemanticNoOpCompletenessRetryV5,
+} from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
+import {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
 import {
@@ -114,6 +117,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       recordInitialValidation({ input, validation: initialValidation });
 
       if (initialValidation.document) {
+        const completenessRetry = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({
+          run,
+          baseMessages,
+          initialResponse,
+          initialDocument: initialValidation.document,
+        });
+        if (completenessRetry) return completenessRetry;
+
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
           document: initialValidation.document,
