@@ -205,8 +205,9 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
         .mockResolvedValueOnce(genericDocument),
     };
 
+    const currentUserText = '30分くらい。あと火曜じゃなくて水曜を空けて。';
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
-      userText: '30分くらい。あと火曜じゃなくて水曜を空けて。',
+      userText: currentUserText,
       publicStateSummary: publicStateSummary('missing_effort_estimate'),
     });
 
@@ -227,7 +228,9 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     });
     const thirdInstruction = thirdRequest.messages[thirdRequest.messages.length - 1]?.content ?? '';
     const fourthInstruction = fourthRequest.messages[fourthRequest.messages.length - 1]?.content ?? '';
-    expect(thirdInstruction).toContain('Re-read current userText');
+    expect(thirdInstruction).toContain('Re-read that exact current userText');
+    expect(thirdInstruction).toContain(currentUserText);
     expect(fourthInstruction).toContain('final independent completeness pass');
+    expect(fourthInstruction).toContain(currentUserText);
   });
 });
