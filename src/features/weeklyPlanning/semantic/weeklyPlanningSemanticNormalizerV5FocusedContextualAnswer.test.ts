@@ -90,14 +90,29 @@ function focusedWorkloads(result: Awaited<ReturnType<ReturnType<typeof createWee
   ];
 }
 
+function effortAnswer(params: {
+  effortTarget: 'question_target' | 'estimate_target';
+  effortMeasurement: 'total_duration' | 'duration_per_unit';
+  minutes: number;
+  precision?: 'exact' | 'approximate' | 'unspecified';
+}) {
+  return JSON.stringify({
+    decision: 'effort_answer',
+    effortTarget: params.effortTarget,
+    effortMeasurement: params.effortMeasurement,
+    minutes: params.minutes,
+    precision: params.precision ?? 'approximate',
+    quantityRole: null,
+  });
+}
+
 describe('Stable V5 focused contextual-answer semantic route', () => {
   it('interprets a direct pending effort reply without invoking the generic full-plan normalizer', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => JSON.stringify({
-        decision: 'effort_answer',
+      createChatCompletion: vi.fn(async () => effortAnswer({
+        effortTarget: 'question_target',
+        effortMeasurement: 'total_duration',
         minutes: 30,
-        precision: 'approximate',
-        quantityRole: null,
       })),
     };
 
@@ -163,13 +178,12 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
   });
 
-  it('binds an explicit remaining-duration side contribution to the scheduler estimate target', async () => {
+  it('binds an explicit estimate-target total duration to the scheduler estimate target', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => JSON.stringify({
-        decision: 'remaining_effort_answer',
+      createChatCompletion: vi.fn(async () => effortAnswer({
+        effortTarget: 'estimate_target',
+        effortMeasurement: 'total_duration',
         minutes: 45,
-        precision: 'approximate',
-        quantityRole: null,
       })),
     };
 
@@ -209,6 +223,37 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(JSON.stringify(request.messages)).toContain('completed_workload_total');
   });
 
+  it('keeps a direct completed-work total duration on the question target', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => effortAnswer({
+        effortTarget: 'question_target',
+        effortMeasurement: 'total_duration',
+        minutes: 90,
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: 'ここまでは90分くらいです。',
+      publicStateSummary: progressPublicStateSummary(),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(focusedWorkloads(result)).toEqual([
+      expect.objectContaining({
+        localId: 'workload-completed',
+        quantityRole: 'completed',
+        amount: 70,
+      }),
+    ]);
+    expect(result.document?.tasks[0].effortEstimates).toEqual([
+      expect.objectContaining({
+        targetLocalId: 'workload-completed',
+        kind: 'total_duration',
+        minutes: 90,
+      }),
+    ]);
+  });
+
   it('binds explicit per-unit effort to the scheduler estimate target when historical completed work was the question target', async () => {
     const state = progressPublicStateSummary();
     state.workloads[0].unitCode = 'page';
@@ -218,11 +263,10 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     state.workloads[1].unitLabel = '枚';
     state.workloads[1].amount = 8;
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => JSON.stringify({
-        decision: 'effort_per_unit_answer',
+      createChatCompletion: vi.fn(async () => effortAnswer({
+        effortTarget: 'estimate_target',
+        effortMeasurement: 'duration_per_unit',
         minutes: 8,
-        precision: 'approximate',
-        quantityRole: null,
       })),
     };
 
@@ -252,11 +296,10 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
 
   it('preserves a per-unit effort answer and keeps it bound to the pending workload when no separate estimate target exists', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => JSON.stringify({
-        decision: 'effort_per_unit_answer',
+      createChatCompletion: vi.fn(async () => effortAnswer({
+        effortTarget: 'question_target',
+        effortMeasurement: 'duration_per_unit',
         minutes: 8,
-        precision: 'approximate',
-        quantityRole: null,
       })),
     };
 
@@ -282,10 +325,48 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects estimate_target on an ordinary single-target pending question', async () => {
+    const genericDocument = JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    });
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn()
+        .mockResolvedValueOnce(effortAnswer({
+          effortTarget: 'estimate_target',
+          effortMeasurement: 'total_duration',
+          minutes: 30,
+        }))
+        .mockResolvedValueOnce(genericDocument)
+        .mockResolvedValueOnce(genericDocument)
+        .mockResolvedValueOnce(genericDocument),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '30分くらいです。',
+      publicStateSummary: publicStateSummary('missing_effort_estimate'),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks).toEqual([]);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(4);
+  });
+
   it('interprets a direct quantity-role reply through the same exact-pending-target route', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => JSON.stringify({
         decision: 'quantity_role_answer',
+        effortTarget: null,
+        effortMeasurement: null,
         minutes: null,
         precision: null,
         quantityRole: 'remaining',
@@ -329,6 +410,8 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
       createChatCompletion: vi.fn()
         .mockResolvedValueOnce(JSON.stringify({
           decision: 'fallback',
+          effortTarget: null,
+          effortMeasurement: null,
           minutes: null,
           precision: null,
           quantityRole: null,
