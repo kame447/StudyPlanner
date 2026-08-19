@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-11",
-  "reason": "Real Luna 3x revalidation after schema-valid semantic no-op completeness retry. Verify tomorrow 13:00 deadline survives pending-question side updates, completed 12 plus remaining 8 stays coherent, per-unit 8-minute pace yields a 75-minute scheduled candidate with safety buffer, and canonicalization rejection causes are observable if any recur."
+  "request_id": "20260819-pr157-merge-gate-12",
+  "reason": "Final Real Luna 3x revalidation after applying schema-valid semantic no-op completeness recovery after repair. Require tomorrow 13:00 deadline preservation and acknowledgement, approximate progress acceptance, corrected completed 12 plus remaining 8 with no active stale 10, per-unit 8-minute pace yielding a 75-minute scheduled candidate after safety buffer, no duplicate task, and all typed renderer/completion gates passing."
 }
