@@ -114,7 +114,7 @@ describe('Stable V5 focused contextual-answer retry', () => {
     });
   });
 
-  it('retries a dual-target completed-work pace question when the first focused result falls back', async () => {
+  it('retries a dual-target completed-work pace question with a focused repair when the first result falls back', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn()
         .mockResolvedValueOnce(JSON.stringify({
@@ -140,6 +140,11 @@ describe('Stable V5 focused contextual-answer retry', () => {
     expect(result.status).toBe('accepted');
     expect(result.diagnostics.attemptCount).toBe(2);
     expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
+    expect(secondRequest.messages.at(-1)?.content).toContain(
+      'Re-evaluate only the current user text',
+    );
+    expect(secondRequest.messages.at(-1)?.content).toContain('remaining_effort_answer');
     expect(result.document?.tasks[0]).toMatchObject({
       existingPublicId: 'task-report',
       workloads: [expect.objectContaining({
