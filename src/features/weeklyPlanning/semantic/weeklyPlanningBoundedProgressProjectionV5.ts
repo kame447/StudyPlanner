@@ -221,7 +221,9 @@ export function projectWeeklyPlanningBoundedProgressV5(params: {
   );
 
   const newTotals = graph.workloads.filter((fact) =>
-    newWorkloadIds.has(fact.id) && fact.quantityRole === 'scope_total');
+    newWorkloadIds.has(fact.id)
+    && fact.quantityRole === 'scope_total'
+    && !isPercentage(fact));
   for (const total of newTotals) {
     const retired = retirePercentageRemainders({
       graph,
