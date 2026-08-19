@@ -11,6 +11,9 @@ import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
+  normalizeWeeklyPlanningExistingTaskShellV5,
+} from './weeklyPlanningExistingTaskShellNormalizationV5';
+import {
   normalizePendingQuestionEntityBindingsV5,
 } from './weeklyPlanningPendingEntityBindingNormalizationV5';
 import {
@@ -30,6 +33,7 @@ export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
+  'existing_task_shell',
   'pending_question_entity_binding',
   'component_parent',
   'duplicate_workload_placement',
@@ -69,6 +73,10 @@ Record<
   copied_user_context_delta: {
     category: 'context_binding_repair',
     owningInvariant: 'provider output is a current-turn delta and must not echo stored durable context',
+  },
+  existing_task_shell: {
+    category: 'context_binding_repair',
+    owningInvariant: 'an existing study task delta may omit durable study metadata that is not being changed',
   },
   pending_question_entity_binding: {
     category: 'context_binding_repair',
@@ -221,6 +229,11 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
     normalizeCopiedUserContextDeltaV5({
+      rawResponse: value,
+      publicStateSummary: params.publicStateSummary,
+    }));
+  applyStage('existing_task_shell', (value) =>
+    normalizeWeeklyPlanningExistingTaskShellV5({
       rawResponse: value,
       publicStateSummary: params.publicStateSummary,
     }));
