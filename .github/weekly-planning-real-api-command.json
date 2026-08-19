@@ -1,6 +1,6 @@
 {
   "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-10",
-  "reason": "Final Real Luna revalidation after semantic repair preserves omitted current-turn deadline facts; manually verify tomorrow 13:00 deadline survives repair and bounded slide effort still flows from 8 remaining slides x 8 minutes = 64 base minutes through 1.1 safety buffer and rounding to 75 scheduler allocation minutes"
+  "request_id": "20260819-pr157-merge-gate-11",
+  "reason": "Real Luna 3x revalidation after schema-valid semantic no-op completeness retry. Verify tomorrow 13:00 deadline survives pending-question side updates, completed 12 plus remaining 8 stays coherent, per-unit 8-minute pace yields a 75-minute scheduled candidate with safety buffer, and canonicalization rejection causes are observable if any recur."
 }
