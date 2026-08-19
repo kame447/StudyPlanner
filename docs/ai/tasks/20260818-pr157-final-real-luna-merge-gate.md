@@ -16,7 +16,7 @@ The implementation checkpoint `6fa31b95358fbf8019e22f349cf35ca71638565b` exposed
 
 The common cause was a side-contribution guard that treated every semantic task without `existingPublicId` as independent new work. A short answer can legitimately arrive from the semantic normalizer inside a temporary task shell with no `existingPublicId`, so that rule bypassed the guarded contextual binder.
 
-The routing fix now identifies independent meaning from typed semantic content rather than task identity alone. It preserves genuine deadlines, recurrence/context changes, remaining/completed workload changes, target-only new work, and new components through normal canonicalization while allowing a temporary effort-answer shell to bind to the exact pending target.
+The routing fix identifies independent meaning from typed semantic content rather than task identity alone. It preserves genuine deadlines, recurrence/context changes, remaining/completed workload changes, target-only new work, and new components through normal canonicalization while allowing a temporary effort-answer shell to bind to the exact pending target.
 
 After that repair, the previously failing seven cases returned to green together on checkpoint `c5bca176b5d844a269a65de9c4ce6ffd7780c905`, including ordinary short-duration turns, observed-pace flows, memory calibration, atomic incompatible-reply handling, and the Stable V5 multi-turn task → duration → authorization path.
 
@@ -61,18 +61,78 @@ Manual transcript review also found another hidden defect later in the bounded-s
 
 Gate 19 demonstrated why green exit codes alone are insufficient: transcript wording and Fact Graph target identity must both be inspected.
 
-## Current repair after gate 19
+## Repair after gate 19
 
-The current repair keeps the same architectural ownership instead of adding sentence-specific cases:
+The gate-19 repair kept the same architectural ownership instead of adding sentence-specific cases:
 
-1. Focused contextual semantics explicitly define remaining-total and per-unit effort as valid alternate answers to a completed-work pace question when `estimateForWorkload` exists.
-2. The distinct estimate target is exposed to focused semantics only under `questionBasis=completed_workload_total`, preventing dual-target behavior from leaking into ordinary pending effort questions.
-3. If the first focused classification returns `fallback` on this typed dual-target state, the semantic layer performs one focused repair pass before falling back to the generic full-plan normalizer. The repair instruction restates only the typed contract; it contains no Japanese fixture wording.
-4. Deterministic regression coverage now checks fallback → focused repair → remaining target binding and direct per-unit binding to the schedulable workload.
-5. Dialogue grounding validation now checks concrete clock values carried by acknowledged typed facts. An ACK that claims a deadline fact but drops its 13:00 value is rejected and receives one renderer repair pass that explicitly preserves concrete values.
-6. The clock check compares normalized clock values, so equivalent forms such as `13:00` and `13時`, or `14:30` and `14時半`, are treated as the same time rather than relying on one fixed Japanese surface form.
+1. Focused contextual semantics explicitly accepted remaining-total and per-unit effort as alternate answers to a completed-work pace question when `estimateForWorkload` exists.
+2. The distinct estimate target was exposed to focused semantics only under `questionBasis=completed_workload_total`, preventing dual-target behavior from leaking into ordinary pending effort questions.
+3. A dual-target focused `fallback` received one focused repair pass before generic full-plan normalization.
+4. Dialogue grounding validation began checking concrete clock values carried by acknowledged typed facts, and renderer repair was instructed to preserve them.
+5. Prompt-budget guards were relaxed only enough to retain these typed invariants while remaining substantially smaller than the generic semantic path.
 
-The current repair is not merge-ready until its exact head passes deterministic CI and Browser Regression, followed by a fresh repeated Real Luna merge gate.
+Deterministic CI and Browser Regression were green before gate 20.
+
+## Real Luna merge gate 20
+
+Requested checkpoint: `20260819-pr157-merge-gate-20`
+Implementation head at request: `a99b2b760d8581010196aee56f359756495d2d06`
+Repetitions: 3
+Result: 0/3 fully passed
+Provider status: available; provider smoke returned HTTP 200 in all repetitions
+
+Gate 20 reproduced the directionality problem more clearly and exposed a separate renderer-metadata instability.
+
+### Directionality failure
+
+In two repetitions, a user reply meaning that the remaining work would take about two hours produced visibly plausible dialogue, but the Fact Graph stored the resulting `total_duration=120` effort estimate against the completed-work workload rather than the derived remaining workload.
+
+The trace showed the exact failure chain:
+
+1. the focused contextual classifier returned no usable typed document on both attempts;
+2. generic normalization preserved the effort value but represented it as a task-shell effort estimate without a workload-level directional reference;
+3. the deterministic contextual binder then defaulted this directionless total duration to the original pending target, which was completed work.
+
+This means the corruption happened even though the visible assistant response referred to remaining work correctly. The same mechanism can affect the dedicated remaining-45-minute scenario. A directionless generic effort value is therefore not sufficient evidence to choose between completed and remaining targets.
+
+### Renderer metadata failure
+
+In two repetitions, the all-question-code matrix produced valid grounded visible text for `missing_effort_estimate`, but Luna also populated `groundingAcknowledgement` while `currentTurnGrounding.mode=none`. The previous validator treated any non-null ACK metadata in mode `none` as an error and failed closed, even though the metadata was unused and the visible text remained subject to the normal grounding and safety validators.
+
+This is separate from the required-before-resume ACK contract. When the application says `required_before_resume`, accepted fact IDs and concrete values remain strict requirements.
+
+## Current repair after gate 20
+
+The next repair changes the typed interface rather than adding more wording exceptions.
+
+### Orthogonal focused effort contract
+
+Focused effort interpretation no longer asks Luna to choose overloaded decisions such as “remaining effort answer” versus “per-unit effort answer”. Instead a clear effort answer is represented by independent typed fields:
+
+- `decision=effort_answer`;
+- `effortTarget=question_target | estimate_target`;
+- `effortMeasurement=total_duration | duration_per_unit`;
+- `minutes` and `precision`.
+
+This separates two semantic axes that were previously entangled: what workload the answer refers to, and how effort is measured. `estimate_target` is valid only when the typed pending state actually exposes `estimateForWorkload`; ordinary single-target questions cannot acquire it accidentally.
+
+The one focused repair pass now asks the model to re-evaluate those two typed axes independently. It still contains no Japanese fixture strings and does not move meaning ownership into deterministic text heuristics.
+
+### Fail closed on generic direction loss
+
+If a generic fallback returns a total-duration effort value on a dual-target question but provides neither an explicit completed/remaining workload reference nor another typed directional signal, deterministic binding now returns no contextual target instead of silently selecting completed work.
+
+Explicit remaining meaning still binds to `estimateForWorkload`; explicit completed meaning still binds to `questionTargetWorkload`; explicit per-unit effort remains eligible for the schedulable estimate target. Only the directionless ambiguous case is rejected from contextual binding.
+
+A dedicated deterministic regression test now covers the exact gate-20 failure shape: task-shell total duration plus dual-target pending state must not default to completed evidence.
+
+### Mode-none ACK metadata
+
+When `currentTurnGrounding.mode=none`, `groundingAcknowledgement` is unused control metadata. A redundant well-formed ACK object is now ignored rather than treated as a contract failure, while the visible response still passes through ordinary safety, date/time grounding, execution-claim, preview, and repeated-question validation.
+
+`recommended` and `required_before_resume` remain strict. In particular, required acknowledgements still have to reference accepted current-turn facts and preserve concrete clock values such as `13:00`.
+
+The current implementation head after these changes is `8ef2179b63b29dcd4c23539ac0bd0d42e4e88815`. It is not merge-ready until deterministic CI and Browser Regression are green on this state (or its documentation-only successor), followed by a fresh repeated Real Luna gate.
 
 ## Prohibited fixes
 
@@ -95,10 +155,12 @@ Before merge:
 - repeated real-Luna merge-gate runs complete successfully on that same implementation state;
 - visible transcripts and resulting Fact Graph/application state are reviewed, not only the workflow exit code;
 - direct completed-work answers bind to the question workload, while explicit remaining/per-unit measurements bind to the intended schedulable workload;
+- directionless generic effort on a dual-target question never silently defaults to completed work;
 - a valid alternate remaining/per-unit effort answer resolves the pending effort question instead of being acknowledged and then re-asked;
 - open-ended progress does not invent page/slide/problem totals;
 - fixed totals and explicit quantities remain exact;
 - side contributions are preserved and observably acknowledged before the prior pending question resumes, including concrete clock values when supplied;
+- `mode=none` does not fail solely because the renderer emitted redundant unused ACK metadata;
 - 100% completion does not ask the same progress question again;
 - correction from completed to incomplete reopens remaining work correctly;
 - percentage to exact-quantity transition does not double-schedule;
@@ -116,6 +178,8 @@ After deterministic CI and Browser Regression are green on the current repair, r
 - deadline side contribution → concrete deadline acknowledgement → resumed progress question;
 - bounded total 20 → completed correction 10→12 → remaining 8 → explicit 8 min/unit bound to remaining 8 with no repeated completed-total question;
 - open-ended 70% → remaining 30% → remaining 45 minutes bound to remaining 30%;
+- final remaining-duration answer such as two hours binds to the remaining workload rather than completed evidence;
+- all-question-code renderer matrix remains stable when `currentTurnGrounding.mode=none`;
 - 100% completion behavior;
 - typed renderer and all runtime question-code matrices.
 
