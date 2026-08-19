@@ -14,6 +14,8 @@ type ClientRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[
 function focusedFallback(): string {
   return JSON.stringify({
     decision: 'fallback',
+    effortTarget: null,
+    effortMeasurement: null,
     minutes: null,
     precision: null,
     quantityRole: null,
