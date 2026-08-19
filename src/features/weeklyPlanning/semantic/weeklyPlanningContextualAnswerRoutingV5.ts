@@ -1,5 +1,6 @@
 import type {
   SemanticEffortEstimateV5,
+  SemanticQuantityRoleV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
@@ -50,11 +51,56 @@ function isExplicitAlternateMeasurement(params: {
 }): boolean {
   if (params.estimate.kind === params.pendingMeasurement) return false;
 
-  // A non-null unit on duration_per_unit is structured evidence that the user
-  // explicitly supplied a per-unit measurement. The machine still owns the
-  // exact target identity, while the AI owns this measurement meaning.
   return params.estimate.kind === 'duration_per_unit'
     && params.estimate.unitCode !== null;
+}
+
+function workloadRoleForLocalId(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  localId: string;
+}): SemanticQuantityRoleV5 | null {
+  for (const task of params.document.tasks) {
+    const taskWorkload = task.workloads.find((workload) => workload.localId === params.localId);
+    if (taskWorkload) return taskWorkload.quantityRole;
+    for (const component of task.study?.components ?? []) {
+      const componentWorkload = component.workloads.find(
+        (workload) => workload.localId === params.localId,
+      );
+      if (componentWorkload) return componentWorkload.quantityRole;
+    }
+  }
+  return null;
+}
+
+export function contextualAnswerTargetFactIdV5(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  pendingQuestion: WeeklyPlanningPendingQuestionV5;
+}): string | null {
+  const pendingTarget = params.pendingQuestion.targetFactId;
+  if (!pendingTarget) return null;
+  if (params.pendingQuestion.questionCode !== 'missing_effort_estimate') {
+    return pendingTarget;
+  }
+
+  const estimateTarget = params.pendingQuestion.estimateForWorkloadFactId;
+  if (!estimateTarget || estimateTarget === pendingTarget) return pendingTarget;
+
+  const estimates = effortEstimates(params.document);
+  if (estimates.length !== 1) return pendingTarget;
+  const estimate = estimates[0];
+
+  if (estimate.kind === 'duration_per_unit' && estimate.unitCode !== null) {
+    return estimateTarget;
+  }
+  if (estimate.targetLocalId === estimateTarget) return estimateTarget;
+
+  const semanticTargetRole = workloadRoleForLocalId({
+    document: params.document,
+    localId: estimate.targetLocalId,
+  });
+  return semanticTargetRole === 'remaining'
+    ? estimateTarget
+    : pendingTarget;
 }
 
 export function shouldAttemptWeeklyPlanningContextualAnswerV5(params: {
