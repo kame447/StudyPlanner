@@ -132,6 +132,36 @@ describe('Stable V5 contextual-answer routing', () => {
     })).toBe(false);
   });
 
+  it('does not drop an independent deadline when the same turn also answers effort', () => {
+    const value = document();
+    value.tasks[0].effortEstimates.push({
+      localId: 'effort-1',
+      targetLocalId: 'task-1',
+      kind: 'total_duration',
+      minutes: 30,
+      unitCode: null,
+      precision: 'approximate',
+      sourceText: '30分くらい',
+    });
+    value.tasks[0].temporalConstraints.push({
+      localId: 'deadline-1',
+      targetLocalId: 'task-1',
+      kind: 'deadline',
+      constraintLevel: 'hard',
+      dateExpression: 'tomorrow',
+      namedTimePeriod: null,
+      startTime: null,
+      endTime: '13:00',
+      precision: 'exact',
+      sourceText: '締切は明日13時',
+    });
+
+    expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
+      document: value,
+      pendingQuestion: pendingEffort('total_duration'),
+    })).toBe(false);
+  });
+
   it('keeps an otherwise incompatible bare reply on the guarded contextual path', () => {
     const value = document();
     value.tasks[0].workloads.push({
