@@ -44,6 +44,24 @@ function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boo
   });
 }
 
+function acceptedInitialResult(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  document: WeeklyPlanningSemanticDocumentV5;
+}): WeeklyPlanningSemanticNormalizerResultV5 {
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'accepted',
+    document: params.document,
+    diagnostics: params.run.diagnostics({
+      attemptCount: 2,
+      repairAttempted: false,
+      validationErrors: [],
+      providerError: null,
+    }),
+  };
+  params.run.recordDecision(result, { route: 'schema_valid_noop_completeness_retry_fallback_initial' });
+  return result;
+}
+
 export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
@@ -111,7 +129,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         error: semanticNormalizerErrorDetails(error),
       },
     });
-    return null;
+    return acceptedInitialResult({ run: params.run, document: params.initialDocument });
   }
 
   const validation = validateWeeklyPlanningSemanticResponseV5(
@@ -130,7 +148,9 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       fallback: validation.document ? null : 'initial_schema_valid_document',
     },
   });
-  if (!validation.document) return null;
+  if (!validation.document) {
+    return acceptedInitialResult({ run: params.run, document: params.initialDocument });
+  }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',
