@@ -147,7 +147,8 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       }),
     ]);
     const retryMessages = fake.calls[1].messages;
-    expect(retryMessages.at(-1)?.content).toContain('Re-read current userText');
-    expect(retryMessages.at(-1)?.content).toContain('side contributions unrelated to the pending question');
+    const retryInstruction = retryMessages[retryMessages.length - 1]?.content ?? '';
+    expect(retryInstruction).toContain('Re-read current userText');
+    expect(retryInstruction).toContain('side contributions unrelated to the pending question');
   });
 });
