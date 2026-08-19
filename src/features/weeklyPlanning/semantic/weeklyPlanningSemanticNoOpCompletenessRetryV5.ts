@@ -10,22 +10,34 @@ import {
 import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
-const COMPLETENESS_RETRY_INSTRUCTION = [
-  'The prior response is schema-valid but contains no new semantic content while a machine pending question exists.',
-  'Re-read current userText from the prior user context independently and return the complete semantic document again.',
-  'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn proposition in its typed field.',
-  'For example, task-specific timing belongs in temporalConstraints, plan-wide availability in availabilityDeclarations, workload state in workloads, effort in effortEstimates, and task ordering in relations.',
-  'Include every supported explicit current-turn fact, including side contributions unrelated to the pending question. Do not invent facts.',
-  'Return equivalent no-op meaning only if current userText genuinely contains no supported new fact.',
-].join(' ');
-
-const FINAL_COMPLETENESS_RETRY_INSTRUCTION = [
-  'The completeness retry still produced no typed semantic content.',
-  'Perform one final independent completeness pass over current userText instead of copying the prior empty wrapper.',
-  'Encode every supported current-turn proposition in the corresponding typed field, even when it does not answer the pending question.',
-  'Existing entity shells, titles, and sourceText alone do not count as semantic content.',
-  'Return equivalent no-op meaning only if current userText genuinely contains no supported new fact.',
-].join(' ');
+function completenessRetryInstruction(params: {
+  userText: string;
+  final: boolean;
+}): string {
+  const exactUserText = JSON.stringify(params.userText);
+  if (!params.final) {
+    return [
+      'The prior response is schema-valid but contains no new semantic content while a machine pending question exists.',
+      `The exact current userText to interpret is ${exactUserText}.`,
+      'Re-read that exact current userText independently and return the complete semantic document again.',
+      'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn proposition in its typed field.',
+      'Task-specific timing belongs in temporalConstraints, plan-wide availability in availabilityDeclarations, workload state in workloads, effort in effortEstimates, and task ordering in relations.',
+      'A task-scoped completion-by date or time is a deadline temporalConstraint on that task; when the task already exists, use a minimal existingPublicId task shell plus the new constraint.',
+      'Include every supported explicit current-turn fact, including side contributions unrelated to the pending question. Do not invent facts.',
+      'If the exact current userText states any supported timing, workload, effort, relation, availability, correction, or decision proposition, a no-op document is not a valid retry result.',
+      'Return equivalent no-op meaning only if the exact current userText genuinely contains no supported new fact.',
+    ].join(' ');
+  }
+  return [
+    'The completeness retry still produced no typed semantic content.',
+    `The exact current userText to interpret is ${exactUserText}.`,
+    'Perform one final independent completeness pass from that exact current userText and typed context; do not copy or preserve the prior empty semantic wrapper.',
+    'Encode every supported current-turn proposition in the corresponding typed field, even when it does not answer the pending question.',
+    'Task-scoped completion-by date/time must be represented as a deadline temporalConstraint on the referenced task; existing entity shells, titles, and sourceText alone do not count as semantic content.',
+    'If the exact current userText states any supported timing, workload, effort, relation, availability, correction, or decision proposition, a no-op document is not a valid retry result.',
+    'Return equivalent no-op meaning only if the exact current userText genuinely contains no supported new fact.',
+  ].join(' ');
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -114,26 +126,33 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   let previousResponse = params.initialResponse;
 
   for (let retryIndex = 0; retryIndex < 2; retryIndex += 1) {
-    const instruction = retryIndex === 0
-      ? COMPLETENESS_RETRY_INSTRUCTION
-      : FINAL_COMPLETENESS_RETRY_INSTRUCTION;
-    const attempt = retryIndex === 0
-      ? 'completeness_retry'
-      : 'completeness_retry_final';
+    const isFinalRetry = retryIndex === 1;
+    const instruction = completenessRetryInstruction({
+      userText: params.run.input.userText,
+      final: isFinalRetry,
+    });
+    const attempt = isFinalRetry
+      ? 'completeness_retry_final'
+      : 'completeness_retry';
     const attemptCount = attemptCountBeforeRetry + retryIndex + 1;
-    const messages: ChatMessage[] = [
-      ...params.baseMessages,
-      { role: 'assistant', content: previousResponse },
-      { role: 'user', content: instruction },
-    ];
+    const messages: ChatMessage[] = isFinalRetry
+      ? [
+          ...params.baseMessages,
+          { role: 'user', content: instruction },
+        ]
+      : [
+          ...params.baseMessages,
+          { role: 'assistant', content: previousResponse },
+          { role: 'user', content: instruction },
+        ];
 
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_orchestrator_route',
       data: {
-        route: retryIndex === 0
-          ? 'schema_valid_noop_completeness_retry'
-          : 'schema_valid_noop_completeness_retry_final',
+        route: isFinalRetry
+          ? 'schema_valid_noop_completeness_retry_final'
+          : 'schema_valid_noop_completeness_retry',
         meaningOwner: 'ai',
         deterministicResponsibilities: [
           'detect_schema_valid_semantic_noop_under_machine_pending_question',
@@ -141,6 +160,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         ],
         attemptCountBeforeRetry: attemptCount - 1,
         repairAttempted,
+        finalRetryUsesFreshSemanticContext: isFinalRetry,
       },
     });
 
@@ -216,9 +236,9 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         }),
       };
       params.run.recordDecision(result, {
-        route: retryIndex === 0
-          ? 'schema_valid_noop_completeness_retry'
-          : 'schema_valid_noop_completeness_retry_final',
+        route: isFinalRetry
+          ? 'schema_valid_noop_completeness_retry_final'
+          : 'schema_valid_noop_completeness_retry',
       });
       return result;
     }
