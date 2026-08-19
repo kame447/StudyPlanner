@@ -1,5 +1,13 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
+  FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS,
+  FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
+  createFocusedTaskTemporalSideContributionDocumentV5,
+  createFocusedTaskTemporalSideContributionMessagesV5,
+  focusedTaskTemporalSideContributionEligibleV5,
+  parseFocusedTaskTemporalSideContributionDecisionV5,
+} from './weeklyPlanningFocusedTaskTemporalSideContributionV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import {
@@ -106,6 +114,116 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   return !hasTaskSemanticPayload(document);
 }
 
+async function tryFocusedTaskTemporalSideContributionV5(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  attemptCountBeforeRetry: number;
+  repairAttempted: boolean;
+  validationErrors: string[];
+}): Promise<{
+  attempted: boolean;
+  result: WeeklyPlanningSemanticNormalizerResultV5 | null;
+}> {
+  const publicStateSummary = params.run.input.publicStateSummary;
+  if (!focusedTaskTemporalSideContributionEligibleV5({ publicStateSummary })) {
+    return { attempted: false, result: null };
+  }
+
+  const messages = createFocusedTaskTemporalSideContributionMessagesV5({
+    userText: params.run.input.userText,
+    publicStateSummary,
+  });
+  if (messages.length === 0) return { attempted: false, result: null };
+
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_orchestrator_route',
+    data: {
+      route: 'schema_valid_noop_focused_task_temporal_side_contribution',
+      meaningOwner: 'ai',
+      deterministicResponsibilities: [
+        'detect_schema_valid_semantic_noop_under_machine_pending_question',
+        'bind_typed_temporal_side_contribution_to_verified_existing_task',
+      ],
+    },
+  });
+
+  let response: string;
+  try {
+    response = await params.run.callTracked({
+      messages,
+      temperature: 0,
+      responseFormat: FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
+      purpose: 'weekly_planning_semantic_normalizer',
+      maxCompletionTokens: FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS,
+    }, 'focused_task_temporal_side_contribution');
+  } catch (error) {
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId,
+      stage: 'semantic_focused_task_temporal_side_contribution_result',
+      severity: 'warn',
+      data: {
+        accepted: false,
+        fallback: 'generic_completeness_retry',
+        error: semanticNormalizerErrorDetails(error),
+      },
+    });
+    return { attempted: true, result: null };
+  }
+
+  const decision = parseFocusedTaskTemporalSideContributionDecisionV5(response);
+  const document = decision
+    ? createFocusedTaskTemporalSideContributionDocumentV5({
+        userText: params.run.input.userText,
+        publicStateSummary,
+        decision,
+      })
+    : null;
+  const validation = document
+    ? validateWeeklyPlanningSemanticResponseV5(
+        JSON.stringify(document),
+        { publicStateSummary },
+      )
+    : null;
+  if (validation) params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
+
+  const acceptedDocument = validation?.document ?? null;
+  const accepted = acceptedDocument !== null
+    && !isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: acceptedDocument,
+      publicStateSummary,
+    });
+
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_focused_task_temporal_side_contribution_result',
+    severity: accepted ? 'info' : 'debug',
+    data: {
+      accepted,
+      decision,
+      validationErrors: validation?.errors ?? [],
+      parsedDocument: validation?.parsedDocument ?? null,
+      fallback: accepted ? null : 'generic_completeness_retry',
+    },
+  });
+
+  if (!accepted || !acceptedDocument) return { attempted: true, result: null };
+
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'accepted',
+    document: acceptedDocument,
+    diagnostics: params.run.diagnostics({
+      attemptCount: params.attemptCountBeforeRetry + 1,
+      repairAttempted: params.repairAttempted,
+      validationErrors: params.validationErrors,
+      providerError: null,
+    }),
+  };
+  params.run.recordDecision(result, {
+    route: 'schema_valid_noop_focused_task_temporal_side_contribution',
+  });
+  return { attempted: true, result };
+}
+
 export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   baseMessages: ChatMessage[];
@@ -123,6 +241,16 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   const attemptCountBeforeRetry = params.attemptCountBeforeRetry ?? 1;
   const repairAttempted = params.repairAttempted ?? false;
   const validationErrors = params.validationErrors ?? [];
+
+  const focusedTemporal = await tryFocusedTaskTemporalSideContributionV5({
+    run: params.run,
+    attemptCountBeforeRetry,
+    repairAttempted,
+    validationErrors,
+  });
+  if (focusedTemporal.result) return focusedTemporal.result;
+
+  const focusedAttemptOffset = focusedTemporal.attempted ? 1 : 0;
   let previousResponse = params.initialResponse;
 
   for (let retryIndex = 0; retryIndex < 2; retryIndex += 1) {
@@ -134,7 +262,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     const attempt = isFinalRetry
       ? 'completeness_retry_final'
       : 'completeness_retry';
-    const attemptCount = attemptCountBeforeRetry + retryIndex + 1;
+    const attemptCount = attemptCountBeforeRetry + focusedAttemptOffset + retryIndex + 1;
     const messages: ChatMessage[] = isFinalRetry
       ? [
           ...params.baseMessages,
@@ -258,7 +386,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   return acceptedPriorResult({
     run: params.run,
     document: params.initialDocument,
-    attemptCount: attemptCountBeforeRetry + 2,
+    attemptCount: attemptCountBeforeRetry + focusedAttemptOffset + 2,
     repairAttempted,
     validationErrors,
   });
