@@ -45,6 +45,9 @@ function progressPublicStateSummary() {
       questionCode: 'missing_effort_estimate',
       targetFactId: 'workload-completed',
       graphRevision: 4,
+      effortMeasurement: 'total_duration',
+      estimateForWorkloadFactId: 'workload-remaining',
+      questionBasis: 'completed_workload_total',
     },
     workloads: [
       {
@@ -160,7 +163,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
   });
 
-  it('binds an explicit remaining-duration side contribution to the unique remaining workload', async () => {
+  it('binds an explicit remaining-duration side contribution to the scheduler estimate target', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => JSON.stringify({
         decision: 'remaining_effort_answer',
@@ -200,11 +203,54 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     ]));
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
     const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    expect(JSON.stringify(request.messages)).toContain('workload-completed');
     expect(JSON.stringify(request.messages)).toContain('workload-remaining');
-    expect(JSON.stringify(request.messages)).toContain('remainingWorkload');
+    expect(JSON.stringify(request.messages)).toContain('estimateForWorkload');
+    expect(JSON.stringify(request.messages)).toContain('completed_workload_total');
   });
 
-  it('preserves a per-unit effort answer and keeps it bound to the pending workload', async () => {
+  it('binds explicit per-unit effort to the scheduler estimate target when historical completed work was the question target', async () => {
+    const state = progressPublicStateSummary();
+    state.workloads[0].unitCode = 'page';
+    state.workloads[0].unitLabel = '枚';
+    state.workloads[0].amount = 12;
+    state.workloads[1].unitCode = 'page';
+    state.workloads[1].unitLabel = '枚';
+    state.workloads[1].amount = 8;
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'effort_per_unit_answer',
+        minutes: 8,
+        precision: 'approximate',
+        quantityRole: null,
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '1枚あたりだいたい8分くらいです。',
+      publicStateSummary: state,
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(focusedWorkloads(result)).toEqual([
+      expect.objectContaining({
+        localId: 'workload-remaining',
+        quantityRole: 'remaining',
+        amount: 8,
+        unitCode: 'page',
+      }),
+    ]);
+    expect(result.document?.tasks[0].effortEstimates).toEqual([
+      expect.objectContaining({
+        targetLocalId: 'workload-remaining',
+        kind: 'duration_per_unit',
+        minutes: 8,
+        unitCode: 'page',
+      }),
+    ]);
+  });
+
+  it('preserves a per-unit effort answer and keeps it bound to the pending workload when no separate estimate target exists', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => JSON.stringify({
         decision: 'effort_per_unit_answer',
