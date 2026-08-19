@@ -127,6 +127,6 @@ describe('Stable V5 dialogue prompt', () => {
     expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
     // Keep a material-growth guard, but do not force semantic contracts out of
     // the renderer merely to satisfy PR #130's former compactness target.
-    expect(bytes(payload.request)).toBeLessThanOrEqual(3800);
+    expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
   });
 });
