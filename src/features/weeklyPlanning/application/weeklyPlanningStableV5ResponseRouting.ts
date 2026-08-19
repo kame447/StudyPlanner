@@ -63,6 +63,23 @@ function respond(output: WeeklyPlanningTurnExecutionResult): WeeklyPlanningStabl
   return { kind: 'respond', output };
 }
 
+function estimateForWorkloadFactId(
+  details: Record<string, string | number | boolean | null>,
+): string | undefined {
+  return typeof details.estimateForWorkloadFactId === 'string'
+    && details.estimateForWorkloadFactId.length > 0
+    ? details.estimateForWorkloadFactId
+    : undefined;
+}
+
+function effortQuestionBasis(
+  details: Record<string, string | number | boolean | null>,
+): 'completed_workload_total' | undefined {
+  return details.questionBasis === 'completed_workload_total'
+    ? 'completed_workload_total'
+    : undefined;
+}
+
 function routeBeforePreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   graph: WeeklyPlanningFactGraphV5;
@@ -131,6 +148,8 @@ function routeBeforePreview(params: {
       questionCode: dialogue.question.code,
       questionFactId: dialogue.question.factId ?? undefined,
       questionIntent: dialogue.question.effortMeasurement ?? undefined,
+      questionEstimateForWorkloadFactId: estimateForWorkloadFactId(dialogue.question.details),
+      questionBasis: effortQuestionBasis(dialogue.question.details),
       authorized,
       groundingRecords,
       repairAgenda: repairDecision.agenda,
