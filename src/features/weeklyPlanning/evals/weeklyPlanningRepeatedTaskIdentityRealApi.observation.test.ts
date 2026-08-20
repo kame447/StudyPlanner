@@ -5,12 +5,8 @@ import {
   getWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from '../application/weeklyPlanningStableV5RuntimeSession';
-import {
-  weeklyPlanningTurnRuntimeGateway,
-} from '../application/weeklyPlanningTurnRuntimeGateway';
-import {
-  weeklyPlanningTurnStagingLifecycle,
-} from '../application/weeklyPlanningTurnSideEffects';
+import { weeklyPlanningTurnRuntimeGateway } from '../application/weeklyPlanningTurnRuntimeGateway';
+import { weeklyPlanningTurnStagingLifecycle } from '../application/weeklyPlanningTurnSideEffects';
 import {
   submitWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnApplicationServices,
@@ -21,14 +17,12 @@ import {
   createWeeklyPlanningControllerSession,
   submitWeeklyPlanningControlledTurn,
 } from '../weeklyPlanningTurnController';
-import {
-  createInitialPlanningState,
-  weeklyPlanningReducer,
-} from '../weeklyPlanningReducer';
+import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR
   ?? 'artifacts/weekly-planning-real-api';
+const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? '180000');
 
 function createStore(initialState: PlanningState) {
   let state = structuredClone(initialState);
@@ -148,5 +142,5 @@ run('real API reproduction: repeated task-identity question', () => {
       normalizedTitles.some((title) => title.includes('学会') || title.includes('資料')),
       JSON.stringify(normalizedTitles),
     ).toBe(true);
-  });
+  }, timeoutMs);
 });
