@@ -125,11 +125,12 @@
 }
 
 /*
- * Short phones keep the same information architecture as taller phones.
- * Only the non-analytical sections become denser. Weekly progress keeps its
- * full three-column geometry so the graph never collapses into the nav area.
+ * Short viewports keep the same information architecture regardless of the
+ * outer DevTools/desktop viewport width. The home column itself is capped at
+ * 508px, so vertical density must key off viewport height rather than a
+ * max-width media query. Weekly progress keeps its full three-column geometry.
  */
-@media (max-width: 520px) and (max-height: 760px) {
+@media (max-height: 760px) {
   .app-shell.home-app-shell {
     padding-top: 6px;
     padding-bottom: 78px;
