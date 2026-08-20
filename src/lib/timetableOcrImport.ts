@@ -1,4 +1,9 @@
 import { getCloudflareAiProxyUrl } from './aiConfig';
+import {
+  createAiImageFilePayload,
+  getAiImageMimeType,
+  type AiImageFilePayload,
+} from './aiImageAttachment';
 import { getFirebaseAuth } from './firebaseClient';
 import type { RecurrenceWeekday } from '../types/domain';
 
@@ -24,20 +29,12 @@ export interface TimetableOcrResult {
   items: TimetableOcrItemCandidate[];
 }
 
-export interface TimetableOcrFilePayload {
-  fileName: string;
-  mimeType: string;
-  base64: string;
-}
+export type TimetableOcrFilePayload = AiImageFilePayload;
 
 interface TimetableOcrWorkerResponse {
   result?: unknown;
   error?: string;
 }
-
-const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg']);
-const MAX_TIMETABLE_OCR_IMAGE_WIDTH = 1600;
-const TIMETABLE_OCR_JPEG_QUALITY = 0.82;
 
 const VALID_WEEKDAYS = new Set<RecurrenceWeekday>([
   'mon',
@@ -91,56 +88,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function getImageMimeType(file: File): 'image/png' | 'image/jpeg' | null {
-  if (file.type === 'image/png') {
-    return 'image/png';
-  }
-
-  if (file.type === 'image/jpeg') {
-    return 'image/jpeg';
-  }
-
-  return null;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-        return;
-      }
-
-      reject(new Error('ファイルを読み込めませんでした。'));
-    };
-    reader.onerror = () => reject(new Error('ファイルを読み込めませんでした。'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
-    image.src = dataUrl;
-  });
-}
-
-function extractBase64FromDataUrl(dataUrl: string): string {
-  const marker = ';base64,';
-  const markerIndex = dataUrl.indexOf(marker);
-
-  if (markerIndex === -1) {
-    throw new Error('画像データの形式が不正です。');
-  }
-
-  return dataUrl.slice(markerIndex + marker.length);
-}
-
 function buildTimetableOcrEndpoint(proxyUrl: string): string {
   const baseUrl = proxyUrl
     .replace(/\/$/, '')
@@ -148,35 +95,6 @@ function buildTimetableOcrEndpoint(proxyUrl: string): string {
     .replace(/\/timetable-ocr$/, '');
 
   return `${baseUrl}/timetable-ocr`;
-}
-
-async function resizeImageDataUrl(
-  file: File,
-  mimeType: 'image/png' | 'image/jpeg',
-): Promise<string> {
-  const sourceDataUrl = await readFileAsDataUrl(file);
-  const image = await loadImage(sourceDataUrl);
-  const scale = Math.min(1, MAX_TIMETABLE_OCR_IMAGE_WIDTH / image.naturalWidth);
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-
-  if (scale === 1 && mimeType === 'image/png') {
-    return sourceDataUrl;
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-
-  const context = canvas.getContext('2d');
-
-  if (!context) {
-    throw new Error('画像の変換に失敗しました。');
-  }
-
-  context.drawImage(image, 0, 0, width, height);
-
-  return canvas.toDataURL('image/jpeg', TIMETABLE_OCR_JPEG_QUALITY);
 }
 
 function normalizeText(value: unknown): string {
@@ -288,24 +206,11 @@ export function normalizeTimetableOcrResult(value: unknown): TimetableOcrResult 
 export async function createTimetableOcrFilePayload(
   file: File,
 ): Promise<TimetableOcrFilePayload> {
-  const sourceMimeType = getImageMimeType(file);
-
-  if (!sourceMimeType) {
+  if (!getAiImageMimeType(file)) {
     throw new Error('画像読み取りは png / jpg / jpeg のみ対応しています。PDFは後で対応予定です。');
   }
 
-  const dataUrl = await resizeImageDataUrl(file, sourceMimeType);
-  const mimeType = dataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-
-  if (!SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) {
-    throw new Error('画像形式を確認してください。');
-  }
-
-  return {
-    fileName: file.name,
-    mimeType,
-    base64: extractBase64FromDataUrl(dataUrl),
-  };
+  return createAiImageFilePayload(file);
 }
 
 export async function requestTimetableOcr(
