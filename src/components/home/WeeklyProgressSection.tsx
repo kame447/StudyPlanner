@@ -47,7 +47,7 @@ export function WeeklyProgressSection({
   const ringStyle = {
     '--home-progress': `${ringProgress * 3.6}deg`,
   } as CSSProperties;
-  const difference = dashboard.weekActualMinutes - dashboard.weekPlannedMinutes;
+  const difference = dashboard.weekDeltaMinutesByNow;
 
   return (
     <section className="home-panel home-progress-panel" data-home-section="weekly-progress">
@@ -59,20 +59,24 @@ export function WeeklyProgressSection({
       </div>
 
       <div className="home-progress-body">
-        <div className="home-progress-ring" style={ringStyle}>
+        <div
+          className="home-progress-ring"
+          style={ringStyle}
+          aria-label={`週全体の予定に対する達成率 ${dashboard.weekProgressPercent}%`}
+        >
           <div><strong>{dashboard.weekProgressPercent}%</strong></div>
         </div>
 
         <div className="home-progress-graph-unit">
-          <div className="home-progress-copy" aria-label="今週の学習時間">
-            <span>予定 <strong>{formatGraphDuration(dashboard.weekPlannedMinutes)}</strong></span>
-            <span>実績 <strong>{formatGraphDuration(dashboard.weekActualMinutes)}</strong></span>
+          <div className="home-progress-copy" aria-label="現時点までの予定と実績">
+            <span>ここまで <strong>{formatGraphDuration(dashboard.weekExpectedMinutesByNow)}</strong></span>
+            <span>実績 <strong>{formatGraphDuration(dashboard.weekActualMinutesByNow)}</strong></span>
             <span className={difference >= 0 ? 'positive' : 'negative'}>
-              {difference >= 0 ? '+' : '-'}{formatGraphDuration(Math.abs(difference))}
+              予定比 {difference >= 0 ? '+' : '-'}{formatGraphDuration(Math.abs(difference))}
             </span>
           </div>
 
-          <div className="home-week-chart" aria-label="曜日別の予定と実績">
+          <div className="home-week-chart" aria-label="曜日別の週全体の予定と実績">
             <div className="home-chart-legend">
               <span className="actual">実績</span>
               <span className="planned">予定</span>
