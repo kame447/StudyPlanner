@@ -13,6 +13,7 @@ export interface HomeDashboardModel {
   today: string;
   nextPlan: Plan | null;
   todayPlans: Plan[];
+  upcomingPlans: Plan[];
   actualByOccurrenceKey: Map<string, Actual>;
   missingActualPlans: Plan[];
   nearDueTodos: TodoTask[];
@@ -77,6 +78,13 @@ function sortDueTodos(todos: TodoTask[]): TodoTask[] {
   });
 }
 
+function buildUpcomingPlans(plans: Plan[], today: string): Plan[] {
+  const projected = Array.from({ length: 7 }, (_, index) => addDays(today, index + 1))
+    .flatMap((date) => expandPlansForDate(plans, date));
+
+  return sortByDateTime(projected).slice(0, 6);
+}
+
 export function buildHomeDashboardModel({
   plans,
   actuals,
@@ -91,6 +99,7 @@ export function buildHomeDashboardModel({
   const today = toIsoDate(now);
   const nowTime = timeNowLabel(now);
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
+  const upcomingPlans = buildUpcomingPlans(plans, today);
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
@@ -138,6 +147,7 @@ export function buildHomeDashboardModel({
     today,
     nextPlan,
     todayPlans,
+    upcomingPlans,
     actualByOccurrenceKey,
     missingActualPlans,
     nearDueTodos,
