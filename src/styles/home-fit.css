@@ -1,4 +1,4 @@
-.app-shell.home-app-shell {
+.app-shell.home-app-shell:has(.home-dashboard-default) {
   box-sizing: border-box;
   height: 100dvh;
   min-height: 100dvh;
@@ -7,7 +7,7 @@
   padding-bottom: calc(clamp(60px, 8.7dvh, 68px) + env(safe-area-inset-bottom, 0px));
 }
 
-.home-main {
+.home-main:has(.home-dashboard-default) {
   min-height: 0;
   height: 100%;
 }
