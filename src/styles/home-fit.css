@@ -12,9 +12,12 @@
 }
 
 .home-dashboard-default {
-  --home-fit-gap: clamp(5px, 0.85dvh, 8px);
-  --home-fit-hero-height: clamp(145px, calc(23dvh - 18px), 226px);
-  --home-fit-row-height: clamp(40px, 5.7dvh, 50px);
+  --home-fit-gap-base: clamp(5px, 0.85dvh, 8px);
+  --home-fit-hero-height-base: clamp(145px, calc(23dvh - 18px), 226px);
+  --home-fit-row-height-base: clamp(40px, 5.7dvh, 50px);
+  --home-fit-gap: min(10px, calc(var(--home-fit-gap-base) + var(--home-relax-gap, 0px)));
+  --home-fit-hero-height: min(226px, calc(var(--home-fit-hero-height-base) + var(--home-relax-hero, 0px)));
+  --home-fit-row-height: min(50px, calc(var(--home-fit-row-height-base) + var(--home-relax-row, 0px)));
   position: relative;
   height: 100%;
   min-height: 0;
@@ -42,7 +45,7 @@
 }
 
 .home-dashboard-default .home-topbar {
-  min-height: clamp(50px, 7dvh, 62px);
+  min-height: min(62px, calc(clamp(50px, 7dvh, 62px) + var(--home-relax-topbar, 0px)));
 }
 
 .home-dashboard-default .home-streak-card {
@@ -93,6 +96,8 @@
 
 .home-dashboard-default .home-today-panel {
   min-height: 0;
+  padding-top: calc(clamp(7px, 1dvh, 10px) + var(--home-relax-today-side, 0px));
+  padding-bottom: calc(clamp(6px, 0.9dvh, 8px) + var(--home-relax-today-side, 0px));
 }
 
 .home-dashboard-default .home-section-heading {
@@ -124,6 +129,7 @@
 
 .home-dashboard-default .home-alert-card {
   padding: clamp(7px, 1dvh, 10px);
+  padding-block: calc(clamp(7px, 1dvh, 10px) + var(--home-relax-alert-side, 0px));
 }
 
 .home-dashboard-default .home-alert-heading {
@@ -250,6 +256,7 @@
 
   .home-dashboard-default .home-alert-card {
     padding: 7px 8px;
+    padding-block: calc(7px + var(--home-relax-alert-side, 0px));
   }
 
   .home-dashboard-default .home-alert-heading {
@@ -325,7 +332,7 @@
 
 @media (max-height: 760px) {
   .home-dashboard-default {
-    --home-fit-gap: 5px;
+    --home-fit-gap-base: 5px;
   }
 
   .home-dashboard-default .home-study-scene {
@@ -336,8 +343,8 @@
 
 @media (max-height: 640px) {
   .home-dashboard-default {
-    --home-fit-hero-height: 145px;
-    --home-fit-row-height: 40px;
+    --home-fit-hero-height-base: 145px;
+    --home-fit-row-height-base: 40px;
   }
 
   .home-dashboard-default .home-study-scene {
