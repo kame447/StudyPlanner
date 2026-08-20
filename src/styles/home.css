@@ -260,7 +260,7 @@
   padding: 15px 16px 62px;
   border-radius: var(--home-radius);
   background:
-    linear-gradient(90deg, rgba(245, 250, 255, 0.99) 0%, rgba(245, 250, 255, 0.98) 55%, rgba(255, 255, 255, 0.2) 100%),
+    linear-gradient(90deg, rgba(245, 250, 255, 0.99) 0%, rgba(245, 250, 255, 0.98) 56%, rgba(255, 255, 255, 0.24) 100%),
     #fff;
 }
 
@@ -268,28 +268,28 @@
   position: relative;
   z-index: 2;
   width: 56%;
-  min-width: 0;
+  min-width: 245px;
 }
 
 .home-eyebrow {
-  margin: 0 0 7px;
+  margin: 0 0 6px;
   color: var(--home-blue);
   font-size: 0.72rem;
   font-weight: 900;
 }
 
 .home-next-copy h1 {
-  margin: 0 0 10px;
-  color: #10172a;
-  font-size: 1.35rem;
+  margin: 0 0 9px;
+  color: #11182c;
+  font-size: 1.32rem;
   line-height: 1.18;
 }
 
 .home-next-meta {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   color: #26344f;
-  font-size: 0.73rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -306,11 +306,11 @@
 }
 
 .home-empty-copy {
-  max-width: 250px;
+  max-width: 280px;
   margin: 0;
   color: var(--home-muted);
-  font-size: 0.74rem;
-  line-height: 1.65;
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 
 .home-study-scene {
@@ -318,17 +318,17 @@
   z-index: 1;
   top: 0;
   right: 0;
-  width: 56%;
+  width: 55%;
   height: 177px;
   overflow: hidden;
 }
 
 .home-scene-window {
   position: absolute;
-  inset: 0 0 34px;
+  inset: 0 0 34px 0;
   background:
-    linear-gradient(90deg, transparent 45%, rgba(205, 225, 244, 0.72) 46%, rgba(205, 225, 244, 0.72) 49%, transparent 50%),
-    linear-gradient(180deg, transparent 46%, rgba(205, 225, 244, 0.58) 47%, rgba(205, 225, 244, 0.58) 50%, transparent 51%),
+    linear-gradient(90deg, transparent 45%, rgba(206, 225, 244, 0.72) 46%, rgba(206, 225, 244, 0.72) 49%, transparent 50%),
+    linear-gradient(180deg, transparent 46%, rgba(206, 225, 244, 0.58) 47%, rgba(206, 225, 244, 0.58) 50%, transparent 51%),
     linear-gradient(145deg, #fbfdff 0%, #edf7ff 100%);
 }
 
@@ -377,6 +377,7 @@
   transform-origin: bottom center;
   border-radius: 4px;
   background: linear-gradient(90deg, #0f5d9e, #2f83c3);
+  box-shadow: 0 1px 2px rgba(18, 67, 110, 0.2);
 }
 
 .home-scene-books {
@@ -483,7 +484,7 @@
   gap: 9px;
   border: 0;
   border-radius: 11px;
-  background: linear-gradient(180deg, #0b77ff, #0565ed);
+  background: linear-gradient(180deg, #0b72ff, #0562ec);
   color: #fff;
   box-shadow: 0 7px 16px rgba(8, 107, 255, 0.22);
   font-size: 0.96rem;
@@ -502,7 +503,7 @@
   color: var(--home-blue);
 }
 
-/* Schedule ----------------------------------------------------------- */
+/* Shared panel ------------------------------------------------------- */
 
 .home-panel {
   padding: 10px 12px 8px;
@@ -519,7 +520,6 @@
 
 .home-section-heading h2 {
   margin: 0;
-  color: #172039;
   font-size: 0.8rem;
 }
 
@@ -536,17 +536,20 @@
   cursor: pointer;
 }
 
+/* Today schedule ----------------------------------------------------- */
+
 .home-today-panel {
-  min-height: 0;
+  display: block;
 }
 
 .home-schedule-list {
+  min-height: 0;
   max-height: 224px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #aab4c4 transparent;
-  border: 1px solid #ebeff5;
+  border: 1px solid #eef1f5;
   border-radius: 12px;
   background: #fff;
 }
@@ -560,29 +563,30 @@
   background: #aab4c4;
 }
 
-.home-schedule-row {
-  position: relative;
+.home-schedule-row,
+.home-schedule-add-row,
+.home-schedule-empty {
   width: 100%;
   min-height: 54px;
+  border: 0;
+  background: #fff;
+}
+
+.home-schedule-row {
+  position: relative;
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 7px;
   padding: 7px 9px;
-  border: 0;
   border-bottom: 1px solid #edf0f4;
-  background: #fff;
   color: var(--home-ink);
   text-align: left;
   cursor: pointer;
 }
 
-.home-schedule-row:last-child {
+.home-schedule-row:last-of-type {
   border-bottom: 0;
-}
-
-.home-schedule-row.future {
-  background: #fbfdff;
 }
 
 .home-time-dot {
@@ -602,8 +606,7 @@
   position: absolute;
   top: 18px;
   left: 8px;
-  width: 1px;
-  height: 42px;
+  height: 45px;
   border-left: 1px dashed #cbd5e4;
 }
 
@@ -615,12 +618,6 @@
   background: #31a56f;
 }
 
-.home-schedule-row.future .home-time-dot {
-  background: #fff;
-  color: var(--home-blue);
-  border: 1.5px solid #77aefb;
-}
-
 .home-schedule-content {
   min-width: 0;
   display: grid;
@@ -628,17 +625,16 @@
 }
 
 .home-schedule-content time {
-  color: #607495;
-  font-size: 0.65rem;
+  color: #5f7191;
+  font-size: 0.67rem;
   font-weight: 800;
 }
 
 .home-schedule-content strong {
   overflow: hidden;
-  color: #1a243d;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
 }
 
 .home-schedule-content small {
@@ -646,58 +642,60 @@
   align-items: center;
   gap: 4px;
   overflow: hidden;
-  color: #64718a;
+  color: #5c6b83;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.59rem;
-}
-
-.home-schedule-add-row,
-.home-schedule-empty {
-  width: 100%;
-  min-height: 48px;
-  border: 0;
-  background: #fbfdff;
-  color: #5d6d88;
-  cursor: pointer;
+  font-size: 0.61rem;
 }
 
 .home-schedule-add-row {
   display: grid;
-  grid-template-columns: 22px 1fr 16px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 7px;
   padding: 7px 9px;
+  border-top: 1px solid #edf0f4;
+  color: #56708e;
   text-align: left;
+  cursor: pointer;
 }
 
-.home-schedule-add-row > span,
-.home-schedule-empty > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.home-schedule-add-row > svg:first-child {
   color: var(--home-blue);
 }
 
-.home-schedule-add-row strong {
-  font-size: 0.7rem;
+.home-schedule-add-row span {
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .home-schedule-empty {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 16px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  gap: 7px;
+  padding: 7px 9px;
+  color: #64728a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-schedule-empty span {
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .home-scroll-hint {
-  margin: 5px 0 0;
-  color: #8190a6;
+  margin: 6px 0 0;
+  color: #8090a7;
   text-align: center;
+  font-size: 0.6rem;
+}
+
+.home-schedule-date-label {
+  color: #8996a8;
   font-size: 0.58rem;
+  font-weight: 700;
 }
 
 /* Alerts ------------------------------------------------------------- */
@@ -710,28 +708,27 @@
 
 .home-alert-card {
   min-width: 0;
-  min-height: 86px;
-  padding: 10px 11px;
-  border-radius: 13px;
+  padding: 10px;
+  border-radius: var(--home-radius);
   text-align: left;
   cursor: pointer;
 }
 
 .home-alert-card.danger {
-  background: linear-gradient(145deg, #fff7f7, #fff1f2);
+  background: linear-gradient(145deg, #fff8f8, #fff1f3);
 }
 
 .home-alert-card.warning {
-  background: linear-gradient(145deg, #fffaf5, #fff5ec);
+  background: linear-gradient(145deg, #fffaf5, #fff4ec);
 }
 
 .home-alert-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
   margin-bottom: 7px;
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   font-weight: 900;
 }
 
@@ -746,7 +743,7 @@
 
 .home-alert-body {
   display: grid;
-  grid-template-columns: 23px minmax(0, 1fr) 15px;
+  grid-template-columns: 24px minmax(0, 1fr) 15px;
   align-items: center;
   gap: 6px;
   color: #24314a;
@@ -762,25 +759,25 @@
 
 .home-alert-body small {
   color: #6a7689;
-  font-size: 0.58rem;
+  font-size: 0.59rem;
 }
 
 .home-alert-body strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
 }
 
 /* Weekly progress ---------------------------------------------------- */
 
 .home-progress-panel {
-  padding-bottom: 10px;
+  padding-bottom: 11px;
 }
 
 .home-progress-body {
   display: grid;
-  grid-template-columns: 72px 124px minmax(0, 1fr);
+  grid-template-columns: 72px 122px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
@@ -795,8 +792,8 @@
 }
 
 .home-progress-ring > div {
-  width: 52px;
-  height: 52px;
+  width: 53px;
+  height: 53px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -804,39 +801,42 @@
 }
 
 .home-progress-ring strong {
-  font-size: 1.03rem;
+  font-size: 1rem;
 }
 
 .home-progress-copy {
   display: grid;
   gap: 4px;
-  color: #6b7890;
-  font-size: 0.61rem;
+  color: #6c7890;
+  font-size: 0.63rem;
 }
 
 .home-progress-copy span {
   display: flex;
   justify-content: space-between;
-  gap: 7px;
+  gap: 6px;
 }
 
 .home-progress-copy strong {
   color: #25314a;
 }
 
-.home-progress-copy .negative,
-.home-progress-copy .positive {
+.home-progress-copy .negative {
   justify-content: flex-start;
+  color: #eb3547;
   font-weight: 900;
 }
 
-.home-progress-copy .negative { color: #eb3547; }
-.home-progress-copy .positive { color: #1f9a69; }
+.home-progress-copy .positive {
+  justify-content: flex-start;
+  color: #1f9a69;
+  font-weight: 900;
+}
 
 .home-week-chart {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 
 .home-chart-legend {
@@ -844,7 +844,7 @@
   justify-content: flex-end;
   gap: 10px;
   color: #53627a;
-  font-size: 0.55rem;
+  font-size: 0.58rem;
   font-weight: 800;
 }
 
@@ -862,11 +862,11 @@
 .home-chart-legend .planned::before { border: 1px dashed #63a2ff; background: #fff; }
 
 .home-chart-bars {
-  height: 64px;
+  height: 68px;
   display: grid;
-  grid-template-columns: repeat(7, minmax(14px, 1fr));
+  grid-template-columns: repeat(7, minmax(15px, 1fr));
   align-items: end;
-  gap: 3px;
+  gap: 4px;
 }
 
 .home-chart-day {
@@ -1058,11 +1058,7 @@
 
 @media (max-width: 455px) {
   .home-topbar {
-    grid-template-columns: 112px minmax(0, 1fr) 76px;
-  }
-
-  .home-avatar-button {
-    display: none;
+    grid-template-columns: 112px minmax(0, 1fr) 116px;
   }
 
   .home-date-ring {
@@ -1111,7 +1107,20 @@
 
 @media (max-width: 380px) {
   .home-topbar {
-    grid-template-columns: 104px minmax(0, 1fr) 72px;
+    grid-template-columns: 104px minmax(0, 1fr) 106px;
+  }
+
+  .home-icon-button,
+  .home-avatar-button {
+    width: 33px;
+    height: 33px;
+    min-width: 33px;
+  }
+
+  .home-avatar-button .user-avatar,
+  .home-avatar-button img {
+    width: 31px;
+    height: 31px;
   }
 
   .home-streak-card span,
