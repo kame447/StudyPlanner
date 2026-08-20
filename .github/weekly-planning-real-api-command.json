@@ -1,6 +1,6 @@
 {
   "profile": "checkpoint",
   "repetitions": 1,
-  "request_id": "20260821-debug-repeated-task-question-main-1",
-  "reason": "Temporary diagnostic run from exact main application code. Reproduce the observed AI Planning transcript: request 8/24-29, then mention two drinking events, part-time work, camp-song practice, then add app development and conference-material preparation. Verify that newly named work is accepted into the Stable V5 Fact Graph and that the application does not remain in missing-task-identity questioning. This branch changes only diagnostic test/workflow files; no product code is changed."
+  "request_id": "20260821-debug-repeated-task-question-main-2",
+  "reason": "Temporary diagnostic rerun from exact main application code after fixing only the observation test typecheck. Reproduce the observed AI Planning transcript: request 8/24-29, then mention two drinking events, part-time work, camp-song practice, then add app development and conference-material preparation. Verify that newly named work is accepted into the Stable V5 Fact Graph and that the application does not remain in missing-task-identity questioning. Product code is unchanged."
 }
