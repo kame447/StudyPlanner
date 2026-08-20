@@ -126,7 +126,7 @@
 }
 
 .home-material-panel {
-  padding: 10px 12px 9px;
+  padding: calc(10px + var(--home-relax-material-side, 0px)) 12px calc(9px + var(--home-relax-material-side, 0px));
 }
 
 .home-material-list {
