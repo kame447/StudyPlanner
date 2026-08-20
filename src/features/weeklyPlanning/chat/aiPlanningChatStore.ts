@@ -6,7 +6,6 @@ import {
 } from '../application/weeklyPlanningStableV5SessionCodec';
 
 const CHAT_INDEX_VERSION = 1 as const;
-const MAX_CHAT_COUNT = 24;
 const TITLE_MAX_LENGTH = 32;
 const SEARCH_TEXT_MAX_LENGTH = 12_000;
 
@@ -16,7 +15,6 @@ export interface AiPlanningChatRecord {
   createdAt: string;
   updatedAt: string;
   weekStartDate: string | null;
-  searchText?: string;
 }
 
 export interface AiPlanningChatIndex {
@@ -40,6 +38,10 @@ function snapshotKey(userId: string, chatId: string): string {
   return `studyplanner.aiPlanning.chat.v1.${userId}.${chatId}`;
 }
 
+function searchTextKey(userId: string, chatId: string): string {
+  return `studyplanner.aiPlanning.chatSearch.v1.${userId}.${chatId}`;
+}
+
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -52,7 +54,6 @@ function isChatRecord(value: unknown): value is AiPlanningChatRecord {
     && typeof record.title === 'string'
     && isTimestamp(record.createdAt)
     && isTimestamp(record.updatedAt)
-    && (record.searchText === undefined || typeof record.searchText === 'string')
     && (record.weekStartDate === null
       || (typeof record.weekStartDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.weekStartDate)));
 }
@@ -64,7 +65,6 @@ function createBlankRecord(now = new Date().toISOString()): AiPlanningChatRecord
     createdAt: now,
     updatedAt: now,
     weekStartDate: null,
-    searchText: '',
   };
 }
 
@@ -75,6 +75,16 @@ function createBlankIndex(): AiPlanningChatIndex {
     activeChatId: chat.id,
     chats: [chat],
   };
+}
+
+function deriveSearchText(messages: readonly WeeklyPlanningMessage[]): string {
+  const text = messages
+    .map((message) => message.content.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+  return text.length > SEARCH_TEXT_MAX_LENGTH
+    ? text.slice(text.length - SEARCH_TEXT_MAX_LENGTH)
+    : text;
 }
 
 export function loadAiPlanningChatIndex(userId: string): AiPlanningChatIndex {
@@ -90,7 +100,7 @@ export function loadAiPlanningChatIndex(userId: string): AiPlanningChatIndex {
     ) {
       return createBlankIndex();
     }
-    const chats = parsed.chats.filter(isChatRecord).slice(0, MAX_CHAT_COUNT);
+    const chats = parsed.chats.filter(isChatRecord);
     if (chats.length === 0) return createBlankIndex();
     const activeChatId = chats.some((chat) => chat.id === parsed.activeChatId)
       ? parsed.activeChatId
@@ -104,8 +114,7 @@ export function loadAiPlanningChatIndex(userId: string): AiPlanningChatIndex {
 export function saveAiPlanningChatIndex(userId: string, index: AiPlanningChatIndex): void {
   if (typeof window === 'undefined') return;
   const chats = [...index.chats]
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .slice(0, MAX_CHAT_COUNT);
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const activeChatId = chats.some((chat) => chat.id === index.activeChatId)
     ? index.activeChatId
     : chats[0]?.id ?? '';
@@ -125,13 +134,12 @@ export function createAiPlanningChat(index: AiPlanningChatIndex): {
   chat: AiPlanningChatRecord;
 } {
   const chat = createBlankRecord();
-  const chats = [chat, ...index.chats].slice(0, MAX_CHAT_COUNT);
   return {
     chat,
     index: {
       version: CHAT_INDEX_VERSION,
       activeChatId: chat.id,
-      chats,
+      chats: [chat, ...index.chats],
     },
   };
 }
@@ -147,7 +155,7 @@ export function setActiveAiPlanningChat(
 export function updateAiPlanningChatRecord(
   index: AiPlanningChatIndex,
   chatId: string,
-  update: Partial<Pick<AiPlanningChatRecord, 'title' | 'updatedAt' | 'weekStartDate' | 'searchText'>>,
+  update: Partial<Pick<AiPlanningChatRecord, 'title' | 'updatedAt' | 'weekStartDate'>>,
 ): AiPlanningChatIndex {
   return {
     ...index,
@@ -163,6 +171,7 @@ export function deleteAiPlanningChat(
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.removeItem(snapshotKey(userId, chatId));
+      window.localStorage.removeItem(searchTextKey(userId, chatId));
     } catch {
       // Best effort cleanup.
     }
@@ -193,6 +202,14 @@ export function saveAiPlanningChatSnapshot(
   if (!checkpoint) return false;
   try {
     window.localStorage.setItem(snapshotKey(userId, chatId), checkpoint.raw);
+    try {
+      window.localStorage.setItem(
+        searchTextKey(userId, chatId),
+        deriveSearchText(snapshot.planningState.messages),
+      );
+    } catch {
+      // Search cache is optional; the validated snapshot remains authoritative.
+    }
     return true;
   } catch {
     return false;
@@ -227,18 +244,6 @@ export function deriveAiPlanningChatTitle(messages: readonly WeeklyPlanningMessa
     : firstUserMessage;
 }
 
-export function deriveAiPlanningChatSearchText(
-  messages: readonly WeeklyPlanningMessage[],
-): string {
-  const text = messages
-    .map((message) => message.content.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .join('\n');
-  return text.length > SEARCH_TEXT_MAX_LENGTH
-    ? text.slice(text.length - SEARCH_TEXT_MAX_LENGTH)
-    : text;
-}
-
 export function searchAiPlanningChats(
   userId: string,
   chats: readonly AiPlanningChatRecord[],
@@ -247,13 +252,23 @@ export function searchAiPlanningChats(
   const normalizedQuery = query.trim().toLocaleLowerCase('ja-JP');
   if (!normalizedQuery) return [...chats];
   return chats.filter((chat) => {
-    const indexedText = `${chat.title}\n${chat.searchText ?? ''}`
-      .toLocaleLowerCase('ja-JP');
-    if (indexedText.includes(normalizedQuery)) return true;
-    if (chat.searchText) return false;
+    if (chat.title.toLocaleLowerCase('ja-JP').includes(normalizedQuery)) return true;
+    let searchable = '';
+    try {
+      searchable = window.localStorage.getItem(searchTextKey(userId, chat.id)) ?? '';
+    } catch {
+      searchable = '';
+    }
+    if (searchable.toLocaleLowerCase('ja-JP').includes(normalizedQuery)) return true;
+    if (searchable) return false;
     const snapshot = loadAiPlanningChatSnapshot(userId, chat);
-    return snapshot?.planningState.messages.some((message) =>
-      message.content.toLocaleLowerCase('ja-JP').includes(normalizedQuery),
-    ) ?? false;
+    if (!snapshot) return false;
+    const fallback = deriveSearchText(snapshot.planningState.messages);
+    try {
+      window.localStorage.setItem(searchTextKey(userId, chat.id), fallback);
+    } catch {
+      // Search still works for this invocation without caching.
+    }
+    return fallback.toLocaleLowerCase('ja-JP').includes(normalizedQuery);
   });
 }
