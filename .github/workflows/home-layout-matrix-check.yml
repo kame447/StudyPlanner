@@ -1,0 +1,194 @@
+name: Home Layout Matrix Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  render-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install isolated Playwright
+        run: npm install --prefix /tmp/home-matrix --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Install Chromium
+        run: /tmp/home-matrix/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview
+        shell: bash
+        run: |
+          npm run preview:vite -- --host 127.0.0.1 --port 4173 > /tmp/home-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/home-preview.log
+          exit 1
+
+      - name: Render viewport matrix
+        shell: bash
+        run: |
+          mkdir -p artifacts/home-matrix
+          cat > /tmp/home-matrix/render.mjs <<'NODE'
+          import { chromium } from '@playwright/test';
+          import fs from 'node:fs';
+
+          const viewports = [
+            [320, 568],
+            [360, 640],
+            [375, 667],
+            [390, 844],
+            [393, 852],
+            [412, 915],
+            [430, 932],
+            [511, 1094],
+            [768, 710],
+            [1024, 768],
+          ];
+
+          const browser = await chromium.launch({ headless: true });
+          const all = [];
+
+          for (const [width, height] of viewports) {
+            const page = await browser.newPage({ viewport: { width, height } });
+            await page.addInitScript(() => {
+              const user = {
+                id: 'render-user',
+                email: 'render@example.com',
+                username: 'render-user',
+                avatar: '',
+                createdAt: '2026-08-20T00:00:00.000Z',
+              };
+              const plan = {
+                id: 'render-plan',
+                seriesId: 'render-plan',
+                userId: user.id,
+                title: '情報資源総論',
+                subject: '情報科学',
+                type: 'study',
+                date: '2026-08-20',
+                startTime: '10:20',
+                endTime: '11:50',
+                memo: '',
+                recurrence: null,
+                createdAt: '2026-08-20T00:00:00.000Z',
+                updatedAt: '2026-08-20T00:00:00.000Z',
+              };
+              const material = {
+                id: 'material-1',
+                userId: user.id,
+                name: '基本情報技術者テキスト',
+                subjectId: 'subject-1',
+                subjectName: '情報科学',
+                status: 'active',
+                progressUnit: 'page',
+                totalUnits: 500,
+                currentUnit: 120,
+                createdAt: '2026-08-10T00:00:00.000Z',
+                updatedAt: '2026-08-20T00:00:00.000Z',
+              };
+              localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+              localStorage.setItem('studyplanner.session', user.id);
+              localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
+              localStorage.setItem('studyplanner.actuals', '[]');
+              localStorage.setItem('studyplanner.todos.v1', '[]');
+              localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
+            });
+
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+            await page.locator('section[aria-label="ホーム"]').waitFor();
+            await page.waitForTimeout(500);
+
+            const metrics = await page.evaluate(({ width, height }) => {
+              const rect = (selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+                const r = element.getBoundingClientRect();
+                return { top: r.top, bottom: r.bottom, height: r.height, width: r.width };
+              };
+              const isVisible = (element) => {
+                const style = getComputedStyle(element);
+                const r = element.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+              };
+              const materialPanels = [...document.querySelectorAll('.home-material-panel')];
+              const visibleMaterialPanels = materialPanels.filter(isVisible);
+              const scheduleList = document.querySelector('.home-schedule-list');
+              const nav = document.querySelector('.home-bottom-nav');
+              const progress = document.querySelector('.home-progress-panel');
+              const dashboard = document.querySelector('.home-dashboard-default');
+              const core = document.querySelector('.home-core-sections');
+              const lastCore = core?.lastElementChild;
+              const coreBottom = lastCore?.getBoundingClientRect().bottom ?? 0;
+              const navTop = nav?.getBoundingClientRect().top ?? 0;
+              const materialTop = visibleMaterialPanels[0]?.getBoundingClientRect().top ?? null;
+              return {
+                viewport: `${width}x${height}`,
+                topbar: rect('.home-topbar'),
+                hero: rect('.home-next-card'),
+                today: rect('.home-today-panel'),
+                alerts: rect('.home-alert-grid'),
+                progress: rect('.home-progress-panel'),
+                nav: rect('.home-bottom-nav'),
+                material: visibleMaterialPanels[0]
+                  ? (() => { const r = visibleMaterialPanels[0].getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height, width: r.width }; })()
+                  : null,
+                visibleMaterialPanelCount: visibleMaterialPanels.length,
+                totalMaterialPanelCount: materialPanels.length,
+                materialProbeVisibility: document.querySelector('.home-material-measurements')
+                  ? getComputedStyle(document.querySelector('.home-material-measurements')).visibility
+                  : 'missing',
+                coreToNavGap: navTop - coreBottom,
+                materialGapToNav: materialTop === null ? null : navTop - visibleMaterialPanels[0].getBoundingClientRect().bottom,
+                scheduleScroll: scheduleList
+                  ? { clientHeight: scheduleList.clientHeight, scrollHeight: scheduleList.scrollHeight }
+                  : null,
+                bodyScroll: { clientHeight: document.documentElement.clientHeight, scrollHeight: document.documentElement.scrollHeight },
+                progressHeight: progress?.getBoundingClientRect().height ?? 0,
+                dashboardHeight: dashboard?.getBoundingClientRect().height ?? 0,
+              };
+            }, { width, height });
+
+            all.push(metrics);
+            await page.screenshot({
+              path: `artifacts/home-matrix/${width}x${height}.png`,
+              fullPage: true,
+            });
+            await page.close();
+          }
+
+          fs.writeFileSync('artifacts/home-matrix/metrics.json', JSON.stringify(all, null, 2));
+          console.log(JSON.stringify(all, null, 2));
+          await browser.close();
+          NODE
+          node /tmp/home-matrix/render.mjs
+
+      - name: Upload matrix artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-layout-matrix-${{ github.sha }}
+          path: artifacts/home-matrix/
+          if-no-files-found: error
+          retention-days: 7
