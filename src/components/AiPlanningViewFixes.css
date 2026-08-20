@@ -1,0 +1,170 @@
+.ai-planning-view.home-dashboard {
+  right: auto;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  width: min(100%, 508px);
+  height: auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 4px 12px 8px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 244, 218, 0.2), transparent 24%),
+    linear-gradient(180deg, #fbfdff 0%, #f5faf7 100%);
+}
+
+.ai-planning-view.home-dashboard .ai-planning-card {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  border-radius: 14px;
+  box-shadow: 0 7px 20px rgba(32, 55, 91, 0.05);
+}
+
+.ai-planning-view.home-dashboard .ai-planning-heading {
+  gap: 11px;
+  padding: 14px 16px 12px;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-heading-icon {
+  width: 43px;
+  height: 43px;
+  border-radius: 13px;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-heading h1 {
+  font-size: 1.3rem;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-heading p {
+  margin-top: 4px;
+  font-size: 0.72rem;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-conversation {
+  padding: 16px 14px 22px;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-message-row {
+  margin-bottom: 14px;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-message-body {
+  max-width: 82%;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-plan-card {
+  width: calc(100% - 42px);
+  margin: 4px 0 18px 42px;
+  padding: 14px;
+}
+
+.ai-planning-view.home-dashboard .ai-planning-composer {
+  margin: 0 10px 10px;
+}
+
+.ai-planning-starters {
+  display: grid;
+  gap: 11px;
+  width: min(100%, 430px);
+  margin: 10px auto 18px;
+  padding: 4px 2px;
+}
+
+.ai-planning-starters > p {
+  margin: 0;
+  color: #68758a;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.ai-planning-starter-list {
+  display: grid;
+  gap: 7px;
+}
+
+.ai-planning-starter-list button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid #dce6f1;
+  border-radius: 12px;
+  background: #fff;
+  color: #26364f;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(32, 55, 91, 0.035);
+}
+
+.ai-planning-starter-list button:hover {
+  border-color: #b8d8ff;
+  background: #f8fbff;
+}
+
+.ai-planning-starter-list button span {
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.ai-planning-starter-list button svg {
+  color: #0876f9;
+}
+
+.ai-planning-view .home-bottom-nav.ai-planning-home-nav {
+  z-index: 1250;
+}
+
+.ai-planning-view .home-bottom-nav.ai-planning-home-nav button:first-child {
+  color: var(--home-blue);
+}
+
+.ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) {
+  color: var(--home-blue);
+}
+
+.ai-planning-view .home-bottom-nav.ai-planning-home-nav .home-nav-active-circle {
+  background: var(--home-blue);
+}
+
+@media (max-width: 520px) {
+  .ai-planning-view.home-dashboard {
+    width: 100%;
+    padding: 4px 8px 8px;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-heading {
+    padding-inline: 12px;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-conversation {
+    padding-inline: 10px;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-plan-card {
+    width: calc(100% - 38px);
+    margin-left: 38px;
+  }
+}
+
+@media (max-width: 380px) {
+  .ai-planning-view.home-dashboard .ai-planning-heading p {
+    font-size: 0.67rem;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-message-body {
+    max-width: 86%;
+  }
+
+  .ai-planning-starter-list button span {
+    font-size: 0.72rem;
+  }
+}
