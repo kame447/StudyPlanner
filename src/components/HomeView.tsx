@@ -15,10 +15,11 @@ import {
   Play,
   Target,
 } from 'lucide-react';
-import { getWeekdayLabel, minutesBetween } from '../lib/date';
+import { minutesBetween } from '../lib/date';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domain';
+import { HomeDateDisplay } from './HomeDateDisplay';
 import { UserAvatar } from './UserAvatar';
 
 interface HomeViewProps {
@@ -79,8 +80,6 @@ export function HomeView({
     () => buildHomeDashboardModel({ plans, actuals, todos }),
     [actuals, plans, todos],
   );
-  const [year, month, day] = dashboard.today.split('-').map(Number);
-  const weekday = getWeekdayLabel(dashboard.today);
   const nextPlan = dashboard.nextPlan;
   const notificationCount = Math.min(
     9,
@@ -107,12 +106,7 @@ export function HomeView({
           </div>
         </div>
 
-        <div className="home-date-strip" aria-label={`${year}年${month}月${day}日 ${weekday}曜日`}>
-          <div className="home-date-cell"><span>{year}年</span></div>
-          <div className="home-date-cell"><span>{month}月</span></div>
-          <div className="home-date-cell"><span>{day}日</span></div>
-          <div className="home-date-cell"><span>{weekday}</span></div>
-        </div>
+        <HomeDateDisplay date={dashboard.today} />
 
         <div className="home-top-actions">
           <button className="home-icon-button" type="button" onClick={onOpenTodo} aria-label="通知とTodoを確認">
