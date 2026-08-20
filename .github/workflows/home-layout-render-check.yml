@@ -1,0 +1,146 @@
+name: Home Layout Render Check
+
+on:
+  push:
+    branches:
+      - ui/home-screen-redesign
+
+permissions:
+  contents: read
+
+jobs:
+  render-home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install isolated Playwright
+        run: npm install --prefix /tmp/home-render --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Install Chromium
+        run: /tmp/home-render/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview
+        shell: bash
+        run: |
+          npm run preview:vite -- --host 127.0.0.1 --port 4173 > /tmp/home-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/home-preview.log
+          exit 1
+
+      - name: Render and verify home
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cat > /tmp/home-render/render.mjs <<'NODE'
+          import { chromium } from '@playwright/test';
+          import fs from 'node:fs';
+
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({ viewport: { width: 511, height: 1094 } });
+          await page.addInitScript(() => {
+            const user = {
+              id: 'render-user',
+              email: 'render@example.com',
+              username: 'render-user',
+              avatar: '',
+              createdAt: '2026-08-20T00:00:00.000Z',
+            };
+            const plan = {
+              id: 'render-plan',
+              seriesId: 'render-plan',
+              userId: user.id,
+              title: '情報資源総論',
+              subject: '情報科学',
+              type: 'study',
+              date: '2026-08-20',
+              startTime: '10:20',
+              endTime: '11:50',
+              memo: '',
+              recurrence: null,
+              createdAt: '2026-08-20T00:00:00.000Z',
+              updatedAt: '2026-08-20T00:00:00.000Z',
+            };
+            localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+            localStorage.setItem('studyplanner.session', user.id);
+            localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
+            localStorage.setItem('studyplanner.actuals', '[]');
+            localStorage.setItem('studyplanner.todos.v1', '[]');
+            localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
+          });
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('section[aria-label="ホーム"]').waitFor();
+          await page.waitForTimeout(500);
+
+          const result = await page.evaluate(() => {
+            const visible = (element) => {
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+            };
+            const materialPanels = [...document.querySelectorAll('.home-material-panel')];
+            const visibleMaterialPanels = materialPanels.filter(visible);
+            const progress = document.querySelector('.home-progress-panel');
+            const nav = document.querySelector('.home-bottom-nav');
+            const navIcon = document.querySelector('.home-bottom-nav button:not(.active) svg');
+            const measurementRoot = document.querySelector('.home-material-measurements');
+            return {
+              materialPanelCount: materialPanels.length,
+              visibleMaterialPanelCount: visibleMaterialPanels.length,
+              visibleMaterialPanelHeight: visibleMaterialPanels[0]?.getBoundingClientRect().height ?? 0,
+              progressHeight: progress?.getBoundingClientRect().height ?? 0,
+              navHeight: nav?.getBoundingClientRect().height ?? 0,
+              navIconWidth: navIcon?.getBoundingClientRect().width ?? 0,
+              measurementVisibility: measurementRoot ? getComputedStyle(measurementRoot).visibility : 'missing',
+              dashboardBottom: document.querySelector('.home-dashboard-default')?.getBoundingClientRect().bottom ?? 0,
+              navTop: nav?.getBoundingClientRect().top ?? 0,
+            };
+          });
+
+          fs.writeFileSync('artifacts/home-layout-metrics.json', JSON.stringify(result, null, 2));
+          await page.screenshot({ path: 'artifacts/home-layout-511x1094.png', fullPage: true });
+
+          if (result.visibleMaterialPanelCount !== 1) {
+            throw new Error(`Expected exactly one visible supplemental material panel, got ${result.visibleMaterialPanelCount}`);
+          }
+          if (result.measurementVisibility !== 'hidden') {
+            throw new Error(`Measurement copies must be hidden, got ${result.measurementVisibility}`);
+          }
+          if (result.progressHeight > 150) {
+            throw new Error(`Weekly progress stretched unexpectedly: ${result.progressHeight}px`);
+          }
+          if (result.navHeight < 68 || result.navIconWidth < 23) {
+            throw new Error(`Bottom navigation is still too small: nav=${result.navHeight}px icon=${result.navIconWidth}px`);
+          }
+
+          await browser.close();
+          NODE
+          node /tmp/home-render/render.mjs
+
+      - name: Upload render artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-layout-render-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
