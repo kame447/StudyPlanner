@@ -1,0 +1,64 @@
+.app-shell.home-app-shell {
+  --home-nav-height: 74px;
+  --home-nav-icon-size: 25px;
+  --home-nav-label-size: 0.66rem;
+  --home-nav-active-size: 40px;
+  --home-nav-active-icon-size: 22px;
+  padding-bottom: calc(var(--home-nav-height) + 14px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-shell.home-app-shell:has(.home-dashboard-default) {
+  padding-bottom: calc(var(--home-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
+}
+
+.home-bottom-nav {
+  height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding: 7px 8px env(safe-area-inset-bottom, 0px);
+}
+
+.home-bottom-nav button {
+  gap: 3px;
+}
+
+.home-bottom-nav svg {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+}
+
+.home-bottom-nav span:last-child {
+  font-size: var(--home-nav-label-size);
+}
+
+.home-nav-active-circle {
+  width: var(--home-nav-active-size);
+  height: var(--home-nav-active-size);
+  margin-top: -16px;
+}
+
+.home-nav-active-circle svg {
+  width: var(--home-nav-active-icon-size);
+  height: var(--home-nav-active-icon-size);
+}
+
+@media (max-height: 760px) {
+  .app-shell.home-app-shell {
+    --home-nav-height: 68px;
+    --home-nav-icon-size: 23px;
+    --home-nav-label-size: 0.62rem;
+    --home-nav-active-size: 37px;
+    --home-nav-active-icon-size: 20px;
+    padding-bottom: calc(var(--home-nav-height) + 10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-shell.home-app-shell:has(.home-dashboard-default) {
+    padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .home-bottom-nav {
+    padding-top: 6px;
+  }
+
+  .home-nav-active-circle {
+    margin-top: -14px;
+  }
+}
