@@ -1,0 +1,53 @@
+/*
+ * Reusable containment contract for responsive cards.
+ *
+ * Apply `layout-contained-panel` to a surface whose middle region is allowed
+ * to absorb vertical pressure, and `layout-scroll-region` to that middle
+ * region. The outer surface always owns its visual boundary; when available
+ * block-size becomes small, the designated inner region scrolls instead of
+ * painting outside the card.
+ *
+ * Block-axis sizing inside this contract must come from block-axis inputs
+ * (content, dvh, or measured layout variables). Width-only breakpoints may
+ * change horizontal geometry, but must not independently enlarge row height.
+ */
+.layout-contained-panel,
+.home-dashboard-default .home-today-panel {
+  min-inline-size: 0;
+  min-block-size: 0;
+  max-inline-size: 100%;
+  display: grid;
+  grid-template-rows: max-content minmax(0, 1fr) max-content;
+  align-content: stretch;
+}
+
+.layout-contained-panel > *,
+.home-dashboard-default .home-today-panel > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.layout-scroll-region,
+.home-dashboard-default .home-today-panel > .home-schedule-list {
+  min-inline-size: 0;
+  min-block-size: 0;
+  max-inline-size: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * Home adapter: home-fit.css owns vertical density through
+ * --home-fit-row-height. Do not let a wide viewport silently replace that
+ * block-axis decision with a vw-derived min-height.
+ */
+@media (min-width: 700px) {
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    min-height: var(--home-fit-row-height);
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    min-height: clamp(32px, calc(var(--home-fit-row-height) - 10px), 48px);
+  }
+}
