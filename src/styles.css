@@ -5,6 +5,7 @@
 @import './styles/home.css';
 @import './styles/home-sections.css';
 @import './styles/home-responsive.css';
+@import './styles/home-weekly-progress.css';
 @import './styles/month-view.css';
 @import './styles/week-view.css';
 @import './styles/day-timeline.css';
