@@ -64,3 +64,13 @@
     margin-top: -14px;
   }
 }
+
+@media (min-width: 900px) and (min-height: 1200px) {
+  .app-shell.home-app-shell:has(.home-dashboard-default) {
+    --home-nav-height: 112px;
+    --home-nav-icon-size: 33px;
+    --home-nav-label-size: 0.8rem;
+    --home-nav-active-size: 52px;
+    --home-nav-active-icon-size: 29px;
+  }
+}
