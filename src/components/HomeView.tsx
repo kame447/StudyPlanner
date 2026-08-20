@@ -59,7 +59,7 @@ const MAX_VISIBLE_TODAY_ROWS = 4;
 const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
 const TARGET_BOTTOM_GAP = 8;
 const DEFAULT_MAX_NEXT_CARD_HEIGHT = 226;
-const TALL_MAX_NEXT_CARD_HEIGHT = 276;
+const TALL_MAX_NEXT_CARD_HEIGHT = 286;
 const MAX_SCHEDULE_ROW_HEIGHT = 50;
 const MAX_TOPBAR_HEIGHT = 62;
 const TALL_VIEWPORT_MIN_HEIGHT = 1000;
@@ -178,7 +178,7 @@ export function HomeView({
         const maxScheduleSideRelaxation = isTallViewport ? 11 : 2;
         const maxTodaySideRelaxation = isTallViewport ? 12 : 5;
         const maxAlertSideRelaxation = isTallViewport ? 6 : 2;
-        const maxMaterialSideRelaxation = isTallViewport ? 10 : 6;
+        const maxMaterialSideRelaxation = isTallViewport ? 14 : 6;
         const maxSectionGap = isTallViewport ? 18 : 12;
 
         const setRelaxationProperty = (name: string, value: number) => {
