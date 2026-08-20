@@ -49,7 +49,7 @@ function estimateMaterialSectionHeight(studyMaterials: StudyMaterial[]): number 
     1,
     Math.min(3, studyMaterials.filter((material) => material.status !== 'archived').length),
   );
-  return 52 + visibleRows * 63;
+  return 60 + visibleRows * 63;
 }
 
 export function HomeView({
@@ -182,8 +182,12 @@ export function HomeView({
     }
   }
 
+  const dashboardClassName = isGettingStarted
+    ? 'home-dashboard home-dashboard-setup'
+    : 'home-dashboard home-dashboard-default';
+
   return (
-    <section className="home-dashboard" aria-label="ホーム">
+    <section className={dashboardClassName} aria-label="ホーム">
       <header className="home-topbar">
         <div className="home-streak-card" aria-label={`連続学習 ${dashboard.currentStreak}日`}>
           <Flame className="home-streak-flame" aria-hidden="true" size={30} />
