@@ -50,6 +50,11 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.locator('.ai-planning-heading h1')).toHaveText('AI計画');
   await expect(page.locator('.ai-planning-conversation')).toBeVisible();
   await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
+  await expect(page.getByRole('button', { name: '写真を追加' })).toBeVisible();
+  await expect(page.locator('.ai-planning-attachment-input')).toHaveAttribute(
+    'accept',
+    'image/png,image/jpeg',
+  );
   await expect(page.locator('.quick-entry-modal')).toHaveCount(0);
   await expect(page.locator('.ai-planning-view .segmented-control')).toHaveCount(0);
   await expect(page.getByText('相談', { exact: true })).toHaveCount(0);
@@ -89,7 +94,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
     ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
     modal: Number.parseInt(getComputedStyle(document.querySelector('.my-page-modal')?.parentElement).zIndex || '0', 10),
   }));
-  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
+  expect(profileStacking.modal).toBeGreaterThan(stacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.ai-planning-home-nav button').nth(2).click();
