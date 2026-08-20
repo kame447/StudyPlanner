@@ -8,6 +8,7 @@ import {
 const CHAT_INDEX_VERSION = 1 as const;
 const MAX_CHAT_COUNT = 24;
 const TITLE_MAX_LENGTH = 32;
+const SEARCH_TEXT_MAX_LENGTH = 12_000;
 
 export interface AiPlanningChatRecord {
   id: string;
@@ -15,6 +16,7 @@ export interface AiPlanningChatRecord {
   createdAt: string;
   updatedAt: string;
   weekStartDate: string | null;
+  searchText?: string;
 }
 
 export interface AiPlanningChatIndex {
@@ -50,6 +52,7 @@ function isChatRecord(value: unknown): value is AiPlanningChatRecord {
     && typeof record.title === 'string'
     && isTimestamp(record.createdAt)
     && isTimestamp(record.updatedAt)
+    && (record.searchText === undefined || typeof record.searchText === 'string')
     && (record.weekStartDate === null
       || (typeof record.weekStartDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.weekStartDate)));
 }
@@ -61,6 +64,7 @@ function createBlankRecord(now = new Date().toISOString()): AiPlanningChatRecord
     createdAt: now,
     updatedAt: now,
     weekStartDate: null,
+    searchText: '',
   };
 }
 
@@ -143,7 +147,7 @@ export function setActiveAiPlanningChat(
 export function updateAiPlanningChatRecord(
   index: AiPlanningChatIndex,
   chatId: string,
-  update: Partial<Pick<AiPlanningChatRecord, 'title' | 'updatedAt' | 'weekStartDate'>>,
+  update: Partial<Pick<AiPlanningChatRecord, 'title' | 'updatedAt' | 'weekStartDate' | 'searchText'>>,
 ): AiPlanningChatIndex {
   return {
     ...index,
@@ -223,18 +227,27 @@ export function deriveAiPlanningChatTitle(messages: readonly WeeklyPlanningMessa
     : firstUserMessage;
 }
 
+export function deriveAiPlanningChatSearchText(
+  messages: readonly WeeklyPlanningMessage[],
+): string {
+  const text = messages
+    .map((message) => message.content.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+  return text.length > SEARCH_TEXT_MAX_LENGTH
+    ? text.slice(text.length - SEARCH_TEXT_MAX_LENGTH)
+    : text;
+}
+
 export function searchAiPlanningChats(
-  userId: string,
   chats: readonly AiPlanningChatRecord[],
   query: string,
 ): AiPlanningChatRecord[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('ja-JP');
   if (!normalizedQuery) return [...chats];
-  return chats.filter((chat) => {
-    if (chat.title.toLocaleLowerCase('ja-JP').includes(normalizedQuery)) return true;
-    const snapshot = loadAiPlanningChatSnapshot(userId, chat);
-    return snapshot?.planningState.messages.some((message) =>
-      message.content.toLocaleLowerCase('ja-JP').includes(normalizedQuery),
-    ) ?? false;
-  });
+  return chats.filter((chat) =>
+    `${chat.title}\n${chat.searchText ?? ''}`
+      .toLocaleLowerCase('ja-JP')
+      .includes(normalizedQuery),
+  );
 }
