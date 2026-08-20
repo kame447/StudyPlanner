@@ -180,13 +180,14 @@
     font-size: 0.7rem;
   }
 
+  /* Vertical density is owned by home-fit.css, not by viewport width. */
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
-    min-height: clamp(50px, 5.6vw, 60px);
+    min-height: var(--home-fit-row-height);
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    min-height: clamp(40px, 4.6vw, 48px);
+    min-height: clamp(32px, calc(var(--home-fit-row-height) - 10px), 48px);
   }
 
   .home-dashboard-default .home-schedule-content {
