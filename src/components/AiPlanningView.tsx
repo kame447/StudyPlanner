@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
 import {
   BarChart3,
   BookOpen,
@@ -6,6 +14,7 @@ import {
   ChevronRight,
   CircleUserRound,
   House,
+  LoaderCircle,
   Menu,
   MessageCircle,
   Mic,
@@ -33,6 +42,7 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
   addDays,
   formatMinutes,
@@ -41,6 +51,7 @@ import {
   parseTimeToMinutes,
   sortByDateTime,
 } from '../lib/date';
+import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import type { Actual, Plan } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import './AiPlanningView.css';
@@ -53,6 +64,11 @@ interface AiPlanningViewProps {
   plans: Plan[];
   actuals: Actual[];
   onClose: () => void;
+}
+
+interface PendingPlanningImageAttachment {
+  file: File;
+  previewUrl: string;
 }
 
 const PREVIEW_START_HOUR = 0;
@@ -127,7 +143,10 @@ export function AiPlanningView({
     loadAiPlanningChatIndex(userId),
   );
   const [topInset, setTopInset] = useState(76);
+  const [imageAttachment, setImageAttachment] = useState<PendingPlanningImageAttachment | null>(null);
+  const [isReadingAttachment, setIsReadingAttachment] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const didInitializeChatsRef = useRef(false);
   const previewCandidates = state.previewCandidates ?? [];
@@ -148,6 +167,7 @@ export function AiPlanningView({
     return normalizeCurrentWeekBlocks(sourceBlocks, weekDates);
   }, [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks, weekDates]);
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
+  const isComposerBusy = isBusy || isReadingAttachment;
   const totalMinutes = useMemo(
     () => visibleBlocks.reduce((sum, block) => sum + minutesBetween(block.startTime, block.endTime), 0),
     [visibleBlocks],
@@ -257,15 +277,90 @@ export function AiPlanningView({
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (imageAttachment) {
+        URL.revokeObjectURL(imageAttachment.previewUrl);
+      }
+    };
+  }, [imageAttachment]);
+
+  function clearImageAttachment() {
+    setImageAttachment(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
+  }
+
+  function openImagePicker() {
+    if (isComposerBusy) return;
+    attachmentInputRef.current?.click();
+  }
+
+  function handleImageAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const validationError = validateAiImageFile(file);
+
+    if (validationError) {
+      setError(validationError);
+      event.target.value = '';
+      return;
+    }
+
+    setError('');
+    setImageAttachment({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    });
+  }
+
   async function submitMessage() {
     const value = text.trim();
-    if (!value || isBusy) return;
-    setText('');
+    const attachment = imageAttachment;
+    if ((!value && !attachment) || isComposerBusy) return;
+
     setError('');
+    let supplementalContext: string | undefined;
+
+    if (attachment) {
+      setIsReadingAttachment(true);
+      try {
+        const extraction = await extractPlanningImageAttachment(attachment.file);
+        supplementalContext = extraction.text;
+      } catch (attachmentError) {
+        setError(
+          attachmentError instanceof Error
+            ? attachmentError.message
+            : '画像を読み取れませんでした。',
+        );
+        return;
+      } finally {
+        setIsReadingAttachment(false);
+      }
+    }
+
+    const displayText = attachment
+      ? value
+        ? `${value}\n\n画像: ${attachment.file.name}`
+        : `画像「${attachment.file.name}」をもとに学習計画を作って`
+      : value;
+
+    setText('');
     try {
-      await application.submitTurn(value);
+      const result = await application.submitTurn(displayText, supplementalContext);
+      if (!result.accepted) {
+        setText(value);
+        return;
+      }
+      clearImageAttachment();
       persistActiveChat();
     } catch (submitError) {
+      setText(value);
       setError(submitError instanceof Error ? submitError.message : 'メッセージを送信できませんでした。');
       persistActiveChat();
     } finally {
@@ -313,6 +408,7 @@ export function AiPlanningView({
     saveAiPlanningChatIndex(userId, nextIndex);
     setChatIndex(nextIndex);
     setText('');
+    clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
     setIsChatDrawerOpen(false);
@@ -327,6 +423,7 @@ export function AiPlanningView({
     setChatIndex(created.index);
     setChatQuery('');
     setText('');
+    clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
     setIsChatDrawerOpen(false);
@@ -350,6 +447,7 @@ export function AiPlanningView({
       if (snapshot) application.loadConversationSnapshot(snapshot);
       else application.startConversation();
       setText('');
+      clearImageAttachment();
       setError('');
       setIsPreviewOpen(false);
     }
@@ -502,7 +600,47 @@ export function AiPlanningView({
         </div>
 
         <div className="ai-planning-composer">
-          <button className="ai-planning-composer-side" type="button" aria-label="追加メニュー" title="追加機能は今後対応予定"><Plus size={24} /></button>
+          <input
+            ref={attachmentInputRef}
+            className="ai-planning-attachment-input"
+            type="file"
+            accept="image/png,image/jpeg"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={handleImageAttachmentChange}
+          />
+          {imageAttachment ? (
+            <div className="ai-planning-attachment-preview" aria-label={`添付画像 ${imageAttachment.file.name}`}>
+              <div className="ai-planning-attachment-thumbnail">
+                <img src={imageAttachment.previewUrl} alt="添付画像のプレビュー" />
+                <button
+                  className="ai-planning-attachment-remove"
+                  type="button"
+                  aria-label="添付画像を削除"
+                  disabled={isReadingAttachment}
+                  onClick={clearImageAttachment}
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+                {isReadingAttachment ? (
+                  <span className="ai-planning-attachment-loading" aria-hidden="true">
+                    <LoaderCircle size={20} />
+                  </span>
+                ) : null}
+              </div>
+              <span>{isReadingAttachment ? '画像を読み取り中...' : imageAttachment.file.name}</span>
+            </div>
+          ) : null}
+          <button
+            className="ai-planning-composer-side"
+            type="button"
+            aria-label="写真を追加"
+            title="写真を追加"
+            disabled={isComposerBusy}
+            onClick={openImagePicker}
+          >
+            <Plus size={24} />
+          </button>
           <textarea
             ref={inputRef}
             value={text}
@@ -511,14 +649,14 @@ export function AiPlanningView({
             rows={1}
             maxLength={4000}
             placeholder="予定や目標を入力..."
-            disabled={isBusy}
+            disabled={isComposerBusy}
           />
           <button className="ai-planning-mic-button" type="button" aria-label="音声入力" title="音声入力は今後対応予定"><Mic size={21} /></button>
           <button
             className="ai-planning-send-button"
             type="button"
             aria-label="送信"
-            disabled={!text.trim() || isBusy}
+            disabled={(!text.trim() && !imageAttachment) || isComposerBusy}
             onClick={() => void submitMessage()}
           >
             <Send size={20} aria-hidden="true" />
