@@ -14,7 +14,6 @@
 .home-dashboard-default {
   --home-fit-gap: clamp(5px, 0.85dvh, 8px);
   --home-fit-hero-height: clamp(145px, calc(23dvh - 18px), 226px);
-  --home-fit-schedule-max: clamp(78px, calc(16dvh - 36px), 140px);
   --home-fit-row-height: clamp(40px, 5.7dvh, 50px);
   position: relative;
   height: 100%;
@@ -102,7 +101,7 @@
 
 .home-dashboard-default .home-schedule-list {
   min-height: 0;
-  max-height: var(--home-fit-schedule-max);
+  max-height: var(--home-dynamic-schedule-max, none);
   overflow-y: auto;
 }
 
@@ -317,7 +316,6 @@
 @media (max-height: 640px) {
   .home-dashboard-default {
     --home-fit-hero-height: 145px;
-    --home-fit-schedule-max: 78px;
     --home-fit-row-height: 40px;
   }
 
