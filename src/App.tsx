@@ -23,6 +23,11 @@ import {
 } from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
 
+const AiPlanningView = lazy(() =>
+  import('./components/AiPlanningView').then((module) => ({
+    default: module.AiPlanningView,
+  })),
+);
 const BookshelfView = lazy(() =>
   import('./components/BookshelfView').then((module) => ({
     default: module.BookshelfView,
@@ -63,6 +68,7 @@ export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [isAiPlanningOpen, setIsAiPlanningOpen] = useState(false);
   const [isHomeView, setIsHomeView] = useState(true);
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
@@ -267,7 +273,7 @@ export default function App() {
             actuals={actuals}
             todos={todos}
             studyMaterials={studyMaterials}
-            onOpenAiPlanning={() => setIsQuickEntryOpen(true)}
+            onOpenAiPlanning={() => setIsAiPlanningOpen(true)}
             onOpenSchedule={() => {
               setIsHomeView(false);
               setViewMode('month');
@@ -436,6 +442,19 @@ export default function App() {
           onSelect={(scope) => { void confirmRecurringPlanScope(scope); }}
           onClose={cancelRecurringPlanScope}
         />
+      ) : null}
+
+      {isAiPlanningOpen ? (
+        <Suspense fallback={null}>
+          <AiPlanningView
+            application={weeklyPlanning}
+            userId={user.id}
+            selectedDate={selectedDate}
+            plans={plans}
+            actuals={actuals}
+            onClose={() => setIsAiPlanningOpen(false)}
+          />
+        </Suspense>
       ) : null}
 
       {isQuickEntryOpen ? (
