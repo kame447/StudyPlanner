@@ -4,11 +4,10 @@
 }
 
 /*
- * Weekly progress is intentionally a fixed three-column component:
- *   completion ring | as-of-now summary | y-axis + weekday bars
- * Responsive rules may scale these columns, but never reorder or stack them.
+ * Weekly progress owns its internal layout. These names are intentionally
+ * namespaced so legacy home chart rules cannot force the graph onto a new row.
  */
-.home-progress-fixed-layout {
+.weekly-progress-layout {
   min-width: 0;
   display: grid;
   grid-template-columns:
@@ -19,22 +18,31 @@
   gap: clamp(5px, 1.5vw, 10px);
 }
 
-.home-progress-ring {
+.weekly-progress-ring {
   width: clamp(55px, 13vw, 64px);
   height: clamp(55px, 13vw, 64px);
+  display: grid;
+  place-items: center;
   justify-self: start;
+  border-radius: 50%;
+  background: conic-gradient(var(--home-blue) var(--weekly-progress), #e8eef6 0);
 }
 
-.home-progress-ring > div {
+.weekly-progress-ring > div {
   width: calc(100% - 13px);
   height: calc(100% - 13px);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
 }
 
-.home-progress-ring strong {
+.weekly-progress-ring strong {
+  color: #25314a;
   font-size: clamp(0.86rem, 2.8vw, 1rem);
 }
 
-.home-progress-copy {
+.weekly-progress-summary {
   min-width: 0;
   display: grid;
   align-content: center;
@@ -43,7 +51,7 @@
   font-size: clamp(0.5rem, 1.65vw, 0.61rem);
 }
 
-.home-progress-copy span {
+.weekly-progress-summary span {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -52,23 +60,23 @@
   white-space: nowrap;
 }
 
-.home-progress-copy strong {
+.weekly-progress-summary strong {
   color: #25314a;
   font-variant-numeric: tabular-nums;
 }
 
-.home-progress-copy .negative,
-.home-progress-copy .positive {
-  display: block;
+.weekly-progress-negative,
+.weekly-progress-positive {
+  display: block !important;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 900;
 }
 
-.home-progress-copy .negative { color: #eb3547; }
-.home-progress-copy .positive { color: #1f9a69; }
+.weekly-progress-negative { color: #eb3547; }
+.weekly-progress-positive { color: #1f9a69; }
 
-.home-week-chart {
+.weekly-progress-chart {
   min-width: 0;
   display: grid;
   align-self: stretch;
@@ -76,7 +84,7 @@
   gap: 4px;
 }
 
-.home-chart-legend {
+.weekly-progress-legend {
   min-height: 12px;
   display: flex;
   justify-content: flex-end;
@@ -87,8 +95,30 @@
   white-space: nowrap;
 }
 
-.home-chart-plot {
-  --home-chart-plot-height: 58px;
+.weekly-progress-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.weekly-progress-legend span::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.weekly-progress-legend-actual::before {
+  background: var(--home-blue);
+}
+
+.weekly-progress-legend-planned::before {
+  border: 1px dashed #63a2ff;
+  background: #fff;
+}
+
+.weekly-progress-plot {
+  --weekly-progress-plot-height: 58px;
   min-width: 0;
   display: grid;
   grid-template-columns: clamp(21px, 6vw, 27px) minmax(0, 1fr);
@@ -96,8 +126,8 @@
   gap: clamp(2px, 0.8vw, 4px);
 }
 
-.home-chart-axis {
-  height: var(--home-chart-plot-height);
+.weekly-progress-axis {
+  height: var(--weekly-progress-plot-height);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -110,51 +140,61 @@
   white-space: nowrap;
 }
 
-.home-chart-bars {
-  height: calc(var(--home-chart-plot-height) + 14px);
+.weekly-progress-bars {
+  height: calc(var(--weekly-progress-plot-height) + 14px);
   display: grid;
   grid-template-columns: repeat(7, minmax(8px, 1fr));
   align-items: start;
   gap: clamp(1px, 0.65vw, 3px);
 }
 
-.home-chart-day {
+.weekly-progress-day {
   height: 100%;
   display: grid;
-  grid-template-rows: var(--home-chart-plot-height) 12px;
+  grid-template-rows: var(--weekly-progress-plot-height) 12px;
   gap: 2px;
   align-items: end;
 }
 
-.home-chart-columns {
-  height: var(--home-chart-plot-height);
+.weekly-progress-columns {
+  height: var(--weekly-progress-plot-height);
   display: flex;
   align-items: end;
   justify-content: center;
   gap: 2px;
 }
 
-.home-chart-day small {
+.weekly-progress-day small {
   color: #68758a;
   text-align: center;
   font-size: clamp(0.44rem, 1.2vw, 0.5rem);
   line-height: 12px;
 }
 
-.home-chart-plan,
-.home-chart-actual {
+.weekly-progress-plan,
+.weekly-progress-actual {
   width: clamp(4px, 1.3vw, 6px);
   min-height: 2px;
+  border-radius: 2px 2px 0 0;
 }
 
-/* Height-only compaction keeps the same three-column geometry. */
+.weekly-progress-plan {
+  border: 1px dashed #66a6ff;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.weekly-progress-actual {
+  background: var(--home-blue);
+}
+
+/* Height compaction scales the same fixed three-column geometry. */
 @media (max-height: 760px) {
   .home-progress-panel {
     min-height: 108px;
     padding: 7px 9px 8px;
   }
 
-  .home-progress-fixed-layout {
+  .weekly-progress-layout {
     grid-template-columns:
       clamp(54px, 13%, 62px)
       clamp(78px, 21%, 96px)
@@ -162,52 +202,52 @@
     gap: clamp(4px, 1.1vw, 7px);
   }
 
-  .home-progress-ring {
+  .weekly-progress-ring {
     width: clamp(54px, 12vw, 58px);
     height: clamp(54px, 12vw, 58px);
   }
 
-  .home-progress-ring > div {
+  .weekly-progress-ring > div {
     width: calc(100% - 12px);
     height: calc(100% - 12px);
   }
 
-  .home-progress-copy {
+  .weekly-progress-summary {
     gap: 3px;
   }
 
-  .home-chart-plot {
-    --home-chart-plot-height: 54px;
+  .weekly-progress-plot {
+    --weekly-progress-plot-height: 54px;
   }
 }
 
 @media (max-width: 390px) {
-  .home-progress-fixed-layout {
+  .weekly-progress-layout {
     grid-template-columns: 54px 78px minmax(0, 1fr);
     gap: 4px;
   }
 
-  .home-progress-ring {
+  .weekly-progress-ring {
     width: 54px;
     height: 54px;
   }
 
-  .home-progress-copy {
+  .weekly-progress-summary {
     font-size: 0.49rem;
   }
 
-  .home-chart-plot {
+  .weekly-progress-plot {
     grid-template-columns: 21px minmax(0, 1fr);
     gap: 2px;
   }
 
-  .home-chart-bars {
+  .weekly-progress-bars {
     grid-template-columns: repeat(7, minmax(8px, 1fr));
     gap: 1px;
   }
 
-  .home-chart-plan,
-  .home-chart-actual {
+  .weekly-progress-plan,
+  .weekly-progress-actual {
     width: 4px;
   }
 }
