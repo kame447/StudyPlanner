@@ -393,7 +393,7 @@
 
   .home-dashboard-default {
     --home-fit-gap: min(23px, calc(var(--home-fit-gap-base) + 3px + var(--home-relax-gap, 0px)));
-    --home-fit-hero-height: min(360px, calc(var(--home-fit-hero-height-base) + 40px + var(--home-relax-hero, 0px)));
+    --home-fit-hero-height: min(368px, calc(var(--home-fit-hero-height-base) + 48px + var(--home-relax-hero, 0px)));
   }
 
   .home-dashboard-default .home-topbar {
@@ -402,31 +402,31 @@
 
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
+    padding-top: calc(11px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(11px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
     padding-top: calc(10px + var(--home-relax-schedule-side, 0px));
     padding-bottom: calc(10px + var(--home-relax-schedule-side, 0px));
   }
 
-  .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(9px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(9px + var(--home-relax-schedule-side, 0px));
-  }
-
   .home-dashboard-default .home-today-panel {
-    padding-top: calc(13px + var(--home-relax-today-side, 0px));
-    padding-bottom: calc(12px + var(--home-relax-today-side, 0px));
+    padding-top: calc(14px + var(--home-relax-today-side, 0px));
+    padding-bottom: calc(13px + var(--home-relax-today-side, 0px));
   }
 
   .home-dashboard-default .home-alert-card {
-    padding-block: calc(14px + var(--home-relax-alert-side, 0px));
+    padding-block: calc(15px + var(--home-relax-alert-side, 0px));
   }
 
   .home-dashboard-default .home-progress-panel {
-    min-height: 164px;
+    min-height: 168px;
   }
 
   .home-material-panel {
-    padding-top: calc(20px + var(--home-relax-material-side, 0px));
-    padding-bottom: calc(19px + var(--home-relax-material-side, 0px));
+    padding-top: calc(21px + var(--home-relax-material-side, 0px));
+    padding-bottom: calc(20px + var(--home-relax-material-side, 0px));
   }
 
   .home-material-row {
