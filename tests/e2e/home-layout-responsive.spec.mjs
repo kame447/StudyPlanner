@@ -13,6 +13,8 @@ const VIEWPORTS = [
   { name: 'landscape-tablet', width: 1024, height: 768, materialFits: true },
 ];
 
+const MAX_BOTTOM_GAP = 18;
+
 async function seedHomeState(page, planCount = 1) {
   await page.addInitScript(({ count }) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -100,6 +102,7 @@ async function readHomeMetrics(page) {
     const todayRect = rect('.home-today-panel');
     const attentionRect = rect('.home-alert-grid');
     const progressRect = rect('.home-progress-panel');
+    const lastVisibleBottom = materialRect?.bottom ?? lastCoreRect?.bottom ?? 0;
 
     return {
       viewportHeight: document.documentElement.clientHeight,
@@ -113,6 +116,7 @@ async function readHomeMetrics(page) {
       lastCoreBottom: lastCoreRect?.bottom ?? 0,
       materialBottom: materialRect?.bottom ?? null,
       navTop: navRect?.top ?? 0,
+      bottomGap: (navRect?.top ?? 0) - lastVisibleBottom,
       progressHeight: progress?.getBoundingClientRect().height ?? 0,
       scheduleRowCount: scheduleRows.length,
       scheduleClientHeight: scheduleList?.clientHeight ?? 0,
@@ -152,6 +156,11 @@ function expectNoStructuralOverlap(metrics) {
   }
 }
 
+function expectBottomSpaceUsed(metrics) {
+  expect(metrics.bottomGap).toBeGreaterThanOrEqual(-1);
+  expect(metrics.bottomGap).toBeLessThanOrEqual(MAX_BOTTOM_GAP);
+}
+
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name} ${viewport.width}x${viewport.height} keeps the single-plan home layout bounded`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -160,11 +169,12 @@ for (const viewport of VIEWPORTS) {
 
     const home = page.locator('.home-dashboard-default');
     await expect(home).toBeVisible();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(400);
 
     const metrics = await readHomeMetrics(page);
 
     expectNoStructuralOverlap(metrics);
+    expectBottomSpaceUsed(metrics);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
     expect(metrics.visibleMaterialPanelCount).toBe(viewport.materialFits ? 1 : 0);
@@ -188,12 +198,13 @@ for (const viewport of VIEWPORTS) {
 
     const home = page.locator('.home-dashboard-default');
     await expect(home).toBeVisible();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(450);
 
     const metrics = await readHomeMetrics(page);
     const scheduleIsScrollable = metrics.scheduleScrollHeight > metrics.scheduleClientHeight + 1;
 
     expectNoStructuralOverlap(metrics);
+    expectBottomSpaceUsed(metrics);
     expect(metrics.scheduleRowCount).toBe(4);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
