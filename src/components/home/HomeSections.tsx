@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { formatCompactDate, minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
+import { resolveHomeNextPlanVisual } from '../../lib/homeNextPlanVisual';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 
@@ -201,9 +202,14 @@ export function NextPlanSection({
   onOpenDay: (date: string) => void;
 }) {
   const nextPlan = dashboard.nextPlan;
+  const nextPlanVisual = resolveHomeNextPlanVisual(nextPlan);
 
   return (
-    <section className="home-next-card" data-home-section="next-plan">
+    <section
+      className="home-next-card"
+      data-home-section="next-plan"
+      data-next-plan-visual={nextPlanVisual.kind}
+    >
       <div className="home-next-copy">
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
@@ -224,13 +230,12 @@ export function NextPlanSection({
       </div>
 
       <div className="home-study-scene" aria-hidden="true">
-        <div className="home-scene-window" />
-        <div className="home-scene-plant"><span /><span /><span /><span /></div>
-        <div className="home-scene-desk">
-          <div className="home-scene-books"><span /><span /><span /></div>
-          <div className="home-scene-notebook"><BookOpen size={54} strokeWidth={1.4} /></div>
-          <div className="home-scene-cup" />
-        </div>
+        <img
+          className="home-study-scene-image"
+          src={nextPlanVisual.src}
+          alt=""
+          decoding="async"
+        />
       </div>
 
       <button
