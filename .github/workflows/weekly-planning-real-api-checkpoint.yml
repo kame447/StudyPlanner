@@ -137,6 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningRepeatedTaskIdentityRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156RemainingEffortRealApi.observation.test.ts \
@@ -148,6 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningRepeatedTaskIdentityRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156RemainingEffortRealApi.observation.test.ts \
