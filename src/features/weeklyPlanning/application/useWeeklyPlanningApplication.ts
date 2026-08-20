@@ -25,9 +25,12 @@ import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
   createWeeklyPlanningControllerSession,
+  inferWeeklyPlanningControllerRequestSequence,
+  resetWeeklyPlanningControllerSession,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
 import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
+import { createInitialPlanningState } from '../weeklyPlanningReducer';
 import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplication';
 import {
   classifyWeeklyPlanningApprovalAvailability,
@@ -42,6 +45,15 @@ import {
   restoreWeeklyPlanningApplicationSession,
   synchronizeWeeklyPlanningApplicationSession,
 } from './weeklyPlanningSessionLifecycle';
+import {
+  getWeeklyPlanningStableV5RuntimeSession,
+  hydrateWeeklyPlanningStableV5RuntimeSession,
+} from './weeklyPlanningStableV5RuntimeSession';
+import {
+  prepareWeeklyPlanningStableV5Checkpoint,
+  WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+  type WeeklyPlanningStableV5PersistedSession,
+} from './weeklyPlanningStableV5SessionCodec';
 import { submitWeeklyPlanningApplicationTurn } from './weeklyPlanningTurnApplication';
 
 export interface UseWeeklyPlanningApplicationInput {
@@ -65,6 +77,9 @@ export interface WeeklyPlanningApplication {
   clearConversation: () => boolean;
   appendMessage: (message: WeeklyPlanningMessage) => void;
   resetSession: () => void;
+  startConversation: () => void;
+  exportConversationSnapshot: () => WeeklyPlanningStableV5PersistedSession | null;
+  loadConversationSnapshot: (snapshot: WeeklyPlanningStableV5PersistedSession) => boolean;
   createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
   removePreviewCandidate: (candidateId: string) => void;
   removeDraftBlock: (blockId: string) => void;
@@ -210,6 +225,83 @@ export function useWeeklyPlanningApplication({
     });
   }
 
+  function startConversation(): void {
+    const session = controllerSessionRef.current;
+    if (!session || getPlanningState().pendingTurn || getPlanningState().pendingApproval) return;
+    const weekStartDate = getPlanningState().weekStartDate;
+    resetWeeklyPlanningControllerSession(session, ownerId, weekStartDate);
+    dispatchAndPersist({
+      type: 'load_state',
+      state: createInitialPlanningState(weekStartDate),
+    });
+  }
+
+  function exportConversationSnapshot(): WeeklyPlanningStableV5PersistedSession | null {
+    const session = controllerSessionRef.current;
+    const current = getPlanningState();
+    if (!session || current.pendingTurn || current.pendingApproval) return null;
+    const runtime = getWeeklyPlanningStableV5RuntimeSession(session.conversationId);
+    if (!runtime || runtime.ownerId !== ownerId) return null;
+    const preparation = prepareWeeklyPlanningStableV5Checkpoint({
+      ownerId,
+      weekStartDate: current.weekStartDate,
+      conversationId: session.conversationId,
+      graph: runtime.graph,
+      planningState: current,
+    });
+    if (preparation.status !== 'ready') return null;
+    return {
+      version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+      ownerId,
+      weekStartDate: current.weekStartDate,
+      conversationId: session.conversationId,
+      graph: structuredClone(runtime.graph),
+      planningState: structuredClone(preparation.planningState),
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  function loadConversationSnapshot(snapshot: WeeklyPlanningStableV5PersistedSession): boolean {
+    const session = controllerSessionRef.current;
+    const current = getPlanningState();
+    if (
+      !session
+      || current.pendingTurn
+      || current.pendingApproval
+      || snapshot.ownerId !== ownerId
+      || snapshot.planningState.pendingTurn
+      || snapshot.planningState.pendingApproval
+    ) {
+      return false;
+    }
+
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId,
+      weekStartDate: snapshot.weekStartDate,
+      conversationId: snapshot.conversationId,
+      graph: snapshot.graph,
+      updatedAt: Date.parse(snapshot.savedAt),
+    });
+    resetWeeklyPlanningControllerSession(
+      session,
+      ownerId,
+      snapshot.weekStartDate,
+      snapshot.conversationId,
+    );
+    session.requestSequence = Math.max(
+      snapshot.planningState.conversationRequestSequence ?? 0,
+      inferWeeklyPlanningControllerRequestSequence(
+        snapshot.planningState.messages,
+        snapshot.conversationId,
+      ),
+    );
+    dispatchAndPersist({
+      type: 'load_state',
+      state: structuredClone(snapshot.planningState),
+    });
+    return true;
+  }
+
   return {
     state: planningState,
     pendingDraftBlocks,
@@ -223,6 +315,9 @@ export function useWeeklyPlanningApplication({
     clearConversation,
     appendMessage: (message) => dispatchAndPersist({ type: 'append_message', message }),
     resetSession,
+    startConversation,
+    exportConversationSnapshot,
+    loadConversationSnapshot,
     createDraftBlocks: (blocks) => dispatchAndPersist({ type: 'add_draft_blocks', blocks }),
     removePreviewCandidate: (candidateId) =>
       dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }),
