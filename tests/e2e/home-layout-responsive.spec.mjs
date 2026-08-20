@@ -83,11 +83,15 @@ for (const viewport of VIEWPORTS) {
       const visibleMaterial = visibleMaterialPanels[0] ?? null;
       const nav = document.querySelector('.home-bottom-nav');
       const progress = document.querySelector('.home-progress-panel');
+      const scheduleList = document.querySelector('.home-schedule-list');
+      const addScheduleRow = document.querySelector('.home-schedule-add-row');
       const core = document.querySelector('.home-core-sections');
       const lastCore = core?.lastElementChild ?? null;
       const navRect = nav?.getBoundingClientRect() ?? null;
       const lastCoreRect = lastCore?.getBoundingClientRect() ?? null;
       const materialRect = visibleMaterial?.getBoundingClientRect() ?? null;
+      const addScheduleRect = addScheduleRow?.getBoundingClientRect() ?? null;
+      const scheduleRect = scheduleList?.getBoundingClientRect() ?? null;
       const measurementRoot = document.querySelector('.home-material-measurements');
 
       return {
@@ -103,6 +107,10 @@ for (const viewport of VIEWPORTS) {
         materialBottom: materialRect?.bottom ?? null,
         navTop: navRect?.top ?? 0,
         progressHeight: progress?.getBoundingClientRect().height ?? 0,
+        scheduleClientHeight: scheduleList?.clientHeight ?? 0,
+        scheduleScrollHeight: scheduleList?.scrollHeight ?? 0,
+        addScheduleBottom: addScheduleRect?.bottom ?? null,
+        scheduleBottom: scheduleRect?.bottom ?? null,
       };
     });
 
@@ -116,5 +124,9 @@ for (const viewport of VIEWPORTS) {
       expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     }
     expect(metrics.progressHeight).toBeLessThanOrEqual(140);
+    expect(metrics.scheduleScrollHeight).toBeLessThanOrEqual(metrics.scheduleClientHeight + 1);
+    if (metrics.addScheduleBottom !== null && metrics.scheduleBottom !== null) {
+      expect(metrics.addScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+    }
   });
 }
