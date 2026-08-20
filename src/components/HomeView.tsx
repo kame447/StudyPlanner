@@ -44,6 +44,19 @@ const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
   (sectionId) => sectionId !== 'material-progress',
 );
 const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
+const MAX_VISIBLE_TODAY_ROWS = 4;
+const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
+
+function preferredScheduleListHeight(scheduleList: HTMLElement): number {
+  const rows = Array.from(scheduleList.children).filter(
+    (element): element is HTMLElement => element instanceof HTMLElement,
+  );
+  if (rows.length <= MAX_VISIBLE_TODAY_ROWS) return scheduleList.scrollHeight;
+
+  return rows
+    .slice(0, MAX_VISIBLE_TODAY_ROWS)
+    .reduce((height, row) => height + row.getBoundingClientRect().height, 0);
+}
 
 export function HomeView({
   user,
@@ -105,26 +118,74 @@ export function HomeView({
         const core = coreSectionsRef.current;
         const nav = bottomNavRef.current;
         const dashboardElement = core?.closest('.home-dashboard-default');
-        if (!core || !nav || !(dashboardElement instanceof HTMLElement)) return;
+        const todayPanel = core?.querySelector<HTMLElement>('[data-home-section="today-schedule"]');
+        const scheduleList = todayPanel?.querySelector<HTMLElement>('.home-schedule-list');
+        if (
+          !core ||
+          !nav ||
+          !(dashboardElement instanceof HTMLElement) ||
+          !todayPanel ||
+          !scheduleList
+        ) {
+          return;
+        }
 
-        const coreBottom = core.getBoundingClientRect().bottom;
+        const coreRect = core.getBoundingClientRect();
+        const todayRect = todayPanel.getBoundingClientRect();
         const navTop = nav.getBoundingClientRect().top;
         const rowGap = Number.parseFloat(window.getComputedStyle(dashboardElement).rowGap) || 0;
-        const availableHeight = Math.max(0, navTop - coreBottom - rowGap);
+        const availableCoreHeight = Math.max(0, navTop - coreRect.top);
+        const preferredListHeight = preferredScheduleListHeight(scheduleList);
+        const todayChromeHeight = Math.max(0, todayRect.height - scheduleList.clientHeight);
+        const preferredTodayHeight = todayChromeHeight + preferredListHeight;
+        const preferredCoreHeight = coreRect.height - todayRect.height + preferredTodayHeight;
+        const needsFourRowCap = scheduleList.children.length > MAX_VISIBLE_TODAY_ROWS;
+
+        const setScheduleMaxHeight = (maxHeight: number | null) => {
+          if (maxHeight === null) {
+            dashboardElement.style.removeProperty('--home-dynamic-schedule-max');
+            return;
+          }
+          dashboardElement.style.setProperty(
+            '--home-dynamic-schedule-max',
+            `${Math.max(0, Math.floor(maxHeight))}px`,
+          );
+        };
 
         let largestCandidateThatFits: number | null = null;
         for (const rowCount of supplementalMaterialCandidates) {
           const probe = materialProbeRefs.current.get(rowCount);
           if (!probe) continue;
           const measuredHeight = probe.getBoundingClientRect().height;
-          if (measuredHeight <= availableHeight + 0.5) {
+          if (preferredCoreHeight + rowGap + measuredHeight <= availableCoreHeight + 0.5) {
             largestCandidateThatFits = rowCount;
           }
         }
 
-        setSupplementalMaterialRows((current) =>
-          current === largestCandidateThatFits ? current : largestCandidateThatFits,
+        if (largestCandidateThatFits !== null) {
+          setScheduleMaxHeight(needsFourRowCap ? preferredListHeight : null);
+          setSupplementalMaterialRows((current) =>
+            current === largestCandidateThatFits ? current : largestCandidateThatFits,
+          );
+          return;
+        }
+
+        if (preferredCoreHeight <= availableCoreHeight + 0.5) {
+          setScheduleMaxHeight(needsFourRowCap ? preferredListHeight : null);
+          setSupplementalMaterialRows((current) => (current === null ? current : null));
+          return;
+        }
+
+        const coreHeightWithoutPreferredList = preferredCoreHeight - preferredListHeight;
+        const emergencyScheduleHeight = Math.min(
+          preferredListHeight,
+          Math.max(
+            MIN_SCROLLABLE_SCHEDULE_HEIGHT,
+            availableCoreHeight - coreHeightWithoutPreferredList,
+          ),
         );
+        setScheduleMaxHeight(emergencyScheduleHeight);
+        setSupplementalMaterialRows((current) => (current === null ? current : null));
       });
     };
 
@@ -148,7 +209,12 @@ export function HomeView({
       window.visualViewport?.removeEventListener('resize', measure);
       resizeObserver?.disconnect();
     };
-  }, [isGettingStarted, supplementalMaterialCandidates]);
+  }, [
+    dashboard.todayPlans.length,
+    dashboard.upcomingPlans.length,
+    isGettingStarted,
+    supplementalMaterialCandidates,
+  ]);
 
   function renderSection(sectionId: HomeSectionId) {
     switch (sectionId) {
