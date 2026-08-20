@@ -292,9 +292,7 @@ export function HomeView({
               compactAvailableCoreHeight -
               (compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight);
             const requiredSlack =
-              rowCount === supplementalMaterialRows
-                ? -MATERIAL_FIT_HYSTERESIS_PX
-                : MATERIAL_FIT_HYSTERESIS_PX;
+              rowCount === supplementalMaterialRows ? -0.5 : MATERIAL_FIT_HYSTERESIS_PX;
             if (fitSlack >= requiredSlack) {
               largestCandidateThatFits = rowCount;
             }
@@ -343,7 +341,7 @@ export function HomeView({
           (supplementalMaterialRows === null ? 0 : rowGap + selectedMaterialHeight);
         const currentSlack = availableCoreHeight - currentUsedHeight;
 
-        if (currentSlack < -MATERIAL_FIT_HYSTERESIS_PX && hasLayoutRelaxation(currentRelaxation)) {
+        if (currentSlack < -0.5 && hasLayoutRelaxation(currentRelaxation)) {
           if (resetLayoutRelaxation()) measure();
           return;
         }
@@ -466,13 +464,10 @@ export function HomeView({
     window.addEventListener('resize', measure);
     window.visualViewport?.addEventListener('resize', measure);
 
-    // Deliberately do not observe the dashboard's own fitted elements with
-    // ResizeObserver. measure() changes their dimensions via CSS variables,
-    // so observing those same elements creates a self-triggering feedback
-    // loop near fit thresholds (most visibly around 1280x800 tablet layouts).
-    // Data changes rerun this effect, and real viewport changes are covered by
-    // window/visualViewport resize events.
-    document.fonts?.ready.then(measure).catch(() => undefined);
+    // Do not observe the fitted dashboard elements themselves. measure()
+    // changes their dimensions, which would turn ResizeObserver into a
+    // self-triggering loop near fit thresholds.
+    void document.fonts.ready.then(measure, () => undefined);
 
     return () => {
       window.cancelAnimationFrame(frameId);
