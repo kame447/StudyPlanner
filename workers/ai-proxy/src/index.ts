@@ -31,10 +31,13 @@ interface ChatCompletionRequest {
   max_completion_tokens?: number;
 }
 
-interface TimetableOcrRequest {
+interface ImageAnalysisRequest {
   mimeType?: string;
   base64?: string;
 }
+
+type TimetableOcrRequest = ImageAnalysisRequest;
+type PlanningAttachmentRequest = ImageAnalysisRequest;
 
 interface FirebaseJwtPayload {
   localId?: string;
@@ -49,7 +52,7 @@ interface VerifiedFirebaseSession {
   email?: string;
 }
 
-type AiQuotaKind = 'chat' | 'ocr';
+type AiQuotaKind = 'chat' | 'ocr' | 'attachment';
 type AiQuotaSubject = 'uid' | 'ip';
 
 interface QuotaWindowRule {
@@ -80,8 +83,8 @@ interface AiQuotaCheckResult {
 }
 
 const MAX_REQUEST_BODY_BYTES = 32 * 1024;
-const MAX_TIMETABLE_OCR_BODY_BYTES = 5 * 1024 * 1024;
-const MAX_TIMETABLE_OCR_BASE64_LENGTH = 4_500_000;
+const MAX_IMAGE_ANALYSIS_BODY_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_ANALYSIS_BASE64_LENGTH = 4_500_000;
 const MAX_MESSAGE_COUNT = 20;
 const MAX_MESSAGE_CONTENT_LENGTH = 6000;
 const MAX_TOTAL_MESSAGE_CONTENT_LENGTH = 16000;
@@ -94,15 +97,19 @@ const CHAT_UID_MINUTE_LIMIT = 5;
 const CHAT_UID_DAY_LIMIT = 100;
 const OCR_UID_MINUTE_LIMIT = 2;
 const OCR_UID_DAY_LIMIT = 5;
+const ATTACHMENT_UID_MINUTE_LIMIT = 3;
+const ATTACHMENT_UID_DAY_LIMIT = 20;
 const IP_MINUTE_LIMIT = 20;
 const CHAT_DEFAULT_OUTPUT_TOKENS = 800;
 const CHAT_MAX_OUTPUT_TOKENS = 1200;
 const OCR_MAX_OUTPUT_TOKENS = 4096;
+const PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS = 1600;
+const PLANNING_ATTACHMENT_MAX_TEXT_LENGTH = 1800;
 // purpose→model policy と既定 allowlist は ./modelPolicy に集約(純ロジックとして単体テスト可能)。
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
 const SERVICE_NAME = 'studyplanner-ai-proxy';
-const WORKER_DEBUG_VERSION = 'timetable-ocr-debug-20260429-001';
-const SUPPORTED_TIMETABLE_OCR_MIME_TYPES = new Set([
+const WORKER_DEBUG_VERSION = 'planning-attachment-20260821-001';
+const SUPPORTED_IMAGE_ANALYSIS_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
 ]);
@@ -118,6 +125,15 @@ const TIMETABLE_OCR_PROMPT = [
   '空白セルは items に含めないでください。教室番号だけのセルは授業として扱わないでください。',
   '授業名から分かる教科は subject に入れてください。不明なら空文字にしてください。',
   '＊、V、その他の授業名・教室以外の記号は memo に入れてください。',
+].join('\n');
+const PLANNING_ATTACHMENT_PROMPT = [
+  'あなたは学習計画作成のために、添付画像から事実だけを読み取るアシスタントです。',
+  '画像に明示されている内容だけを抽出し、画像にない情報を推測・補完しないでください。',
+  '教材名、科目、課題名、試験名、日付、締切、曜日、時刻、学習範囲、ページ、章、問題番号、回数、所要時間、優先度、完了済み範囲など、計画に使える情報を優先してください。',
+  '学習以外でも、予定の制約になり得る日付・時刻・イベントは保持してください。',
+  '返答はJSONのみです。Markdown、コードフェンス、説明文は絶対に含めないでください。',
+  '出力形式は {"text":"画像に明示された事実を短い行に整理したテキスト"} です。',
+  `読めない箇所は推測せず省略してください。text は${PLANNING_ATTACHMENT_MAX_TEXT_LENGTH}文字以内にしてください。`,
 ].join('\n');
 
 function jsonResponse(
@@ -285,8 +301,16 @@ function buildQuotaRules(
   }
 
   const day = getDailyWindow(now);
-  const minuteLimit = kind === 'chat' ? CHAT_UID_MINUTE_LIMIT : OCR_UID_MINUTE_LIMIT;
-  const dayLimit = kind === 'chat' ? CHAT_UID_DAY_LIMIT : OCR_UID_DAY_LIMIT;
+  const minuteLimit = kind === 'chat'
+    ? CHAT_UID_MINUTE_LIMIT
+    : kind === 'attachment'
+      ? ATTACHMENT_UID_MINUTE_LIMIT
+      : OCR_UID_MINUTE_LIMIT;
+  const dayLimit = kind === 'chat'
+    ? CHAT_UID_DAY_LIMIT
+    : kind === 'attachment'
+      ? ATTACHMENT_UID_DAY_LIMIT
+      : OCR_UID_DAY_LIMIT;
 
   return [
     {
@@ -575,19 +599,19 @@ async function requireVerifiedFirebaseSession(
         error instanceof Error ? error.message : 'Firebase authentication failed.',
     });
   }
-
 }
 
-function validateTimetableOcrPayload(
-  payload: TimetableOcrRequest,
+function validateImageAnalysisPayload(
+  payload: ImageAnalysisRequest,
+  invalidPayloadMessage: string,
 ): string | null {
   if (!payload || typeof payload !== 'object') {
-    return 'Invalid timetable OCR payload.';
+    return invalidPayloadMessage;
   }
 
   if (
     typeof payload.mimeType !== 'string' ||
-    !SUPPORTED_TIMETABLE_OCR_MIME_TYPES.has(payload.mimeType)
+    !SUPPORTED_IMAGE_ANALYSIS_MIME_TYPES.has(payload.mimeType)
   ) {
     return 'Only PNG and JPEG images are supported.';
   }
@@ -596,7 +620,7 @@ function validateTimetableOcrPayload(
     return 'Image data is required.';
   }
 
-  if (payload.base64.length > MAX_TIMETABLE_OCR_BASE64_LENGTH) {
+  if (payload.base64.length > MAX_IMAGE_ANALYSIS_BASE64_LENGTH) {
     return 'Image data was too large.';
   }
 
@@ -605,6 +629,18 @@ function validateTimetableOcrPayload(
   }
 
   return null;
+}
+
+function validateTimetableOcrPayload(
+  payload: TimetableOcrRequest,
+): string | null {
+  return validateImageAnalysisPayload(payload, 'Invalid timetable OCR payload.');
+}
+
+function validatePlanningAttachmentPayload(
+  payload: PlanningAttachmentRequest,
+): string | null {
+  return validateImageAnalysisPayload(payload, 'Invalid planning attachment payload.');
 }
 
 function extractFirstJsonObject(text: string): string | null {
@@ -640,6 +676,24 @@ function parseGeminiTimetableJson(text: string): unknown {
   return parsed;
 }
 
+function parseGeminiPlanningAttachmentJson(text: string): { text: string } {
+  const jsonText = extractFirstJsonObject(text);
+
+  if (!jsonText) {
+    throw new Error('Gemini response did not contain JSON.');
+  }
+
+  const parsed = JSON.parse(jsonText) as unknown;
+
+  if (!isRecord(parsed) || typeof parsed.text !== 'string' || !parsed.text.trim()) {
+    throw new Error('Gemini response JSON did not match planning attachment format.');
+  }
+
+  return {
+    text: parsed.text.trim().slice(0, PLANNING_ATTACHMENT_MAX_TEXT_LENGTH),
+  };
+}
+
 function normalizeGeminiModel(model: string | undefined): string {
   const trimmed = model?.trim() || DEFAULT_GEMINI_MODEL;
 
@@ -654,6 +708,7 @@ function buildDebugBody(
     ok: true,
     service: SERVICE_NAME,
     hasTimetableOcr: true,
+    hasPlanningAttachment: true,
     version: WORKER_DEBUG_VERSION,
     method: request.method,
     pathname,
@@ -688,7 +743,7 @@ function notFoundResponse(
     version: WORKER_DEBUG_VERSION,
     method: request.method,
     pathname,
-    knownPaths: ['/', '/chat/completions', '/timetable-ocr'],
+    knownPaths: ['/', '/chat/completions', '/timetable-ocr', '/planning-attachment'],
     error: 'Not found on studyplanner-ai-proxy worker.',
   });
 }
@@ -848,6 +903,110 @@ async function handleChatCompletion(
   return jsonResponse(request, env, 200, { content });
 }
 
+async function requestGeminiImageAnalysis(params: {
+  env: Env;
+  payload: ImageAnalysisRequest;
+  prompt: string;
+  maxOutputTokens: number;
+}): Promise<{ ok: true; content: string } | { ok: false; status: number }> {
+  const model = normalizeGeminiModel(params.env.GEMINI_MODEL);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(params.env.GEMINI_API_KEY?.trim() ?? '')}`;
+  const upstreamResponse = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: params.prompt },
+            {
+              inline_data: {
+                mime_type: params.payload.mimeType,
+                data: params.payload.base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+        maxOutputTokens: params.maxOutputTokens,
+      },
+    }),
+  });
+
+  const upstreamText = await upstreamResponse.text();
+
+  if (!upstreamResponse.ok) {
+    return { ok: false, status: upstreamResponse.status };
+  }
+
+  const upstreamJson = JSON.parse(upstreamText) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string }>;
+      };
+    }>;
+  };
+  const content = upstreamJson.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text ?? '')
+    .join('')
+    .trim();
+
+  if (!content) {
+    return { ok: false, status: 502 };
+  }
+
+  return { ok: true, content };
+}
+
+async function readImageRequest(
+  request: Request,
+  env: Env,
+  invalidPayloadMessage: string,
+): Promise<ImageAnalysisRequest | Response> {
+  const declaredBodyLength = getDeclaredBodyLength(request);
+
+  if (
+    Number.isFinite(declaredBodyLength) &&
+    declaredBodyLength > MAX_IMAGE_ANALYSIS_BODY_BYTES
+  ) {
+    return jsonResponse(request, env, 413, {
+      error: 'Image request body was too large.',
+    });
+  }
+
+  const requestText = await request.text();
+
+  if (getUtf8ByteLength(requestText) > MAX_IMAGE_ANALYSIS_BODY_BYTES) {
+    return jsonResponse(request, env, 413, {
+      error: 'Image request body was too large.',
+    });
+  }
+
+  let payload: ImageAnalysisRequest;
+
+  try {
+    payload = JSON.parse(requestText) as ImageAnalysisRequest;
+  } catch {
+    return jsonResponse(request, env, 400, {
+      error: 'Invalid JSON payload.',
+    });
+  }
+
+  const payloadError = validateImageAnalysisPayload(payload, invalidPayloadMessage);
+
+  if (payloadError) {
+    return jsonResponse(request, env, 400, { error: payloadError });
+  }
+
+  return payload;
+}
+
 async function handleTimetableOcr(
   request: Request,
   env: Env,
@@ -864,33 +1023,10 @@ async function handleTimetableOcr(
     return session;
   }
 
-  const declaredBodyLength = getDeclaredBodyLength(request);
+  const payload = await readImageRequest(request, env, 'Invalid timetable OCR payload.');
 
-  if (
-    Number.isFinite(declaredBodyLength) &&
-    declaredBodyLength > MAX_TIMETABLE_OCR_BODY_BYTES
-  ) {
-    return jsonResponse(request, env, 413, {
-      error: 'Image request body was too large.',
-    });
-  }
-
-  const requestText = await request.text();
-
-  if (getUtf8ByteLength(requestText) > MAX_TIMETABLE_OCR_BODY_BYTES) {
-    return jsonResponse(request, env, 413, {
-      error: 'Image request body was too large.',
-    });
-  }
-
-  let payload: TimetableOcrRequest;
-
-  try {
-    payload = JSON.parse(requestText) as TimetableOcrRequest;
-  } catch {
-    return jsonResponse(request, env, 400, {
-      error: 'Invalid JSON payload.',
-    });
+  if (payload instanceof Response) {
+    return payload;
   }
 
   const payloadError = validateTimetableOcrPayload(payload);
@@ -913,64 +1049,24 @@ async function handleTimetableOcr(
     return quotaError;
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY.trim())}`;
-  const upstreamResponse = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: TIMETABLE_OCR_PROMPT },
-            {
-              inline_data: {
-                mime_type: payload.mimeType,
-                data: payload.base64,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: 'application/json',
-        maxOutputTokens: OCR_MAX_OUTPUT_TOKENS,
-      },
-    }),
+  const upstream = await requestGeminiImageAnalysis({
+    env,
+    payload,
+    prompt: TIMETABLE_OCR_PROMPT,
+    maxOutputTokens: OCR_MAX_OUTPUT_TOKENS,
   });
 
-  const upstreamText = await upstreamResponse.text();
-
-  if (!upstreamResponse.ok) {
-    return jsonResponse(request, env, upstreamResponse.status, {
-      error: 'Gemini timetable OCR request failed.',
+  if (!upstream.ok) {
+    return jsonResponse(request, env, upstream.status, {
+      error: upstream.status === 502
+        ? 'Gemini timetable OCR response was empty.'
+        : 'Gemini timetable OCR request failed.',
     });
   }
 
   try {
-    const upstreamJson = JSON.parse(upstreamText) as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
-        };
-      }>;
-    };
-    const content = upstreamJson.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text ?? '')
-      .join('')
-      .trim();
-
-    if (!content) {
-      return jsonResponse(request, env, 502, {
-        error: 'Gemini timetable OCR response was empty.',
-      });
-    }
-
     return jsonResponse(request, env, 200, {
-      result: parseGeminiTimetableJson(content),
+      result: parseGeminiTimetableJson(upstream.content),
     });
   } catch (error) {
     return jsonResponse(request, env, 502, {
@@ -978,6 +1074,78 @@ async function handleTimetableOcr(
         env,
         error,
         'Gemini timetable OCR response could not be parsed.',
+      ),
+    });
+  }
+}
+
+async function handlePlanningAttachment(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!env.GEMINI_API_KEY?.trim()) {
+    return jsonResponse(request, env, 500, {
+      error: 'GEMINI_API_KEY is not configured.',
+    });
+  }
+
+  const session = await requireVerifiedFirebaseSession(request, env);
+
+  if (session instanceof Response) {
+    return session;
+  }
+
+  const payload = await readImageRequest(request, env, 'Invalid planning attachment payload.');
+
+  if (payload instanceof Response) {
+    return payload;
+  }
+
+  const payloadError = validatePlanningAttachmentPayload(payload);
+
+  if (payloadError) {
+    return jsonResponse(request, env, 400, { error: payloadError });
+  }
+
+  const model = normalizeGeminiModel(env.GEMINI_MODEL);
+
+  if (!getAllowedGeminiModels(env).has(model)) {
+    return jsonResponse(request, env, 500, {
+      error: 'Planning attachment model is not configured.',
+    });
+  }
+
+  const quotaError = await enforceAiQuota(request, env, session.uid, 'attachment');
+
+  if (quotaError) {
+    return quotaError;
+  }
+
+  const upstream = await requestGeminiImageAnalysis({
+    env,
+    payload,
+    prompt: PLANNING_ATTACHMENT_PROMPT,
+    maxOutputTokens: PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS,
+  });
+
+  if (!upstream.ok) {
+    return jsonResponse(request, env, upstream.status, {
+      error: upstream.status === 502
+        ? 'Gemini planning attachment response was empty.'
+        : 'Gemini planning attachment request failed.',
+    });
+  }
+
+  try {
+    return jsonResponse(request, env, 200, {
+      result: parseGeminiPlanningAttachmentJson(upstream.content),
+    });
+  } catch (error) {
+    return jsonResponse(request, env, 502, {
+      error: safeErrorMessage(
+        env,
+        error,
+        'Gemini planning attachment response could not be parsed.',
       ),
     });
   }
@@ -1030,7 +1198,10 @@ export default {
       return jsonResponse(request, env, 200, buildDebugBody(request, pathname));
     }
 
-    if (pathname === '/timetable-ocr' && request.method !== 'POST') {
+    if (
+      (pathname === '/timetable-ocr' || pathname === '/planning-attachment') &&
+      request.method !== 'POST'
+    ) {
       return methodNotAllowedResponse(request, env, pathname, ['POST', 'OPTIONS']);
     }
 
@@ -1041,7 +1212,8 @@ export default {
     if (
       pathname !== '/' &&
       pathname !== '/chat/completions' &&
-      pathname !== '/timetable-ocr'
+      pathname !== '/timetable-ocr' &&
+      pathname !== '/planning-attachment'
     ) {
       return notFoundResponse(request, env, pathname);
     }
@@ -1055,6 +1227,10 @@ export default {
     try {
       if (pathname === '/timetable-ocr') {
         return await handleTimetableOcr(request, env);
+      }
+
+      if (pathname === '/planning-attachment') {
+        return await handlePlanningAttachment(request, env);
       }
 
       return await handleChatCompletion(request, env);
