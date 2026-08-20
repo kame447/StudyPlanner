@@ -84,6 +84,96 @@
   margin: 0 10px 10px;
 }
 
+.ai-planning-attachment-input {
+  display: none;
+}
+
+.ai-planning-attachment-preview {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 4px 4px;
+}
+
+.ai-planning-attachment-thumbnail {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  overflow: visible;
+  border: 1px solid #d6dee8;
+  border-radius: 13px;
+  background: #f6f8fb;
+  box-shadow: 0 3px 10px rgba(32, 55, 91, 0.08);
+}
+
+.ai-planning-attachment-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.ai-planning-attachment-remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #d5dce5;
+  border-radius: 999px;
+  background: #fff;
+  color: #26364f;
+  cursor: pointer;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.14);
+}
+
+.ai-planning-attachment-remove:disabled {
+  opacity: 0.46;
+  cursor: default;
+}
+
+.ai-planning-attachment-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.42);
+  color: #fff;
+}
+
+.ai-planning-attachment-loading svg {
+  animation: ai-planning-attachment-spin 0.9s linear infinite;
+}
+
+@keyframes ai-planning-attachment-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-planning-attachment-preview > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #66758a;
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-planning-composer-side:disabled {
+  opacity: 0.46;
+  cursor: default;
+}
+
 .ai-planning-starters {
   display: grid;
   gap: 11px;
