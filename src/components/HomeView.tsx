@@ -40,12 +40,46 @@ interface HomeViewProps {
   onOpenSettings: () => void;
 }
 
+interface HomeLayoutRelaxation {
+  hero: number;
+  row: number;
+  todaySide: number;
+  alertSide: number;
+  topbar: number;
+  materialSide: number;
+  gap: number;
+}
+
 const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
   (sectionId) => sectionId !== 'material-progress',
 );
 const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
 const MAX_VISIBLE_TODAY_ROWS = 4;
 const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
+const TARGET_BOTTOM_GAP = 8;
+const MAX_NEXT_CARD_HEIGHT = 226;
+const MAX_SCHEDULE_ROW_HEIGHT = 50;
+const MAX_TOPBAR_HEIGHT = 62;
+const MAX_TODAY_SIDE_RELAXATION = 5;
+const MAX_ALERT_SIDE_RELAXATION = 2;
+const MAX_MATERIAL_SIDE_RELAXATION = 4;
+const MAX_SECTION_GAP = 10;
+
+function emptyLayoutRelaxation(): HomeLayoutRelaxation {
+  return {
+    hero: 0,
+    row: 0,
+    todaySide: 0,
+    alertSide: 0,
+    topbar: 0,
+    materialSide: 0,
+    gap: 0,
+  };
+}
+
+function hasLayoutRelaxation(relaxation: HomeLayoutRelaxation): boolean {
+  return Object.values(relaxation).some((value) => value > 0.25);
+}
 
 function preferredScheduleListHeight(scheduleList: HTMLElement): number {
   const rows = Array.from(scheduleList.children).filter(
@@ -99,6 +133,7 @@ export function HomeView({
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
   const bottomNavRef = useRef<HTMLElement | null>(null);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
   const supplementalStudyMaterials = useMemo(() => {
     if (supplementalMaterialRows === null) return [];
@@ -120,26 +155,77 @@ export function HomeView({
         const dashboardElement = core?.closest('.home-dashboard-default');
         const todayPanel = core?.querySelector<HTMLElement>('[data-home-section="today-schedule"]');
         const scheduleList = todayPanel?.querySelector<HTMLElement>('.home-schedule-list');
+        const nextCard = core?.querySelector<HTMLElement>('[data-home-section="next-plan"]');
+        const alertGrid = core?.querySelector<HTMLElement>('[data-home-section="attention"]');
+        const topbar = dashboardElement?.querySelector<HTMLElement>('.home-topbar');
         if (
           !core ||
           !nav ||
           !(dashboardElement instanceof HTMLElement) ||
           !todayPanel ||
-          !scheduleList
+          !scheduleList ||
+          !nextCard ||
+          !alertGrid ||
+          !topbar
         ) {
           return;
         }
+
+        const setRelaxationProperty = (name: string, value: number) => {
+          if (value <= 0.05) {
+            dashboardElement.style.removeProperty(name);
+          } else {
+            dashboardElement.style.setProperty(name, `${value.toFixed(2)}px`);
+          }
+        };
+        const applyLayoutRelaxation = (next: HomeLayoutRelaxation) => {
+          const current = layoutRelaxationRef.current;
+          const changed = (Object.keys(next) as Array<keyof HomeLayoutRelaxation>).some(
+            (key) => Math.abs(next[key] - current[key]) > 0.1,
+          );
+          if (!changed) return false;
+
+          layoutRelaxationRef.current = next;
+          setRelaxationProperty('--home-relax-hero', next.hero);
+          setRelaxationProperty('--home-relax-row', next.row);
+          setRelaxationProperty('--home-relax-today-side', next.todaySide);
+          setRelaxationProperty('--home-relax-alert-side', next.alertSide);
+          setRelaxationProperty('--home-relax-topbar', next.topbar);
+          setRelaxationProperty('--home-relax-material-side', next.materialSide);
+          setRelaxationProperty('--home-relax-gap', next.gap);
+          return true;
+        };
+        const resetLayoutRelaxation = () =>
+          applyLayoutRelaxation(emptyLayoutRelaxation());
 
         const coreRect = core.getBoundingClientRect();
         const todayRect = todayPanel.getBoundingClientRect();
         const navTop = nav.getBoundingClientRect().top;
         const rowGap = Number.parseFloat(window.getComputedStyle(dashboardElement).rowGap) || 0;
+        const scheduleRows = Array.from(
+          scheduleList.querySelectorAll<HTMLElement>('.home-schedule-row'),
+        ).slice(0, MAX_VISIBLE_TODAY_ROWS);
         const availableCoreHeight = Math.max(0, navTop - coreRect.top);
         const preferredListHeight = preferredScheduleListHeight(scheduleList);
         const todayChromeHeight = Math.max(0, todayRect.height - scheduleList.clientHeight);
         const preferredTodayHeight = todayChromeHeight + preferredListHeight;
         const preferredCoreHeight = coreRect.height - todayRect.height + preferredTodayHeight;
         const needsFourRowCap = scheduleList.children.length > MAX_VISIBLE_TODAY_ROWS;
+        const currentRelaxation = layoutRelaxationRef.current;
+        const internalCoreGapCount = Math.max(0, core.children.length - 1);
+        const compactCoreRelaxationImpact =
+          currentRelaxation.hero +
+          currentRelaxation.row * scheduleRows.length +
+          currentRelaxation.todaySide * 2 +
+          currentRelaxation.alertSide * 2 +
+          currentRelaxation.gap * internalCoreGapCount;
+        const compactPreferredCoreHeight = Math.max(
+          0,
+          preferredCoreHeight - compactCoreRelaxationImpact,
+        );
+        const compactAvailableCoreHeight =
+          availableCoreHeight + currentRelaxation.topbar + currentRelaxation.gap;
+        const compactOuterGap = Math.max(0, rowGap - currentRelaxation.gap);
 
         const setScheduleMaxHeight = (maxHeight: number | null) => {
           if (maxHeight === null) {
@@ -157,35 +243,149 @@ export function HomeView({
           const probe = materialProbeRefs.current.get(rowCount);
           if (!probe) continue;
           const measuredHeight = probe.getBoundingClientRect().height;
-          if (preferredCoreHeight + rowGap + measuredHeight <= availableCoreHeight + 0.5) {
+          const compactMeasuredHeight = Math.max(
+            0,
+            measuredHeight - currentRelaxation.materialSide * 2,
+          );
+          if (
+            compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight <=
+            compactAvailableCoreHeight + 0.5
+          ) {
             largestCandidateThatFits = rowCount;
           }
         }
 
-        if (largestCandidateThatFits !== null) {
+        if (largestCandidateThatFits !== supplementalMaterialRows) {
+          if (hasLayoutRelaxation(currentRelaxation)) {
+            if (resetLayoutRelaxation()) measure();
+            return;
+          }
           setScheduleMaxHeight(needsFourRowCap ? preferredListHeight : null);
-          setSupplementalMaterialRows((current) =>
-            current === largestCandidateThatFits ? current : largestCandidateThatFits,
-          );
+          setSupplementalMaterialRows(largestCandidateThatFits);
           return;
         }
 
-        if (preferredCoreHeight <= availableCoreHeight + 0.5) {
-          setScheduleMaxHeight(needsFourRowCap ? preferredListHeight : null);
+        if (compactPreferredCoreHeight > compactAvailableCoreHeight + 0.5) {
+          if (hasLayoutRelaxation(currentRelaxation)) {
+            if (resetLayoutRelaxation()) measure();
+            return;
+          }
+
+          const coreHeightWithoutPreferredList = preferredCoreHeight - preferredListHeight;
+          const emergencyScheduleHeight = Math.min(
+            preferredListHeight,
+            Math.max(
+              MIN_SCROLLABLE_SCHEDULE_HEIGHT,
+              availableCoreHeight - coreHeightWithoutPreferredList,
+            ),
+          );
+          setScheduleMaxHeight(emergencyScheduleHeight);
           setSupplementalMaterialRows((current) => (current === null ? current : null));
           return;
         }
 
-        const coreHeightWithoutPreferredList = preferredCoreHeight - preferredListHeight;
-        const emergencyScheduleHeight = Math.min(
-          preferredListHeight,
-          Math.max(
-            MIN_SCROLLABLE_SCHEDULE_HEIGHT,
-            availableCoreHeight - coreHeightWithoutPreferredList,
-          ),
+        setScheduleMaxHeight(needsFourRowCap ? preferredListHeight : null);
+
+        const selectedMaterialProbe =
+          supplementalMaterialRows === null
+            ? null
+            : materialProbeRefs.current.get(supplementalMaterialRows) ?? null;
+        const selectedMaterialHeight =
+          selectedMaterialProbe?.getBoundingClientRect().height ?? 0;
+        const currentUsedHeight =
+          preferredCoreHeight +
+          (supplementalMaterialRows === null ? 0 : rowGap + selectedMaterialHeight);
+        const currentSlack = availableCoreHeight - currentUsedHeight;
+
+        if (currentSlack < -0.5 && hasLayoutRelaxation(currentRelaxation)) {
+          if (resetLayoutRelaxation()) measure();
+          return;
+        }
+
+        let remaining = currentSlack - TARGET_BOTTOM_GAP;
+        if (remaining <= 0.5) return;
+
+        const nextRelaxation = { ...currentRelaxation };
+
+        const heroCapacity = Math.max(
+          0,
+          MAX_NEXT_CARD_HEIGHT - nextCard.getBoundingClientRect().height,
         );
-        setScheduleMaxHeight(emergencyScheduleHeight);
-        setSupplementalMaterialRows((current) => (current === null ? current : null));
+        const heroAddition = Math.min(heroCapacity, remaining);
+        nextRelaxation.hero += heroAddition;
+        remaining -= heroAddition;
+
+        if (remaining > 0.5 && scheduleRows.length > 0) {
+          const rowCapacity = Math.max(
+            0,
+            Math.min(
+              ...scheduleRows.map((row) =>
+                MAX_SCHEDULE_ROW_HEIGHT - row.getBoundingClientRect().height,
+              ),
+            ),
+          );
+          const rowAddition = Math.min(rowCapacity, remaining / scheduleRows.length);
+          nextRelaxation.row += rowAddition;
+          remaining -= rowAddition * scheduleRows.length;
+          if (rowAddition > 0.05 && needsFourRowCap) {
+            setScheduleMaxHeight(
+              preferredListHeight + rowAddition * scheduleRows.length,
+            );
+          }
+        }
+
+        if (remaining > 0.5) {
+          const sideCapacity = Math.max(
+            0,
+            MAX_TODAY_SIDE_RELAXATION - nextRelaxation.todaySide,
+          );
+          const sideAddition = Math.min(sideCapacity, remaining / 2);
+          nextRelaxation.todaySide += sideAddition;
+          remaining -= sideAddition * 2;
+        }
+
+        if (remaining > 0.5) {
+          const sideCapacity = Math.max(
+            0,
+            MAX_ALERT_SIDE_RELAXATION - nextRelaxation.alertSide,
+          );
+          const sideAddition = Math.min(sideCapacity, remaining / 2);
+          nextRelaxation.alertSide += sideAddition;
+          remaining -= sideAddition * 2;
+        }
+
+        if (remaining > 0.5) {
+          const topbarCapacity = Math.max(
+            0,
+            MAX_TOPBAR_HEIGHT - topbar.getBoundingClientRect().height,
+          );
+          const topbarAddition = Math.min(topbarCapacity, remaining);
+          nextRelaxation.topbar += topbarAddition;
+          remaining -= topbarAddition;
+        }
+
+        if (remaining > 0.5 && supplementalMaterialRows !== null) {
+          const sideCapacity = Math.max(
+            0,
+            MAX_MATERIAL_SIDE_RELAXATION - nextRelaxation.materialSide,
+          );
+          const sideAddition = Math.min(sideCapacity, remaining / 2);
+          nextRelaxation.materialSide += sideAddition;
+          remaining -= sideAddition * 2;
+        }
+
+        if (remaining > 0.5) {
+          const gapCapacity = Math.max(0, MAX_SECTION_GAP - rowGap);
+          const activeGapCount =
+            internalCoreGapCount + 1 + (supplementalMaterialRows === null ? 0 : 1);
+          if (gapCapacity > 0 && activeGapCount > 0) {
+            const gapAddition = Math.min(gapCapacity, remaining / activeGapCount);
+            nextRelaxation.gap += gapAddition;
+            remaining -= gapAddition * activeGapCount;
+          }
+        }
+
+        if (applyLayoutRelaxation(nextRelaxation)) measure();
       });
     };
 
@@ -214,6 +414,7 @@ export function HomeView({
     dashboard.upcomingPlans.length,
     isGettingStarted,
     supplementalMaterialCandidates,
+    supplementalMaterialRows,
   ]);
 
   function renderSection(sectionId: HomeSectionId) {
