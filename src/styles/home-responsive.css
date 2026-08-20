@@ -36,26 +36,32 @@
   border-radius: 0 9px 9px 0;
 }
 
-.home-date-segment-rings {
+.home-date-segment::before,
+.home-date-segment-year::after {
+  content: '';
   position: absolute;
   z-index: 4;
-  inset: 0;
-  pointer-events: none;
-}
-
-.home-date-ring {
   top: -6px;
   width: 5px;
   height: 14px;
-  border-width: 2px;
+  transform: translateX(-50%);
+  border: 2px solid #17213a;
+  border-radius: 999px;
   background: #fff;
   box-shadow: 0 1px 1px rgba(23, 33, 58, 0.08);
+  pointer-events: none;
 }
 
-.home-date-ring::after {
-  bottom: -3px;
-  width: 2px;
-  height: 4px;
+.home-date-segment::before {
+  left: 50%;
+}
+
+.home-date-segment-year::before {
+  left: 32%;
+}
+
+.home-date-segment-year::after {
+  left: 68%;
 }
 
 .home-date-value {
@@ -168,9 +174,9 @@
     grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
   }
 
-  .home-date-ring {
+  .home-date-segment::before,
+  .home-date-segment-year::after {
     top: -5px;
-    width: 5px;
     height: 13px;
   }
 
