@@ -1,6 +1,6 @@
 {
-  "profile": "merge-gate",
-  "repetitions": 3,
-  "request_id": "20260819-pr157-merge-gate-23",
-  "reason": "Real Luna 3x merge gate after gate 22 passed 2/3 and isolated one remaining stochastic omission: while a machine pending question was active, the generic full-document semantic path could return a schema-valid no-op three times for an explicit task-scoped deadline such as tomorrow at 13:00. The no-op recovery path now first invokes a small AI-owned typed temporal side-contribution classifier only when machine state resolves the pending target to an existing task. It may return a supported task temporal constraint or fallback; deterministic code binds only the typed result to the verified task and never inspects Japanese wording. Generic completeness retries remain as fallback for other meaning classes. Deterministic CI and Browser Regression are green on the implementation head. Revalidate deadline 13:00 Fact acceptance and visible acknowledgement before resumed progress, bounded 20 -> completed 12 -> remaining 8 -> explicit 8 min/unit bound to remaining 8 with no repeated completed-total question, remaining 45-minute and two-hour targetFactId directionality, direct completed-duration observed pace, 100% completion and correction behavior, typed renderer/all question codes, transcripts, and Fact Graph invariants."
+  "profile": "checkpoint",
+  "repetitions": 1,
+  "request_id": "20260821-debug-repeated-task-question-main-1",
+  "reason": "Temporary diagnostic run from exact main application code. Reproduce the observed AI Planning transcript: request 8/24-29, then mention two drinking events, part-time work, camp-song practice, then add app development and conference-material preparation. Verify that newly named work is accepted into the Stable V5 Fact Graph and that the application does not remain in missing-task-identity questioning. This branch changes only diagnostic test/workflow files; no product code is changed."
 }
