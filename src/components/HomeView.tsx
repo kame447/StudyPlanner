@@ -43,26 +43,7 @@ interface HomeViewProps {
 const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
   (sectionId) => sectionId !== 'material-progress',
 );
-const MATERIAL_SECTION_BASE_HEIGHT = 60;
-const MATERIAL_ROW_HEIGHT = 63;
 const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
-
-function resolveSupplementalMaterialRows(
-  studyMaterials: StudyMaterial[],
-  availableHeight: number,
-): number {
-  const activeMaterialCount = studyMaterials.filter(
-    (material) => material.status !== 'archived',
-  ).length;
-  const desiredRows = Math.max(
-    1,
-    Math.min(MAX_SUPPLEMENTAL_MATERIAL_ROWS, activeMaterialCount),
-  );
-  const rowsThatFit = Math.floor(
-    (availableHeight - MATERIAL_SECTION_BASE_HEIGHT) / MATERIAL_ROW_HEIGHT,
-  );
-  return Math.max(0, Math.min(desiredRows, rowsThatFit));
-}
 
 export function HomeView({
   user,
@@ -88,20 +69,32 @@ export function HomeView({
     actuals.length === 0 &&
     todos.length === 0 &&
     studyMaterials.length === 0;
+  const activeStudyMaterials = useMemo(
+    () =>
+      studyMaterials
+        .filter((material) => material.status !== 'archived')
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [studyMaterials],
+  );
+  const supplementalMaterialCandidates = useMemo(() => {
+    if (activeStudyMaterials.length === 0) return [0];
+    return Array.from(
+      { length: Math.min(MAX_SUPPLEMENTAL_MATERIAL_ROWS, activeStudyMaterials.length) },
+      (_, index) => index + 1,
+    );
+  }, [activeStudyMaterials]);
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
   const bottomNavRef = useRef<HTMLElement | null>(null);
-  const [supplementalMaterialRows, setSupplementalMaterialRows] = useState(0);
+  const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
   const supplementalStudyMaterials = useMemo(() => {
-    if (supplementalMaterialRows <= 0) return [];
-    return studyMaterials
-      .filter((material) => material.status !== 'archived')
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, supplementalMaterialRows);
-  }, [studyMaterials, supplementalMaterialRows]);
+    if (supplementalMaterialRows === null) return [];
+    return activeStudyMaterials.slice(0, supplementalMaterialRows);
+  }, [activeStudyMaterials, supplementalMaterialRows]);
 
   useEffect(() => {
     if (isGettingStarted) {
-      setSupplementalMaterialRows(0);
+      setSupplementalMaterialRows(null);
       return undefined;
     }
 
@@ -111,13 +104,26 @@ export function HomeView({
       frameId = window.requestAnimationFrame(() => {
         const core = coreSectionsRef.current;
         const nav = bottomNavRef.current;
-        if (!core || !nav) return;
+        const dashboardElement = core?.closest('.home-dashboard-default');
+        if (!core || !nav || !(dashboardElement instanceof HTMLElement)) return;
 
         const coreBottom = core.getBoundingClientRect().bottom;
         const navTop = nav.getBoundingClientRect().top;
-        const availableHeight = navTop - coreBottom - 8;
-        setSupplementalMaterialRows(
-          resolveSupplementalMaterialRows(studyMaterials, availableHeight),
+        const rowGap = Number.parseFloat(window.getComputedStyle(dashboardElement).rowGap) || 0;
+        const availableHeight = Math.max(0, navTop - coreBottom - rowGap);
+
+        let largestCandidateThatFits: number | null = null;
+        for (const rowCount of supplementalMaterialCandidates) {
+          const probe = materialProbeRefs.current.get(rowCount);
+          if (!probe) continue;
+          const measuredHeight = probe.getBoundingClientRect().height;
+          if (measuredHeight <= availableHeight + 0.5) {
+            largestCandidateThatFits = rowCount;
+          }
+        }
+
+        setSupplementalMaterialRows((current) =>
+          current === largestCandidateThatFits ? current : largestCandidateThatFits,
         );
       });
     };
@@ -128,8 +134,12 @@ export function HomeView({
 
     const resizeObserver =
       typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (resizeObserver && coreSectionsRef.current) {
-      resizeObserver.observe(coreSectionsRef.current);
+    if (resizeObserver) {
+      if (coreSectionsRef.current) resizeObserver.observe(coreSectionsRef.current);
+      if (bottomNavRef.current) resizeObserver.observe(bottomNavRef.current);
+      for (const probe of materialProbeRefs.current.values()) {
+        resizeObserver.observe(probe);
+      }
     }
 
     return () => {
@@ -138,7 +148,7 @@ export function HomeView({
       window.visualViewport?.removeEventListener('resize', measure);
       resizeObserver?.disconnect();
     };
-  }, [isGettingStarted, studyMaterials]);
+  }, [isGettingStarted, supplementalMaterialCandidates]);
 
   function renderSection(sectionId: HomeSectionId) {
     switch (sectionId) {
@@ -250,12 +260,29 @@ export function HomeView({
           <div className="home-core-sections" ref={coreSectionsRef}>
             {CORE_HOME_SECTION_ORDER.map(renderSection)}
           </div>
-          {supplementalMaterialRows > 0 ? (
+          {supplementalMaterialRows !== null ? (
             <MaterialProgressSection
               studyMaterials={supplementalStudyMaterials}
               onOpenBookshelf={onOpenBookshelf}
             />
           ) : null}
+          <div className="home-material-measurements" aria-hidden="true">
+            {supplementalMaterialCandidates.map((rowCount) => (
+              <div
+                className="home-material-measurement"
+                key={rowCount}
+                ref={(node) => {
+                  if (node) materialProbeRefs.current.set(rowCount, node);
+                  else materialProbeRefs.current.delete(rowCount);
+                }}
+              >
+                <MaterialProgressSection
+                  studyMaterials={activeStudyMaterials.slice(0, rowCount)}
+                  onOpenBookshelf={onOpenBookshelf}
+                />
+              </div>
+            ))}
+          </div>
         </>
       )}
 
