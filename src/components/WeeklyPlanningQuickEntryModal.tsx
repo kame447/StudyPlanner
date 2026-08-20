@@ -8,6 +8,7 @@ import type {
   TodoTaskDraft,
 } from '../types/domain';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { AiPlanningView } from './AiPlanningView';
 import { QuickEntryModal } from './QuickEntryModal';
 import './WeeklyPlanningQuickEntryModal.css';
 
@@ -40,6 +41,22 @@ export function WeeklyPlanningQuickEntryModal({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: WeeklyPlanningQuickEntryModalProps) {
+  const opensFromHome =
+    typeof document !== 'undefined' && Boolean(document.querySelector('.home-app-shell'));
+
+  if (opensFromHome) {
+    return (
+      <AiPlanningView
+        application={application}
+        userId={userId}
+        selectedDate={selectedDate}
+        plans={plans}
+        actuals={actuals}
+        onClose={onClose}
+      />
+    );
+  }
+
   const { state, approvalAvailability, pendingDraftBlocks } = application;
   const unavailableApproval =
     pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
