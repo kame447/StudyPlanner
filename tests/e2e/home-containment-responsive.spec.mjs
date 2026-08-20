@@ -19,6 +19,14 @@ const VIEWPORTS = [
   { name: 'tablet-portrait', width: 1024, height: 1366 },
 ];
 
+const RESIZE_SEQUENCE = [
+  { width: 360, height: 640 },
+  { width: 1536, height: 864 },
+  { width: 1920, height: 1080 },
+  { width: 1024, height: 768 },
+  { width: 390, height: 844 },
+];
+
 async function seedHome(page, planCount) {
   await page.addInitScript(({ count }) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -111,6 +119,15 @@ async function readContainmentMetrics(page) {
   });
 }
 
+function expectContainment(metrics) {
+  expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.todayDisplay).toBe('grid');
+  expect(['auto', 'scroll']).toContain(metrics.scheduleOverflowY);
+  expectRectContained(metrics.today, metrics.heading);
+  expectRectContained(metrics.today, metrics.schedule);
+  expectOrderedWithoutOverlap(metrics.today, metrics.attention);
+}
+
 for (const viewport of VIEWPORTS) {
   for (const planCount of [1, 4]) {
     test(`${viewport.name} ${viewport.width}x${viewport.height} keeps ${planCount} schedule row(s) inside today's card`, async ({ page }) => {
@@ -120,14 +137,20 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator('.home-dashboard-default')).toBeVisible();
       await page.waitForTimeout(650);
 
-      const metrics = await readContainmentMetrics(page);
-
-      expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
-      expect(metrics.todayDisplay).toBe('grid');
-      expect(['auto', 'scroll']).toContain(metrics.scheduleOverflowY);
-      expectRectContained(metrics.today, metrics.heading);
-      expectRectContained(metrics.today, metrics.schedule);
-      expectOrderedWithoutOverlap(metrics.today, metrics.attention);
+      expectContainment(await readContainmentMetrics(page));
     });
   }
 }
+
+test('keeps containment while resizing between phone, laptop, desktop, and tablet layouts', async ({ page }) => {
+  await page.setViewportSize(RESIZE_SEQUENCE[0]);
+  await seedHome(page, 4);
+  await page.goto('/');
+  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+
+  for (const viewport of RESIZE_SEQUENCE) {
+    await page.setViewportSize(viewport);
+    await page.waitForTimeout(450);
+    expectContainment(await readContainmentMetrics(page));
+  }
+});
