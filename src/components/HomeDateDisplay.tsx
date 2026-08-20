@@ -4,7 +4,7 @@ interface HomeDateDisplayProps {
   date: string;
 }
 
-const RING_POSITIONS = ['17%', '23%', '47%', '72%', '92%'] as const;
+const RING_POSITIONS = ['10%', '20%', '44%', '69%', '91%'] as const;
 
 export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
   const [year, month, day] = date.split('-').map(Number);
@@ -30,7 +30,7 @@ export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
       </span>
       <span className="home-date-paper">
         {segments.map((segment) => (
-          <span className="home-date-segment" key={segment.key}>
+          <span className={`home-date-segment home-date-segment-${segment.key}`} key={segment.key}>
             <span className="home-date-value">{segment.value}</span>
             {segment.suffix ? (
               <span className="home-date-unit">{segment.suffix}</span>
