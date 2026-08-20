@@ -11,6 +11,9 @@ import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
+  normalizeWeeklyPlanningExistingTaskShellV5,
+} from './weeklyPlanningExistingTaskShellNormalizationV5';
+import {
   normalizePendingQuestionEntityBindingsV5,
 } from './weeklyPlanningPendingEntityBindingNormalizationV5';
 import {
@@ -27,8 +30,10 @@ import {
 } from './weeklyPlanningTemporalClockEncodingV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
+  'empty_semantic_delta_envelope',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
+  'existing_task_shell',
   'pending_question_entity_binding',
   'component_parent',
   'duplicate_workload_placement',
@@ -57,6 +62,10 @@ Record<
   WeeklyPlanningSemanticPreParseNormalizationStageIdV5,
   WeeklyPlanningSemanticPreParseNormalizationStageDefinitionV5
 > = {
+  empty_semantic_delta_envelope: {
+    category: 'representation_repair',
+    owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
+  },
   task_decomposition_uncertainty: {
     category: 'semantic_invariant_derivation',
     owningInvariant: 'needs_breakdown tasks must expose one work_breakdown uncertainty',
@@ -64,6 +73,10 @@ Record<
   copied_user_context_delta: {
     category: 'context_binding_repair',
     owningInvariant: 'provider output is a current-turn delta and must not echo stored durable context',
+  },
+  existing_task_shell: {
+    category: 'context_binding_repair',
+    owningInvariant: 'an existing study task delta may omit durable study metadata that is not being changed',
   },
   pending_question_entity_binding: {
     category: 'context_binding_repair',
@@ -113,6 +126,71 @@ interface RawNormalizationResult {
   repairs: string[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormalizationResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { rawResponse, repairs: [] };
+  }
+  if (!isRecord(parsed) || 'schemaVersion' in parsed) {
+    return { rawResponse, repairs: [] };
+  }
+
+  const topLevelKeys = Object.keys(parsed).sort();
+  const expectedKeys = [
+    'corrections',
+    'execution',
+    'facts',
+    'grounding',
+    'notes',
+    'uncertainties',
+  ];
+  if (
+    topLevelKeys.length !== expectedKeys.length
+    || topLevelKeys.some((key, index) => key !== expectedKeys[index])
+    || !isEmptyArray(parsed.facts)
+    || !isEmptyArray(parsed.corrections)
+    || !isEmptyArray(parsed.uncertainties)
+    || !isEmptyArray(parsed.notes)
+    || !isRecord(parsed.execution)
+    || Object.keys(parsed.execution).length !== 1
+    || !isEmptyArray(parsed.execution.approvalRequests)
+    || !isRecord(parsed.grounding)
+    || Object.keys(parsed.grounding).sort().join('|') !== 'needsGrounding|note|targetFactIds'
+    || parsed.grounding.needsGrounding !== false
+    || !isEmptyArray(parsed.grounding.targetFactIds)
+    || parsed.grounding.note !== null
+  ) {
+    return { rawResponse, repairs: [] };
+  }
+
+  return {
+    rawResponse: JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    }),
+    repairs: ['empty-semantic-delta-envelope-canonicalized'],
+  };
+}
+
 /**
  * Stable V5 provider-output normalization boundary.
  *
@@ -145,10 +223,17 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     });
   };
 
+  applyStage('empty_semantic_delta_envelope', (value) =>
+    normalizeEmptySemanticDeltaEnvelopeV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
     normalizeCopiedUserContextDeltaV5({
+      rawResponse: value,
+      publicStateSummary: params.publicStateSummary,
+    }));
+  applyStage('existing_task_shell', (value) =>
+    normalizeWeeklyPlanningExistingTaskShellV5({
       rawResponse: value,
       publicStateSummary: params.publicStateSummary,
     }));

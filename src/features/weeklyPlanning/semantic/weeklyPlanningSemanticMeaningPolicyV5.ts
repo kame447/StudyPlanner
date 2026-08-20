@@ -12,13 +12,13 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'current_turn_scope',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'Schema and validators can reject malformed output, but cannot decide which supported meanings belong to the current utterance rather than copied context.',
-    instruction: 'Interpret only supported current-turn meaning into semantic facts.',
+    instruction: 'Interpret every supported explicit current-turn contribution into facts, including side contributions; a pending question must not suppress other stated facts.',
   },
   {
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Choosing whether language denotes a task, subordinate component, or attachment target requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets.',
+    retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
+    instruction: 'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets. When an existingPublicId task/component appears only as the minimal containing shell for a newly stated nested fact, do not create a new breakdown requirement from that wrapper. If the current utterance itself newly makes an existing task structure unclear, represent that ambiguity explicitly as a work_breakdown uncertainty.',
   },
   {
     id: 'study_activity_kind',
@@ -35,14 +35,14 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Distinguishing target/progress quantities from duration or per-unit effort is meaning disambiguation, while validators only check a represented choice.',
-    instruction: 'Keep stated amounts when quantity role is unclear. For qualitative progress without an exact amount, emit one uncertainty on the relevant task/component and no new workload amount. Distinguish workload from duration; per-unit effort only when stated.',
+    retentionReason: 'Distinguishing fixed total scope, plan target, current progress, remaining work, duration, and per-unit effort is meaning disambiguation, while validators only check a represented choice.',
+    instruction: 'Use scope_total only for an explicit bounded total. target requires an explicit plan amount; never derive it from total/completed. If the user intends all remaining work without a separate amount, omit target; deterministic progress projection derives remaining. Explicit numeric progress, including approximate percentages, is workload state; use completed custom "%" 0..100. Omission is absence, not uncertainty; emit uncertainty only for ambiguous stated meaning. Distinguish workload quantity from duration. A duration describing time expected for remaining work is a total_duration effort estimate targeted to the remaining-work workload/state, not a workload measured in minutes/hours and not historical effort for completed work. Preserve completed-versus-remaining direction even when a pending question asks about the other side; such a statement is a side contribution. Per-unit effort only when stated.',
   },
   {
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; Deadline means completion-by. Keep relative dates symbolic; deterministic calendar code resolves them.',
+    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. A task-scoped completion-by date or time must be emitted as that task\'s temporalConstraint with kind=deadline and hard constraint level; for an existing task, use its minimal existingPublicId shell plus the new temporalConstraint. Do not treat such timing as a no-op merely because it does not answer a pending question. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; Deadline means completion-by. Keep relative dates symbolic; deterministic calendar code resolves them.',
   },
   {
     id: 'availability_absence',

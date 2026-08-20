@@ -101,17 +101,46 @@ export interface WeeklyPlanningExistingEntityGraphBindingsV5 {
   errors: string[];
 }
 
-function sameWorkloadMeaning(
+function sameWorkloadShape(
   semantic: SemanticWorkloadV5,
   fact: WorkloadFactV5,
 ): boolean {
   return semantic.quantityRole === fact.quantityRole
     && semantic.amount === fact.amount
-    && semantic.unitCode === fact.unitCode
     && semantic.rangeStart === fact.rangeStart
     && semantic.rangeEnd === fact.rangeEnd
     && semantic.perOccurrence === fact.perOccurrence
     && semantic.periodExpression === fact.periodExpression;
+}
+
+function exactUnitMatch(
+  semantic: SemanticWorkloadV5,
+  fact: WorkloadFactV5,
+): boolean {
+  return semantic.unitCode === fact.unitCode;
+}
+
+function safeCustomUnitLabelFallback(
+  semantic: SemanticWorkloadV5,
+  fact: WorkloadFactV5,
+): boolean {
+  return (semantic.unitCode === 'custom' || fact.unitCode === 'custom')
+    && normalized(semantic.unitLabel) === normalized(fact.unitLabel);
+}
+
+function workloadCandidates(params: {
+  semantic: SemanticWorkloadV5;
+  taskId: string;
+  componentId: string | null;
+  activeWorkloads: readonly WorkloadFactV5[];
+}): WorkloadFactV5[] {
+  const structural = params.activeWorkloads.filter((candidate) =>
+    candidate.taskId === params.taskId
+    && candidate.componentId === params.componentId
+    && sameWorkloadShape(params.semantic, candidate));
+  const exact = structural.filter((candidate) => exactUnitMatch(params.semantic, candidate));
+  if (exact.length > 0) return exact;
+  return structural.filter((candidate) => safeCustomUnitLabelFallback(params.semantic, candidate));
 }
 
 export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
@@ -175,15 +204,22 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
   }): void => {
     if (!paramsForWorkload.taskId) return;
     const exactIdCandidate = workloads.get(paramsForWorkload.semantic.localId);
-    const candidates = exactIdCandidate
+    const exactIdMatches = exactIdCandidate
       && exactIdCandidate.taskId === paramsForWorkload.taskId
       && exactIdCandidate.componentId === paramsForWorkload.componentId
-      && sameWorkloadMeaning(paramsForWorkload.semantic, exactIdCandidate)
+      && sameWorkloadShape(paramsForWorkload.semantic, exactIdCandidate)
+      && (
+        exactUnitMatch(paramsForWorkload.semantic, exactIdCandidate)
+        || safeCustomUnitLabelFallback(paramsForWorkload.semantic, exactIdCandidate)
+      );
+    const candidates = exactIdMatches
       ? [exactIdCandidate]
-      : active.workloads.filter((candidate) =>
-          candidate.taskId === paramsForWorkload.taskId
-          && candidate.componentId === paramsForWorkload.componentId
-          && sameWorkloadMeaning(paramsForWorkload.semantic, candidate));
+      : workloadCandidates({
+          semantic: paramsForWorkload.semantic,
+          taskId: paramsForWorkload.taskId,
+          componentId: paramsForWorkload.componentId,
+          activeWorkloads: active.workloads,
+        });
     if (candidates.length === 0) return;
     if (candidates.length > 1) {
       errors.push(

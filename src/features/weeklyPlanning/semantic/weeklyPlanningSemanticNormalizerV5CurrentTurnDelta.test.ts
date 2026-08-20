@@ -57,7 +57,7 @@ function client(sequence: string[]): {
 }
 
 describe('Stable V5 current-turn semantic delta contract', () => {
-  it('tells the normalizer that accepted state is context rather than output snapshot', async () => {
+  it('tells the normalizer that accepted state is context and a pending question cannot suppress side contributions', async () => {
     const fake = client([JSON.stringify(currentTaskDocument(null))]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
@@ -72,6 +72,10 @@ describe('Stable V5 current-turn semantic delta contract', () => {
           kind: 'relative_week',
           value: 'next_week',
         }],
+        pendingQuestion: {
+          questionCode: 'missing_schedulable_work',
+          graphRevision: 1,
+        },
       },
     });
 
@@ -84,6 +88,10 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).toContain(
       'a new nested fact on an existing task/component needs only a minimal containing shell bound by exact existingPublicId',
     );
+    expect(system).toContain('Interpret current-turn meaning into semantic facts independently');
+    expect(system).toContain('pendingQuestion as authoritative only for an actual answer');
+    expect(system).toContain('It must not suppress other explicit contributions');
+    expect(system).toContain('leave an unanswered question pending');
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 

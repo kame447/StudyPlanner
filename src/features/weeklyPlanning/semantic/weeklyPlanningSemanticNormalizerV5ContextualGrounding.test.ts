@@ -18,6 +18,7 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
       category: 'study',
       title: 'レポート執筆',
     }],
+    components: [],
     workloads: [{
       publicId: 'workload-writing',
       taskPublicId: 'task-writing',
@@ -26,6 +27,10 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
       amount: 4,
       unitCode: 'page',
       unitLabel: 'ページ',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
     }],
   };
 }
@@ -33,6 +38,8 @@ function stateSummary(questionCode: 'quantity_role_unresolved' | 'missing_effort
 function focusedQuantityRoleAnswer(): string {
   return JSON.stringify({
     decision: 'quantity_role_answer',
+    effortTarget: null,
+    effortMeasurement: null,
     minutes: null,
     precision: null,
     quantityRole: 'target',
@@ -42,6 +49,8 @@ function focusedQuantityRoleAnswer(): string {
 function focusedEffortAnswer(): string {
   return JSON.stringify({
     decision: 'effort_answer',
+    effortTarget: 'question_target',
+    effortMeasurement: 'total_duration',
     minutes: 180,
     precision: 'exact',
     quantityRole: null,

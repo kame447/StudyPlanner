@@ -1,6 +1,9 @@
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
+import {
+  projectWeeklyPlanningBoundedProgressV5,
+} from './weeklyPlanningBoundedProgressProjectionV5';
 import type {
   WeeklyPlanningFactDiffEntryV5,
   WeeklyPlanningFactGraphV5,
@@ -8,6 +11,12 @@ import type {
 import {
   applyWeeklyPlanningExistingEntityBindingsV5,
 } from './weeklyPlanningExistingEntityBindingApplicationV5';
+import {
+  projectWeeklyPlanningPercentageProgressV5,
+} from './weeklyPlanningPercentageProgressProjectionV5';
+import {
+  reconcileWeeklyPlanningProgressCorrectionsV5,
+} from './weeklyPlanningProgressCorrectionReconciliationV5';
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
@@ -137,9 +146,24 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: boundCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const progressReconciledCanonicalization = reconcileWeeklyPlanningProgressCorrectionsV5({
     originalGraph: params.originalGraph,
     canonicalization: correctionResult.canonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const percentageProjectedCanonicalization = projectWeeklyPlanningPercentageProgressV5({
+    originalGraph: params.originalGraph,
+    canonicalization: progressReconciledCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const boundedProjectedCanonicalization = projectWeeklyPlanningBoundedProgressV5({
+    originalGraph: params.originalGraph,
+    canonicalization: percentageProjectedCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
+  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+    originalGraph: params.originalGraph,
+    canonicalization: boundedProjectedCanonicalization,
   });
   return {
     entityBindingApplication,

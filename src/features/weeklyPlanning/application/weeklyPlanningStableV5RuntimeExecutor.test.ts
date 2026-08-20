@@ -528,7 +528,7 @@ describe('Stable V5 runtime executor', () => {
       draftGenerationIntent: 'user_authorized',
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
-        intent: 'missing_schedulable_work',
+        intent: 'missing_task_identity',
       },
     });
     expect(result.message).toBe(
@@ -568,7 +568,7 @@ describe('Stable V5 runtime executor', () => {
       draftGenerationIntent: 'user_authorized',
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
-        intent: 'missing_schedulable_work',
+        intent: 'existing_target_progress',
         topicId: expect.any(String),
       },
     });

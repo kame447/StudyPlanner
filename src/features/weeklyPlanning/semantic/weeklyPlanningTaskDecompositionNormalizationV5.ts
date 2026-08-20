@@ -57,6 +57,16 @@ export function normalizeTaskDecompositionUncertaintiesV5(
     const sourceText = nonEmptyString(taskValue.sourceText);
     if (!taskLocalId || !sourceText) return;
 
+    // Existing entities often appear as the minimal containing shell for a newly
+    // stated nested fact (deadline, effort, recurrence, etc.). decompositionStatus
+    // is a transport field and is not persisted on the Fact Graph, so deriving a
+    // fresh work_breakdown uncertainty from such a shell can manufacture an
+    // unrelated dialogue obligation. New tasks may still derive the structural
+    // uncertainty here. A later utterance that explicitly makes an existing task's
+    // structure uncertain must represent that uncertainty explicitly in the
+    // semantic document instead of relying on the wrapper field.
+    if (nonEmptyString(taskValue.existingPublicId)) return;
+
     const alreadyPresent = uncertainties.some((entry) =>
       isRecord(entry)
       && entry.field === 'work_breakdown'

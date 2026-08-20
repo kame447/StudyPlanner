@@ -14,6 +14,8 @@ type ClientRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[
 function focusedFallback(): string {
   return JSON.stringify({
     decision: 'fallback',
+    effortTarget: null,
+    effortMeasurement: null,
     minutes: null,
     precision: null,
     quantityRole: null,
@@ -104,12 +106,24 @@ describe('Stable V5 contextual ID boundary', () => {
           targetFactId: 'wpf_workload_existing-public-id',
           graphRevision: 2,
         },
+        tasks: [{
+          publicId: 'wpf_task_existing-public-id',
+          category: 'study',
+          title: '直前の質問対象',
+        }],
+        components: [],
         workloads: [{
           publicId: 'wpf_workload_existing-public-id',
+          taskPublicId: 'wpf_task_existing-public-id',
+          componentPublicId: null,
           quantityRole: 'declared',
           amount: 2,
           unitCode: 'hour',
           unitLabel: '時間',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
         }],
       },
     });

@@ -12,9 +12,10 @@ function normalize(task: Record<string, unknown>, uncertainties: unknown[] = [])
 }
 
 describe('Stable V5 task decomposition normalization', () => {
-  it('derives one work_breakdown uncertainty from an explicit needs_breakdown classification', () => {
+  it('derives one work_breakdown uncertainty from an explicit needs_breakdown classification on a new task', () => {
     const result = normalize({
       localId: 'task-1',
+      existingPublicId: null,
       decompositionStatus: 'needs_breakdown',
       sourceText: '提出物がいくつか残っている',
     });
@@ -29,6 +30,28 @@ describe('Stable V5 task decomposition normalization', () => {
     expect(result.repairs).toEqual([
       'task-decomposition-uncertainty-derived:0:task-1',
     ]);
+  });
+
+  it('does not manufacture work_breakdown from an existing task shell carrying a nested update', () => {
+    const result = normalize({
+      localId: 'task-shell',
+      existingPublicId: 'wpf_task_existing',
+      decompositionStatus: 'needs_breakdown',
+      sourceText: '締切は明日の13時です',
+      workloads: [],
+      temporalConstraints: [{
+        localId: 'deadline-1',
+        targetLocalId: 'task-shell',
+        kind: 'deadline',
+        dateExpression: 'tomorrow',
+        startTime: null,
+        endTime: '13:00',
+        sourceText: '締切は明日の13時です',
+      }],
+    });
+    const parsed = JSON.parse(result.rawResponse) as any;
+    expect(parsed.uncertainties).toEqual([]);
+    expect(result.repairs).toEqual([]);
   });
 
   it.each(['atomic', 'decomposed'])('does not derive uncertainty for %s', (status) => {

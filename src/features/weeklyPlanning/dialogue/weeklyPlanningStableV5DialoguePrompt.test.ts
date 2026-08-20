@@ -28,13 +28,32 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput {
         endDate: '2026-08-09',
       }],
       availabilityDeclarations: [
-        { id: 'a1', resolutionStatus: 'resolved' },
-        { id: 'a2', resolutionStatus: 'unresolved' },
+        { id: 'a1', resolutionStatus: 'unresolved', kind: 'unavailable', startTime: '14:30', endTime: '20:00' },
       ],
       uncertainties: [{ field: 'work_breakdown', sourceText: '2分野' }],
     },
+    currentTurnGrounding: {
+      mode: 'required_before_resume',
+      acceptedFacts: [{
+        factId: 'a1',
+        kind: 'availability_declaration',
+        sourceText: '14:30から20:00はバイト',
+        data: { kind: 'unavailable', startTime: '14:30', endTime: '20:00' },
+      }],
+    },
     actionKind: 'question',
     questionCode: 'quantity_role_unresolved',
+    questionIntent: {
+      kind: 'resolution_question',
+      resolutionKind: 'quantity_role',
+      targetFactId: null,
+      requestedInformation: ['quantity_role'],
+      allowedChoices: ['plan_target_amount', 'remaining_total_amount'],
+      knownAmount: 3,
+      knownUnitLabel: '時間',
+      ambiguityField: null,
+      ambiguityReason: null,
+    },
     requiredLabels: ['院試の第2分野'],
     fallbackText: '院試の第2分野の量は、今回進めたい量ですか？',
     previewCount: 0,
@@ -46,81 +65,68 @@ function bytes(value: string): number {
 }
 
 describe('Stable V5 dialogue prompt', () => {
-  it('projects decided facts, grounding context, and unresolved items separately', () => {
+  it('separates accepted facts from downstream resolution-pending items', () => {
     const summary = createWeeklyPlanningStableV5DialogueStateSummary(input()) as {
-      decidedFacts: Record<string, unknown>;
+      acceptedFacts: Record<string, unknown>;
       groundingContext: Array<Record<string, unknown>>;
-      undecidedItems: Array<Record<string, unknown>>;
+      resolutionPendingItems: Array<Record<string, unknown>>;
     };
 
-    expect(summary.decidedFacts.workloads).toEqual([
+    expect(summary.acceptedFacts.workloads).toEqual(expect.arrayContaining([
       expect.objectContaining({ taskId: 'task-1', quantityRole: 'target' }),
+      expect.objectContaining({ taskId: 'task-2', quantityRole: 'unknown' }),
+    ]));
+    expect(summary.acceptedFacts.availabilityDeclarations).toEqual([
+      expect.objectContaining({ id: 'a1', resolutionStatus: 'unresolved' }),
     ]);
-    expect(summary.decidedFacts.availabilityDeclarations).toEqual([
-      expect.objectContaining({ id: 'a1', resolutionStatus: 'resolved' }),
-    ]);
-    expect(summary.decidedFacts).not.toHaveProperty('uncertainties');
-    expect(summary.decidedFacts).not.toHaveProperty('groundingRecords');
+    expect(summary.acceptedFacts).not.toHaveProperty('uncertainties');
+    expect(summary.acceptedFacts).not.toHaveProperty('groundingRecords');
     expect(summary.groundingContext).toEqual([
-      expect.objectContaining({
-        status: 'proposed',
-        sourceExpression: '来週',
-        startDate: '2026-08-03',
-        endDate: '2026-08-09',
-      }),
+      expect.objectContaining({ status: 'proposed', sourceExpression: '来週' }),
     ]);
-    expect(summary.undecidedItems).toEqual(expect.arrayContaining([
+    expect(summary.resolutionPendingItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: 'work_breakdown' }),
       expect.objectContaining({ kind: 'workload_field', taskId: 'task-2' }),
-      expect.objectContaining({ sourceCollection: 'availabilityDeclarations', id: 'a2' }),
+      expect.objectContaining({ sourceCollection: 'availabilityDeclarations', id: 'a1' }),
     ]));
   });
 
-  it('keeps the prompt focused on natural wording and typed application decisions', () => {
+  it('keeps typed application decisions and current-turn grounding explicit', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
-    const combined = `${prompt.systemPrompt}\n${prompt.userPrompt}`;
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
+    const request = String((payload as { request: string }).request);
 
-    expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
-    expect(prompt.systemPrompt).toContain('共有理解に必要な場合に自然に示してください');
-    expect(combined.match(/入力にない/g)).toHaveLength(1);
-    expect(prompt.systemPrompt).not.toContain('action識別子を変更しないでください');
-    expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
-    expect(prompt.systemPrompt).not.toContain('Preserve every string');
-    expect(prompt.userPrompt).not.toContain('referenceResponse');
-    expect(prompt.userPrompt).not.toContain(input().fallbackText);
-    expect(prompt.userPrompt).not.toContain('未実行の作成・保存を完了したとは言わないでください');
+    expect(prompt.systemPrompt).toContain('継続中の相談');
+    expect(request).toContain('currentTurnGrounding.acceptedFacts');
+    expect(request).toContain('required_before_resume');
+    expect(request).toContain('requestedInformation');
+    expect(request).toContain('remaining_total_amount');
+    expect(request).toContain('task_relation');
     expect(payload).toMatchObject({
-      actionId: input().actionId,
-      currentUserMessage: input().currentUserMessage,
-      planningStateSummary: {
-        groundingContext: [expect.objectContaining({ status: 'proposed' })],
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [expect.objectContaining({ factId: 'a1' })],
       },
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
-        questionTarget: null,
-        questionIntent: null,
-        previewPromotionControlLabel: null,
-        relevantLabels: ['院試の第2分野'],
-        previewCount: 0,
+        questionIntent: expect.objectContaining({
+          kind: 'resolution_question',
+          resolutionKind: 'quantity_role',
+        }),
       },
-      request: expect.any(String),
     });
-    expect(String((payload as { request: string }).request)).toContain(
-      '直前の質問の意味・理由・何を答えるべきか',
-    );
-    expect(String((payload as { request: string }).request)).toContain(
-      '同じ質問を繰り返さず',
-    );
-    expect(payload).not.toHaveProperty('planningInformation');
+    expect(prompt.userPrompt).not.toContain('referenceResponse');
+    expect(prompt.userPrompt).not.toContain(input().fallbackText);
   });
 
-  it('keeps the always-on renderer prose bounded while retaining semantic invariants', () => {
+  it('allows semantic invariants to take precedence over the old compactness target', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
 
-    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(600);
-    expect(bytes(payload.request)).toBeLessThanOrEqual(1400);
+    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
+    // Keep a material-growth guard, but do not force semantic contracts out of
+    // the renderer merely to satisfy PR #130's former compactness target.
+    expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
   });
 });

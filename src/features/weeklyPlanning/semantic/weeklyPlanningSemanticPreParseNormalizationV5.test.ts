@@ -32,6 +32,21 @@ function decompositionResponse(): string {
   });
 }
 
+function emptyProviderDeltaEnvelope(): string {
+  return JSON.stringify({
+    facts: [],
+    corrections: [],
+    execution: { approvalRequests: [] },
+    uncertainties: [],
+    grounding: {
+      needsGrounding: false,
+      targetFactIds: [],
+      note: null,
+    },
+    notes: [],
+  });
+}
+
 describe('Stable V5 semantic pre-parse normalization pipeline', () => {
   it('keeps provider-output rewrite order explicit and observable', () => {
     const result = normalizeWeeklyPlanningSemanticPreParseV5({
@@ -46,6 +61,46 @@ describe('Stable V5 semantic pre-parse normalization pipeline', () => {
     );
     expect(result.stages.find((stage) => stage.id === 'task_decomposition_uncertainty')?.repairs)
       .toContain('task-decomposition-uncertainty-derived:0:task-1');
+  });
+
+  it('canonicalizes only a structurally explicit empty provider delta into a no-change V5 document', () => {
+    const result = normalizeWeeklyPlanningSemanticPreParseV5({
+      rawResponse: emptyProviderDeltaEnvelope(),
+    });
+
+    expect(JSON.parse(result.rawResponse)).toEqual({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    });
+    expect(result.repairs).toContain('empty-semantic-delta-envelope-canonicalized');
+  });
+
+  it('does not discard non-empty meaning from an incompatible provider envelope', () => {
+    const rawResponse = JSON.stringify({
+      facts: [{ kind: 'task', title: '課題' }],
+      corrections: [],
+      execution: { approvalRequests: [] },
+      uncertainties: [],
+      grounding: {
+        needsGrounding: false,
+        targetFactIds: [],
+        note: null,
+      },
+      notes: [],
+    });
+    const result = normalizeWeeklyPlanningSemanticPreParseV5({ rawResponse });
+
+    expect(result.rawResponse).toBe(rawResponse);
+    expect(result.repairs).not.toContain('empty-semantic-delta-envelope-canonicalized');
   });
 
   it('requires every stage to declare one normalization category and owning invariant', () => {

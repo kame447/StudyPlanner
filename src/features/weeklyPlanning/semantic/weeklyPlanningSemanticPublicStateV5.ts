@@ -54,6 +54,10 @@ function correctionTargetPublicFacts(
         amount: fact.amount,
         unitCode: fact.unitCode,
         unitLabel: fact.unitLabel,
+        rangeStart: fact.rangeStart,
+        rangeEnd: fact.rangeEnd,
+        perOccurrence: fact.perOccurrence,
+        periodExpression: fact.periodExpression,
       })),
     effortEstimates: graph.effortEstimates
       .filter((fact) => activeIds.has(fact.id))

@@ -25,13 +25,77 @@ export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
   unitLabel: string | null;
 }
 
+export type WeeklyPlanningStableV5ProgressBasis =
+  | 'known_bounded_quantity'
+  | 'completion_progress_without_known_unit';
+
 export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
-  mode: 'existing_target_scope_progress' | 'missing_task_identity';
+  mode:
+    | 'existing_target_progress'
+    | 'missing_task_identity'
+    | 'all_requested_work_complete';
   targetFactId: string | null;
+  progressBasis: WeeklyPlanningStableV5ProgressBasis | null;
+  knownUnitCode: string | null;
+  knownUnitLabel: string | null;
   requestedInformation:
-    | readonly ['total_scope', 'current_progress']
-    | readonly ['task_identity'];
+    | readonly ['current_progress']
+    | readonly ['task_identity']
+    | readonly ['additional_task_or_constraint'];
+}
+
+export type WeeklyPlanningStableV5DialogueResolutionKind =
+  | 'semantic_clarification'
+  | 'planning_horizon'
+  | 'planning_window_choice'
+  | 'quantity_role'
+  | 'effort_estimate_choice'
+  | 'availability_date_scope'
+  | 'time_bounds'
+  | 'named_time_period_bounds'
+  | 'commitment_date_scope'
+  | 'commitment_time_bounds'
+  | 'task_date_rule_conflict'
+  | 'constraint_source_choice'
+  | 'task_relation_reference'
+  | 'task_relation_self_reference';
+
+export type WeeklyPlanningStableV5DialogueRequestedInformation =
+  | 'clarify_ambiguous_meaning'
+  | 'planning_period'
+  | 'single_planning_window'
+  | 'quantity_role'
+  | 'choose_effort_estimate'
+  | 'availability_date_scope'
+  | 'start_and_end_time'
+  | 'named_time_period_start_and_end'
+  | 'commitment_date'
+  | 'commitment_start_and_end_time'
+  | 'allowed_or_excluded_date_rule'
+  | 'constraint_source'
+  | 'identify_relation_endpoints'
+  | 'distinct_relation_endpoints';
+
+export type WeeklyPlanningStableV5DialogueResolutionChoice =
+  | 'plan_target_amount'
+  | 'remaining_total_amount'
+  | 'allowed_date'
+  | 'excluded_date'
+  | 'timetable'
+  | 'existing_plans'
+  | 'calendar';
+
+export interface WeeklyPlanningStableV5DialogueResolutionQuestionIntent {
+  kind: 'resolution_question';
+  resolutionKind: WeeklyPlanningStableV5DialogueResolutionKind;
+  targetFactId: string | null;
+  requestedInformation: readonly WeeklyPlanningStableV5DialogueRequestedInformation[];
+  allowedChoices: readonly WeeklyPlanningStableV5DialogueResolutionChoice[];
+  knownAmount: number | null;
+  knownUnitLabel: string | null;
+  ambiguityField: string | null;
+  ambiguityReason: string | null;
 }
 
 export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
@@ -87,13 +151,38 @@ export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
   | WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent
+  | WeeklyPlanningStableV5DialogueResolutionQuestionIntent
   | WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent;
+
+export interface WeeklyPlanningStableV5DialogueGroundingFact {
+  factId: string;
+  kind:
+    | 'planning_window'
+    | 'task'
+    | 'component'
+    | 'workload'
+    | 'effort_estimate'
+    | 'temporal_constraint'
+    | 'task_date_rule'
+    | 'recurrence'
+    | 'relation'
+    | 'availability_declaration'
+    | 'constraint_source_request';
+  sourceText: string;
+  data: Record<string, unknown>;
+}
+
+export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
+  mode: 'none' | 'recommended' | 'required_before_resume';
+  acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
+}
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
   planningInformation: Record<string, unknown> | null;
+  currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
@@ -110,6 +199,7 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_shape'
   | 'action_mismatch'
   | 'action_contract_mismatch'
+  | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
   | 'repeated_question_text';
@@ -146,7 +236,13 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['actionId', 'actionKind', 'questionCode', 'text'],
+      required: [
+        'actionId',
+        'actionKind',
+        'questionCode',
+        'groundingAcknowledgement',
+        'text',
+      ],
       properties: {
         actionId: stringSchema(),
         actionKind: {
@@ -155,6 +251,27 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
         },
         questionCode: {
           anyOf: [stringSchema(), { type: 'null' }],
+        },
+        groundingAcknowledgement: {
+          anyOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['factIds', 'text'],
+              properties: {
+                factIds: {
+                  type: 'array',
+                  minItems: 1,
+                  items: stringSchema(),
+                },
+                text: {
+                  type: 'string',
+                  minLength: 1,
+                },
+              },
+            },
+            { type: 'null' },
+          ],
         },
         text: stringSchema(),
       },

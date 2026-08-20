@@ -134,4 +134,75 @@ describe('Stable V5 missing schedulable work question', () => {
     expect(question.message).toContain('「Material」');
     expect(question.targetFactId).toBe('material');
   });
+
+  it('asks open-ended progress when only completed evidence exists without a fixed total', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.tasks = [{ id: 'task-slides', category: 'study', title: '発表スライド', source, createdRevision: 1 }];
+    graph.workloads = [{
+      id: 'completed-pages', taskId: 'task-slides', componentId: null,
+      quantityRole: 'completed', amount: 5, unitCode: 'page', unitLabel: 'ページ',
+      rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+      source, createdRevision: 2,
+    }];
+    graph.factLifecycles = [
+      { factId: 'task-slides', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null },
+      { factId: 'completed-pages', status: 'active', createdRevision: 2, terminalRevision: null, supersededByFactId: null },
+    ];
+
+    const question = stableV5MissingSchedulableWorkQuestion(graph);
+
+    expect(question.targetFactId).toBe('task-slides');
+    expect(question.message).toContain('100%');
+    expect(question.message).not.toContain('全5ページ');
+  });
+
+  it('uses an explicit fixed total scope as the progress basis but not as schedulable work', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.tasks = [{ id: 'task-problems', category: 'study', title: '課題', source, createdRevision: 1 }];
+    graph.workloads = [{
+      id: 'scope-total-40', taskId: 'task-problems', componentId: null,
+      quantityRole: 'scope_total', amount: 40, unitCode: 'problem', unitLabel: '問',
+      rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+      source, createdRevision: 2,
+    }];
+    graph.factLifecycles = [
+      { factId: 'task-problems', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null },
+      { factId: 'scope-total-40', status: 'active', createdRevision: 2, terminalRevision: null, supersededByFactId: null },
+    ];
+
+    const question = stableV5MissingSchedulableWorkQuestion(graph);
+
+    expect(question.targetFactId).toBe('task-problems');
+    expect(question.message).toContain('全40問');
+    expect(question.message).toContain('今どこまで');
+  });
+
+  it('does not ask progress again once a real remaining workload exists', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.tasks = [{ id: 'task-slides', category: 'study', title: '発表スライド', source, createdRevision: 1 }];
+    graph.workloads = [
+      {
+        id: 'scope-total-20', taskId: 'task-slides', componentId: null,
+        quantityRole: 'scope_total', amount: 20, unitCode: 'page', unitLabel: '枚',
+        rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+        source, createdRevision: 2,
+      },
+      {
+        id: 'remaining-8', taskId: 'task-slides', componentId: null,
+        quantityRole: 'remaining', amount: 8, unitCode: 'page', unitLabel: '枚',
+        rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+        source, createdRevision: 3,
+      },
+    ];
+    graph.factLifecycles = [
+      { factId: 'task-slides', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null },
+      { factId: 'scope-total-20', status: 'active', createdRevision: 2, terminalRevision: null, supersededByFactId: null },
+      { factId: 'remaining-8', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null },
+    ];
+
+    const question = stableV5MissingSchedulableWorkQuestion(graph);
+
+    expect(question.targetFactId).toBeNull();
+    expect(question.message).toContain('予定に入れる作業がまだありません');
+  });
 });

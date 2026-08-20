@@ -133,28 +133,29 @@ function contextualDocument(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function apply(document: WeeklyPlanningSemanticDocumentV5, original = originalGraph()) {
+  const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+    graph: original,
+    document,
+    context: {
+      conversationId: 'conversation-workload-binding',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+    },
+  });
+  if (canonicalization.status !== 'applied') {
+    throw new Error(canonicalization.errors.join(','));
+  }
+  return applyWeeklyPlanningExistingEntityBindingsV5({
+    originalGraph: original,
+    document,
+    canonicalization,
+  });
+}
+
 describe('Stable V5 existing workload binding', () => {
   it('collapses an unchanged replayed workload onto the active existing workload', () => {
-    const original = originalGraph();
-    const document = contextualDocument();
-    const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
-      graph: original,
-      document,
-      context: {
-        conversationId: 'conversation-workload-binding',
-        turnId: 'turn-2',
-        expectedRevision: 1,
-      },
-    });
-    if (canonicalization.status !== 'applied') {
-      throw new Error(canonicalization.errors.join(','));
-    }
-
-    const result = applyWeeklyPlanningExistingEntityBindingsV5({
-      originalGraph: original,
-      document,
-      canonicalization,
-    });
+    const result = apply(contextualDocument());
 
     expect(result.status).toBe('applied');
     expect(result.canonicalization.localToFactId['workload-replayed']).toBe('workload-public');
@@ -183,6 +184,57 @@ describe('Stable V5 existing workload binding', () => {
     ]);
     expect(active.uncertainties).toEqual([
       expect.objectContaining({
+        targetFactId: 'workload-public',
+      }),
+    ]);
+  });
+
+  it('uses the stable unit label to bind an effort-only replay when Luna changes only the canonical unit code', () => {
+    const original = originalGraph();
+    original.workloads[0] = {
+      ...original.workloads[0],
+      quantityRole: 'completed',
+      amount: 12,
+      unitCode: 'custom',
+      unitLabel: '枚',
+    };
+    const document = contextualDocument();
+    document.tasks[0].workloads = [{
+      localId: 'workload-replayed',
+      quantityRole: 'completed',
+      amount: 12,
+      unitCode: 'page',
+      unitLabel: '枚',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      sourceText: '1枚あたりだいたい8分くらいです',
+    }];
+    document.tasks[0].effortEstimates = [{
+      localId: 'effort-1',
+      targetLocalId: 'workload-replayed',
+      kind: 'duration_per_unit',
+      minutes: 8,
+      unitCode: 'page',
+      precision: 'approximate',
+      sourceText: '1枚あたりだいたい8分くらいです',
+    }];
+    document.tasks[0].temporalConstraints = [];
+    document.uncertainties = [];
+
+    const result = apply(document, original);
+    expect(result.status).toBe('applied');
+    expect(result.canonicalization.localToFactId['workload-replayed']).toBe('workload-public');
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(result.canonicalization.graph);
+    expect(active.workloads).toEqual([
+      expect.objectContaining({ id: 'workload-public', unitCode: 'custom', unitLabel: '枚', amount: 12 }),
+    ]);
+    expect(active.effortEstimates).toEqual([
+      expect.objectContaining({
+        kind: 'duration_per_unit',
+        minutes: 8,
+        unitCode: 'custom',
         targetFactId: 'workload-public',
       }),
     ]);

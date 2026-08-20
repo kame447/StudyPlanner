@@ -41,6 +41,8 @@ export interface StableV5CompatibilityProjectionInput {
   questionKind?: WeeklyPlanningQuestionContextKind;
   questionActionId?: string;
   questionIntent?: string;
+  questionEstimateForWorkloadFactId?: string;
+  questionBasis?: 'completed_workload_total';
   authorized: boolean;
   preserveExistingPreview?: boolean;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
@@ -80,6 +82,8 @@ export function projectStableV5CompatibilityState(
           intent: params.questionIntent ?? params.questionCode,
           topicId: params.questionFactId,
           actionId: params.questionActionId,
+          estimateForWorkloadFactId: params.questionEstimateForWorkloadFactId,
+          questionBasis: params.questionBasis,
         }
       : undefined,
     shouldCreateDraft: params.preserveExistingPreview ? previous.shouldCreateDraft : hasDraft,

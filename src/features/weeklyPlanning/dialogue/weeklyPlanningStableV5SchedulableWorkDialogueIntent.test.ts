@@ -23,7 +23,7 @@ const planningInformation = {
 };
 
 describe('Stable V5 schedulable-work dialogue intent', () => {
-  it('asks for scope/progress of an existing target instead of another task', () => {
+  it('does not invent a bounded unit when the existing target has no structured quantity', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'task-slides',
@@ -32,27 +32,135 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_schedulable_work',
       questionTarget,
+      planningInformation,
     })).toEqual({
       kind: 'schedulable_work_detail',
-      mode: 'existing_target_scope_progress',
+      mode: 'existing_target_progress',
       targetFactId: 'task-slides',
-      requestedInformation: ['total_scope', 'current_progress'],
+      progressBasis: 'completion_progress_without_known_unit',
+      knownUnitCode: null,
+      knownUnitLabel: null,
+      requestedInformation: ['current_progress'],
     });
   });
 
-  it('uses task-identity mode only when there is no existing target', () => {
+  it('does not mistake a completed-only quantity for the total bounded scope', () => {
+    const completedOnly = {
+      ...planningInformation,
+      workloads: [{
+        id: 'workload-completed-pages',
+        taskId: 'task-slides',
+        componentId: null,
+        quantityRole: 'completed',
+        amount: 5,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      }],
+    };
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation: completedOnly,
+      targetFactId: 'task-slides',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget,
+      planningInformation: completedOnly,
+    })).toEqual(expect.objectContaining({
+      progressBasis: 'completion_progress_without_known_unit',
+      knownUnitCode: null,
+      knownUnitLabel: null,
+    }));
+  });
+
+  it('uses a fixed total-scope fact as the bounded progress unit', () => {
+    const boundedPlanningInformation = {
+      ...planningInformation,
+      workloads: [{
+        id: 'workload-total-problems',
+        taskId: 'task-slides',
+        componentId: null,
+        quantityRole: 'scope_total',
+        amount: 40,
+        unitCode: 'problem',
+        unitLabel: '問',
+      }],
+    };
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation: boundedPlanningInformation,
+      targetFactId: 'task-slides',
+    });
+
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget,
+      planningInformation: boundedPlanningInformation,
+    })).toEqual({
+      kind: 'schedulable_work_detail',
+      mode: 'existing_target_progress',
+      targetFactId: 'task-slides',
+      progressBasis: 'known_bounded_quantity',
+      knownUnitCode: 'problem',
+      knownUnitLabel: '問',
+      requestedInformation: ['current_progress'],
+    });
+  });
+
+  it('uses task-identity mode only when there is no existing target and the application says the task is missing', () => {
     expect(questionIntentForStableV5Dialogue({
       questionCode: 'missing_schedulable_work',
       questionTarget: null,
+      planningInformation,
+      effortMeasurement: 'missing_task_identity',
     })).toEqual({
       kind: 'schedulable_work_detail',
       mode: 'missing_task_identity',
       targetFactId: null,
+      progressBasis: null,
+      knownUnitCode: null,
+      knownUnitLabel: null,
       requestedInformation: ['task_identity'],
     });
   });
 
-  it('passes the existing-target semantic contract to the renderer prompt', () => {
+  it('preserves the application-owned all-complete reason instead of pretending no task was supplied', () => {
+    const intent = questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget: null,
+      planningInformation,
+      effortMeasurement: 'all_requested_work_complete',
+    });
+
+    expect(intent).toEqual({
+      kind: 'schedulable_work_detail',
+      mode: 'all_requested_work_complete',
+      targetFactId: null,
+      progressBasis: null,
+      knownUnitCode: null,
+      knownUnitLabel: null,
+      requestedInformation: ['additional_task_or_constraint'],
+    });
+
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'stable-v5:complete:missing_schedulable_work',
+      currentUserMessage: 'もう100%終わっています',
+      recentConversation: [],
+      planningInformation,
+      actionKind: 'question',
+      questionCode: 'missing_schedulable_work',
+      questionTarget: null,
+      questionIntent: intent,
+      requiredLabels: [],
+      fallbackText: '指定された作業は完了済みです。',
+      previewCount: 0,
+    });
+    const payload = JSON.parse(prompt.userPrompt) as { request: string };
+    expect(payload.request).toContain('all_requested_work_complete');
+    expect(payload.request).toContain('作業をまだ聞いていないかのように言わず');
+    expect(payload.request).toContain('同じ進捗も聞き直さず');
+  });
+
+  it('passes the open-ended progress contract to the renderer prompt', () => {
     const questionTarget = questionTargetForStableV5Dialogue({
       planningInformation,
       targetFactId: 'task-slides',
@@ -60,6 +168,7 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     const questionIntent = questionIntentForStableV5Dialogue({
       questionCode: 'missing_schedulable_work',
       questionTarget,
+      planningInformation,
     });
     const input: WeeklyPlanningStableV5DialogueRenderInput = {
       actionId: 'stable-v5:request-1:missing_schedulable_work',
@@ -71,7 +180,7 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       questionTarget,
       questionIntent,
       requiredLabels: ['夏合宿のスライド作成'],
-      fallbackText: '「夏合宿のスライド作成」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。',
+      fallbackText: '夏合宿のスライド作成は、完成までを100%とすると今どのくらい進んでいますか？',
       previewCount: 0,
     };
 
@@ -83,11 +192,15 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
 
     expect(payload.applicationDecision.questionIntent).toEqual({
       kind: 'schedulable_work_detail',
-      mode: 'existing_target_scope_progress',
+      mode: 'existing_target_progress',
       targetFactId: 'task-slides',
-      requestedInformation: ['total_scope', 'current_progress'],
+      progressBasis: 'completion_progress_without_known_unit',
+      knownUnitCode: null,
+      knownUnitLabel: null,
+      requestedInformation: ['current_progress'],
     });
-    expect(payload.request).toContain('existing_target_scope_progress');
+    expect(payload.request).toContain('completion_progress_without_known_unit');
+    expect(payload.request).toContain('具体的な総量や単位を推測・発明せず');
     expect(payload.request).toContain('別の作業追加は聞かないでください');
   });
 });

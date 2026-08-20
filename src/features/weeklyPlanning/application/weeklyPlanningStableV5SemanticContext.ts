@@ -72,6 +72,8 @@ function pendingQuestionFromState(
     targetFactId: context?.topicId ?? null,
     graphRevision,
     effortMeasurement: effortMeasurementFromState(state),
+    estimateForWorkloadFactId: context?.estimateForWorkloadFactId ?? null,
+    questionBasis: context?.questionBasis ?? null,
   };
 }
 
@@ -154,6 +156,10 @@ export function createStableV5SemanticPublicStateSummary(params: {
       amount: workload.amount,
       unitCode: workload.unitCode,
       unitLabel: workload.unitLabel,
+      rangeStart: workload.rangeStart,
+      rangeEnd: workload.rangeEnd,
+      perOccurrence: workload.perOccurrence,
+      periodExpression: workload.periodExpression,
     })),
     uncertainties: active.uncertainties.map((uncertainty) => ({
       publicId: uncertainty.id,

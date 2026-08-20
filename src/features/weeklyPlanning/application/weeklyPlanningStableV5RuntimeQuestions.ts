@@ -1,9 +1,104 @@
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
+
+export type WeeklyPlanningStableV5MissingWorkIntent =
+  | 'existing_target_progress'
+  | 'missing_task_identity'
+  | 'all_requested_work_complete';
+
+function isSchedulableWorkload(workload: WorkloadFactV5): boolean {
+  return workload.quantityRole !== 'completed' && workload.quantityRole !== 'scope_total';
+}
+
+function workloadsForTarget(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): WorkloadFactV5[] {
+  return params.workloads.filter((workload) =>
+    params.targetKind === 'component'
+      ? workload.componentId === params.targetFactId
+      : workload.taskId === params.targetFactId && workload.componentId === null);
+}
+
+function isPercentageCompletion(workload: WorkloadFactV5): boolean {
+  return workload.quantityRole === 'completed'
+    && workload.unitCode === 'custom'
+    && workload.unitLabel.trim() === '%'
+    && workload.amount >= 100;
+}
+
+function sameBoundedUnit(left: WorkloadFactV5, right: WorkloadFactV5): boolean {
+  return left.unitCode === right.unitCode
+    && left.unitLabel.trim() === right.unitLabel.trim();
+}
+
+function targetIsComplete(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): boolean {
+  const scoped = workloadsForTarget(params);
+  if (scoped.some(isPercentageCompletion)) return true;
+
+  const totals = scoped.filter((workload) => workload.quantityRole === 'scope_total');
+  const completed = scoped.filter((workload) => workload.quantityRole === 'completed');
+  return totals.some((total) => completed.some((done) =>
+    sameBoundedUnit(total, done) && done.amount >= total.amount));
+}
+
+function taskIsComplete(params: {
+  taskId: string;
+  workloads: readonly WorkloadFactV5[];
+  components: ReadonlyArray<WeeklyPlanningFactGraphV5['components'][number]>;
+}): boolean {
+  if (targetIsComplete({
+    workloads: params.workloads,
+    targetFactId: params.taskId,
+    targetKind: 'task',
+  })) return true;
+
+  const taskComponents = params.components.filter((component) => component.taskId === params.taskId);
+  if (taskComponents.length === 0) return false;
+  const parentIds = new Set(
+    taskComponents
+      .map((component) => component.parentComponentId)
+      .filter((componentId): componentId is string => Boolean(componentId)),
+  );
+  const leaves = taskComponents.filter((component) => !parentIds.has(component.id));
+  return leaves.length > 0 && leaves.every((component) => targetIsComplete({
+    workloads: params.workloads,
+    targetFactId: component.id,
+    targetKind: 'component',
+  }));
+}
+
+function scopeTotalForTarget(params: {
+  workloads: readonly WorkloadFactV5[];
+  targetFactId: string;
+  targetKind: 'task' | 'component';
+}): WorkloadFactV5 | null {
+  const candidates = params.workloads.filter((workload) =>
+    workload.quantityRole === 'scope_total'
+    && (params.targetKind === 'component'
+      ? workload.componentId === params.targetFactId
+      : workload.taskId === params.targetFactId && workload.componentId === null));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function progressQuestion(params: {
+  label: string;
+  scopeTotal: WorkloadFactV5 | null;
+}): string {
+  if (params.scopeTotal) {
+    return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
+  }
+  return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
+}
 
 export function stableV5MissingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
@@ -12,6 +107,7 @@ export function stableV5MissingSchedulableWorkQuestion(
   questionCode: 'missing_schedulable_work';
   taskTitles: string[];
   targetFactId: string | null;
+  intent: WeeklyPlanningStableV5MissingWorkIntent;
 } {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
@@ -38,13 +134,26 @@ export function stableV5MissingSchedulableWorkQuestion(
 
   const componentById = new Map(active.components.map((component) => [component.id, component]));
   const componentsCoveredByWorkload = new Set<string>();
-  active.workloads.forEach((workload) => {
-    let componentId = workload.componentId;
+  const markComponentAndAncestorsCovered = (initialComponentId: string | null): void => {
+    let componentId = initialComponentId;
     while (componentId && !componentsCoveredByWorkload.has(componentId)) {
       componentsCoveredByWorkload.add(componentId);
       componentId = componentById.get(componentId)?.parentComponentId ?? null;
     }
+  };
+  active.workloads.filter(isSchedulableWorkload).forEach((workload) => {
+    markComponentAndAncestorsCovered(workload.componentId);
   });
+  active.components.forEach((component) => {
+    if (targetIsComplete({
+      workloads: active.workloads,
+      targetFactId: component.id,
+      targetKind: 'component',
+    })) {
+      markComponentAndAncestorsCovered(component.id);
+    }
+  });
+
   const parentComponentIds = new Set(
     active.components
       .map((component) => component.parentComponentId)
@@ -70,28 +179,67 @@ export function stableV5MissingSchedulableWorkQuestion(
       || (rolePriority.get(left.role) ?? 99) - (rolePriority.get(right.role) ?? 99))[0];
   if (componentWithNoWorkload) {
     return {
-      message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,
+      message: progressQuestion({
+        label: componentWithNoWorkload.label,
+        scopeTotal: scopeTotalForTarget({
+          workloads: active.workloads,
+          targetFactId: componentWithNoWorkload.id,
+          targetKind: 'component',
+        }),
+      }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: componentWithNoWorkload.id,
+      intent: 'existing_target_progress',
     };
   }
   const taskWithNoWorkload = active.tasks.find(
-    (task) => !active.workloads.some((workload) => workload.taskId === task.id),
+    (task) => !active.workloads.some(
+      (workload) => workload.taskId === task.id && isSchedulableWorkload(workload),
+    ) && !taskIsComplete({
+      taskId: task.id,
+      workloads: active.workloads,
+      components: active.components,
+    }),
   );
   if (taskWithNoWorkload) {
     return {
-      message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,
+      message: progressQuestion({
+        label: taskWithNoWorkload.title,
+        scopeTotal: scopeTotalForTarget({
+          workloads: active.workloads,
+          targetFactId: taskWithNoWorkload.id,
+          targetKind: 'task',
+        }),
+      }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: taskWithNoWorkload.id,
+      intent: 'existing_target_progress',
     };
   }
+
+  const allRequestedWorkComplete = active.tasks.length > 0 && active.tasks.every((task) => taskIsComplete({
+    taskId: task.id,
+    workloads: active.workloads,
+    components: active.components,
+  }));
+  if (allRequestedWorkComplete) {
+    return {
+      message: '指定された作業は完了済みです。予定に加えたい別の作業や、考慮したい予定・制約があれば教えてください。',
+      questionCode: 'missing_schedulable_work',
+      taskTitles,
+      targetFactId: null,
+      intent: 'all_requested_work_complete',
+    };
+  }
+
   return {
     message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
     targetFactId: null,
+    intent: 'missing_task_identity',
   };
 }
 

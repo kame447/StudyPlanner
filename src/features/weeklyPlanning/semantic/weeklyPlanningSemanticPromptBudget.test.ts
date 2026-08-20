@@ -34,11 +34,18 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-const GENERIC_MEANING_POLICY_MAX_BYTES = 2_200;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 3_500;
+// Keep semantic invariants even when they cost a few hundred bytes. PR #130
+// showed that forcing this budget lower can delete application-critical meaning.
+// PR #157 deliberately adds small headroom for deadline and remaining-effort
+// directionality; these remain growth guards, not compaction targets.
+const GENERIC_MEANING_POLICY_MAX_BYTES = 3_700;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 4_750;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
-const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 1_800;
+// The focused response schema now carries target and measurement as separate
+// typed axes. Keep enough room for that contract while still requiring this
+// route to remain materially smaller than generic semantic normalization.
+const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 3_200;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
 
@@ -91,6 +98,56 @@ function representativeGenericMessages() {
         version: 'weekly-planning-episodic-memory-v5',
         items: [],
       },
+    },
+  });
+}
+
+function representativeFocusedContextualMessages() {
+  return createFocusedContextualAnswerMessagesV5({
+    userText: '残りは45分くらいです',
+    publicStateSummary: {
+      pendingQuestion: {
+        questionCode: 'missing_effort_estimate',
+        targetFactId: 'workload-completed',
+        graphRevision: 4,
+        effortMeasurement: 'total_duration',
+        estimateForWorkloadFactId: 'workload-remaining',
+        questionBasis: 'completed_workload_total',
+      },
+      tasks: [{
+        publicId: 'task-report',
+        category: 'study',
+        title: 'ゼミ発表の資料を完成させる',
+      }],
+      components: [],
+      workloads: [
+        {
+          publicId: 'workload-completed',
+          taskPublicId: 'task-report',
+          componentPublicId: null,
+          quantityRole: 'completed',
+          amount: 70,
+          unitCode: 'custom',
+          unitLabel: '%',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+        },
+        {
+          publicId: 'workload-remaining',
+          taskPublicId: 'task-report',
+          componentPublicId: null,
+          quantityRole: 'remaining',
+          amount: 30,
+          unitCode: 'custom',
+          unitLabel: '%',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+        },
+      ],
     },
   });
 }
@@ -197,26 +254,12 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(focusedBytes).toBeLessThan(genericBytes / 4);
   });
 
-  it('keeps exact pending-answer interpretation materially smaller than generic semantic', () => {
+  it('keeps exact pending-answer interpretation bounded on a real two-target effort context', () => {
     const genericBytes = representativeGenericRequestBytes();
+    const messages = representativeFocusedContextualMessages();
+    expect(messages).not.toEqual([]);
     const focusedBytes = requestBytes({
-      messages: createFocusedContextualAnswerMessagesV5({
-        userText: '30分くらいです',
-        publicStateSummary: {
-          pendingQuestion: {
-            questionCode: 'missing_effort_estimate',
-            targetFactId: 'workload-1',
-            graphRevision: 3,
-          },
-          workloads: [{
-            publicId: 'workload-1',
-            amount: 220,
-            unitCode: 'word',
-            unitLabel: '語',
-            quantityRole: 'target',
-          }],
-        },
-      }),
+      messages,
       responseFormat: FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
       maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
     });
@@ -224,7 +267,7 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(focusedBytes).toBeLessThanOrEqual(
       FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES,
     );
-    expect(focusedBytes).toBeLessThan(genericBytes / 4);
+    expect(focusedBytes).toBeLessThan(genericBytes / 3);
   });
 
   it('keeps planning-window representation repair tiny and evidence-local', () => {

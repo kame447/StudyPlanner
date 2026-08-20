@@ -1,0 +1,165 @@
+name: Weekly Planning Real API Checkpoint
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'checkpoint = focused stochastic checks; merge-gate = full repeated audit'
+        required: true
+        default: checkpoint
+        type: choice
+        options:
+          - checkpoint
+          - merge-gate
+      repetitions:
+        description: 'Run 1-10 independent repetitions in parallel'
+        required: true
+        default: '3'
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-real-api-command.json'
+      - '.github/workflows/weekly-planning-real-api-checkpoint.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      profile: ${{ steps.resolve.outputs.profile }}
+      iterations: ${{ steps.resolve.outputs.iterations }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - id: resolve
+        name: Resolve requested audit matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          should_run=true
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            profile='${{ inputs.profile }}'
+            repetitions='${{ inputs.repetitions }}'
+          else
+            profile=$(jq -r '.profile' .github/weekly-planning-real-api-command.json)
+            repetitions=$(jq -r '.repetitions // 3' .github/weekly-planning-real-api-command.json)
+            if ! git diff-tree --no-commit-id --name-only -r HEAD | grep -Fxq '.github/weekly-planning-real-api-command.json'; then
+              should_run=false
+            fi
+          fi
+          case "$profile" in
+            checkpoint|merge-gate) ;;
+            *) echo "unsupported profile: $profile" >&2; exit 1 ;;
+          esac
+          case "$repetitions" in
+            ''|*[!0-9]*) echo "repetitions must be an integer" >&2; exit 1 ;;
+          esac
+          if [ "$repetitions" -lt 1 ] || [ "$repetitions" -gt 10 ]; then
+            echo "repetitions must be between 1 and 10" >&2
+            exit 1
+          fi
+          iterations=$(jq -cn --argjson n "$repetitions" '[range(1; $n + 1)]')
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          echo "iterations=$iterations" >> "$GITHUB_OUTPUT"
+
+  real-api:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.should_run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJSON(needs.prepare.outputs.iterations) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+      REAL_API_PROFILE: ${{ needs.prepare.outputs.profile }}
+      WEEKLY_PLANNING_ISSUE156_REAL_API: '1'
+      WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR: artifacts/weekly-planning-real-api
+      WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS: '420000'
+      VITE_AI_PROVIDER: openai
+      VITE_AI_BASE_URL: https://api.openai.com/v1
+      VITE_AI_MODEL: gpt-5.6-luna
+      VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      VITE_AI_MAX_PROCESS_REQUESTS: '180'
+      VITE_AI_EVAL_CAPTURE_METRICS: '1'
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify API credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Typecheck first
+        run: npm run typecheck
+
+      - name: Provider smoke
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          mkdir -p "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR"
+          payload=$(jq -nc --arg model "$VITE_AI_MODEL" '{model:$model,messages:[{role:"user",content:"Reply only OK."}]}')
+          status=$(curl -sS -o "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/provider-smoke.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$VITE_AI_BASE_URL/chat/completions")
+          echo "provider smoke HTTP $status"
+          jq '{error:(if .error then {type:.error.type,code:.error.code,param:.error.param,message:.error.message} else null end),model:.model,has_choices:(.choices|type=="array")}' \
+            "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/provider-smoke.json"
+          test "$status" -ge 200 -a "$status" -lt 300
+
+      - name: Run checkpoint real API audit
+        if: ${{ env.REAL_API_PROFILE == 'checkpoint' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156RemainingEffortRealApi.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      - name: Run merge-gate real API audit
+        if: ${{ env.REAL_API_PROFILE == 'merge-gate' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156FinalConversation.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156CompletedProgressRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156RemainingEffortRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      - name: Upload observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-real-api-${{ matrix.iteration }}
+          path: artifacts/weekly-planning-real-api/
+          if-no-files-found: warn
+          retention-days: 30

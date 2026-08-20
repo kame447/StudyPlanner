@@ -12,6 +12,8 @@ export interface WeeklyPlanningStableV5RecordedFailure {
   attemptCount: number;
   repairAttempted: boolean;
   validationErrorCategories: string[];
+  canonicalizationErrorCategories: string[];
+  canonicalizationErrors: string[];
   providerErrorCategory: 'provider_error' | null;
   traceCode: string;
 }
@@ -40,6 +42,17 @@ function validationErrorCategory(value: string): string {
   return 'schema_validation';
 }
 
+function canonicalizationErrorCategory(value: string): string {
+  if (value.startsWith('correction-application:')) return 'correction_application';
+  if (value.includes('existing-entity') || value.includes('binding')) return 'entity_binding';
+  if (value.startsWith('revision-mismatch:')) return 'revision_mismatch';
+  if (value.startsWith('fact-id-collision:') || value.startsWith('local-id-mapped-twice:')) {
+    return 'identity_collision';
+  }
+  if (value.includes('progress')) return 'progress_projection';
+  return 'canonicalization';
+}
+
 function trimRegistry(): void {
   while (failuresByTurnId.size > MAX_RECORDED_FAILURES) {
     const oldest = failuresByTurnId.keys().next().value;
@@ -52,9 +65,14 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
   turnId: string;
   status: WeeklyPlanningStableV5FailureStatus;
   diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
+  canonicalizationErrors?: readonly string[];
 }): void {
   const validationErrorCategories = [...new Set(
     params.diagnostics.validationErrors.map(validationErrorCategory),
+  )].sort();
+  const canonicalizationErrors = [...(params.canonicalizationErrors ?? [])];
+  const canonicalizationErrorCategories = [...new Set(
+    canonicalizationErrors.map(canonicalizationErrorCategory),
   )].sort();
   const providerErrorCategory = params.diagnostics.providerError
     ? 'provider_error' as const
@@ -67,6 +85,9 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
   if (validationErrorCategories.length > 0) {
     traceParts.push(`validation=${validationErrorCategories.join(',')}`);
   }
+  if (canonicalizationErrorCategories.length > 0) {
+    traceParts.push(`canonical=${canonicalizationErrorCategories.join(',')}`);
+  }
   if (providerErrorCategory) {
     traceParts.push(`provider=${providerErrorCategory}`);
   }
@@ -75,6 +96,8 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
     attemptCount: params.diagnostics.attemptCount,
     repairAttempted: params.diagnostics.repairAttempted,
     validationErrorCategories,
+    canonicalizationErrorCategories,
+    canonicalizationErrors,
     providerErrorCategory,
     traceCode: traceParts.join('|'),
   });

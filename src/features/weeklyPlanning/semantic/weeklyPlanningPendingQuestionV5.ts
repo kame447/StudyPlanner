@@ -11,6 +11,8 @@ export interface WeeklyPlanningPendingQuestionV5 {
   targetFactId: string | null;
   graphRevision: number;
   effortMeasurement?: WeeklyPlanningEffortMeasurementV5 | null;
+  estimateForWorkloadFactId?: string | null;
+  questionBasis?: 'completed_workload_total' | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -23,6 +25,8 @@ export function readWeeklyPlanningPendingQuestionV5(
   const value = publicStateSummary?.pendingQuestion;
   if (!isRecord(value)) return null;
   const effortMeasurement = value.effortMeasurement ?? null;
+  const estimateForWorkloadFactId = value.estimateForWorkloadFactId ?? null;
+  const questionBasis = value.questionBasis ?? null;
   if (
     (value.actionId !== null && typeof value.actionId !== 'string')
     || typeof value.questionCode !== 'string'
@@ -31,6 +35,8 @@ export function readWeeklyPlanningPendingQuestionV5(
     || !Number.isInteger(value.graphRevision)
     || Number(value.graphRevision) < 0
     || !(effortMeasurement === null || isWeeklyPlanningEffortMeasurementV5(effortMeasurement))
+    || !(estimateForWorkloadFactId === null || typeof estimateForWorkloadFactId === 'string')
+    || !(questionBasis === null || questionBasis === 'completed_workload_total')
   ) {
     return null;
   }
@@ -40,6 +46,8 @@ export function readWeeklyPlanningPendingQuestionV5(
     targetFactId: value.targetFactId,
     graphRevision: Number(value.graphRevision),
     effortMeasurement,
+    estimateForWorkloadFactId,
+    questionBasis,
   };
 }
 

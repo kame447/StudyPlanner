@@ -65,6 +65,8 @@ describe('Stable V5 semantic public-state question binding', () => {
       targetFactId: 'workload-1',
       graphRevision: 2,
       effortMeasurement: null,
+      estimateForWorkloadFactId: null,
+      questionBasis: null,
     });
     expect(summary.learningStrategyProposals).toEqual([
       expect.objectContaining({
@@ -103,6 +105,42 @@ describe('Stable V5 semantic public-state question binding', () => {
       targetFactId: 'workload-1',
       graphRevision: 4,
       effortMeasurement: 'session_duration',
+      estimateForWorkloadFactId: null,
+      questionBasis: null,
+    });
+  });
+
+  it('preserves the schedulable estimate target separately from completed-work evidence', () => {
+    const previousState: PlanningIntakeState = {
+      ...baseState(),
+      lastQuestionContext: {
+        kind: 'missing',
+        targetSlot: 'stable_v5:missing_effort_estimate',
+        intent: 'total_duration',
+        topicId: 'workload-completed-70',
+        estimateForWorkloadFactId: 'workload-remaining-30',
+        questionBasis: 'completed_workload_total',
+      },
+    };
+    const graph = {
+      ...createEmptyWeeklyPlanningFactGraphV5(),
+      revision: 5,
+    };
+
+    const summary = createStableV5SemanticPublicStateSummary({
+      graph,
+      messages: [],
+      previousState,
+    });
+
+    expect(summary.pendingQuestion).toEqual({
+      actionId: null,
+      questionCode: 'missing_effort_estimate',
+      targetFactId: 'workload-completed-70',
+      graphRevision: 5,
+      effortMeasurement: 'total_duration',
+      estimateForWorkloadFactId: 'workload-remaining-30',
+      questionBasis: 'completed_workload_total',
     });
   });
 });

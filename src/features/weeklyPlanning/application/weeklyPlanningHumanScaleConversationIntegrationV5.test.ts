@@ -150,6 +150,57 @@ function durationAnswerDocument(minutes: number): WeeklyPlanningSemanticDocument
   };
 }
 
+function directionalDurationAnswerDocument(params: {
+  minutes: number;
+  quantityRole: 'completed' | 'remaining';
+  amount: number;
+  unitCode: SemanticWorkloadUnitCodeV5;
+  unitLabel: string;
+}): WeeklyPlanningSemanticDocumentV5 {
+  const sourceText = `${params.minutes}分くらい`;
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'discuss',
+    planningWindow: null,
+    tasks: [{
+      localId: 'answer-task',
+      category: 'study',
+      title: '直前の質問対象',
+      study: null,
+      workloads: [{
+        localId: 'answer-directional-workload',
+        quantityRole: params.quantityRole,
+        amount: params.amount,
+        unitCode: params.unitCode,
+        unitLabel: params.unitLabel,
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText,
+      }],
+      effortEstimates: [{
+        localId: 'answer-effort',
+        targetLocalId: 'answer-directional-workload',
+        kind: 'total_duration',
+        minutes: params.minutes,
+        unitCode: null,
+        precision: 'approximate',
+        sourceText,
+      }],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText,
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
 function observedPacePlanningDocument(): WeeklyPlanningSemanticDocumentV5 {
   const sourceText = '数学のワークは80ページ中30ページ終わっていて、残り50ページを今週進めたいです';
   return {
@@ -278,6 +329,12 @@ async function runTwoTurnPlanningConversation(params: {
   firstUserText: string;
   planningDocument: WeeklyPlanningSemanticDocumentV5;
   answerMinutes: number;
+  answerDirection?: {
+    quantityRole: 'completed' | 'remaining';
+    amount: number;
+    unitCode: SemanticWorkloadUnitCodeV5;
+    unitLabel: string;
+  };
 }) {
   normalizeMock.mockResolvedValueOnce(acceptedResult(params.planningDocument));
   const firstRequestId = `${params.conversationId}:request:1`;
@@ -293,7 +350,13 @@ async function runTwoTurnPlanningConversation(params: {
     requestId: firstRequestId,
   });
 
-  normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(params.answerMinutes)));
+  const answerDocument = params.answerDirection
+    ? directionalDurationAnswerDocument({
+        minutes: params.answerMinutes,
+        ...params.answerDirection,
+      })
+    : durationAnswerDocument(params.answerMinutes);
+  normalizeMock.mockResolvedValueOnce(acceptedResult(answerDocument));
   const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
     conversationId: params.conversationId,
     previousState: first.state,
@@ -410,6 +473,12 @@ describe('Stable V5 human-scale conversation integration', () => {
       firstUserText: '8月17日から23日で、数学のワークは80ページ中30ページ終わっていて、残り50ページです',
       planningDocument: observedPacePlanningDocument(),
       answerMinutes: 90,
+      answerDirection: {
+        quantityRole: 'completed',
+        amount: 30,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      },
     });
 
     const completedWorkload = first.stableV5Graph?.workloads.find(

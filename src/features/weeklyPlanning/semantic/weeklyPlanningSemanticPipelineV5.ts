@@ -23,6 +23,7 @@ import {
   applyWeeklyPlanningStableV5ContextualAnswer,
 } from './weeklyPlanningStableV5ContextualAnswer';
 import {
+  contextualAnswerTargetFactIdV5,
   shouldAttemptWeeklyPlanningContextualAnswerV5,
 } from './weeklyPlanningContextualAnswerRoutingV5';
 import {
@@ -268,11 +269,23 @@ export function createWeeklyPlanningSemanticPipelineV5(
             pendingQuestion,
           })
         : false;
-      const contextualAnswer = pendingQuestion && contextualAnswerEligible
+      const contextualTargetFactId = pendingQuestion && contextualAnswerEligible
+        ? contextualAnswerTargetFactIdV5({
+            document: normalization.document,
+            pendingQuestion,
+          })
+        : null;
+      const contextualPendingQuestion = pendingQuestion && contextualTargetFactId
+        ? {
+            ...pendingQuestion,
+            targetFactId: contextualTargetFactId,
+          }
+        : pendingQuestion;
+      const contextualAnswer = contextualPendingQuestion && contextualAnswerEligible
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
             document: normalization.document,
-            pendingQuestion,
+            pendingQuestion: contextualPendingQuestion,
             conversationId: input.conversationId,
             turnId: input.turnId,
             expectedRevision: input.expectedRevision,
@@ -285,6 +298,9 @@ export function createWeeklyPlanningSemanticPipelineV5(
         data: {
           ...bindingObservations,
           contextualAnswerEligible,
+          originalPendingTargetFactId: pendingQuestion?.targetFactId ?? null,
+          contextualTargetFactId,
+          estimateForWorkloadFactId: pendingQuestion?.estimateForWorkloadFactId ?? null,
           contextualAnswerApplied: Boolean(contextualAnswer),
           contextualAnswerResult: contextualAnswer,
         },
@@ -354,6 +370,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
           turnId: input.turnId,
           status: 'canonicalization_rejected',
           diagnostics: normalization.diagnostics,
+          canonicalizationErrors: canonicalization.errors,
         });
         const result: WeeklyPlanningSemanticPipelineResultV5 = {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,

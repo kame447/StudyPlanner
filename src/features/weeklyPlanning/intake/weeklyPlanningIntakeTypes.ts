@@ -340,6 +340,8 @@ export interface WeeklyPlanningQuestionContext {
   intent?: string;
   topicId?: string;
   actionId?: string;
+  estimateForWorkloadFactId?: string;
+  questionBasis?: 'completed_workload_total';
 }
 
 export interface PlanningIntakeState {

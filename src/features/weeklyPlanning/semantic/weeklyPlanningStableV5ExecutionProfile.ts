@@ -36,7 +36,7 @@ export interface WeeklyPlanningSessionPolicyV5 {
 export interface WeeklyPlanningExecutionPolicyGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
   readonly studyContexts?: ReadonlyArray<StudyContextFact>;
-  readonly workloads: ReadonlyArray<WorkloadFact>;
+  readonly workloads: ReadonlyArray<Pick<WorkloadFact, 'id' | 'unitCode'>>;
 }
 
 export const DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5: WeeklyPlanningExecutionProfileV5 = {

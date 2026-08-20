@@ -33,7 +33,7 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
   readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
-  readonly workloads: ReadonlyArray<WorkloadFact>;
+  readonly workloads: ReadonlyArray<Pick<WorkloadFact, 'id' | 'unitCode' | 'perOccurrence'>>;
   readonly recurrences: ReadonlyArray<RecurrenceFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
 }

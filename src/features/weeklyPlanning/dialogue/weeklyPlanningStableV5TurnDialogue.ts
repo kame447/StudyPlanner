@@ -15,6 +15,9 @@ import {
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
+  createWeeklyPlanningStableV5CurrentTurnGrounding,
+} from './weeklyPlanningStableV5CurrentTurnGrounding';
+import {
   createWeeklyPlanningAiRenderedDialogueTrace,
   createWeeklyPlanningFallbackDialogueTrace,
   createWeeklyPlanningSystemDialogueRendererTrace,
@@ -46,6 +49,12 @@ const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
 
 function questionCode(result: WeeklyPlanningTurnExecutionResult): string | null {
   const targetSlot = result.state.lastQuestionContext?.targetSlot;
+  return targetSlot?.startsWith('stable_v5:')
+    ? targetSlot.slice('stable_v5:'.length)
+    : null;
+}
+
+function questionCodeFromTargetSlot(targetSlot: string | undefined): string | null {
   return targetSlot?.startsWith('stable_v5:')
     ? targetSlot.slice('stable_v5:'.length)
     : null;
@@ -142,6 +151,21 @@ function effortFallbackText(
   return '指定した量を進めるのに、合計でどれくらい時間がかかりますか？';
 }
 
+function schedulableWorkFallbackText(
+  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
+): string {
+  if (intent.mode === 'all_requested_work_complete') {
+    return '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。';
+  }
+  if (intent.mode === 'missing_task_identity') {
+    return '予定に入れたい作業を一つ教えてください。';
+  }
+  if (intent.progressBasis === 'known_bounded_quantity' && intent.knownUnitLabel?.trim()) {
+    return `今は${intent.knownUnitLabel.trim()}でどのくらいまで進んでいますか？`;
+  }
+  return '完成を100%とすると、今はだいたい何%くらいまで進んでいますか？';
+}
+
 export function fallbackTextForStableV5TypedIntent(params: {
   applicationText: string;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
@@ -162,6 +186,9 @@ export function fallbackTextForStableV5TypedIntent(params: {
   }
   if (intent?.kind === 'effort_measurement') {
     return effortFallbackText(intent);
+  }
+  if (intent?.kind === 'schedulable_work_detail') {
+    return schedulableWorkFallbackText(intent);
   }
   return params.applicationText;
 }
@@ -194,6 +221,7 @@ function createRenderInput(params: {
   const questionIntent = proposalIntent ?? questionIntentForStableV5Dialogue({
     questionCode: params.questionCode,
     questionTarget,
+    planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
   });
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
@@ -203,6 +231,16 @@ function createRenderInput(params: {
     applicationText: params.result.message,
     questionIntent,
   });
+  const previousQuestionCode = questionCodeFromTargetSlot(
+    params.input.previousState?.lastQuestionContext?.targetSlot,
+  );
+  const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({
+    graph: params.result.stableV5Graph,
+    turnId: params.input.traceRequestId,
+    actionKind: params.actionKind,
+    previousQuestionCode,
+    currentQuestionCode: params.questionCode,
+  });
   return {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
@@ -210,6 +248,7 @@ function createRenderInput(params: {
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
+    currentTurnGrounding,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,

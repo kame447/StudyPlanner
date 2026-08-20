@@ -20,10 +20,14 @@ export type { GenericWorkItemEstimateBasis } from './weeklyPlanningGenericWorkEs
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
+export type GenericWorkloadFact = WorkloadFact | (Omit<WorkloadFact, 'quantityRole'> & {
+  quantityRole: 'scope_total';
+});
+
 export interface WeeklyPlanningGenericWorkGraphView {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
-  readonly workloads: ReadonlyArray<WorkloadFact>;
+  readonly workloads: ReadonlyArray<GenericWorkloadFact>;
   readonly effortEstimates: ReadonlyArray<EffortEstimateFact>;
 }
 
@@ -76,6 +80,7 @@ export type GenericWorkItemIssueCode =
   | 'non_integral_discrete_amount'
   | 'invalid_actual_range'
   | 'orphan_workload'
+  | 'scope_total_workload_skipped'
   | 'completed_workload_skipped'
   | 'remaining_workload_skipped_for_target';
 
@@ -98,6 +103,10 @@ const DISCRETE_UNITS = new Set<SemanticWorkloadUnitCode>([
   'exam_year', 'mock_exam', 'session',
 ]);
 
+function isPlanningWorkload(workload: GenericWorkloadFact): workload is WorkloadFact {
+  return workload.quantityRole !== 'scope_total';
+}
+
 function stableHash(input: string): string {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -119,7 +128,7 @@ function componentById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, S
   return new Map(graph.components.map((component) => [component.id, component]));
 }
 
-function planningScopeKey(workload: WorkloadFact): string {
+function planningScopeKey(workload: GenericWorkloadFact): string {
   return [
     workload.taskId,
     workload.componentId ?? '',
@@ -197,16 +206,26 @@ export function compileGenericPlanningWorkItems(
   const components = componentById(graph);
   const items: GenericPlanningWorkItem[] = [];
   const issues: GenericWorkItemIssue[] = [];
-  const targetWorkloadsByScope = workloadsByPlanningScope(graph.workloads, 'target');
-  const remainingWorkloadsByScope = workloadsByPlanningScope(graph.workloads, 'remaining');
+  const planningWorkloads = graph.workloads.filter(isPlanningWorkload);
+  const targetWorkloadsByScope = workloadsByPlanningScope(planningWorkloads, 'target');
+  const remainingWorkloadsByScope = workloadsByPlanningScope(planningWorkloads, 'remaining');
 
-  for (const workload of graph.workloads) {
-    const task = tasks.get(workload.taskId);
-    const component = workload.componentId ? components.get(workload.componentId) ?? null : null;
-    if (!task || (workload.componentId && !component)) {
-      issues.push({ code: 'orphan_workload', workloadFactId: workload.id, blocking: true });
+  for (const candidate of graph.workloads) {
+    const task = tasks.get(candidate.taskId);
+    const component = candidate.componentId ? components.get(candidate.componentId) ?? null : null;
+    if (!task || (candidate.componentId && !component)) {
+      issues.push({ code: 'orphan_workload', workloadFactId: candidate.id, blocking: true });
       continue;
     }
+    if (candidate.quantityRole === 'scope_total') {
+      issues.push({
+        code: 'scope_total_workload_skipped',
+        workloadFactId: candidate.id,
+        blocking: false,
+      });
+      continue;
+    }
+    const workload: WorkloadFact = candidate;
     if (workload.quantityRole === 'completed') {
       issues.push({ code: 'completed_workload_skipped', workloadFactId: workload.id, blocking: false });
       continue;
@@ -253,7 +272,7 @@ export function compileGenericPlanningWorkItems(
 
     const estimate = resolveGenericWorkItemEstimate({
       workload,
-      workloads: graph.workloads,
+      workloads: planningWorkloads,
       estimates: graph.effortEstimates,
     });
     if (estimate.ambiguous) {
@@ -266,7 +285,7 @@ export function compileGenericPlanningWorkItems(
     } else if (estimate.estimatedMinutes === null) {
       const observedPaceTarget = findObservedPaceEvidenceQuestionTarget({
         workload,
-        workloads: graph.workloads,
+        workloads: planningWorkloads,
         estimates: graph.effortEstimates,
       });
       issues.push({

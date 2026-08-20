@@ -2,6 +2,7 @@ import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
+  EffortEstimateFactV5,
   WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type {
@@ -155,6 +156,9 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
   for (const context of graph.studyContexts) {
     if (taskMap.has(context.taskId)) transientEntityIds.add(context.id);
   }
+  const existingWorkloads = new Map(
+    params.originalGraph.workloads.map((workload) => [workload.id, workload]),
+  );
 
   const reboundGraph: WeeklyPlanningFactGraphV5 = {
     ...graph,
@@ -189,11 +193,25 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
           workloadMap,
         ),
       })),
-    effortEstimates: graph.effortEstimates.map((estimate) => ({
-      ...estimate,
-      taskId: taskMap.get(estimate.taskId) ?? estimate.taskId,
-      targetFactId: rebaseId(estimate.targetFactId, taskMap, componentMap, workloadMap),
-    })),
+    effortEstimates: graph.effortEstimates.map((estimate): EffortEstimateFactV5 => {
+      const reboundTarget = rebaseId(
+        estimate.targetFactId,
+        taskMap,
+        componentMap,
+        workloadMap,
+      );
+      const reboundWorkload = workloadMap.has(estimate.targetFactId)
+        ? existingWorkloads.get(reboundTarget)
+        : null;
+      return {
+        ...estimate,
+        taskId: taskMap.get(estimate.taskId) ?? estimate.taskId,
+        targetFactId: reboundTarget,
+        unitCode: estimate.kind === 'duration_per_unit' && reboundWorkload
+          ? reboundWorkload.unitCode
+          : estimate.unitCode,
+      };
+    }),
     temporalConstraints: graph.temporalConstraints.map((constraint) => ({
       ...constraint,
       taskId: taskMap.get(constraint.taskId) ?? constraint.taskId,
