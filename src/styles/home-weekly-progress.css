@@ -1,0 +1,236 @@
+.home-progress-panel {
+  min-height: 118px;
+  padding: 9px 10px 10px;
+}
+
+.home-progress-body {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.home-progress-ring {
+  width: 64px;
+  height: 64px;
+}
+
+.home-progress-ring > div {
+  width: 51px;
+  height: 51px;
+}
+
+.home-progress-graph-unit {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.home-progress-copy {
+  min-width: 0;
+  align-self: center;
+  display: grid;
+  gap: 4px;
+  color: #6c7890;
+  font-size: 0.61rem;
+}
+
+.home-progress-copy span {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.home-progress-copy strong {
+  color: #25314a;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-progress-copy .negative,
+.home-progress-copy .positive {
+  justify-content: flex-start;
+  font-weight: 900;
+}
+
+.home-progress-copy .negative { color: #eb3547; }
+.home-progress-copy .positive { color: #1f9a69; }
+
+.home-week-chart {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.home-chart-legend {
+  min-height: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #53627a;
+  font-size: 0.55rem;
+  font-weight: 800;
+}
+
+.home-chart-plot {
+  --home-chart-plot-height: 58px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+}
+
+.home-chart-axis {
+  height: var(--home-chart-plot-height);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 1px;
+  color: #66758d;
+  font-size: 0.49rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.home-chart-bars {
+  height: calc(var(--home-chart-plot-height) + 14px);
+  display: grid;
+  grid-template-columns: repeat(7, minmax(11px, 1fr));
+  align-items: start;
+  gap: 3px;
+}
+
+.home-chart-day {
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--home-chart-plot-height) 12px;
+  gap: 2px;
+  align-items: end;
+}
+
+.home-chart-columns {
+  height: var(--home-chart-plot-height);
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 2px;
+}
+
+.home-chart-day small {
+  color: #68758a;
+  text-align: center;
+  font-size: 0.5rem;
+  line-height: 12px;
+}
+
+.home-chart-plan,
+.home-chart-actual {
+  width: 6px;
+  min-height: 2px;
+}
+
+@media (max-height: 760px) {
+  .home-progress-panel {
+    min-height: 112px;
+    padding: 8px 9px 9px;
+  }
+
+  .home-progress-body {
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .home-progress-ring {
+    width: 58px;
+    height: 58px;
+  }
+
+  .home-progress-ring > div {
+    width: 46px;
+    height: 46px;
+  }
+
+  .home-progress-ring strong {
+    font-size: 0.88rem;
+  }
+
+  .home-progress-graph-unit {
+    grid-template-columns: 90px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .home-progress-copy {
+    gap: 3px;
+    font-size: 0.54rem;
+  }
+
+  .home-chart-plot {
+    --home-chart-plot-height: 56px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .home-chart-axis {
+    font-size: 0.46rem;
+  }
+
+  .home-chart-bars {
+    gap: 2px;
+  }
+
+  .home-chart-legend {
+    gap: 6px;
+    font-size: 0.5rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .home-progress-body {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .home-progress-ring {
+    width: 55px;
+    height: 55px;
+  }
+
+  .home-progress-ring > div {
+    width: 44px;
+    height: 44px;
+  }
+
+  .home-progress-graph-unit {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .home-progress-copy {
+    font-size: 0.5rem;
+  }
+
+  .home-chart-plot {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .home-chart-axis {
+    font-size: 0.43rem;
+  }
+
+  .home-chart-bars {
+    grid-template-columns: repeat(7, minmax(9px, 1fr));
+    gap: 1px;
+  }
+
+  .home-chart-plan,
+  .home-chart-actual {
+    width: 5px;
+  }
+}
