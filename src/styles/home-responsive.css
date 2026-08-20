@@ -3,6 +3,56 @@
   gap: 8px;
 }
 
+/* Header refinements ------------------------------------------------- */
+
+.home-top-actions > .home-icon-button:first-child {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.home-date-display {
+  padding-top: 6px;
+}
+
+.home-date-paper {
+  height: 52px;
+  grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
+  border-radius: 9px;
+}
+
+.home-date-ring {
+  top: 0;
+  width: 5px;
+  height: 14px;
+  border-width: 2px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(23, 33, 58, 0.08);
+}
+
+.home-date-ring::after {
+  bottom: -3px;
+  width: 2px;
+  height: 4px;
+}
+
+.home-date-segment {
+  padding-inline: 3px;
+}
+
+.home-date-segment-year {
+  justify-content: center;
+}
+
+.home-date-value {
+  font-size: 0.98rem;
+}
+
+.home-date-unit {
+  font-size: 0.65rem;
+}
+
+/* Narrow phones keep the same two-column attention layout. */
 @media (max-width: 380px) {
   .home-alert-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -56,14 +106,13 @@
 
 /*
  * Short phones keep the same information architecture as taller phones.
- * Only density changes: cards stay in the same order and attention remains
- * two-column. This avoids a small viewport-height difference changing the
- * meaning of the home layout.
+ * Only the non-analytical sections become denser. Weekly progress keeps its
+ * full three-column geometry so the graph never collapses into the nav area.
  */
 @media (max-width: 520px) and (max-height: 760px) {
   .app-shell.home-app-shell {
     padding-top: 6px;
-    padding-bottom: 64px;
+    padding-bottom: 78px;
   }
 
   .home-dashboard,
@@ -97,15 +146,26 @@
 
   .home-date-display {
     min-height: 52px;
-    padding-top: 6px;
+    padding-top: 5px;
   }
 
   .home-date-paper {
-    height: 46px;
+    height: 47px;
+    grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
   }
 
   .home-date-ring {
-    height: 15px;
+    top: 0;
+    width: 5px;
+    height: 13px;
+  }
+
+  .home-date-value {
+    font-size: 0.88rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.59rem;
   }
 
   .home-icon-button,
@@ -192,11 +252,6 @@
   .home-schedule-add-row,
   .home-schedule-empty {
     min-height: 46px;
-  }
-
-  .home-schedule-row,
-  .home-schedule-add-row,
-  .home-schedule-empty {
     padding: 5px 8px;
   }
 
@@ -266,55 +321,61 @@
     font-size: 0.61rem;
   }
 
+  /* Keep weekly progress visually equivalent to the reference design. */
   .home-progress-panel {
-    padding: 7px 9px 8px;
+    min-height: 108px;
+    padding: 8px 9px 9px;
   }
 
   .home-progress-body {
-    grid-template-columns: 58px 98px minmax(0, 1fr);
-    gap: 5px;
+    min-height: 72px;
+    grid-template-columns: 64px 104px minmax(0, 1fr);
+    gap: 7px;
+    align-items: center;
   }
 
   .home-progress-ring {
-    width: 54px;
-    height: 54px;
+    width: 60px;
+    height: 60px;
   }
 
   .home-progress-ring > div {
-    width: 43px;
-    height: 43px;
+    width: 48px;
+    height: 48px;
   }
 
   .home-progress-ring strong {
-    font-size: 0.84rem;
+    font-size: 0.9rem;
   }
 
   .home-progress-copy {
     gap: 3px;
-    font-size: 0.56rem;
+    font-size: 0.57rem;
   }
 
   .home-week-chart {
-    gap: 2px;
+    min-width: 0;
+    gap: 3px;
   }
 
   .home-chart-legend {
-    gap: 6px;
-    font-size: 0.51rem;
+    gap: 7px;
+    font-size: 0.52rem;
   }
 
   .home-chart-bars {
-    height: 50px;
+    height: 64px;
+    grid-template-columns: repeat(7, minmax(10px, 1fr));
     gap: 2px;
   }
 
   .home-chart-day {
-    grid-template-rows: 1fr 11px;
+    grid-template-rows: 1fr 12px;
     gap: 1px;
   }
 
   .home-chart-day small {
-    font-size: 0.49rem;
+    font-size: 0.5rem;
   }
 
   .home-bottom-nav {
@@ -331,5 +392,30 @@
     width: 31px;
     height: 31px;
     margin-top: -11px;
+  }
+}
+
+@media (max-width: 380px) and (max-height: 760px) {
+  .home-progress-body {
+    grid-template-columns: 58px 88px minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .home-progress-ring {
+    width: 56px;
+    height: 56px;
+  }
+
+  .home-progress-ring > div {
+    width: 45px;
+    height: 45px;
+  }
+
+  .home-progress-copy {
+    font-size: 0.53rem;
+  }
+
+  .home-chart-bars {
+    height: 62px;
   }
 }
