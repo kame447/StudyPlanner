@@ -107,11 +107,16 @@
 }
 
 .home-dashboard-default .home-schedule-row,
-.home-dashboard-default .home-schedule-add-row,
 .home-dashboard-default .home-schedule-empty {
   min-height: var(--home-fit-row-height);
   padding-top: clamp(4px, 0.65dvh, 7px);
   padding-bottom: clamp(4px, 0.65dvh, 7px);
+}
+
+.home-dashboard-default .home-schedule-add-row {
+  min-height: clamp(32px, 4.5dvh, 40px);
+  padding-top: clamp(3px, 0.45dvh, 5px);
+  padding-bottom: clamp(3px, 0.45dvh, 5px);
 }
 
 .home-dashboard-default .home-alert-grid {
@@ -216,21 +221,37 @@
     font-size: 0.59rem;
   }
 
+  .home-dashboard-default .home-schedule-row {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .home-dashboard-default .home-schedule-content {
+    gap: 0;
+  }
+
   .home-dashboard-default .home-schedule-content time {
     font-size: 0.6rem;
+    line-height: 1.05;
   }
 
   .home-dashboard-default .home-schedule-content strong {
     font-size: 0.72rem;
+    line-height: 1.1;
   }
 
   .home-dashboard-default .home-schedule-content small {
     font-size: 0.56rem;
+    line-height: 1.05;
   }
 
-  .home-dashboard-default .home-schedule-add-row span,
-  .home-dashboard-default .home-schedule-empty span {
-    font-size: 0.66rem;
+  .home-dashboard-default .home-schedule-add-row strong {
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-empty {
+    line-height: 1.1;
   }
 
   .home-dashboard-default .home-alert-card {
