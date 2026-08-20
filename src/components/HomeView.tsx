@@ -1,26 +1,27 @@
 import { useMemo } from 'react';
-import type { CSSProperties } from 'react';
 import {
   BarChart3,
   Bell,
   BookOpen,
   CalendarDays,
-  ChevronRight,
-  CircleAlert,
-  Clock,
   Flame,
   House,
   Menu,
   MessageCircle,
-  Play,
-  Plus,
-  Target,
 } from 'lucide-react';
-import { formatCompactDate, minutesBetween } from '../lib/date';
-import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domain';
 import { HomeDateDisplay } from './HomeDateDisplay';
+import {
+  AttentionSection,
+  DEFAULT_HOME_SECTION_ORDER,
+  GettingStartedSection,
+  MaterialProgressSection,
+  NextPlanSection,
+  TodayScheduleSection,
+  WeeklyProgressSection,
+  type HomeSectionId,
+} from './home/HomeSections';
 import { UserAvatar } from './UserAvatar';
 
 interface HomeViewProps {
@@ -37,67 +38,6 @@ interface HomeViewProps {
   onOpenReport: () => void;
   onOpenProfile: () => void;
   onOpenSettings: () => void;
-}
-
-function formatMinutes(minutes: number): string {
-  const normalized = Math.max(0, Math.round(minutes));
-  if (normalized < 60) return `${normalized}分`;
-  const hours = Math.floor(normalized / 60);
-  const rest = normalized % 60;
-  return rest > 0 ? `${hours}時間${rest}分` : `${hours}時間`;
-}
-
-function formatDue(todo: TodoTask): string {
-  if (!todo.dueDate) return '期限未設定';
-  const time = todo.dueTime ? ` ${todo.dueTime}` : '';
-  return `${todo.dueDate.slice(5).replace('-', '/')} ${time}`.trim();
-}
-
-function resolveMaterialLabel(plan: Plan, materials: StudyMaterial[]): string {
-  if (plan.materialName?.trim()) return plan.materialName.trim();
-  if (plan.materialId) {
-    const material = materials.find((item) => item.id === plan.materialId);
-    if (material) return material.name;
-  }
-  return plan.subject?.trim() || '教材未設定';
-}
-
-function HomeScheduleRow({
-  plan,
-  actual,
-  studyMaterials,
-  future = false,
-  onOpenDay,
-}: {
-  plan: Plan;
-  actual?: Actual;
-  studyMaterials: StudyMaterial[];
-  future?: boolean;
-  onOpenDay: (date: string) => void;
-}) {
-  return (
-    <button
-      className={future ? 'home-schedule-row future' : 'home-schedule-row'}
-      type="button"
-      onClick={() => onOpenDay(plan.date)}
-    >
-      <span className={actual ? 'home-time-dot completed' : 'home-time-dot'}>
-        <Clock size={13} aria-hidden="true" />
-      </span>
-      <span className="home-schedule-content">
-        <time>
-          {future ? `${formatCompactDate(plan.date)} ` : ''}
-          {plan.startTime} - {plan.endTime}
-        </time>
-        <strong>{plan.title}</strong>
-        <small>
-          <BookOpen size={13} aria-hidden="true" />
-          教材：{resolveMaterialLabel(plan, studyMaterials)}
-        </small>
-      </span>
-      <ChevronRight size={18} aria-hidden="true" />
-    </button>
-  );
 }
 
 export function HomeView({
@@ -119,25 +59,73 @@ export function HomeView({
     () => buildHomeDashboardModel({ plans, actuals, todos }),
     [actuals, plans, todos],
   );
-  const nextPlan = dashboard.nextPlan;
-  const notificationCount = Math.min(
-    9,
-    dashboard.nearDueTodos.length + dashboard.missingActualPlans.length,
-  );
-  const maxDayMinutes = Math.max(
-    60,
-    ...dashboard.weekDays.flatMap((item) => [item.plannedMinutes, item.actualMinutes]),
-  );
-  const ringProgress = Math.max(0, Math.min(100, dashboard.weekProgressPercent));
-  const ringStyle = {
-    '--home-progress': `${ringProgress * 3.6}deg`,
-  } as CSSProperties;
-  const futureSlots = Math.max(0, 4 - Math.min(4, dashboard.todayPlans.length));
-  const visibleUpcomingPlans = dashboard.upcomingPlans.slice(0, futureSlots);
-  const showFuturePlaceholder =
-    dashboard.todayPlans.length > 0 &&
-    dashboard.todayPlans.length < 4 &&
-    visibleUpcomingPlans.length === 0;
+  const isGettingStarted =
+    plans.length === 0 &&
+    actuals.length === 0 &&
+    todos.length === 0 &&
+    studyMaterials.length === 0;
+
+  function renderSection(sectionId: HomeSectionId) {
+    switch (sectionId) {
+      case 'next-plan':
+        return (
+          <NextPlanSection
+            key={sectionId}
+            dashboard={dashboard}
+            studyMaterials={studyMaterials}
+            onOpenAiPlanning={onOpenAiPlanning}
+            onOpenDay={onOpenDay}
+          />
+        );
+      case 'today-schedule':
+        return (
+          <TodayScheduleSection
+            key={sectionId}
+            dashboard={dashboard}
+            studyMaterials={studyMaterials}
+            onOpenDay={onOpenDay}
+            onOpenSchedule={onOpenSchedule}
+          />
+        );
+      case 'attention':
+        return (
+          <AttentionSection
+            key={sectionId}
+            dashboard={dashboard}
+            onOpenTodo={onOpenTodo}
+            onOpenDay={onOpenDay}
+          />
+        );
+      case 'weekly-progress':
+        return (
+          <WeeklyProgressSection
+            key={sectionId}
+            dashboard={dashboard}
+            onOpenReport={onOpenReport}
+          />
+        );
+      case 'material-progress':
+        return (
+          <MaterialProgressSection
+            key={sectionId}
+            studyMaterials={studyMaterials}
+            onOpenBookshelf={onOpenBookshelf}
+          />
+        );
+      case 'getting-started':
+        return (
+          <GettingStartedSection
+            key={sectionId}
+            onOpenAiPlanning={onOpenAiPlanning}
+            onOpenSchedule={onOpenSchedule}
+            onOpenTodo={onOpenTodo}
+            onOpenBookshelf={onOpenBookshelf}
+          />
+        );
+      default:
+        return null;
+    }
+  }
 
   return (
     <section className="home-dashboard" aria-label="ホーム">
@@ -154,9 +142,13 @@ export function HomeView({
         <HomeDateDisplay date={dashboard.today} />
 
         <div className="home-top-actions">
-          <button className="home-icon-button" type="button" onClick={onOpenTodo} aria-label="通知とTodoを確認">
+          <button
+            className="home-icon-button"
+            type="button"
+            aria-label="通知"
+            title="通知機能は準備中です"
+          >
             <Bell aria-hidden="true" size={22} />
-            {notificationCount > 0 ? <span className="home-notification-badge">{notificationCount}</span> : null}
           </button>
           <button className="home-avatar-button" type="button" onClick={onOpenProfile} aria-label="マイページを開く">
             <UserAvatar user={user} small />
@@ -167,165 +159,16 @@ export function HomeView({
         </div>
       </header>
 
-      <section className="home-next-card">
-        <div className="home-next-copy">
-          <p className="home-eyebrow">次の予定</p>
-          {nextPlan ? (
-            <>
-              <h1>{nextPlan.title}</h1>
-              <div className="home-next-meta">
-                <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
-                <span><BookOpen aria-hidden="true" size={18} />教材：{resolveMaterialLabel(nextPlan, studyMaterials)}</span>
-                <span><Target aria-hidden="true" size={18} />予定学習時間 {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1>次の予定はありません</h1>
-              <p className="home-empty-copy">予定を追加するか、AI計画から今日の学習内容を組み立てられます。</p>
-            </>
-          )}
-        </div>
-
-        <div className="home-study-scene" aria-hidden="true">
-          <div className="home-scene-window" />
-          <div className="home-scene-plant"><span /><span /><span /><span /></div>
-          <div className="home-scene-desk">
-            <div className="home-scene-books"><span /><span /><span /></div>
-            <div className="home-scene-notebook"><BookOpen size={54} strokeWidth={1.4} /></div>
-            <div className="home-scene-cup" />
-          </div>
-        </div>
-
-        <button
-          className="home-start-button"
-          type="button"
-          onClick={() => nextPlan ? onOpenDay(dashboard.today) : onOpenAiPlanning()}
-        >
-          <span className="home-start-icon"><Play aria-hidden="true" size={20} fill="currentColor" /></span>
-          {nextPlan ? '学習を開始する' : 'AIで予定を作る'}
-        </button>
-      </section>
-
-      <section className="home-panel home-today-panel">
-        <div className="home-section-heading">
-          <h2>今日の予定</h2>
-          <button type="button" onClick={() => onOpenDay(dashboard.today)}>すべて見る <ChevronRight size={16} aria-hidden="true" /></button>
-        </div>
-        <div className="home-schedule-list">
-          {dashboard.todayPlans.length > 0 ? (
-            <>
-              {dashboard.todayPlans.map((plan) => {
-                const actual = dashboard.actualByOccurrenceKey.get(
-                  buildPlanOccurrenceKey(plan.id, plan.date),
-                );
-                return (
-                  <HomeScheduleRow
-                    key={`${plan.id}:${plan.date}`}
-                    plan={plan}
-                    actual={actual}
-                    studyMaterials={studyMaterials}
-                    onOpenDay={onOpenDay}
-                  />
-                );
-              })}
-              {dashboard.todayPlans.length < 4
-                ? visibleUpcomingPlans.map((plan) => (
-                    <HomeScheduleRow
-                      key={`future:${plan.id}:${plan.date}`}
-                      plan={plan}
-                      future
-                      studyMaterials={studyMaterials}
-                      onOpenDay={onOpenDay}
-                    />
-                  ))
-                : null}
-              {showFuturePlaceholder ? (
-                <button className="home-schedule-add-row" type="button" onClick={onOpenSchedule}>
-                  <span><Plus size={15} aria-hidden="true" /></span>
-                  <strong>この先の予定を追加</strong>
-                  <ChevronRight size={17} aria-hidden="true" />
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button className="home-schedule-empty" type="button" onClick={onOpenSchedule}>
-              <span><Plus size={16} aria-hidden="true" /></span>
-              今日の予定はまだありません。予定を追加する
-            </button>
-          )}
-        </div>
-        {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
-      </section>
-
-      <div className="home-alert-grid">
-        <button className="home-alert-card danger" type="button" onClick={onOpenTodo}>
-          <div className="home-alert-heading"><span>締切が近い Todo</span><b>{dashboard.nearDueTodos.length}件</b></div>
-          <div className="home-alert-body">
-            <CalendarDays aria-hidden="true" size={24} />
-            <span>
-              {dashboard.primaryDueTodo ? (
-                <><small>{formatDue(dashboard.primaryDueTodo)}まで</small><strong>{dashboard.primaryDueTodo.title}</strong></>
-              ) : (
-                <><small>現在</small><strong>期限の近いTodoはありません</strong></>
-              )}
-            </span>
-            <ChevronRight size={18} aria-hidden="true" />
-          </div>
-        </button>
-
-        <button className="home-alert-card warning" type="button" onClick={() => onOpenDay(dashboard.today)}>
-          <div className="home-alert-heading"><span>要対応</span><b>{dashboard.missingActualPlans.length}件</b></div>
-          <div className="home-alert-body">
-            <CircleAlert aria-hidden="true" size={24} />
-            <span>
-              {dashboard.missingActualPlans[0] ? (
-                <><small>実績未入力</small><strong>{dashboard.missingActualPlans[0].title}</strong></>
-              ) : (
-                <><small>実績入力</small><strong>未入力の実績はありません</strong></>
-              )}
-            </span>
-            <ChevronRight size={18} aria-hidden="true" />
-          </div>
-        </button>
-      </div>
-
-      <section className="home-panel home-progress-panel">
-        <div className="home-section-heading">
-          <h2>今週の進捗</h2>
-          <button type="button" onClick={onOpenReport}>詳細を見る <ChevronRight size={16} aria-hidden="true" /></button>
-        </div>
-        <div className="home-progress-body">
-          <div className="home-progress-ring" style={ringStyle}>
-            <div><strong>{dashboard.weekProgressPercent}%</strong></div>
-          </div>
-          <div className="home-progress-copy">
-            <span>予定 <strong>{formatMinutes(dashboard.weekPlannedMinutes)}</strong></span>
-            <span>実績 <strong>{formatMinutes(dashboard.weekActualMinutes)}</strong></span>
-            <span className={dashboard.weekActualMinutes >= dashboard.weekPlannedMinutes ? 'positive' : 'negative'}>
-              {dashboard.weekActualMinutes >= dashboard.weekPlannedMinutes ? '+' : '-'}{formatMinutes(Math.abs(dashboard.weekActualMinutes - dashboard.weekPlannedMinutes))}
-            </span>
-          </div>
-          <div className="home-week-chart" aria-label="曜日別の予定と実績">
-            <div className="home-chart-legend"><span className="actual">実績</span><span className="planned">予定</span></div>
-            <div className="home-chart-bars">
-              {dashboard.weekDays.map((item) => {
-                const plannedHeight = Math.max(4, Math.round((item.plannedMinutes / maxDayMinutes) * 100));
-                const actualHeight = Math.max(4, Math.round((item.actualMinutes / maxDayMinutes) * 100));
-                return (
-                  <div className="home-chart-day" key={item.date} title={`${item.label}: 予定 ${formatMinutes(item.plannedMinutes)} / 実績 ${formatMinutes(item.actualMinutes)}`}>
-                    <div className="home-chart-columns">
-                      <span className="home-chart-plan" style={{ height: `${plannedHeight}%` }} />
-                      <span className="home-chart-actual" style={{ height: `${actualHeight}%` }} />
-                    </div>
-                    <small>{item.label}</small>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
+      {isGettingStarted ? (
+        <GettingStartedSection
+          onOpenAiPlanning={onOpenAiPlanning}
+          onOpenSchedule={onOpenSchedule}
+          onOpenTodo={onOpenTodo}
+          onOpenBookshelf={onOpenBookshelf}
+        />
+      ) : (
+        DEFAULT_HOME_SECTION_ORDER.map(renderSection)
+      )}
 
       <nav className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
         <button type="button" onClick={onOpenAiPlanning}><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
