@@ -11,7 +11,8 @@
   padding-bottom: calc(var(--home-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
 }
 
-.home-bottom-nav {
+.home-bottom-nav,
+.home-dashboard-default .home-bottom-nav {
   height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
   padding: 7px 8px env(safe-area-inset-bottom, 0px);
 }
@@ -54,7 +55,8 @@
     padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
-  .home-bottom-nav {
+  .home-bottom-nav,
+  .home-dashboard-default .home-bottom-nav {
     padding-top: 6px;
   }
 
