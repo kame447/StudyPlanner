@@ -41,6 +41,9 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await page.goto('/');
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
 
+  const homeTopbarBox = await page.locator('.home-topbar').boundingBox();
+  const homeNavBox = await page.locator('.home-bottom-nav').boundingBox();
+
   await page.locator('.home-bottom-nav button').first().click();
 
   await expect(page.locator('.ai-planning-view')).toBeVisible();
@@ -51,8 +54,17 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.locator('.ai-planning-view .segmented-control')).toHaveCount(0);
   await expect(page.getByText('相談', { exact: true })).toHaveCount(0);
   await expect(page.getByText('週間計画', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('こんにちは。今週の目標や予定に合わせて、学習計画を作成します。')).toHaveCount(0);
+  await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
 
-  await page.locator('.ai-planning-bottom-nav button').nth(2).click();
+  const aiNavBox = await page.locator('.ai-planning-home-nav').boundingBox();
+  expect(aiNavBox?.width).toBeCloseTo(homeNavBox?.width ?? 0, 0);
+  expect(aiNavBox?.height).toBeCloseTo(homeNavBox?.height ?? 0, 0);
+
+  const aiSurfaceBox = await page.locator('.ai-planning-view').boundingBox();
+  expect(aiSurfaceBox?.y).toBeGreaterThanOrEqual((homeTopbarBox?.y ?? 0) + (homeTopbarBox?.height ?? 0));
+
+  await page.locator('.ai-planning-home-nav button').nth(2).click();
   await expect(page.locator('.ai-planning-view')).toHaveCount(0);
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
 });
