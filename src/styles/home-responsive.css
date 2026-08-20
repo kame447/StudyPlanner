@@ -18,11 +18,33 @@
 .home-date-paper {
   height: 52px;
   grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
+  overflow: visible;
   border-radius: 9px;
 }
 
+.home-date-segment {
+  position: relative;
+  overflow: visible;
+  padding-inline: 3px;
+}
+
+.home-date-segment:first-child {
+  border-radius: 9px 0 0 9px;
+}
+
+.home-date-segment:last-child {
+  border-radius: 0 9px 9px 0;
+}
+
+.home-date-segment-rings {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  pointer-events: none;
+}
+
 .home-date-ring {
-  top: 0;
+  top: -6px;
   width: 5px;
   height: 14px;
   border-width: 2px;
@@ -34,14 +56,6 @@
   bottom: -3px;
   width: 2px;
   height: 4px;
-}
-
-.home-date-segment {
-  padding-inline: 3px;
-}
-
-.home-date-segment-year {
-  justify-content: center;
 }
 
 .home-date-value {
@@ -155,7 +169,7 @@
   }
 
   .home-date-ring {
-    top: 0;
+    top: -5px;
     width: 5px;
     height: 13px;
   }
