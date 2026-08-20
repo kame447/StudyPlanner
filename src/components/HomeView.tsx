@@ -43,6 +43,7 @@ interface HomeViewProps {
 interface HomeLayoutRelaxation {
   hero: number;
   row: number;
+  scheduleSide: number;
   todaySide: number;
   alertSide: number;
   topbar: number;
@@ -57,18 +58,17 @@ const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
 const MAX_VISIBLE_TODAY_ROWS = 4;
 const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
 const TARGET_BOTTOM_GAP = 8;
-const MAX_NEXT_CARD_HEIGHT = 226;
+const DEFAULT_MAX_NEXT_CARD_HEIGHT = 226;
+const TALL_MAX_NEXT_CARD_HEIGHT = 276;
 const MAX_SCHEDULE_ROW_HEIGHT = 50;
 const MAX_TOPBAR_HEIGHT = 62;
-const MAX_TODAY_SIDE_RELAXATION = 5;
-const MAX_ALERT_SIDE_RELAXATION = 2;
-const MAX_MATERIAL_SIDE_RELAXATION = 4;
-const MAX_SECTION_GAP = 10;
+const TALL_VIEWPORT_MIN_HEIGHT = 1000;
 
 function emptyLayoutRelaxation(): HomeLayoutRelaxation {
   return {
     hero: 0,
     row: 0,
+    scheduleSide: 0,
     todaySide: 0,
     alertSide: 0,
     topbar: 0,
@@ -171,6 +171,16 @@ export function HomeView({
           return;
         }
 
+        const isTallViewport = window.innerHeight >= TALL_VIEWPORT_MIN_HEIGHT;
+        const maxNextCardHeight = isTallViewport
+          ? TALL_MAX_NEXT_CARD_HEIGHT
+          : DEFAULT_MAX_NEXT_CARD_HEIGHT;
+        const maxScheduleSideRelaxation = isTallViewport ? 11 : 2;
+        const maxTodaySideRelaxation = isTallViewport ? 12 : 5;
+        const maxAlertSideRelaxation = isTallViewport ? 6 : 2;
+        const maxMaterialSideRelaxation = isTallViewport ? 10 : 6;
+        const maxSectionGap = isTallViewport ? 18 : 12;
+
         const setRelaxationProperty = (name: string, value: number) => {
           if (value <= 0.05) {
             dashboardElement.style.removeProperty(name);
@@ -188,6 +198,7 @@ export function HomeView({
           layoutRelaxationRef.current = next;
           setRelaxationProperty('--home-relax-hero', next.hero);
           setRelaxationProperty('--home-relax-row', next.row);
+          setRelaxationProperty('--home-relax-schedule-side', next.scheduleSide);
           setRelaxationProperty('--home-relax-today-side', next.todaySide);
           setRelaxationProperty('--home-relax-alert-side', next.alertSide);
           setRelaxationProperty('--home-relax-topbar', next.topbar);
@@ -202,6 +213,9 @@ export function HomeView({
         const todayRect = todayPanel.getBoundingClientRect();
         const navTop = nav.getBoundingClientRect().top;
         const rowGap = Number.parseFloat(window.getComputedStyle(dashboardElement).rowGap) || 0;
+        const visibleScheduleChildren = Array.from(scheduleList.children)
+          .filter((element): element is HTMLElement => element instanceof HTMLElement)
+          .slice(0, MAX_VISIBLE_TODAY_ROWS);
         const scheduleRows = Array.from(
           scheduleList.querySelectorAll<HTMLElement>('.home-schedule-row'),
         ).slice(0, MAX_VISIBLE_TODAY_ROWS);
@@ -216,6 +230,7 @@ export function HomeView({
         const compactCoreRelaxationImpact =
           currentRelaxation.hero +
           currentRelaxation.row * scheduleRows.length +
+          currentRelaxation.scheduleSide * 2 * visibleScheduleChildren.length +
           currentRelaxation.todaySide * 2 +
           currentRelaxation.alertSide * 2 +
           currentRelaxation.gap * internalCoreGapCount;
@@ -309,7 +324,7 @@ export function HomeView({
 
         const heroCapacity = Math.max(
           0,
-          MAX_NEXT_CARD_HEIGHT - nextCard.getBoundingClientRect().height,
+          maxNextCardHeight - nextCard.getBoundingClientRect().height,
         );
         const heroAddition = Math.min(heroCapacity, remaining);
         nextRelaxation.hero += heroAddition;
@@ -334,10 +349,27 @@ export function HomeView({
           }
         }
 
+        if (remaining > 0.5 && visibleScheduleChildren.length > 0) {
+          const sideCapacity = Math.max(
+            0,
+            maxScheduleSideRelaxation - nextRelaxation.scheduleSide,
+          );
+          const sideAddition = Math.min(
+            sideCapacity,
+            remaining / (2 * visibleScheduleChildren.length),
+          );
+          nextRelaxation.scheduleSide += sideAddition;
+          const scheduleImpact = sideAddition * 2 * visibleScheduleChildren.length;
+          remaining -= scheduleImpact;
+          if (sideAddition > 0.05 && needsFourRowCap) {
+            setScheduleMaxHeight(preferredListHeight + scheduleImpact);
+          }
+        }
+
         if (remaining > 0.5) {
           const sideCapacity = Math.max(
             0,
-            MAX_TODAY_SIDE_RELAXATION - nextRelaxation.todaySide,
+            maxTodaySideRelaxation - nextRelaxation.todaySide,
           );
           const sideAddition = Math.min(sideCapacity, remaining / 2);
           nextRelaxation.todaySide += sideAddition;
@@ -347,7 +379,7 @@ export function HomeView({
         if (remaining > 0.5) {
           const sideCapacity = Math.max(
             0,
-            MAX_ALERT_SIDE_RELAXATION - nextRelaxation.alertSide,
+            maxAlertSideRelaxation - nextRelaxation.alertSide,
           );
           const sideAddition = Math.min(sideCapacity, remaining / 2);
           nextRelaxation.alertSide += sideAddition;
@@ -367,7 +399,7 @@ export function HomeView({
         if (remaining > 0.5 && supplementalMaterialRows !== null) {
           const sideCapacity = Math.max(
             0,
-            MAX_MATERIAL_SIDE_RELAXATION - nextRelaxation.materialSide,
+            maxMaterialSideRelaxation - nextRelaxation.materialSide,
           );
           const sideAddition = Math.min(sideCapacity, remaining / 2);
           nextRelaxation.materialSide += sideAddition;
@@ -375,7 +407,7 @@ export function HomeView({
         }
 
         if (remaining > 0.5) {
-          const gapCapacity = Math.max(0, MAX_SECTION_GAP - rowGap);
+          const gapCapacity = Math.max(0, maxSectionGap - rowGap);
           const activeGapCount =
             internalCoreGapCount + 1 + (supplementalMaterialRows === null ? 0 : 1);
           if (gapCapacity > 0 && activeGapCount > 0) {
