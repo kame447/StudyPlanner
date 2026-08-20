@@ -293,86 +293,91 @@
  */
 @media (min-width: 700px) and (min-height: 1000px) {
   .app-shell.home-app-shell {
-    --home-nav-height: 88px;
-    --home-nav-icon-size: 30px;
-    --home-nav-label-size: 0.76rem;
-    --home-nav-active-size: 47px;
-    --home-nav-active-icon-size: 26px;
+    --home-nav-height: 96px;
+    --home-nav-icon-size: 31px;
+    --home-nav-label-size: 0.78rem;
+    --home-nav-active-size: 49px;
+    --home-nav-active-icon-size: 27px;
   }
 
   .home-dashboard-default {
-    --home-fit-gap: min(20px, calc(var(--home-fit-gap-base) + var(--home-relax-gap, 0px)));
-    --home-fit-hero-height: min(320px, calc(var(--home-fit-hero-height-base) + var(--home-relax-hero, 0px)));
+    --home-fit-gap: min(22px, calc(var(--home-fit-gap-base) + 2px + var(--home-relax-gap, 0px)));
+    --home-fit-hero-height: min(350px, calc(var(--home-fit-hero-height-base) + 30px + var(--home-relax-hero, 0px)));
     --home-fit-row-height: min(70px, calc(var(--home-fit-row-height-base) + var(--home-relax-row, 0px)));
   }
 
   .home-dashboard-default .home-topbar {
-    min-height: 74px;
-    padding-block: calc(var(--home-relax-topbar, 0px) / 2);
+    min-height: 78px;
+    padding-block: calc(4px + var(--home-relax-topbar, 0px) / 2);
   }
 
   .home-dashboard-default .home-streak-card {
-    min-height: 68px;
-    padding-block: 10px;
+    min-height: 70px;
+    padding-block: 11px;
   }
 
   .home-dashboard-default .home-date-display {
-    min-height: 74px;
+    min-height: 78px;
   }
 
   .home-dashboard-default .home-date-paper {
-    height: 66px;
+    height: 70px;
   }
 
   .home-dashboard-default .home-next-card {
-    padding-top: 20px;
-    padding-bottom: 72px;
+    padding-top: 22px;
+    padding-bottom: 76px;
   }
 
   .home-dashboard-default .home-start-button {
-    min-height: 56px;
-    bottom: 12px;
-    font-size: 1.04rem;
+    min-height: 58px;
+    bottom: 13px;
+    font-size: 1.05rem;
   }
 
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(7px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(7px + var(--home-relax-schedule-side, 0px));
+    padding-top: calc(9px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(9px + var(--home-relax-schedule-side, 0px));
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(6px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(6px + var(--home-relax-schedule-side, 0px));
+    padding-top: calc(8px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(8px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-today-panel {
+    padding-top: calc(11px + var(--home-relax-today-side, 0px));
+    padding-bottom: calc(10px + var(--home-relax-today-side, 0px));
   }
 
   .home-dashboard-default .home-alert-card {
-    padding-block: calc(11px + var(--home-relax-alert-side, 0px));
+    padding-block: calc(13px + var(--home-relax-alert-side, 0px));
   }
 
   .home-dashboard-default .home-progress-panel {
-    min-height: 132px;
-    padding-top: calc(12px + var(--home-relax-progress-side, 0px));
-    padding-bottom: calc(13px + var(--home-relax-progress-side, 0px));
+    min-height: 152px;
+    padding-top: calc(14px + var(--home-relax-progress-side, 0px));
+    padding-bottom: calc(15px + var(--home-relax-progress-side, 0px));
   }
 
   .weekly-progress-plot {
-    --weekly-progress-plot-height: 68px;
+    --weekly-progress-plot-height: 74px;
   }
 
   .weekly-progress-ring {
-    width: clamp(70px, 8.5vw, 82px);
-    height: clamp(70px, 8.5vw, 82px);
+    width: clamp(74px, 9vw, 86px);
+    height: clamp(74px, 9vw, 86px);
   }
 
   .home-material-panel {
-    padding-top: calc(14px + var(--home-relax-material-side, 0px));
-    padding-bottom: calc(13px + var(--home-relax-material-side, 0px));
+    padding-top: calc(18px + var(--home-relax-material-side, 0px));
+    padding-bottom: calc(17px + var(--home-relax-material-side, 0px));
   }
 
   .home-material-row {
-    min-height: 84px;
-    padding-block: 12px;
+    min-height: 92px;
+    padding-block: 16px;
   }
 }
 
