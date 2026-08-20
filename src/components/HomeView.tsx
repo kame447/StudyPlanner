@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import {
   BarChart3,
   Bell,
@@ -14,9 +14,7 @@ import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domai
 import { HomeDateDisplay } from './HomeDateDisplay';
 import {
   AttentionSection,
-  DEFAULT_HOME_SECTION_ORDER,
   GettingStartedSection,
-  MaterialProgressSection,
   NextPlanSection,
   TodayScheduleSection,
   type HomeSectionId,
@@ -40,29 +38,12 @@ interface HomeViewProps {
   onOpenSettings: () => void;
 }
 
-const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
-  (sectionId) => sectionId !== 'material-progress',
-);
-const MATERIAL_SECTION_BASE_HEIGHT = 60;
-const MATERIAL_ROW_HEIGHT = 63;
-const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
-
-function resolveSupplementalMaterialRows(
-  studyMaterials: StudyMaterial[],
-  availableHeight: number,
-): number {
-  const activeMaterialCount = studyMaterials.filter(
-    (material) => material.status !== 'archived',
-  ).length;
-  const desiredRows = Math.max(
-    1,
-    Math.min(MAX_SUPPLEMENTAL_MATERIAL_ROWS, activeMaterialCount),
-  );
-  const rowsThatFit = Math.floor(
-    (availableHeight - MATERIAL_SECTION_BASE_HEIGHT) / MATERIAL_ROW_HEIGHT,
-  );
-  return Math.max(0, Math.min(desiredRows, rowsThatFit));
-}
+const CORE_HOME_SECTION_ORDER = [
+  'next-plan',
+  'today-schedule',
+  'attention',
+  'weekly-progress',
+] satisfies HomeSectionId[];
 
 export function HomeView({
   user,
@@ -88,57 +69,6 @@ export function HomeView({
     actuals.length === 0 &&
     todos.length === 0 &&
     studyMaterials.length === 0;
-  const coreSectionsRef = useRef<HTMLDivElement | null>(null);
-  const bottomNavRef = useRef<HTMLElement | null>(null);
-  const [supplementalMaterialRows, setSupplementalMaterialRows] = useState(0);
-  const supplementalStudyMaterials = useMemo(() => {
-    if (supplementalMaterialRows <= 0) return [];
-    return studyMaterials
-      .filter((material) => material.status !== 'archived')
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, supplementalMaterialRows);
-  }, [studyMaterials, supplementalMaterialRows]);
-
-  useEffect(() => {
-    if (isGettingStarted) {
-      setSupplementalMaterialRows(0);
-      return undefined;
-    }
-
-    let frameId = 0;
-    const measure = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        const core = coreSectionsRef.current;
-        const nav = bottomNavRef.current;
-        if (!core || !nav) return;
-
-        const coreBottom = core.getBoundingClientRect().bottom;
-        const navTop = nav.getBoundingClientRect().top;
-        const availableHeight = navTop - coreBottom - 8;
-        setSupplementalMaterialRows(
-          resolveSupplementalMaterialRows(studyMaterials, availableHeight),
-        );
-      });
-    };
-
-    measure();
-    window.addEventListener('resize', measure);
-    window.visualViewport?.addEventListener('resize', measure);
-
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (resizeObserver && coreSectionsRef.current) {
-      resizeObserver.observe(coreSectionsRef.current);
-    }
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', measure);
-      window.visualViewport?.removeEventListener('resize', measure);
-      resizeObserver?.disconnect();
-    };
-  }, [isGettingStarted, studyMaterials]);
 
   function renderSection(sectionId: HomeSectionId) {
     switch (sectionId) {
@@ -179,14 +109,6 @@ export function HomeView({
             onOpenReport={onOpenReport}
           />
         );
-      case 'material-progress':
-        return (
-          <MaterialProgressSection
-            key={sectionId}
-            studyMaterials={studyMaterials}
-            onOpenBookshelf={onOpenBookshelf}
-          />
-        );
       case 'getting-started':
         return (
           <GettingStartedSection
@@ -197,6 +119,7 @@ export function HomeView({
             onOpenBookshelf={onOpenBookshelf}
           />
         );
+      case 'material-progress':
       default:
         return null;
     }
@@ -246,20 +169,12 @@ export function HomeView({
           onOpenBookshelf={onOpenBookshelf}
         />
       ) : (
-        <>
-          <div className="home-core-sections" ref={coreSectionsRef}>
-            {CORE_HOME_SECTION_ORDER.map(renderSection)}
-          </div>
-          {supplementalMaterialRows > 0 ? (
-            <MaterialProgressSection
-              studyMaterials={supplementalStudyMaterials}
-              onOpenBookshelf={onOpenBookshelf}
-            />
-          ) : null}
-        </>
+        <div className="home-core-sections">
+          {CORE_HOME_SECTION_ORDER.map(renderSection)}
+        </div>
       )}
 
-      <nav ref={bottomNavRef} className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
+      <nav className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
         <button type="button" onClick={onOpenAiPlanning}><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
         <button type="button" onClick={onOpenSchedule}><CalendarDays aria-hidden="true" /><span>予定</span></button>
         <button className="active" type="button" aria-current="page"><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
