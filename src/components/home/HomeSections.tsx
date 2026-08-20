@@ -11,7 +11,10 @@ import {
 } from 'lucide-react';
 import { formatCompactDate, minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
-import { resolveHomeNextPlanVisual } from '../../lib/homeNextPlanVisual';
+import {
+  resolveHomeNextPlanPresentation,
+  resolveHomeNextPlanVisual,
+} from '../../lib/homeNextPlanVisual';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 
@@ -43,15 +46,6 @@ function formatDue(todo: TodoTask): string {
   if (!todo.dueDate) return '期限未設定';
   const time = todo.dueTime ? ` ${todo.dueTime}` : '';
   return `${todo.dueDate.slice(5).replace('-', '/')} ${time}`.trim();
-}
-
-function resolveMaterialLabel(plan: Plan, materials: StudyMaterial[]): string {
-  if (plan.materialName?.trim()) return plan.materialName.trim();
-  if (plan.materialId) {
-    const material = materials.find((item) => item.id === plan.materialId);
-    if (material) return material.name;
-  }
-  return plan.subject?.trim() || '教材未設定';
 }
 
 function progressUnitLabel(material: StudyMaterial): string {
@@ -86,6 +80,9 @@ function HomeScheduleRow({
   future?: boolean;
   onOpenDay: (date: string) => void;
 }) {
+  const presentation = resolveHomeNextPlanPresentation(plan, studyMaterials);
+  const DetailIcon = presentation.semanticKind === 'other' ? CalendarDays : BookOpen;
+
   return (
     <button
       className={future ? 'home-schedule-row future' : 'home-schedule-row'}
@@ -102,8 +99,8 @@ function HomeScheduleRow({
         </time>
         <strong>{plan.title}</strong>
         <small>
-          <BookOpen size={13} aria-hidden="true" />
-          教材：{resolveMaterialLabel(plan, studyMaterials)}
+          <DetailIcon size={13} aria-hidden="true" />
+          {presentation.detailLabel}：{presentation.detailValue}
         </small>
       </span>
       <ChevronRight size={18} aria-hidden="true" />
@@ -202,13 +199,20 @@ export function NextPlanSection({
   onOpenDay: (date: string) => void;
 }) {
   const nextPlan = dashboard.nextPlan;
-  const nextPlanVisual = resolveHomeNextPlanVisual(nextPlan);
+  const nextPlanPresentation = nextPlan
+    ? resolveHomeNextPlanPresentation(nextPlan, studyMaterials)
+    : null;
+  const nextPlanVisual = nextPlanPresentation?.visual ?? resolveHomeNextPlanVisual(null);
+  const NextPlanDetailIcon =
+    nextPlanPresentation?.semanticKind === 'other' ? CalendarDays : BookOpen;
+  const usesStartAction = nextPlanPresentation?.semanticKind === 'study';
 
   return (
     <section
       className="home-next-card"
       data-home-section="next-plan"
       data-next-plan-visual={nextPlanVisual.kind}
+      data-next-plan-semantic={nextPlanPresentation?.semanticKind ?? 'empty'}
     >
       <div className="home-next-copy">
         <p className="home-eyebrow">次の予定</p>
@@ -217,8 +221,14 @@ export function NextPlanSection({
             <h1>{nextPlan.title}</h1>
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
-              <span><BookOpen aria-hidden="true" size={18} />教材：{resolveMaterialLabel(nextPlan, studyMaterials)}</span>
-              <span><Target aria-hidden="true" size={18} />予定学習時間 {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}</span>
+              <span>
+                <NextPlanDetailIcon aria-hidden="true" size={18} />
+                {nextPlanPresentation?.detailLabel}：{nextPlanPresentation?.detailValue}
+              </span>
+              <span>
+                <Target aria-hidden="true" size={18} />
+                {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
+              </span>
             </div>
           </>
         ) : (
@@ -243,8 +253,10 @@ export function NextPlanSection({
         type="button"
         onClick={() => nextPlan ? onOpenDay(dashboard.today) : onOpenAiPlanning()}
       >
-        <span className="home-start-icon">▶</span>
-        {nextPlan ? '学習を開始する' : 'AIで予定を作る'}
+        <span className="home-start-icon">
+          {nextPlan && !usesStartAction ? <ChevronRight aria-hidden="true" size={18} /> : '▶'}
+        </span>
+        {nextPlan ? nextPlanPresentation?.actionLabel ?? '予定を確認する' : 'AIで予定を作る'}
       </button>
     </section>
   );
