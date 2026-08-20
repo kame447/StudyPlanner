@@ -17,21 +17,16 @@
   --home-fit-hero-height: clamp(156px, 25.8dvh, 226px);
   --home-fit-schedule-max: clamp(96px, 22.5dvh, 204px);
   --home-fit-row-height: clamp(42px, 6.2dvh, 50px);
-  --home-fit-progress-min: clamp(104px, 15.8dvh, 118px);
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-  align-content: stretch;
+  align-content: start;
   gap: var(--home-fit-gap);
   overflow: hidden;
 }
 
 .home-dashboard-default .home-core-sections {
   min-height: 0;
-  height: 100%;
-  grid-template-rows: auto auto auto minmax(var(--home-fit-progress-min), 1fr);
   gap: var(--home-fit-gap);
-  overflow: hidden;
 }
 
 .home-dashboard-default .home-topbar {
@@ -117,17 +112,9 @@
 }
 
 .home-dashboard-default .home-progress-panel {
-  min-height: var(--home-fit-progress-min);
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  min-height: clamp(104px, 15.8dvh, 118px);
   padding-top: clamp(7px, 1.1dvh, 9px);
   padding-bottom: clamp(7px, 1.2dvh, 10px);
-}
-
-.home-dashboard-default .weekly-progress-layout {
-  min-height: 0;
-  height: 100%;
 }
 
 .home-dashboard-default .home-progress-body {
@@ -139,51 +126,16 @@
 }
 
 /*
- * The default home keeps the same four sections in the same order. The final
- * weekly-progress card owns the remaining height, so taller viewports enlarge
- * useful content instead of leaving an arbitrary dead zone above the nav.
+ * The default home is a one-screen dashboard. Optional sections are allowed
+ * only when the measured gap above the fixed nav is genuinely large enough.
+ * A future user-customized home can opt out by not using home-dashboard-default.
  */
-@media (min-height: 721px) {
-  .home-dashboard-default .weekly-progress-chart {
-    min-height: 0;
-    height: 100%;
-    grid-template-rows: auto minmax(0, 1fr);
-    align-content: stretch;
-  }
-
-  .home-dashboard-default .weekly-progress-plot {
-    min-height: 72px;
-    height: 100%;
-    align-items: stretch;
-  }
-
-  .home-dashboard-default .weekly-progress-axis {
-    min-height: 58px;
-    height: calc(100% - 14px);
-  }
-
-  .home-dashboard-default .weekly-progress-bars {
-    min-height: 72px;
-    height: 100%;
-  }
-
-  .home-dashboard-default .weekly-progress-day {
-    grid-template-rows: minmax(58px, 1fr) 12px;
-  }
-
-  .home-dashboard-default .weekly-progress-columns {
-    min-height: 58px;
-    height: 100%;
-  }
-}
-
 @media (max-height: 720px) {
   .home-dashboard-default {
     --home-fit-gap: 5px;
     --home-fit-hero-height: clamp(150px, 25.2dvh, 182px);
     --home-fit-schedule-max: clamp(90px, 19.5dvh, 140px);
     --home-fit-row-height: 42px;
-    --home-fit-progress-min: 104px;
   }
 
   .home-dashboard-default .home-next-copy {
@@ -197,6 +149,10 @@
 
   .home-dashboard-default .home-alert-card {
     padding-block: 6px;
+  }
+
+  .home-dashboard-default .home-progress-panel {
+    min-height: 104px;
   }
 }
 
