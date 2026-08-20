@@ -37,6 +37,7 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
   session: WeeklyPlanningControllerSession;
   ownerId: string;
   userText: string;
+  supplementalContext?: string;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
   execute(params: {
@@ -174,14 +175,39 @@ async function runBestEffort(callback: (() => void | Promise<void>) | undefined)
 }
 
 export const MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH = 4_000;
+export const MAX_WEEKLY_PLANNING_SUPPLEMENTAL_CONTEXT_LENGTH = 1_800;
+export const MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH = 6_000;
+
+export function buildWeeklyPlanningExecutionText(
+  userText: string,
+  supplementalContext?: string,
+): string {
+  const normalizedUserText = userText.trim();
+  const normalizedContext = supplementalContext?.trim() ?? '';
+
+  if (!normalizedContext) {
+    return normalizedUserText;
+  }
+
+  return [
+    normalizedUserText,
+    '',
+    '[添付画像から読み取った参考情報]',
+    normalizedContext,
+  ].join('\n');
+}
 
 export async function submitWeeklyPlanningControlledTurn(
   params: SubmitWeeklyPlanningControlledTurnParams,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
   const userText = params.userText.trim();
+  const supplementalContext = params.supplementalContext?.trim() ?? '';
+  const executionText = buildWeeklyPlanningExecutionText(userText, supplementalContext);
   const snapshot = params.getState();
   if (!userText
     || userText.length > MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH
+    || supplementalContext.length > MAX_WEEKLY_PLANNING_SUPPLEMENTAL_CONTEXT_LENGTH
+    || executionText.length > MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH
     || snapshot.pendingTurn
     || snapshot.pendingApproval) {
     return { accepted: false, draftCandidates: [] };
@@ -222,7 +248,7 @@ export async function submitWeeklyPlanningControlledTurn(
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   try {
-    const executionResult = await params.execute({ snapshot, pending, userText });
+    const executionResult = await params.execute({ snapshot, pending, userText: executionText });
     result = executionResult;
     if (executionResult.failure) {
       throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);
