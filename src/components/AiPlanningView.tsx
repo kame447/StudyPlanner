@@ -42,6 +42,7 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { buildAiPlanningStarterPrompts } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
   addDays,
@@ -52,7 +53,8 @@ import {
   sortByDateTime,
 } from '../lib/date';
 import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
-import type { Actual, Plan } from '../types/domain';
+import { plannerRepository } from '../repositories';
+import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import './AiPlanningView.css';
 import './AiPlanningViewFixes.css';
@@ -79,11 +81,6 @@ const PREVIEW_HOURS = Array.from(
   (_, index) => PREVIEW_START_HOUR + index,
 );
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-const STARTER_PROMPTS = [
-  '今週の課題を優先して、空き時間に無理なく入れて',
-  '毎日少しずつ続けられる学習計画を作って',
-  '締切や試験日が近いものから逆算して組んで',
-] as const;
 
 function formatDateLabel(date: string): string {
   const [, month = '', day = ''] = date.split('-');
@@ -130,7 +127,6 @@ export function AiPlanningView({
   actuals,
   onClose,
 }: AiPlanningViewProps) {
-  void selectedDate;
   void actuals;
 
   const { state, pendingDraftBlocks, approvalAvailability } = application;
@@ -145,6 +141,8 @@ export function AiPlanningView({
   const [topInset, setTopInset] = useState(76);
   const [imageAttachment, setImageAttachment] = useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
+  const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
+  const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
@@ -191,6 +189,15 @@ export function AiPlanningView({
   );
   const activeChat = chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId)
     ?? chatIndex.chats[0];
+  const starterPrompts = useMemo(
+    () => buildAiPlanningStarterPrompts({
+      referenceDate: selectedDate,
+      plans,
+      todos: starterTodos,
+      materials: starterMaterials,
+    }),
+    [plans, selectedDate, starterMaterials, starterTodos],
+  );
 
   function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
     const chatId = baseIndex.activeChatId;
@@ -249,6 +256,30 @@ export function AiPlanningView({
     saveAiPlanningChatIndex(userId, loadedIndex);
     setChatIndex(loadedIndex);
   }, [application, userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void Promise.all([
+      plannerRepository.getTodos(userId),
+      plannerRepository.getStudyMaterials(userId),
+    ]).then(
+      ([todos, materials]) => {
+        if (cancelled) return;
+        setStarterTodos(todos);
+        setStarterMaterials(materials);
+      },
+      () => {
+        if (cancelled) return;
+        setStarterTodos([]);
+        setStarterMaterials([]);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     const syncTopInset = () => {
@@ -537,9 +568,9 @@ export function AiPlanningView({
         <div className="ai-planning-conversation" ref={conversationRef}>
           {state.messages.length === 0 && visibleBlocks.length === 0 && !state.pendingTurn ? (
             <div className="ai-planning-starters" aria-label="入力例">
-              <p>計画したいことをそのまま入力できます。迷う場合は、下の例から始められます。</p>
+              <p>計画したいことをそのまま入力できます。登録内容に合わせた候補からも始められます。</p>
               <div className="ai-planning-starter-list">
-                {STARTER_PROMPTS.map((prompt) => (
+                {starterPrompts.map((prompt) => (
                   <button key={prompt} type="button" onClick={() => useStarterPrompt(prompt)}>
                     <span>{prompt}</span>
                     <ChevronRight aria-hidden="true" size={16} />
