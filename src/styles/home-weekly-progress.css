@@ -187,24 +187,24 @@
   background: var(--home-blue);
 }
 
-/* Height compaction scales the same fixed three-column geometry. */
-@media (max-height: 760px) {
+/* Medium-height screens compact the graph rather than stretching the card. */
+@media (max-height: 900px) {
   .home-progress-panel {
-    min-height: 108px;
-    padding: 7px 9px 8px;
+    min-height: 104px;
+    padding: 6px 8px 7px;
   }
 
   .weekly-progress-layout {
     grid-template-columns:
-      clamp(54px, 13%, 62px)
-      clamp(78px, 21%, 96px)
+      clamp(52px, 13%, 58px)
+      clamp(76px, 21%, 94px)
       minmax(0, 1fr);
-    gap: clamp(4px, 1.1vw, 7px);
+    gap: clamp(4px, 1vw, 7px);
   }
 
   .weekly-progress-ring {
-    width: clamp(54px, 12vw, 58px);
-    height: clamp(54px, 12vw, 58px);
+    width: clamp(52px, 11vw, 56px);
+    height: clamp(52px, 11vw, 56px);
   }
 
   .weekly-progress-ring > div {
@@ -216,20 +216,29 @@
     gap: 3px;
   }
 
+  .weekly-progress-chart {
+    gap: 3px;
+  }
+
+  .weekly-progress-legend {
+    min-height: 10px;
+    gap: 7px;
+  }
+
   .weekly-progress-plot {
-    --weekly-progress-plot-height: 54px;
+    --weekly-progress-plot-height: 42px;
   }
 }
 
 @media (max-width: 390px) {
   .weekly-progress-layout {
-    grid-template-columns: 54px 78px minmax(0, 1fr);
+    grid-template-columns: 52px 76px minmax(0, 1fr);
     gap: 4px;
   }
 
   .weekly-progress-ring {
-    width: 54px;
-    height: 54px;
+    width: 52px;
+    height: 52px;
   }
 
   .weekly-progress-summary {
