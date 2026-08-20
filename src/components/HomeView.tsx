@@ -13,9 +13,10 @@ import {
   Menu,
   MessageCircle,
   Play,
+  Plus,
   Target,
 } from 'lucide-react';
-import { minutesBetween } from '../lib/date';
+import { formatCompactDate, minutesBetween } from '../lib/date';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domain';
@@ -61,6 +62,44 @@ function resolveMaterialLabel(plan: Plan, materials: StudyMaterial[]): string {
   return plan.subject?.trim() || '教材未設定';
 }
 
+function HomeScheduleRow({
+  plan,
+  actual,
+  studyMaterials,
+  future = false,
+  onOpenDay,
+}: {
+  plan: Plan;
+  actual?: Actual;
+  studyMaterials: StudyMaterial[];
+  future?: boolean;
+  onOpenDay: (date: string) => void;
+}) {
+  return (
+    <button
+      className={future ? 'home-schedule-row future' : 'home-schedule-row'}
+      type="button"
+      onClick={() => onOpenDay(plan.date)}
+    >
+      <span className={actual ? 'home-time-dot completed' : 'home-time-dot'}>
+        <Clock size={13} aria-hidden="true" />
+      </span>
+      <span className="home-schedule-content">
+        <time>
+          {future ? `${formatCompactDate(plan.date)} ` : ''}
+          {plan.startTime} - {plan.endTime}
+        </time>
+        <strong>{plan.title}</strong>
+        <small>
+          <BookOpen size={13} aria-hidden="true" />
+          教材：{resolveMaterialLabel(plan, studyMaterials)}
+        </small>
+      </span>
+      <ChevronRight size={18} aria-hidden="true" />
+    </button>
+  );
+}
+
 export function HomeView({
   user,
   plans,
@@ -93,6 +132,12 @@ export function HomeView({
   const ringStyle = {
     '--home-progress': `${ringProgress * 3.6}deg`,
   } as CSSProperties;
+  const futureSlots = Math.max(0, 4 - Math.min(4, dashboard.todayPlans.length));
+  const visibleUpcomingPlans = dashboard.upcomingPlans.slice(0, futureSlots);
+  const showFuturePlaceholder =
+    dashboard.todayPlans.length > 0 &&
+    dashboard.todayPlans.length < 4 &&
+    visibleUpcomingPlans.length === 0;
 
   return (
     <section className="home-dashboard" aria-label="ホーム">
@@ -168,21 +213,46 @@ export function HomeView({
           <button type="button" onClick={() => onOpenDay(dashboard.today)}>すべて見る <ChevronRight size={16} aria-hidden="true" /></button>
         </div>
         <div className="home-schedule-list">
-          {dashboard.todayPlans.length > 0 ? dashboard.todayPlans.map((plan) => {
-            const actual = dashboard.actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
-            return (
-              <button className="home-schedule-row" type="button" key={`${plan.id}:${plan.date}`} onClick={() => onOpenDay(plan.date)}>
-                <span className={actual ? 'home-time-dot completed' : 'home-time-dot'}><Clock size={13} aria-hidden="true" /></span>
-                <span className="home-schedule-content">
-                  <time>{plan.startTime} - {plan.endTime}</time>
-                  <strong>{plan.title}</strong>
-                  <small><BookOpen size={13} aria-hidden="true" />教材：{resolveMaterialLabel(plan, studyMaterials)}</small>
-                </span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            );
-          }) : (
-            <div className="home-schedule-empty">今日の予定はまだありません。</div>
+          {dashboard.todayPlans.length > 0 ? (
+            <>
+              {dashboard.todayPlans.map((plan) => {
+                const actual = dashboard.actualByOccurrenceKey.get(
+                  buildPlanOccurrenceKey(plan.id, plan.date),
+                );
+                return (
+                  <HomeScheduleRow
+                    key={`${plan.id}:${plan.date}`}
+                    plan={plan}
+                    actual={actual}
+                    studyMaterials={studyMaterials}
+                    onOpenDay={onOpenDay}
+                  />
+                );
+              })}
+              {dashboard.todayPlans.length < 4
+                ? visibleUpcomingPlans.map((plan) => (
+                    <HomeScheduleRow
+                      key={`future:${plan.id}:${plan.date}`}
+                      plan={plan}
+                      future
+                      studyMaterials={studyMaterials}
+                      onOpenDay={onOpenDay}
+                    />
+                  ))
+                : null}
+              {showFuturePlaceholder ? (
+                <button className="home-schedule-add-row" type="button" onClick={onOpenSchedule}>
+                  <span><Plus size={15} aria-hidden="true" /></span>
+                  <strong>この先の予定を追加</strong>
+                  <ChevronRight size={17} aria-hidden="true" />
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button className="home-schedule-empty" type="button" onClick={onOpenSchedule}>
+              <span><Plus size={16} aria-hidden="true" /></span>
+              今日の予定はまだありません。予定を追加する
+            </button>
           )}
         </div>
         {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
