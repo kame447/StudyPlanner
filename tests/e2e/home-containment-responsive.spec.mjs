@@ -84,6 +84,11 @@ async function seedHome(page, planCount) {
 
 async function readContainmentMetrics(page) {
   return page.evaluate(() => {
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
     const serializeRect = (element) => {
       if (!element) return null;
       const rect = element.getBoundingClientRect();
@@ -98,21 +103,37 @@ async function readContainmentMetrics(page) {
     };
 
     const home = document.querySelector('.home-dashboard-default');
+    const topbar = document.querySelector('.home-topbar');
+    const nextCard = document.querySelector('.home-next-card');
+    const nextMeta = document.querySelector('.home-next-meta');
+    const startButton = document.querySelector('.home-start-button');
     const today = document.querySelector('.home-today-panel');
     const heading = today?.querySelector('.home-section-heading') ?? null;
     const schedule = today?.querySelector('.home-schedule-list') ?? null;
     const attention = document.querySelector('.home-alert-grid');
+    const progress = document.querySelector('.home-progress-panel');
+    const nav = document.querySelector('.home-bottom-nav');
+    const material = [...document.querySelectorAll('.home-material-panel')].find(visible) ?? null;
     const scheduleStyle = schedule ? getComputedStyle(schedule) : null;
     const todayStyle = today ? getComputedStyle(today) : null;
 
     return {
       viewportWidth: document.documentElement.clientWidth,
+      viewportHeight: document.documentElement.clientHeight,
       pageWidth: document.documentElement.scrollWidth,
+      pageHeight: document.documentElement.scrollHeight,
       home: serializeRect(home),
+      topbar: serializeRect(topbar),
+      nextCard: serializeRect(nextCard),
+      nextMeta: serializeRect(nextMeta),
+      startButton: serializeRect(startButton),
       today: serializeRect(today),
       heading: serializeRect(heading),
       schedule: serializeRect(schedule),
       attention: serializeRect(attention),
+      progress: serializeRect(progress),
+      material: serializeRect(material),
+      nav: serializeRect(nav),
       todayDisplay: todayStyle?.display ?? null,
       scheduleOverflowY: scheduleStyle?.overflowY ?? null,
     };
@@ -121,11 +142,26 @@ async function readContainmentMetrics(page) {
 
 function expectContainment(metrics) {
   expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.pageHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
   expect(metrics.todayDisplay).toBe('grid');
   expect(['auto', 'scroll']).toContain(metrics.scheduleOverflowY);
+
   expectRectContained(metrics.today, metrics.heading);
   expectRectContained(metrics.today, metrics.schedule);
+
+  expectOrderedWithoutOverlap(metrics.topbar, metrics.nextCard);
+  if (metrics.nextMeta && metrics.startButton) {
+    expect(metrics.nextMeta.bottom).toBeLessThanOrEqual(metrics.startButton.top - 2);
+  }
+  expectOrderedWithoutOverlap(metrics.nextCard, metrics.today);
   expectOrderedWithoutOverlap(metrics.today, metrics.attention);
+  expectOrderedWithoutOverlap(metrics.attention, metrics.progress);
+  expectOrderedWithoutOverlap(metrics.progress, metrics.material);
+
+  const lastContent = metrics.material ?? metrics.progress;
+  if (lastContent && metrics.nav) {
+    expect(lastContent.bottom).toBeLessThanOrEqual(metrics.nav.top + 1);
+  }
 }
 
 for (const viewport of VIEWPORTS) {
