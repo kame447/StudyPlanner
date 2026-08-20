@@ -72,7 +72,10 @@ export interface WeeklyPlanningApplication {
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
   approvalAvailability: WeeklyPlanningApprovalAvailability;
   canEditDraftBlocks: boolean;
-  submitTurn: (userText: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  submitTurn: (
+    userText: string,
+    supplementalContext?: string,
+  ) => Promise<WeeklyPlanningTurnSubmissionResult>;
   cancelTurn: () => boolean;
   clearConversation: () => boolean;
   appendMessage: (message: WeeklyPlanningMessage) => void;
@@ -189,7 +192,10 @@ export function useWeeklyPlanningApplication({
   });
   const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval;
 
-  async function submitTurn(userText: string): Promise<WeeklyPlanningTurnSubmissionResult> {
+  async function submitTurn(
+    userText: string,
+    supplementalContext?: string,
+  ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
     if (!userId || !session) return { accepted: false, draftCandidates: [] };
     return submitWeeklyPlanningApplicationTurn({
@@ -197,6 +203,7 @@ export function useWeeklyPlanningApplication({
       userId,
       ownerId,
       userText,
+      supplementalContext,
       selectedDate,
       plans,
       scheduleTemplates,
