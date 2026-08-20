@@ -64,6 +64,34 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   const aiSurfaceBox = await page.locator('.ai-planning-view').boundingBox();
   expect(aiSurfaceBox?.y).toBeGreaterThanOrEqual((homeTopbarBox?.y ?? 0) + (homeTopbarBox?.height ?? 0));
 
+  await page.locator('.ai-planning-chat-menu-button').click();
+  await expect(page.locator('.ai-chat-drawer')).toBeVisible();
+  await expect(page.locator('.ai-chat-row')).toHaveCount(1);
+  await page.locator('.ai-chat-new-button').click();
+  await page.locator('.ai-planning-chat-menu-button').click();
+  await expect(page.locator('.ai-chat-row')).toHaveCount(2);
+  await page.locator('.ai-chat-search input').fill('新しい');
+  await expect(page.locator('.ai-chat-row')).toHaveCount(2);
+  await page.locator('.ai-chat-drawer-header button').click();
+
+  await page.locator('.home-top-actions .home-icon-button').last().click();
+  await expect(page.locator('.app-settings-overlay')).toBeVisible();
+  const stacking = await page.evaluate(() => ({
+    ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
+    modal: Number.parseInt(getComputedStyle(document.querySelector('.app-settings-overlay')).zIndex || '0', 10),
+  }));
+  expect(stacking.modal).toBeGreaterThan(stacking.ai);
+  await page.locator('.app-settings-modal .ghost-button').first().click();
+
+  await page.locator('.home-avatar-button').click();
+  await expect(page.locator('.my-page-modal')).toBeVisible();
+  const profileStacking = await page.evaluate(() => ({
+    ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
+    modal: Number.parseInt(getComputedStyle(document.querySelector('.my-page-modal')?.parentElement).zIndex || '0', 10),
+  }));
+  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
+  await page.locator('.my-page-modal .ghost-button').first().click();
+
   await page.locator('.ai-planning-home-nav button').nth(2).click();
   await expect(page.locator('.ai-planning-view')).toHaveCount(0);
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
