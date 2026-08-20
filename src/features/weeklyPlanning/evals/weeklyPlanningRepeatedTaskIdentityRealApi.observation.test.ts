@@ -134,7 +134,7 @@ run('real API reproduction: repeated task-identity question', () => {
       ].join('\n')).join('\n'),
     );
 
-    const final = observations.at(-1);
+    const final = observations[observations.length - 1];
     if (!final) throw new Error('final observation missing');
     const finalTasks = final.activeTasks as Array<{ title?: string }>;
     const normalizedTitles = finalTasks.map((task) => task.title?.replace(/\s+/g, '') ?? '');
