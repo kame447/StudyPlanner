@@ -59,6 +59,7 @@ const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
 const MAX_VISIBLE_TODAY_ROWS = 4;
 const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
 const TARGET_BOTTOM_GAP = 8;
+const MATERIAL_FIT_HYSTERESIS_PX = 4;
 const DEFAULT_MAX_NEXT_CARD_HEIGHT = 226;
 const TALL_MAX_NEXT_CARD_HEIGHT = 286;
 const WIDE_TALL_MAX_NEXT_CARD_HEIGHT = 320;
@@ -264,14 +265,17 @@ export function HomeView({
         const compactOuterGap = Math.max(0, rowGap - currentRelaxation.gap);
 
         const setScheduleMaxHeight = (maxHeight: number | null) => {
+          const propertyName = '--home-dynamic-schedule-max';
           if (maxHeight === null) {
-            dashboardElement.style.removeProperty('--home-dynamic-schedule-max');
+            if (dashboardElement.style.getPropertyValue(propertyName)) {
+              dashboardElement.style.removeProperty(propertyName);
+            }
             return;
           }
-          dashboardElement.style.setProperty(
-            '--home-dynamic-schedule-max',
-            `${Math.max(0, Math.floor(maxHeight))}px`,
-          );
+          const nextValue = `${Math.max(0, Math.floor(maxHeight))}px`;
+          if (dashboardElement.style.getPropertyValue(propertyName) !== nextValue) {
+            dashboardElement.style.setProperty(propertyName, nextValue);
+          }
         };
 
         let largestCandidateThatFits: number | null = null;
@@ -284,10 +288,14 @@ export function HomeView({
               0,
               measuredHeight - currentRelaxation.materialSide * 2,
             );
-            if (
-              compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight <=
-              compactAvailableCoreHeight + 0.5
-            ) {
+            const fitSlack =
+              compactAvailableCoreHeight -
+              (compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight);
+            const requiredSlack =
+              rowCount === supplementalMaterialRows
+                ? -MATERIAL_FIT_HYSTERESIS_PX
+                : MATERIAL_FIT_HYSTERESIS_PX;
+            if (fitSlack >= requiredSlack) {
               largestCandidateThatFits = rowCount;
             }
           }
@@ -335,7 +343,7 @@ export function HomeView({
           (supplementalMaterialRows === null ? 0 : rowGap + selectedMaterialHeight);
         const currentSlack = availableCoreHeight - currentUsedHeight;
 
-        if (currentSlack < -0.5 && hasLayoutRelaxation(currentRelaxation)) {
+        if (currentSlack < -MATERIAL_FIT_HYSTERESIS_PX && hasLayoutRelaxation(currentRelaxation)) {
           if (resetLayoutRelaxation()) measure();
           return;
         }
@@ -458,21 +466,18 @@ export function HomeView({
     window.addEventListener('resize', measure);
     window.visualViewport?.addEventListener('resize', measure);
 
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (resizeObserver) {
-      if (coreSectionsRef.current) resizeObserver.observe(coreSectionsRef.current);
-      if (bottomNavRef.current) resizeObserver.observe(bottomNavRef.current);
-      for (const probe of materialProbeRefs.current.values()) {
-        resizeObserver.observe(probe);
-      }
-    }
+    // Deliberately do not observe the dashboard's own fitted elements with
+    // ResizeObserver. measure() changes their dimensions via CSS variables,
+    // so observing those same elements creates a self-triggering feedback
+    // loop near fit thresholds (most visibly around 1280x800 tablet layouts).
+    // Data changes rerun this effect, and real viewport changes are covered by
+    // window/visualViewport resize events.
+    document.fonts?.ready.then(measure).catch(() => undefined);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', measure);
       window.visualViewport?.removeEventListener('resize', measure);
-      resizeObserver?.disconnect();
     };
   }, [
     dashboard.todayPlans.length,
