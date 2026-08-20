@@ -62,6 +62,20 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.getByText('こんにちは。今週の目標や予定に合わせて、学習計画を作成します。')).toHaveCount(0);
   await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
 
+  const onePixelPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2m5QAAAAASUVORK5CYII=',
+    'base64',
+  );
+  await page.locator('.ai-planning-attachment-input').setInputFiles({
+    name: 'test-range.png',
+    mimeType: 'image/png',
+    buffer: onePixelPng,
+  });
+  await expect(page.locator('.ai-planning-attachment-preview')).toBeVisible();
+  await expect(page.locator('.ai-planning-attachment-preview')).toContainText('test-range.png');
+  await page.getByRole('button', { name: '添付画像を削除' }).click();
+  await expect(page.locator('.ai-planning-attachment-preview')).toHaveCount(0);
+
   const aiNavBox = await page.locator('.ai-planning-home-nav').boundingBox();
   expect(aiNavBox?.width).toBeCloseTo(homeNavBox?.width ?? 0, 0);
   expect(aiNavBox?.height).toBeCloseTo(homeNavBox?.height ?? 0, 0);
@@ -94,7 +108,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
     ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
     modal: Number.parseInt(getComputedStyle(document.querySelector('.my-page-modal')?.parentElement).zIndex || '0', 10),
   }));
-  expect(profileStacking.modal).toBeGreaterThan(stacking.ai);
+  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.ai-planning-home-nav button').nth(2).click();
