@@ -1,0 +1,176 @@
+.app-shell.home-app-shell {
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding-top: clamp(6px, 1.05dvh, 10px);
+  padding-bottom: calc(clamp(60px, 8.7dvh, 68px) + env(safe-area-inset-bottom, 0px));
+}
+
+.home-main {
+  min-height: 0;
+  height: 100%;
+}
+
+.home-dashboard-default {
+  --home-fit-gap: clamp(5px, 0.9dvh, 8px);
+  --home-fit-hero-height: clamp(156px, 25.8dvh, 226px);
+  --home-fit-schedule-max: clamp(96px, 22.5dvh, 204px);
+  --home-fit-row-height: clamp(42px, 6.2dvh, 50px);
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  gap: var(--home-fit-gap);
+  overflow: hidden;
+}
+
+.home-dashboard-default .home-core-sections {
+  min-height: 0;
+  gap: var(--home-fit-gap);
+}
+
+.home-dashboard-default .home-topbar {
+  min-height: clamp(50px, 8.4dvh, 62px);
+}
+
+.home-dashboard-default .home-streak-card {
+  min-height: clamp(46px, 7.4dvh, 54px);
+}
+
+.home-dashboard-default .home-date-display {
+  min-height: clamp(50px, 8dvh, 60px);
+}
+
+.home-dashboard-default .home-date-paper {
+  height: clamp(45px, 7.3dvh, 52px);
+}
+
+.home-dashboard-default .home-next-card {
+  height: var(--home-fit-hero-height);
+  min-height: 0;
+  padding-top: clamp(10px, 1.7dvh, 15px);
+  padding-bottom: clamp(48px, 7.3dvh, 62px);
+}
+
+.home-dashboard-default .home-study-scene {
+  height: calc(100% - clamp(42px, 6.7dvh, 49px));
+}
+
+.home-dashboard-default .home-start-button {
+  bottom: clamp(7px, 1.2dvh, 10px);
+  min-height: clamp(38px, 5.8dvh, 46px);
+}
+
+.home-dashboard-default .home-next-copy h1 {
+  margin-bottom: clamp(4px, 0.9dvh, 9px);
+  font-size: clamp(1.04rem, 2.35dvh, 1.32rem);
+}
+
+.home-dashboard-default .home-eyebrow {
+  margin-bottom: clamp(3px, 0.7dvh, 6px);
+}
+
+.home-dashboard-default .home-empty-copy {
+  font-size: clamp(0.65rem, 1.35dvh, 0.75rem);
+  line-height: 1.38;
+}
+
+.home-dashboard-default .home-today-panel {
+  min-height: 0;
+  padding-top: clamp(7px, 1.15dvh, 10px);
+  padding-bottom: clamp(6px, 1dvh, 8px);
+}
+
+.home-dashboard-default .home-section-heading {
+  margin-bottom: clamp(3px, 0.65dvh, 6px);
+}
+
+.home-dashboard-default .home-schedule-list {
+  min-height: 0;
+  max-height: var(--home-fit-schedule-max);
+  overflow-y: auto;
+}
+
+.home-dashboard-default .home-schedule-row,
+.home-dashboard-default .home-schedule-add-row,
+.home-dashboard-default .home-schedule-empty {
+  min-height: var(--home-fit-row-height);
+  padding-top: clamp(4px, 0.8dvh, 7px);
+  padding-bottom: clamp(4px, 0.8dvh, 7px);
+}
+
+.home-dashboard-default .home-alert-grid {
+  gap: var(--home-fit-gap);
+}
+
+.home-dashboard-default .home-alert-card {
+  padding: clamp(7px, 1.15dvh, 10px);
+}
+
+.home-dashboard-default .home-alert-heading {
+  margin-bottom: clamp(4px, 0.8dvh, 7px);
+}
+
+.home-dashboard-default .home-progress-panel {
+  min-height: clamp(104px, 15.8dvh, 118px);
+  padding-top: clamp(7px, 1.1dvh, 9px);
+  padding-bottom: clamp(7px, 1.2dvh, 10px);
+}
+
+.home-dashboard-default .home-progress-body {
+  min-height: 0;
+}
+
+.home-dashboard-default .home-bottom-nav {
+  height: calc(clamp(56px, 8.2dvh, 62px) + env(safe-area-inset-bottom, 0px));
+}
+
+/*
+ * The default home is a one-screen dashboard. Optional sections are allowed
+ * only when the measured gap above the fixed nav is genuinely large enough.
+ * A future user-customized home can opt out by not using home-dashboard-default.
+ */
+@media (max-height: 720px) {
+  .home-dashboard-default {
+    --home-fit-gap: 5px;
+    --home-fit-hero-height: clamp(150px, 25.2dvh, 182px);
+    --home-fit-schedule-max: clamp(90px, 19.5dvh, 140px);
+    --home-fit-row-height: 42px;
+  }
+
+  .home-dashboard-default .home-next-copy {
+    width: 57%;
+    min-width: 0;
+  }
+
+  .home-dashboard-default .home-next-meta {
+    gap: 2px;
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding-block: 6px;
+  }
+
+  .home-dashboard-default .home-progress-panel {
+    min-height: 104px;
+  }
+}
+
+@media (max-height: 640px) {
+  .home-dashboard-default {
+    --home-fit-hero-height: 145px;
+    --home-fit-schedule-max: 86px;
+  }
+
+  .home-dashboard-default .home-study-scene {
+    transform: scale(0.8);
+    transform-origin: top right;
+  }
+
+  .home-dashboard-default .home-empty-copy {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
