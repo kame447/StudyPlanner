@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import {
   BarChart3,
-  Bell,
   BookOpen,
   CalendarDays,
   ChevronRight,
   CircleUserRound,
-  Flame,
   House,
-  Menu,
   MessageCircle,
   Mic,
   Plus,
@@ -27,12 +24,12 @@ import {
   formatMinutes,
   minutesBetween,
   minutesFromTime,
+  parseTimeToMinutes,
   sortByDateTime,
 } from '../lib/date';
-import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan } from '../types/domain';
-import { HomeDateDisplay } from './HomeDateDisplay';
 import './AiPlanningView.css';
+import './AiPlanningViewFixes.css';
 
 interface AiPlanningViewProps {
   application: WeeklyPlanningApplication;
@@ -43,7 +40,7 @@ interface AiPlanningViewProps {
   onClose: () => void;
 }
 
-const PREVIEW_START_HOUR = 6;
+const PREVIEW_START_HOUR = 0;
 const PREVIEW_END_HOUR = 24;
 const PREVIEW_HOUR_HEIGHT = 42;
 const PREVIEW_HOURS = Array.from(
@@ -51,6 +48,11 @@ const PREVIEW_HOURS = Array.from(
   (_, index) => PREVIEW_START_HOUR + index,
 );
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+const STARTER_PROMPTS = [
+  '今週の課題を優先して、空き時間に無理なく入れて',
+  '毎日少しずつ続けられる学習計画を作って',
+  '締切や試験日が近いものから逆算して組んで',
+] as const;
 
 function formatDateLabel(date: string): string {
   const [, month = '', day = ''] = date.split('-');
@@ -60,8 +62,9 @@ function formatDateLabel(date: string): string {
 
 function timelineStyle(startTime: string, endTime: string): CSSProperties {
   const rangeStart = PREVIEW_START_HOUR * 60;
+  const rangeEnd = PREVIEW_END_HOUR * 60;
   const start = Math.max(rangeStart, minutesFromTime(startTime));
-  const end = Math.min(PREVIEW_END_HOUR * 60, minutesFromTime(endTime));
+  const end = Math.min(rangeEnd, parseTimeToMinutes(endTime, 'end'));
   const top = ((start - rangeStart) / 60) * PREVIEW_HOUR_HEIGHT;
   const height = Math.max(18, ((Math.max(start, end) - start) / 60) * PREVIEW_HOUR_HEIGHT);
   return { top: `${top}px`, height: `${height}px` };
@@ -73,6 +76,21 @@ function toneClass(block: WeeklyPlanDraftBlock): string {
   return `weekly-draft-tone-${index + 1}`;
 }
 
+function normalizeCurrentWeekBlocks(
+  blocks: WeeklyPlanDraftBlock[],
+  weekDates: readonly string[],
+): WeeklyPlanDraftBlock[] {
+  const weekDateSet = new Set(weekDates);
+  const uniqueById = new Map<string, WeeklyPlanDraftBlock>();
+
+  for (const block of blocks) {
+    if (!weekDateSet.has(block.date)) continue;
+    uniqueById.set(block.id, block);
+  }
+
+  return sortByDateTime(Array.from(uniqueById.values()));
+}
+
 export function AiPlanningView({
   application,
   userId,
@@ -81,17 +99,21 @@ export function AiPlanningView({
   actuals,
   onClose,
 }: AiPlanningViewProps) {
+  void selectedDate;
+  void actuals;
+
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [topInset, setTopInset] = useState(76);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
-  const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos: [] }),
-    [actuals, plans],
-  );
   const previewCandidates = state.previewCandidates ?? [];
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(state.weekStartDate, index)),
+    [state.weekStartDate],
+  );
   const localPreviewBlocks = useMemo(
     () =>
       createWeeklyPlanningPreviewBlocks(previewCandidates).map((block) =>
@@ -99,16 +121,12 @@ export function AiPlanningView({
       ),
     [previewCandidates, userId],
   );
-  const hasLocalPreview = pendingDraftBlocks.length === 0 && localPreviewBlocks.length > 0;
-  const visibleBlocks = useMemo(
-    () => sortByDateTime(pendingDraftBlocks.length > 0 ? pendingDraftBlocks : localPreviewBlocks),
-    [localPreviewBlocks, pendingDraftBlocks],
-  );
+  const hasLocalPreview = localPreviewBlocks.length > 0;
+  const visibleBlocks = useMemo(() => {
+    const sourceBlocks = hasLocalPreview ? localPreviewBlocks : pendingDraftBlocks;
+    return normalizeCurrentWeekBlocks(sourceBlocks, weekDates);
+  }, [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks, weekDates]);
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
-  const weekDates = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(state.weekStartDate, index)),
-    [state.weekStartDate],
-  );
   const totalMinutes = useMemo(
     () => visibleBlocks.reduce((sum, block) => sum + minutesBetween(block.startTime, block.endTime), 0),
     [visibleBlocks],
@@ -122,6 +140,28 @@ export function AiPlanningView({
       })),
     [plans, visibleBlocks, weekDates],
   );
+  const displayedDraftCount = useMemo(
+    () => previewGroups.reduce((count, group) => count + group.blocks.length, 0),
+    [previewGroups],
+  );
+
+  useEffect(() => {
+    const syncTopInset = () => {
+      const homeTopbar = document.querySelector<HTMLElement>('.home-dashboard .home-topbar');
+      if (!homeTopbar) return;
+      setTopInset(Math.ceil(homeTopbar.getBoundingClientRect().bottom + 4));
+    };
+
+    syncTopInset();
+    window.addEventListener('resize', syncTopInset);
+    window.visualViewport?.addEventListener('resize', syncTopInset);
+    void document.fonts.ready.then(syncTopInset, () => undefined);
+
+    return () => {
+      window.removeEventListener('resize', syncTopInset);
+      window.visualViewport?.removeEventListener('resize', syncTopInset);
+    };
+  }, []);
 
   useEffect(() => {
     const node = conversationRef.current;
@@ -159,14 +199,29 @@ export function AiPlanningView({
     void submitMessage();
   }
 
+  function useStarterPrompt(prompt: string) {
+    setText(prompt);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(prompt.length, prompt.length);
+    });
+  }
+
   function promotePreview() {
-    if (previewCandidates.length === 0) return;
+    if (previewCandidates.length === 0 || visibleBlocks.length === 0) return;
+    const visibleIds = new Set(visibleBlocks.map((block) => block.id));
+    const visibleCandidates = previewCandidates.filter((candidate) => visibleIds.has(candidate.stableKey));
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: previewCandidates,
+      candidates: visibleCandidates,
       userId,
       createdAt: new Date().toISOString(),
     });
-    if (blocks.length > 0) application.createDraftBlocks(blocks);
+    if (blocks.length === 0) return;
+
+    if (pendingDraftBlocks.length > 0) {
+      application.clearDraftBlocks();
+    }
+    application.createDraftBlocks(blocks);
   }
 
   async function saveDrafts() {
@@ -186,24 +241,11 @@ export function AiPlanningView({
   }
 
   return (
-    <section className="ai-planning-view" aria-label="AI計画">
-      <header className="ai-planning-topbar">
-        <div className="home-streak-card" aria-label={`連続学習 ${dashboard.currentStreak}日`}>
-          <Flame className="home-streak-flame" aria-hidden="true" size={28} />
-          <div>
-            <span>連続学習</span>
-            <strong>{dashboard.currentStreak}日</strong>
-            <small>最高 {dashboard.bestStreak}日</small>
-          </div>
-        </div>
-        <HomeDateDisplay date={dashboard.today || selectedDate} />
-        <div className="ai-planning-top-actions">
-          <button type="button" aria-label="通知" title="通知機能は準備中です"><Bell size={21} /></button>
-          <span className="ai-planning-user-placeholder" aria-hidden="true"><CircleUserRound size={23} /></span>
-          <button type="button" aria-label="メニュー" title="メニューはホームから開けます"><Menu size={23} /></button>
-        </div>
-      </header>
-
+    <section
+      className="ai-planning-view home-dashboard"
+      aria-label="AI計画"
+      style={{ top: `${topInset}px` }}
+    >
       <div className="ai-planning-card">
         <div className="ai-planning-heading">
           <span className="ai-planning-heading-icon"><MessageCircle aria-hidden="true" size={25} /></span>
@@ -214,13 +256,16 @@ export function AiPlanningView({
         </div>
 
         <div className="ai-planning-conversation" ref={conversationRef}>
-          {state.messages.length === 0 ? (
-            <div className="ai-planning-message-row assistant">
-              <span className="ai-planning-message-avatar"><MessageCircle size={19} aria-hidden="true" /></span>
-              <div className="ai-planning-message-body">
-                <div className="ai-planning-bubble">
-                  こんにちは。今週の目標や予定に合わせて、学習計画を作成します。\nどのような目標や優先したいことがありますか？
-                </div>
+          {state.messages.length === 0 && visibleBlocks.length === 0 && !state.pendingTurn ? (
+            <div className="ai-planning-starters" aria-label="入力例">
+              <p>計画したいことをそのまま入力できます。迷う場合は、下の例から始められます。</p>
+              <div className="ai-planning-starter-list">
+                {STARTER_PROMPTS.map((prompt) => (
+                  <button key={prompt} type="button" onClick={() => useStarterPrompt(prompt)}>
+                    <span>{prompt}</span>
+                    <ChevronRight aria-hidden="true" size={16} />
+                  </button>
+                ))}
               </div>
             </div>
           ) : null}
@@ -251,14 +296,14 @@ export function AiPlanningView({
             </div>
           ) : null}
 
-          {visibleBlocks.length > 0 ? (
+          {displayedDraftCount > 0 ? (
             <div className="ai-planning-plan-card">
               <div className="ai-planning-plan-card-head">
                 <div>
                   <span>今週の計画案</span>
-                  <strong>{visibleBlocks.length}件の予定を作成</strong>
+                  <strong>{displayedDraftCount}件の予定を作成</strong>
                 </div>
-                <b>{visibleBlocks.length}件</b>
+                <b>{displayedDraftCount}件</b>
               </div>
               <div className="ai-planning-plan-summary">
                 <span><CalendarDays size={16} aria-hidden="true" />対象 {formatDateLabel(weekDates[0] ?? state.weekStartDate)} - {formatDateLabel(weekDates[6] ?? state.weekStartDate)}</span>
@@ -269,7 +314,6 @@ export function AiPlanningView({
                 週プレビューを確認
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
-              <button className="ai-planning-more-button" type="button" onClick={focusComposer}>もっと変更する</button>
             </div>
           ) : null}
 
@@ -301,15 +345,15 @@ export function AiPlanningView({
         </div>
       </div>
 
-      <nav className="ai-planning-bottom-nav" aria-label="主要ナビゲーション">
+      <nav className="home-bottom-nav print-hide ai-planning-home-nav" aria-label="主要ナビゲーション">
         <button className="active" type="button" aria-current="page"><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
         <button type="button" onClick={onClose}><CalendarDays aria-hidden="true" /><span>予定</span></button>
-        <button type="button" onClick={onClose}><span className="ai-planning-nav-home"><House aria-hidden="true" /></span><span>ホーム</span></button>
+        <button className="active" type="button" onClick={onClose}><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
         <button type="button" onClick={onClose}><BookOpen aria-hidden="true" /><span>教材</span></button>
         <button type="button" onClick={onClose}><BarChart3 aria-hidden="true" /><span>分析</span></button>
       </nav>
 
-      {isPreviewOpen && visibleBlocks.length > 0 ? (
+      {isPreviewOpen && displayedDraftCount > 0 ? (
         <div className="ai-planning-preview-overlay" role="presentation" onClick={() => setIsPreviewOpen(false)}>
           <section
             className="ai-planning-preview-modal"
@@ -324,7 +368,7 @@ export function AiPlanningView({
                 <h2>今週の計画プレビュー</h2>
                 <p>{formatDateLabel(weekDates[0] ?? state.weekStartDate)} - {formatDateLabel(weekDates[6] ?? state.weekStartDate)}</p>
               </div>
-              <span>{visibleBlocks.length}件</span>
+              <span>{displayedDraftCount}件</span>
             </header>
 
             <div className="ai-planning-preview-scroll">
