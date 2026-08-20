@@ -1,0 +1,161 @@
+name: Home Visual Matrix Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  render-home-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install isolated Playwright
+        run: npm install --prefix /tmp/home-visual --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Install Chromium
+        run: /tmp/home-visual/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview
+        shell: bash
+        run: |
+          npm run preview:vite -- --host 127.0.0.1 --port 4173 > /tmp/home-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/home-preview.log
+          exit 1
+
+      - name: Render 10 viewports
+        shell: bash
+        run: |
+          mkdir -p artifacts/home-visual
+          cat > /tmp/home-visual/render.mjs <<'NODE'
+          import { chromium } from '@playwright/test';
+          import fs from 'node:fs';
+
+          const viewports = [
+            [320, 568], [360, 640], [375, 667], [390, 844], [393, 852],
+            [412, 915], [430, 932], [511, 1094], [768, 710], [1024, 768],
+          ];
+          const browser = await chromium.launch({ headless: true });
+          const results = [];
+
+          for (const [width, height] of viewports) {
+            const page = await browser.newPage({ viewport: { width, height } });
+            await page.addInitScript(() => {
+              const today = new Date().toISOString().slice(0, 10);
+              const now = new Date().toISOString();
+              const user = { id: 'render-user', email: 'render@example.com', username: 'render-user', avatar: '', createdAt: now };
+              const slots = [['20:10','20:40'], ['20:50','21:20'], ['21:30','22:00'], ['22:10','22:40']];
+              const plans = slots.map(([startTime, endTime], index) => ({
+                id: `render-plan-${index + 1}`, seriesId: `render-plan-${index + 1}`, userId: user.id,
+                title: `情報資源総論 ${index + 1}`, subject: '情報科学', type: 'study', date: today,
+                startTime, endTime, memo: '', recurrence: null, createdAt: now, updatedAt: now,
+              }));
+              const material = {
+                id: 'material-1', userId: user.id, name: '基本情報技術者テキスト', subjectId: 'subject-1',
+                subjectName: '情報科学', status: 'active', progressUnit: 'page', totalUnits: 500, currentUnit: 120,
+                createdAt: now, updatedAt: now,
+              };
+              localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+              localStorage.setItem('studyplanner.session', user.id);
+              localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+              localStorage.setItem('studyplanner.actuals', '[]');
+              localStorage.setItem('studyplanner.todos.v1', '[]');
+              localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
+            });
+
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+            await page.locator('section[aria-label="ホーム"]').waitFor();
+            await page.waitForTimeout(500);
+
+            const metrics = await page.evaluate(({ width, height }) => {
+              const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+              const nextMeta = rect('.home-next-meta');
+              const start = rect('.home-start-button');
+              const topbar = rect('.home-topbar');
+              const next = rect('.home-next-card');
+              const today = rect('.home-today-panel');
+              const attention = rect('.home-alert-grid');
+              const progress = rect('.home-progress-panel');
+              const nav = rect('.home-bottom-nav');
+              return {
+                viewport: `${width}x${height}`,
+                metaBottom: nextMeta?.bottom ?? null,
+                startTop: start?.top ?? null,
+                topbarBottom: topbar?.bottom ?? null,
+                nextTop: next?.top ?? null,
+                nextBottom: next?.bottom ?? null,
+                todayTop: today?.top ?? null,
+                todayBottom: today?.bottom ?? null,
+                attentionTop: attention?.top ?? null,
+                attentionBottom: attention?.bottom ?? null,
+                progressTop: progress?.top ?? null,
+                progressBottom: progress?.bottom ?? null,
+                navTop: nav?.top ?? null,
+                bodyClientHeight: document.documentElement.clientHeight,
+                bodyScrollHeight: document.documentElement.scrollHeight,
+              };
+            }, { width, height });
+
+            if (metrics.metaBottom !== null && metrics.startTop !== null && metrics.metaBottom > metrics.startTop - 2) {
+              throw new Error(`${metrics.viewport}: next-plan metadata overlaps start action: ${JSON.stringify(metrics)}`);
+            }
+            const pairs = [
+              ['topbar/next', metrics.topbarBottom, metrics.nextTop],
+              ['next/today', metrics.nextBottom, metrics.todayTop],
+              ['today/attention', metrics.todayBottom, metrics.attentionTop],
+              ['attention/progress', metrics.attentionBottom, metrics.progressTop],
+            ];
+            for (const [label, bottom, top] of pairs) {
+              if (bottom !== null && top !== null && bottom > top + 1) {
+                throw new Error(`${metrics.viewport}: ${label} overlap: ${JSON.stringify(metrics)}`);
+              }
+            }
+            if (metrics.progressBottom !== null && metrics.navTop !== null && metrics.progressBottom > metrics.navTop + 1) {
+              throw new Error(`${metrics.viewport}: progress overlaps nav: ${JSON.stringify(metrics)}`);
+            }
+            if (metrics.bodyScrollHeight > metrics.bodyClientHeight + 1) {
+              throw new Error(`${metrics.viewport}: page overflow: ${JSON.stringify(metrics)}`);
+            }
+
+            results.push(metrics);
+            await page.screenshot({ path: `artifacts/home-visual/${width}x${height}.png`, fullPage: true });
+            await page.close();
+          }
+
+          fs.writeFileSync('artifacts/home-visual/metrics.json', JSON.stringify(results, null, 2));
+          console.log(JSON.stringify(results, null, 2));
+          await browser.close();
+          NODE
+          node /tmp/home-visual/render.mjs
+
+      - name: Upload visual matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-visual-matrix-${{ github.sha }}
+          path: artifacts/home-visual/
+          if-no-files-found: error
+          retention-days: 7
