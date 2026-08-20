@@ -1,0 +1,120 @@
+import { expect, test } from '@playwright/test';
+
+const VIEWPORTS = [
+  { name: 'small-phone', width: 320, height: 568, materialFits: false },
+  { name: 'compact-phone', width: 360, height: 640, materialFits: false },
+  { name: 'classic-phone', width: 375, height: 667, materialFits: false },
+  { name: 'modern-phone', width: 390, height: 844, materialFits: true },
+  { name: 'modern-phone-tall', width: 393, height: 852, materialFits: true },
+  { name: 'android-phone', width: 412, height: 915, materialFits: true },
+  { name: 'large-phone', width: 430, height: 932, materialFits: true },
+  { name: 'home-reference', width: 511, height: 1094, materialFits: true },
+  { name: 'blackberry-devtools', width: 768, height: 710, materialFits: true },
+  { name: 'landscape-tablet', width: 1024, height: 768, materialFits: true },
+];
+
+async function seedHomeState(page) {
+  await page.addInitScript(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    const user = {
+      id: 'home-layout-user',
+      email: 'home-layout@example.com',
+      username: 'home-layout-user',
+      avatar: '',
+      createdAt: now,
+    };
+    const plan = {
+      id: 'home-layout-plan',
+      seriesId: 'home-layout-plan',
+      userId: user.id,
+      title: '情報資源総論',
+      subject: '情報科学',
+      type: 'study',
+      date: today,
+      startTime: '10:20',
+      endTime: '11:50',
+      memo: '',
+      recurrence: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const material = {
+      id: 'home-layout-material',
+      userId: user.id,
+      name: '基本情報技術者テキスト',
+      subjectId: 'home-layout-subject',
+      subjectName: '情報科学',
+      status: 'active',
+      progressUnit: 'page',
+      totalUnits: 500,
+      currentUnit: 120,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+    localStorage.setItem('studyplanner.session', user.id);
+    localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
+    localStorage.setItem('studyplanner.actuals', '[]');
+    localStorage.setItem('studyplanner.todos.v1', '[]');
+    localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
+  });
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`${viewport.name} ${viewport.width}x${viewport.height} keeps the home layout bounded`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await seedHomeState(page);
+    await page.goto('/');
+
+    const home = page.locator('.home-dashboard-default');
+    await expect(home).toBeVisible();
+    await page.waitForTimeout(250);
+
+    const metrics = await page.evaluate(() => {
+      const visible = (element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      };
+      const materialPanels = [...document.querySelectorAll('.home-material-panel')];
+      const visibleMaterialPanels = materialPanels.filter(visible);
+      const visibleMaterial = visibleMaterialPanels[0] ?? null;
+      const nav = document.querySelector('.home-bottom-nav');
+      const progress = document.querySelector('.home-progress-panel');
+      const core = document.querySelector('.home-core-sections');
+      const lastCore = core?.lastElementChild ?? null;
+      const navRect = nav?.getBoundingClientRect() ?? null;
+      const lastCoreRect = lastCore?.getBoundingClientRect() ?? null;
+      const materialRect = visibleMaterial?.getBoundingClientRect() ?? null;
+      const measurementRoot = document.querySelector('.home-material-measurements');
+
+      return {
+        viewportHeight: document.documentElement.clientHeight,
+        pageScrollHeight: document.documentElement.scrollHeight,
+        viewportWidth: document.documentElement.clientWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        visibleMaterialPanelCount: visibleMaterialPanels.length,
+        materialProbeVisibility: measurementRoot
+          ? getComputedStyle(measurementRoot).visibility
+          : 'missing',
+        lastCoreBottom: lastCoreRect?.bottom ?? 0,
+        materialBottom: materialRect?.bottom ?? null,
+        navTop: navRect?.top ?? 0,
+        progressHeight: progress?.getBoundingClientRect().height ?? 0,
+      };
+    });
+
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+    expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
+    expect(metrics.visibleMaterialPanelCount).toBe(viewport.materialFits ? 1 : 0);
+    expect(metrics.visibleMaterialPanelCount).toBeLessThanOrEqual(1);
+    expect(metrics.materialProbeVisibility).toBe('hidden');
+    expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
+    if (metrics.materialBottom !== null) {
+      expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
+    }
+    expect(metrics.progressHeight).toBeLessThanOrEqual(140);
+  });
+}
