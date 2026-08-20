@@ -244,6 +244,13 @@
   font-size: 0.72rem;
 }
 
+@media (min-height: 1000px) {
+  .home-material-panel {
+    padding-top: calc(14px + var(--home-relax-material-side, 0px));
+    padding-bottom: calc(13px + var(--home-relax-material-side, 0px));
+  }
+}
+
 @media (max-width: 420px) {
   .home-setup-actions {
     grid-template-columns: 1fr;
