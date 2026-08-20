@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Bell,
@@ -40,6 +40,18 @@ interface HomeViewProps {
   onOpenSettings: () => void;
 }
 
+const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
+  (sectionId) => sectionId !== 'material-progress',
+);
+
+function estimateMaterialSectionHeight(studyMaterials: StudyMaterial[]): number {
+  const visibleRows = Math.max(
+    1,
+    Math.min(3, studyMaterials.filter((material) => material.status !== 'archived').length),
+  );
+  return 52 + visibleRows * 63;
+}
+
 export function HomeView({
   user,
   plans,
@@ -64,6 +76,49 @@ export function HomeView({
     actuals.length === 0 &&
     todos.length === 0 &&
     studyMaterials.length === 0;
+  const coreSectionsRef = useRef<HTMLDivElement | null>(null);
+  const bottomNavRef = useRef<HTMLElement | null>(null);
+  const [showSupplementalMaterial, setShowSupplementalMaterial] = useState(false);
+
+  useEffect(() => {
+    if (isGettingStarted) {
+      setShowSupplementalMaterial(false);
+      return undefined;
+    }
+
+    let frameId = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const core = coreSectionsRef.current;
+        const nav = bottomNavRef.current;
+        if (!core || !nav) return;
+
+        const coreBottom = core.getBoundingClientRect().bottom;
+        const navTop = nav.getBoundingClientRect().top;
+        const availableHeight = navTop - coreBottom - 8;
+        const requiredHeight = estimateMaterialSectionHeight(studyMaterials);
+        setShowSupplementalMaterial(availableHeight >= requiredHeight);
+      });
+    };
+
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (resizeObserver && coreSectionsRef.current) {
+      resizeObserver.observe(coreSectionsRef.current);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+      resizeObserver?.disconnect();
+    };
+  }, [isGettingStarted, studyMaterials]);
 
   function renderSection(sectionId: HomeSectionId) {
     switch (sectionId) {
@@ -167,10 +222,15 @@ export function HomeView({
           onOpenBookshelf={onOpenBookshelf}
         />
       ) : (
-        DEFAULT_HOME_SECTION_ORDER.map(renderSection)
+        <>
+          <div className="home-core-sections" ref={coreSectionsRef}>
+            {CORE_HOME_SECTION_ORDER.map(renderSection)}
+          </div>
+          {showSupplementalMaterial ? renderSection('material-progress') : null}
+        </>
       )}
 
-      <nav className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
+      <nav ref={bottomNavRef} className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
         <button type="button" onClick={onOpenAiPlanning}><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
         <button type="button" onClick={onOpenSchedule}><CalendarDays aria-hidden="true" /><span>予定</span></button>
         <button className="active" type="button" aria-current="page"><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
