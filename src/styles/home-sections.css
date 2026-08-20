@@ -1,0 +1,255 @@
+.home-setup-card,
+.home-material-panel {
+  border: 1px solid var(--home-line-soft);
+  border-radius: var(--home-radius);
+  background: var(--home-card);
+  box-shadow: var(--home-shadow-card);
+}
+
+.home-setup-card {
+  display: grid;
+  gap: 13px;
+  padding: 18px 16px 16px;
+}
+
+.home-setup-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-setup-heading > div {
+  min-width: 0;
+}
+
+.home-setup-heading p,
+.home-setup-heading h1,
+.home-setup-copy {
+  margin: 0;
+}
+
+.home-setup-heading p {
+  margin-bottom: 2px;
+  color: var(--home-blue);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.home-setup-heading h1 {
+  color: #121a2e;
+  font-size: 1.14rem;
+  line-height: 1.2;
+}
+
+.home-setup-mark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #edf6ff;
+  color: var(--home-blue);
+}
+
+.home-setup-copy {
+  color: var(--home-muted);
+  font-size: 0.72rem;
+  line-height: 1.65;
+}
+
+.home-setup-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-setup-action {
+  min-width: 0;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e7edf4;
+  border-radius: 12px;
+  background: #fff;
+  color: #1b2943;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-setup-action.primary {
+  border-color: #cfe4ff;
+  background: linear-gradient(145deg, #f4f9ff, #edf6ff);
+}
+
+.home-setup-action-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #f0f4f8;
+  color: #50627e;
+}
+
+.home-setup-action.primary .home-setup-action-icon {
+  background: var(--home-blue);
+  color: #fff;
+}
+
+.home-setup-action > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.home-setup-action strong {
+  overflow: hidden;
+  color: #17223a;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-setup-action small {
+  color: #758197;
+  font-size: 0.59rem;
+  line-height: 1.35;
+}
+
+.home-setup-action > svg {
+  color: #718097;
+}
+
+.home-material-panel {
+  padding: 10px 12px 9px;
+}
+
+.home-material-list {
+  overflow: hidden;
+  border: 1px solid #edf1f5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.home-material-row,
+.home-material-empty {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #21304a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-material-row {
+  min-height: 63px;
+  padding: 8px 9px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.home-material-row:last-child {
+  border-bottom: 0;
+}
+
+.home-material-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #eef6ff;
+  color: var(--home-blue);
+}
+
+.home-material-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.home-material-title-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-material-title-line strong {
+  overflow: hidden;
+  color: #19243a;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-material-title-line b {
+  flex: 0 0 auto;
+  color: var(--home-blue);
+  font-size: 0.63rem;
+  font-weight: 900;
+}
+
+.home-material-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eef5;
+}
+
+.home-material-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--home-blue);
+}
+
+.home-material-copy small,
+.home-material-empty small {
+  color: #788399;
+  font-size: 0.58rem;
+  line-height: 1.3;
+}
+
+.home-material-row > svg,
+.home-material-empty > svg {
+  color: #6c7a91;
+}
+
+.home-material-empty {
+  min-height: 66px;
+  padding: 9px 10px;
+  border: 1px dashed #d9e4f0;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.home-material-empty > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.home-material-empty strong {
+  color: #1c2941;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 420px) {
+  .home-setup-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .home-setup-action {
+    min-height: 62px;
+  }
+}
