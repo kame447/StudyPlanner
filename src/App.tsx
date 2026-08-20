@@ -64,12 +64,13 @@ const WeekView = lazy(() =>
   })),
 );
 
+type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
+
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
-  const [isAiPlanningOpen, setIsAiPlanningOpen] = useState(false);
-  const [isHomeView, setIsHomeView] = useState(true);
+  const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
@@ -158,10 +159,13 @@ export default function App() {
     completeWeeklyApprovalOperation,
   });
   const currentPath = window.location.pathname;
+  const isHomeSurface = primarySurface === 'home';
+  const isAiPlanningSurface = primarySurface === 'ai-planning';
+  const isWorkspaceSurface = primarySurface === 'workspace';
 
   useEffect(() => {
     if (user?.id) {
-      setIsHomeView(true);
+      setPrimarySurface('home');
     }
   }, [user?.id]);
 
@@ -202,15 +206,15 @@ export default function App() {
   }
 
   return (
-    <div className={isHomeView ? 'app-shell home-app-shell' : 'app-shell'}>
-      {!isHomeView ? (
+    <div className={isWorkspaceSurface ? 'app-shell' : 'app-shell home-app-shell'}>
+      {isWorkspaceSurface ? (
         <>
           <header className="app-header hero-card print-hide">
             <StudyPlannerLogo />
             <div className="header-actions">
               <button
                 className="ghost-button header-home-button"
-                onClick={() => setIsHomeView(true)}
+                onClick={() => setPrimarySurface('home')}
                 type="button"
                 aria-label="ホームへ戻る"
                 title="ホーム"
@@ -244,7 +248,7 @@ export default function App() {
           <AppViewSwitcher
             viewMode={viewMode}
             onChange={(nextViewMode) => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               setViewMode(nextViewMode);
             }}
           />
@@ -265,33 +269,33 @@ export default function App() {
         </div>
       ) : null}
 
-      <main className={isHomeView ? 'home-main' : 'section-stack'}>
-        {isHomeView ? (
+      <main className={isWorkspaceSurface ? 'section-stack' : 'home-main'}>
+        {isHomeSurface ? (
           <HomeView
             user={user}
             plans={plans}
             actuals={actuals}
             todos={todos}
             studyMaterials={studyMaterials}
-            onOpenAiPlanning={() => setIsAiPlanningOpen(true)}
+            onOpenAiPlanning={() => setPrimarySurface('ai-planning')}
             onOpenSchedule={() => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               setViewMode('month');
             }}
             onOpenDay={(date) => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               openDay(date);
             }}
             onOpenTodo={() => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               setViewMode('todo');
             }}
             onOpenBookshelf={() => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               setViewMode('bookshelf');
             }}
             onOpenReport={() => {
-              setIsHomeView(false);
+              setPrimarySurface('workspace');
               setViewMode('report');
             }}
             onOpenProfile={() => setIsMyPageOpen(true)}
@@ -299,7 +303,20 @@ export default function App() {
           />
         ) : null}
 
-        {!isHomeView && viewMode === 'month' ? (
+        {isAiPlanningSurface ? (
+          <Suspense fallback={<SplashScreen />}>
+            <AiPlanningView
+              application={weeklyPlanning}
+              userId={user.id}
+              selectedDate={selectedDate}
+              plans={plans}
+              actuals={actuals}
+              onClose={() => setPrimarySurface('home')}
+            />
+          </Suspense>
+        ) : null}
+
+        {isWorkspaceSurface && viewMode === 'month' ? (
           <MonthView
             monthDate={monthDate}
             selectedDate={selectedDate}
@@ -315,7 +332,7 @@ export default function App() {
           />
         ) : null}
 
-        {!isHomeView ? (
+        {isWorkspaceSurface ? (
           <Suspense fallback={<SplashScreen />}>
             {viewMode === 'week' ? (
               <WeekView
@@ -416,7 +433,7 @@ export default function App() {
         ) : null}
       </main>
 
-      {!isHomeView && (viewMode === 'day' || viewMode === 'todo') ? (
+      {isWorkspaceSurface && (viewMode === 'day' || viewMode === 'todo') ? (
         <button className="daily-add-fab print-hide" onClick={() => setIsQuickEntryOpen(true)} type="button" aria-label="新規追加">
           <span aria-hidden="true">＋</span>
         </button>
@@ -442,19 +459,6 @@ export default function App() {
           onSelect={(scope) => { void confirmRecurringPlanScope(scope); }}
           onClose={cancelRecurringPlanScope}
         />
-      ) : null}
-
-      {isAiPlanningOpen ? (
-        <Suspense fallback={null}>
-          <AiPlanningView
-            application={weeklyPlanning}
-            userId={user.id}
-            selectedDate={selectedDate}
-            plans={plans}
-            actuals={actuals}
-            onClose={() => setIsAiPlanningOpen(false)}
-          />
-        </Suspense>
       ) : null}
 
       {isQuickEntryOpen ? (
