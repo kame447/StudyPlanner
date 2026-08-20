@@ -46,6 +46,7 @@ interface HomeLayoutRelaxation {
   scheduleSide: number;
   todaySide: number;
   alertSide: number;
+  progressSide: number;
   topbar: number;
   materialSide: number;
   gap: number;
@@ -60,9 +61,14 @@ const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
 const TARGET_BOTTOM_GAP = 8;
 const DEFAULT_MAX_NEXT_CARD_HEIGHT = 226;
 const TALL_MAX_NEXT_CARD_HEIGHT = 286;
-const MAX_SCHEDULE_ROW_HEIGHT = 50;
-const MAX_TOPBAR_HEIGHT = 62;
+const WIDE_TALL_MAX_NEXT_CARD_HEIGHT = 320;
+const DEFAULT_MAX_SCHEDULE_ROW_HEIGHT = 50;
+const WIDE_TALL_MAX_SCHEDULE_ROW_HEIGHT = 70;
+const DEFAULT_MAX_TOPBAR_HEIGHT = 62;
+const WIDE_TALL_MAX_TOPBAR_HEIGHT = 94;
 const TALL_VIEWPORT_MIN_HEIGHT = 1000;
+const WIDE_VIEWPORT_MIN_WIDTH = 700;
+const SHORT_VIEWPORT_MAX_HEIGHT = 700;
 
 function emptyLayoutRelaxation(): HomeLayoutRelaxation {
   return {
@@ -71,6 +77,7 @@ function emptyLayoutRelaxation(): HomeLayoutRelaxation {
     scheduleSide: 0,
     todaySide: 0,
     alertSide: 0,
+    progressSide: 0,
     topbar: 0,
     materialSide: 0,
     gap: 0,
@@ -172,14 +179,26 @@ export function HomeView({
         }
 
         const isTallViewport = window.innerHeight >= TALL_VIEWPORT_MIN_HEIGHT;
-        const maxNextCardHeight = isTallViewport
-          ? TALL_MAX_NEXT_CARD_HEIGHT
-          : DEFAULT_MAX_NEXT_CARD_HEIGHT;
-        const maxScheduleSideRelaxation = isTallViewport ? 11 : 2;
-        const maxTodaySideRelaxation = isTallViewport ? 12 : 5;
-        const maxAlertSideRelaxation = isTallViewport ? 6 : 2;
-        const maxMaterialSideRelaxation = isTallViewport ? 14 : 6;
-        const maxSectionGap = isTallViewport ? 18 : 12;
+        const isWideViewport = window.innerWidth >= WIDE_VIEWPORT_MIN_WIDTH;
+        const isWideTallViewport = isTallViewport && isWideViewport;
+        const allowSupplementalMaterial = window.innerHeight > SHORT_VIEWPORT_MAX_HEIGHT;
+        const maxNextCardHeight = isWideTallViewport
+          ? WIDE_TALL_MAX_NEXT_CARD_HEIGHT
+          : isTallViewport
+            ? TALL_MAX_NEXT_CARD_HEIGHT
+            : DEFAULT_MAX_NEXT_CARD_HEIGHT;
+        const maxScheduleRowHeight = isWideTallViewport
+          ? WIDE_TALL_MAX_SCHEDULE_ROW_HEIGHT
+          : DEFAULT_MAX_SCHEDULE_ROW_HEIGHT;
+        const maxTopbarHeight = isWideTallViewport
+          ? WIDE_TALL_MAX_TOPBAR_HEIGHT
+          : DEFAULT_MAX_TOPBAR_HEIGHT;
+        const maxScheduleSideRelaxation = isWideTallViewport ? 12 : isTallViewport ? 11 : 2;
+        const maxTodaySideRelaxation = isWideTallViewport ? 14 : isTallViewport ? 12 : 5;
+        const maxAlertSideRelaxation = isWideTallViewport ? 8 : isTallViewport ? 6 : 2;
+        const maxProgressSideRelaxation = isWideTallViewport ? 22 : 0;
+        const maxMaterialSideRelaxation = isWideTallViewport ? 14 : isTallViewport ? 14 : 6;
+        const maxSectionGap = isWideTallViewport ? 20 : isTallViewport ? 18 : 12;
 
         const setRelaxationProperty = (name: string, value: number) => {
           if (value <= 0.05) {
@@ -201,6 +220,7 @@ export function HomeView({
           setRelaxationProperty('--home-relax-schedule-side', next.scheduleSide);
           setRelaxationProperty('--home-relax-today-side', next.todaySide);
           setRelaxationProperty('--home-relax-alert-side', next.alertSide);
+          setRelaxationProperty('--home-relax-progress-side', next.progressSide);
           setRelaxationProperty('--home-relax-topbar', next.topbar);
           setRelaxationProperty('--home-relax-material-side', next.materialSide);
           setRelaxationProperty('--home-relax-gap', next.gap);
@@ -233,6 +253,7 @@ export function HomeView({
           currentRelaxation.scheduleSide * 2 * visibleScheduleChildren.length +
           currentRelaxation.todaySide * 2 +
           currentRelaxation.alertSide * 2 +
+          currentRelaxation.progressSide * 2 +
           currentRelaxation.gap * internalCoreGapCount;
         const compactPreferredCoreHeight = Math.max(
           0,
@@ -254,19 +275,21 @@ export function HomeView({
         };
 
         let largestCandidateThatFits: number | null = null;
-        for (const rowCount of supplementalMaterialCandidates) {
-          const probe = materialProbeRefs.current.get(rowCount);
-          if (!probe) continue;
-          const measuredHeight = probe.getBoundingClientRect().height;
-          const compactMeasuredHeight = Math.max(
-            0,
-            measuredHeight - currentRelaxation.materialSide * 2,
-          );
-          if (
-            compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight <=
-            compactAvailableCoreHeight + 0.5
-          ) {
-            largestCandidateThatFits = rowCount;
+        if (allowSupplementalMaterial) {
+          for (const rowCount of supplementalMaterialCandidates) {
+            const probe = materialProbeRefs.current.get(rowCount);
+            if (!probe) continue;
+            const measuredHeight = probe.getBoundingClientRect().height;
+            const compactMeasuredHeight = Math.max(
+              0,
+              measuredHeight - currentRelaxation.materialSide * 2,
+            );
+            if (
+              compactPreferredCoreHeight + compactOuterGap + compactMeasuredHeight <=
+              compactAvailableCoreHeight + 0.5
+            ) {
+              largestCandidateThatFits = rowCount;
+            }
           }
         }
 
@@ -335,7 +358,7 @@ export function HomeView({
             0,
             Math.min(
               ...scheduleRows.map((row) =>
-                MAX_SCHEDULE_ROW_HEIGHT - row.getBoundingClientRect().height,
+                maxScheduleRowHeight - row.getBoundingClientRect().height,
               ),
             ),
           );
@@ -386,10 +409,20 @@ export function HomeView({
           remaining -= sideAddition * 2;
         }
 
+        if (remaining > 0.5 && maxProgressSideRelaxation > 0) {
+          const sideCapacity = Math.max(
+            0,
+            maxProgressSideRelaxation - nextRelaxation.progressSide,
+          );
+          const sideAddition = Math.min(sideCapacity, remaining / 2);
+          nextRelaxation.progressSide += sideAddition;
+          remaining -= sideAddition * 2;
+        }
+
         if (remaining > 0.5) {
           const topbarCapacity = Math.max(
             0,
-            MAX_TOPBAR_HEIGHT - topbar.getBoundingClientRect().height,
+            maxTopbarHeight - topbar.getBoundingClientRect().height,
           );
           const topbarAddition = Math.min(topbarCapacity, remaining);
           nextRelaxation.topbar += topbarAddition;
