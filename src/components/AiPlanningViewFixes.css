@@ -1,14 +1,15 @@
 .ai-planning-view.home-dashboard {
-  right: auto;
+  right: 0;
   bottom: calc(62px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
+  left: 0;
   width: min(100%, 508px);
   height: auto;
   min-height: 0;
+  margin: 0 auto;
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   padding: 4px 12px 8px;
-  transform: translateX(-50%);
+  transform: none;
   background:
     radial-gradient(circle at 8% 0%, rgba(255, 244, 218, 0.2), transparent 24%),
     linear-gradient(180deg, #fbfdff 0%, #f5faf7 100%);
