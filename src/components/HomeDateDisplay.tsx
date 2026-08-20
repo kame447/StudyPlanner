@@ -9,10 +9,10 @@ export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
   const weekday = getWeekdayLabel(date);
 
   const segments = [
-    { key: 'year', value: String(year), suffix: '年', ringPositions: ['32%', '68%'] },
-    { key: 'month', value: String(month), suffix: '月', ringPositions: ['50%'] },
-    { key: 'day', value: String(day), suffix: '日', ringPositions: ['50%'] },
-    { key: 'weekday', value: weekday, suffix: '', ringPositions: ['50%'] },
+    { key: 'year', value: String(year), suffix: '年' },
+    { key: 'month', value: String(month), suffix: '月' },
+    { key: 'day', value: String(day), suffix: '日' },
+    { key: 'weekday', value: weekday, suffix: '' },
   ] as const;
 
   return (
@@ -24,11 +24,6 @@ export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
       <span className="home-date-paper">
         {segments.map((segment) => (
           <span className={`home-date-segment home-date-segment-${segment.key}`} key={segment.key}>
-            <span className="home-date-segment-rings" aria-hidden="true">
-              {segment.ringPositions.map((left) => (
-                <span className="home-date-ring" key={left} style={{ left }} />
-              ))}
-            </span>
             <span className="home-date-value">{segment.value}</span>
             {segment.suffix ? (
               <span className="home-date-unit">{segment.suffix}</span>
