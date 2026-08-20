@@ -1,0 +1,13 @@
+@media (max-width: 500px) {
+  .ai-planning-view.home-dashboard .ai-planning-composer-side {
+    display: inline-flex !important;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-mic-button {
+    display: none !important;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-composer {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+}
