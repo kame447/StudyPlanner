@@ -75,6 +75,7 @@ async function readHomeMetrics(page) {
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
     const materialPanels = [...document.querySelectorAll('.home-material-panel')];
     const visibleMaterialPanels = materialPanels.filter(visible);
     const visibleMaterial = visibleMaterialPanels[0] ?? null;
@@ -92,6 +93,13 @@ async function readHomeMetrics(page) {
     const fourthScheduleRect = scheduleRows[3]?.getBoundingClientRect() ?? null;
     const scheduleRect = scheduleList?.getBoundingClientRect() ?? null;
     const measurementRoot = document.querySelector('.home-material-measurements');
+    const topbarRect = rect('.home-topbar');
+    const nextCardRect = rect('.home-next-card');
+    const nextMetaRect = rect('.home-next-meta');
+    const startButtonRect = rect('.home-start-button');
+    const todayRect = rect('.home-today-panel');
+    const attentionRect = rect('.home-alert-grid');
+    const progressRect = rect('.home-progress-panel');
 
     return {
       viewportHeight: document.documentElement.clientHeight,
@@ -112,8 +120,36 @@ async function readHomeMetrics(page) {
       addScheduleBottom: addScheduleRect?.bottom ?? null,
       fourthScheduleBottom: fourthScheduleRect?.bottom ?? null,
       scheduleBottom: scheduleRect?.bottom ?? null,
+      topbarBottom: topbarRect?.bottom ?? null,
+      nextCardTop: nextCardRect?.top ?? null,
+      nextCardBottom: nextCardRect?.bottom ?? null,
+      nextMetaBottom: nextMetaRect?.bottom ?? null,
+      startButtonTop: startButtonRect?.top ?? null,
+      todayTop: todayRect?.top ?? null,
+      todayBottom: todayRect?.bottom ?? null,
+      attentionTop: attentionRect?.top ?? null,
+      attentionBottom: attentionRect?.bottom ?? null,
+      progressTop: progressRect?.top ?? null,
     };
   });
+}
+
+function expectNoStructuralOverlap(metrics) {
+  if (metrics.nextMetaBottom !== null && metrics.startButtonTop !== null) {
+    expect(metrics.nextMetaBottom).toBeLessThanOrEqual(metrics.startButtonTop - 2);
+  }
+  if (metrics.topbarBottom !== null && metrics.nextCardTop !== null) {
+    expect(metrics.topbarBottom).toBeLessThanOrEqual(metrics.nextCardTop + 1);
+  }
+  if (metrics.nextCardBottom !== null && metrics.todayTop !== null) {
+    expect(metrics.nextCardBottom).toBeLessThanOrEqual(metrics.todayTop + 1);
+  }
+  if (metrics.todayBottom !== null && metrics.attentionTop !== null) {
+    expect(metrics.todayBottom).toBeLessThanOrEqual(metrics.attentionTop + 1);
+  }
+  if (metrics.attentionBottom !== null && metrics.progressTop !== null) {
+    expect(metrics.attentionBottom).toBeLessThanOrEqual(metrics.progressTop + 1);
+  }
 }
 
 for (const viewport of VIEWPORTS) {
@@ -128,6 +164,7 @@ for (const viewport of VIEWPORTS) {
 
     const metrics = await readHomeMetrics(page);
 
+    expectNoStructuralOverlap(metrics);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
     expect(metrics.visibleMaterialPanelCount).toBe(viewport.materialFits ? 1 : 0);
@@ -156,6 +193,7 @@ for (const viewport of VIEWPORTS) {
     const metrics = await readHomeMetrics(page);
     const scheduleIsScrollable = metrics.scheduleScrollHeight > metrics.scheduleClientHeight + 1;
 
+    expectNoStructuralOverlap(metrics);
     expect(metrics.scheduleRowCount).toBe(4);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
