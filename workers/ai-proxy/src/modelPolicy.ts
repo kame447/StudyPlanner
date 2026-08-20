@@ -12,9 +12,11 @@ export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: INTERNAL_OPENAI_MODEL,
   weekly_planning_semantic_normalizer: INTERNAL_OPENAI_MODEL,
   weekly_planning_renderer: INTERNAL_OPENAI_MODEL,
+  weekly_planning_attachment: INTERNAL_OPENAI_MODEL,
 };
 
-// OCR は Gemini 経路で別管理する。OpenAI chat は内部用途を Luna に統一する。
+// 時間割OCRだけは無料枠を利用するため Gemini 経路で別管理する。
+// AI計画に関わる意味解釈・描画・添付画像理解は Luna に統一する。
 export const DEFAULT_ALLOWED_CHAT_MODELS = [INTERNAL_OPENAI_MODEL];
 
 export interface ChatModelResolutionInput {
