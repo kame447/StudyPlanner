@@ -60,6 +60,11 @@ function resolvePlanTypeLabel(plan: Plan): string {
   }
 }
 
+function resolveOtherCategory(plan: Plan): string {
+  if (plan.type !== 'other') return resolvePlanTypeLabel(plan);
+  return plan.subject?.trim() || 'その他';
+}
+
 export function resolveHomeNextPlanVisual(
   plan: Plan | null | undefined,
 ): HomeNextPlanVisual {
@@ -123,7 +128,7 @@ export function resolveHomeNextPlanPresentation(
     visual,
     semanticKind: 'other',
     detailLabel: 'カテゴリ',
-    detailValue: plan.subject?.trim() || resolvePlanTypeLabel(plan),
+    detailValue: resolveOtherCategory(plan),
     durationLabel: '予定時間',
     actionLabel: '予定を確認する',
   };
