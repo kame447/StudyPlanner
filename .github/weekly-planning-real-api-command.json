@@ -1,6 +1,6 @@
 {
   "profile": "checkpoint",
-  "repetitions": 1,
-  "request_id": "20260821-debug-repeated-task-question-main-3",
-  "reason": "Temporary isolated real-Luna reproduction from exact main product code after increasing only the diagnostic test timeout. Run only the reported three-turn conversation and capture assistant text, typed question context, and active Fact Graph tasks/workloads. Product code is unchanged."
+  "repetitions": 3,
+  "request_id": "20260821-debug-repeated-task-question-main-4",
+  "reason": "Temporary stochastic follow-up from exact main product code. Repeat the isolated three-turn reproduction three times to distinguish a deterministic UI/session regression from intermittent Luna semantic extraction. Capture assistant text, typed question context, and active Fact Graph tasks/workloads. Product code is unchanged."
 }
