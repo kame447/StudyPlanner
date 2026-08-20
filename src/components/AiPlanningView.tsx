@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleUserRound,
   House,
+  Menu,
   MessageCircle,
   Mic,
   Plus,
@@ -13,6 +14,19 @@ import {
   X,
 } from 'lucide-react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import {
+  createAiPlanningChat,
+  deleteAiPlanningChat,
+  deriveAiPlanningChatTitle,
+  loadAiPlanningChatIndex,
+  loadAiPlanningChatSnapshot,
+  saveAiPlanningChatIndex,
+  saveAiPlanningChatSnapshot,
+  searchAiPlanningChats,
+  setActiveAiPlanningChat,
+  updateAiPlanningChatRecord,
+  type AiPlanningChatIndex,
+} from '../features/weeklyPlanning/chat/aiPlanningChatStore';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
@@ -28,6 +42,7 @@ import {
   sortByDateTime,
 } from '../lib/date';
 import type { Actual, Plan } from '../types/domain';
+import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import './AiPlanningView.css';
 import './AiPlanningViewFixes.css';
 
@@ -106,9 +121,15 @@ export function AiPlanningView({
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
+  const [chatQuery, setChatQuery] = useState('');
+  const [chatIndex, setChatIndex] = useState<AiPlanningChatIndex>(() =>
+    loadAiPlanningChatIndex(userId),
+  );
   const [topInset, setTopInset] = useState(76);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
+  const didInitializeChatsRef = useRef(false);
   const previewCandidates = state.previewCandidates ?? [];
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, index) => addDays(state.weekStartDate, index)),
@@ -144,6 +165,70 @@ export function AiPlanningView({
     () => previewGroups.reduce((count, group) => count + group.blocks.length, 0),
     [previewGroups],
   );
+  const visibleChats = useMemo(
+    () => searchAiPlanningChats(userId, chatIndex.chats, chatQuery),
+    [chatIndex.chats, chatQuery, userId],
+  );
+  const activeChat = chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId)
+    ?? chatIndex.chats[0];
+
+  function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
+    const chatId = baseIndex.activeChatId;
+    const snapshot = application.exportConversationSnapshot();
+    const messages = snapshot?.planningState.messages ?? state.messages;
+    const now = snapshot?.savedAt ?? new Date().toISOString();
+    let nextIndex = updateAiPlanningChatRecord(baseIndex, chatId, {
+      title: deriveAiPlanningChatTitle(messages),
+      updatedAt: now,
+      weekStartDate: snapshot?.weekStartDate
+        ?? baseIndex.chats.find((chat) => chat.id === chatId)?.weekStartDate
+        ?? null,
+    });
+
+    if (snapshot) {
+      saveAiPlanningChatSnapshot(userId, chatId, snapshot);
+      nextIndex = updateAiPlanningChatRecord(nextIndex, chatId, {
+        weekStartDate: snapshot.weekStartDate,
+      });
+    }
+
+    saveAiPlanningChatIndex(userId, nextIndex);
+    setChatIndex(nextIndex);
+    return nextIndex;
+  }
+
+  useEffect(() => {
+    if (didInitializeChatsRef.current) return;
+    didInitializeChatsRef.current = true;
+    const loadedIndex = loadAiPlanningChatIndex(userId);
+    const loadedActive = loadedIndex.chats.find((chat) => chat.id === loadedIndex.activeChatId)
+      ?? loadedIndex.chats[0];
+    const snapshot = loadedActive
+      ? loadAiPlanningChatSnapshot(userId, loadedActive)
+      : null;
+
+    if (snapshot) {
+      application.loadConversationSnapshot(snapshot);
+      setChatIndex(loadedIndex);
+      return;
+    }
+
+    const currentSnapshot = application.exportConversationSnapshot();
+    if (loadedActive && currentSnapshot) {
+      saveAiPlanningChatSnapshot(userId, loadedActive.id, currentSnapshot);
+      const migratedIndex = updateAiPlanningChatRecord(loadedIndex, loadedActive.id, {
+        title: deriveAiPlanningChatTitle(currentSnapshot.planningState.messages),
+        updatedAt: currentSnapshot.savedAt,
+        weekStartDate: currentSnapshot.weekStartDate,
+      });
+      saveAiPlanningChatIndex(userId, migratedIndex);
+      setChatIndex(migratedIndex);
+      return;
+    }
+
+    saveAiPlanningChatIndex(userId, loadedIndex);
+    setChatIndex(loadedIndex);
+  }, [application, userId]);
 
   useEffect(() => {
     const syncTopInset = () => {
@@ -166,7 +251,7 @@ export function AiPlanningView({
   useEffect(() => {
     const node = conversationRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [isBusy, state.messages.length, visibleBlocks.length]);
+  }, [chatIndex.activeChatId, isBusy, state.messages.length, visibleBlocks.length]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -179,8 +264,10 @@ export function AiPlanningView({
     setError('');
     try {
       await application.submitTurn(value);
+      persistActiveChat();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'メッセージを送信できませんでした。');
+      persistActiveChat();
     } finally {
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -188,10 +275,10 @@ export function AiPlanningView({
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (
-      event.key !== 'Enter' ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing ||
-      event.nativeEvent.keyCode === 229
+      event.key !== 'Enter'
+      || event.shiftKey
+      || event.nativeEvent.isComposing
+      || event.nativeEvent.keyCode === 229
     ) {
       return;
     }
@@ -205,6 +292,70 @@ export function AiPlanningView({
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(prompt.length, prompt.length);
     });
+  }
+
+  function switchChat(chatId: string) {
+    if (isBusy || chatId === chatIndex.activeChatId) {
+      setIsChatDrawerOpen(false);
+      return;
+    }
+    const persistedIndex = persistActiveChat();
+    const target = persistedIndex.chats.find((chat) => chat.id === chatId);
+    if (!target) return;
+    const snapshot = loadAiPlanningChatSnapshot(userId, target);
+    const loaded = snapshot ? application.loadConversationSnapshot(snapshot) : true;
+    if (!snapshot) application.startConversation();
+    if (!loaded) {
+      setError('このチャットを開けませんでした。処理中の操作を完了してから再試行してください。');
+      return;
+    }
+    const nextIndex = setActiveAiPlanningChat(persistedIndex, chatId);
+    saveAiPlanningChatIndex(userId, nextIndex);
+    setChatIndex(nextIndex);
+    setText('');
+    setError('');
+    setIsPreviewOpen(false);
+    setIsChatDrawerOpen(false);
+  }
+
+  function createChat() {
+    if (isBusy) return;
+    const persistedIndex = persistActiveChat();
+    const created = createAiPlanningChat(persistedIndex);
+    application.startConversation();
+    saveAiPlanningChatIndex(userId, created.index);
+    setChatIndex(created.index);
+    setChatQuery('');
+    setText('');
+    setError('');
+    setIsPreviewOpen(false);
+    setIsChatDrawerOpen(false);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function removeChat(chatId: string) {
+    if (isBusy) return;
+    const chat = chatIndex.chats.find((item) => item.id === chatId);
+    if (!chat) return;
+    if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
+
+    const persistedIndex = persistActiveChat();
+    const wasActive = persistedIndex.activeChatId === chatId;
+    const nextIndex = deleteAiPlanningChat(userId, persistedIndex, chatId);
+
+    if (wasActive) {
+      const target = nextIndex.chats.find((item) => item.id === nextIndex.activeChatId)
+        ?? nextIndex.chats[0];
+      const snapshot = target ? loadAiPlanningChatSnapshot(userId, target) : null;
+      if (snapshot) application.loadConversationSnapshot(snapshot);
+      else application.startConversation();
+      setText('');
+      setError('');
+      setIsPreviewOpen(false);
+    }
+
+    saveAiPlanningChatIndex(userId, nextIndex);
+    setChatIndex(nextIndex);
   }
 
   function promotePreview() {
@@ -222,6 +373,7 @@ export function AiPlanningView({
       application.clearDraftBlocks();
     }
     application.createDraftBlocks(blocks);
+    window.requestAnimationFrame(() => persistActiveChat());
   }
 
   async function saveDrafts() {
@@ -229,9 +381,11 @@ export function AiPlanningView({
     setError('');
     try {
       await application.approveDraftBlocks();
+      persistActiveChat();
       setIsPreviewOpen(false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : '週間計画を保存できませんでした。');
+      persistActiveChat();
     }
   }
 
@@ -240,18 +394,45 @@ export function AiPlanningView({
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  function closeAiPlanning() {
+    if (!isBusy) persistActiveChat();
+    onClose();
+  }
+
   return (
     <section
       className="ai-planning-view home-dashboard"
       aria-label="AI計画"
       style={{ top: `${topInset}px` }}
     >
+      <AiPlanningChatSidebar
+        open={isChatDrawerOpen}
+        chats={visibleChats}
+        activeChatId={chatIndex.activeChatId}
+        query={chatQuery}
+        disabled={isBusy}
+        onQueryChange={setChatQuery}
+        onCreate={createChat}
+        onSelect={switchChat}
+        onDelete={removeChat}
+        onClose={() => setIsChatDrawerOpen(false)}
+      />
+
       <div className="ai-planning-card">
         <div className="ai-planning-heading">
-          <span className="ai-planning-heading-icon"><MessageCircle aria-hidden="true" size={25} /></span>
+          <button
+            className="ai-planning-chat-menu-button"
+            type="button"
+            aria-label="チャット一覧を開く"
+            onClick={() => setIsChatDrawerOpen(true)}
+          >
+            <Menu aria-hidden="true" size={22} />
+          </button>
           <div>
             <h1>AI計画</h1>
-            <p>対話で今週の学習計画を作成・必要に応じて調整</p>
+            <p>{activeChat?.title === '新しいチャット'
+              ? '対話で学習計画を作成・必要に応じて調整'
+              : activeChat?.title ?? '対話で学習計画を作成・必要に応じて調整'}</p>
           </div>
         </div>
 
@@ -347,10 +528,10 @@ export function AiPlanningView({
 
       <nav className="home-bottom-nav print-hide ai-planning-home-nav" aria-label="主要ナビゲーション">
         <button className="active" type="button" aria-current="page"><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
-        <button type="button" onClick={onClose}><CalendarDays aria-hidden="true" /><span>予定</span></button>
-        <button className="active" type="button" onClick={onClose}><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
-        <button type="button" onClick={onClose}><BookOpen aria-hidden="true" /><span>教材</span></button>
-        <button type="button" onClick={onClose}><BarChart3 aria-hidden="true" /><span>分析</span></button>
+        <button type="button" onClick={closeAiPlanning}><CalendarDays aria-hidden="true" /><span>予定</span></button>
+        <button className="active" type="button" onClick={closeAiPlanning}><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
+        <button type="button" onClick={closeAiPlanning}><BookOpen aria-hidden="true" /><span>教材</span></button>
+        <button type="button" onClick={closeAiPlanning}><BarChart3 aria-hidden="true" /><span>分析</span></button>
       </nav>
 
       {isPreviewOpen && displayedDraftCount > 0 ? (
