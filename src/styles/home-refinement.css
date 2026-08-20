@@ -1,0 +1,107 @@
+.home-date-display {
+  min-width: 0;
+  min-height: 55px;
+  display: grid;
+  grid-template-columns: 1.18fr 0.92fr 0.92fr 0.76fr;
+  overflow: hidden;
+  border: 1px solid #e4e9f1;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #17213a;
+  box-shadow: 0 4px 12px rgba(37, 56, 88, 0.055);
+  text-decoration: none;
+}
+
+.home-date-segment {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 7px;
+  border-right: 1px solid #e8edf4;
+  white-space: nowrap;
+}
+
+.home-date-segment:last-child {
+  border-right: 0;
+}
+
+.home-date-segment:nth-child(3)::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 7px;
+  width: 18px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #086bff;
+  opacity: 0.92;
+}
+
+.home-date-value {
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.home-date-unit {
+  color: #465470;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.home-today-panel {
+  height: auto;
+  min-height: 0;
+  display: block;
+}
+
+.home-schedule-list {
+  min-height: 0;
+  max-height: 224px;
+  overflow-y: auto;
+}
+
+.home-schedule-empty {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  padding: 12px 16px;
+}
+
+@media (max-width: 520px) {
+  .home-topbar {
+    grid-template-columns: 124px minmax(0, 1fr) auto;
+  }
+
+  .home-date-display {
+    min-height: 55px;
+    grid-template-columns: 1.22fr 0.9fr 0.9fr 0.72fr;
+  }
+
+  .home-date-segment {
+    padding-inline: 4px;
+  }
+
+  .home-date-value {
+    font-size: 0.89rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.56rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .home-topbar {
+    grid-template-columns: 111px minmax(0, 1fr) auto;
+  }
+
+  .home-date-value {
+    font-size: 0.82rem;
+  }
+}
