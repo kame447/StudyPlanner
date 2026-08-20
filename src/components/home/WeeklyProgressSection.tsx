@@ -45,7 +45,7 @@ export function WeeklyProgressSection({
   const chartScale = buildChartScale(maxDayMinutes);
   const ringProgress = Math.max(0, Math.min(100, dashboard.weekProgressPercent));
   const ringStyle = {
-    '--home-progress': `${ringProgress * 3.6}deg`,
+    '--weekly-progress': `${ringProgress * 3.6}deg`,
   } as CSSProperties;
   const difference = dashboard.weekDeltaMinutesByNow;
 
@@ -58,35 +58,35 @@ export function WeeklyProgressSection({
         </button>
       </div>
 
-      <div className="home-progress-fixed-layout">
+      <div className="weekly-progress-layout">
         <div
-          className="home-progress-ring"
+          className="weekly-progress-ring"
           style={ringStyle}
           aria-label={`週全体の予定に対する達成率 ${dashboard.weekProgressPercent}%`}
         >
           <div><strong>{dashboard.weekProgressPercent}%</strong></div>
         </div>
 
-        <div className="home-progress-copy" aria-label="現時点までの予定と実績">
+        <div className="weekly-progress-summary" aria-label="現時点までの予定と実績">
           <span>ここまで <strong>{formatGraphDuration(dashboard.weekExpectedMinutesByNow)}</strong></span>
           <span>実績 <strong>{formatGraphDuration(dashboard.weekActualMinutesByNow)}</strong></span>
-          <span className={difference >= 0 ? 'positive' : 'negative'}>
+          <span className={difference >= 0 ? 'weekly-progress-positive' : 'weekly-progress-negative'}>
             予定比 {difference >= 0 ? '+' : '-'}{formatGraphDuration(Math.abs(difference))}
           </span>
         </div>
 
-        <div className="home-week-chart" aria-label="曜日別の週全体の予定と実績">
-          <div className="home-chart-legend">
-            <span className="actual">実績</span>
-            <span className="planned">予定</span>
+        <div className="weekly-progress-chart" aria-label="曜日別の週全体の予定と実績">
+          <div className="weekly-progress-legend">
+            <span className="weekly-progress-legend-actual">実績</span>
+            <span className="weekly-progress-legend-planned">予定</span>
           </div>
-          <div className="home-chart-plot">
-            <div className="home-chart-axis" aria-hidden="true">
+          <div className="weekly-progress-plot">
+            <div className="weekly-progress-axis" aria-hidden="true">
               {chartScale.ticks.map((tick) => (
                 <span key={tick}>{formatAxisDuration(tick)}</span>
               ))}
             </div>
-            <div className="home-chart-bars">
+            <div className="weekly-progress-bars">
               {dashboard.weekDays.map((item) => {
                 const plannedHeight = Math.max(
                   3,
@@ -98,13 +98,13 @@ export function WeeklyProgressSection({
                 );
                 return (
                   <div
-                    className="home-chart-day"
+                    className="weekly-progress-day"
                     key={item.date}
                     title={`${item.label}: 予定 ${formatGraphDuration(item.plannedMinutes)} / 実績 ${formatGraphDuration(item.actualMinutes)}`}
                   >
-                    <div className="home-chart-columns">
-                      <span className="home-chart-plan" style={{ height: `${plannedHeight}%` }} />
-                      <span className="home-chart-actual" style={{ height: `${actualHeight}%` }} />
+                    <div className="weekly-progress-columns">
+                      <span className="weekly-progress-plan" style={{ height: `${plannedHeight}%` }} />
+                      <span className="weekly-progress-actual" style={{ height: `${actualHeight}%` }} />
                     </div>
                     <small>{item.label}</small>
                   </div>
