@@ -4,6 +4,8 @@ interface HomeDateDisplayProps {
   date: string;
 }
 
+const RING_POSITIONS = ['17%', '23%', '47%', '72%', '92%'] as const;
+
 export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
   const [year, month, day] = date.split('-').map(Number);
   const weekday = getWeekdayLabel(date);
@@ -21,14 +23,21 @@ export function HomeDateDisplay({ date }: HomeDateDisplayProps) {
       dateTime={date}
       aria-label={`${year}年${month}月${day}日 ${weekday}曜日`}
     >
-      {segments.map((segment) => (
-        <span className="home-date-segment" key={segment.key}>
-          <span className="home-date-value">{segment.value}</span>
-          {segment.suffix ? (
-            <span className="home-date-unit">{segment.suffix}</span>
-          ) : null}
-        </span>
-      ))}
+      <span className="home-date-rings" aria-hidden="true">
+        {RING_POSITIONS.map((left) => (
+          <span className="home-date-ring" key={left} style={{ left }} />
+        ))}
+      </span>
+      <span className="home-date-paper">
+        {segments.map((segment) => (
+          <span className="home-date-segment" key={segment.key}>
+            <span className="home-date-value">{segment.value}</span>
+            {segment.suffix ? (
+              <span className="home-date-unit">{segment.suffix}</span>
+            ) : null}
+          </span>
+        ))}
+      </span>
     </time>
   );
 }
