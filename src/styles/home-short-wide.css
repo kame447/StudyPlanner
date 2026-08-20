@@ -1,0 +1,253 @@
+/*
+ * Wide-but-short viewports need the tablet width treatment without the tablet
+ * vertical density. This keeps 768x710 / 1024x768 layouts full-width while
+ * preventing the next-plan metadata and today's schedule from colliding with
+ * the controls below them.
+ */
+@media (min-width: 700px) and (max-height: 850px) {
+  .home-dashboard-default .home-topbar {
+    min-height: clamp(50px, 7dvh, 62px);
+  }
+
+  .home-dashboard-default .home-streak-card {
+    min-height: 54px;
+    gap: 7px;
+    padding: 6px 9px;
+    border-radius: 12px;
+  }
+
+  .home-dashboard-default .home-streak-flame {
+    width: 27px;
+    height: 27px;
+  }
+
+  .home-dashboard-default .home-streak-card span,
+  .home-dashboard-default .home-streak-card small {
+    font-size: 0.58rem;
+  }
+
+  .home-dashboard-default .home-streak-card strong {
+    font-size: 1.12rem;
+  }
+
+  .home-dashboard-default .home-date-display {
+    min-height: 60px;
+    padding-top: 6px;
+  }
+
+  .home-dashboard-default .home-date-paper {
+    height: 52px;
+    border-radius: 9px;
+  }
+
+  .home-dashboard-default .home-date-value {
+    font-size: 0.98rem;
+  }
+
+  .home-dashboard-default .home-date-unit {
+    font-size: 0.65rem;
+  }
+
+  .home-dashboard-default .home-top-actions {
+    gap: 4px;
+  }
+
+  .home-dashboard-default .home-icon-button,
+  .home-dashboard-default .home-avatar-button {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .home-dashboard-default .home-avatar-button .user-avatar,
+  .home-dashboard-default .home-avatar-button img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .home-dashboard-default .home-next-card {
+    padding-inline: 16px;
+    border-radius: 14px;
+  }
+
+  .home-dashboard-default .home-next-copy {
+    width: 58%;
+    min-width: 0;
+  }
+
+  .home-dashboard-default .home-eyebrow {
+    margin-bottom: 2px;
+    font-size: 0.62rem;
+    line-height: 1;
+  }
+
+  .home-dashboard-default .home-next-copy h1 {
+    margin-bottom: 3px;
+    font-size: 0.96rem;
+    line-height: 1.08;
+  }
+
+  .home-dashboard-default .home-next-meta {
+    gap: 1px;
+    font-size: 0.58rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-next-meta span {
+    min-height: 14px;
+    gap: 4px;
+  }
+
+  .home-dashboard-default .home-next-meta svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .home-dashboard-default .home-start-button {
+    left: 14px;
+    right: 14px;
+    bottom: 7px;
+    min-height: 37px;
+    border-radius: 11px;
+    font-size: 0.84rem;
+  }
+
+  .home-dashboard-default .home-start-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .home-dashboard-default .home-panel,
+  .home-dashboard-default .home-alert-card,
+  .home-dashboard-default .home-progress-panel,
+  .home-dashboard-default > .home-material-panel {
+    border-radius: 14px;
+  }
+
+  .home-dashboard-default .home-panel {
+    padding-inline: 10px;
+  }
+
+  .home-dashboard-default .home-section-heading h2 {
+    font-size: 0.75rem;
+  }
+
+  .home-dashboard-default .home-section-heading button {
+    font-size: 0.59rem;
+  }
+
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    min-height: var(--home-fit-row-height);
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    min-height: clamp(32px, 4.5dvh, 40px);
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .home-dashboard-default .home-schedule-content {
+    gap: 0;
+  }
+
+  .home-dashboard-default .home-schedule-content time {
+    font-size: 0.6rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-schedule-content strong,
+  .home-dashboard-default .home-schedule-add-row strong {
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-content small {
+    font-size: 0.56rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-alert-grid {
+    gap: var(--home-fit-gap);
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding: 7px 8px;
+  }
+
+  .home-dashboard-default .home-alert-heading {
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 0.59rem;
+  }
+
+  .home-dashboard-default .home-alert-body {
+    grid-template-columns: 20px minmax(0, 1fr) 12px;
+    gap: 4px;
+  }
+
+  .home-dashboard-default .home-alert-body > svg:first-child {
+    width: 20px;
+    height: 20px;
+  }
+
+  .home-dashboard-default .home-alert-body > svg:last-child {
+    width: 13px;
+    height: 13px;
+  }
+
+  .home-dashboard-default .home-alert-body small {
+    font-size: 0.53rem;
+  }
+
+  .home-dashboard-default .home-alert-body strong {
+    font-size: 0.61rem;
+  }
+
+  .home-dashboard-default .home-progress-panel {
+    min-height: 104px;
+  }
+
+  .home-dashboard-default .weekly-progress-ring {
+    width: 58px;
+    height: 58px;
+  }
+
+  .home-dashboard-default .weekly-progress-summary {
+    font-size: 0.58rem;
+  }
+
+  .home-dashboard-default .weekly-progress-legend {
+    font-size: 0.52rem;
+  }
+
+  .home-dashboard-default > .home-material-panel {
+    padding: 10px 12px 9px;
+  }
+
+  .home-dashboard-default .home-material-row {
+    min-height: 63px;
+    grid-template-columns: 32px minmax(0, 1fr) 16px;
+    gap: 8px;
+    padding: 8px 9px;
+  }
+
+  .home-dashboard-default .home-material-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .home-dashboard-default .home-material-title-line strong {
+    font-size: 0.72rem;
+  }
+
+  .home-dashboard-default .home-material-title-line b {
+    font-size: 0.63rem;
+  }
+
+  .home-dashboard-default .home-material-copy small {
+    font-size: 0.58rem;
+  }
+}
