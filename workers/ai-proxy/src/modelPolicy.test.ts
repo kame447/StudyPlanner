@@ -11,6 +11,7 @@ describe('ai-proxy chat model policy', () => {
       'weekly_planning_interpreter',
       'weekly_planning_semantic_normalizer',
       'weekly_planning_renderer',
+      'weekly_planning_attachment',
     ]) {
       expect(resolveChatModel({ purpose })).toEqual({ model: 'gpt-5.6-luna' });
     }
