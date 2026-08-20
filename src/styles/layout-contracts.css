@@ -35,19 +35,3 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
-
-/*
- * Home adapter: home-fit.css owns vertical density through
- * --home-fit-row-height. Do not let a wide viewport silently replace that
- * block-axis decision with a vw-derived min-height.
- */
-@media (min-width: 700px) {
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
-    min-height: var(--home-fit-row-height);
-  }
-
-  .home-dashboard-default .home-schedule-add-row {
-    min-height: clamp(32px, calc(var(--home-fit-row-height) - 10px), 48px);
-  }
-}
