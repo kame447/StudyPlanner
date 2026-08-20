@@ -1,9 +1,9 @@
 // Cloudflare AI Proxy の chat model 選択 policy(純ロジック・Worker ランタイム非依存)。
-// index.ts から import して使う。`cloudflare:workers` に依存しないため単体テスト可能。
+// worker.ts / index.ts から import して使う。`cloudflare:workers` に依存しないため単体テスト可能。
 //
 // 用途(purpose / operation)→ model の single source of truth。
 // frontend は purpose だけを送り、具体 model 名を自由指定しない。resolveChatModel が解決した
-// model は、呼び出し側(index.ts)で必ず allowlist(ALLOWED_CHAT_MODELS)に含まれることを
+// model は、呼び出し側で必ず allowlist(ALLOWED_CHAT_MODELS)に含まれることを
 // 検証してから OpenAI へ送る(purpose 由来でも allowlist をバイパスしない)。
 
 const INTERNAL_OPENAI_MODEL = 'gpt-5.6-luna';
