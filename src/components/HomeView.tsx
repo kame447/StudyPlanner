@@ -456,7 +456,10 @@ export function HomeView({
           }
         }
 
-        if (applyLayoutRelaxation(nextRelaxation)) measure();
+        // One external trigger gets one expansion pass. A reset may schedule one
+        // compact re-measure above, but expansion itself must not recursively
+        // measure its own size changes; that was the remaining feedback path.
+        applyLayoutRelaxation(nextRelaxation);
       });
     };
 
