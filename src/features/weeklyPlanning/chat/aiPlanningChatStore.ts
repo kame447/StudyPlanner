@@ -240,14 +240,20 @@ export function deriveAiPlanningChatSearchText(
 }
 
 export function searchAiPlanningChats(
+  userId: string,
   chats: readonly AiPlanningChatRecord[],
   query: string,
 ): AiPlanningChatRecord[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('ja-JP');
   if (!normalizedQuery) return [...chats];
-  return chats.filter((chat) =>
-    `${chat.title}\n${chat.searchText ?? ''}`
-      .toLocaleLowerCase('ja-JP')
-      .includes(normalizedQuery),
-  );
+  return chats.filter((chat) => {
+    const indexedText = `${chat.title}\n${chat.searchText ?? ''}`
+      .toLocaleLowerCase('ja-JP');
+    if (indexedText.includes(normalizedQuery)) return true;
+    if (chat.searchText) return false;
+    const snapshot = loadAiPlanningChatSnapshot(userId, chat);
+    return snapshot?.planningState.messages.some((message) =>
+      message.content.toLocaleLowerCase('ja-JP').includes(normalizedQuery),
+    ) ?? false;
+  });
 }
