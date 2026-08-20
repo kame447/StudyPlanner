@@ -1,0 +1,320 @@
+/*
+ * Home sizing should follow both viewport axes. Phone layouts keep the
+ * compact game-like proportions, while tablet/desktop layouts use the
+ * available width instead of preserving a phone-width column in the center.
+ */
+
+/* On genuinely short screens the supplemental material card is the first
+ * section to yield. This is intentionally deterministic so mobile emulation
+ * and dynamic-viewport implementations cannot disagree about whether it fits.
+ */
+@media (max-height: 700px) {
+  .home-dashboard-default > .home-material-panel,
+  .home-dashboard-default .home-material-measurements {
+    display: none !important;
+  }
+}
+
+/* Tablet and wider --------------------------------------------------- */
+@media (min-width: 700px) {
+  .app-shell.home-app-shell {
+    width: min(96vw, 1040px);
+    max-width: 1040px;
+    padding-inline: clamp(16px, 2.4vw, 30px);
+  }
+
+  .home-dashboard {
+    --home-radius: 18px;
+    --home-radius-small: 14px;
+    --home-shadow-card: 0 9px 24px rgba(32, 55, 91, 0.055);
+  }
+
+  .home-topbar {
+    grid-template-columns:
+      minmax(150px, 0.78fr)
+      minmax(330px, 1.8fr)
+      minmax(154px, 0.8fr);
+    gap: clamp(9px, 1.25vw, 14px);
+    min-height: 70px;
+  }
+
+  .home-streak-card {
+    min-height: 62px;
+    gap: 9px;
+    padding: 8px 12px;
+    border-radius: 14px;
+  }
+
+  .home-streak-flame {
+    width: 31px;
+    height: 31px;
+  }
+
+  .home-streak-card span,
+  .home-streak-card small {
+    font-size: 0.66rem;
+  }
+
+  .home-streak-card strong {
+    font-size: 1.28rem;
+  }
+
+  .home-date-display {
+    min-height: 68px;
+    padding-top: 8px;
+  }
+
+  .home-date-paper {
+    height: 60px;
+    border-radius: 12px;
+  }
+
+  .home-date-value {
+    font-size: clamp(1rem, 1.65vw, 1.18rem);
+  }
+
+  .home-date-unit {
+    font-size: clamp(0.67rem, 1vw, 0.75rem);
+  }
+
+  .home-top-actions {
+    gap: 7px;
+  }
+
+  .home-icon-button,
+  .home-avatar-button,
+  .home-dashboard-default .home-icon-button,
+  .home-dashboard-default .home-avatar-button {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+  }
+
+  .home-avatar-button .user-avatar,
+  .home-avatar-button img,
+  .home-dashboard-default .home-avatar-button .user-avatar,
+  .home-dashboard-default .home-avatar-button img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .home-next-card {
+    padding-inline: clamp(20px, 2.3vw, 28px);
+    border-radius: 18px;
+  }
+
+  .home-next-copy,
+  .home-dashboard-default .home-next-copy {
+    width: 52%;
+    min-width: 310px;
+  }
+
+  .home-eyebrow {
+    font-size: 0.8rem;
+  }
+
+  .home-next-copy h1,
+  .home-dashboard-default .home-next-copy h1 {
+    font-size: clamp(1.35rem, 2.15vw, 1.72rem);
+  }
+
+  .home-next-meta,
+  .home-dashboard-default .home-next-meta {
+    gap: 5px;
+    font-size: clamp(0.78rem, 1.2vw, 0.9rem);
+    line-height: 1.15;
+  }
+
+  .home-next-meta span,
+  .home-dashboard-default .home-next-meta span {
+    min-height: 20px;
+    gap: 7px;
+  }
+
+  .home-next-meta svg,
+  .home-dashboard-default .home-next-meta svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .home-empty-copy {
+    max-width: 390px;
+    font-size: 0.86rem;
+    line-height: 1.55;
+  }
+
+  .home-study-scene {
+    width: 50%;
+  }
+
+  .home-start-button,
+  .home-dashboard-default .home-start-button {
+    left: clamp(20px, 2.3vw, 28px);
+    right: clamp(20px, 2.3vw, 28px);
+    min-height: 50px;
+    border-radius: 13px;
+    font-size: 0.98rem;
+  }
+
+  .home-start-icon,
+  .home-dashboard-default .home-start-icon {
+    width: 27px;
+    height: 27px;
+  }
+
+  .home-panel {
+    border-radius: 18px;
+  }
+
+  .home-dashboard-default .home-panel {
+    padding-inline: clamp(12px, 1.7vw, 18px);
+  }
+
+  .home-section-heading h2,
+  .home-dashboard-default .home-section-heading h2 {
+    font-size: 0.88rem;
+  }
+
+  .home-section-heading button,
+  .home-dashboard-default .home-section-heading button {
+    font-size: 0.7rem;
+  }
+
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    min-height: clamp(50px, 5.6vw, 60px);
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    min-height: clamp(40px, 4.6vw, 48px);
+  }
+
+  .home-dashboard-default .home-schedule-content {
+    gap: 2px;
+  }
+
+  .home-dashboard-default .home-schedule-content time {
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-content strong,
+  .home-dashboard-default .home-schedule-add-row strong {
+    font-size: 0.82rem;
+    line-height: 1.15;
+  }
+
+  .home-dashboard-default .home-schedule-content small {
+    font-size: 0.64rem;
+    line-height: 1.1;
+  }
+
+  .home-alert-grid {
+    gap: clamp(8px, 1.25vw, 14px);
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding-inline: clamp(10px, 1.5vw, 15px);
+    border-radius: 18px;
+  }
+
+  .home-dashboard-default .home-alert-heading {
+    font-size: 0.7rem;
+  }
+
+  .home-dashboard-default .home-alert-body small {
+    font-size: 0.62rem;
+  }
+
+  .home-dashboard-default .home-alert-body strong {
+    font-size: 0.72rem;
+  }
+
+  .home-progress-panel,
+  .home-material-panel {
+    border-radius: 18px;
+  }
+
+  .home-material-panel {
+    padding-inline: clamp(12px, 1.7vw, 18px);
+  }
+
+  .home-material-row {
+    min-height: 72px;
+    grid-template-columns: 38px minmax(0, 1fr) 18px;
+    gap: 11px;
+    padding-inline: 12px;
+  }
+
+  .home-material-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .home-material-title-line strong {
+    font-size: 0.82rem;
+  }
+
+  .home-material-title-line b,
+  .home-material-copy small {
+    font-size: 0.68rem;
+  }
+
+  .weekly-progress-layout {
+    grid-template-columns:
+      clamp(64px, 10vw, 80px)
+      clamp(104px, 17vw, 150px)
+      minmax(0, 1fr);
+    gap: clamp(9px, 1.7vw, 16px);
+  }
+
+  .weekly-progress-ring {
+    width: clamp(62px, 8vw, 74px);
+    height: clamp(62px, 8vw, 74px);
+  }
+
+  .weekly-progress-summary {
+    font-size: clamp(0.58rem, 0.95vw, 0.7rem);
+  }
+
+  .weekly-progress-legend {
+    font-size: clamp(0.52rem, 0.8vw, 0.62rem);
+  }
+
+  .home-bottom-nav,
+  .home-dashboard-default .home-bottom-nav {
+    width: min(96vw, 1040px);
+  }
+}
+
+/* Large tablets / desktop keep the dashboard cohesive instead of becoming a
+ * sparse full-width web page, but still use most of an iPad-class viewport.
+ */
+@media (min-width: 900px) {
+  .app-shell.home-app-shell {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+
+  .home-bottom-nav,
+  .home-dashboard-default .home-bottom-nav {
+    width: min(94vw, 1080px);
+  }
+
+  .home-topbar {
+    grid-template-columns:
+      minmax(170px, 0.78fr)
+      minmax(390px, 1.9fr)
+      minmax(172px, 0.78fr);
+  }
+
+  .home-next-copy,
+  .home-dashboard-default .home-next-copy {
+    min-width: 360px;
+  }
+
+  .home-study-scene {
+    width: 48%;
+  }
+}
