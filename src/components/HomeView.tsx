@@ -43,13 +43,25 @@ interface HomeViewProps {
 const CORE_HOME_SECTION_ORDER = DEFAULT_HOME_SECTION_ORDER.filter(
   (sectionId) => sectionId !== 'material-progress',
 );
+const MATERIAL_SECTION_BASE_HEIGHT = 60;
+const MATERIAL_ROW_HEIGHT = 63;
+const MAX_SUPPLEMENTAL_MATERIAL_ROWS = 3;
 
-function estimateMaterialSectionHeight(studyMaterials: StudyMaterial[]): number {
-  const visibleRows = Math.max(
+function resolveSupplementalMaterialRows(
+  studyMaterials: StudyMaterial[],
+  availableHeight: number,
+): number {
+  const activeMaterialCount = studyMaterials.filter(
+    (material) => material.status !== 'archived',
+  ).length;
+  const desiredRows = Math.max(
     1,
-    Math.min(3, studyMaterials.filter((material) => material.status !== 'archived').length),
+    Math.min(MAX_SUPPLEMENTAL_MATERIAL_ROWS, activeMaterialCount),
   );
-  return 60 + visibleRows * 63;
+  const rowsThatFit = Math.floor(
+    (availableHeight - MATERIAL_SECTION_BASE_HEIGHT) / MATERIAL_ROW_HEIGHT,
+  );
+  return Math.max(0, Math.min(desiredRows, rowsThatFit));
 }
 
 export function HomeView({
@@ -78,11 +90,18 @@ export function HomeView({
     studyMaterials.length === 0;
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
   const bottomNavRef = useRef<HTMLElement | null>(null);
-  const [showSupplementalMaterial, setShowSupplementalMaterial] = useState(false);
+  const [supplementalMaterialRows, setSupplementalMaterialRows] = useState(0);
+  const supplementalStudyMaterials = useMemo(() => {
+    if (supplementalMaterialRows <= 0) return [];
+    return studyMaterials
+      .filter((material) => material.status !== 'archived')
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, supplementalMaterialRows);
+  }, [studyMaterials, supplementalMaterialRows]);
 
   useEffect(() => {
     if (isGettingStarted) {
-      setShowSupplementalMaterial(false);
+      setSupplementalMaterialRows(0);
       return undefined;
     }
 
@@ -97,8 +116,9 @@ export function HomeView({
         const coreBottom = core.getBoundingClientRect().bottom;
         const navTop = nav.getBoundingClientRect().top;
         const availableHeight = navTop - coreBottom - 8;
-        const requiredHeight = estimateMaterialSectionHeight(studyMaterials);
-        setShowSupplementalMaterial(availableHeight >= requiredHeight);
+        setSupplementalMaterialRows(
+          resolveSupplementalMaterialRows(studyMaterials, availableHeight),
+        );
       });
     };
 
@@ -230,7 +250,12 @@ export function HomeView({
           <div className="home-core-sections" ref={coreSectionsRef}>
             {CORE_HOME_SECTION_ORDER.map(renderSection)}
           </div>
-          {showSupplementalMaterial ? renderSection('material-progress') : null}
+          {supplementalMaterialRows > 0 ? (
+            <MaterialProgressSection
+              studyMaterials={supplementalStudyMaterials}
+              onOpenBookshelf={onOpenBookshelf}
+            />
+          ) : null}
         </>
       )}
 
