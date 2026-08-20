@@ -65,23 +65,23 @@ function resolveOtherCategory(plan: Plan): string {
   return plan.subject?.trim() || 'その他';
 }
 
+function isClassPlan(plan: Plan): boolean {
+  if (plan.sourceType === 'timetable' || plan.type === 'cram-school') return true;
+
+  if (plan.type === 'mock-exam' || plan.type === 'school-event' || plan.type === 'deadline') {
+    return false;
+  }
+
+  return CLASS_HINT_PATTERN.test(`${plan.title} ${plan.subject}`);
+}
+
 export function resolveHomeNextPlanVisual(
   plan: Plan | null | undefined,
 ): HomeNextPlanVisual {
   if (!plan) return HOME_NEXT_PLAN_VISUALS.study;
-
-  if (
-    plan.sourceType === 'timetable' ||
-    plan.type === 'cram-school' ||
-    CLASS_HINT_PATTERN.test(`${plan.title} ${plan.subject}`)
-  ) {
-    return HOME_NEXT_PLAN_VISUALS.class;
-  }
-
-  if (plan.type === 'study' || plan.type === 'mock-exam') {
-    return HOME_NEXT_PLAN_VISUALS.study;
-  }
-
+  if (plan.type === 'mock-exam') return HOME_NEXT_PLAN_VISUALS.study;
+  if (isClassPlan(plan)) return HOME_NEXT_PLAN_VISUALS.class;
+  if (plan.type === 'study') return HOME_NEXT_PLAN_VISUALS.study;
   return HOME_NEXT_PLAN_VISUALS.other;
 }
 
