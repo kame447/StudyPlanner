@@ -1,4 +1,4 @@
-import { addDays, getWeekDates, getWeekdayLabel, minutesBetween, sortByDateTime, todayIsoDate } from './date';
+import { addDays, getWeekDates, getWeekdayLabel, minutesBetween, sortByDateTime, toIsoDate } from './date';
 import { buildPlanOccurrenceKey, expandPlansForDate, getActualOccurrenceKey } from './planRecurrence';
 import type { Actual, Plan, TodoTask } from '../types/domain';
 
@@ -88,14 +88,13 @@ export function buildHomeDashboardModel({
   todos: TodoTask[];
   now?: Date;
 }): HomeDashboardModel {
-  const today = todayIsoDate();
+  const today = toIsoDate(now);
   const nowTime = timeNowLabel(now);
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
-  const nextPlan =
-    todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
+  const nextPlan = todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
   const missingActualPlans = todayPlans.filter((plan) => {
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, plan.date);
     return plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
