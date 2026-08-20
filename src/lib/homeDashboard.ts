@@ -21,6 +21,9 @@ export interface HomeDashboardModel {
   weekDays: HomeDayProgress[];
   weekPlannedMinutes: number;
   weekActualMinutes: number;
+  weekExpectedMinutesByNow: number;
+  weekActualMinutesByNow: number;
+  weekDeltaMinutesByNow: number;
   weekProgressPercent: number;
   currentStreak: number;
   bestStreak: number;
@@ -32,6 +35,24 @@ function timeNowLabel(now: Date): string {
 
 function studyMinutes(actual: Actual): number {
   return Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime));
+}
+
+function elapsedMinutesByTime(startTime: string, endTime: string, nowTime: string): number {
+  if (nowTime <= startTime) return 0;
+  if (nowTime >= endTime) return Math.max(0, minutesBetween(startTime, endTime));
+  return Math.max(0, minutesBetween(startTime, nowTime));
+}
+
+function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: string): number {
+  if (date < today) return Math.max(0, minutesBetween(plan.startTime, plan.endTime));
+  if (date > today) return 0;
+  return elapsedMinutesByTime(plan.startTime, plan.endTime, nowTime);
+}
+
+function actualMinutesByNow(actual: Actual, today: string, nowTime: string): number {
+  if (actual.occurrenceDate < today) return studyMinutes(actual);
+  if (actual.occurrenceDate > today) return 0;
+  return elapsedMinutesByTime(actual.actualStartTime, actual.actualEndTime, nowTime);
 }
 
 function buildStudyDateSet(actuals: Actual[]): Set<string> {
@@ -120,9 +141,21 @@ export function buildHomeDashboardModel({
   );
   const primaryDueTodo = nearDueTodos[0] ?? null;
 
+  let weekExpectedMinutesByNow = 0;
+  let weekActualMinutesByNow = 0;
   const weekDays = getWeekDates(today).map((date) => {
     const dayPlans = expandPlansForDate(plans, date);
     const dayActuals = actuals.filter((actual) => actual.occurrenceDate === date);
+
+    weekExpectedMinutesByNow += dayPlans.reduce(
+      (sum, plan) => sum + plannedMinutesByNow(plan, date, today, nowTime),
+      0,
+    );
+    weekActualMinutesByNow += dayActuals.reduce(
+      (sum, actual) => sum + actualMinutesByNow(actual, today, nowTime),
+      0,
+    );
+
     return {
       date,
       label: getWeekdayLabel(date),
@@ -135,6 +168,7 @@ export function buildHomeDashboardModel({
   });
   const weekPlannedMinutes = weekDays.reduce((sum, day) => sum + day.plannedMinutes, 0);
   const weekActualMinutes = weekDays.reduce((sum, day) => sum + day.actualMinutes, 0);
+  const weekDeltaMinutesByNow = weekActualMinutesByNow - weekExpectedMinutesByNow;
   const weekProgressPercent =
     weekPlannedMinutes > 0
       ? Math.round((weekActualMinutes / weekPlannedMinutes) * 100)
@@ -155,6 +189,9 @@ export function buildHomeDashboardModel({
     weekDays,
     weekPlannedMinutes,
     weekActualMinutes,
+    weekExpectedMinutesByNow,
+    weekActualMinutesByNow,
+    weekDeltaMinutesByNow,
     weekProgressPercent,
     currentStreak: streaks.current,
     bestStreak: streaks.best,
