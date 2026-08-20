@@ -19,9 +19,9 @@ import {
   MaterialProgressSection,
   NextPlanSection,
   TodayScheduleSection,
-  WeeklyProgressSection,
   type HomeSectionId,
 } from './home/HomeSections';
+import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 import { UserAvatar } from './UserAvatar';
 
 interface HomeViewProps {
