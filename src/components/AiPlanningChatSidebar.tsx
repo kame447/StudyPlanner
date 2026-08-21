@@ -1,5 +1,7 @@
-import { MessageCircle, Plus, Search, Trash2, X } from 'lucide-react';
+import { MessageCircle, Plus, RotateCcw, Search, Trash2, TriangleAlert, X } from 'lucide-react';
+import { useState } from 'react';
 import type { AiPlanningChatRecord } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+import './AiPlanningChatSidebar.css';
 
 interface AiPlanningChatSidebarProps {
   open: boolean;
@@ -37,10 +39,23 @@ export function AiPlanningChatSidebar({
   onDelete,
   onClose,
 }: AiPlanningChatSidebarProps) {
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+
   if (!open) return null;
 
+  function closeDrawer() {
+    setIsResetConfirmOpen(false);
+    onClose();
+  }
+
+  function resetWeeklyPlan() {
+    if (disabled) return;
+    setIsResetConfirmOpen(false);
+    onCreate();
+  }
+
   return (
-    <div className="ai-chat-drawer-layer" role="presentation" onClick={onClose}>
+    <div className="ai-chat-drawer-layer" role="presentation" onClick={closeDrawer}>
       <aside
         className="ai-chat-drawer"
         aria-label="AI計画のチャット"
@@ -51,7 +66,7 @@ export function AiPlanningChatSidebar({
             <MessageCircle aria-hidden="true" size={21} />
             <strong>AI計画</strong>
           </div>
-          <button type="button" onClick={onClose} aria-label="チャット一覧を閉じる">
+          <button type="button" onClick={closeDrawer} aria-label="チャット一覧を閉じる">
             <X aria-hidden="true" size={20} />
           </button>
         </header>
@@ -112,7 +127,71 @@ export function AiPlanningChatSidebar({
             <p className="ai-chat-empty">一致するチャットはありません。</p>
           )}
         </div>
+
+        <div className="ai-chat-week-reset-zone">
+          <button
+            className="ai-chat-week-reset-button"
+            type="button"
+            disabled={disabled}
+            onClick={() => setIsResetConfirmOpen(true)}
+          >
+            <RotateCcw aria-hidden="true" size={18} />
+            <span>
+              <strong>週間計画をリセット</strong>
+              <small>過去のチャット履歴は残ります</small>
+            </span>
+          </button>
+        </div>
       </aside>
+
+      {isResetConfirmOpen ? (
+        <div
+          className="ai-week-reset-confirm-layer"
+          role="presentation"
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsResetConfirmOpen(false);
+          }}
+        >
+          <section
+            className="ai-week-reset-confirm-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-week-reset-title"
+            aria-describedby="ai-week-reset-description"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="ai-week-reset-confirm-handle" aria-hidden="true" />
+            <div className="ai-week-reset-confirm-icon" aria-hidden="true">
+              <TriangleAlert size={22} />
+            </div>
+            <div className="ai-week-reset-confirm-copy">
+              <h2 id="ai-week-reset-title">今週の計画をリセットしますか？</h2>
+              <p id="ai-week-reset-description">
+                現在の計画案と入力途中の週間計画を破棄して、新しいチャットからやり直します。過去のチャット履歴、保存済みの予定、学習記録は削除されません。
+              </p>
+            </div>
+            <div className="ai-week-reset-confirm-actions">
+              <button
+                className="ai-week-reset-cancel"
+                type="button"
+                onClick={() => setIsResetConfirmOpen(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="ai-week-reset-confirm"
+                type="button"
+                disabled={disabled}
+                onClick={resetWeeklyPlan}
+              >
+                <RotateCcw aria-hidden="true" size={17} />
+                リセット
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
