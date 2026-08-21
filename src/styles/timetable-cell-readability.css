@@ -1,0 +1,89 @@
+/*
+ * Timetable lesson-cell readability layer.
+ * Keep lesson cells visually single-surface, use the full perimeter as the
+ * accent, and reserve the secondary line for classroom information.
+ */
+
+.timetable-view {
+  --timetable-cell-height: clamp(108px, 13.8vh, 142px);
+}
+
+.timetable-view .timetable-grid-cell.has-class {
+  border: 2px solid color-mix(in srgb, var(--accent) 76%, var(--border) 24%);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+  box-shadow: none;
+}
+
+.timetable-view .timetable-grid-cell.has-class:hover,
+.timetable-view .timetable-grid-cell.has-class:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  box-shadow: none;
+}
+
+.timetable-view .timetable-class-card {
+  gap: 6px;
+  background: transparent;
+}
+
+.timetable-view .timetable-class-card strong {
+  -webkit-line-clamp: 4;
+}
+
+.timetable-view .timetable-class-meta {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 2px;
+  border-radius: 0;
+  overflow: hidden;
+  background: transparent;
+  color: color-mix(in srgb, var(--accent) 74%, var(--text-primary) 26%);
+  font-size: clamp(0.48rem, 1.55vw, 0.62rem);
+  font-weight: 800;
+  line-height: 1.12;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-break: anywhere;
+}
+
+:root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class {
+  border-color: color-mix(in srgb, var(--accent) 90%, white 10%);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong) 90%);
+}
+
+:root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:hover,
+:root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 96%, white 4%);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
+}
+
+@media screen and (max-width: 900px) {
+  .timetable-view {
+    --timetable-cell-height: clamp(106px, 13.3vh, 136px);
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .timetable-view {
+    --timetable-cell-height: clamp(104px, 12.4vh, 124px);
+  }
+
+  .timetable-view .timetable-class-card {
+    gap: 5px;
+    padding: 8px 3px 6px;
+  }
+
+  .timetable-view .timetable-class-card strong {
+    -webkit-line-clamp: 4;
+  }
+
+  .timetable-view .timetable-class-meta {
+    padding-inline: 1px;
+    font-size: clamp(0.44rem, 1.5vw, 0.56rem);
+    line-height: 1.08;
+  }
+}
