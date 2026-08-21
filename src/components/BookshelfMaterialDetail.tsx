@@ -329,7 +329,7 @@ export function BookshelfMaterialDetail({
                           Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime)),
                         )}
                       </strong>
-                      <small>{getActualRangeLabel(actual, material) || actual.note || '学習記録'}</small>
+                      <small>{(getActualRangeLabel(actual, material) ?? actual.note) || '学習記録'}</small>
                     </div>
                   ))}
                 </div>
@@ -394,7 +394,7 @@ export function BookshelfMaterialDetail({
                   <div key={actual.id}>
                     <span>{formatDateLabel(actual.occurrenceDate)}</span>
                     <strong>{actual.actualStartTime}–{actual.actualEndTime}</strong>
-                    <small>{getActualRangeLabel(actual, material) || actual.note || '学習記録'}</small>
+                    <small>{(getActualRangeLabel(actual, material) ?? actual.note) || '学習記録'}</small>
                   </div>
                 ))}
               </div>
