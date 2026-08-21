@@ -1,0 +1,15 @@
+.schedule-workspace-shell {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0;
+}
+
+.schedule-workspace-shell .schedule-main {
+  height: auto;
+  min-height: 0;
+}
+
+@media (max-width: 640px) {
+  .schedule-workspace-shell .schedule-period-step {
+    display: inline-flex;
+  }
+}
