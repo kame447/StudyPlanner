@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
@@ -82,6 +82,8 @@ export default function App() {
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
+  const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
+  const primaryBottomNavRef = useRef<HTMLElement | null>(null);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
   const {
@@ -187,6 +189,15 @@ export default function App() {
         : viewMode === 'timetable'
           ? 'timetable-bottom-nav'
           : undefined;
+  const primaryHeaderClassName = isScheduleSurface
+    ? 'schedule-primary-header'
+    : isAiPlanningSurface
+      ? 'ai-planning-primary-header'
+      : isWorkspaceSurface && viewMode === 'timetable'
+        ? 'timetable-primary-header'
+        : isWorkspaceSurface
+          ? 'workspace-primary-header'
+          : 'home-primary-header';
 
   useEffect(() => {
     if (user?.id) {
@@ -271,44 +282,37 @@ export default function App() {
           : 'app-shell home-app-shell'
       }
     >
-      {isWorkspaceSurface ? (
-        <>
-          <PrimaryAppHeader
-            user={user}
-            plans={plans}
-            actuals={actuals}
-            todos={todos}
-            onOpenProfile={() => setIsMyPageOpen(true)}
-            onOpenSettings={() => setIsAppSettingsOpen(true)}
-            className={
-              isScheduleSurface
-                ? 'schedule-primary-header'
-                : viewMode === 'timetable'
-                  ? 'timetable-primary-header'
-                  : 'workspace-primary-header'
-            }
-          />
+      <PrimaryAppHeader
+        ref={primaryHeaderRef}
+        user={user}
+        plans={plans}
+        actuals={actuals}
+        todos={todos}
+        onOpenProfile={() => setIsMyPageOpen(true)}
+        onOpenSettings={() => setIsAppSettingsOpen(true)}
+        className={primaryHeaderClassName}
+      />
 
-          {isScheduleSurface ? (
-            <ScheduleToolbar
-              viewMode={viewMode}
-              selectedDate={selectedDate}
-              monthDate={monthDate}
-              onChangeView={(nextViewMode) => setViewMode(nextViewMode)}
-              onChangeMonth={changeMonth}
-              onChangeWeek={openWeek}
-              onChangeDay={openDay}
-            />
-          ) : viewMode === 'timetable' ? null : (
-            <AppViewSwitcher
-              viewMode={viewMode}
-              onChange={(nextViewMode) => {
-                setPrimarySurface('workspace');
-                setViewMode(nextViewMode);
-              }}
-            />
-          )}
-        </>
+      {isWorkspaceSurface ? (
+        isScheduleSurface ? (
+          <ScheduleToolbar
+            viewMode={viewMode}
+            selectedDate={selectedDate}
+            monthDate={monthDate}
+            onChangeView={(nextViewMode) => setViewMode(nextViewMode)}
+            onChangeMonth={changeMonth}
+            onChangeWeek={openWeek}
+            onChangeDay={openDay}
+          />
+        ) : viewMode === 'timetable' ? null : (
+          <AppViewSwitcher
+            viewMode={viewMode}
+            onChange={(nextViewMode) => {
+              setPrimarySurface('workspace');
+              setViewMode(nextViewMode);
+            }}
+          />
+        )
       ) : null}
 
       {notice ? (
@@ -352,11 +356,12 @@ export default function App() {
       >
         {isHomeSurface ? (
           <HomeView
-            user={user}
             plans={plans}
             actuals={actuals}
             todos={todos}
             studyMaterials={studyMaterials}
+            primaryHeaderRef={primaryHeaderRef}
+            primaryBottomNavRef={primaryBottomNavRef}
             onOpenAiPlanning={openAiPlanningSurface}
             onOpenSchedule={openScheduleSurface}
             onOpenDay={(date) => {
@@ -369,31 +374,18 @@ export default function App() {
             }}
             onOpenBookshelf={openBookshelfSurface}
             onOpenReport={openTimetableSurface}
-            onOpenProfile={() => setIsMyPageOpen(true)}
-            onOpenSettings={() => setIsAppSettingsOpen(true)}
           />
         ) : null}
 
         {isAiPlanningSurface ? (
-          <>
-            <PrimaryAppHeader
-              user={user}
+          <Suspense fallback={<SplashScreen />}>
+            <AiPlanningView
+              application={weeklyPlanning}
+              userId={user.id}
+              selectedDate={selectedDate}
               plans={plans}
-              actuals={actuals}
-              todos={todos}
-              onOpenProfile={() => setIsMyPageOpen(true)}
-              onOpenSettings={() => setIsAppSettingsOpen(true)}
-              className="ai-planning-primary-header"
             />
-            <Suspense fallback={<SplashScreen />}>
-              <AiPlanningView
-                application={weeklyPlanning}
-                userId={user.id}
-                selectedDate={selectedDate}
-                plans={plans}
-              />
-            </Suspense>
-          </>
+          </Suspense>
         ) : null}
 
         {isWorkspaceSurface && viewMode === 'month' ? (
@@ -537,13 +529,12 @@ export default function App() {
         </button>
       ) : null}
 
-      {!isHomeSurface ? (
-        <PrimaryBottomNav
-          active={activePrimaryNav}
-          className={primaryNavClassName}
-          {...primaryNavigation}
-        />
-      ) : null}
+      <PrimaryBottomNav
+        ref={primaryBottomNavRef}
+        active={activePrimaryNav}
+        className={primaryNavClassName}
+        {...primaryNavigation}
+      />
 
       <PlanEditorPanel
         draft={editorDraft}
