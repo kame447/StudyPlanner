@@ -1,6 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   BarChart3,
   BookOpen,
   CalendarDays,
@@ -233,18 +232,21 @@ export default function App() {
       {isWorkspaceSurface ? (
         <>
           {isScheduleSurface ? (
-            <header className="schedule-app-header print-hide">
-              <button
-                className="schedule-back-button"
-                onClick={() => setPrimarySurface('home')}
-                type="button"
-                aria-label="ホームへ戻る"
-              >
-                <ArrowLeft aria-hidden="true" size={27} strokeWidth={2.2} />
-              </button>
-              <h1>予定</h1>
-              <span className="schedule-header-spacer" aria-hidden="true" />
-            </header>
+            <>
+              <div className="home-dashboard home-dashboard-default schedule-primary-header print-hide">
+                <HomeTopbar
+                  user={user}
+                  plans={plans}
+                  actuals={actuals}
+                  todos={todos}
+                  onOpenProfile={() => setIsMyPageOpen(true)}
+                  onOpenSettings={() => setIsAppSettingsOpen(true)}
+                />
+              </div>
+              <header className="schedule-app-header print-hide">
+                <h1>予定</h1>
+              </header>
+            </>
           ) : (
             <header className="app-header hero-card print-hide">
               <StudyPlannerLogo />
@@ -289,8 +291,6 @@ export default function App() {
               selectedDate={selectedDate}
               monthDate={monthDate}
               onChangeView={(nextViewMode) => setViewMode(nextViewMode)}
-              onChangeMonth={changeMonth}
-              onChangeWeek={openWeek}
               onChangeDay={openDay}
             />
           ) : (
@@ -414,7 +414,6 @@ export default function App() {
                 onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks
                   ? weeklyPlanning.removeDraftBlock
                   : undefined}
-                onChangeWeek={openWeek}
                 onOpenDay={openDay}
               />
             ) : null}
