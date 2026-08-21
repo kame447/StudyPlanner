@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3,
   BookOpen,
   CalendarDays,
   ChevronDown,
   ChevronRight,
   Eye,
-  House,
   ListTree,
-  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -42,7 +39,6 @@ import {
   getSubjectStyle,
   SUBJECT_COLOR_OPTIONS,
 } from './BookshelfDialogFields';
-import { HomeTopbar } from './HomeTopbar';
 import type {
   Actual,
   Plan,
@@ -50,20 +46,16 @@ import type {
   StudyMaterialDraft,
   StudySubject,
   StudySubjectDraft,
-  TodoTask,
-  User,
 } from '../types/domain';
 
 export type BookshelfInitialAction = 'add-material' | null;
 
 interface BookshelfViewProps {
-  user: User;
   userId: string;
   subjects: StudySubject[];
   materials: StudyMaterial[];
   plans: Plan[];
   actuals: Actual[];
-  todos: TodoTask[];
   initialAction?: BookshelfInitialAction;
   onInitialActionHandled?: () => void;
   onSaveSubject: (
@@ -76,12 +68,6 @@ interface BookshelfViewProps {
     targetMaterialId?: string,
   ) => Promise<StudyMaterial>;
   onDeleteMaterial: (material: StudyMaterial) => Promise<void>;
-  onOpenAiPlanning: () => void;
-  onOpenSchedule: () => void;
-  onOpenHome: () => void;
-  onOpenReport: () => void;
-  onOpenProfile: () => void;
-  onOpenSettings: () => void;
   onAddMaterialToPlan: (material: StudyMaterial) => void;
 }
 
@@ -108,7 +94,11 @@ function MaterialCover({
 
   return (
     <div
-      className={compact ? 'bookshelf-list-cover bookshelf-cover-placeholder' : 'bookshelf-featured-cover bookshelf-cover-placeholder'}
+      className={
+        compact
+          ? 'bookshelf-list-cover bookshelf-cover-placeholder'
+          : 'bookshelf-featured-cover bookshelf-cover-placeholder'
+      }
       style={getSubjectStyle(color)}
       aria-hidden="true"
     >
@@ -143,25 +133,17 @@ function clonePreferences(
 }
 
 export function BookshelfView({
-  user,
   userId,
   subjects,
   materials,
   plans,
   actuals,
-  todos,
   initialAction = null,
   onInitialActionHandled,
   onSaveSubject,
   onDeleteSubject,
   onSaveMaterial,
   onDeleteMaterial,
-  onOpenAiPlanning,
-  onOpenSchedule,
-  onOpenHome,
-  onOpenReport,
-  onOpenProfile,
-  onOpenSettings,
   onAddMaterialToPlan,
 }: BookshelfViewProps) {
   const [editingSubject, setEditingSubject] = useState<StudySubject | null | undefined>(
@@ -411,7 +393,9 @@ export function BookshelfView({
   const bookshelfContent = selectedMaterial ? (
     <BookshelfMaterialDetail
       material={selectedMaterial}
-      subject={subjectsWithFallback.find((subject) => subject.id === selectedMaterial.subjectId) ?? null}
+      subject={
+        subjectsWithFallback.find((subject) => subject.id === selectedMaterial.subjectId) ?? null
+      }
       plans={plans}
       actuals={actuals}
       preferences={getPreferences(selectedMaterial.id)}
@@ -485,7 +469,9 @@ export function BookshelfView({
         <section className="bookshelf-dashboard-section">
           <div className="bookshelf-section-heading">
             <h2>よく使う教材</h2>
-            <button type="button" onClick={() => setFavoritesManagerOpen(true)}>編集</button>
+            <button type="button" onClick={() => setFavoritesManagerOpen(true)}>
+              編集
+            </button>
           </div>
           <div className="bookshelf-featured-grid">
             {frequentMaterials.map((material) => {
@@ -531,7 +517,14 @@ export function BookshelfView({
               const expanded = expandedSubjectId === subject.id;
 
               return (
-                <section className={expanded ? 'bookshelf-subject-row expanded' : 'bookshelf-subject-row'} key={subject.id}>
+                <section
+                  className={
+                    expanded
+                      ? 'bookshelf-subject-row expanded'
+                      : 'bookshelf-subject-row'
+                  }
+                  key={subject.id}
+                >
                   <button
                     className="bookshelf-subject-toggle"
                     onClick={() => setExpandedSubjectId(expanded ? null : subject.id)}
@@ -545,7 +538,11 @@ export function BookshelfView({
                       <strong>{subject.name}</strong>
                       <small>{subjectMaterials.length}冊の教材</small>
                     </span>
-                    {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+                    {expanded ? (
+                      <ChevronDown aria-hidden="true" />
+                    ) : (
+                      <ChevronRight aria-hidden="true" />
+                    )}
                   </button>
 
                   {expanded ? (
@@ -635,7 +632,12 @@ export function BookshelfView({
                     <strong>{material.name}</strong>
                     <small>{material.subjectName}</small>
                   </span>
-                  <time>{new Date(material.createdAt).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}</time>
+                  <time>
+                    {new Date(material.createdAt).toLocaleDateString('ja-JP', {
+                      month: 'numeric',
+                      day: 'numeric',
+                    })}
+                  </time>
                   <button
                     type="button"
                     aria-label={`${material.name}のメニュー`}
@@ -658,7 +660,9 @@ export function BookshelfView({
           <BookOpen aria-hidden="true" />
           <h2>教材を追加してください</h2>
           <p>階層構造を使わず、教材名だけ登録することもできます。</p>
-          <button type="button" onClick={() => setEditingMaterial(null)}>教材を追加</button>
+          <button type="button" onClick={() => setEditingMaterial(null)}>
+            教材を追加
+          </button>
         </section>
       ) : null}
 
@@ -675,50 +679,23 @@ export function BookshelfView({
 
   return (
     <section className="bookshelf-view">
-      <div className="home-dashboard home-dashboard-default bookshelf-primary-header print-hide">
-        <HomeTopbar
-          user={user}
-          plans={plans}
-          actuals={actuals}
-          todos={todos}
-          onOpenProfile={onOpenProfile}
-          onOpenSettings={onOpenSettings}
-        />
-      </div>
-
       {bookshelfContent}
-
-      <nav className="home-bottom-nav bookshelf-bottom-nav print-hide" aria-label="主要ナビゲーション">
-        <button type="button" onClick={onOpenAiPlanning}>
-          <MessageCircle aria-hidden="true" />
-          <span>AI計画</span>
-        </button>
-        <button type="button" onClick={onOpenSchedule}>
-          <CalendarDays aria-hidden="true" />
-          <span>予定</span>
-        </button>
-        <button type="button" onClick={onOpenHome}>
-          <House aria-hidden="true" />
-          <span>ホーム</span>
-        </button>
-        <button className="active" type="button" aria-current="page">
-          <BookOpen aria-hidden="true" />
-          <span>教材</span>
-        </button>
-        <button type="button" onClick={onOpenReport}>
-          <BarChart3 aria-hidden="true" />
-          <span>分析</span>
-        </button>
-      </nav>
 
       {menuMaterial ? (
         <div className="overlay bookshelf-sheet-overlay" onClick={() => setMenuMaterialId(null)}>
-          <div className="bookshelf-action-sheet" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="bookshelf-action-sheet"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="bookshelf-sheet-handle" />
             <div className="bookshelf-sheet-material">
               <MaterialCover
                 material={menuMaterial}
-                subject={subjectsWithFallback.find((subject) => subject.id === menuMaterial.subjectId) ?? null}
+                subject={
+                  subjectsWithFallback.find(
+                    (subject) => subject.id === menuMaterial.subjectId,
+                  ) ?? null
+                }
                 compact
               />
               <span>
@@ -761,7 +738,9 @@ export function BookshelfView({
               }}
             >
               <Star aria-hidden="true" />
-              {getPreferences(menuMaterial.id).favorite ? 'よく使う教材から外す' : 'よく使う教材に追加'}
+              {getPreferences(menuMaterial.id).favorite
+                ? 'よく使う教材から外す'
+                : 'よく使う教材に追加'}
               <ChevronRight aria-hidden="true" />
             </button>
             <button
@@ -775,11 +754,19 @@ export function BookshelfView({
               予定に追加
               <ChevronRight aria-hidden="true" />
             </button>
-            <button className="danger" type="button" onClick={() => void deleteFromMenu(menuMaterial)}>
+            <button
+              className="danger"
+              type="button"
+              onClick={() => void deleteFromMenu(menuMaterial)}
+            >
               <Trash2 aria-hidden="true" />
               教材を削除
             </button>
-            <button className="bookshelf-sheet-cancel" type="button" onClick={() => setMenuMaterialId(null)}>
+            <button
+              className="bookshelf-sheet-cancel"
+              type="button"
+              onClick={() => setMenuMaterialId(null)}
+            >
               キャンセル
             </button>
           </div>
@@ -788,10 +775,17 @@ export function BookshelfView({
 
       {displaySettingsMaterial ? (
         <div className="overlay modal-overlay" onClick={() => setDisplaySettingsMaterialId(null)}>
-          <div className="modal-card bookshelf-settings-modal" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="modal-card bookshelf-settings-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="bookshelf-modal-title-row">
               <h2>表示設定</h2>
-              <button type="button" onClick={() => setDisplaySettingsMaterialId(null)} aria-label="閉じる">
+              <button
+                type="button"
+                onClick={() => setDisplaySettingsMaterialId(null)}
+                aria-label="閉じる"
+              >
                 <X aria-hidden="true" />
               </button>
             </div>
@@ -822,7 +816,11 @@ export function BookshelfView({
             <p className="bookshelf-settings-note">
               教材内構造を登録していても非表示にできます。非表示中も登録した項目は保持されます。
             </p>
-            <button className="primary-button" type="button" onClick={() => setDisplaySettingsMaterialId(null)}>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => setDisplaySettingsMaterialId(null)}
+            >
               完了
             </button>
           </div>
@@ -830,8 +828,17 @@ export function BookshelfView({
       ) : null}
 
       {structureEditorMaterial && structureDraft ? (
-        <div className="overlay modal-overlay" onClick={() => { setStructureEditorMaterialId(null); setStructureDraft(null); }}>
-          <div className="modal-card bookshelf-structure-editor" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="overlay modal-overlay"
+          onClick={() => {
+            setStructureEditorMaterialId(null);
+            setStructureDraft(null);
+          }}
+        >
+          <div
+            className="modal-card bookshelf-structure-editor"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="bookshelf-modal-title-row">
               <div>
                 <h2>教材内構造</h2>
@@ -839,7 +846,10 @@ export function BookshelfView({
               </div>
               <button
                 type="button"
-                onClick={() => { setStructureEditorMaterialId(null); setStructureDraft(null); }}
+                onClick={() => {
+                  setStructureEditorMaterialId(null);
+                  setStructureDraft(null);
+                }}
                 aria-label="閉じる"
               >
                 <X aria-hidden="true" />
@@ -881,7 +891,9 @@ export function BookshelfView({
                       <span>項目 {index + 1}</span>
                       <input
                         value={item.title}
-                        onChange={(event) => updateStructureItem(item.id, { title: event.target.value })}
+                        onChange={(event) =>
+                          updateStructureItem(item.id, { title: event.target.value })
+                        }
                         placeholder="例: 第1章 アルゴリズムの基礎"
                       />
                     </label>
@@ -891,7 +903,11 @@ export function BookshelfView({
                         type="number"
                         min="0"
                         value={item.startUnit ?? ''}
-                        onChange={(event) => updateStructureItem(item.id, { startUnit: parseOptionalNumber(event.target.value) })}
+                        onChange={(event) =>
+                          updateStructureItem(item.id, {
+                            startUnit: parseOptionalNumber(event.target.value),
+                          })
+                        }
                         placeholder="任意"
                       />
                     </label>
@@ -901,7 +917,11 @@ export function BookshelfView({
                         type="number"
                         min="0"
                         value={item.endUnit ?? ''}
-                        onChange={(event) => updateStructureItem(item.id, { endUnit: parseOptionalNumber(event.target.value) })}
+                        onChange={(event) =>
+                          updateStructureItem(item.id, {
+                            endUnit: parseOptionalNumber(event.target.value),
+                          })
+                        }
                         placeholder="任意"
                       />
                     </label>
@@ -912,16 +932,28 @@ export function BookshelfView({
                         min="0"
                         max="100"
                         value={item.progressRate ?? ''}
-                        onChange={(event) => updateStructureItem(item.id, { progressRate: parseOptionalNumber(event.target.value) })}
+                        onChange={(event) =>
+                          updateStructureItem(item.id, {
+                            progressRate: parseOptionalNumber(event.target.value),
+                          })
+                        }
                         placeholder="自動/任意"
                       />
                     </label>
-                    <button type="button" onClick={() => removeStructureItem(item.id)} aria-label={`${item.title || `項目${index + 1}`}を削除`}>
+                    <button
+                      type="button"
+                      onClick={() => removeStructureItem(item.id)}
+                      aria-label={`${item.title || `項目${index + 1}`}を削除`}
+                    >
                       <Trash2 aria-hidden="true" />
                     </button>
                   </div>
                 ))}
-                <button className="bookshelf-add-structure-row" type="button" onClick={addStructureItem}>
+                <button
+                  className="bookshelf-add-structure-row"
+                  type="button"
+                  onClick={addStructureItem}
+                >
                   <Plus aria-hidden="true" />
                   項目を追加
                 </button>
@@ -936,11 +968,16 @@ export function BookshelfView({
             )}
 
             <div className="row-actions">
-              <button className="primary-button" type="button" onClick={saveStructureEditor}>保存</button>
+              <button className="primary-button" type="button" onClick={saveStructureEditor}>
+                保存
+              </button>
               <button
                 className="ghost-button"
                 type="button"
-                onClick={() => { setStructureEditorMaterialId(null); setStructureDraft(null); }}
+                onClick={() => {
+                  setStructureEditorMaterialId(null);
+                  setStructureDraft(null);
+                }}
               >
                 キャンセル
               </button>
@@ -951,10 +988,17 @@ export function BookshelfView({
 
       {subjectManagerOpen ? (
         <div className="overlay modal-overlay" onClick={() => setSubjectManagerOpen(false)}>
-          <div className="modal-card bookshelf-manager-modal" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="modal-card bookshelf-manager-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="bookshelf-modal-title-row">
               <h2>カテゴリ管理</h2>
-              <button type="button" onClick={() => setSubjectManagerOpen(false)} aria-label="閉じる">
+              <button
+                type="button"
+                onClick={() => setSubjectManagerOpen(false)}
+                aria-label="閉じる"
+              >
                 <X aria-hidden="true" />
               </button>
             </div>
@@ -992,13 +1036,20 @@ export function BookshelfView({
 
       {favoritesManagerOpen ? (
         <div className="overlay modal-overlay" onClick={() => setFavoritesManagerOpen(false)}>
-          <div className="modal-card bookshelf-manager-modal" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="modal-card bookshelf-manager-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="bookshelf-modal-title-row">
               <div>
                 <h2>よく使う教材</h2>
                 <p>星を付けた教材を優先して表示します。</p>
               </div>
-              <button type="button" onClick={() => setFavoritesManagerOpen(false)} aria-label="閉じる">
+              <button
+                type="button"
+                onClick={() => setFavoritesManagerOpen(false)}
+                aria-label="閉じる"
+              >
                 <X aria-hidden="true" />
               </button>
             </div>
@@ -1006,8 +1057,15 @@ export function BookshelfView({
               {activeMaterials.map((material) => {
                 const favorite = getPreferences(material.id).favorite;
                 return (
-                  <button key={material.id} type="button" onClick={() => toggleFavorite(material)}>
-                    <Star aria-hidden="true" fill={favorite ? 'currentColor' : 'none'} />
+                  <button
+                    key={material.id}
+                    type="button"
+                    onClick={() => toggleFavorite(material)}
+                  >
+                    <Star
+                      aria-hidden="true"
+                      fill={favorite ? 'currentColor' : 'none'}
+                    />
                     <span>
                       <strong>{material.name}</strong>
                       <small>{material.subjectName}</small>

@@ -1,17 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  BarChart3,
-  Bell,
-  BookOpen,
-  CalendarDays,
-  Flame,
-  House,
-  Menu,
-  MessageCircle,
-} from 'lucide-react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domain';
-import { HomeDateDisplay } from './HomeDateDisplay';
+import { HomeTopbar } from './HomeTopbar';
+import { PrimaryBottomNav } from './PrimaryBottomNav';
 import {
   AttentionSection,
   DEFAULT_HOME_SECTION_ORDER,
@@ -22,7 +13,6 @@ import {
   type HomeSectionId,
 } from './home/HomeSections';
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
-import { UserAvatar } from './UserAvatar';
 
 interface HomeViewProps {
   user: User;
@@ -553,35 +543,14 @@ export function HomeView({
 
   return (
     <section className={dashboardClassName} aria-label="ホーム">
-      <header className="home-topbar">
-        <div className="home-streak-card" aria-label={`連続学習 ${dashboard.currentStreak}日`}>
-          <Flame className="home-streak-flame" aria-hidden="true" size={30} />
-          <div>
-            <span>連続学習</span>
-            <strong>{dashboard.currentStreak}日</strong>
-            <small>最高 {dashboard.bestStreak}日</small>
-          </div>
-        </div>
-
-        <HomeDateDisplay date={dashboard.today} />
-
-        <div className="home-top-actions">
-          <button
-            className="home-icon-button"
-            type="button"
-            aria-label="通知"
-            title="通知機能は準備中です"
-          >
-            <Bell aria-hidden="true" size={22} />
-          </button>
-          <button className="home-avatar-button" type="button" onClick={onOpenProfile} aria-label="マイページを開く">
-            <UserAvatar user={user} small />
-          </button>
-          <button className="home-icon-button" type="button" onClick={onOpenSettings} aria-label="メニューを開く">
-            <Menu aria-hidden="true" size={24} />
-          </button>
-        </div>
-      </header>
+      <HomeTopbar
+        user={user}
+        plans={plans}
+        actuals={actuals}
+        todos={todos}
+        onOpenProfile={onOpenProfile}
+        onOpenSettings={onOpenSettings}
+      />
 
       {isGettingStarted ? (
         <GettingStartedSection
@@ -621,13 +590,15 @@ export function HomeView({
         </>
       )}
 
-      <nav ref={bottomNavRef} className="home-bottom-nav print-hide" aria-label="主要ナビゲーション">
-        <button type="button" onClick={onOpenAiPlanning}><MessageCircle aria-hidden="true" /><span>AI計画</span></button>
-        <button type="button" onClick={onOpenSchedule}><CalendarDays aria-hidden="true" /><span>予定</span></button>
-        <button className="active" type="button" aria-current="page"><span className="home-nav-active-circle"><House aria-hidden="true" /></span><span>ホーム</span></button>
-        <button type="button" onClick={onOpenBookshelf}><BookOpen aria-hidden="true" /><span>教材</span></button>
-        <button type="button" onClick={onOpenReport}><BarChart3 aria-hidden="true" /><span>分析</span></button>
-      </nav>
+      <PrimaryBottomNav
+        ref={bottomNavRef}
+        active="home"
+        onOpenAiPlanning={onOpenAiPlanning}
+        onOpenSchedule={onOpenSchedule}
+        onOpenHome={() => undefined}
+        onOpenBookshelf={onOpenBookshelf}
+        onOpenReport={onOpenReport}
+      />
     </section>
   );
 }

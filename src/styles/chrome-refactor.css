@@ -1,0 +1,72 @@
+.primary-app-header {
+  width: min(100%, 508px);
+  margin-inline: auto;
+}
+
+.primary-app-header .home-topbar {
+  width: 100%;
+}
+
+.workspace-primary-header,
+.ai-planning-primary-header {
+  justify-self: center;
+}
+
+.primary-bottom-nav button {
+  color: var(--home-gray, var(--text-muted));
+}
+
+.primary-bottom-nav button:first-child:not(.active) {
+  color: var(--home-gray, var(--text-muted));
+}
+
+.primary-bottom-nav button.active {
+  color: var(--accent);
+}
+
+.primary-bottom-nav .home-nav-active-circle {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 7px 18px var(--accent-shadow);
+}
+
+.app-view-switcher {
+  position: static;
+  inset: auto;
+  top: auto;
+  bottom: auto;
+  z-index: auto;
+  width: min(100%, 508px);
+  margin-inline: auto;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-view-switcher.panel {
+  padding: 7px 8px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.schedule-workspace-shell {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.bookshelf-view,
+.report-view,
+.timetable-view {
+  min-width: 0;
+}
+
+@media (max-width: 540px) {
+  .workspace-primary-header {
+    width: 100%;
+  }
+
+  .app-view-switcher {
+    width: 100%;
+  }
+}

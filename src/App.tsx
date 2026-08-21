@@ -1,14 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import {
-  BarChart3,
-  BookOpen,
-  CalendarDays,
-  House,
-  MessageCircle,
-  Settings,
-} from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
-import { HomeTopbar } from './components/HomeTopbar';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
@@ -18,10 +9,13 @@ import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { PrimaryAppHeader } from './components/PrimaryAppHeader';
+import {
+  PrimaryBottomNav,
+  type PrimaryNavItem,
+} from './components/PrimaryBottomNav';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ScheduleToolbar } from './components/ScheduleToolbar';
-import { StudyPlannerLogo } from './components/StudyPlannerLogo';
-import { UserAvatar } from './components/UserAvatar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
@@ -30,7 +24,6 @@ import {
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
-import { getUserDisplayName } from './lib/userProfile';
 import type { ViewMode } from './types/domain';
 
 const AiPlanningView = lazy(() =>
@@ -176,6 +169,22 @@ export default function App() {
   const isAiPlanningSurface = primarySurface === 'ai-planning';
   const isWorkspaceSurface = primarySurface === 'workspace';
   const isScheduleSurface = isWorkspaceSurface && SCHEDULE_VIEW_MODES.has(viewMode);
+  const activePrimaryNav: PrimaryNavItem = isHomeSurface
+    ? 'home'
+    : isAiPlanningSurface
+      ? 'ai-planning'
+      : viewMode === 'bookshelf'
+        ? 'bookshelf'
+        : viewMode === 'report'
+          ? 'report'
+          : 'schedule';
+  const primaryNavClassName = isScheduleSurface
+    ? 'schedule-bottom-nav'
+    : isAiPlanningSurface
+      ? 'ai-planning-home-nav'
+      : viewMode === 'bookshelf'
+        ? 'bookshelf-bottom-nav'
+        : undefined;
 
   useEffect(() => {
     if (user?.id) {
@@ -219,6 +228,37 @@ export default function App() {
     );
   }
 
+  function openAiPlanningSurface() {
+    setPrimarySurface('ai-planning');
+  }
+
+  function openScheduleSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('month');
+  }
+
+  function openHomeSurface() {
+    setPrimarySurface('home');
+  }
+
+  function openBookshelfSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('bookshelf');
+  }
+
+  function openReportSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('report');
+  }
+
+  const primaryNavigation = {
+    onOpenAiPlanning: openAiPlanningSurface,
+    onOpenSchedule: openScheduleSurface,
+    onOpenHome: openHomeSurface,
+    onOpenBookshelf: openBookshelfSurface,
+    onOpenReport: openReportSurface,
+  };
+
   return (
     <div
       className={
@@ -231,59 +271,19 @@ export default function App() {
     >
       {isWorkspaceSurface ? (
         <>
-          {isScheduleSurface ? (
-            <>
-              <div className="home-dashboard home-dashboard-default schedule-primary-header print-hide">
-                <HomeTopbar
-                  user={user}
-                  plans={plans}
-                  actuals={actuals}
-                  todos={todos}
-                  onOpenProfile={() => setIsMyPageOpen(true)}
-                  onOpenSettings={() => setIsAppSettingsOpen(true)}
-                />
-              </div>
-              <header className="schedule-app-header print-hide">
-                <h1>予定</h1>
-              </header>
-            </>
-          ) : (
-            <header className="app-header hero-card print-hide">
-              <StudyPlannerLogo />
-              <div className="header-actions">
-                <button
-                  className="ghost-button header-home-button"
-                  onClick={() => setPrimarySurface('home')}
-                  type="button"
-                  aria-label="ホームへ戻る"
-                  title="ホーム"
-                >
-                  <House aria-hidden="true" size={21} strokeWidth={1.9} />
-                </button>
-                <div className="user-badge header-profile-name">
-                  {getUserDisplayName(user)}
-                </div>
-                <button
-                  className="ghost-button my-page-trigger"
-                  onClick={() => setIsMyPageOpen(true)}
-                  type="button"
-                  aria-label="マイページを開く"
-                >
-                  <UserAvatar user={user} small />
-                  <span className="my-page-trigger-label">マイページ</span>
-                </button>
-                <button
-                  className="ghost-button header-settings-button"
-                  onClick={() => setIsAppSettingsOpen(true)}
-                  type="button"
-                  aria-label="アプリ設定を開く"
-                  title="アプリ設定"
-                >
-                  <Settings aria-hidden="true" size={22} strokeWidth={1.9} />
-                </button>
-              </div>
-            </header>
-          )}
+          <PrimaryAppHeader
+            user={user}
+            plans={plans}
+            actuals={actuals}
+            todos={todos}
+            onOpenProfile={() => setIsMyPageOpen(true)}
+            onOpenSettings={() => setIsAppSettingsOpen(true)}
+            className={
+              isScheduleSurface
+                ? 'schedule-primary-header'
+                : 'workspace-primary-header'
+            }
+          />
 
           {isScheduleSurface ? (
             <ScheduleToolbar
@@ -308,15 +308,31 @@ export default function App() {
       ) : null}
 
       {notice ? (
-        <div className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`} aria-live="polite">
+        <div
+          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
+          aria-live="polite"
+        >
           <div className={`app-notice app-toast ${notice.tone}`}>
             <span>{notice.text}</span>
             {notice.actionLabel && notice.onAction ? (
-              <button className="app-toast-action" onClick={() => { void notice.onAction?.(); }} type="button">
+              <button
+                className="app-toast-action"
+                onClick={() => {
+                  void notice.onAction?.();
+                }}
+                type="button"
+              >
                 {notice.actionLabel}
               </button>
             ) : null}
-            <button className="app-toast-close" onClick={dismissNotice} type="button" aria-label="通知を閉じる">×</button>
+            <button
+              className="app-toast-close"
+              onClick={dismissNotice}
+              type="button"
+              aria-label="通知を閉じる"
+            >
+              ×
+            </button>
           </div>
         </div>
       ) : null}
@@ -337,11 +353,8 @@ export default function App() {
             actuals={actuals}
             todos={todos}
             studyMaterials={studyMaterials}
-            onOpenAiPlanning={() => setPrimarySurface('ai-planning')}
-            onOpenSchedule={() => {
-              setPrimarySurface('workspace');
-              setViewMode('month');
-            }}
+            onOpenAiPlanning={openAiPlanningSurface}
+            onOpenSchedule={openScheduleSurface}
             onOpenDay={(date) => {
               setPrimarySurface('workspace');
               openDay(date);
@@ -350,14 +363,8 @@ export default function App() {
               setPrimarySurface('workspace');
               setViewMode('todo');
             }}
-            onOpenBookshelf={() => {
-              setPrimarySurface('workspace');
-              setViewMode('bookshelf');
-            }}
-            onOpenReport={() => {
-              setPrimarySurface('workspace');
-              setViewMode('report');
-            }}
+            onOpenBookshelf={openBookshelfSurface}
+            onOpenReport={openReportSurface}
             onOpenProfile={() => setIsMyPageOpen(true)}
             onOpenSettings={() => setIsAppSettingsOpen(true)}
           />
@@ -365,24 +372,21 @@ export default function App() {
 
         {isAiPlanningSurface ? (
           <>
-            <div className="home-dashboard home-dashboard-default ai-planning-primary-header">
-              <HomeTopbar
-                user={user}
-                plans={plans}
-                actuals={actuals}
-                todos={todos}
-                onOpenProfile={() => setIsMyPageOpen(true)}
-                onOpenSettings={() => setIsAppSettingsOpen(true)}
-              />
-            </div>
+            <PrimaryAppHeader
+              user={user}
+              plans={plans}
+              actuals={actuals}
+              todos={todos}
+              onOpenProfile={() => setIsMyPageOpen(true)}
+              onOpenSettings={() => setIsAppSettingsOpen(true)}
+              className="ai-planning-primary-header"
+            />
             <Suspense fallback={<SplashScreen />}>
               <AiPlanningView
                 application={weeklyPlanning}
                 userId={user.id}
                 selectedDate={selectedDate}
                 plans={plans}
-                actuals={actuals}
-                onClose={() => setPrimarySurface('home')}
               />
             </Suspense>
           </>
@@ -413,9 +417,11 @@ export default function App() {
                 plans={plans}
                 actuals={actuals}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
-                onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks
-                  ? weeklyPlanning.removeDraftBlock
-                  : undefined}
+                onRemoveWeeklyDraftBlock={
+                  weeklyPlanning.canEditDraftBlocks
+                    ? weeklyPlanning.removeDraftBlock
+                    : undefined
+                }
                 onOpenDay={openDay}
               />
             ) : null}
@@ -432,9 +438,11 @@ export default function App() {
                 scheduleTemplates={scheduleTemplates}
                 timetableTermId={activeTimetableTermId}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
-                onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks
-                  ? weeklyPlanning.removeDraftBlock
-                  : undefined}
+                onRemoveWeeklyDraftBlock={
+                  weeklyPlanning.canEditDraftBlocks
+                    ? weeklyPlanning.removeDraftBlock
+                    : undefined
+                }
                 onChangeDay={openDay}
                 onEditPlan={openEditPlan}
                 onDeletePlan={deletePlan}
@@ -490,31 +498,17 @@ export default function App() {
 
             {viewMode === 'bookshelf' ? (
               <BookshelfView
-                user={user}
                 userId={user.id}
                 subjects={studySubjects}
                 materials={studyMaterials}
                 plans={plans}
                 actuals={actuals}
-                todos={todos}
                 initialAction={bookshelfInitialAction}
                 onInitialActionHandled={() => setBookshelfInitialAction(null)}
                 onSaveSubject={saveStudySubject}
                 onDeleteSubject={deleteStudySubject}
                 onSaveMaterial={saveStudyMaterial}
                 onDeleteMaterial={deleteStudyMaterial}
-                onOpenAiPlanning={() => setPrimarySurface('ai-planning')}
-                onOpenSchedule={() => {
-                  setPrimarySurface('workspace');
-                  setViewMode('month');
-                }}
-                onOpenHome={() => setPrimarySurface('home')}
-                onOpenReport={() => {
-                  setPrimarySurface('workspace');
-                  setViewMode('report');
-                }}
-                onOpenProfile={() => setIsMyPageOpen(true)}
-                onOpenSettings={() => setIsAppSettingsOpen(true)}
                 onAddMaterialToPlan={() => setIsQuickEntryOpen(true)}
               />
             ) : null}
@@ -539,41 +533,12 @@ export default function App() {
         </button>
       ) : null}
 
-      {isScheduleSurface ? (
-        <nav className="home-bottom-nav schedule-bottom-nav print-hide" aria-label="主要ナビゲーション">
-          <button type="button" onClick={() => setPrimarySurface('ai-planning')}>
-            <MessageCircle aria-hidden="true" />
-            <span>AI計画</span>
-          </button>
-          <button className="active" type="button" aria-current="page">
-            <CalendarDays aria-hidden="true" />
-            <span>予定</span>
-          </button>
-          <button type="button" onClick={() => setPrimarySurface('home')}>
-            <House aria-hidden="true" />
-            <span>ホーム</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPrimarySurface('workspace');
-              setViewMode('bookshelf');
-            }}
-          >
-            <BookOpen aria-hidden="true" />
-            <span>教材</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPrimarySurface('workspace');
-              setViewMode('report');
-            }}
-          >
-            <BarChart3 aria-hidden="true" />
-            <span>分析</span>
-          </button>
-        </nav>
+      {!isHomeSurface ? (
+        <PrimaryBottomNav
+          active={activePrimaryNav}
+          className={primaryNavClassName}
+          {...primaryNavigation}
+        />
       ) : null}
 
       <PlanEditorPanel
@@ -593,7 +558,9 @@ export default function App() {
         <RecurringPlanScopeDialog
           action={pendingRecurringPlanAction.kind}
           plan={pendingRecurringPlanAction.plan}
-          onSelect={(scope) => { void confirmRecurringPlanScope(scope); }}
+          onSelect={(scope) => {
+            void confirmRecurringPlanScope(scope);
+          }}
           onClose={cancelRecurringPlanScope}
         />
       ) : null}
