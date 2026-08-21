@@ -13,6 +13,7 @@ import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningS
 import {
   SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
   semanticNormalizerErrorDetails,
+  semanticNormalizerErrorMessage,
   type WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
 import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
@@ -74,7 +75,7 @@ function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boo
   });
 }
 
-function acceptedPriorResult(params: {
+function rejectedPriorNoOpResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   document: WeeklyPlanningSemanticDocumentV5;
   attemptCount: number;
@@ -82,16 +83,47 @@ function acceptedPriorResult(params: {
   validationErrors: string[];
 }): WeeklyPlanningSemanticNormalizerResultV5 {
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-    status: 'accepted',
-    document: params.document,
+    status: 'rejected',
+    document: null,
+    diagnostics: params.run.diagnostics({
+      attemptCount: params.attemptCount,
+      repairAttempted: params.repairAttempted,
+      validationErrors: [
+        ...params.validationErrors,
+        'completeness_retry:semantic_noop_after_retries',
+      ],
+      providerError: null,
+    }),
+  };
+  params.run.recordDecision(result, {
+    route: 'schema_valid_noop_completeness_retry_rejected',
+    severity: 'error',
+    extra: { rejectedSchemaValidDocument: params.document },
+  });
+  return result;
+}
+
+function providerFailureDuringCompletenessRetry(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  attemptCount: number;
+  repairAttempted: boolean;
+  validationErrors: string[];
+  error: unknown;
+}): WeeklyPlanningSemanticNormalizerResultV5 {
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'provider_failure',
+    document: null,
     diagnostics: params.run.diagnostics({
       attemptCount: params.attemptCount,
       repairAttempted: params.repairAttempted,
       validationErrors: params.validationErrors,
-      providerError: null,
+      providerError: semanticNormalizerErrorMessage(params.error),
     }),
   };
-  params.run.recordDecision(result, { route: 'schema_valid_noop_completeness_retry_fallback_initial' });
+  params.run.recordDecision(result, {
+    route: 'schema_valid_noop_completeness_retry_provider_failure',
+    severity: 'error',
+  });
   return result;
 }
 
@@ -309,16 +341,16 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         data: {
           retryIndex: retryIndex + 1,
           accepted: false,
-          fallback: 'initial_schema_valid_document',
+          fallback: 'provider_failure',
           error: semanticNormalizerErrorDetails(error),
         },
       });
-      return acceptedPriorResult({
+      return providerFailureDuringCompletenessRetry({
         run: params.run,
-        document: params.initialDocument,
         attemptCount,
         repairAttempted,
         validationErrors,
+        error,
       });
     }
 
@@ -347,7 +379,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         parsedDocument: validation.parsedDocument,
         retryAgain: shouldRetryAgain,
         fallback: retryIndex === 1 && (!validation.document || stillNoOp)
-          ? 'initial_schema_valid_document'
+          ? 'rejected_schema_valid_noop'
           : null,
       },
     });
@@ -372,7 +404,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     }
 
     if (!shouldRetryAgain) {
-      return acceptedPriorResult({
+      return rejectedPriorNoOpResult({
         run: params.run,
         document: params.initialDocument,
         attemptCount,
@@ -383,7 +415,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     previousResponse = response;
   }
 
-  return acceptedPriorResult({
+  return rejectedPriorNoOpResult({
     run: params.run,
     document: params.initialDocument,
     attemptCount: attemptCountBeforeRetry + focusedAttemptOffset + 2,
