@@ -236,9 +236,10 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(finalRetryMessages.some((message) => message.role === 'assistant')).toBe(false);
   });
 
-  it('rejects a schema-valid no-op after focused and both generic completeness passes are empty', async () => {
+  it('falls back to the original schema-valid no-op only after focused and both generic passes are empty', async () => {
+    const initial = existingTaskShell();
     const fake = fakeClient([
-      JSON.stringify(existingTaskShell()),
+      JSON.stringify(initial),
       focusedFallback(),
       JSON.stringify(existingTaskShell()),
       JSON.stringify(existingTaskShell()),
@@ -249,15 +250,12 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     });
 
     expect(fake.calls).toHaveLength(4);
-    expect(result.status).toBe('rejected');
-    expect(result.document).toBeNull();
+    expect(result.status).toBe('accepted');
     expect(result.diagnostics).toMatchObject({
       attemptCount: 4,
       repairAttempted: false,
     });
-    expect(result.diagnostics.validationErrors).toContain(
-      'completeness_retry:semantic_noop_after_retries',
-    );
+    expect(result.document).toEqual(initial);
   });
 
   it('returns provider failure when a completeness retry request fails instead of accepting the no-op', async () => {
