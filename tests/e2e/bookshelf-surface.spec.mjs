@@ -151,7 +151,10 @@ test('opens the redesigned bookshelf and material detail from the main navigatio
   await page.getByRole('button', { name: '学習記録', exact: true }).click();
   await expect(page.getByText('60 → 80ページ')).toBeVisible();
 
-  await page.getByRole('button', { name: '予定', exact: true }).last().click();
+  await page
+    .locator('.bookshelf-detail-tabs button')
+    .filter({ hasText: '予定' })
+    .click();
   await expect(page.getByText('アルゴリズム問題集を進める')).toBeVisible();
 
   await page.getByRole('button', { name: '教材メニューを開く' }).click();
