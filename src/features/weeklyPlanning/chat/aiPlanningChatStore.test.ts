@@ -7,6 +7,7 @@ import {
 import {
   createAiPlanningChat,
   deleteAiPlanningChat,
+  hasStoredAiPlanningChatIndex,
   loadAiPlanningChatIndex,
   loadAiPlanningChatSnapshot,
   saveAiPlanningChatIndex,
@@ -23,6 +24,14 @@ beforeEach(() => {
 });
 
 describe('AI planning chat store', () => {
+  it('distinguishes a fresh store from an already-created blank chat index', () => {
+    expect(hasStoredAiPlanningChatIndex(USER_ID)).toBe(false);
+    const initial = loadAiPlanningChatIndex(USER_ID);
+    expect(hasStoredAiPlanningChatIndex(USER_ID)).toBe(false);
+    saveAiPlanningChatIndex(USER_ID, initial);
+    expect(hasStoredAiPlanningChatIndex(USER_ID)).toBe(true);
+  });
+
   it('keeps separate chats and restores a Stable V5 snapshot', () => {
     const initial = loadAiPlanningChatIndex(USER_ID);
     const created = createAiPlanningChat(initial);
