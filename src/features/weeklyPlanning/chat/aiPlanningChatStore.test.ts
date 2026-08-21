@@ -1,6 +1,4 @@
-// @vitest-environment jsdom
-
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 import {
@@ -21,8 +19,36 @@ import {
 const USER_ID = 'chat-store-user';
 const WEEK_START = '2026-08-17';
 
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    key(index) {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+  };
+}
+
 beforeEach(() => {
-  window.localStorage.clear();
+  vi.stubGlobal('window', { localStorage: createMemoryStorage() });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('AI planning chat store', () => {
