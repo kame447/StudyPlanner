@@ -21,6 +21,7 @@ interface MonthViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  createRequestId?: number;
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
@@ -35,6 +36,7 @@ export function MonthView({
   plans,
   actuals,
   monthEvents,
+  createRequestId = 0,
   onSelectDate,
   onChangeMonth,
   onOpenWeek,
@@ -63,6 +65,7 @@ export function MonthView({
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
+  const lastCreateRequestId = useRef(createRequestId);
   const todayDate = todayIsoDate();
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
@@ -120,6 +123,15 @@ export function MonthView({
     setEventModalDate(null);
     setEventModalInitialEventId(null);
   }
+
+  useEffect(() => {
+    if (createRequestId <= 0 || createRequestId === lastCreateRequestId.current) {
+      return;
+    }
+
+    lastCreateRequestId.current = createRequestId;
+    openMonthEventEditor(selectedDate);
+  }, [createRequestId, selectedDate]);
 
   function handleCellClick(date: string) {
     if (pager.suppressNextCellClick.current) {
@@ -330,7 +342,7 @@ export function MonthView({
         openDate={daySheetDate}
         monthEvents={monthEvents}
         onCreate={(date) => openMonthEventEditor(date)}
-        onEdit={(event) => openMonthEventEditor(event.date, event.id)}
+        onEdit={(event) => openMonthEventEditor(daySheetDate ?? event.date, event.id)}
         onClose={() => setDaySheetDate(null)}
       />
 
