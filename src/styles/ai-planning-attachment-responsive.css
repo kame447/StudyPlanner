@@ -1,13 +1,43 @@
 @media (max-width: 500px) {
-  .ai-planning-view.home-dashboard .ai-planning-composer-side {
-    display: inline-flex !important;
-  }
-
+  .ai-planning-view.home-dashboard .ai-planning-composer-side,
   .ai-planning-view.home-dashboard .ai-planning-mic-button {
-    display: none !important;
+    display: inline-flex !important;
+    visibility: visible !important;
   }
 
   .ai-planning-view.home-dashboard .ai-planning-composer {
-    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-composer textarea {
+    min-width: 0;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-composer-side,
+  .ai-planning-view.home-dashboard .ai-planning-mic-button,
+  .ai-planning-view.home-dashboard .ai-planning-send-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+  }
+}
+
+@media (max-width: 360px) {
+  .ai-planning-view.home-dashboard .ai-planning-composer {
+    gap: 2px;
+    margin-inline: 6px;
+    padding-inline: 6px;
+  }
+
+  .ai-planning-view.home-dashboard .ai-planning-composer-side,
+  .ai-planning-view.home-dashboard .ai-planning-mic-button,
+  .ai-planning-view.home-dashboard .ai-planning-send-button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    flex-basis: 34px;
   }
 }
