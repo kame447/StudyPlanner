@@ -21,7 +21,7 @@ interface PrimaryBottomNavProps {
   onOpenSchedule: () => void;
   onOpenHome: () => void;
   onOpenBookshelf: () => void;
-  onOpenReport: () => void;
+  onOpenTimetable: () => void;
   className?: string;
 }
 
@@ -40,7 +40,7 @@ export const PrimaryBottomNav = forwardRef<HTMLElement, PrimaryBottomNavProps>(
       onOpenSchedule,
       onOpenHome,
       onOpenBookshelf,
-      onOpenReport,
+      onOpenTimetable,
       className,
     },
     ref,
@@ -50,7 +50,7 @@ export const PrimaryBottomNav = forwardRef<HTMLElement, PrimaryBottomNavProps>(
       { id: 'schedule', label: '予定', Icon: CalendarDays, onSelect: onOpenSchedule },
       { id: 'home', label: 'ホーム', Icon: House, onSelect: onOpenHome },
       { id: 'bookshelf', label: '教材', Icon: BookOpen, onSelect: onOpenBookshelf },
-      { id: 'timetable', label: '時間割', Icon: CalendarRange, onSelect: onOpenReport },
+      { id: 'timetable', label: '時間割', Icon: CalendarRange, onSelect: onOpenTimetable },
     ];
     const navClassName = ['home-bottom-nav', 'primary-bottom-nav', 'print-hide', className]
       .filter(Boolean)
