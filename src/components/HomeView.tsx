@@ -73,7 +73,16 @@ function emptyLayoutRelaxation(): HomeLayoutRelaxation {
 }
 
 function hasLayoutRelaxation(relaxation: HomeLayoutRelaxation): boolean {
-  return Object.values(relaxation).some((value) => value > 0.25);
+  return [
+    relaxation.hero,
+    relaxation.row,
+    relaxation.scheduleSide,
+    relaxation.todaySide,
+    relaxation.alertSide,
+    relaxation.progressSide,
+    relaxation.materialSide,
+    relaxation.gap,
+  ].some((value) => value > 0.25);
 }
 
 function preferredScheduleListHeight(scheduleList: HTMLElement): number {
@@ -475,9 +484,6 @@ export function HomeView({
           }
         }
 
-        // Home gets one responsive sizing pass for the shared chrome. Once the
-        // header has been resolved for this viewport, page switches reuse that
-        // exact DOM node and geometry rather than recalculating it per surface.
         applyLayoutRelaxation(nextRelaxation);
         if (!chromeLocked) lockPrimaryChrome();
       });
