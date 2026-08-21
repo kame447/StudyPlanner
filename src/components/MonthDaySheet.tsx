@@ -45,12 +45,12 @@ export function MonthDaySheet({
     if (!renderedDate) return;
 
     setIsClosing(true);
-    const closeTimer = window.setTimeout(() => {
+    const closeTimer = setTimeout(() => {
       setRenderedDate(null);
       setIsClosing(false);
     }, CLOSE_ANIMATION_MS);
 
-    return () => window.clearTimeout(closeTimer);
+    return () => clearTimeout(closeTimer);
   }, [openDate, renderedDate]);
 
   if (!renderedDate) return null;
@@ -70,7 +70,6 @@ export function MonthDaySheet({
         className="month-day-sheet"
         role="dialog"
         aria-modal="true"
-        aria-hidden={isClosing || undefined}
         aria-label={`${formatHeading(renderedDate)}の予定`}
         onClick={(event) => event.stopPropagation()}
       >
