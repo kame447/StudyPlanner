@@ -792,7 +792,7 @@ export function TimetableView({
                               </span>
                             ) : null}
                             <span className="timetable-class-meta">
-                              {template.classroom || `${template.startTime}-${template.endTime}`}
+                              {template.classroom?.trim() || '教室未設定'}
                             </span>
                           </span>
                         ))}
