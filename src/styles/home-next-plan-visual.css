@@ -30,6 +30,28 @@
   background: var(--surface-strong);
 }
 
+:root[data-theme='dark'] .home-study-scene::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: 64% 54%;
+}
+
+:root[data-theme='dark'] .home-next-card[data-next-plan-visual='study'] .home-study-scene::before {
+  background-image: url('/assets/home/next-plan-study-dark.webp');
+}
+
+:root[data-theme='dark'] .home-next-card[data-next-plan-visual='class'] .home-study-scene::before {
+  background-image: url('/assets/home/next-plan-class-dark.webp');
+}
+
+:root[data-theme='dark'] .home-next-card[data-next-plan-visual='other'] .home-study-scene::before {
+  background-image: url('/assets/home/next-plan-other-dark.webp');
+}
+
 :root[data-theme='dark'] .home-study-scene::after {
   background: linear-gradient(
     90deg,
@@ -41,17 +63,26 @@
 }
 
 :root[data-theme='dark'] .home-study-scene-image {
-  filter: brightness(0.72) saturate(0.9);
+  display: none;
+  filter: none;
 }
 
 @media (max-width: 520px) {
   .home-study-scene-image {
     object-position: 67% 56%;
   }
+
+  :root[data-theme='dark'] .home-study-scene::before {
+    background-position: 67% 56%;
+  }
 }
 
 @media (min-width: 900px) {
   .home-study-scene-image {
     object-position: 60% 54%;
+  }
+
+  :root[data-theme='dark'] .home-study-scene::before {
+    background-position: 60% 54%;
   }
 }
