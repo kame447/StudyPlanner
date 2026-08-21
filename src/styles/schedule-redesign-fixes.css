@@ -12,7 +12,7 @@
   margin: 0 auto;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 0;
-  padding: 6px 12px calc(var(--schedule-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
+  padding: clamp(6px, 1.05dvh, 10px) 12px calc(var(--schedule-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
 }
 
@@ -479,12 +479,12 @@
 @media (max-width: 520px) {
   .schedule-workspace-shell {
     width: 100%;
-    padding: 5px 8px calc(var(--schedule-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
+    padding: clamp(6px, 1.05dvh, 10px) 12px calc(var(--schedule-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
   .schedule-app-header {
-    margin-inline: -8px;
-    padding-inline: 8px;
+    margin-inline: -12px;
+    padding-inline: 12px;
   }
 
   .schedule-toolbar-row {
@@ -563,15 +563,17 @@
   }
 }
 
-@media (max-height: 720px) {
+@media (max-height: 760px) {
   .schedule-workspace-shell {
     --schedule-nav-height: 68px;
     --home-nav-height: 68px;
     --home-nav-icon-size: 23px;
     --home-nav-label-size: 0.62rem;
-    padding-top: 4px;
+    padding-bottom: calc(var(--schedule-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
+}
 
+@media (max-height: 720px) {
   .schedule-app-header {
     min-height: 38px;
   }
