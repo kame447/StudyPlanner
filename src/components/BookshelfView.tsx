@@ -24,7 +24,6 @@ import {
   groupMaterialsBySubjectId,
 } from '../lib/bookshelfMaterials';
 import {
-  buildMaterialActivitySummary,
   getDefaultMaterialDetailPreferences,
   isRecordForMaterial,
   loadMaterialDetailPreferences,
