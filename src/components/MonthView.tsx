@@ -8,6 +8,7 @@ import {
 import { formatMonthLabel, startOfWeek, todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
 import { useMonthPager } from '../hooks/useMonthPager';
+import { MonthDaySheet } from './MonthDaySheet';
 import { MonthEventDialog } from './MonthEventDialog';
 import { MonthGridPanel } from './MonthGridPanel';
 import { MonthPickerDialog } from './MonthPickerDialog';
@@ -41,10 +42,12 @@ export function MonthView({
   onDeleteMonthEvent,
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
+  const [eventModalInitialEventId, setEventModalInitialEventId] = useState<string | null>(null);
+  const [daySheetDate, setDaySheetDate] = useState<string | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const pager = useMonthPager({
     monthDate,
-    disabled: Boolean(eventModalDate || isMonthPickerOpen),
+    disabled: Boolean(eventModalDate || daySheetDate || isMonthPickerOpen),
     onChangeMonth,
   });
   const { weeks, cells: grid } = useMemo(
@@ -106,9 +109,16 @@ export function MonthView({
     [grid, gridIndexByDate, onSelectDate],
   );
 
-  function openMonthEventEditor(date: string) {
+  function openMonthEventEditor(date: string, initialEventId: string | null = null) {
     onSelectDate(date);
+    setDaySheetDate(null);
+    setEventModalInitialEventId(initialEventId);
     setEventModalDate(date);
+  }
+
+  function closeMonthEventEditor() {
+    setEventModalDate(null);
+    setEventModalInitialEventId(null);
   }
 
   function handleCellClick(date: string) {
@@ -143,6 +153,7 @@ export function MonthView({
 
     pendingCellClickTimeout.current = window.setTimeout(() => {
       onSelectDate(date);
+      setDaySheetDate(date);
       pendingCellClickTimeout.current = null;
       lastCellClick.current = null;
     }, 240);
@@ -154,7 +165,7 @@ export function MonthView({
         return;
       }
 
-      if (eventModalDate || isMonthPickerOpen) {
+      if (eventModalDate || daySheetDate || isMonthPickerOpen) {
         return;
       }
 
@@ -200,7 +211,7 @@ export function MonthView({
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [eventModalDate, isMonthPickerOpen, moveSelectionByKeyboard, selectedDate]);
+  }, [daySheetDate, eventModalDate, isMonthPickerOpen, moveSelectionByKeyboard, selectedDate]);
 
   useEffect(() => {
     return () => {
@@ -213,8 +224,8 @@ export function MonthView({
   }, []);
 
   return (
-    <section className="panel swipe-view">
-      <div className="view-header-stack">
+    <section className="panel swipe-view schedule-month-view">
+      <div className="view-header-stack month-legacy-header">
         <div>
           <div className="view-titlebar month-view-titlebar">
             <h2>Monthly</h2>
@@ -309,19 +320,28 @@ export function MonthView({
               registerCellRef={registerCellRef}
               onCellClick={handleCellClick}
               onMoveSelection={moveSelectionByKeyboard}
-              onOpenMonthEventEditor={openMonthEventEditor}
+              onOpenMonthEventEditor={(date) => openMonthEventEditor(date)}
             />
           ))}
         </div>
       </div>
 
+      <MonthDaySheet
+        openDate={daySheetDate}
+        monthEvents={monthEvents}
+        onCreate={(date) => openMonthEventEditor(date)}
+        onEdit={(event) => openMonthEventEditor(event.date, event.id)}
+        onClose={() => setDaySheetDate(null)}
+      />
+
       <MonthEventDialog
         openDate={eventModalDate}
         userId={userId}
         monthEvents={monthEvents}
+        initialEventId={eventModalInitialEventId}
         onSave={onSaveMonthEvent}
         onDelete={onDeleteMonthEvent}
-        onClose={() => setEventModalDate(null)}
+        onClose={closeMonthEventEditor}
       />
 
       <MonthPickerDialog
