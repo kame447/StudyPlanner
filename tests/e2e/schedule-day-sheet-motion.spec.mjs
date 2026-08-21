@@ -38,11 +38,13 @@ test('quick add grows from the FAB with ordered actions and hands off to the sch
   await seedSchedule(page);
   await openSchedule(page);
 
-  const trigger = page.getByRole('button', { name: 'クイック追加メニューを開く' });
+  const trigger = page.locator('.quick-add-trigger');
   await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAccessibleName('クイック追加メニューを開く');
   await trigger.click();
 
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(trigger).toHaveAccessibleName('クイック追加メニューを閉じる');
   const actions = page.locator('.quick-add-option');
   await expect(actions).toHaveCount(3);
   await expect(actions).toHaveText(['AI計画', '学習を追加', '予定を追加']);
@@ -76,8 +78,9 @@ test('day detail rises as a bottom sheet and transfers the add action without a 
   await seedSchedule(page);
   await openSchedule(page);
 
-  const globalFab = page.getByRole('button', { name: 'クイック追加メニューを開く' });
+  const globalFab = page.locator('.quick-add-trigger');
   await expect(globalFab).toBeVisible();
+  await expect(globalFab).toHaveAccessibleName('クイック追加メニューを開く');
 
   const dayCell = page.locator('.schedule-month-view .month-cell:not(.is-muted)').first();
   await dayCell.click();
