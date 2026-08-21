@@ -7,7 +7,7 @@ const navigation = {
   onOpenSchedule: vi.fn(),
   onOpenHome: vi.fn(),
   onOpenBookshelf: vi.fn(),
-  onOpenReport: vi.fn(),
+  onOpenTimetable: vi.fn(),
 };
 
 describe('PrimaryBottomNav', () => {
