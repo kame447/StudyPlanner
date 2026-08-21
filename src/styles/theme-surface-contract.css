@@ -1,142 +1,34 @@
 /*
  * Theme surface contract for redesigned primary screens.
  *
- * New primary surfaces must consume the application semantic tokens instead of
- * defining their own fixed light palette. Keep this file last in styles.css so
- * Home, Schedule and Bookshelf share the same dark-mode / accent behavior.
+ * The redesigned screens originally embedded a second fixed light/blue palette.
+ * Keep this file last in styles.css so the application theme remains the single
+ * source of truth without changing the established light-mode layout.
  */
 
 :root {
-  /* Compatibility alias used by the redesigned schedule / AI surfaces. */
+  /* Compatibility alias used by redesigned schedule / AI styles. */
   --text: var(--text-primary);
 }
 
-/* Shared primary-shell contract ------------------------------------------ */
-.app-shell.home-app-shell,
-.app-shell:has(.bookshelf-view),
-.schedule-workspace-shell {
-  background: var(--app-background);
-  color: var(--text-primary);
-}
-
-/* Home ------------------------------------------------------------------ */
+/* Accent contract -------------------------------------------------------- */
 .home-dashboard {
   --home-blue: var(--accent);
   --home-blue-strong: var(--accent-strong);
-  --home-ink: var(--text-primary);
-  --home-muted: var(--text-muted);
-  --home-line: var(--border);
-  --home-line-soft: color-mix(in srgb, var(--border) 72%, transparent);
-  --home-card: var(--surface-strong);
-  --home-shadow-soft: var(--shadow);
-  --home-shadow-card: var(--shadow);
 }
 
-.home-streak-card span,
-.home-streak-card small,
-.home-next-meta,
-.home-next-meta svg,
-.home-chart-day small,
-.home-section-heading p {
-  color: var(--text-muted);
-}
-
-.home-streak-card strong,
-.home-date-display,
-.home-date-value,
-.home-date-unit,
-.home-icon-button,
-.home-next-copy h1,
-.home-panel,
-.home-alert-card,
-.home-schedule-row,
-.home-schedule-add-row,
-.home-schedule-empty {
-  color: var(--text-primary);
-}
-
-.home-date-ring {
-  border-color: var(--text-primary);
-  background: var(--surface-strong);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 14%, transparent);
-}
-
-.home-date-ring::after {
-  background: var(--text-primary);
-}
-
-.home-date-segment {
-  border-color: var(--border);
-  background: var(--surface-strong);
-}
-
-.home-avatar-button {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
-}
-
-.home-notification-badge {
-  border-color: var(--surface-strong);
-}
-
-.home-next-card {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--surface-strong) 94%, var(--accent) 6%) 0%,
-    color-mix(in srgb, var(--surface-strong) 97%, var(--accent) 3%) 56%,
-    color-mix(in srgb, var(--surface-strong) 82%, transparent) 100%
-  );
-}
-
-.home-start-button,
-.home-time-dot,
-.home-chart-actual,
-.home-nav-active-circle {
-  background: var(--accent);
-  color: #fff;
+.bookshelf-view {
+  --bookshelf-blue: var(--accent);
+  --bookshelf-blue-strong: var(--accent-strong);
 }
 
 .home-start-button {
-  box-shadow: 0 7px 18px var(--accent-shadow);
-}
-
-.home-schedule-list,
-.home-schedule-add-row,
-.home-schedule-empty,
-.home-progress-ring > div {
-  border-color: var(--border);
-  background: var(--surface-strong);
-}
-
-.home-progress-ring {
-  background: conic-gradient(
-    var(--accent) var(--home-progress),
-    color-mix(in srgb, var(--text-muted) 18%, var(--surface-strong) 82%) 0
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 88%, white 12%),
+    var(--accent-strong)
   );
-}
-
-.home-chart-legend .planned::before {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-  background: var(--surface-strong);
-}
-
-.home-chart-planned {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface-strong) 93%);
-}
-
-.home-bottom-nav,
-.schedule-bottom-nav.home-bottom-nav,
-.bookshelf-bottom-nav {
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
-  box-shadow: 0 -8px 24px color-mix(in srgb, #000 12%, transparent);
-}
-
-.home-bottom-nav button,
-.home-bottom-nav button:first-child,
-.bookshelf-bottom-nav button,
-.bookshelf-bottom-nav button:first-child {
-  color: var(--text-muted);
+  box-shadow: 0 7px 18px var(--accent-shadow);
 }
 
 .home-bottom-nav button.active,
@@ -146,150 +38,9 @@
   color: var(--accent);
 }
 
-/* Bookshelf --------------------------------------------------------------- */
-.bookshelf-view {
-  --bookshelf-blue: var(--accent);
-  --bookshelf-blue-strong: var(--accent-strong);
-  --bookshelf-ink: var(--text-primary);
-  --bookshelf-muted: var(--text-muted);
-  --bookshelf-line: var(--border);
-  --bookshelf-soft: var(--surface-soft);
-  color: var(--text-primary);
-}
-
-.bookshelf-primary-header {
-  --home-blue: var(--accent);
-  --home-blue-strong: var(--accent-strong);
-  --home-ink: var(--text-primary);
-  --home-muted: var(--text-muted);
-  --home-line: var(--border);
-  --home-line-soft: color-mix(in srgb, var(--border) 72%, transparent);
-  --home-card: var(--surface-strong);
-}
-
-.bookshelf-search-field,
-.bookshelf-category-chips button,
-.bookshelf-featured-card,
-.bookshelf-subject-list,
-.bookshelf-recent-list,
-.bookshelf-subject-row,
-.bookshelf-recent-row,
-.bookshelf-detail-metrics,
-.bookshelf-structure-list,
-.bookshelf-settings-group,
-.bookshelf-structure-edit-row,
-.bookshelf-action-sheet,
-.bookshelf-action-sheet > button:not(.danger),
-.bookshelf-sheet-cancel {
-  border-color: var(--border);
-  background: var(--surface-strong);
-  color: var(--text-primary);
-}
-
-.bookshelf-search-field input,
-.bookshelf-structure-edit-row input {
-  color: var(--text-primary);
-  background: transparent;
-}
-
-.bookshelf-search-field input::placeholder,
-.bookshelf-structure-edit-row input::placeholder {
-  color: var(--text-muted);
-}
-
-.bookshelf-category-chips button {
-  color: var(--text-primary);
-}
-
-.bookshelf-category-chips button.active,
-.bookshelf-add-button,
-.bookshelf-detail-primary-action {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 8px 18px var(--accent-shadow);
-}
-
-.bookshelf-subject-row + .bookshelf-subject-row,
-.bookshelf-recent-row + .bookshelf-recent-row,
-.bookshelf-action-sheet > button,
-.bookshelf-sheet-cancel {
-  border-color: var(--border);
-}
-
-.bookshelf-subject-symbol,
-.bookshelf-cover-placeholder {
-  background: color-mix(
-    in srgb,
-    var(--subject-color, var(--accent)) 12%,
-    var(--surface-strong) 88%
-  );
-}
-
-.bookshelf-detail-cover,
-.bookshelf-detail-cover-placeholder {
-  background: var(--surface-soft);
-  border-color: var(--border);
-}
-
-.bookshelf-structure-status,
-.bookshelf-detail-empty,
-.bookshelf-category-empty,
-.bookshelf-empty-dashboard {
-  color: var(--text-muted);
-}
-
-.bookshelf-sheet-handle {
-  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
-}
-
-.bookshelf-sheet-cancel {
-  border-top-color: color-mix(in srgb, var(--border) 82%, var(--surface-soft) 18%);
-}
-
-.bookshelf-switch span {
-  background: color-mix(in srgb, var(--text-muted) 26%, var(--surface-strong) 74%);
-}
-
-.bookshelf-switch input:checked + span {
-  background: var(--accent);
-}
-
-.bookshelf-switch span::after {
-  background: var(--surface-strong);
-}
-
-/* Schedule --------------------------------------------------------------- */
-.schedule-workspace-shell,
-.schedule-toolbar,
-.schedule-week-preview-scroll,
-.schedule-week-day-column,
-.month-day-sheet {
-  color: var(--text-primary);
-  background-color: var(--surface);
-}
-
-.schedule-back-button,
-.schedule-period-control,
-.schedule-period-picker-trigger,
-.schedule-view-tabs button,
-.schedule-day-strip button,
-.schedule-month-view .month-weekday,
-.month-day-sheet-close,
-.month-day-sheet-event {
-  color: var(--text-primary);
-}
-
-.schedule-app-header,
-.schedule-bottom-nav.home-bottom-nav {
-  background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
-}
-
-.schedule-view-tabs {
-  border-color: var(--border);
-  background: var(--surface-soft);
-}
-
+.home-nav-active-circle,
+.bookshelf-add-material-fab,
+.bookshelf-detail-primary-action > button,
 .schedule-view-tabs button.active,
 .schedule-day-strip button.active strong,
 .month-day-sheet-add,
@@ -298,151 +49,608 @@
   color: #fff;
 }
 
-.schedule-month-view .month-cell.is-selected {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
-.schedule-month-view .month-cell.is-selected .month-date-number {
-  background: color-mix(in srgb, var(--text-primary) 88%, #000 12%);
-  color: var(--surface-strong) !important;
-}
-
-/* AI planning ------------------------------------------------------------ */
-:root .app-shell.home-app-shell .ai-planning-view,
-:root .app-shell.home-app-shell .ai-planning-view.home-dashboard {
-  color: var(--text-primary);
-  background: transparent;
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-card,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-composer,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-modal,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-scroll,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-week-header,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-search,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-starter-list button {
-  border-color: var(--border);
-  background: var(--surface-strong);
-  color: var(--text-primary);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-heading,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-summary,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-week-grid,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-time-axis,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-day-column,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer {
-  border-color: var(--border);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-heading-icon,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-message-avatar,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-chat-menu-button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-user-placeholder {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
-  background: color-mix(in srgb, var(--accent) 11%, var(--surface-strong) 89%);
-  color: var(--accent);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-heading p,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card-head span,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-summary,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header p,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-week-header small,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-starters > p,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-preview > span,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-select small,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-empty {
-  color: var(--text-muted);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-bubble {
-  background: var(--surface-soft);
-  color: var(--text-primary);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-message-row.user .ai-planning-bubble,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-row.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
-  color: var(--text-primary);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-primary-action,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-send-button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card-head b,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header > span,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-new-button {
+.bookshelf-category-chips button.active {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-more-button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header button {
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border) 64%);
-  background: var(--surface-strong);
+.bookshelf-add-material-fab,
+.bookshelf-detail-primary-action > button {
+  box-shadow: 0 8px 18px var(--accent-shadow);
+}
+
+/* AI planning still contains legacy fixed-blue declarations. */
+.app-shell.home-app-shell .ai-planning-view .ai-planning-heading-icon,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-message-avatar,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-chat-menu-button,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-user-placeholder {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface-strong) 89%);
   color: var(--accent);
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-composer-side,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-mic-button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer-header button,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-delete,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-select,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-search input {
+.app-shell.home-app-shell .ai-planning-view .ai-planning-preview-button,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-primary-action,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-send-button,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card-head b,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header > span,
+.app-shell.home-app-shell .ai-planning-view .ai-chat-new-button,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-nav-home,
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav .home-nav-active-circle {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.app-shell.home-app-shell .ai-planning-view .ai-planning-more-button,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header button {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border) 64%);
+  color: var(--accent);
+}
+
+.app-shell.home-app-shell .ai-planning-view .ai-planning-plan-summary svg,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-starter-list button svg,
+.app-shell.home-app-shell .ai-planning-view .ai-planning-bottom-nav button.active,
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button.active {
+  color: var(--accent);
+}
+
+/* Dark mode ------------------------------------------------------------- */
+:root[data-theme='dark'] .app-shell,
+:root[data-theme='dark'] .app-shell.home-app-shell,
+:root[data-theme='dark'] .app-shell:has(.bookshelf-view),
+:root[data-theme='dark'] .schedule-workspace-shell {
+  background: var(--app-background);
   color: var(--text-primary);
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-composer-side {
+/* Home: preserve the existing composition, replace only light-only paint. */
+:root[data-theme='dark'] .home-dashboard {
+  --home-ink: var(--text-primary);
+  --home-muted: var(--text-muted);
+  --home-line: var(--border);
+  --home-line-soft: color-mix(in srgb, var(--border) 76%, transparent);
+  --home-card: var(--surface-strong);
+  --home-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --home-shadow-card: 0 10px 30px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .home-streak-card,
+:root[data-theme='dark'] .home-icon-button,
+:root[data-theme='dark'] .home-date-paper,
+:root[data-theme='dark'] .home-panel,
+:root[data-theme='dark'] .home-setup-card,
+:root[data-theme='dark'] .home-material-panel {
+  border-color: var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .home-streak-card span,
+:root[data-theme='dark'] .home-streak-card small,
+:root[data-theme='dark'] .home-next-meta,
+:root[data-theme='dark'] .home-next-meta svg,
+:root[data-theme='dark'] .home-schedule-content time,
+:root[data-theme='dark'] .home-schedule-content small,
+:root[data-theme='dark'] .home-schedule-add-row,
+:root[data-theme='dark'] .home-schedule-empty,
+:root[data-theme='dark'] .home-scroll-hint,
+:root[data-theme='dark'] .home-schedule-date-label,
+:root[data-theme='dark'] .home-progress-copy,
+:root[data-theme='dark'] .home-chart-legend,
+:root[data-theme='dark'] .home-chart-day small,
+:root[data-theme='dark'] .home-material-copy small,
+:root[data-theme='dark'] .home-material-empty small,
+:root[data-theme='dark'] .home-section-heading p,
+:root[data-theme='dark'] .home-setup-copy,
+:root[data-theme='dark'] .home-setup-action small {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .home-streak-card strong,
+:root[data-theme='dark'] .home-date-display,
+:root[data-theme='dark'] .home-date-value,
+:root[data-theme='dark'] .home-date-unit,
+:root[data-theme='dark'] .home-icon-button,
+:root[data-theme='dark'] .home-next-copy h1,
+:root[data-theme='dark'] .home-schedule-row,
+:root[data-theme='dark'] .home-progress-copy strong,
+:root[data-theme='dark'] .home-material-row,
+:root[data-theme='dark'] .home-material-title-line strong,
+:root[data-theme='dark'] .home-material-empty strong,
+:root[data-theme='dark'] .home-setup-heading h1,
+:root[data-theme='dark'] .home-setup-action,
+:root[data-theme='dark'] .home-setup-action strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .home-date-segment {
+  border-color: var(--border);
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-date-ring {
+  border-color: color-mix(in srgb, var(--text-primary) 76%, transparent);
+  background: var(--surface-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
+}
+
+:root[data-theme='dark'] .home-date-ring::after {
+  background: color-mix(in srgb, var(--text-primary) 76%, transparent);
+}
+
+:root[data-theme='dark'] .home-avatar-button {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
+}
+
+:root[data-theme='dark'] .home-notification-badge {
+  border-color: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-next-card {
+  border-color: var(--border);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--surface-strong) 94%, var(--accent) 6%) 0%,
+    color-mix(in srgb, var(--surface-strong) 97%, var(--accent) 3%) 56%,
+    color-mix(in srgb, var(--surface-strong) 78%, transparent) 100%
+  );
+}
+
+:root[data-theme='dark'] .home-schedule-list,
+:root[data-theme='dark'] .home-schedule-row,
+:root[data-theme='dark'] .home-schedule-add-row,
+:root[data-theme='dark'] .home-schedule-empty {
+  border-color: var(--border);
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-time-dot::after {
+  border-color: color-mix(in srgb, var(--text-muted) 32%, transparent);
+}
+
+:root[data-theme='dark'] .home-alert-card.danger {
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--border) 76%);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--danger) 9%, var(--surface-strong) 91%),
+    color-mix(in srgb, var(--danger) 5%, var(--surface-strong) 95%)
+  );
+}
+
+:root[data-theme='dark'] .home-alert-card.warning {
+  border-color: color-mix(in srgb, #f2a45a 22%, var(--border) 78%);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, #d88942 9%, var(--surface-strong) 91%),
+    color-mix(in srgb, #d88942 5%, var(--surface-strong) 95%)
+  );
+}
+
+:root[data-theme='dark'] .home-alert-heading b {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme='dark'] .home-alert-body {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .home-alert-body small {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .home-progress-ring {
+  background: conic-gradient(
+    var(--accent) var(--home-progress),
+    color-mix(in srgb, var(--text-muted) 18%, var(--surface-strong) 82%) 0
+  );
+}
+
+:root[data-theme='dark'] .home-progress-ring > div,
+:root[data-theme='dark'] .home-chart-legend .planned::before {
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-chart-plan {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong) 90%);
+}
+
+:root[data-theme='dark'] .home-material-list,
+:root[data-theme='dark'] .home-material-row,
+:root[data-theme='dark'] .home-material-empty,
+:root[data-theme='dark'] .home-setup-action {
+  border-color: var(--border);
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-material-icon,
+:root[data-theme='dark'] .home-setup-mark,
+:root[data-theme='dark'] .home-setup-action-icon {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft) 90%);
+  color: var(--accent);
+}
+
+:root[data-theme='dark'] .home-material-track {
+  background: color-mix(in srgb, var(--text-muted) 16%, var(--surface-strong) 84%);
+}
+
+:root[data-theme='dark'] .home-material-row,
+:root[data-theme='dark'] .home-material-list,
+:root[data-theme='dark'] .home-setup-action {
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] .home-setup-action.primary {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border) 74%);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-strong) 91%);
+}
+
+/* Shared bottom navigation in dark mode. */
+:root[data-theme='dark'] .home-bottom-nav,
+:root[data-theme='dark'] .schedule-bottom-nav.home-bottom-nav,
+:root[data-theme='dark'] .bookshelf-bottom-nav {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme='dark'] .home-bottom-nav button,
+:root[data-theme='dark'] .home-bottom-nav button:first-child,
+:root[data-theme='dark'] .bookshelf-bottom-nav button,
+:root[data-theme='dark'] .bookshelf-bottom-nav button:first-child,
+:root[data-theme='dark'] .schedule-bottom-nav.home-bottom-nav button {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .home-bottom-nav button.active,
+:root[data-theme='dark'] .home-bottom-nav button:first-child.active,
+:root[data-theme='dark'] .bookshelf-bottom-nav button.active,
+:root[data-theme='dark'] .schedule-bottom-nav.home-bottom-nav button.active {
+  color: var(--accent);
+}
+
+/* Bookshelf ------------------------------------------------------------- */
+:root[data-theme='dark'] .bookshelf-view {
+  --bookshelf-ink: var(--text-primary);
+  --bookshelf-muted: var(--text-muted);
+  --bookshelf-line: var(--border);
+  --bookshelf-soft: var(--surface-soft);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .bookshelf-primary-header {
+  --home-ink: var(--text-primary);
+  --home-muted: var(--text-muted);
+  --home-line: var(--border);
+  --home-line-soft: color-mix(in srgb, var(--border) 76%, transparent);
+  --home-card: var(--surface-strong);
+  --home-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme='dark'] .bookshelf-dashboard,
+:root[data-theme='dark'] .bookshelf-detail-page {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-strong) 97%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme='dark'] .bookshelf-page-title-row h1,
+:root[data-theme='dark'] .bookshelf-icon-button,
+:root[data-theme='dark'] .bookshelf-page-title-row button,
+:root[data-theme='dark'] .bookshelf-detail-header button,
+:root[data-theme='dark'] .bookshelf-modal-title-row > button,
+:root[data-theme='dark'] .bookshelf-section-heading h2,
+:root[data-theme='dark'] .bookshelf-detail-section-head h3,
+:root[data-theme='dark'] .bookshelf-featured-copy > strong,
+:root[data-theme='dark'] .bookshelf-material-row-copy strong,
+:root[data-theme='dark'] .bookshelf-recent-row strong,
+:root[data-theme='dark'] .bookshelf-subject-toggle,
+:root[data-theme='dark'] .bookshelf-material-list-row,
+:root[data-theme='dark'] .bookshelf-detail-hero-copy h2,
+:root[data-theme='dark'] .bookshelf-detail-metrics strong,
+:root[data-theme='dark'] .bookshelf-activity-list strong,
+:root[data-theme='dark'] .bookshelf-action-sheet,
+:root[data-theme='dark'] .bookshelf-action-sheet > button,
+:root[data-theme='dark'] .bookshelf-sheet-cancel,
+:root[data-theme='dark'] .bookshelf-settings-group,
+:root[data-theme='dark'] .bookshelf-manager-list > button,
+:root[data-theme='dark'] .bookshelf-favorite-manager-list > button,
+:root[data-theme='dark'] .bookshelf-structure-edit-row,
+:root[data-theme='dark'] .bookshelf-structure-edit-row input {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .bookshelf-featured-copy > small,
+:root[data-theme='dark'] .bookshelf-material-row-copy small,
+:root[data-theme='dark'] .bookshelf-recent-row small,
+:root[data-theme='dark'] .bookshelf-progress-caption,
+:root[data-theme='dark'] .bookshelf-subject-toggle small,
+:root[data-theme='dark'] .bookshelf-material-row-progress small,
+:root[data-theme='dark'] .bookshelf-recent-row time,
+:root[data-theme='dark'] .bookshelf-detail-hero-copy p,
+:root[data-theme='dark'] .bookshelf-detail-section-head p,
+:root[data-theme='dark'] .bookshelf-detail-progress-line strong,
+:root[data-theme='dark'] .bookshelf-detail-hero-copy > small,
+:root[data-theme='dark'] .bookshelf-detail-metrics span,
+:root[data-theme='dark'] .bookshelf-detail-tabs button,
+:root[data-theme='dark'] .bookshelf-structure-copy small,
+:root[data-theme='dark'] .bookshelf-structure-row > span,
+:root[data-theme='dark'] .bookshelf-activity-list span,
+:root[data-theme='dark'] .bookshelf-activity-list small,
+:root[data-theme='dark'] .bookshelf-structure-edit-row label > span {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .bookshelf-search-field,
+:root[data-theme='dark'] .bookshelf-category-chips button,
+:root[data-theme='dark'] .bookshelf-featured-card,
+:root[data-theme='dark'] .bookshelf-subject-list,
+:root[data-theme='dark'] .bookshelf-recent-list,
+:root[data-theme='dark'] .bookshelf-subject-toggle,
+:root[data-theme='dark'] .bookshelf-detail-metrics,
+:root[data-theme='dark'] .bookshelf-structure-list,
+:root[data-theme='dark'] .bookshelf-activity-list,
+:root[data-theme='dark'] .bookshelf-settings-group,
+:root[data-theme='dark'] .bookshelf-structure-edit-row,
+:root[data-theme='dark'] .bookshelf-action-sheet,
+:root[data-theme='dark'] .bookshelf-action-sheet > button:not(.danger),
+:root[data-theme='dark'] .bookshelf-sheet-cancel,
+:root[data-theme='dark'] .bookshelf-manager-list > button,
+:root[data-theme='dark'] .bookshelf-favorite-manager-list > button {
+  border-color: var(--border);
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .bookshelf-search-field input,
+:root[data-theme='dark'] .bookshelf-structure-edit-row input {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .bookshelf-search-field input::placeholder,
+:root[data-theme='dark'] .bookshelf-structure-edit-row input::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .bookshelf-category-chips button {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .bookshelf-inline-progress,
+:root[data-theme='dark'] .bookshelf-detail-progress-track {
+  background: color-mix(in srgb, var(--text-muted) 18%, var(--surface-strong) 82%);
+}
+
+:root[data-theme='dark'] .bookshelf-subject-row + .bookshelf-subject-row,
+:root[data-theme='dark'] .bookshelf-recent-row + .bookshelf-recent-row,
+:root[data-theme='dark'] .bookshelf-material-list-row + .bookshelf-material-list-row,
+:root[data-theme='dark'] .bookshelf-detail-header,
+:root[data-theme='dark'] .bookshelf-detail-metrics > div + div,
+:root[data-theme='dark'] .bookshelf-detail-tabs,
+:root[data-theme='dark'] .bookshelf-structure-row + .bookshelf-structure-row,
+:root[data-theme='dark'] .bookshelf-structure-list > div + div > .bookshelf-structure-row,
+:root[data-theme='dark'] .bookshelf-activity-list > div + div,
+:root[data-theme='dark'] .bookshelf-action-sheet > button,
+:root[data-theme='dark'] .bookshelf-manager-list > button + button,
+:root[data-theme='dark'] .bookshelf-favorite-manager-list > button + button {
   border-color: var(--border);
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer-header button:hover,
-:root .app-shell.home-app-shell .ai-planning-view .ai-chat-delete:hover,
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-starter-list button:hover {
+:root[data-theme='dark'] .bookshelf-subject-symbol,
+:root[data-theme='dark'] .bookshelf-cover-placeholder,
+:root[data-theme='dark'] .bookshelf-list-cover {
+  background: color-mix(
+    in srgb,
+    var(--subject-color, var(--accent)) 12%,
+    var(--surface-soft) 88%
+  );
+}
+
+:root[data-theme='dark'] .bookshelf-expanded-materials {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+}
+
+:root[data-theme='dark'] .bookshelf-detail-cover-image,
+:root[data-theme='dark'] .bookshelf-detail-cover-placeholder {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+:root[data-theme='dark'] .bookshelf-important-chip {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
+  color: var(--accent);
+}
+
+:root[data-theme='dark'] .bookshelf-detail-metrics svg {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .bookshelf-detail-tabs button.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+:root[data-theme='dark'] .bookshelf-structure-status,
+:root[data-theme='dark'] .bookshelf-aggregate-progress {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border) 78%);
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-error {
+:root[data-theme='dark'] .bookshelf-structure-status.is-disabled {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+:root[data-theme='dark'] .bookshelf-sheet-handle {
+  background: color-mix(in srgb, var(--text-muted) 58%, transparent);
+}
+
+:root[data-theme='dark'] .bookshelf-sheet-cancel {
+  border-top-color: color-mix(in srgb, var(--border) 80%, var(--surface-soft) 20%);
+}
+
+:root[data-theme='dark'] .bookshelf-switch span {
+  background: color-mix(in srgb, var(--text-muted) 28%, var(--surface-strong) 72%);
+}
+
+:root[data-theme='dark'] .bookshelf-switch input:checked + span {
+  background: var(--accent);
+}
+
+:root[data-theme='dark'] .bookshelf-switch span::after {
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .bookshelf-add-structure-row {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+  color: var(--accent);
+}
+
+/* Schedule ------------------------------------------------------------- */
+:root[data-theme='dark'] .schedule-workspace-shell,
+:root[data-theme='dark'] .schedule-toolbar,
+:root[data-theme='dark'] .schedule-week-preview-scroll,
+:root[data-theme='dark'] .schedule-week-day-column,
+:root[data-theme='dark'] .month-day-sheet {
+  color: var(--text-primary);
+  background-color: var(--surface);
+}
+
+:root[data-theme='dark'] .schedule-app-header,
+:root[data-theme='dark'] .schedule-bottom-nav.home-bottom-nav {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+}
+
+:root[data-theme='dark'] .schedule-view-tabs {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+:root[data-theme='dark'] .schedule-back-button,
+:root[data-theme='dark'] .schedule-period-control,
+:root[data-theme='dark'] .schedule-period-picker-trigger,
+:root[data-theme='dark'] .schedule-view-tabs button,
+:root[data-theme='dark'] .schedule-day-strip button,
+:root[data-theme='dark'] .schedule-month-view .month-weekday,
+:root[data-theme='dark'] .month-day-sheet-close,
+:root[data-theme='dark'] .month-day-sheet-event {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .schedule-month-view .month-cell.is-selected {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+:root[data-theme='dark'] .schedule-month-view .month-cell.is-selected .month-date-number {
+  background: color-mix(in srgb, var(--text-primary) 88%, #000 12%);
+  color: var(--surface-strong) !important;
+}
+
+/* AI planning ---------------------------------------------------------- */
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view.home-dashboard {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-card,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-composer,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-modal,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-scroll,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-week-header,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-search,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-starter-list button {
+  border-color: var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-heading,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-summary,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-week-grid,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-time-axis,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-day-column {
+  border-color: var(--border);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-heading p,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card-head span,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-summary,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header p,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-week-header small,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-starters > p,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-preview > span,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-select small,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-empty {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-bubble {
+  background: var(--surface-soft);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-message-row.user .ai-planning-bubble,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-row.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-more-button,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-preview-header button {
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-composer textarea,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-composer-side,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-mic-button,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer-header button,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-delete,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-select,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-search input {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-composer-side,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-thumbnail,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-remove {
+  border-color: var(--border);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-thumbnail {
+  background: var(--surface-soft);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-remove {
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-drawer-header button:hover,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-chat-delete:hover,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-starter-list button:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+}
+
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-error {
   border-color: var(--notice-error-border);
   background: var(--notice-error-background);
   color: var(--danger);
 }
 
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-thumbnail {
-  border-color: var(--border);
-  background: var(--surface-soft);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-attachment-remove {
-  border-color: var(--border);
-  background: var(--surface-strong);
-  color: var(--text-primary);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-bottom-nav,
-:root .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav {
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-bottom-nav,
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav {
   border-color: var(--border);
   background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-bottom-nav button,
-:root .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button {
-  color: var(--text-muted);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-bottom-nav button.active,
-:root .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button.active,
-:root .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:first-child {
-  color: var(--accent);
-}
-
-:root .app-shell.home-app-shell .ai-planning-view .ai-planning-nav-home,
-:root .app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav .home-nav-active-circle {
-  background: var(--accent);
-  color: #fff;
 }
