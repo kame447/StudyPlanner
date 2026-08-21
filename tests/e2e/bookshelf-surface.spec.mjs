@@ -145,7 +145,7 @@ test('opens the redesigned bookshelf and material detail from the main navigatio
 
   await expect(page.getByRole('heading', { name: '教材の詳細' })).toBeVisible();
   await expect(page.getByText('進捗 40%')).toBeVisible();
-  await expect(page.getByText('基礎編')).toBeVisible();
+  await expect(page.getByText('基礎編', { exact: true })).toBeVisible();
   await expect(page.getByText('45分')).toBeVisible();
 
   await page.getByRole('button', { name: '学習記録', exact: true }).click();
