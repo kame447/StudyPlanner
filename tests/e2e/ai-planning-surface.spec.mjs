@@ -42,9 +42,9 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
 
   const homeTopbarBox = await page.locator('.home-topbar').boundingBox();
-  const homeNavBox = await page.locator('.home-bottom-nav').boundingBox();
+  const homeNavBox = await page.locator('.primary-bottom-nav').boundingBox();
 
-  await page.locator('.home-bottom-nav button').first().click();
+  await page.locator('.primary-bottom-nav button').first().click();
 
   await expect(page.locator('.ai-planning-view')).toBeVisible();
   await expect(page.locator('.ai-planning-heading h1')).toHaveText('AI計画');
@@ -76,7 +76,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await page.getByRole('button', { name: '添付画像を削除' }).click();
   await expect(page.locator('.ai-planning-attachment-preview')).toHaveCount(0);
 
-  const aiNavBox = await page.locator('.ai-planning-home-nav').boundingBox();
+  const aiNavBox = await page.locator('.primary-bottom-nav').boundingBox();
   expect(aiNavBox?.width).toBeCloseTo(homeNavBox?.width ?? 0, 0);
   expect(aiNavBox?.height).toBeCloseTo(homeNavBox?.height ?? 0, 0);
 
@@ -95,23 +95,35 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
 
   await page.locator('.home-top-actions .home-icon-button').last().click();
   await expect(page.locator('.app-settings-overlay')).toBeVisible();
-  const stacking = await page.evaluate(() => ({
-    ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
-    modal: Number.parseInt(getComputedStyle(document.querySelector('.app-settings-overlay')).zIndex || '0', 10),
-  }));
+  const stacking = await page.evaluate(() => {
+    const zIndexOf = (element) => {
+      if (!(element instanceof Element)) return 0;
+      return Number.parseInt(getComputedStyle(element).zIndex, 10) || 0;
+    };
+    return {
+      ai: zIndexOf(document.querySelector('.ai-planning-view')),
+      modal: zIndexOf(document.querySelector('.app-settings-overlay')),
+    };
+  });
   expect(stacking.modal).toBeGreaterThan(stacking.ai);
   await page.locator('.app-settings-modal .ghost-button').first().click();
 
   await page.locator('.home-avatar-button').click();
   await expect(page.locator('.my-page-modal')).toBeVisible();
-  const profileStacking = await page.evaluate(() => ({
-    ai: Number.parseInt(getComputedStyle(document.querySelector('.ai-planning-view')).zIndex || '0', 10),
-    modal: Number.parseInt(getComputedStyle(document.querySelector('.my-page-modal')?.parentElement).zIndex || '0', 10),
-  }));
+  const profileStacking = await page.evaluate(() => {
+    const zIndexOf = (element) => {
+      if (!(element instanceof Element)) return 0;
+      return Number.parseInt(getComputedStyle(element).zIndex, 10) || 0;
+    };
+    return {
+      ai: zIndexOf(document.querySelector('.ai-planning-view')),
+      modal: zIndexOf(document.querySelector('.my-page-modal')?.parentElement),
+    };
+  });
   expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
-  await page.locator('.ai-planning-home-nav button').nth(2).click();
+  await page.locator('.primary-bottom-nav button').nth(2).click();
   await expect(page.locator('.ai-planning-view')).toHaveCount(0);
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
 });
