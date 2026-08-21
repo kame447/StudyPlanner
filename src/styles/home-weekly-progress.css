@@ -187,6 +187,44 @@
   background: var(--home-blue);
 }
 
+:root[data-theme='dark'] .weekly-progress-ring {
+  background: conic-gradient(
+    var(--home-blue) var(--weekly-progress),
+    color-mix(in srgb, var(--text-muted) 18%, var(--surface-strong) 82%) 0
+  );
+}
+
+:root[data-theme='dark'] .weekly-progress-ring > div,
+:root[data-theme='dark'] .weekly-progress-legend-planned::before,
+:root[data-theme='dark'] .weekly-progress-plan {
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .weekly-progress-ring strong,
+:root[data-theme='dark'] .weekly-progress-summary strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .weekly-progress-summary,
+:root[data-theme='dark'] .weekly-progress-legend,
+:root[data-theme='dark'] .weekly-progress-axis,
+:root[data-theme='dark'] .weekly-progress-day small {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .weekly-progress-legend-planned::before,
+:root[data-theme='dark'] .weekly-progress-plan {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border) 28%);
+}
+
+:root[data-theme='dark'] .weekly-progress-negative {
+  color: var(--danger);
+}
+
+:root[data-theme='dark'] .weekly-progress-positive {
+  color: color-mix(in srgb, var(--accent) 72%, #8fe5bf 28%);
+}
+
 /* Medium-height screens compact the graph rather than stretching the card. */
 @media (max-height: 900px) {
   .home-progress-panel {
