@@ -7,7 +7,7 @@ import {
   Clock3,
   MoreHorizontal,
 } from 'lucide-react';
-import { formatDateLabel, todayIsoDate } from '../lib/date';
+import { formatDateLabel, minutesBetween, todayIsoDate } from '../lib/date';
 import {
   buildMaterialActivitySummary,
   getCurrentStructureItem,
@@ -324,8 +324,12 @@ export function BookshelfMaterialDetail({
                   {summary.recentActuals.slice(0, 2).map((actual) => (
                     <div key={actual.id}>
                       <span>{formatDateLabel(actual.occurrenceDate)}</span>
-                      <strong>{formatMinutes(Math.max(0, Math.round((new Date(`1970-01-01T${actual.actualEndTime}:00`).getTime() - new Date(`1970-01-01T${actual.actualStartTime}:00`).getTime()) / 60000)))}</strong>
-                      <small>{getActualRangeLabel(actual, material) ?? actual.note || '学習記録'}</small>
+                      <strong>
+                        {formatMinutes(
+                          Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime)),
+                        )}
+                      </strong>
+                      <small>{getActualRangeLabel(actual, material) || actual.note || '学習記録'}</small>
                     </div>
                   ))}
                 </div>
@@ -390,7 +394,7 @@ export function BookshelfMaterialDetail({
                   <div key={actual.id}>
                     <span>{formatDateLabel(actual.occurrenceDate)}</span>
                     <strong>{actual.actualStartTime}–{actual.actualEndTime}</strong>
-                    <small>{getActualRangeLabel(actual, material) ?? actual.note || '学習記録'}</small>
+                    <small>{getActualRangeLabel(actual, material) || actual.note || '学習記録'}</small>
                   </div>
                 ))}
               </div>
