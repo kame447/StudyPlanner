@@ -103,8 +103,8 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   expect(await computedColor(page, '.ai-planning-send-button', 'backgroundColor')).toBe(accent);
 
   await clickPrimaryNav(page, '分析');
-  await expect(page.locator('.report-dashboard')).toBeVisible();
-  const reportPanel = page.locator('.report-dashboard .panel').first();
+  await expect(page.locator('.report-view')).toBeVisible();
+  const reportPanel = page.locator('.report-view .panel').first();
   await expect(reportPanel).toBeVisible();
   expectDarkSurface(await reportPanel.evaluate((element) => getComputedStyle(element).backgroundColor));
 });
