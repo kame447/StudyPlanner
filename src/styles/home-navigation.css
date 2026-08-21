@@ -21,6 +21,16 @@
   gap: 3px;
 }
 
+/* The first item is AI planning, not a permanent accent shortcut. */
+.home-bottom-nav button:first-child {
+  color: var(--text-muted);
+}
+
+.home-bottom-nav button.active,
+.home-bottom-nav button:first-child.active {
+  color: var(--home-blue, var(--accent));
+}
+
 .home-bottom-nav svg {
   width: var(--home-nav-icon-size);
   height: var(--home-nav-icon-size);
