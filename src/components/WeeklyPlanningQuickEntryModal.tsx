@@ -59,18 +59,12 @@ export function WeeklyPlanningQuickEntryModal({
         },
       ]
     : state.messages;
-  const rootClassName = [
-    'weekly-planning-quick-entry-motion',
-    isExiting ? 'is-closing' : 'is-open',
-    unavailableApproval ? 'weekly-planning-approval-unavailable' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
 
   return (
     <div
-      className={rootClassName}
+      className={unavailableApproval ? 'weekly-planning-approval-unavailable' : undefined}
       data-weekly-approval-availability={approvalAvailability.kind}
+      data-weekly-planning-motion={isExiting ? 'closing' : 'open'}
     >
       <QuickEntryModal
         userId={userId}
