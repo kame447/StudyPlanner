@@ -139,9 +139,9 @@
   min-width: 0;
 }
 
-@media (max-width: 520px) {
-  .primary-app-header {
-    width: calc(100vw - 16px);
+@media (max-width: 699px) {
+  .app-shell:not(.home-app-shell):has(> .primary-app-header) {
+    padding-inline: 12px;
   }
 }
 
@@ -219,10 +219,6 @@
 }
 
 @media (max-width: 540px) {
-  .workspace-primary-header {
-    width: calc(100vw - 16px);
-  }
-
   .app-view-switcher {
     width: 100%;
   }
