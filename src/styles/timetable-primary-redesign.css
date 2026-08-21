@@ -65,7 +65,7 @@
     color-mix(in srgb, #d9ebff 82%, var(--surface) 18%),
     color-mix(in srgb, #cce4ff 68%, var(--surface) 32%)
   );
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 92%, #1677ff 8%);
+  box-shadow: none;
 }
 
 .timetable-view .timetable-grid-cell.has-class:hover {
@@ -191,7 +191,7 @@
     color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%),
     color-mix(in srgb, var(--accent-strong) 18%, var(--surface-strong) 82%)
   );
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: none;
 }
 
 :root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:hover {
