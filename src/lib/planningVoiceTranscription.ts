@@ -57,6 +57,16 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
+function parseWorkerResponse(text: string): PlanningVoiceTranscriptionWorkerResponse {
+  if (!text.trim()) return {};
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return isRecord(parsed) ? parsed as PlanningVoiceTranscriptionWorkerResponse : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function transcribePlanningVoice(
   blob: Blob,
 ): Promise<PlanningVoiceTranscriptionResult> {
@@ -69,32 +79,50 @@ export async function transcribePlanningVoice(
 
   const proxyUrl = getCloudflareAiProxyUrl();
   if (!proxyUrl) {
-    throw new Error('AI proxy URL が設定されていません。');
+    throw new Error('音声入力用のAI Proxy URLが設定されていません。VITE_CLOUDFLARE_AI_PROXY_URLを確認してください。');
   }
 
   const firebaseAuth = getFirebaseAuth();
   if (!firebaseAuth?.currentUser) {
-    throw new Error('ログイン済みユーザーの Firebase セッションが見つかりません。');
+    throw new Error('ログイン済みユーザーのFirebaseセッションが見つかりません。再ログインしてから試してください。');
   }
 
   const idToken = await firebaseAuth.currentUser.getIdToken();
-  const response = await fetch(buildPlanningVoiceTranscriptionEndpoint(proxyUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({
-      mimeType: normalizeAudioMimeType(blob.type),
-      base64: await blobToBase64(blob),
-    }),
-  });
-  const result = (await response.json()) as PlanningVoiceTranscriptionWorkerResponse;
+  const endpoint = buildPlanningVoiceTranscriptionEndpoint(proxyUrl);
+  let response: Response;
 
-  if (!response.ok || !result.result) {
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        mimeType: normalizeAudioMimeType(blob.type),
+        base64: await blobToBase64(blob),
+      }),
+    });
+  } catch {
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '現在の送信元';
     throw new Error(
-      result.error || '音声を文字起こしできませんでした。もう一度お試しください。',
+      `音声文字起こしAPIへ接続できませんでした。${currentOrigin} がWorkerのALLOWED_ORIGINに含まれているか、HTTPSで開いているか確認してください。`,
     );
+  }
+
+  const responseText = await response.text();
+  const result = parseWorkerResponse(responseText);
+
+  if (!response.ok) {
+    const detail = result.error?.trim();
+    throw new Error(
+      detail
+        ? `音声文字起こしに失敗しました (${response.status}): ${detail}`
+        : `音声文字起こしに失敗しました (${response.status})。Workerのデプロイ状態を確認してください。`,
+    );
+  }
+  if (!result.result) {
+    throw new Error('音声文字起こしAPIから結果が返りませんでした。');
   }
 
   const normalized = normalizePlanningVoiceTranscriptionResult(result.result);
