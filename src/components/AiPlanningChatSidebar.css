@@ -1,0 +1,196 @@
+.ai-chat-week-reset-zone {
+  margin-top: auto;
+  padding: 14px 0 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.ai-chat-week-reset-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, #ef4444 5%, transparent);
+  color: color-mix(in srgb, #ef4444 80%, var(--text));
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.ai-chat-week-reset-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, #ef4444 48%, var(--border));
+  background: color-mix(in srgb, #ef4444 9%, transparent);
+}
+
+.ai-chat-week-reset-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ai-chat-week-reset-button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-chat-week-reset-button strong {
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.ai-chat-week-reset-button small {
+  color: color-mix(in srgb, var(--muted) 88%, transparent);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.ai-week-reset-confirm-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgb(8 15 20 / 0.52);
+  backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+  animation: planner-sheet-overlay-in 220ms ease-out both;
+}
+
+.ai-week-reset-confirm-sheet {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(460px, 100%);
+  padding: 24px 18px 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 97%, transparent);
+  color: var(--text);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.28);
+  transform-origin: 50% 100%;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation: planner-bottom-sheet-in 390ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ai-week-reset-confirm-handle {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  transform: translateX(-50%);
+}
+
+.ai-week-reset-confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: color-mix(in srgb, #ef4444 11%, transparent);
+  color: #ef4444;
+}
+
+.ai-week-reset-confirm-copy {
+  min-width: 0;
+}
+
+.ai-week-reset-confirm-copy h2,
+.ai-week-reset-confirm-copy p {
+  margin: 0;
+}
+
+.ai-week-reset-confirm-copy h2 {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.ai-week-reset-confirm-copy p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 620;
+  line-height: 1.65;
+}
+
+.ai-week-reset-confirm-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ai-week-reset-confirm-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  padding: 9px 14px;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ai-week-reset-cancel {
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, var(--text) 3%);
+  color: var(--text);
+}
+
+.ai-week-reset-confirm {
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 8px 18px rgb(220 38 38 / 0.2);
+  transform-origin: center;
+  animation: planner-sheet-control-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+.ai-week-reset-confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 520px) {
+  .ai-week-reset-confirm-layer {
+    padding-inline: 8px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .ai-week-reset-confirm-sheet {
+    width: 100%;
+    border-radius: 24px 24px 18px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-week-reset-button,
+  .ai-week-reset-confirm-layer,
+  .ai-week-reset-confirm-sheet,
+  .ai-week-reset-confirm {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
