@@ -1,5 +1,5 @@
 .ai-planning-view.home-dashboard {
-  top: max(72px, env(safe-area-inset-top, 0px)) !important;
+  top: 76px !important;
   right: 0;
   bottom: calc(62px + env(safe-area-inset-bottom, 0px));
   left: 0;
