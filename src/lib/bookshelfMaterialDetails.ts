@@ -237,5 +237,5 @@ export function getCurrentStructureItem(
     }
   }
 
-  return items.at(-1) ?? null;
+  return items.length > 0 ? items[items.length - 1] : null;
 }
