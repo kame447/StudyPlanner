@@ -10,6 +10,7 @@ const VIEWPORTS = [
 async function seedAuthenticatedUser(page) {
   await page.addInitScript(() => {
     const now = new Date().toISOString();
+    const today = now.slice(0, 10);
     const user = {
       id: 'primary-chrome-e2e-user',
       email: 'primary-chrome@example.com',
@@ -17,10 +18,25 @@ async function seedAuthenticatedUser(page) {
       avatar: '',
       createdAt: now,
     };
+    const plan = {
+      id: 'primary-chrome-e2e-plan',
+      seriesId: 'primary-chrome-e2e-plan',
+      userId: user.id,
+      title: 'ヘッダー監査用の予定',
+      subject: '情報科学',
+      type: 'study',
+      date: today,
+      startTime: '19:00',
+      endTime: '20:00',
+      memo: '',
+      recurrence: null,
+      createdAt: now,
+      updatedAt: now,
+    };
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    localStorage.setItem('studyplanner.plans', '[]');
+    localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
