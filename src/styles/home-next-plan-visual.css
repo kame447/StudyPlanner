@@ -26,6 +26,24 @@
   user-select: none;
 }
 
+:root[data-theme='dark'] .home-study-scene {
+  background: var(--surface-strong);
+}
+
+:root[data-theme='dark'] .home-study-scene::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--surface-strong) 98%, transparent) 0%,
+    color-mix(in srgb, var(--surface-strong) 76%, transparent) 12%,
+    color-mix(in srgb, var(--surface-strong) 22%, transparent) 34%,
+    transparent 52%
+  );
+}
+
+:root[data-theme='dark'] .home-study-scene-image {
+  filter: brightness(0.72) saturate(0.9);
+}
+
 @media (max-width: 520px) {
   .home-study-scene-image {
     object-position: 67% 56%;
