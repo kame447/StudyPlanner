@@ -40,8 +40,13 @@ async function seedThemeUser(page, { mode = 'dark', palette = 'ocean' } = {}) {
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
     localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
-    localStorage.setItem('study-planner-theme-mode', mode);
-    localStorage.setItem('study-planner-theme-palette', palette);
+
+    if (!localStorage.getItem('study-planner-theme-mode')) {
+      localStorage.setItem('study-planner-theme-mode', mode);
+    }
+    if (!localStorage.getItem('study-planner-theme-palette')) {
+      localStorage.setItem('study-planner-theme-palette', palette);
+    }
   }, { mode, palette });
 }
 
@@ -89,7 +94,7 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
 
   await clickPrimaryNav(page, '教材');
   await expect(page.locator('.bookshelf-view')).toBeVisible();
-  expectDarkSurface(await computedColor(page, '.bookshelf-search-field', 'backgroundColor'));
+  expectDarkSurface(await computedColor(page, '.bookshelf-subject-list', 'backgroundColor'));
   expect(await computedColor(page, '.bookshelf-bottom-nav button.active')).toBe(accent);
 
   await clickPrimaryNav(page, '予定');
