@@ -194,8 +194,21 @@ function expectChromeToMatchHome(actual, home) {
   expect(actual.pageWidth).toBeLessThanOrEqual(actual.viewportWidth + 1);
 }
 
+async function auditSurface(page, home, viewportName, label, readySelector, fileName) {
+  await openPrimarySurface(page, label);
+  await expect(page.locator(readySelector)).toBeVisible();
+  await expectPersistentChrome(page);
+  await page.waitForTimeout(250);
+  const metrics = await readChromeMetrics(page);
+  expectChromeToMatchHome(metrics, home);
+  await page.screenshot({
+    path: `artifacts/chrome-audit/${viewportName}/${fileName}.png`,
+    fullPage: false,
+  });
+}
+
 for (const viewport of VIEWPORTS) {
-  test(`${viewport.name} keeps Home, AI planning, and Bookshelf chrome identical`, async ({ page }) => {
+  test(`${viewport.name} keeps primary chrome fixed across all main pages`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await seedAuthenticatedUser(page);
     await mkdir(`artifacts/chrome-audit/${viewport.name}`, { recursive: true });
@@ -213,27 +226,10 @@ for (const viewport of VIEWPORTS) {
       fullPage: false,
     });
 
-    await openPrimarySurface(page, 'AI計画');
-    await expect(page.locator('.ai-planning-view')).toBeVisible();
-    await expectPersistentChrome(page);
-    await page.waitForTimeout(250);
-    const aiPlanning = await readChromeMetrics(page);
-    expectChromeToMatchHome(aiPlanning, home);
-    await page.screenshot({
-      path: `artifacts/chrome-audit/${viewport.name}/ai-planning.png`,
-      fullPage: false,
-    });
-
-    await openPrimarySurface(page, '教材');
-    await expect(page.locator('.bookshelf-view')).toBeVisible();
-    await expectPersistentChrome(page);
-    await page.waitForTimeout(250);
-    const bookshelf = await readChromeMetrics(page);
-    expectChromeToMatchHome(bookshelf, home);
-    await page.screenshot({
-      path: `artifacts/chrome-audit/${viewport.name}/bookshelf.png`,
-      fullPage: false,
-    });
+    await auditSurface(page, home, viewport.name, 'AI計画', '.ai-planning-view', 'ai-planning');
+    await auditSurface(page, home, viewport.name, '予定', '.schedule-main', 'schedule');
+    await auditSurface(page, home, viewport.name, '教材', '.bookshelf-view', 'bookshelf');
+    await auditSurface(page, home, viewport.name, '時間割', '.timetable-view', 'timetable');
 
     await openPrimarySurface(page, 'ホーム');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
