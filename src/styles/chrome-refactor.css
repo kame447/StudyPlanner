@@ -164,6 +164,18 @@
   }
 }
 
+/* Home itself switches to 8px side padding at this breakpoint. Reproduce the
+ * same resolved header slot, including the 508px shell cap, on every page. */
+@media (max-width: 520px) {
+  .primary-app-header {
+    width: min(calc(100vw - 16px), 492px);
+  }
+
+  .app-shell:not(.home-app-shell):has(> .primary-app-header) {
+    padding-inline: 8px;
+  }
+}
+
 @media (max-height: 760px) {
   .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
     padding-top: 5px;
