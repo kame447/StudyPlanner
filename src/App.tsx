@@ -259,6 +259,11 @@ export default function App() {
     setViewMode('bookshelf');
   }
 
+  function openReportSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('report');
+  }
+
   function openTimetableSurface() {
     setPrimarySurface('workspace');
     setViewMode('timetable');
@@ -269,7 +274,7 @@ export default function App() {
     onOpenSchedule: openScheduleSurface,
     onOpenHome: openHomeSurface,
     onOpenBookshelf: openBookshelfSurface,
-    onOpenReport: openTimetableSurface,
+    onOpenTimetable: openTimetableSurface,
   };
 
   return (
@@ -373,7 +378,7 @@ export default function App() {
               setViewMode('todo');
             }}
             onOpenBookshelf={openBookshelfSurface}
-            onOpenReport={openTimetableSurface}
+            onOpenReport={openReportSurface}
           />
         ) : null}
 
