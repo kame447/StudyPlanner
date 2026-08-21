@@ -111,6 +111,15 @@ export function loadAiPlanningChatIndex(userId: string): AiPlanningChatIndex {
   }
 }
 
+export function hasStoredAiPlanningChatIndex(userId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(indexKey(userId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function saveAiPlanningChatIndex(userId: string, index: AiPlanningChatIndex): void {
   if (typeof window === 'undefined') return;
   const chats = [...index.chats]
