@@ -129,6 +129,9 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   expect(await computedColor(page, '.ai-planning-send-button', 'backgroundColor')).toBe(accent);
   await capture(page, 'dark-ocean-ai-planning-390x844');
 
+  /* AI planning currently closes back to Home before changing workspace tabs. */
+  await clickPrimaryNav(page, 'ホーム');
+  await expect(page.locator('.home-dashboard')).toBeVisible();
   await clickPrimaryNav(page, '分析');
   await expect(page.locator('.report-view')).toBeVisible();
   const reportPanel = page.locator('.report-view .panel').first();
