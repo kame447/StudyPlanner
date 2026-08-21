@@ -14,6 +14,7 @@ import {
   PrimaryBottomNav,
   type PrimaryNavItem,
 } from './components/PrimaryBottomNav';
+import { QuickAddMenu } from './components/QuickAddMenu';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
@@ -76,6 +77,7 @@ export default function App() {
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
+  const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
@@ -205,6 +207,15 @@ export default function App() {
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
+      return;
+    }
+
+    setMonthCreateRequestId((current) => current + 1);
+    setPendingMonthCreate(false);
+  }, [isScheduleSurface, pendingMonthCreate, viewMode]);
+
   if (currentPath === '/terms') {
     return <LegalPage kind="terms" />;
   }
@@ -247,6 +258,18 @@ export default function App() {
 
   function openScheduleSurface() {
     setPrimarySurface('workspace');
+    setViewMode('month');
+  }
+
+  function openMonthEventCreate() {
+    setPrimarySurface('workspace');
+
+    if (isScheduleSurface && viewMode === 'month') {
+      setMonthCreateRequestId((current) => current + 1);
+      return;
+    }
+
+    setPendingMonthCreate(true);
     setViewMode('month');
   }
 
@@ -518,20 +541,11 @@ export default function App() {
       </main>
 
       {isScheduleSurface ? (
-        <button
-          className="daily-add-fab schedule-add-fab print-hide"
-          onClick={() => {
-            if (viewMode === 'month') {
-              setMonthCreateRequestId((current) => current + 1);
-              return;
-            }
-            setIsQuickEntryOpen(true);
-          }}
-          type="button"
-          aria-label="新規追加"
-        >
-          <span aria-hidden="true">＋</span>
-        </button>
+        <QuickAddMenu
+          onAddSchedule={openMonthEventCreate}
+          onAddStudy={() => setIsQuickEntryOpen(true)}
+          onOpenAiPlanning={openAiPlanningSurface}
+        />
       ) : null}
 
       <PrimaryBottomNav
