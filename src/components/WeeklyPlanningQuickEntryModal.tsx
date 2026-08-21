@@ -8,6 +8,7 @@ import type {
   TodoTaskDraft,
 } from '../types/domain';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { useExitMotion } from '../hooks/useExitMotion';
 import { QuickEntryModal } from './QuickEntryModal';
 import './WeeklyPlanningQuickEntryModal.css';
 
@@ -41,6 +42,7 @@ export function WeeklyPlanningQuickEntryModal({
   onSaveLinkedActual,
 }: WeeklyPlanningQuickEntryModalProps) {
   const { state, approvalAvailability, pendingDraftBlocks } = application;
+  const { isExiting, requestExit } = useExitMotion(onClose);
   const unavailableApproval =
     pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
       ? approvalAvailability
@@ -57,10 +59,17 @@ export function WeeklyPlanningQuickEntryModal({
         },
       ]
     : state.messages;
+  const rootClassName = [
+    'weekly-planning-quick-entry-motion',
+    isExiting ? 'is-closing' : 'is-open',
+    unavailableApproval ? 'weekly-planning-approval-unavailable' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div
-      className={unavailableApproval ? 'weekly-planning-approval-unavailable' : undefined}
+      className={rootClassName}
       data-weekly-approval-availability={approvalAvailability.kind}
     >
       <QuickEntryModal
@@ -88,7 +97,7 @@ export function WeeklyPlanningQuickEntryModal({
         onRemoveWeeklyDraftBlock={application.removeDraftBlock}
         onClearWeeklyDraftBlocks={application.clearDraftBlocks}
         onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
-        onClose={onClose}
+        onClose={() => requestExit()}
         onSaveTodo={onSaveTodo}
         onSavePlan={onSavePlan}
         onSaveStandaloneActual={onSaveStandaloneActual}
