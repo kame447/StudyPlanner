@@ -11,14 +11,15 @@
 .timetable-view .timetable-grid-cell.has-class {
   border: 2px solid color-mix(in srgb, var(--accent) 76%, var(--border) 24%);
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
-  box-shadow: none;
+  /* Kill the legacy left-side inset accent so the cell has one perimeter only. */
+  box-shadow: none !important;
 }
 
 .timetable-view .timetable-grid-cell.has-class:hover,
 .timetable-view .timetable-grid-cell.has-class:focus-visible {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
-  box-shadow: none;
+  box-shadow: none !important;
 }
 
 .timetable-view .timetable-class-card {
@@ -55,12 +56,14 @@
 :root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class {
   border-color: color-mix(in srgb, var(--accent) 90%, white 10%);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong) 90%);
+  box-shadow: none !important;
 }
 
 :root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:hover,
 :root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 96%, white 4%);
   background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
+  box-shadow: none !important;
 }
 
 @media screen and (max-width: 900px) {
