@@ -90,6 +90,7 @@ interface SpeechRecognitionEventLike {
 
 interface SpeechRecognitionErrorEventLike {
   error: string;
+  message?: string;
 }
 
 interface SpeechRecognitionLike {
@@ -125,7 +126,10 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
 }
 
-function speechRecognitionErrorMessage(error: string): string {
+function speechRecognitionErrorMessage(error: string, detail?: string): string {
+  const normalizedDetail = detail?.trim();
+  if (normalizedDetail) return normalizedDetail;
+
   switch (error) {
     case 'not-allowed':
     case 'service-not-allowed':
@@ -135,7 +139,7 @@ function speechRecognitionErrorMessage(error: string): string {
     case 'no-speech':
       return '音声を認識できませんでした。もう一度話してください。';
     case 'network':
-      return '音声認識サービスに接続できませんでした。通信状態を確認してください。';
+      return '音声文字起こしAPIへ接続できませんでした。Workerの接続設定を確認してください。';
     default:
       return '音声入力に失敗しました。もう一度試してください。';
   }
@@ -474,7 +478,7 @@ export function AiPlanningView({
 
     recognition.onerror = (event) => {
       if (event.error === 'aborted') return;
-      setError(speechRecognitionErrorMessage(event.error));
+      setError(speechRecognitionErrorMessage(event.error, event.message));
     };
 
     recognition.onend = () => {
