@@ -1,0 +1,155 @@
+/* Month day bottom-sheet motion. Keep this after schedule layout overrides. */
+
+.schedule-add-fab.daily-add-fab {
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: center;
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 150ms ease-out,
+    box-shadow 220ms ease-out;
+  will-change: transform, opacity;
+}
+
+.schedule-workspace-shell:has(.month-day-sheet-overlay) .schedule-add-fab.daily-add-fab {
+  transform: translate3d(0, -42px, 0) scale(0.72);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.month-day-sheet-overlay {
+  background: rgba(18, 24, 36, 0.32);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  overscroll-behavior: contain;
+}
+
+.month-day-sheet-overlay.is-open {
+  animation: month-day-sheet-backdrop-in 220ms ease-out both;
+}
+
+.month-day-sheet-overlay.is-open .month-day-sheet {
+  animation: month-day-sheet-panel-in 410ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.month-day-sheet-overlay.is-open .month-day-sheet-add {
+  animation: month-day-sheet-add-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+.month-day-sheet-overlay.is-closing {
+  pointer-events: none;
+  animation: month-day-sheet-backdrop-out 280ms ease-in both;
+}
+
+.month-day-sheet-overlay.is-closing .month-day-sheet {
+  animation: month-day-sheet-panel-out 280ms cubic-bezier(0.4, 0, 0.65, 1) both;
+}
+
+.month-day-sheet-overlay.is-closing .month-day-sheet-add {
+  animation: month-day-sheet-add-out 150ms ease-in both;
+}
+
+.month-day-sheet {
+  transform-origin: 50% 100%;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.month-day-sheet-add {
+  will-change: transform, opacity;
+}
+
+.month-day-sheet-close:disabled,
+.month-day-sheet-add:disabled,
+.month-day-sheet-event:disabled,
+.month-day-sheet-empty:disabled {
+  pointer-events: none;
+}
+
+@keyframes month-day-sheet-backdrop-in {
+  from {
+    background: rgba(18, 24, 36, 0);
+    -webkit-backdrop-filter: blur(0);
+    backdrop-filter: blur(0);
+  }
+
+  to {
+    background: rgba(18, 24, 36, 0.32);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+}
+
+@keyframes month-day-sheet-backdrop-out {
+  from {
+    background: rgba(18, 24, 36, 0.32);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+
+  to {
+    background: rgba(18, 24, 36, 0);
+    -webkit-backdrop-filter: blur(0);
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes month-day-sheet-panel-in {
+  0% {
+    transform: translate3d(0, calc(100% + 24px), 0) scale(0.99);
+  }
+
+  72% {
+    transform: translate3d(0, -3px, 0) scale(1);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes month-day-sheet-panel-out {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(0, calc(100% + 24px), 0) scale(0.99);
+  }
+}
+
+@keyframes month-day-sheet-add-in {
+  from {
+    transform: translate3d(0, 26px, 0) scale(0.72);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes month-day-sheet-add-out {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate3d(0, 18px, 0) scale(0.78);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-add-fab.daily-add-fab,
+  .month-day-sheet-overlay,
+  .month-day-sheet,
+  .month-day-sheet-add {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
