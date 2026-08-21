@@ -1,11 +1,13 @@
 .primary-app-header {
   width: min(calc(100vw - 24px), 484px);
   margin-inline: auto;
+  align-self: start;
+  justify-self: center;
 }
 
 /*
  * PrimaryAppHeader intentionally reuses the home dashboard context so the
- * HomeTopbar gets exactly the same tokens and responsive child sizing.  It is
+ * HomeTopbar gets exactly the same tokens and responsive child sizing. It is
  * only a chrome wrapper, though, so none of the full-dashboard sizing or
  * clipping rules are allowed to turn it into a second page layout.
  */
@@ -28,9 +30,31 @@
 }
 
 /*
- * The footer used to inherit its geometry from .home-app-shell.  Workspace
+ * Header and footer are persistent siblings of the changing page body. Home
+ * resolves the topbar relaxation once for the current viewport and writes it
+ * onto the persistent header element, so changing surfaces cannot remount or
+ * remeasure the chrome. The page body gets the remaining row.
+ */
+.app-shell.home-app-shell:has(> .primary-app-header) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding-top: clamp(6px, 0.8dvh, 9px);
+}
+
+.app-shell.home-app-shell:has(.ai-planning-view) > .home-main {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
+/*
+ * The footer used to inherit its geometry from .home-app-shell. Workspace
  * surfaces do not have that ancestor, so the same PrimaryBottomNav component
- * silently fell back to the old 62px navigation.  The shared component now
+ * silently fell back to the old 62px navigation. The shared component now
  * owns the home navigation metrics itself.
  */
 .primary-bottom-nav {
@@ -122,6 +146,10 @@
 }
 
 @media (max-height: 760px) {
+  .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
+    padding-top: 5px;
+  }
+
   .primary-bottom-nav {
     --home-nav-height: 68px;
     --home-nav-icon-size: 23px;
