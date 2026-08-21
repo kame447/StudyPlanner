@@ -31,6 +31,44 @@ async function openSchedule(page) {
   await expect(page.locator('.schedule-month-view')).toBeVisible();
 }
 
+test('quick add grows from the FAB with ordered actions and hands off to the schedule editor', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedSchedule(page);
+  await openSchedule(page);
+
+  const trigger = page.getByRole('button', { name: 'クイック追加メニューを開く' });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  const actions = page.locator('.quick-add-option');
+  await expect(actions).toHaveCount(3);
+  await expect(actions).toHaveText(['AI計画', '学習を追加', '予定を追加']);
+
+  const triggerTransform = await page
+    .locator('.quick-add-trigger-icon')
+    .evaluate((element) => getComputedStyle(element).transform);
+  expect(triggerTransform).not.toBe('none');
+
+  await expect
+    .poll(() => actions.last().evaluate((element) => getComputedStyle(element).animationName))
+    .toContain('quick-add-option-in');
+
+  await page.screenshot({
+    path: 'artifacts/quick-add-menu-mobile.png',
+    fullPage: true,
+  });
+
+  await page.getByRole('menuitem', { name: '予定を追加' }).click();
+  await expect(page.locator('.month-event-modal-overlay')).toBeVisible();
+
+  await expect
+    .poll(() => trigger.evaluate((element) => getComputedStyle(element).opacity))
+    .toBe('0');
+});
+
 test('day detail rises as a bottom sheet and transfers the add action without a duplicate visible FAB', async ({
   page,
 }) => {
@@ -38,7 +76,7 @@ test('day detail rises as a bottom sheet and transfers the add action without a 
   await seedSchedule(page);
   await openSchedule(page);
 
-  const globalFab = page.getByRole('button', { name: '新規追加' });
+  const globalFab = page.getByRole('button', { name: 'クイック追加メニューを開く' });
   await expect(globalFab).toBeVisible();
 
   const dayCell = page.locator('.schedule-month-view .month-cell:not(.is-muted)').first();
