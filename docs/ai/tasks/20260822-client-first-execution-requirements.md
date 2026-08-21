@@ -117,7 +117,7 @@ owner mismatch、invalid payload、active session recovery 等の防御は存在
 
 本要件はこれらを防ぐため、execution、persistence、synchronization、authority、migration の契約を先に固定する。
 
-## 4. 目的
+## 4. Business / Product Goals
 
 ### GOAL-001: Local-first responsiveness
 
@@ -143,7 +143,54 @@ AI provider secret、privileged admin secret、server signing secret を client 
 
 WASM 導入は定量 benchmark と maintenance cost を通過した場合だけ行い、全面 rewrite を禁止すること。
 
-## 5. 非目標
+### GOAL-007: Migration without user-visible data loss
+
+既存利用者の予定、教材、時間割、週間計画stateを、storage方式変更のために消失・重複・別account混入させないこと。
+
+## 5. Success Metrics
+
+本件は「実装した」ではなく以下の観測可能な結果で評価する。
+
+| Metric | Target |
+| --- | --- |
+| deterministic operation unnecessary network calls | 0 new round-trips |
+| offline -> reload -> reconnect data loss in regression suite | 0 |
+| duplicate semantic commit under 100 retries | 0 |
+| silent last-write-wins for undefined conflict policy | 0 |
+| production provider secret in client artifact/local persistence | 0 |
+| scheduler p95 on reference benchmark | <= 250 ms target |
+| general deterministic app result p95 | <= 100 ms |
+| local hydration p95 on reference dataset | <= 500 ms target |
+| post-migration p95/heap/gzip regression without approved ADR | <= 10% |
+| WASM adoption without benchmark gate | 0 |
+
+Performance target が baseline main ですでに未達の場合は、未達を隠して要件を削除しない。baseline、原因、改善計画を記録し、少なくとも migration による追加悪化を禁止する。
+
+## 6. Stakeholders / Decision Rights
+
+### Product owner
+
+利用者体験、offline時の見せ方、競合解決UX、scope優先順位を決定する。
+
+### Application architecture owner
+
+client/server responsibility、repository contract、sync state machine、migration、dependency direction を所有する。
+
+### Security / privacy owner
+
+credential boundary、authorization、trace/privacy、account lifecycle、local sensitive data policy を承認する。
+
+### AI subsystem owner
+
+semantic meaning、repair、rendererとAI gatewayの境界を所有する。offline fallback のために legacy raw-text parser を復活させない。
+
+### Verification owner
+
+unit test green と production verification を混同せず、requirement ID と evidence を結び付ける。
+
+一人の開発者が複数 role を兼任してもよいが、判断責務そのものを混同しない。
+
+## 7. 非目標
 
 本件では以下を目的にしない。
 
@@ -158,37 +205,59 @@ WASM 導入は定量 benchmark と maintenance cost を通過した場合だけ�
 - AI prompt / semantic quality の再設計
 - offline 中の AI semantic interpretation を擬似 deterministic parser で代替
 
-## 6. 用語と状態モデル
+## 8. Constraints and Assumptions
 
-### 6.1 Working State
+### CON-001
+
+現行 React 18 / TypeScript / Vite 構成を前提とし、本件単独では framework migration を行わない。
+
+### CON-002
+
+Firebase / Firestore と Cloudflare AI proxy は現行 integration として扱う。置換は別のADRとscope承認がない限り本件の前提にしない。
+
+### CON-003
+
+modern browser client は改変可能であり、client binary / JS / WASM を秘密保持手段として扱わない。
+
+### CON-004
+
+offline対応は「すべての機能がofflineで動く」ことを意味しない。AI、認証、server-authoritative operation は明示的にdegradeする。
+
+### CON-005
+
+Issue #47、#51、#45、#89、#128、#152、#160 の既存 responsibility を横取りせず、共通基盤が必要な場合のみ接続する。
+
+## 9. 用語と状態モデル
+
+### 9.1 Working State
 
 現在の端末上で UI と deterministic application logic が使用する状態。未同期変更を含むことができる。
 
-### 6.2 Shared Canonical State
+### 9.2 Shared Canonical State
 
 server が owner / authorization / revision / idempotency を検証して受理した共有状態。複数端末で最終的に収束すべき状態である。
 
-### 6.3 Local Replica
+### 9.3 Local Replica
 
 Shared Canonical State の端末内コピーと、未同期 Working State を保持する storage。localStorage に限定しない。
 
-### 6.4 Operation
+### 9.4 Operation
 
 local state 変更を shared state へ反映するための再送可能な machine-readable mutation 単位。
 
-### 6.5 Ephemeral State
+### 9.5 Ephemeral State
 
 表示中 modal、hover、入力途中など reload 後復元を要求しない UI state。
 
-### 6.6 Durable Working State
+### 9.6 Durable Working State
 
 conversation、Fact Graph、preview、draft、sync queue など reload / crash 後も必要な application state。
 
-### 6.7 Server-authoritative Operation
+### 9.7 Server-authoritative Operation
 
 client の成功判定だけでは完了できず、server acknowledgement が完了条件となる operation。
 
-## 7. Target Architecture 原則
+## 10. Target Architecture 原則
 
 ### ARCH-001: Execution と authority を分離する
 
@@ -218,29 +287,33 @@ sync failure が scheduler / validator の利用不能へ連鎖してはなら�
 
 storage migration は内部実装詳細ではなく、既存利用者のデータを守る product contract として test する。
 
-## 8. 責務配置の正仕様
+### ARCH-008: One truth per data class
+
+同一 data class について複数 storage が独立 mutation authority を持ってはならない。cache、replica、server authority の役割を明示する。
+
+## 11. 責務配置の正仕様
 
 | Capability | Target execution | Shared authority | Offline behavior | Requirement |
 | --- | --- | --- | --- | --- |
 | UI rendering / interaction | Client | none | available | EXE-001 |
 | Fact Graph lifecycle | Client | cloud session revision when shared | existing state can continue | EXE-010 / SYNC-030 |
-| validator / canonicalization | Client | server revalidation only for privileged mutations | available | EXE-011 |
+| validator / canonicalization | Client | privileged mutation only revalidated structurally | available | EXE-011 |
 | progress / remaining derivation | Client | none | available | EXE-012 |
 | readiness / blocking issue selection | Client | none | available | EXE-013 |
 | scheduler / rescheduler | Client | none | available from hydrated constraints | EXE-014 |
-| preview generation | Client | preview provenance / revision when shared | recompute allowed | EXE-015 |
-| AI semantic interpretation | Client orchestration + Server gateway + Provider | Server gateway policy | unavailable for new free-text semantic turns | AI-001 |
-| AI semantic repair | Client orchestration + Server gateway + Provider | Server gateway policy | unavailable | AI-002 |
-| AI dialogue renderer | Client orchestration + Server gateway + Provider | Server gateway policy | deterministic safe fallback only where current contract permits | AI-003 |
-| authentication | Client SDK + Server/Firebase | Server | existing local read may continue; privileged writes blocked as required | SEC-001 |
+| preview generation | Client | provenance/revision when shared | recompute allowed | EXE-015 |
+| AI semantic interpretation | Client orchestration + Server gateway + Provider | Server gateway policy | unavailable for new free-text semantic turn | AI-001 / AI-003 |
+| AI semantic repair | Client orchestration + Server gateway + Provider | Server gateway policy | unavailable | AI-001 / AI-003 |
+| AI dialogue renderer | Client orchestration + Server gateway + Provider | Server gateway policy | current deterministic fallback contract only | AI-001 / AI-003 |
+| authentication | Client SDK + Server/Firebase | Server | privileged operation may block | SEC-001 |
 | normal planner CRUD | Client local replica + sync adapter | Server/Firebase after acknowledgement | policy-controlled optimistic mutation | SYNC-010 |
 | weekly conversation shared session | Client local replica | Cloud revision | queue/reconcile per #47 | SYNC-030 |
+| personalization | Client projection + repository | existing profile authority | last hydrated profile may be read | SYNC-040 |
 | approval / final save uniqueness | Client request | Server transaction | cannot be finalized offline | AUTH-010 |
 | trace collection | Client capture + Server storage | Server retention / ACL | bounded queue only where policy permits | OBS-020 |
-| personalization | Client projection + repository | existing profile authority | last hydrated profile may be read | SYNC-040 |
 | account deletion / privacy lifecycle | Server | Server | unavailable offline | SEC-020 |
 
-## 9. Functional Requirements
+## 12. Functional Requirements
 
 ### EXE-001: UI state update
 
@@ -306,6 +379,10 @@ local data は owner scope を持ち、別 account の data を復元・同期�
 
 sign-out / account switch の cache retention policy を明示し、別 owner へ old cache を再保存しない。
 
+### DATA-005: Storage failure behavior
+
+quota exceeded、permission denial、corrupt record、transaction abort を success に変換しない。durable write を保証できない場合は user-visible degraded state または明示 error とする。
+
 ### SYNC-001: Sync state machine
 
 共有対象の local change は最低限以下の状態を機械的に区別する。
@@ -359,6 +436,10 @@ policy 未定義の競合は自動 merge せず `conflict` とする。
 
 network 復旧後、durable queue を loss なく再開し、再送中に tab close / reload が発生しても operation identity を維持する。
 
+### SYNC-007: Server rejection rollback
+
+optimistic mutation が server に拒否された場合、UI と local replica を `synced` として残さない。rollback または rejected/conflict state へ遷移し、利用者が修復可能であること。
+
 ### SYNC-010: Planner entity local replica
 
 Plan、Actual、DayNote、MonthEvent、Todo、StudySubject、StudyMaterial、ScheduleTemplate、TimetableTerm、TimetablePeriod の repository contract は UI から変えず、local replica / sync implementation を repository 内へ隠蔽する。
@@ -369,6 +450,12 @@ Issue #47 / `20260731-weekly-planning-synced-conversation-session-store.md` の�
 
 conversation、Fact Graph、preview、draft、machine pending question を cloud と共有する場合は同 task の atomic revision / conflict / offline reconciliation 契約を本要件の sync infrastructure 上へ接続する。
 
+### SYNC-040: Personalization replica
+
+personalization profile の server authority、consent、TTL、reset contract は Issue #47 の既存 policy を維持する。
+
+client は最後に正常 hydrate された profile を local projection に利用できるが、推定・古いlocal値でserver profileを無条件上書きしてはならない。
+
 ### AUTH-010: Approval / save
 
 複数端末一意性が必要な approval / final Plan save は server acknowledgement を完了条件とする。
@@ -377,7 +464,7 @@ client offline 状態で「保存完了」と表示しない。offline で inten
 
 ### AI-001: Production AI gateway
 
-production の AI provider call は server-side gateway を通す。
+production の AI semantic interpretation、semantic repair、dialogue renderer を含む provider call は server-side gateway を通す。
 
 provider API key を browser localStorage、IndexedDB、bundled environment value、source map、request payload へ置いてはならない。
 
@@ -389,7 +476,7 @@ production build / production runtime が direct provider secret を要求しな
 
 ### AI-003: Offline AI behavior
 
-新規 free-text semantic interpretation を offline で deterministic regex / legacy parser へ fallback してはならない。
+新規 free-text semantic interpretation、semantic repair、AI renderer が network / provider を必要とする場合、offline で deterministic regex / legacy parser へ fallback して意味状態を生成してはならない。
 
 AI が必要な turn は `offline / AI unavailable` として停止し、既存 canonical state から実行可能な deterministic schedule / preview / analysis は継続可能にする。
 
@@ -408,6 +495,10 @@ server は client が送った `isAdmin`、billing tier、owner、approval compl
 local replica に保存する field を inventory 化する。secret は保存しない。
 
 raw conversation / trace を local に保持する場合は既存 privacy consent / retention 方針と整合し、trace 用 storage と operational state storage を混同しない。
+
+### SEC-004: Production build boundary
+
+production config で direct provider secret が必要なコード経路、environment validation、runtime selection が有効にならないことを構造テストで固定する。
 
 ### SEC-020: Account lifecycle
 
@@ -445,7 +536,11 @@ migration は `read-old / write-new`、shadow verification、cutover、old clean
 
 storage migration 中に raw conversation を AI へ再送して state を再生成してはならない。既存 typed state を versioned migration する。
 
-## 10. Offline Product Contract
+### MIG-004: Account-scoped migration
+
+migration は owner scope を明示し、account A の old state を account B の new storage へ移さない。
+
+## 13. Offline Product Contract
 
 ### OFF-001: Offline で利用可能
 
@@ -479,7 +574,7 @@ storage migration 中に raw conversation を AI へ再送して state を再生
 
 常時 badge を強制するものではないが、pending / conflict / rejected が無言になってはならない。
 
-## 11. Conflict Contract
+## 14. Conflict Contract
 
 ### CONF-001: No lost update
 
@@ -497,7 +592,7 @@ A端末とB端末が同じ server revision を基に異なる更新を行った�
 
 Fact Graph conflict は raw text diff ではなく revision / Fact operation identity で扱う。別端末が進めた Graph に current local diff を機械的に適用できない場合は再解釈せず conflict とする。
 
-## 12. Non-Functional Requirements
+## 15. Non-Functional Requirements
 
 ### NFR-PERF-001: Local interaction latency
 
@@ -565,7 +660,11 @@ local schema、sync operation、server endpoint / collection document の compat
 
 current production が対象とする modern Safari / Chromium / Firefox 系で必須機能が利用可能であること。特定 API に依存する場合は feature detection と fallback / unsupported behavior を定義する。
 
-## 13. WASM Adoption Gate
+### NFR-TEST-001: Traceability
+
+各実装PRは変更した requirement ID と、その requirement を証明する automated / manual evidence を PR body に列挙する。
+
+## 16. WASM Adoption Gate
 
 ### WASM-001: Candidate scope
 
@@ -601,7 +700,7 @@ WASM 導入による initial gzip payload 増加が 250 KiB を超える場合�
 
 問題が main-thread blocking であり CPU総量ではない場合、Web Worker offload を WASM より先に評価する。
 
-## 14. Migration Plan
+## 17. Migration Plan
 
 ### Phase 0: Inventory and baseline
 
@@ -652,7 +751,7 @@ WASM-001〜005 を満たす候補だけ spike し、採用または不採用 ADR
 
 WASM 不採用は正常な完了結果である。
 
-## 15. Rollout / Rollback Requirements
+## 18. Rollout / Rollback Requirements
 
 ### ROL-001: Feature flag
 
@@ -670,9 +769,9 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 
 旧 storage / compatibility path の削除条件を version / date / migration completion で明示する。
 
-## 16. Verification Strategy
+## 19. Verification Strategy
 
-### 16.1 Unit / property tests
+### 19.1 Unit / property tests
 
 - pure validator / canonicalizer determinism
 - progress convergence
@@ -682,7 +781,7 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 - conflict classifier
 - sync state reducer
 
-### 16.2 Integration tests
+### 19.2 Integration tests
 
 - repository local replica -> cloud adapter
 - stale revision rejection
@@ -692,7 +791,7 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 - local transaction crash recovery
 - local schema migration
 
-### 16.3 Emulator tests
+### 19.3 Emulator tests
 
 - Firestore Rules authorization
 - transaction contention
@@ -700,7 +799,7 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 - stale base revision
 - account deletion / retention where applicable
 
-### 16.4 Browser Regression
+### 19.4 Browser Regression
 
 最低限以下を自動化する。
 
@@ -715,7 +814,7 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 9. scheduler / preview while offline
 10. logout / account switch isolation
 
-### 16.5 Performance tests
+### 19.5 Performance tests
 
 - scheduler fixed dataset p50/p95
 - local hydration p50/p95
@@ -724,13 +823,33 @@ rollback しても new schema で作成した shared data を旧 client が誤�
 - bundle gzip size
 - WASM候補はTypeScriptと同一datasetで比較
 
-### 16.6 Production verification
+### 19.6 Production verification
 
 自動 test green だけで operationally deployed と記録しない。
 
 Production では最低限、正常sync、reconnect、multi-device、server rejection、account isolation、AI proxy、approval一意性を観測する。
 
-## 17. Acceptance Criteria
+## 20. Requirement Traceability Matrix
+
+| Requirement group | Primary owner | Mandatory evidence |
+| --- | --- | --- |
+| EXE-* | client application/domain | unit/property + architecture test |
+| DATA-* | local persistence adapter | migration/integration + browser failure test |
+| SYNC-* | repository/sync application | integration + multi-tab + emulator where server involved |
+| AUTH-* | approval/server application | transaction/emulator + production verification |
+| AI-* | AI client/proxy boundary | architecture test + offline/browser behavior + provider-path verification |
+| SEC-* | server rules/proxy/build boundary | security/architecture + emulator/build check |
+| OBS-* | metrics/trace adapter | privacy-safe payload tests |
+| MIG-* | storage migration | idempotence + crash/reload + rollback evidence |
+| OFF-* | product/application | browser network-off regression |
+| CONF-* | sync conflict owner | concurrent integration + resolution behavior |
+| NFR-* | cross-cutting | benchmark/security/test evidence |
+| WASM-* | performance architecture | benchmark + ADR |
+| ROL-* | release/migration | rollback/shadow/cutoff evidence |
+
+要件IDのない実装変更を禁止するものではないが、Issue #164 scope の変更は最低1つの本書 requirement へ trace できなければならない。trace できない場合は scope 外か、本書の要件不足である。
+
+## 21. Acceptance Criteria
 
 以下をすべて満たすまで Issue #164 を完了扱いにしない。
 
@@ -758,20 +877,21 @@ Production では最低限、正常sync、reconnect、multi-device、server reje
 - [ ] Production verification record がある
 - [ ] `PROJECT_MAP.md`、関連architecture、roadmap、taskが最終責務境界と同期している
 
-## 18. Merge Gates
+## 22. Merge Gates
 
 各実装 PR は最低限以下を満たす。
 
 1. 対応する requirement ID を PR body に列挙する。
 2. requirement を守る自動 test または明示的な verification evidence を示す。
-3.既存の server authority を client convenience のため弱めない。
+3. 既存の server authority を client convenience のため弱めない。
 4. storage / sync / semantic ownership の二重化を作らない。
 5. current main との diff を責務単位で説明する。
 6. typecheck / full test / build を通す。
 7. browser / emulator / real environment が必要な項目を unit test の成功だけで完了扱いにしない。
 8. migration / rollback が必要な変更は、cutover前にrollback pathを検証する。
+9. requirement ID と evidence の対応がレビュー可能である。
 
-## 19. Dependency / Scope Coordination
+## 23. Dependency / Scope Coordination
 
 ### Issue #47
 
@@ -801,13 +921,13 @@ AI usage / cost observability を所有する。本件の AI gateway はその�
 
 UI / navigation scope であり、本件の persistence / execution architecture を UI component へ直書きしない。
 
-## 20. Risk Register
+## 24. Risk Register
 
 ### RISK-001: Double cache
 
 Firestore persistent cache と独自 IndexedDB を同じ data class の独立 truth として併用すると conflict が二重化する。
 
-Mitigation: DATA-001 ADR で owner を一つにする。
+Mitigation: DATA-001 / ARCH-008。
 
 ### RISK-002: Offline false success
 
@@ -831,7 +951,7 @@ Mitigation: source revision binding + AUTH-010。
 
 localStorage -> new storage の途中失敗で両方を削除する危険がある。
 
-Mitigation: MIG-001 / MIG-002。
+Mitigation: MIG-001 / MIG-002 / MIG-004。
 
 ### RISK-006: WASM over-engineering
 
@@ -845,7 +965,13 @@ client-firstをclient-authoritativeと誤解し、owner / quota / approvalをcli
 
 Mitigation: ARCH-001 / SEC-001 / SEC-002。
 
-## 21. Definition of Done
+### RISK-008: Server rejection after optimistic UI
+
+clientが成功表示した後にserverがowner/revision/rulesでrejectし、UIとcloudが分裂する危険がある。
+
+Mitigation: SYNC-001 / SYNC-007 / OFF-004。
+
+## 25. Definition of Done
 
 本件の Definition of Done は「クライアント側のコードが増えた」ことではない。
 
@@ -862,10 +988,26 @@ Mitigation: ARCH-001 / SEC-001 / SEC-002。
 - WASM は実測で採用または不採用が決定されている
 - architecture docs / issue / task / tests が同じ責務境界を示している
 
-## 22. Change Log
+## 26. Change Control
+
+本書の requirement を削除・緩和・別 owner へ移す場合、PR に以下を記載する。
+
+- 変更対象 requirement ID
+- 変更理由
+- 現行実装 / production evidence
+- 代替案
+- security / data-loss / offline / multi-device 影響
+- migration / rollback 影響
+- acceptance test の変更
+
+単なる実装困難、期限、コード量を理由に hard requirement を暗黙削除しない。
+
+## 27. Change Log
 
 ### 2026-08-22
 
 Initial canonical requirements baseline.
 
 Baseline main の実装を確認し、client-first execution、server shared authority、AI gateway、local durable state、offline sync、conflict、migration、security、performance、WASM adoption gate、verification、Definition of Done を統合した。
+
+同日 adversarial document review で requirement traceability を再監査し、AI責務表のID対応、personalization `SYNC-040`、Success Metrics、Stakeholders、Constraints、Traceability Matrix、Change Control を追加した。
