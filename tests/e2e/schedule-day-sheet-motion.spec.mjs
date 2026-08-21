@@ -56,10 +56,9 @@ test('day detail rises as a bottom sheet and transfers the add action without a 
     .poll(() => globalFab.evaluate((element) => getComputedStyle(element).opacity))
     .toBe('0');
 
-  const runningSheetAnimations = await sheet.evaluate(
-    (element) => element.getAnimations().filter((animation) => animation.playState === 'running').length,
-  );
-  expect(runningSheetAnimations).toBeGreaterThan(0);
+  await expect
+    .poll(() => sheet.evaluate((element) => getComputedStyle(element).animationName))
+    .toContain('month-day-sheet-panel-in');
 
   await page.screenshot({
     path: 'artifacts/schedule-day-sheet-mobile.png',
