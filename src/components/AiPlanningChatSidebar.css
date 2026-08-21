@@ -1,7 +1,10 @@
+.ai-chat-drawer-layer .ai-chat-drawer {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
 .ai-chat-week-reset-zone {
-  margin-top: auto;
   padding: 14px 0 2px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border, #dce4ee) 76%, transparent);
 }
 
 .ai-chat-week-reset-button {
@@ -12,10 +15,10 @@
   width: 100%;
   min-height: 52px;
   padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--border));
+  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--border, #dce4ee));
   border-radius: 14px;
   background: color-mix(in srgb, #ef4444 5%, transparent);
-  color: color-mix(in srgb, #ef4444 80%, var(--text));
+  color: color-mix(in srgb, #ef4444 80%, var(--text, #18253b));
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -27,7 +30,7 @@
 
 .ai-chat-week-reset-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, #ef4444 48%, var(--border));
+  border-color: color-mix(in srgb, #ef4444 48%, var(--border, #dce4ee));
   background: color-mix(in srgb, #ef4444 9%, transparent);
 }
 
@@ -49,7 +52,7 @@
 }
 
 .ai-chat-week-reset-button small {
-  color: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: color-mix(in srgb, var(--muted, #7d889a) 88%, transparent);
   font-size: 0.68rem;
   font-weight: 650;
 }
@@ -64,6 +67,7 @@
   padding: 16px 12px max(16px, env(safe-area-inset-bottom, 0px));
   background: rgb(8 15 20 / 0.52);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   overscroll-behavior: contain;
   animation: planner-sheet-overlay-in 220ms ease-out both;
 }
@@ -75,10 +79,10 @@
   gap: 12px;
   width: min(460px, 100%);
   padding: 24px 18px 18px;
-  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #dce4ee) 86%, transparent);
   border-radius: 24px;
-  background: color-mix(in srgb, var(--surface) 97%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--surface, #fff) 97%, transparent);
+  color: var(--text, #18253b);
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.28);
   transform-origin: 50% 100%;
   backface-visibility: hidden;
@@ -93,7 +97,7 @@
   width: 42px;
   height: 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  background: color-mix(in srgb, var(--muted, #7d889a) 42%, transparent);
   transform: translateX(-50%);
 }
 
@@ -124,7 +128,7 @@
 
 .ai-week-reset-confirm-copy p {
   margin-top: 7px;
-  color: var(--muted);
+  color: var(--muted, #7d889a);
   font-size: 0.78rem;
   font-weight: 620;
   line-height: 1.65;
@@ -153,9 +157,9 @@
 }
 
 .ai-week-reset-cancel {
-  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-  background: color-mix(in srgb, var(--surface) 88%, var(--text) 3%);
-  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--border, #dce4ee) 88%, transparent);
+  background: color-mix(in srgb, var(--surface, #fff) 88%, var(--text, #18253b) 3%);
+  color: var(--text, #18253b);
 }
 
 .ai-week-reset-confirm {
