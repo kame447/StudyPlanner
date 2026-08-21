@@ -20,7 +20,7 @@ async function seedHome(page) {
   });
 }
 
-test('AI planning keeps the photo attachment button visible on a 360px mobile viewport', async ({ page }) => {
+test('AI planning keeps photo, microphone, and send actions visible on a 360px mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 });
   await seedHome(page);
   await page.goto('/');
@@ -33,6 +33,15 @@ test('AI planning keeps the photo attachment button visible on a 360px mobile vi
     'image/png,image/jpeg',
   );
 
-  await expect(page.locator('.ai-planning-mic-button')).toBeHidden();
+  await expect(page.locator('.ai-planning-mic-button')).toBeVisible();
   await expect(page.locator('.ai-planning-send-button')).toBeVisible();
+
+  const composerBox = await page.locator('.ai-planning-composer').boundingBox();
+  const micBox = await page.locator('.ai-planning-mic-button').boundingBox();
+  const sendBox = await page.locator('.ai-planning-send-button').boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(micBox).not.toBeNull();
+  expect(sendBox).not.toBeNull();
+  expect(micBox.x + micBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
+  expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
 });
