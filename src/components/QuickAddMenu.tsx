@@ -9,9 +9,9 @@ interface QuickAddMenuProps {
 
 const ACTIONS = [
   {
-    id: 'schedule',
-    label: '予定を追加',
-    icon: CalendarPlus,
+    id: 'ai',
+    label: 'AI計画',
+    icon: Sparkles,
   },
   {
     id: 'study',
@@ -19,9 +19,9 @@ const ACTIONS = [
     icon: BookOpenCheck,
   },
   {
-    id: 'ai',
-    label: 'AIで計画',
-    icon: Sparkles,
+    id: 'schedule',
+    label: '予定を追加',
+    icon: CalendarPlus,
   },
 ] as const;
 
@@ -83,6 +83,7 @@ export function QuickAddMenu({
       >
         {ACTIONS.map((action, index) => {
           const Icon = action.icon;
+          const revealIndex = ACTIONS.length - 1 - index;
 
           return (
             <button
@@ -90,7 +91,7 @@ export function QuickAddMenu({
               key={action.id}
               onClick={() => runAction(action.id)}
               role="menuitem"
-              style={{ '--quick-add-index': index } as CSSProperties}
+              style={{ '--quick-add-index': revealIndex } as CSSProperties}
               tabIndex={isOpen ? 0 : -1}
               type="button"
             >
