@@ -53,9 +53,14 @@ async function openPrimarySurface(page, label) {
 
 async function readChromeMetrics(page) {
   return page.evaluate(() => {
-    const header = document.querySelector('.home-topbar');
+    const wrapper = document.querySelector('.primary-app-header');
+    const header = wrapper?.querySelector('.home-topbar');
     const nav = document.querySelector('.primary-bottom-nav');
-    if (!(header instanceof HTMLElement) || !(nav instanceof HTMLElement)) {
+    if (
+      !(wrapper instanceof HTMLElement) ||
+      !(header instanceof HTMLElement) ||
+      !(nav instanceof HTMLElement)
+    ) {
       throw new Error('primary chrome is missing');
     }
 
@@ -101,6 +106,7 @@ async function readChromeMetrics(page) {
     const navLabelStyle = navLabel instanceof Element ? getComputedStyle(navLabel) : null;
 
     return {
+      wrapper: rect(wrapper),
       header: headerBox,
       streak: rect(streak),
       date: rect(date),
@@ -120,11 +126,36 @@ async function readChromeMetrics(page) {
       iconButtonHeight: iconStyle ? px(iconStyle.height) : 0,
       headerScrollWidth: header.scrollWidth,
       headerClientWidth: header.clientWidth,
+      topbarRelaxation: wrapper.style.getPropertyValue('--home-relax-topbar'),
+      chromeViewport: wrapper.dataset.homeChromeViewport ?? '',
       childrenContained,
       pageWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
     };
   });
+}
+
+async function markPersistentChrome(page) {
+  await page.evaluate(() => {
+    const header = document.querySelector('.primary-app-header');
+    const nav = document.querySelector('.primary-bottom-nav');
+    if (!(header instanceof HTMLElement) || !(nav instanceof HTMLElement)) {
+      throw new Error('primary chrome is missing');
+    }
+    header.dataset.chromeAuditIdentity = 'persistent-header';
+    nav.dataset.chromeAuditIdentity = 'persistent-nav';
+  });
+}
+
+async function expectPersistentChrome(page) {
+  await expect(page.locator('.primary-app-header')).toHaveAttribute(
+    'data-chrome-audit-identity',
+    'persistent-header',
+  );
+  await expect(page.locator('.primary-bottom-nav')).toHaveAttribute(
+    'data-chrome-audit-identity',
+    'persistent-nav',
+  );
 }
 
 function expectRectToMatch(actual, expected, fields, tolerance = 1) {
@@ -136,6 +167,7 @@ function expectRectToMatch(actual, expected, fields, tolerance = 1) {
 }
 
 function expectChromeToMatchHome(actual, home) {
+  expectRectToMatch(actual.wrapper, home.wrapper, ['x', 'y', 'width', 'height']);
   expectRectToMatch(actual.header, home.header, ['x', 'y', 'width', 'height']);
   expectRectToMatch(actual.streak, home.streak, ['width', 'height']);
   expectRectToMatch(actual.date, home.date, ['width', 'height']);
@@ -154,6 +186,8 @@ function expectChromeToMatchHome(actual, home) {
   expect(Math.abs(actual.activeMarginTop - home.activeMarginTop)).toBeLessThanOrEqual(0.25);
   expect(Math.abs(actual.iconButtonWidth - home.iconButtonWidth)).toBeLessThanOrEqual(0.25);
   expect(Math.abs(actual.iconButtonHeight - home.iconButtonHeight)).toBeLessThanOrEqual(0.25);
+  expect(actual.topbarRelaxation).toBe(home.topbarRelaxation);
+  expect(actual.chromeViewport).toBe(home.chromeViewport);
 
   expect(actual.headerScrollWidth).toBeLessThanOrEqual(actual.headerClientWidth + 1);
   expect(actual.childrenContained).toBe(true);
@@ -167,7 +201,11 @@ for (const viewport of VIEWPORTS) {
     await mkdir(`artifacts/chrome-audit/${viewport.name}`, { recursive: true });
 
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+    await expect
+      .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
+      .not.toBeNull();
+    await markPersistentChrome(page);
     await page.waitForTimeout(250);
     const home = await readChromeMetrics(page);
     await page.screenshot({
@@ -177,6 +215,7 @@ for (const viewport of VIEWPORTS) {
 
     await openPrimarySurface(page, 'AI計画');
     await expect(page.locator('.ai-planning-view')).toBeVisible();
+    await expectPersistentChrome(page);
     await page.waitForTimeout(250);
     const aiPlanning = await readChromeMetrics(page);
     expectChromeToMatchHome(aiPlanning, home);
@@ -187,6 +226,7 @@ for (const viewport of VIEWPORTS) {
 
     await openPrimarySurface(page, '教材');
     await expect(page.locator('.bookshelf-view')).toBeVisible();
+    await expectPersistentChrome(page);
     await page.waitForTimeout(250);
     const bookshelf = await readChromeMetrics(page);
     expectChromeToMatchHome(bookshelf, home);
@@ -194,5 +234,12 @@ for (const viewport of VIEWPORTS) {
       path: `artifacts/chrome-audit/${viewport.name}/bookshelf.png`,
       fullPage: false,
     });
+
+    await openPrimarySurface(page, 'ホーム');
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+    await expectPersistentChrome(page);
+    await page.waitForTimeout(250);
+    const homeAgain = await readChromeMetrics(page);
+    expectChromeToMatchHome(homeAgain, home);
   });
 }
