@@ -136,7 +136,7 @@ describe('DayView extracted dialogs', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('maps plan and month-event details to the planned actual editor contract', () => {
+  it('opens the planned actual editor from the record action sheet', () => {
     let renderer!: ReactTestRenderer;
 
     act(() => {
@@ -156,6 +156,15 @@ describe('DayView extracted dialogs', () => {
           onClose={vi.fn()}
         />,
       );
+    });
+
+    const recordAction = renderer.root.findAllByType('button').find((button) =>
+      button.findAllByType('strong').some((label) => label.children.join('') === '記録を保存'),
+    );
+    expect(recordAction).toBeDefined();
+
+    act(() => {
+      recordAction?.props.onClick();
     });
 
     const editor = renderer.root.findByType(ActualEditorCard);
