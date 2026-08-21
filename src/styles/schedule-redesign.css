@@ -1,0 +1,1039 @@
+/* Unified schedule surface -------------------------------------------------- */
+.schedule-workspace-shell {
+  --schedule-nav-height: 72px;
+  box-sizing: border-box;
+  width: min(100%, 900px);
+  max-width: 900px;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 0 14px calc(var(--schedule-nav-height) + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.schedule-app-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  align-items: center;
+  min-height: 62px;
+  margin: 0 -14px;
+  padding: env(safe-area-inset-top, 0px) 14px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(18px);
+  z-index: 4;
+}
+
+.schedule-app-header h1 {
+  margin: 0;
+  font-size: clamp(1.15rem, 3.8vw, 1.45rem);
+  line-height: 1;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.schedule-back-button,
+.schedule-header-spacer {
+  width: 44px;
+  height: 44px;
+}
+
+.schedule-back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+}
+
+.schedule-toolbar {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 10px;
+  background: var(--surface);
+}
+
+.schedule-toolbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.schedule-period-control {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+}
+
+.schedule-period-control > svg:first-child {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.schedule-period-control strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(0.92rem, 2.8vw, 1.08rem);
+  line-height: 1.2;
+}
+
+.schedule-period-chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.schedule-period-step {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.schedule-period-step:hover {
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+
+.schedule-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  min-width: min(44vw, 280px);
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.schedule-view-tabs button {
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.schedule-view-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.schedule-day-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.schedule-day-strip button {
+  min-width: 0;
+  min-height: 64px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.schedule-day-strip button span {
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.schedule-day-strip button strong {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 0.92rem;
+}
+
+.schedule-day-strip button.active {
+  color: var(--accent);
+}
+
+.schedule-day-strip button.active strong {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.schedule-main {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 18px;
+}
+
+.schedule-main > .panel,
+.schedule-main > .swipe-view,
+.schedule-main > .section-stack,
+.schedule-main .schedule-month-view,
+.schedule-main .todo-view {
+  min-width: 0;
+}
+
+.schedule-main > .panel,
+.schedule-main .schedule-month-view,
+.schedule-main .todo-view,
+.schedule-main > .section-stack > .panel:first-child {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.schedule-main .view-header-stack,
+.schedule-main .month-legacy-header,
+.schedule-main .month-week-chip-row,
+.schedule-main .day-timeline-header,
+.schedule-main .daily-bookshelf-link-card,
+.schedule-main .view-print-button,
+.schedule-main .timeline-legend,
+.schedule-main .week-timeline-legend {
+  display: none !important;
+}
+
+/* Bottom nav + add button --------------------------------------------------- */
+.schedule-bottom-nav.home-bottom-nav {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(100%, 900px);
+  height: calc(var(--schedule-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding: 7px 16px env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 -8px 24px rgba(17, 35, 66, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.schedule-bottom-nav.home-bottom-nav button {
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.schedule-bottom-nav.home-bottom-nav button.active {
+  color: var(--accent);
+}
+
+.schedule-bottom-nav.home-bottom-nav svg {
+  width: 23px;
+  height: 23px;
+}
+
+.schedule-bottom-nav.home-bottom-nav span {
+  font-size: 0.66rem;
+}
+
+.schedule-add-fab.daily-add-fab {
+  position: fixed;
+  z-index: 45;
+  right: max(22px, calc((100vw - min(100vw, 900px)) / 2 + 22px));
+  bottom: calc(var(--schedule-nav-height) + 14px + env(safe-area-inset-bottom, 0px));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 2rem;
+  font-weight: 300;
+}
+
+/* Month ------------------------------------------------------------------- */
+.schedule-month-view {
+  padding: 0 !important;
+}
+
+.schedule-month-view .month-pager-viewport {
+  border: 0;
+  border-radius: 0;
+}
+
+.schedule-month-view .month-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+
+.schedule-month-view .month-weekday {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text);
+}
+
+.schedule-month-view .month-cell {
+  position: relative;
+  min-height: clamp(84px, 12.2dvh, 128px);
+  padding: 8px 5px 6px;
+  gap: 5px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  overflow: visible;
+}
+
+.schedule-month-view .month-cell:nth-last-child(-n + 7) {
+  border-bottom-width: 1px;
+}
+
+.schedule-month-view .month-cell-head {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 28px;
+}
+
+.schedule-month-view .month-date-number {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.schedule-month-view .month-holiday-label,
+.schedule-month-view .month-study-summary {
+  display: none !important;
+}
+
+.schedule-month-view .month-cell.is-muted .month-date-number {
+  color: color-mix(in srgb, var(--text-muted) 62%, transparent);
+}
+
+.schedule-month-view .month-cell.is-selected {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  box-shadow: none;
+}
+
+.schedule-month-view .month-cell.is-selected .month-date-number {
+  background: color-mix(in srgb, var(--text) 88%, #000 12%);
+  color: #fff !important;
+}
+
+.schedule-month-view .month-cell.is-today:not(.is-selected) .month-date-number {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.schedule-month-view .month-cell.is-today,
+.schedule-month-view .month-cell.is-selected.is-today {
+  box-shadow: none;
+}
+
+.schedule-month-view .month-major-event-list {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  width: 100%;
+}
+
+.schedule-month-view .month-major-event-pill {
+  width: 100%;
+  max-width: 100%;
+  min-height: 22px;
+  justify-content: center;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, #6ec9a2 30%, var(--surface) 70%);
+  color: var(--text);
+  font-size: 0.62rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.schedule-month-view .month-major-event-pill:nth-child(5n + 2) {
+  background: color-mix(in srgb, #f4b85c 31%, var(--surface) 69%);
+}
+
+.schedule-month-view .month-major-event-pill:nth-child(5n + 3) {
+  background: color-mix(in srgb, #a787ef 27%, var(--surface) 73%);
+}
+
+.schedule-month-view .month-major-event-pill:nth-child(5n + 4) {
+  background: color-mix(in srgb, #72aefa 28%, var(--surface) 72%);
+}
+
+.schedule-month-view .month-major-event-pill:nth-child(5n) {
+  background: color-mix(in srgb, #ef7b9f 25%, var(--surface) 75%);
+}
+
+.schedule-month-view .month-major-event-full {
+  display: none;
+}
+
+.schedule-month-view .month-major-event-short {
+  display: inline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-month-view .month-event-more {
+  font-size: 0.58rem;
+  text-align: center;
+}
+
+/* Month selected-day sheet ------------------------------------------------- */
+.month-day-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(18, 24, 36, 0.35);
+  backdrop-filter: blur(1px);
+}
+
+.month-day-sheet {
+  width: min(100%, 720px);
+  min-height: min(38dvh, 360px);
+  max-height: 72dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  padding: 10px 22px calc(24px + env(safe-area-inset-bottom, 0px));
+  border-radius: 28px 28px 0 0;
+  background: var(--surface);
+  box-shadow: 0 -18px 48px rgba(20, 32, 52, 0.16);
+  overflow: hidden;
+}
+
+.month-day-sheet-handle,
+.schedule-action-handle {
+  width: 58px;
+  height: 5px;
+  justify-self: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 38%, transparent);
+}
+
+.month-day-sheet-header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 18px;
+}
+
+.month-day-sheet-header h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.month-day-sheet-close,
+.month-day-sheet-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  font: inherit;
+}
+
+.month-day-sheet-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+}
+
+.month-day-sheet-add {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.month-day-sheet-list {
+  overflow: auto;
+}
+
+.month-day-sheet-event {
+  display: grid;
+  grid-template-columns: 78px 4px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 74px;
+  padding: 12px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.month-day-sheet-time {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-day-sheet-time strong {
+  font-size: 0.92rem;
+}
+
+.month-day-sheet-time small {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.month-day-sheet-bar {
+  align-self: stretch;
+  border-radius: 999px;
+  background: #8b5cf6;
+}
+
+.month-day-sheet-event.mint .month-day-sheet-bar { background: #44c08a; }
+.month-day-sheet-event.violet .month-day-sheet-bar { background: #8b5cf6; }
+.month-day-sheet-event.blue .month-day-sheet-bar { background: #4d9cf7; }
+.month-day-sheet-event.amber .month-day-sheet-bar { background: #efa93a; }
+.month-day-sheet-event.pink .month-day-sheet-bar { background: #ef6f95; }
+
+.month-day-sheet-title {
+  font-size: 1rem;
+}
+
+.month-day-sheet-empty {
+  width: 100%;
+  min-height: 110px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font: inherit;
+}
+
+/* Week -------------------------------------------------------------------- */
+.schedule-main .week-timeline-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0 0 10px;
+}
+
+.schedule-main .week-timeline-mode-control {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+}
+
+.schedule-main .week-timeline-mode-control .segment {
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.schedule-main .week-timeline-mode-control .segment.active {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+  color: var(--accent);
+}
+
+.schedule-main .week-timeline-mode-control .segment:nth-child(3) {
+  display: none;
+}
+
+.schedule-main .week-timeline-shell {
+  --week-timeline-head-height: 38px;
+  --week-timeline-hour-height: clamp(27px, 3.2dvh, 32px);
+  --week-timeline-min-block-height: 20px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+  padding-bottom: 6px;
+}
+
+.schedule-main .week-timeline-days {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  min-width: 0;
+}
+
+.schedule-main .week-timeline-day-head {
+  padding: 5px 2px;
+  border-radius: 0;
+  border-color: var(--border);
+  background: transparent;
+  text-align: center;
+}
+
+.schedule-main .week-day-link {
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.64rem;
+}
+
+.schedule-main .week-day-summary {
+  display: none;
+}
+
+.schedule-main .week-timeline-canvas {
+  border-radius: 0;
+  border-color: var(--border);
+  border-top: 0;
+}
+
+.schedule-main .week-timeline-block {
+  padding: 3px 3px;
+  border-radius: 7px;
+}
+
+.schedule-main .week-timeline-entry-line {
+  gap: 1px;
+  font-size: 0.54rem;
+}
+
+.schedule-main .week-timeline-block__title {
+  line-height: 1.02;
+}
+
+.schedule-main .week-timeline-time,
+.schedule-main .week-timeline-subject {
+  font-size: 0.48rem;
+}
+
+.schedule-main .week-timeline-hour-label {
+  padding-right: 2px;
+  font-size: 0.58rem;
+}
+
+/* Day --------------------------------------------------------------------- */
+.schedule-main > .section-stack.swipe-view {
+  gap: 0;
+}
+
+.schedule-main > .section-stack.swipe-view > .panel:first-of-type {
+  padding: 0;
+}
+
+.schedule-main .timeline-shell {
+  --timeline-head-height: 40px;
+  --timeline-row-gap: 8px;
+  --timeline-hour-height: clamp(28px, 3.25dvh, 32px);
+  --timeline-min-block-height: 22px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.schedule-main .timeline-main,
+.schedule-main .timeline-canvas,
+.schedule-main .timeline-canvas.split {
+  min-width: 0;
+}
+
+.schedule-main .timeline-columns-head {
+  gap: 8px;
+}
+
+.schedule-main .timeline-column-label {
+  min-height: 40px;
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  font-size: 0.78rem;
+}
+
+.schedule-main .timeline-column-label.actual {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface) 93%);
+  color: var(--accent);
+}
+
+.schedule-main .timeline-canvas {
+  border-radius: 14px;
+}
+
+.schedule-main .timeline-hour-label {
+  font-size: 0.6rem;
+}
+
+.schedule-main .timeline-plan-block,
+.schedule-main .timeline-actual-block {
+  padding: 2px 5px;
+  border-radius: 8px;
+}
+
+.schedule-main .timeline-entry-title {
+  font-size: 0.65rem;
+}
+
+.schedule-main .timeline-entry-time,
+.schedule-main .timeline-entry-subject {
+  font-size: 0.55rem;
+}
+
+/* Todo -------------------------------------------------------------------- */
+.schedule-main .todo-view {
+  padding: 0;
+}
+
+.schedule-main .todo-view-header {
+  padding: 0 0 10px;
+  border: 0;
+}
+
+.schedule-main .todo-view-header > div:first-child {
+  display: none;
+}
+
+.schedule-main .todo-sort-control {
+  width: 100%;
+}
+
+.schedule-main .todo-section-list {
+  gap: 10px;
+}
+
+.schedule-main .todo-status-section,
+.schedule-main .todo-view-item {
+  border-radius: 14px;
+}
+
+/* Plan action sheet -------------------------------------------------------- */
+.schedule-action-overlay {
+  align-items: flex-end;
+}
+
+.schedule-action-sheet,
+.schedule-record-sheet {
+  width: min(100%, 720px);
+  max-width: 720px;
+  margin: auto 0 0;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -18px 48px rgba(18, 28, 46, 0.16);
+}
+
+.schedule-action-sheet {
+  padding: 10px 22px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.schedule-action-topline {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 14px;
+}
+
+.schedule-action-topline > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.schedule-action-topline strong,
+.schedule-action-topline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-action-topline span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.schedule-action-close,
+.schedule-action-back {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+}
+
+.schedule-action-list {
+  display: grid;
+  gap: 9px;
+}
+
+.schedule-action-item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.schedule-action-icon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface) 91%);
+  color: var(--accent);
+}
+
+.schedule-action-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.schedule-action-copy strong {
+  font-size: 1rem;
+}
+
+.schedule-action-copy small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.schedule-action-item > svg {
+  color: var(--text-muted);
+}
+
+.schedule-action-item.danger,
+.schedule-action-item.danger .schedule-action-icon {
+  color: var(--danger);
+}
+
+.schedule-action-item.danger .schedule-action-icon {
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface) 91%);
+}
+
+.schedule-record-sheet {
+  max-height: 88dvh;
+  overflow: auto;
+}
+
+.schedule-record-sheet .daily-detail-modal-header {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.schedule-action-header-spacer {
+  width: 40px;
+}
+
+/* Quick add --------------------------------------------------------------- */
+.schedule-workspace-shell .quick-entry-overlay {
+  align-items: flex-end;
+  padding: 0;
+  background: rgba(18, 24, 36, 0.38);
+}
+
+.schedule-workspace-shell .quick-entry-modal {
+  width: min(100%, 720px);
+  max-width: 720px;
+  max-height: 92dvh;
+  margin: 0;
+  border-radius: 28px 28px 0 0;
+  border-bottom: 0;
+  box-shadow: 0 -18px 48px rgba(18, 28, 46, 0.18);
+}
+
+.schedule-workspace-shell .quick-entry-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding-top: 13px;
+  background: var(--surface);
+}
+
+.schedule-workspace-shell .quick-entry-kind-switch {
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.schedule-workspace-shell .quick-entry-save-button {
+  border-radius: 999px;
+}
+
+.schedule-workspace-shell .quick-entry-card {
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.schedule-workspace-shell .quick-entry-title-card input {
+  min-height: 58px;
+  font-size: 1rem;
+}
+
+/* Month event editor as bottom sheet ------------------------------------- */
+.schedule-workspace-shell .month-event-modal-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.schedule-workspace-shell .month-event-modal {
+  width: min(100%, 720px);
+  max-width: 720px;
+  max-height: 92dvh;
+  margin: 0;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -18px 48px rgba(18, 28, 46, 0.18);
+}
+
+.schedule-workspace-shell .month-event-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface);
+}
+
+@media (max-width: 640px) {
+  .schedule-workspace-shell {
+    padding-inline: 12px;
+  }
+
+  .schedule-app-header {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .schedule-toolbar-row {
+    gap: 8px;
+  }
+
+  .schedule-period-control {
+    gap: 4px;
+  }
+
+  .schedule-period-step {
+    display: none;
+  }
+
+  .schedule-view-tabs {
+    min-width: 218px;
+  }
+
+  .schedule-view-tabs button {
+    padding-inline: 7px;
+  }
+
+  .schedule-month-view .month-cell {
+    min-height: clamp(80px, 11.4dvh, 108px);
+    padding-inline: 3px;
+  }
+
+  .schedule-month-view .month-major-event-pill {
+    min-height: 20px;
+    padding-inline: 3px;
+    font-size: 0.57rem;
+  }
+
+  .schedule-main .week-timeline-shell {
+    --week-timeline-hour-height: 27px;
+  }
+
+  .schedule-main .week-timeline-block {
+    padding-inline: 2px;
+  }
+
+  .schedule-main .week-timeline-entry-line {
+    font-size: 0.49rem;
+  }
+
+  .schedule-main .timeline-shell {
+    --timeline-hour-height: 29px;
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .month-day-sheet,
+  .schedule-action-sheet {
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .schedule-toolbar-row {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-view-tabs {
+    width: 100%;
+  }
+
+  .schedule-day-strip button {
+    min-height: 58px;
+  }
+
+  .schedule-day-strip button strong {
+    width: 34px;
+    height: 34px;
+  }
+
+  .schedule-month-view .month-date-number {
+    width: 27px;
+    height: 27px;
+    font-size: 0.76rem;
+  }
+
+  .schedule-month-view .month-major-event-pill {
+    font-size: 0.52rem;
+  }
+}
