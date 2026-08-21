@@ -1,7 +1,5 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronDown } from 'lucide-react';
 import {
-  addDays,
-  addMonths,
   formatMonthLabel,
   getMonthWeeks,
   getWeekDates,
@@ -41,8 +39,6 @@ interface ScheduleToolbarProps {
   selectedDate: string;
   monthDate: string;
   onChangeView: (mode: ViewMode) => void;
-  onChangeMonth: (date: string) => void;
-  onChangeWeek: (date: string) => void;
   onChangeDay: (date: string) => void;
 }
 
@@ -51,8 +47,6 @@ export function ScheduleToolbar({
   selectedDate,
   monthDate,
   onChangeView,
-  onChangeMonth,
-  onChangeWeek,
   onChangeDay,
 }: ScheduleToolbarProps) {
   const weekDates = getWeekDates(selectedDate);
@@ -65,36 +59,14 @@ export function ScheduleToolbar({
           ? formatDayHeading(selectedDate)
           : 'Todo';
 
-  const handlePrevious = () => {
-    if (viewMode === 'month') onChangeMonth(addMonths(monthDate, -1));
-    else if (viewMode === 'week') onChangeWeek(addDays(selectedDate, -7));
-    else if (viewMode === 'day') onChangeDay(addDays(selectedDate, -1));
-  };
-
-  const handleNext = () => {
-    if (viewMode === 'month') onChangeMonth(addMonths(monthDate, 1));
-    else if (viewMode === 'week') onChangeWeek(addDays(selectedDate, 7));
-    else if (viewMode === 'day') onChangeDay(addDays(selectedDate, 1));
-  };
-
   return (
     <div className="schedule-toolbar print-hide">
       <div className="schedule-toolbar-row">
         <div className="schedule-period-control">
           <CalendarDays aria-hidden="true" size={22} />
-          {viewMode !== 'todo' ? (
-            <button className="schedule-period-step" onClick={handlePrevious} type="button" aria-label="前へ">
-              <ChevronLeft aria-hidden="true" size={16} />
-            </button>
-          ) : null}
           <strong>{heading}</strong>
           {viewMode !== 'todo' ? (
-            <>
-              <ChevronDown className="schedule-period-chevron" aria-hidden="true" size={17} />
-              <button className="schedule-period-step" onClick={handleNext} type="button" aria-label="次へ">
-                <ChevronRight aria-hidden="true" size={16} />
-              </button>
-            </>
+            <ChevronDown className="schedule-period-chevron" aria-hidden="true" size={17} />
           ) : null}
         </div>
 
