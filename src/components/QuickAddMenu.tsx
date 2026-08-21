@@ -34,7 +34,7 @@ export function QuickAddMenu({
   const menuId = useId();
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || typeof window === 'undefined') {
       return;
     }
 
