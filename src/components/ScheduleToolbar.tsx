@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   addDays,
+  addMonths,
   formatMonthLabel,
   getMonthWeeks,
   getWeekDates,
@@ -65,13 +66,13 @@ export function ScheduleToolbar({
           : 'Todo';
 
   const handlePrevious = () => {
-    if (viewMode === 'month') onChangeMonth(addDays(monthDate, -28));
+    if (viewMode === 'month') onChangeMonth(addMonths(monthDate, -1));
     else if (viewMode === 'week') onChangeWeek(addDays(selectedDate, -7));
     else if (viewMode === 'day') onChangeDay(addDays(selectedDate, -1));
   };
 
   const handleNext = () => {
-    if (viewMode === 'month') onChangeMonth(addDays(monthDate, 35));
+    if (viewMode === 'month') onChangeMonth(addMonths(monthDate, 1));
     else if (viewMode === 'week') onChangeWeek(addDays(selectedDate, 7));
     else if (viewMode === 'day') onChangeDay(addDays(selectedDate, 1));
   };
