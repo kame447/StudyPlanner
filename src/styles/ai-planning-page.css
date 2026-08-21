@@ -62,6 +62,30 @@
   min-height: 0;
 }
 
+/* AI planning is the only active item on this surface. The legacy markup still
+ * wraps Home in the elevated circle, so neutralize that presentation here. */
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:first-child {
+  color: var(--accent);
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) {
+  color: var(--text-muted);
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) .home-nav-active-circle {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+  margin-top: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) .home-nav-active-circle svg {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+}
+
 @media (min-width: 700px) {
   .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-card {
     border-radius: 18px;
