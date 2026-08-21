@@ -1,3 +1,4 @@
+# trigger after workflow registration
 name: Temporary AI Planning Hardening
 
 on:
@@ -51,8 +52,7 @@ jobs:
                   raise SystemExit(f'{path}: expected {expected} matches, found {count}: {old[:80]!r}')
               write(path, text.replace(old, new))
 
-          policy_path = Path('workers/ai-proxy/src/rateLimitPolicy.ts')
-          policy_path.write_text("""export const AI_PROXY_RATE_LIMITS = {
+          Path('workers/ai-proxy/src/rateLimitPolicy.ts').write_text("""export const AI_PROXY_RATE_LIMITS = {
             chat: {
               uidMinute: 30,
               uidDay: 1000,
