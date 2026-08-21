@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useExitMotion } from '../hooks/useExitMotion';
 import { todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
 import { MonthDaySheet } from './MonthDaySheet';
@@ -36,6 +37,11 @@ export function MonthView({
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
   const [eventModalInitialEventId, setEventModalInitialEventId] = useState<string | null>(null);
   const [daySheetDate, setDaySheetDate] = useState<string | null>(null);
+  const { isExiting: isEventModalClosing, requestExit: requestCloseMonthEventEditor } =
+    useExitMotion(() => {
+      setEventModalDate(null);
+      setEventModalInitialEventId(null);
+    });
   const grid = useMemo(() => buildMonthGrid(monthDate).cells, [monthDate]);
   const gridIndexByDate = useMemo(
     () => new Map(grid.map((cell, index) => [cell.date, index])),
@@ -100,8 +106,7 @@ export function MonthView({
   }
 
   function closeMonthEventEditor() {
-    setEventModalDate(null);
-    setEventModalInitialEventId(null);
+    requestCloseMonthEventEditor();
   }
 
   useEffect(() => {
@@ -236,15 +241,21 @@ export function MonthView({
         onClose={() => setDaySheetDate(null)}
       />
 
-      <MonthEventDialog
-        openDate={eventModalDate}
-        userId={userId}
-        monthEvents={monthEvents}
-        initialEventId={eventModalInitialEventId}
-        onSave={onSaveMonthEvent}
-        onDelete={onDeleteMonthEvent}
-        onClose={closeMonthEventEditor}
-      />
+      <div
+        className={`month-event-dialog-motion ${
+          isEventModalClosing ? 'is-closing' : 'is-open'
+        }`}
+      >
+        <MonthEventDialog
+          openDate={eventModalDate}
+          userId={userId}
+          monthEvents={monthEvents}
+          initialEventId={eventModalInitialEventId}
+          onSave={onSaveMonthEvent}
+          onDelete={onDeleteMonthEvent}
+          onClose={closeMonthEventEditor}
+        />
+      </div>
     </section>
   );
 }
