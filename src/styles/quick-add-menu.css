@@ -121,6 +121,12 @@
   color: #fff;
 }
 
+.quick-add-trigger {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .quick-add-trigger .quick-add-trigger-icon {
   width: 28px;
   height: 28px;
