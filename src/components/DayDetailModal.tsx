@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, NotebookPen, Pencil, Trash2, X } from 'lucide-react';
+import { useExitMotion } from '../hooks/useExitMotion';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
 import { ActualEditorCard } from './ActualEditorCard';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
@@ -39,6 +40,8 @@ export function DayDetailModal({
   onClose,
 }: DayDetailModalProps) {
   const [planSheetMode, setPlanSheetMode] = useState<PlanSheetMode>('menu');
+  const { isExiting, requestExit } = useExitMotion(onClose);
+  const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 
   useEffect(() => {
     setPlanSheetMode('menu');
@@ -47,7 +50,10 @@ export function DayDetailModal({
   if (detailPlan) {
     if (planSheetMode === 'menu') {
       return (
-        <div className="overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay" onClick={onClose}>
+        <div
+          className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+          onClick={() => requestExit()}
+        >
           <section
             className="modal-card daily-detail-modal schedule-action-sheet"
             role="dialog"
@@ -57,7 +63,7 @@ export function DayDetailModal({
           >
             <div className="schedule-action-handle" aria-hidden="true" />
             <div className="schedule-action-topline">
-              <button className="schedule-action-close" onClick={onClose} type="button" aria-label="閉じる">
+              <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
                 <X aria-hidden="true" size={22} />
               </button>
               <div>
@@ -71,8 +77,9 @@ export function DayDetailModal({
                 <button
                   className="schedule-action-item"
                   onClick={() => {
-                    onClose();
-                    window.requestAnimationFrame(() => onEditPlan(detailPlan));
+                    requestExit(() => {
+                      window.requestAnimationFrame(() => onEditPlan(detailPlan));
+                    });
                   }}
                   type="button"
                 >
@@ -102,7 +109,7 @@ export function DayDetailModal({
                 <button
                   className="schedule-action-item danger"
                   onClick={() => {
-                    void onDeletePlan(detailPlan).finally(onClose);
+                    void onDeletePlan(detailPlan).finally(() => requestExit());
                   }}
                   type="button"
                 >
@@ -121,7 +128,10 @@ export function DayDetailModal({
     }
 
     return (
-      <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={onClose}>
+      <div
+        className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+        onClick={() => requestExit()}
+      >
         <div
           className="modal-card daily-detail-modal schedule-record-sheet"
           onClick={(event) => event.stopPropagation()}
@@ -137,7 +147,7 @@ export function DayDetailModal({
                 {detailPlan.startTime} - {detailPlan.endTime} / {detailPlan.title}
               </p>
             </div>
-            <button className="schedule-action-close" onClick={onClose} type="button" aria-label="閉じる">
+            <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
               <X aria-hidden="true" size={21} />
             </button>
           </div>
@@ -153,7 +163,7 @@ export function DayDetailModal({
               onDeletePlan={onDeletePlan}
               onSaveActual={onSaveActual}
               onDeleteActual={onDeleteActual}
-              onClose={onClose}
+              onClose={() => requestExit()}
               forceOpen
               hideToggleButton
               hidePlanActions
@@ -169,7 +179,10 @@ export function DayDetailModal({
   }
 
   return (
-    <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={onClose}>
+    <div
+      className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+      onClick={() => requestExit()}
+    >
       <div
         className="modal-card daily-detail-modal schedule-record-sheet"
         onClick={(event) => event.stopPropagation()}
@@ -184,7 +197,7 @@ export function DayDetailModal({
               {standaloneActual.title || '記録'}
             </p>
           </div>
-          <button className="schedule-action-close" onClick={onClose} type="button" aria-label="閉じる">
+          <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
             <X aria-hidden="true" size={21} />
           </button>
         </div>
@@ -198,7 +211,7 @@ export function DayDetailModal({
             onSaveStandaloneActual={onSaveStandaloneActual}
             onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
             onDeleteActual={onDeleteActual}
-            onClose={onClose}
+            onClose={() => requestExit()}
           />
         </div>
       </div>
