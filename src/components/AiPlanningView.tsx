@@ -74,6 +74,42 @@ interface PendingPlanningImageAttachment {
   previewUrl: string;
 }
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 const PREVIEW_START_HOUR = 0;
 const PREVIEW_END_HOUR = 24;
 const PREVIEW_HOUR_HEIGHT = 42;
@@ -82,6 +118,28 @@ const PREVIEW_HOURS = Array.from(
   (_, index) => PREVIEW_START_HOUR + index,
 );
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const speechWindow = window as SpeechRecognitionWindow;
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+}
+
+function speechRecognitionErrorMessage(error: string): string {
+  switch (error) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'マイクの使用が許可されていません。ブラウザのマイク権限を許可して再試行してください。';
+    case 'audio-capture':
+      return '利用できるマイクを確認できませんでした。端末のマイク設定を確認してください。';
+    case 'no-speech':
+      return '音声を認識できませんでした。もう一度話してください。';
+    case 'network':
+      return '音声認識サービスに接続できませんでした。通信状態を確認してください。';
+    default:
+      return '音声入力に失敗しました。もう一度試してください。';
+  }
+}
 
 function formatDateLabel(date: string): string {
   const [, month = '', day = ''] = date.split('-');
@@ -142,12 +200,16 @@ export function AiPlanningView({
   const [topInset, setTopInset] = useState(76);
   const [imageAttachment, setImageAttachment] = useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const didInitializeChatsRef = useRef(false);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechBaseTextRef = useRef('');
+  const speechFinalTextRef = useRef('');
   const previewCandidates = state.previewCandidates ?? [];
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, index) => addDays(state.weekStartDate, index)),
@@ -167,6 +229,7 @@ export function AiPlanningView({
   }, [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks, weekDates]);
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
   const isComposerBusy = isBusy || isReadingAttachment;
+  const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
   const totalMinutes = useMemo(
     () => visibleBlocks.reduce((sum, block) => sum + minutesBetween(block.startTime, block.endTime), 0),
     [visibleBlocks],
@@ -318,6 +381,18 @@ export function AiPlanningView({
     };
   }, [imageAttachment]);
 
+  useEffect(() => {
+    return () => {
+      const recognition = speechRecognitionRef.current;
+      if (!recognition) return;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      recognition.abort();
+      speechRecognitionRef.current = null;
+    };
+  }, []);
+
   function clearImageAttachment() {
     setImageAttachment(null);
     if (attachmentInputRef.current) {
@@ -326,7 +401,7 @@ export function AiPlanningView({
   }
 
   function openImagePicker() {
-    if (isComposerBusy) return;
+    if (isComposerBusy || isListening) return;
     attachmentInputRef.current?.click();
   }
 
@@ -352,10 +427,84 @@ export function AiPlanningView({
     });
   }
 
+  function toggleSpeechRecognition() {
+    if (isComposerBusy) return;
+
+    if (isListening) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (!SpeechRecognition) {
+      setError('このブラウザでは音声入力を利用できません。ChromeやSafariなど対応ブラウザで試してください。');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    speechBaseTextRef.current = text;
+    speechFinalTextRef.current = '';
+    setError('');
+
+    recognition.onresult = (event) => {
+      let finalTranscript = speechFinalTextRef.current;
+      let interimTranscript = '';
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript?.trim() ?? '';
+        if (!transcript) continue;
+
+        if (result.isFinal) {
+          finalTranscript = [finalTranscript, transcript].filter(Boolean).join(' ');
+        } else {
+          interimTranscript = [interimTranscript, transcript].filter(Boolean).join(' ');
+        }
+      }
+
+      speechFinalTextRef.current = finalTranscript;
+      const recognizedText = [finalTranscript, interimTranscript].filter(Boolean).join(' ');
+      const baseText = speechBaseTextRef.current.trimEnd();
+      const nextText = [baseText, recognizedText].filter(Boolean).join('\n');
+      setText(nextText.slice(0, 4000));
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === 'aborted') return;
+      setError(speechRecognitionErrorMessage(event.error));
+    };
+
+    recognition.onend = () => {
+      if (speechRecognitionRef.current === recognition) {
+        speechRecognitionRef.current = null;
+      }
+      setIsListening(false);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    };
+
+    speechRecognitionRef.current = recognition;
+    setIsListening(true);
+
+    try {
+      recognition.start();
+    } catch (speechError) {
+      speechRecognitionRef.current = null;
+      setIsListening(false);
+      setError(
+        speechError instanceof Error
+          ? `音声入力を開始できませんでした: ${speechError.message}`
+          : '音声入力を開始できませんでした。',
+      );
+    }
+  }
+
   async function submitMessage() {
     const value = text.trim();
     const attachment = imageAttachment;
-    if ((!value && !attachment) || isComposerBusy) return;
+    if ((!value && !attachment) || isComposerBusy || isListening) return;
 
     setError('');
     let supplementalContext: string | undefined;
@@ -423,7 +572,7 @@ export function AiPlanningView({
   }
 
   function switchChat(chatId: string) {
-    if (isBusy || chatId === chatIndex.activeChatId) {
+    if (isBusy || isListening || chatId === chatIndex.activeChatId) {
       setIsChatDrawerOpen(false);
       return;
     }
@@ -448,7 +597,7 @@ export function AiPlanningView({
   }
 
   function createChat() {
-    if (isBusy) return;
+    if (isBusy || isListening) return;
     const persistedIndex = persistActiveChat();
     const created = createAiPlanningChat(persistedIndex);
     application.startConversation();
@@ -464,7 +613,7 @@ export function AiPlanningView({
   }
 
   function removeChat(chatId: string) {
-    if (isBusy) return;
+    if (isBusy || isListening) return;
     const chat = chatIndex.chats.find((item) => item.id === chatId);
     if (!chat) return;
     if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
@@ -525,6 +674,9 @@ export function AiPlanningView({
   }
 
   function closeAiPlanning() {
+    if (isListening) {
+      speechRecognitionRef.current?.abort();
+    }
     if (!isBusy) persistActiveChat();
     onClose();
   }
@@ -540,7 +692,7 @@ export function AiPlanningView({
         chats={visibleChats}
         activeChatId={chatIndex.activeChatId}
         query={chatQuery}
-        disabled={isBusy}
+        disabled={isBusy || isListening}
         onQueryChange={setChatQuery}
         onCreate={createChat}
         onSelect={switchChat}
@@ -668,7 +820,7 @@ export function AiPlanningView({
             type="button"
             aria-label="写真を追加"
             title="写真を追加"
-            disabled={isComposerBusy}
+            disabled={isComposerBusy || isListening}
             onClick={openImagePicker}
           >
             <Plus size={24} />
@@ -680,15 +832,28 @@ export function AiPlanningView({
             onKeyDown={handleKeyDown}
             rows={1}
             maxLength={4000}
-            placeholder="予定や目標を入力..."
-            disabled={isComposerBusy}
+            placeholder={isListening ? '音声を認識中...' : '予定や目標を入力...'}
+            disabled={isComposerBusy || isListening}
           />
-          <button className="ai-planning-mic-button" type="button" aria-label="音声入力" title="音声入力は今後対応予定"><Mic size={21} /></button>
+          <button
+            className="ai-planning-mic-button"
+            type="button"
+            aria-label={isListening ? '音声入力を停止' : '音声入力'}
+            aria-pressed={isListening}
+            title={speechRecognitionSupported
+              ? isListening ? '音声入力を停止' : '音声入力'
+              : 'このブラウザは音声入力に対応していません'}
+            disabled={isComposerBusy}
+            onClick={toggleSpeechRecognition}
+            style={isListening ? { background: '#eaf4ff', color: '#0878f9' } : undefined}
+          >
+            <Mic size={21} aria-hidden="true" />
+          </button>
           <button
             className="ai-planning-send-button"
             type="button"
             aria-label="送信"
-            disabled={(!text.trim() && !imageAttachment) || isComposerBusy}
+            disabled={(!text.trim() && !imageAttachment) || isComposerBusy || isListening}
             onClick={() => void submitMessage()}
           >
             <Send size={20} aria-hidden="true" />
