@@ -26,6 +26,7 @@ interface HomeViewProps {
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
   onOpenReport: () => void;
+  onOpenTimetable: () => void;
   onOpenProfile: () => void;
   onOpenSettings: () => void;
 }
@@ -102,6 +103,7 @@ export function HomeView({
   onOpenTodo,
   onOpenBookshelf,
   onOpenReport,
+  onOpenTimetable,
   onOpenProfile,
   onOpenSettings,
 }: HomeViewProps) {
@@ -446,9 +448,6 @@ export function HomeView({
           }
         }
 
-        // One external trigger gets one expansion pass. A reset may schedule one
-        // compact re-measure above, but expansion itself must not recursively
-        // measure its own size changes; that was the remaining feedback path.
         applyLayoutRelaxation(nextRelaxation);
       });
     };
@@ -457,9 +456,6 @@ export function HomeView({
     window.addEventListener('resize', measure);
     window.visualViewport?.addEventListener('resize', measure);
 
-    // Do not observe the fitted dashboard elements themselves. measure()
-    // changes their dimensions, which would turn ResizeObserver into a
-    // self-triggering loop near fit thresholds.
     void document.fonts.ready.then(measure, () => undefined);
 
     return () => {
@@ -597,7 +593,7 @@ export function HomeView({
         onOpenSchedule={onOpenSchedule}
         onOpenHome={() => undefined}
         onOpenBookshelf={onOpenBookshelf}
-        onOpenReport={onOpenReport}
+        onOpenTimetable={onOpenTimetable}
       />
     </section>
   );
