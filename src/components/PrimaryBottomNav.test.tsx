@@ -16,7 +16,7 @@ describe('PrimaryBottomNav', () => {
       <PrimaryBottomNav active="bookshelf" {...navigation} />,
     );
 
-    for (const label of ['AI計画', '予定', 'ホーム', '教材', '分析']) {
+    for (const label of ['AI計画', '予定', 'ホーム', '教材', '時間割']) {
       expect(html).toContain(label);
     }
 
