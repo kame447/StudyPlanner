@@ -27,6 +27,7 @@ import {
   createAiPlanningChat,
   deleteAiPlanningChat,
   deriveAiPlanningChatTitle,
+  hasStoredAiPlanningChatIndex,
   loadAiPlanningChatIndex,
   loadAiPlanningChatSnapshot,
   saveAiPlanningChatIndex,
@@ -227,6 +228,7 @@ export function AiPlanningView({
   useEffect(() => {
     if (didInitializeChatsRef.current) return;
     didInitializeChatsRef.current = true;
+    const hadStoredChatIndex = hasStoredAiPlanningChatIndex(userId);
     const loadedIndex = loadAiPlanningChatIndex(userId);
     const loadedActive = loadedIndex.chats.find((chat) => chat.id === loadedIndex.activeChatId)
       ?? loadedIndex.chats[0];
@@ -241,7 +243,7 @@ export function AiPlanningView({
     }
 
     const currentSnapshot = application.exportConversationSnapshot();
-    if (loadedActive && currentSnapshot) {
+    if (!hadStoredChatIndex && loadedActive && currentSnapshot) {
       saveAiPlanningChatSnapshot(userId, loadedActive.id, currentSnapshot);
       const migratedIndex = updateAiPlanningChatRecord(loadedIndex, loadedActive.id, {
         title: deriveAiPlanningChatTitle(currentSnapshot.planningState.messages),
@@ -517,7 +519,6 @@ export function AiPlanningView({
       persistActiveChat();
     }
   }
-
   function focusComposer() {
     setIsPreviewOpen(false);
     window.requestAnimationFrame(() => inputRef.current?.focus());
