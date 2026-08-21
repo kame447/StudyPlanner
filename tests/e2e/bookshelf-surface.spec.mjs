@@ -122,9 +122,9 @@ async function seedBookshelf(page) {
 
 async function openBookshelf(page) {
   await page.goto('/');
-  await expect(page.locator('.home-bottom-nav')).toBeVisible();
+  await expect(page.locator('.primary-bottom-nav')).toBeVisible();
   await page
-    .locator('.home-bottom-nav button')
+    .locator('.primary-bottom-nav button')
     .filter({ hasText: '教材' })
     .click();
   await expect(page.locator('.bookshelf-view')).toBeVisible();
@@ -134,12 +134,18 @@ test('opens the redesigned bookshelf and material detail from the main navigatio
   await seedBookshelf(page);
   await openBookshelf(page);
 
-  await expect(page.locator('.bookshelf-primary-header')).toBeVisible();
-  await expect(page.locator('.bookshelf-bottom-nav')).toBeVisible();
+  await expect(page.locator('.primary-app-header')).toBeVisible();
+  await expect(page.locator('.primary-bottom-nav')).toBeVisible();
   await expect(page.locator('.app-view-switcher')).toBeHidden();
   await expect(page.getByRole('heading', { name: '教材', exact: true })).toBeVisible();
   await expect(page.getByText('よく使う教材')).toBeVisible();
   await expect(page.getByText('アルゴリズム問題集').first()).toBeVisible();
+
+  const headerOverflow = await page.locator('.primary-app-header .home-topbar').evaluate((header) => ({
+    scrollWidth: header.scrollWidth,
+    clientWidth: header.clientWidth,
+  }));
+  expect(headerOverflow.scrollWidth).toBeLessThanOrEqual(headerOverflow.clientWidth + 1);
 
   await page.getByText('アルゴリズム問題集').first().click();
 
@@ -177,7 +183,7 @@ test.describe('mobile bookshelf containment', () => {
     await page.waitForTimeout(300);
 
     const metrics = await page.evaluate(() => {
-      const nav = document.querySelector('.bookshelf-bottom-nav');
+      const nav = document.querySelector('.primary-bottom-nav');
       const shell = document.querySelector('.app-shell');
       return {
         viewportWidth: document.documentElement.clientWidth,
