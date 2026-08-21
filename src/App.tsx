@@ -175,8 +175,8 @@ export default function App() {
       ? 'ai-planning'
       : viewMode === 'bookshelf'
         ? 'bookshelf'
-        : viewMode === 'report'
-          ? 'report'
+        : viewMode === 'timetable'
+          ? 'timetable'
           : 'schedule';
   const primaryNavClassName = isScheduleSurface
     ? 'schedule-bottom-nav'
@@ -184,7 +184,9 @@ export default function App() {
       ? 'ai-planning-home-nav'
       : viewMode === 'bookshelf'
         ? 'bookshelf-bottom-nav'
-        : undefined;
+        : viewMode === 'timetable'
+          ? 'timetable-bottom-nav'
+          : undefined;
 
   useEffect(() => {
     if (user?.id) {
@@ -246,9 +248,9 @@ export default function App() {
     setViewMode('bookshelf');
   }
 
-  function openReportSurface() {
+  function openTimetableSurface() {
     setPrimarySurface('workspace');
-    setViewMode('report');
+    setViewMode('timetable');
   }
 
   const primaryNavigation = {
@@ -256,7 +258,7 @@ export default function App() {
     onOpenSchedule: openScheduleSurface,
     onOpenHome: openHomeSurface,
     onOpenBookshelf: openBookshelfSurface,
-    onOpenReport: openReportSurface,
+    onOpenReport: openTimetableSurface,
   };
 
   return (
@@ -281,7 +283,9 @@ export default function App() {
             className={
               isScheduleSurface
                 ? 'schedule-primary-header'
-                : 'workspace-primary-header'
+                : viewMode === 'timetable'
+                  ? 'timetable-primary-header'
+                  : 'workspace-primary-header'
             }
           />
 
@@ -295,7 +299,7 @@ export default function App() {
               onChangeWeek={openWeek}
               onChangeDay={openDay}
             />
-          ) : (
+          ) : viewMode === 'timetable' ? null : (
             <AppViewSwitcher
               viewMode={viewMode}
               onChange={(nextViewMode) => {
@@ -364,7 +368,7 @@ export default function App() {
               setViewMode('todo');
             }}
             onOpenBookshelf={openBookshelfSurface}
-            onOpenReport={openReportSurface}
+            onOpenReport={openTimetableSurface}
             onOpenProfile={() => setIsMyPageOpen(true)}
             onOpenSettings={() => setIsAppSettingsOpen(true)}
           />
