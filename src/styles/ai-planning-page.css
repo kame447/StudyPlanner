@@ -1,7 +1,7 @@
 /*
  * AI planning is a primary application surface, not a dialog layered over Home.
  * Reuse the Home shell's responsive width and bottom-navigation contract while
- * letting the chat consume the remaining viewport height.
+ * keeping the persistent Home topbar above the chat.
  */
 .app-shell.home-app-shell:has(.ai-planning-view) {
   box-sizing: border-box;
@@ -13,9 +13,25 @@
 }
 
 .home-main:has(.ai-planning-view) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(6px, 0.8dvh, 9px);
   min-width: 0;
   min-height: 0;
   height: 100%;
+}
+
+.ai-planning-primary-header.home-dashboard-default {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  align-content: initial;
+  gap: 0;
+}
+
+.ai-planning-primary-header .home-topbar {
+  width: 100%;
 }
 
 .app-shell.home-app-shell .ai-planning-view.home-dashboard {
@@ -56,6 +72,10 @@
   .app-shell.home-app-shell:has(.ai-planning-view) {
     padding-top: 5px;
     padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .home-main:has(.ai-planning-view) {
+    gap: 5px;
   }
 
   .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading {
