@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { House, Settings } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
+import { HomeTopbar } from './components/HomeTopbar';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
@@ -304,16 +305,28 @@ export default function App() {
         ) : null}
 
         {isAiPlanningSurface ? (
-          <Suspense fallback={<SplashScreen />}>
-            <AiPlanningView
-              application={weeklyPlanning}
-              userId={user.id}
-              selectedDate={selectedDate}
-              plans={plans}
-              actuals={actuals}
-              onClose={() => setPrimarySurface('home')}
-            />
-          </Suspense>
+          <>
+            <div className="home-dashboard home-dashboard-default ai-planning-primary-header">
+              <HomeTopbar
+                user={user}
+                plans={plans}
+                actuals={actuals}
+                todos={todos}
+                onOpenProfile={() => setIsMyPageOpen(true)}
+                onOpenSettings={() => setIsAppSettingsOpen(true)}
+              />
+            </div>
+            <Suspense fallback={<SplashScreen />}>
+              <AiPlanningView
+                application={weeklyPlanning}
+                userId={user.id}
+                selectedDate={selectedDate}
+                plans={plans}
+                actuals={actuals}
+                onClose={() => setPrimarySurface('home')}
+              />
+            </Suspense>
+          </>
         ) : null}
 
         {isWorkspaceSurface && viewMode === 'month' ? (
