@@ -15,6 +15,7 @@ interface SpeechRecognitionEventLike {
 
 interface SpeechRecognitionErrorEventLike {
   error: string;
+  message?: string;
 }
 
 type SpeechRecognitionResultHandler = ((event: SpeechRecognitionEventLike) => void) | null;
@@ -121,8 +122,22 @@ class StudyPlannerSpeechRecognition {
 
   private async startRecording(): Promise<void> {
     try {
+      if (!window.isSecureContext) {
+        this.starting = false;
+        this.emitError(
+          'not-allowed',
+          '音声入力にはHTTPSが必要です。スマホ実機ではhttps://の開発URLを使用してください。',
+        );
+        this.emitEnd();
+        return;
+      }
+
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-        this.emitError('audio-capture');
+        this.starting = false;
+        this.emitError(
+          'audio-capture',
+          'このブラウザでは録音機能を利用できません。マイク対応ブラウザとHTTPS接続を確認してください。',
+        );
         this.emitEnd();
         return;
       }
@@ -155,7 +170,7 @@ class StudyPlannerSpeechRecognition {
       this.mediaRecorder.addEventListener('error', () => {
         this.clearRecordingTimer();
         this.cleanupStream();
-        this.emitError('audio-capture');
+        this.emitError('audio-capture', '録音中にマイクエラーが発生しました。');
         this.emitEnd();
       });
       this.mediaRecorder.addEventListener('stop', () => {
@@ -200,8 +215,13 @@ class StudyPlannerSpeechRecognition {
         return;
       }
       this.emitResult(result.text);
-    } catch {
-      this.emitError('network');
+    } catch (error) {
+      this.emitError(
+        'service-error',
+        error instanceof Error
+          ? error.message
+          : '音声文字起こしに失敗しました。もう一度お試しください。',
+      );
     } finally {
       this.emitEnd();
     }
@@ -214,8 +234,8 @@ class StudyPlannerSpeechRecognition {
     this.onresult?.({ resultIndex: 0, results });
   }
 
-  private emitError(error: string): void {
-    this.onerror?.({ error });
+  private emitError(error: string, message?: string): void {
+    this.onerror?.({ error, ...(message ? { message } : {}) });
   }
 
   private emitEnd(): void {
@@ -240,13 +260,7 @@ class StudyPlannerSpeechRecognition {
 }
 
 export function installStudyPlannerSpeechRecognition(): void {
-  if (
-    typeof window === 'undefined'
-    || typeof MediaRecorder === 'undefined'
-    || !navigator.mediaDevices?.getUserMedia
-  ) {
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
   const speechWindow = window as SpeechRecognitionWindowLike;
   speechWindow.SpeechRecognition = StudyPlannerSpeechRecognition;
