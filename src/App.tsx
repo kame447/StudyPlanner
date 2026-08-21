@@ -83,6 +83,7 @@ export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
@@ -393,6 +394,7 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            createRequestId={monthCreateRequestId}
             onSelectDate={selectDate}
             onChangeMonth={changeMonth}
             onOpenWeek={openWeek}
@@ -505,7 +507,13 @@ export default function App() {
       {isScheduleSurface ? (
         <button
           className="daily-add-fab schedule-add-fab print-hide"
-          onClick={() => setIsQuickEntryOpen(true)}
+          onClick={() => {
+            if (viewMode === 'month') {
+              setMonthCreateRequestId((current) => current + 1);
+              return;
+            }
+            setIsQuickEntryOpen(true);
+          }}
           type="button"
           aria-label="新規追加"
         >
