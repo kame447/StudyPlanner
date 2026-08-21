@@ -1,6 +1,7 @@
 .schedule-workspace-shell {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 0;
+  padding-top: 6px;
 }
 
 .schedule-workspace-shell .schedule-main {
@@ -8,8 +9,210 @@
   min-height: 0;
 }
 
+.schedule-primary-header.home-dashboard-default {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  padding: 0;
+}
+
+.schedule-primary-header .home-topbar {
+  width: 100%;
+}
+
+.schedule-app-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0 -14px;
+  padding: 0 14px;
+}
+
+.schedule-app-header h1 {
+  margin: 0;
+  text-align: center;
+}
+
+.schedule-back-button,
+.schedule-header-spacer,
+.schedule-period-step {
+  display: none !important;
+}
+
+.schedule-period-control {
+  gap: 7px;
+}
+
+.schedule-period-chevron {
+  flex: 0 0 auto;
+  margin-left: 1px;
+}
+
+.schedule-week-view {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.schedule-week-view .week-timeline-toolbar {
+  margin: 0 0 8px;
+}
+
+.schedule-week-view .week-timeline-mode-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule-week-preview {
+  --weekly-draft-preview-hour-height: clamp(24px, 3.15dvh, 30px);
+  --weekly-draft-preview-ten-minute-height: calc(
+    var(--weekly-draft-preview-hour-height) / 6
+  );
+  min-width: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.schedule-week-preview-scroll {
+  width: 100%;
+  max-height: none !important;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.schedule-week-preview .weekly-draft-preview-grid {
+  min-width: 0;
+}
+
+.schedule-week-preview .weekly-draft-preview-header {
+  top: 0;
+  z-index: 5;
+}
+
+.schedule-week-preview .weekly-draft-preview-corner,
+.schedule-week-preview .weekly-draft-preview-date {
+  min-height: 42px;
+  padding: 5px 2px;
+  font-size: 0.64rem;
+}
+
+.schedule-week-preview .weekly-draft-preview-date strong {
+  font-size: 0.62rem;
+  letter-spacing: -0.03em;
+}
+
+.schedule-week-preview .weekly-draft-preview-time-label {
+  right: 5px;
+  font-size: 0.58rem;
+}
+
+.schedule-week-day-column {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.schedule-week-block {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  padding: 2px 2px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.schedule-week-block strong,
+.schedule-week-block small {
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-week-block strong {
+  font-size: 0.5rem;
+  line-height: 1.05;
+}
+
+.schedule-week-block small {
+  font-size: 0.45rem;
+  line-height: 1;
+}
+
+.schedule-week-block-short small,
+.schedule-week-block-micro small {
+  display: none;
+}
+
+.schedule-week-block-draft {
+  border-style: dashed;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--weekly-draft-tone) 14%, transparent);
+}
+
+.schedule-week-draft-remove {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 82%, var(--weekly-draft-tone) 18%);
+  color: var(--text-muted);
+  font-size: 0.55rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.schedule-week-block-draft strong {
+  padding-right: 10px;
+}
+
 @media (max-width: 640px) {
-  .schedule-workspace-shell .schedule-period-step {
-    display: inline-flex;
+  .schedule-workspace-shell {
+    padding-top: 5px;
+  }
+
+  .schedule-app-header {
+    margin-inline: -12px;
+    padding-inline: 12px;
+    min-height: 44px;
+  }
+
+  .schedule-primary-header .home-topbar {
+    min-height: 58px;
+  }
+
+  .schedule-week-preview {
+    --weekly-draft-preview-hour-height: 25px;
+  }
+
+  .schedule-week-preview .weekly-draft-preview-corner,
+  .schedule-week-preview .weekly-draft-preview-date {
+    min-height: 40px;
+    font-size: 0.58rem;
+  }
+
+  .schedule-week-preview .weekly-draft-preview-date strong {
+    font-size: 0.56rem;
+  }
+
+  .schedule-week-block strong {
+    font-size: 0.46rem;
+  }
+
+  .schedule-week-block small {
+    font-size: 0.41rem;
   }
 }
