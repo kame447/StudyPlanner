@@ -1,0 +1,136 @@
+/* Shared motion for bottom-origin planner surfaces.
+   Keep this after layout-specific modal styles so motion stays consistent. */
+
+.bottom-sheet-motion.is-open,
+.weekly-planning-quick-entry-motion.is-open .quick-entry-overlay,
+.schedule-workspace-shell .month-event-modal-overlay,
+.timetable-term-sheet-overlay {
+  animation: planner-sheet-overlay-in 220ms ease-out both;
+}
+
+.bottom-sheet-motion.is-open .schedule-action-sheet,
+.bottom-sheet-motion.is-open .schedule-record-sheet,
+.weekly-planning-quick-entry-motion.is-open .quick-entry-modal,
+.schedule-workspace-shell .month-event-modal-overlay .month-event-modal,
+.timetable-term-sheet-overlay .timetable-term-sheet {
+  transform-origin: 50% 100%;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation: planner-bottom-sheet-in 390ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.bottom-sheet-motion.is-closing,
+.weekly-planning-quick-entry-motion.is-closing .quick-entry-overlay {
+  pointer-events: none;
+  animation: planner-sheet-overlay-out 280ms ease-in both;
+}
+
+.bottom-sheet-motion.is-closing .schedule-action-sheet,
+.bottom-sheet-motion.is-closing .schedule-record-sheet,
+.weekly-planning-quick-entry-motion.is-closing .quick-entry-modal {
+  animation: planner-bottom-sheet-out 280ms cubic-bezier(0.4, 0, 0.65, 1) both;
+}
+
+.bottom-sheet-motion.is-open .schedule-action-close,
+.bottom-sheet-motion.is-open .schedule-action-back,
+.weekly-planning-quick-entry-motion.is-open .quick-entry-close-button,
+.schedule-workspace-shell .month-event-modal-overlay .month-event-save-button,
+.timetable-term-sheet-overlay .section-header .ghost-button {
+  transform-origin: center;
+  will-change: transform, opacity;
+  animation: planner-sheet-control-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+.schedule-workspace-shell .month-event-modal-overlay,
+.timetable-term-sheet-overlay,
+.weekly-planning-quick-entry-motion .quick-entry-overlay,
+.bottom-sheet-motion {
+  overscroll-behavior: contain;
+}
+
+@keyframes planner-sheet-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes planner-sheet-overlay-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes planner-bottom-sheet-in {
+  0% {
+    transform: translate3d(0, calc(100% + 28px), 0) scale(0.992);
+    opacity: 0.72;
+  }
+
+  72% {
+    transform: translate3d(0, -3px, 0) scale(1.002);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes planner-bottom-sheet-out {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate3d(0, calc(100% + 28px), 0) scale(0.992);
+    opacity: 0.78;
+  }
+}
+
+@keyframes planner-sheet-control-in {
+  0% {
+    transform: translate3d(0, 8px, 0) scale(0.84);
+    opacity: 0;
+  }
+
+  62% {
+    transform: translate3d(0, -1px, 0) scale(1.035);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-sheet-motion,
+  .bottom-sheet-motion .schedule-action-sheet,
+  .bottom-sheet-motion .schedule-record-sheet,
+  .bottom-sheet-motion .schedule-action-close,
+  .bottom-sheet-motion .schedule-action-back,
+  .weekly-planning-quick-entry-motion .quick-entry-overlay,
+  .weekly-planning-quick-entry-motion .quick-entry-modal,
+  .weekly-planning-quick-entry-motion .quick-entry-close-button,
+  .schedule-workspace-shell .month-event-modal-overlay,
+  .schedule-workspace-shell .month-event-modal,
+  .schedule-workspace-shell .month-event-save-button,
+  .timetable-term-sheet-overlay,
+  .timetable-term-sheet,
+  .timetable-term-sheet-overlay .section-header .ghost-button {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
