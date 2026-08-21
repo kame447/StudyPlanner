@@ -42,6 +42,7 @@ interface WeekPreviewBlock extends WeekPreviewBaseBlock {
 
 const WEEK_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+const MINUTES_PER_DAY = 24 * 60;
 
 function formatWeekDate(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
@@ -96,21 +97,20 @@ function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekP
 
 function buildMarkerStyle(hour: number): CSSProperties {
   return {
-    top: `calc(${hour * 6} * var(--weekly-draft-preview-ten-minute-height))`,
+    top: `${(hour / 24) * 100}%`,
   };
 }
 
 function buildBlockStyle(entry: WeekPreviewBlock): CSSProperties {
-  const startTenMinuteUnit = minutesFromTime(entry.startTime) / 10;
-  const durationTenMinuteUnits = Math.max(
-    minutesBetween(entry.startTime, entry.endTime) / 10,
-    1,
-  );
+  const startMinutes = Math.max(0, minutesFromTime(entry.startTime));
+  const durationMinutes = Math.max(minutesBetween(entry.startTime, entry.endTime), 1);
   const laneWidth = 100 / Math.max(entry.laneCount, 1);
+  const topPercent = (startMinutes / MINUTES_PER_DAY) * 100;
+  const heightPercent = (durationMinutes / MINUTES_PER_DAY) * 100;
 
   return {
-    top: `calc(${startTenMinuteUnit} * var(--weekly-draft-preview-ten-minute-height))`,
-    height: `max(calc(${durationTenMinuteUnits} * var(--weekly-draft-preview-ten-minute-height)), 18px)`,
+    top: `${topPercent}%`,
+    height: `max(${heightPercent}%, 14px)`,
     left: `calc(${entry.lane * laneWidth}% + 2px)`,
     width: `calc(${laneWidth}% - 4px)`,
     right: 'auto',
@@ -150,9 +150,7 @@ export function WeekView({
   const gridStyle = {
     gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
   } as CSSProperties;
-  const timelineStyle = {
-    height: 'calc(144 * var(--weekly-draft-preview-ten-minute-height))',
-  } as CSSProperties;
+  const timelineStyle = { height: '100%' } as CSSProperties;
 
   return (
     <section className="panel schedule-week-view">
@@ -177,7 +175,7 @@ export function WeekView({
 
       <div className="weekly-draft-preview schedule-week-preview">
         <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
-          <div className="weekly-draft-preview-grid">
+          <div className="weekly-draft-preview-grid schedule-week-preview-grid">
             <div className="weekly-draft-preview-header" style={gridStyle}>
               <div className="weekly-draft-preview-corner">時間</div>
               {weekDates.map((date) => (
@@ -192,7 +190,7 @@ export function WeekView({
               ))}
             </div>
 
-            <div className="weekly-draft-preview-body" style={gridStyle}>
+            <div className="weekly-draft-preview-body schedule-week-preview-body" style={gridStyle}>
               <div className="weekly-draft-preview-time-axis" style={timelineStyle} aria-hidden="true">
                 {WEEK_HOURS.map((hour) => (
                   <span
