@@ -19,19 +19,9 @@ html {
   display: none !important;
 }
 
-.schedule-primary-header.home-dashboard-default {
-  width: 100%;
-  margin: 0;
-}
-
-.schedule-primary-header .home-topbar {
-  width: 100%;
-  margin: 0;
-}
-
 /* Keep the schedule frame mathematically identical to the home frame at the
- * same viewport size. This intentionally duplicates the home breakpoint
- * contract so future content scrollbars cannot change the centered frame. */
+ * same viewport size. The persistent PrimaryAppHeader owns its own width, so
+ * schedule-specific rules must not override that shared chrome geometry. */
 @media (max-width: 699px) {
   .schedule-workspace-shell {
     width: min(100%, 508px);
@@ -45,6 +35,14 @@ html {
     width: min(96vw, 1040px);
     max-width: 1040px;
     padding-inline: clamp(16px, 2.4vw, 30px);
+  }
+}
+
+@media (min-width: 900px) {
+  .schedule-workspace-shell {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
   }
 }
 
