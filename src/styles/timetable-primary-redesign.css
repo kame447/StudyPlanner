@@ -1,0 +1,227 @@
+/* Primary timetable surface redesign.
+ * This layer intentionally reuses TimetableView's existing data/edit/OCR behavior
+ * and only changes presentation and interaction placement.
+ */
+
+.timetable-view {
+  width: min(1180px, 100%);
+  margin-inline: auto;
+  padding: clamp(12px, 1.8vw, 22px);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 96%, #eef6ff 4%);
+  box-shadow: 0 14px 40px rgb(15 23 42 / 0.06);
+}
+
+.timetable-view .timetable-header {
+  min-height: 52px;
+  padding: 0 2px;
+}
+
+.timetable-view .timetable-title-block {
+  text-align: left;
+}
+
+.timetable-view .timetable-title-block h2 {
+  font-size: clamp(1.18rem, 2vw, 1.55rem);
+  letter-spacing: -0.02em;
+}
+
+.timetable-view .timetable-term-control {
+  gap: 10px;
+}
+
+.timetable-view .timetable-term-switch,
+.timetable-view .timetable-ocr-button {
+  min-height: 42px;
+  padding-inline: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border) 84%);
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.04);
+}
+
+.timetable-view .timetable-grid-shell {
+  padding: clamp(4px, 0.8vw, 10px);
+  border-color: color-mix(in srgb, var(--accent) 14%, var(--border) 86%);
+  border-radius: 22px;
+  background: color-mix(in srgb, #edf6ff 72%, var(--surface) 28%);
+}
+
+.timetable-view .timetable-weekday-cell {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 92%, #eaf3ff 8%);
+}
+
+.timetable-view .timetable-grid-cell {
+  border-color: color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 97%, #f5f9ff 3%);
+}
+
+.timetable-view .timetable-grid-cell.has-class {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, #d9ebff 82%, var(--surface) 18%),
+    color-mix(in srgb, #cce4ff 68%, var(--surface) 32%)
+  );
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 92%, #1677ff 8%);
+}
+
+.timetable-view .timetable-grid-cell.has-class:hover {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border) 42%);
+  background: color-mix(in srgb, #cfe6ff 82%, var(--surface) 18%);
+}
+
+.timetable-view .timetable-class-card {
+  padding-inline: 8px;
+}
+
+.timetable-view .timetable-class-card strong {
+  text-align: left;
+}
+
+.timetable-view .timetable-class-meta {
+  justify-self: start;
+  max-width: 100%;
+  padding-inline: 7px;
+  color: color-mix(in srgb, var(--accent) 66%, var(--text-muted) 34%);
+  background: color-mix(in srgb, var(--surface) 78%, #eaf4ff 22%);
+}
+
+.timetable-view .timetable-grid-actions {
+  gap: 10px;
+}
+
+.timetable-view .timetable-grid-actions .ghost-button {
+  min-height: 40px;
+  min-width: 132px;
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+/* Existing lesson editor becomes the lesson side drawer on wide screens. */
+.timetable-modal-overlay {
+  z-index: 90;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0 0 calc(var(--bottom-nav-height, 72px) + env(safe-area-inset-bottom, 0px));
+  background: rgb(15 23 42 / 0.28);
+  backdrop-filter: blur(3px);
+}
+
+.modal-card.timetable-editor-modal {
+  width: min(460px, 42vw);
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 24px 0 0 24px;
+  background: var(--surface);
+  box-shadow: -18px 0 52px rgb(15 23 42 / 0.2);
+}
+
+.timetable-editor-header {
+  min-height: 58px;
+  padding-bottom: 12px;
+}
+
+.timetable-editor-heading h2 {
+  font-size: 1.08rem;
+}
+
+.timetable-editor-body {
+  gap: 12px;
+  padding: 4px 2px 10px;
+}
+
+.timetable-editor-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 94%, #eef5ff 6%);
+}
+
+.timetable-title-card {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border) 76%);
+  background: color-mix(in srgb, var(--surface) 91%, #e8f2ff 9%);
+}
+
+.timetable-editor-actions {
+  padding-top: 4px;
+}
+
+.timetable-bottom-nav {
+  --primary-nav-active-accent: var(--accent);
+}
+
+@media screen and (max-width: 900px) {
+  .timetable-view {
+    width: 100%;
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .modal-card.timetable-editor-modal {
+    width: min(440px, 64vw);
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .timetable-view {
+    margin-inline: 0;
+    padding: 8px 4px;
+    border-inline: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  .timetable-view .timetable-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-inline: 4px;
+  }
+
+  .timetable-view .timetable-term-control {
+    gap: 6px;
+  }
+
+  .timetable-view .timetable-term-switch,
+  .timetable-view .timetable-ocr-button {
+    min-height: 36px;
+    padding-inline: 10px;
+  }
+
+  .timetable-modal-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 calc(var(--bottom-nav-height, 72px) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal-card.timetable-editor-modal {
+    width: 100%;
+    height: auto;
+    max-height: min(78dvh, 720px);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 50px rgb(15 23 42 / 0.24);
+  }
+
+  .timetable-editor-header::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border-strong);
+    transform: translateX(-50%);
+  }
+
+  .timetable-editor-header {
+    position: relative;
+    padding-top: 10px;
+  }
+}
