@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
-import type { Actual, Plan, StudyMaterial, TodoTask, User } from '../types/domain';
-import { HomeTopbar } from './HomeTopbar';
-import { PrimaryBottomNav } from './PrimaryBottomNav';
+import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
 import {
   AttentionSection,
   DEFAULT_HOME_SECTION_ORDER,
@@ -15,20 +13,18 @@ import {
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 
 interface HomeViewProps {
-  user: User;
   plans: Plan[];
   actuals: Actual[];
   todos: TodoTask[];
   studyMaterials: StudyMaterial[];
+  primaryHeaderRef: RefObject<HTMLDivElement | null>;
+  primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
   onOpenReport: () => void;
-  onOpenTimetable: () => void;
-  onOpenProfile: () => void;
-  onOpenSettings: () => void;
 }
 
 interface HomeLayoutRelaxation {
@@ -92,20 +88,18 @@ function preferredScheduleListHeight(scheduleList: HTMLElement): number {
 }
 
 export function HomeView({
-  user,
   plans,
   actuals,
   todos,
   studyMaterials,
+  primaryHeaderRef,
+  primaryBottomNavRef,
   onOpenAiPlanning,
   onOpenSchedule,
   onOpenDay,
   onOpenTodo,
   onOpenBookshelf,
   onOpenReport,
-  onOpenTimetable,
-  onOpenProfile,
-  onOpenSettings,
 }: HomeViewProps) {
   const dashboard = useMemo(
     () => buildHomeDashboardModel({ plans, actuals, todos }),
@@ -131,7 +125,6 @@ export function HomeView({
     );
   }, [activeStudyMaterials]);
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
-  const bottomNavRef = useRef<HTMLElement | null>(null);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
@@ -151,15 +144,17 @@ export function HomeView({
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
         const core = coreSectionsRef.current;
-        const nav = bottomNavRef.current;
+        const header = primaryHeaderRef.current;
+        const nav = primaryBottomNavRef.current;
         const dashboardElement = core?.closest('.home-dashboard-default');
         const todayPanel = core?.querySelector<HTMLElement>('[data-home-section="today-schedule"]');
         const scheduleList = todayPanel?.querySelector<HTMLElement>('.home-schedule-list');
         const nextCard = core?.querySelector<HTMLElement>('[data-home-section="next-plan"]');
         const alertGrid = core?.querySelector<HTMLElement>('[data-home-section="attention"]');
-        const topbar = dashboardElement?.querySelector<HTMLElement>('.home-topbar');
+        const topbar = header?.querySelector<HTMLElement>('.home-topbar');
         if (
           !core ||
+          !header ||
           !nav ||
           !(dashboardElement instanceof HTMLElement) ||
           !todayPanel ||
@@ -170,6 +165,31 @@ export function HomeView({
         ) {
           return;
         }
+
+        const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;
+        let chromeLocked = header.dataset.homeChromeViewport === chromeViewportKey;
+        let persistedTopbarRelaxation =
+          Number.parseFloat(header.style.getPropertyValue('--home-relax-topbar')) || 0;
+
+        if (!chromeLocked && header.dataset.homeChromeViewport) {
+          header.style.removeProperty('--home-relax-topbar');
+          delete header.dataset.homeChromeViewport;
+          persistedTopbarRelaxation = 0;
+        }
+
+        if (
+          Math.abs(layoutRelaxationRef.current.topbar - persistedTopbarRelaxation) > 0.1
+        ) {
+          layoutRelaxationRef.current = {
+            ...layoutRelaxationRef.current,
+            topbar: persistedTopbarRelaxation,
+          };
+        }
+
+        const lockPrimaryChrome = () => {
+          header.dataset.homeChromeViewport = chromeViewportKey;
+          chromeLocked = true;
+        };
 
         const isTallViewport = window.innerHeight >= TALL_VIEWPORT_MIN_HEIGHT;
         const isWideViewport = window.innerWidth >= WIDE_VIEWPORT_MIN_WIDTH;
@@ -194,10 +214,11 @@ export function HomeView({
         const maxSectionGap = isWideTallViewport ? 20 : isTallViewport ? 18 : 12;
 
         const setRelaxationProperty = (name: string, value: number) => {
+          const target = name === '--home-relax-topbar' ? header : dashboardElement;
           if (value <= 0.05) {
-            dashboardElement.style.removeProperty(name);
+            target.style.removeProperty(name);
           } else {
-            dashboardElement.style.setProperty(name, `${value.toFixed(2)}px`);
+            target.style.setProperty(name, `${value.toFixed(2)}px`);
           }
         };
         const applyLayoutRelaxation = (next: HomeLayoutRelaxation) => {
@@ -219,8 +240,11 @@ export function HomeView({
           setRelaxationProperty('--home-relax-gap', next.gap);
           return true;
         };
-        const resetLayoutRelaxation = () =>
-          applyLayoutRelaxation(emptyLayoutRelaxation());
+        const resetLayoutRelaxation = () => {
+          const reset = emptyLayoutRelaxation();
+          if (chromeLocked) reset.topbar = persistedTopbarRelaxation;
+          return applyLayoutRelaxation(reset);
+        };
 
         const coreRect = core.getBoundingClientRect();
         const todayRect = todayPanel.getBoundingClientRect();
@@ -252,8 +276,7 @@ export function HomeView({
           0,
           preferredCoreHeight - compactCoreRelaxationImpact,
         );
-        const compactAvailableCoreHeight =
-          availableCoreHeight + currentRelaxation.topbar + currentRelaxation.gap;
+        const compactAvailableCoreHeight = availableCoreHeight + currentRelaxation.topbar;
         const compactOuterGap = Math.max(0, rowGap - currentRelaxation.gap);
 
         const setScheduleMaxHeight = (maxHeight: number | null) => {
@@ -317,6 +340,7 @@ export function HomeView({
           );
           setScheduleMaxHeight(emergencyScheduleHeight);
           setSupplementalMaterialRows((current) => (current === null ? current : null));
+          if (!chromeLocked) lockPrimaryChrome();
           return;
         }
 
@@ -339,7 +363,10 @@ export function HomeView({
         }
 
         let remaining = currentSlack - TARGET_BOTTOM_GAP;
-        if (remaining <= 0.5) return;
+        if (remaining <= 0.5) {
+          if (!chromeLocked) lockPrimaryChrome();
+          return;
+        }
 
         const nextRelaxation = { ...currentRelaxation };
 
@@ -417,7 +444,7 @@ export function HomeView({
           remaining -= sideAddition * 2;
         }
 
-        if (remaining > 0.5) {
+        if (remaining > 0.5 && !chromeLocked) {
           const topbarCapacity = Math.max(
             0,
             maxTopbarHeight - topbar.getBoundingClientRect().height,
@@ -440,7 +467,7 @@ export function HomeView({
         if (remaining > 0.5) {
           const gapCapacity = Math.max(0, maxSectionGap - rowGap);
           const activeGapCount =
-            internalCoreGapCount + 1 + (supplementalMaterialRows === null ? 0 : 1);
+            internalCoreGapCount + (supplementalMaterialRows === null ? 0 : 1);
           if (gapCapacity > 0 && activeGapCount > 0) {
             const gapAddition = Math.min(gapCapacity, remaining / activeGapCount);
             nextRelaxation.gap += gapAddition;
@@ -448,7 +475,11 @@ export function HomeView({
           }
         }
 
+        // Home gets one responsive sizing pass for the shared chrome. Once the
+        // header has been resolved for this viewport, page switches reuse that
+        // exact DOM node and geometry rather than recalculating it per surface.
         applyLayoutRelaxation(nextRelaxation);
+        if (!chromeLocked) lockPrimaryChrome();
       });
     };
 
@@ -467,6 +498,8 @@ export function HomeView({
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,
     isGettingStarted,
+    primaryBottomNavRef,
+    primaryHeaderRef,
     supplementalMaterialCandidates,
     supplementalMaterialRows,
   ]);
@@ -539,15 +572,6 @@ export function HomeView({
 
   return (
     <section className={dashboardClassName} aria-label="ホーム">
-      <HomeTopbar
-        user={user}
-        plans={plans}
-        actuals={actuals}
-        todos={todos}
-        onOpenProfile={onOpenProfile}
-        onOpenSettings={onOpenSettings}
-      />
-
       {isGettingStarted ? (
         <GettingStartedSection
           onOpenAiPlanning={onOpenAiPlanning}
@@ -585,16 +609,6 @@ export function HomeView({
           </div>
         </>
       )}
-
-      <PrimaryBottomNav
-        ref={bottomNavRef}
-        active="home"
-        onOpenAiPlanning={onOpenAiPlanning}
-        onOpenSchedule={onOpenSchedule}
-        onOpenHome={() => undefined}
-        onOpenBookshelf={onOpenBookshelf}
-        onOpenTimetable={onOpenTimetable}
-      />
     </section>
   );
 }
