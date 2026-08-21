@@ -5,7 +5,7 @@
  */
 
 .timetable-view {
-  --timetable-cell-height: clamp(108px, 13.8vh, 142px);
+  --timetable-cell-height: clamp(108px, 13.5vh, 138px);
 }
 
 .timetable-view .timetable-grid-cell.has-class {
@@ -32,6 +32,8 @@
 
 .timetable-view .timetable-class-meta {
   display: block;
+  justify-self: stretch;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   padding: 0 2px;
@@ -63,13 +65,13 @@
 
 @media screen and (max-width: 900px) {
   .timetable-view {
-    --timetable-cell-height: clamp(106px, 13.3vh, 136px);
+    --timetable-cell-height: clamp(106px, 13vh, 130px);
   }
 }
 
 @media screen and (max-width: 640px) {
   .timetable-view {
-    --timetable-cell-height: clamp(104px, 12.4vh, 124px);
+    --timetable-cell-height: clamp(102px, 12vh, 118px);
   }
 
   .timetable-view .timetable-class-card {
