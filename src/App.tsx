@@ -488,15 +488,49 @@ export default function App() {
 
             {viewMode === 'bookshelf' ? (
               <BookshelfView
+                user={user}
                 userId={user.id}
                 subjects={studySubjects}
                 materials={studyMaterials}
+                plans={plans}
+                actuals={actuals}
+                todos={todos}
                 initialAction={bookshelfInitialAction}
                 onInitialActionHandled={() => setBookshelfInitialAction(null)}
                 onSaveSubject={saveStudySubject}
                 onDeleteSubject={deleteStudySubject}
                 onSaveMaterial={saveStudyMaterial}
                 onDeleteMaterial={deleteStudyMaterial}
+                onOpenAiPlanning={() => setPrimarySurface('ai-planning')}
+                onOpenSchedule={() => {
+                  setPrimarySurface('workspace');
+                  setViewMode('month');
+                }}
+                onOpenHome={() => setPrimarySurface('home')}
+                onOpenReport={() => {
+                  setPrimarySurface('workspace');
+                  setViewMode('report');
+                }}
+                onOpenProfile={() => setIsMyPageOpen(true)}
+                onOpenSettings={() => setIsAppSettingsOpen(true)}
+                onAddMaterialToPlan={(material) => {
+                  setEditorDraft({
+                    userId: user.id,
+                    title: material.name,
+                    subject: material.subjectName,
+                    date: selectedDate,
+                    startTime: '19:00',
+                    endTime: '20:00',
+                    repeat: 'none',
+                    repeatUntil: null,
+                    excludedDates: [],
+                    recurrenceRules: [],
+                    type: 'study',
+                    memo: '',
+                    materialId: material.id,
+                    materialName: material.name,
+                  });
+                }}
               />
             ) : null}
           </Suspense>
