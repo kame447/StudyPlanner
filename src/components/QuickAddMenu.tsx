@@ -1,5 +1,5 @@
 import { BookOpenCheck, CalendarPlus, Plus, Sparkles } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type CSSProperties } from 'react';
 
 interface QuickAddMenuProps {
   onAddSchedule: () => void;
@@ -90,7 +90,7 @@ export function QuickAddMenu({
               key={action.id}
               onClick={() => runAction(action.id)}
               role="menuitem"
-              style={{ '--quick-add-index': index } as React.CSSProperties}
+              style={{ '--quick-add-index': index } as CSSProperties}
               tabIndex={isOpen ? 0 : -1}
               type="button"
             >
