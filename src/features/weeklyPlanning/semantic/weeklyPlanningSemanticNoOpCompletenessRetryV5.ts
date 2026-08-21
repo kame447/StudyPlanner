@@ -75,7 +75,7 @@ function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boo
   });
 }
 
-function rejectedPriorNoOpResult(params: {
+function acceptedPriorNoOpResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   document: WeeklyPlanningSemanticDocumentV5;
   attemptCount: number;
@@ -83,22 +83,17 @@ function rejectedPriorNoOpResult(params: {
   validationErrors: string[];
 }): WeeklyPlanningSemanticNormalizerResultV5 {
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
-    status: 'rejected',
-    document: null,
+    status: 'accepted',
+    document: params.document,
     diagnostics: params.run.diagnostics({
       attemptCount: params.attemptCount,
       repairAttempted: params.repairAttempted,
-      validationErrors: [
-        ...params.validationErrors,
-        'completeness_retry:semantic_noop_after_retries',
-      ],
+      validationErrors: params.validationErrors,
       providerError: null,
     }),
   };
   params.run.recordDecision(result, {
-    route: 'schema_valid_noop_completeness_retry_rejected',
-    severity: 'error',
-    extra: { rejectedSchemaValidDocument: params.document },
+    route: 'schema_valid_noop_completeness_retry_fallback_initial',
   });
   return result;
 }
@@ -379,7 +374,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         parsedDocument: validation.parsedDocument,
         retryAgain: shouldRetryAgain,
         fallback: retryIndex === 1 && (!validation.document || stillNoOp)
-          ? 'rejected_schema_valid_noop'
+          ? 'initial_schema_valid_document'
           : null,
       },
     });
@@ -404,7 +399,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     }
 
     if (!shouldRetryAgain) {
-      return rejectedPriorNoOpResult({
+      return acceptedPriorNoOpResult({
         run: params.run,
         document: params.initialDocument,
         attemptCount,
@@ -415,7 +410,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
     previousResponse = response;
   }
 
-  return rejectedPriorNoOpResult({
+  return acceptedPriorNoOpResult({
     run: params.run,
     document: params.initialDocument,
     attemptCount: attemptCountBeforeRetry + focusedAttemptOffset + 2,
