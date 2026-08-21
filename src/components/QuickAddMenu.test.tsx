@@ -15,7 +15,9 @@ describe('QuickAddMenu', () => {
       />,
     );
 
-    const trigger = renderer.root.findByProps({ className: 'daily-add-fab schedule-add-fab quick-add-trigger print-hide' });
+    const trigger = renderer.root.findByProps({
+      className: 'daily-add-fab schedule-add-fab quick-add-trigger print-hide',
+    });
     expect(trigger.props['aria-expanded']).toBe(false);
 
     act(() => {
@@ -24,11 +26,10 @@ describe('QuickAddMenu', () => {
 
     expect(renderer.root.findByProps({ className: 'quick-add-menu is-open' })).toBeTruthy();
     const actions = renderer.root.findAllByProps({ role: 'menuitem' });
-    expect(actions.map((action) => action.children[0].children[0])).toEqual([
-      'AI計画',
-      '学習を追加',
-      '予定を追加',
-    ]);
+    const labels = renderer.root
+      .findAllByProps({ className: 'quick-add-option-label' })
+      .map((label) => label.children.join(''));
+    expect(labels).toEqual(['AI計画', '学習を追加', '予定を追加']);
     expect(actions.map((action) => action.props.style['--quick-add-index'])).toEqual([2, 1, 0]);
 
     act(() => {
