@@ -1,8 +1,8 @@
 import { forwardRef, type ComponentType } from 'react';
 import {
-  BarChart3,
   BookOpen,
   CalendarDays,
+  CalendarRange,
   House,
   MessageCircle,
   type LucideProps,
@@ -13,7 +13,7 @@ export type PrimaryNavItem =
   | 'schedule'
   | 'home'
   | 'bookshelf'
-  | 'report';
+  | 'timetable';
 
 interface PrimaryBottomNavProps {
   active: PrimaryNavItem;
@@ -50,7 +50,7 @@ export const PrimaryBottomNav = forwardRef<HTMLElement, PrimaryBottomNavProps>(
       { id: 'schedule', label: '予定', Icon: CalendarDays, onSelect: onOpenSchedule },
       { id: 'home', label: 'ホーム', Icon: House, onSelect: onOpenHome },
       { id: 'bookshelf', label: '教材', Icon: BookOpen, onSelect: onOpenBookshelf },
-      { id: 'report', label: '分析', Icon: BarChart3, onSelect: onOpenReport },
+      { id: 'timetable', label: '時間割', Icon: CalendarRange, onSelect: onOpenReport },
     ];
     const navClassName = ['home-bottom-nav', 'primary-bottom-nav', 'print-hide', className]
       .filter(Boolean)
