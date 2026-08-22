@@ -1,54 +1,5 @@
 /* Focused interaction fixes that must load after the primary theme/style bundles. */
 
-/*
- * PrimaryAppHeader renders persistent app chrome, not the Home page itself.
- * Keep the HomeTopbar visual tokens here so page-level .home-dashboard markers
- * remain unique while the shared header still matches Home in every theme.
- */
-.primary-app-header {
-  --home-blue: var(--accent);
-  --home-blue-strong: var(--accent-strong);
-  --home-ink: #151d31;
-  --home-muted: #637089;
-  --home-line: #e3e9f1;
-  --home-line-soft: #edf1f5;
-  --home-card: #fff;
-  --home-radius: 14px;
-  --home-radius-small: 11px;
-  --home-shadow-soft: 0 4px 13px rgba(33, 54, 87, 0.055);
-  --home-shadow-card: 0 7px 20px rgba(32, 55, 91, 0.05);
-  --home-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  display: block;
-  height: auto;
-  min-height: 0;
-  overflow: visible;
-  align-content: initial;
-  gap: 0;
-  color: var(--home-ink);
-  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
-}
-
-.primary-app-header *,
-.primary-app-header *::before,
-.primary-app-header *::after {
-  box-sizing: border-box;
-}
-
-.primary-app-header button {
-  font: inherit;
-}
-
-:root[data-theme='dark'] .primary-app-header {
-  --home-ink: var(--text-primary);
-  --home-muted: var(--text-muted);
-  --home-line: var(--border);
-  --home-line-soft: color-mix(in srgb, var(--border) 76%, transparent);
-  --home-card: var(--surface-strong);
-  --home-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.18);
-  --home-shadow-card: 0 10px 30px rgba(0, 0, 0, 0.2);
-  color: var(--text-primary);
-}
-
 /* Quick add is for direct study/record entry. AI planning lives on the AI planning surface. */
 [data-quick-entry-manual-only='true'] .quick-entry-switch-card,
 [data-quick-entry-manual-only='true'] .quick-entry-ai-panel {
