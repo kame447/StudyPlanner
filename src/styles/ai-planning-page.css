@@ -94,7 +94,6 @@
 
 @media (max-height: 760px) {
   .app-shell.home-app-shell:has(.ai-planning-view) {
-    padding-top: 5px;
     padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
