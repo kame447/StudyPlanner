@@ -38,12 +38,14 @@ export function QuickAddMenu({
   onOpenAiPlanning,
 }: QuickAddMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const actionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function closeMenu(restoreFocus = true) {
     setIsOpen(false);
+    setFocusedIndex(0);
     if (restoreFocus) {
       window.requestAnimationFrame(() => triggerRef.current?.focus());
     }
@@ -54,6 +56,7 @@ export function QuickAddMenu({
       return undefined;
     }
 
+    setFocusedIndex(0);
     const focusFrame = window.requestAnimationFrame(() => {
       actionRefs.current[0]?.focus();
     });
@@ -88,35 +91,30 @@ export function QuickAddMenu({
     onOpenAiPlanning();
   }
 
+  function focusAction(index: number) {
+    const nextIndex = Math.max(0, Math.min(ACTIONS.length - 1, index));
+    setFocusedIndex(nextIndex);
+    actionRefs.current[nextIndex]?.focus();
+  }
+
   function handleMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!isOpen) return;
 
-    const availableActions = actionRefs.current.filter(
-      (action): action is HTMLButtonElement => action !== null,
-    );
-    if (availableActions.length === 0) return;
-
-    const activeIndex = Math.max(
-      0,
-      availableActions.findIndex((action) => action === document.activeElement),
-    );
-    let nextIndex = activeIndex;
-
+    let nextIndex = focusedIndex;
     if (event.key === 'ArrowDown') {
-      nextIndex = (activeIndex + 1) % availableActions.length;
+      nextIndex = (focusedIndex + 1) % ACTIONS.length;
     } else if (event.key === 'ArrowUp') {
-      nextIndex =
-        (activeIndex - 1 + availableActions.length) % availableActions.length;
+      nextIndex = (focusedIndex - 1 + ACTIONS.length) % ACTIONS.length;
     } else if (event.key === 'Home') {
       nextIndex = 0;
     } else if (event.key === 'End') {
-      nextIndex = availableActions.length - 1;
+      nextIndex = ACTIONS.length - 1;
     } else {
       return;
     }
 
     event.preventDefault();
-    availableActions[nextIndex]?.focus();
+    focusAction(nextIndex);
   }
 
   return (
@@ -145,12 +143,13 @@ export function QuickAddMenu({
               className="quick-add-option"
               key={action.id}
               onClick={() => runAction(action.id)}
+              onFocus={() => setFocusedIndex(index)}
               ref={(node) => {
                 actionRefs.current[index] = node;
               }}
               role="menuitem"
               style={{ '--quick-add-index': revealIndex } as CSSProperties}
-              tabIndex={isOpen ? 0 : -1}
+              tabIndex={isOpen && index === focusedIndex ? 0 : -1}
               type="button"
             >
               <span className="quick-add-option-label">{action.label}</span>
