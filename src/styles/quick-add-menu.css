@@ -15,21 +15,15 @@
   padding: 0;
   border: 0;
   background: rgba(17, 27, 43, 0);
-  -webkit-backdrop-filter: blur(0);
-  backdrop-filter: blur(0);
   opacity: 0;
   pointer-events: none;
   transition:
     opacity 160ms ease-out,
-    background 180ms ease-out,
-    backdrop-filter 180ms ease-out,
-    -webkit-backdrop-filter 180ms ease-out;
+    background 180ms ease-out;
 }
 
 .quick-add-menu.is-open .quick-add-backdrop {
-  background: rgba(17, 27, 43, 0.1);
-  -webkit-backdrop-filter: blur(1.5px);
-  backdrop-filter: blur(1.5px);
+  background: rgba(17, 27, 43, 0.12);
   opacity: 1;
   pointer-events: auto;
 }
