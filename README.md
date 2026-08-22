@@ -5,7 +5,7 @@
 
 学習計画、実績、教材、時間割を一元管理し、自然言語を使った週間計画の作成を支援する Web アプリケーションです。
 
-StudyPlanner は、予定を登録するだけのカレンダーではなく、計画と実績を分けて記録し、その差を次の計画に反映できる学習管理環境を目指しています。AI は自然言語の解釈に利用し、予定の配置、状態更新、承認、保存といったアプリケーション上の判断は通常のプログラムが管理します。
+StudyPlanner は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
 
 ## 主な機能
 
@@ -19,7 +19,7 @@ StudyPlanner は、予定を登録するだけのカレンダーではなく、�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。教材情報は、予定や週間計画と連携できるよう独立したデータとして扱います。
+教材や学習対象を登録し、現在の進捗を管理できます。
 
 ### ホーム・時間割
 
@@ -33,18 +33,16 @@ StudyPlanner は、予定を登録するだけのカレンダーではなく、�
 
 週間計画では、AI を意思決定主体として扱いません。AI が担当するのは、ユーザーの発話と会話文脈を構造化された意味へ変換する部分です。
 
-検証、参照先の確定、Fact Graph の更新、確認要否、readiness、空き時間計算、スケジューリング、プレビュー、承認、保存はアプリケーション側が管理します。計画へ大きく影響する情報が曖昧な場合はユーザーへ確認し、保存前には明示的な承認を要求します。
+検証、状態管理、確認要否、空き時間計算、スケジューリング、プレビュー、承認、保存はアプリケーション側が管理します。計画へ大きく影響する情報が曖昧な場合はユーザーへ確認し、保存前には明示的な承認を要求します。
 
 ```text
 User input
     ↓
 AI semantic interpretation
     ↓
-Validation / binding
+Validation / application state
     ↓
-Fact Graph / application state
-    ↓
-Readiness / availability / scheduler
+Scheduler
     ↓
 Preview
     ↓
@@ -53,11 +51,11 @@ User approval
 Save
 ```
 
-この責務境界の詳細は [`docs/architecture/README.md`](./docs/architecture/README.md) と [`docs/ai/weekly-planning-current-contract-v5.md`](./docs/ai/weekly-planning-current-contract-v5.md) を参照してください。
+詳細は [`docs/architecture/README.md`](./docs/architecture/README.md) と [`docs/ai/weekly-planning-current-contract-v5.md`](./docs/ai/weekly-planning-current-contract-v5.md) を参照してください。
 
 ## 技術構成
 
-フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication、永続化には Cloud Firestore を利用し、Firebase 未設定の開発環境では一部機能を localStorage へフォールバックできます。AI provider への公開環境からの接続は Cloudflare Workers を gateway として扱います。
+フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication、永続化には Cloud Firestore を利用し、Firebase 未設定の開発環境では一部機能を localStorage へフォールバックできます。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
 
 テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
 
@@ -74,9 +72,9 @@ npm run dev
 
 Firebase や AI gateway を設定しなくても、一部機能はローカル fallback で確認できます。本番相当の認証、保存、AI 接続を確認する場合は環境設定が必要です。
 
-### Firebase
+### 環境変数
 
-`.env.local` または `.env` に Firebase の設定を追加します。
+Firebase と AI proxy を利用する場合は `.env.local` または `.env` に設定を追加します。
 
 ```bash
 VITE_FIREBASE_API_KEY=your-api-key
@@ -128,7 +126,7 @@ npm run verify
 
 `npm run verify` は TypeScript の型チェック、Vitest、production build を順番に実行します。
 
-Playwright を使った Browser Regression は `.github/workflows/browser-regression.yml` で実行します。主要なユーザー操作を同じ条件で繰り返し検証し、別の変更による UI 回帰を検出するためのテストです。
+Playwright を使った Browser Regression は `.github/workflows/browser-regression.yml` で実行します。主要なユーザー操作を同じ条件で繰り返し検証し、別の変更による UI 回帰を検出します。
 
 ## ドキュメント
 
@@ -136,11 +134,11 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 
 週間計画の現在契約は [`docs/ai/weekly-planning-current-contract-v5.md`](./docs/ai/weekly-planning-current-contract-v5.md)、現在位置は [`docs/ai/weekly-planning-current-contract-status.md`](./docs/ai/weekly-planning-current-contract-status.md)、実装順序は [`docs/ai/strategy/weekly-planning-roadmap.md`](./docs/ai/strategy/weekly-planning-roadmap.md) を参照してください。
 
-README はプロダクトと開発環境の概要を示す入口です。実装、テスト、current contract と内容が食い違う場合は、README ではなく現在の実装と canonical documentation を基準にします。
+README はプロダクトと開発環境の概要を示す入口です。実装、テスト、current contract と内容が食い違う場合は、現在の実装と canonical documentation を基準にします。
 
 ## 開発状況
 
-StudyPlanner は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しており、未マージの branch や PR は current specification には含めません。
+StudyPlanner は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
 
 ## ライセンス
 
