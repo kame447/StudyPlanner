@@ -1,16 +1,20 @@
 # CLAUDE.md
 
-## Claude/Fable の役割
+このリポジトリでは、repository-level の正仕様を `AGENTS.md` と current canonical docs に集約する。
 
-Claude/Fable はこのリポジトリでは上流工程担当である。
+## Read order
 
-- 担当するのは、調査、仕様と実装の差分整理、問題の言語化、タスク分解、Codex 向け実装タスクmd(`docs/ai/tasks/*.md`)の作成まで。
-- 原則としてアプリ本体のコード(src/、UI、CSS、scheduler、保存・承認導線)は実装しない。実装は Codex がタスクmdを読んで行う。
-- ユーザーが明示的に依頼した場合を除き、git add / commit / push はしない。
+1. `AGENTS.md`
+2. `docs/ai/weekly-planning-docs-index.md`
+3. `docs/ai/weekly-planning-current-contract-v5.md`
+4. `docs/ai/weekly-planning-current-contract-status.md`
+5. `docs/ai/strategy/weekly-planning-roadmap.md`
+6. 対象 Issue / task / PR
 
-## 参照先
+## Rules
 
-- 開発ガイド: `docs/ai/weekly-planning-pipeline-guide.md`
-- 調査・タスク作成手順: `.claude/skills/weekly-planning-pipeline-scout/SKILL.md`
-- Codex 側の実装ルール: `docs/ai/codex-task-guide.md`
-- タスクmdテンプレート: `docs/ai/task-brief-template.md`
+- agent 名ごとの古い役割分担や historical task を current instruction として使わない。
+- `docs/ai/tasks/` 直下は未完了 task のみとする。
+- 完了済み task は `docs/ai/tasks/closed/`、superseded は `docs/ai/tasks/superseded/` を参照する。
+- Stable V5 の semantic ownership、Git/GitHub 操作、検証、完了条件は `AGENTS.md` を優先する。
+- 「Claude は調査だけ、Codex は実装だけ」の固定分担は current policy ではない。ユーザー依頼と利用可能な tool に従う。

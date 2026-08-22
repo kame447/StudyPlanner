@@ -1,32 +1,16 @@
-このプロジェクトでは自然言語予定入力のリファクタを段階的に進める。
+# GEMINI.md
 
-最優先事項
-- 既存 pass ケースを壊さない
-- 一気に全書き換えしない
-- facade として naturalLanguageRules.ts と naturalLanguagePlanner.ts は薄く残す
-- 責務分割を優先し、意味変更は最小限にする
+このファイルは Gemini 系 agent の repository entry point である。個別の旧リファクタ指示は保持しない。
 
-今回の分割対象
-- TimeOnlyClause 周り
-- override / recurrence 周り
-- validator / dedupe 周り
+## Read order
 
-新規ファイル候補
-- nlNormalize.ts
-- nlClauseParser.ts
-- nlAttachment.ts
-- nlRecurrenceCompiler.ts
-- nlValidator.ts
+1. `AGENTS.md`
+2. `docs/ai/weekly-planning-docs-index.md`
+3. `docs/ai/weekly-planning-current-contract-v5.md`
+4. `docs/ai/weekly-planning-current-contract-status.md`
+5. `docs/ai/strategy/weekly-planning-roadmap.md`
+6. 対象 Issue / task / PR
 
-制約
-- 大規模リネームしない
-- 不要な整形をしない
-- import/export の変更は最小限
-- 通らない場合は設計の綺麗さより互換性を優先する
+Stable V5 では raw Japanese を regex / keyword / dictionary / legacy parser で semantic truth として再解釈しない。古い normalize → tokenize → parser → AST → IR 前提の指示や、historical task の `Status: active` を current instruction として復活させない。
 
-作業単位
-1. TimeOnlyClause の生成・吸着・反映箇所を特定
-2. TimeOnlyClause 関連のみ切り出す
-3. テスト確認
-4. 次に override / recurrence
-5. 最後に validator / dedupe
+実装・GitHub 操作・検証は `AGENTS.md` の current policy に従う。

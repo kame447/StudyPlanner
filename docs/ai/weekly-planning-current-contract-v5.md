@@ -1,233 +1,105 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-15
+Updated: 2026-08-22
 
 Canonical references:
-
-- [current contract status](weekly-planning-current-contract-status.md)
-- [runtime contract](weekly-planning-stable-v5-runtime-trial-contract.md)
+- [current status](weekly-planning-current-contract-status.md)
 - [main roadmap](strategy/weekly-planning-roadmap.md)
-- [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
-- [human grounding policy](tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
-- [adaptive memory learning policy](strategy/weekly-planning-adaptive-memory-learning-policy.md)
+- [human grounding policy](strategy/weekly-planning-human-grounding-dialogue-policy.md)
+- [adaptive memory policy](strategy/weekly-planning-adaptive-memory-learning-policy.md)
 - [test philosophy](testing/weekly-planning-test-philosophy.md)
 
 ## 1. Runtime baseline
 
-Stable V5が唯一のproduction週間計画runtimeである。
+Stable V5 is the sole production weekly-planning runtime.
 
 ```text
-NaturalLanguageAssistant
-→ machine-state semantic routing
-→ focused / generic AI semantic interpretation
-→ validation / optional one-shot AI repair
-→ formal binding / canonical Fact Graph commit
-→ readiness / proposal policy / scheduler / dialogue decision
-→ AI renderer
+raw user utterance + relevant conversation + typed machine state
+→ AI semantic interpretation
+→ schema / evidence / reference validation
+→ deterministic formal binding / canonical Fact Graph
+→ deterministic proposal / readiness / question / scheduler decision
+→ AI dialogue renderer
 → preview
-→ approval / save
+→ deterministic approval / save / persistence
 ```
 
-legacy parser / interpreter / semantic runtimeへ戻すproduction pathを持たない。
+legacy parser / interpreter / runtime selector に rollback する production semantic path を持たない。
 
-## 2. Semantic ownership
-
-raw user textと会話文脈の意味理解はAIが担当する。
+## 2. Ownership
 
 AI:
-
-- task / component / workload / quantity role
-- effort information
+- task / component / workload / quantity role / effort meaning
 - date / weekday / time intent
 - recurrence / availability / relation
-- correction / contextual reference
-- authorization intent
-- proposal accept / reject / modify
-- current-only / durable等のscope意味
+- correction / contextual reference / authorization intent
+- proposal accept / reject / modify と scope meaning
+- typed application decision の自然言語 realization
 
 Deterministic application:
-
 - schema / evidence / reference validation
-- canonical IDs / formal binding
-- Fact Graph lifecycle / revision / idempotency
-- question / confirmation necessity
-- proposal generation / lifecycle / accepted scope
-- readiness
-- scheduler / placement
-- preview / approval / save
-- persistence / recovery
-- observed pace / retention / feasibility計算
+- canonical IDs / binding / revision / idempotency
+- Fact Graph lifecycle / correction / no-op
+- question / confirmation necessity and priority
+- proposal candidate / lifecycle / accepted scope
+- readiness / scheduler / placement safety
+- preview freshness / approval / save
+- persistence / recovery / trace safety
+- deterministic calculation / calibration
 
-AI semantic boundary以後でraw Japaneseをregex、keyword、dictionary、legacy parserにより再解釈しない。
+AI semantic boundary 以後で raw Japanese を regex / keyword / dictionary / legacy parser により semantic truth として再解釈しない。
 
-## 3. Semantic document contract
+## 3. Semantic delta
 
-AI出力はcurrent-turn semantic deltaであり、accepted state snapshotではない。
+AI output は current-turn semantic delta。accepted state snapshot ではない。過去 Fact を current evidence なしに再コピーしない。formal IDs、revision、lifecycle mutation、scheduler decision を AI output に所有させない。
 
-過去Factをcurrent deltaへ根拠なく再コピーしない。`sourceText`はcurrent user turnのevidenceを持つ。
+provider failure、malformed output、validation failure、repair failureから legacy natural-language parserへ fallbackしない。semantic repairは current contract が許す範囲で最大1回。
 
-formal IDs、revision、lifecycle mutation、scheduler decisionはAI出力に所有させない。
+## 4. Time / quantity
 
-## 4. Date / time contract
+自然言語上の時間意味は AI、calendar arithmetic は application。selectedDate を current time の代用にしない。
 
-自然言語上の時間意味をAIが構造化し、具体的なcalendar arithmeticはapplicationが行う。
+workload total、completed、remaining、percentage、effort measurementを別の typed role として扱い、correction後の stale derived fact を残さない。open-ended task へ pages / slides 等の架空 total を仮定しない。
 
-- `next_week`等の意味選択: AI
-- actual date range resolution: deterministic calendar resolver
-- timezone / weekStartsOn / current turn time: application
+## 5. Fact Graph / lifecycle
 
-selectedDateをcurrent timeの代用にしない。
+canonical commit は atomic。validation failure では accepted Graph を不変にする。correction / replacement / supersession は lifecycle へ適用し、no-op では不要な revision を増やさない。
 
-利用者が明示したtime preferenceはapplication default heuristicより強い。
+## 6. Proposal / readiness / scheduler
 
-## 5. Fact Graph / transaction
-
-AI documentはそのまま保存せずcanonical Fact Graphへcommitする。
-
-- formal IDs / revisionはcoreが発行
-- local IDsは一response内参照
-- correction / replacementはlifecycleへ適用
-- canonical commitはatomic
-- validation failure時はaccepted Graph不変
-- no-opではfact revisionを増やさない
-- staged stateはcommit成功時のみfinalize
-
-## 6. Readiness / proposal / scheduler
-
-readiness、proposal necessity、scheduler placementはaccepted typed stateだけから決める。
-
-AIはmissing slot、proposal acceptance、preview gate、placementを決めない。
-
-proposalはscheduler commandではない。
+proposal is not a command.
 
 ```text
 application candidate
-→ renderer presents proposal
-→ AI interprets user response
+→ renderer presents it
+→ AI interprets response
 → application accepts / rejects / modifies
-→ accepted policy may affect scheduler
+→ accepted policy may affect scheduling
 ```
 
-未了承proposalをschedulerへ適用しない。
+未了承 proposal を scheduler へ適用しない。readiness、question necessity、placement、existing-plan/timetable/buffer constraintsは application が決める。
 
-## 7. Human grounding contract
+## 7. Human grounding
 
-application内部で知っていることと、ユーザーとの共通基盤にあることを区別する。
+application-only knowledge と shared ground を分離する。内部 heuristic / recommendation / estimate を既知前提として話さない。詳細は Human Grounding Policy を正とする。
 
-内部heuristic、一般原則、推定結果を、ユーザーも既に知っている前提で話さない。必要なら会話上へ導入し、accept / reject / modifyを受けたscopeだけshared groundとして再利用する。
+## 8. Memory
 
-`今回は`と`今後も`を別scopeとして扱う。
+current planning state、durable user preference、observed learning profileを別 state として扱う。一回の week-local acceptance を durable preference へ昇格しない。adaptive-memory policy の詳細は strategy document を正とする。
 
-正常系の完成済み日本語をquestion code / proposal codeごとに固定しない。rendererはtyped decisionとgrounded contextから自然に実現する。
+## 9. Preview / approval / save
 
-## 8. Effort / workload contract
+preview は owner / conversation / Graph revision / source facts へ拘束する。preview 後の semantic change は re-preview を要求する。AI output だけで approval / save を突破させない。
 
-教材構造、進捗量、作業速度、calendar session時間を分離する。
+## 10. Persistence / trace / security
 
-- page / problem: per-unit paceを利用可能
-- completed workload + actual duration: observed paceへ利用可能
-- unit conversion / multiplication / rounding: deterministic
-- session splitting: deterministic scheduling policy
-- explicit current user estimate > applicable observed evidence > cold-start heuristic
+session / persisted state は owner と logical conversation identity へ拘束する。trace は privacy / retention policy を破らない。external/untrusted strings は data として扱い、instruction へ昇格させないことを security evaluation で保証する。
 
-同じ情報を別表現で聞き直さない。
+## 11. Testing
 
-## 9. Adaptive memory learning contract
+deterministic test は schema、binding、lifecycle、proposal、readiness、scheduler、preview、approval/save、persistence、安全境界を保証する。AI の完成済み日本語全文を universal oracle にしない。model behavior が関係する gate は real API + human review を併用する。
 
-詳細SSoTは [Adaptive Memory Learning Policy](strategy/weekly-planning-adaptive-memory-learning-policy.md) とする。
+## 12. Execution ownership
 
-暗記・想起中心の学習は英単語だけに限定しない。
-
-禁止する固定behavior:
-
-- 100語等のword-count thresholdからsession数を決める。
-- word countだけから必要総時間を推測する。
-- ユーザーへ総単語量のtotal duration予測を必須要求する。
-- 暗記だから自動で朝・昼・夜へ配置する。
-- 1日後 / 3日後 / 7日後や必ず3周をhard ruleにする。
-
-cold startでは短いsessionや分散復習をproposalできるが、了承前に採用しない。
-
-量・期限・availabilityから短時間だけでは必要範囲へ到達しにくい場合、新規学習を長め、復習を短く分散するmixed proposalを提示できる。
-
-さらに現実的に不足する場合、全範囲一巡 / 範囲を絞った定着 / 目標変更等の選択肢をapplicationが提示する。
-
-## 10. Memory contract
-
-三種類を区別する。
-
-### Current planning memory
-
-そのweek / conversationで成立したFact、accepted proposal、current-only policy。
-
-### Durable user preference
-
-今後も利用することまで明示的に共有されたowner-scoped preference。
-
-一回のweek-local acceptanceを自動的にdurableへ昇格させない。
-
-### Observed learning profile
-
-本人が明示した好みではなく、実行結果から得られた観測・derived estimate。
-
-例:
-
-- actual session duration
-- progressed quantity
-- recall success
-- elapsed interval
-- acquisition / reviewの処理速度差
-
-Preferenceとobserved profileを混同しない。実績が好みと衝突する場合、好みを勝手に変更せず影響を説明して別案をproposalする。
-
-既存owner-scoped `userPlanningContext`はdurable storage責務を持つが、learning preference / observed profile向けtyped extensionはPR #130以降の実装単位として追加する。
-
-## 11. Preview / approval / save
-
-previewはowner、conversation、Graph revision、source factsへ拘束する。
-
-- stale previewを承認しない
-- preview後の実変更は再preview
-- no-opでは既存previewを保持
-- approval / saveはdeterministic application responsibility
-- duplicate / owner mismatch / stale操作を拒否
-
-## 12. Persistence / trace
-
-Stable V5 sessionはowner・week・conversationへ拘束する。
-
-traceはlogical conversation identity、request / turn / revision / sourceを観測可能にする。privacy / retention contractを破らない。
-
-## 13. Testing contract
-
-自動テストは決定論的契約を保証する。
-
-- schema / evidence / binding / lifecycle
-- proposal lifecycle / acceptance scope
-- durable promotion boundary
-- readiness / scheduler / preview
-- approval / save / persistence
-- heuristic adversarial cases
-- prompt / request budget
-
-自然なAI返答全文を固定oracleにしない。
-
-実AI会話はturn-by-turnで人間が読み、明確な意味誤認、共有前提違反、重複質問、誤binding、不自然な提案適用があればそのturnで停止する。
-
-## 14. Current execution order
-
-```text
-MD / contract同期
-→ stale vocabulary heuristic削除・一般化
-→ proposal / acceptance typed boundary
-→ current-week memory boundary
-→ durable preference extension
-→ observed learning evidence extension
-→ adaptive review proposal
-→ Luna turn-by-turn revalidation
-→ prompt / repair ablation
-→ final preview / Browser Regression / normal CI
-```
-
-各実装単位は targeted regression → full CI → 必要なreal API再観測をgreenにしてから次へ進む。
+現在の作業順序はこの contract に重複記載せず、[main roadmap](strategy/weekly-planning-roadmap.md) を唯一の execution-order source とする。
