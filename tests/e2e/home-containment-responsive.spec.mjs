@@ -102,7 +102,7 @@ async function readContainmentMetrics(page) {
       };
     };
 
-    const home = document.querySelector('.home-dashboard-default');
+    const home = document.querySelector('.home-main > .home-dashboard-default');
     const topbar = document.querySelector('.home-topbar');
     const nextCard = document.querySelector('.home-next-card');
     const nextMeta = document.querySelector('.home-next-meta');
@@ -170,7 +170,7 @@ for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await seedHome(page, planCount);
       await page.goto('/');
-      await expect(page.locator('.home-dashboard-default')).toBeVisible();
+      await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
       await page.waitForTimeout(650);
 
       expectContainment(await readContainmentMetrics(page));
@@ -182,7 +182,7 @@ test('keeps containment while resizing between phone, laptop, desktop, and table
   await page.setViewportSize(RESIZE_SEQUENCE[0]);
   await seedHome(page, 4);
   await page.goto('/');
-  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
 
   for (const viewport of RESIZE_SEQUENCE) {
     await page.setViewportSize(viewport);
