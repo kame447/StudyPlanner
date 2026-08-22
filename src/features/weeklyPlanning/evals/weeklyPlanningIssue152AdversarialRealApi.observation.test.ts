@@ -199,7 +199,7 @@ run('Issue #152 adversarial Real API observation', () => {
           '1ページ5分くらいです。',
         ],
       });
-      const last = turns.at(-1);
+      const last = turns[turns.length - 1];
       if (!last) throw new Error(`missing stored observation for ${attack.id}`);
 
       expect(last.draftCount).toBe(0);
