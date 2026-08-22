@@ -8,14 +8,15 @@ description: StudyPlanner の weeklyPlanning 実装を current canonical docs �
 ## Read order
 
 1. `AGENTS.md`
-2. `docs/ai/weekly-planning-docs-index.md`
-3. `docs/ai/weekly-planning-current-contract-v5.md`
-4. `docs/ai/weekly-planning-current-contract-status.md`
-5. `docs/ai/strategy/weekly-planning-roadmap.md`
-6. `docs/ai/testing/weekly-planning-test-philosophy.md`
-7. 対象の Issue / `docs/ai/tasks/*.md`
+2. `PROJECT_MAP.md`
+3. `docs/DOCUMENT_DICTIONARY.md`
+4. `docs/domains/weekly-planning/README.md`
+5. `docs/domains/weekly-planning/architecture/current-contract-v5.md`
+6. `docs/domains/weekly-planning/quality/test-philosophy.md`
+7. `docs/domains/weekly-planning/roadmap/current.md`
+8. 対象 Issue / `docs/domains/weekly-planning/work/*.md`
 
-V4 architecture、legacy runtime、closed / superseded task、古い branch / PR 前提を current instruction として使わない。
+`docs/archive/` 内の V4 architecture、legacy runtime、closed/superseded task、古い branch/PR 前提を current instruction として使わない。
 
 ## Investigation order
 
@@ -31,10 +32,12 @@ entrypoint
 
 raw Japanese の regex / keyword / dictionary / legacy parser を semantic authority として復活させない。
 
-## Task policy
+## Documentation / task policy
 
-- `docs/ai/tasks/` 直下には未完了 task だけを置く。
-- 完了 task は `docs/ai/tasks/closed/`、superseded は `docs/ai/tasks/superseded/` へ移す。
+- 文書配置は `docs/DOCUMENT_DICTIONARY.md` に従う。
+- weekly-planning のcurrent docsは `docs/domains/weekly-planning/` に置く。
+- 未完了taskは owning Issue または `docs/domains/weekly-planning/work/` に置く。
+- 完了/superseded/auditは `docs/archive/` に移し、current queueへ戻さない。
 - historical issue を再利用する場合は current main と canonical contract を再調査する。
 - Git/GitHub 操作と verification は `AGENTS.md` に従う。
 

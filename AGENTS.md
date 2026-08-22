@@ -31,7 +31,7 @@ This section applies to every agent and every repository task. Read it before th
 
 ### Durable checkpoint rule
 
-For multi-turn, long-running, high-risk, or interruption-prone work, maintain a durable checkpoint in the current canonical task/roadmap document or an appropriate `docs/ai/tasks/*-handoff.md` file. The checkpoint should contain, when relevant:
+For multi-turn, long-running, high-risk, or interruption-prone work, maintain a durable checkpoint in the current canonical task/roadmap document, the owning GitHub Issue, or an appropriate `docs/domains/<responsibility>/work/*-handoff.md` file. The checkpoint should contain, when relevant:
 
 - active branch and pull request
 - exact verified HEAD
@@ -69,8 +69,22 @@ This repository should prioritize a clean MVP first.
 ## Instruction roles
 
 - This file defines stable product, architecture, safety, and repository hygiene principles.
-- The current canonical roadmap and task records define active scope, priority, checkpoint, and the next implementation step.
-- For task progress and execution order, follow the current roadmap rather than inferring status from this file or from historical task documents.
+- `docs/DOCUMENT_DICTIONARY.md` defines where documentation belongs and which lifecycle/authority rules apply.
+- Each responsibility's `docs/domains/<responsibility>/README.md` is the current documentation entry point for that domain.
+- The current canonical roadmap and active Issue/work records define active scope, priority, checkpoint, and the next implementation step.
+- For task progress and execution order, follow the current roadmap/Issue rather than inferring status from this file or from historical task documents.
+- `docs/archive/` is historical evidence and never overrides current code, tests, or canonical domain documentation.
+
+## Documentation governance
+
+- Organize current Markdown first by responsibility, then by document type and lifecycle, as defined in `docs/DOCUMENT_DICTIONARY.md`.
+- Do not create canonical top-level buckets named after an agent, audience, tool, or vague activity such as `ai`, `testing`, `strategy`, `design`, `misc`, or `notes`.
+- Feature-specific test policy belongs to the feature/domain that owns the behavior; historical audits belong in `docs/archive/`.
+- Active technical records belong in the owning domain's `work/` directory or the owning GitHub Issue. Repository-wide work templates/rules belong in `docs/work/`.
+- Completed work moves to `docs/archive/work/closed/`; superseded work moves to `docs/archive/work/superseded/`.
+- Do not duplicate the same decision across a contract, status file, guide, and roadmap. Pick one owner and make other documents reference it.
+- Canonical filenames should remain stable when practical. Date-prefixed filenames are appropriate mainly for active work/checkpoints and historical evidence.
+- When moving a canonical document, update `docs/README.md`, the owning domain README, `PROJECT_MAP.md`, affected root entry files, and Issue references in the same logical change.
 
 ## Product priorities
 
@@ -236,14 +250,15 @@ Deterministic code owns:
 - Keep current saved-data migration/read compatibility separate from semantic runtime compatibility. Existing data compatibility is not permission to reintroduce legacy semantic execution.
 - Prefer small typed semantic/application boundaries and stable facades over central orchestrators that expose internal implementation details.
 
-Canonical weekly-planning contracts live under `docs/ai/`, especially:
+Canonical weekly-planning documentation lives under `docs/domains/weekly-planning/`:
 
-- `docs/ai/weekly-planning-current-contract-v5.md`
-- `docs/ai/weekly-planning-current-contract-status.md`
-- `docs/ai/strategy/weekly-planning-roadmap.md`
-- `docs/ai/testing/weekly-planning-test-philosophy.md`
+- `docs/domains/weekly-planning/README.md`
+- `docs/domains/weekly-planning/architecture/current-contract-v5.md`
+- `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
+- `docs/domains/weekly-planning/quality/test-philosophy.md`
+- `docs/domains/weekly-planning/roadmap/current.md`
 
-Historical task files or legacy architecture documents must not override the current Stable V5 contract merely because they still contain `Status: active`.
+Historical task files, audits, legacy architecture documents, old branch names, or stale `Status: active` markers under `docs/archive/` must not override the current Stable V5 contract.
 
 ## Responsive design rules
 
@@ -373,14 +388,16 @@ Before finishing a task:
 - list any unfinished or deferred items
 - note any assumptions made
 
+For documentation-only changes, application build/test execution is optional when no code/config/runtime behavior changed; instead verify exact diff, canonical path integrity, current-reference searches, and relevant Markdown links.
+
 ## Definition of done
 
 A task is done only if:
 
-- the requested feature is implemented
-- the UI works on desktop and mobile sizes
-- code is consistent with architecture rules
-- basic verification has been performed
+- the requested feature/change is implemented
+- applicable UI behavior works on desktop and mobile sizes
+- code/documentation is consistent with architecture and responsibility rules
+- appropriate verification has been performed
 - changed files and follow-up work are summarized
 
 ## Constraints

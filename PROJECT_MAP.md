@@ -3,7 +3,7 @@
 Status: canonical repository navigation map
 Updated: 2026-08-22
 
-この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。
+この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
 ## 1. Read order
 
@@ -11,39 +11,47 @@ Repository work:
 
 1. `AGENTS.md`
 2. `PROJECT_MAP.md`
-3. 対象domainのcanonical docs
-4. current Issue / `docs/ai/tasks/README.md`
-5. current code and tests
+3. `docs/README.md`
+4. 対象 domain の `README.md`
+5. domain canonical contract / current Issue / active work record
+6. current code and tests
 
 Weekly planning:
 
-1. `docs/ai/weekly-planning-current-contract-v5.md`
-2. `docs/ai/weekly-planning-current-contract-status.md`
-3. `docs/ai/strategy/weekly-planning-roadmap.md`
-4. `docs/architecture/README.md`
-5. `docs/testing/README.md`
+1. `docs/domains/weekly-planning/README.md`
+2. `docs/domains/weekly-planning/architecture/current-contract-v5.md`
+3. `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
+4. `docs/domains/weekly-planning/quality/test-philosophy.md`
+5. `docs/domains/weekly-planning/roadmap/current.md`
+6. `docs/domains/weekly-planning/work/README.md` / owning Issue
 
-Historical docs are evidence, not current instructions.
+Client-first/runtime work:
+
+1. `docs/domains/client-runtime/README.md`
+2. `docs/domains/client-runtime/spec/client-first-execution-requirements.md`
+3. Issue #164
+
+`docs/archive/` is evidence, not current instruction.
 
 ## 2. Application shell
 
 ### `src/App.tsx`
 
-Top-level application composition and major navigation. Product surfaces currently include AI計画、予定、ホーム、教材、時間割 and secondary/admin routes.
+Top-level application composition and major navigation. Product surfaces include AI計画、予定、ホーム、教材、時間割 and secondary/admin routes.
 
 Do not move feature-specific domain decisions into `App.tsx`; keep it primarily as composition/routing/orchestration.
 
 ### `src/components/`
 
-UI components and interaction surfaces. Examples include:
+UI components and interaction surfaces. Examples:
 
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
 - calendar / home / bookshelf / timetable views
 - `QuickEntryModal.tsx`: generic quick/manual entry surface
-- `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; its weekly-planning plumbing is tracked by Issue #52
+- `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
 - admin/report views
 
-UI code should consume application/domain APIs instead of reproducing scheduling, lifecycle, authorization, or persistence decisions.
+UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization or persistence decisions.
 
 ### `src/hooks/`
 
@@ -57,9 +65,9 @@ General deterministic domain rules that are not specific to weekly-planning inte
 
 ### `src/repositories/`
 
-Persistence boundaries. Firestore/local implementations and repository abstractions belong here or in their feature-owned equivalent when the data lifecycle is feature-specific.
+Persistence boundaries. Firestore/local implementations and repository abstractions belong here or in a feature-owned equivalent when the data lifecycle is feature-specific.
 
-Do not let components know storage implementation details, fallback order, or transaction internals.
+Components must not know storage implementation details, fallback ordering or transaction internals.
 
 ### `src/services/`
 
@@ -73,29 +81,31 @@ Small reusable deterministic helpers and cross-cutting utility logic. Domain-cha
 
 ### `src/types/`
 
-Shared application/domain types. Prefer feature-local types when a contract is owned by one feature.
+Shared application/domain types. Prefer feature-local types when one feature owns the contract.
 
 ## 4. Weekly planning feature
 
-Canonical root: `src/features/weeklyPlanning/`
+Canonical code root: `src/features/weeklyPlanning/`
 
-Read its local `AGENTS.md` before modifying weekly-planning code.
+Canonical documentation root: `docs/domains/weekly-planning/`
+
+Read the feature-local `AGENTS.md` before modifying weekly-planning code.
 
 ### `semantic/`
 
 AI semantic boundary and typed semantic document processing.
 
-Owns model-facing semantic contracts, validation/repair integration, canonical semantic representation helpers, binding support, and Fact Graph semantic lifecycle pieces.
+Owns model-facing semantic contracts, validation/repair integration, canonical representation helpers, binding support and Fact Graph semantic lifecycle pieces.
 
-Rule: natural-language meaning is AI-owned. Deterministic code may validate and mechanically transform represented meaning but must not re-read raw Japanese with regex/keywords to choose a different semantic truth.
+Natural-language meaning is AI-owned. Deterministic code may validate and mechanically transform represented meaning but must not re-read raw Japanese with regex/keywords to choose a different semantic truth.
 
 ### `intake/`
 
-Request/conversation input collection and accepted intake state boundaries.
+Request/conversation input collection and accepted intake-state boundaries.
 
 ### `pipeline/`
 
-Turn execution/pipeline composition between semantic intake and deterministic application stages. Avoid turning this directory into a second owner of decisions already owned by semantic/planning/dialogue layers.
+Turn execution/pipeline composition between semantic intake and deterministic application stages. It must not become a second owner of decisions already owned by semantic/planning/dialogue layers.
 
 ### `planning/`
 
@@ -105,11 +115,11 @@ Deterministic planning decisions: readiness, proposal lifecycle, work projection
 
 Availability resolution, session chunking, placement candidates/scoring and schedule generation from already accepted typed state.
 
-Scheduling may use deterministic constraints and explicit typed preferences. It must not silently infer user semantic preferences from raw task text.
+Scheduling may use deterministic constraints and explicit typed preferences. It must not silently infer semantic preferences from raw task text.
 
 ### `dialogue/`
 
-Deterministic decision of what needs to be communicated/asked plus the boundary that lets AI render that typed decision naturally.
+Deterministic decision of what must be communicated/asked plus the boundary that lets AI render the typed decision naturally.
 
 Rendered Japanese is presentation, not machine state.
 
@@ -123,7 +133,7 @@ Session/application orchestration, approval/save boundary and feature-level appl
 
 ### `trace/`
 
-Observability only. Current schema v2 uses bounded turn diagnostics; trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
+Observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
 
 ### `evals/`
 
@@ -131,7 +141,7 @@ Real-model/evaluation harnesses and observation scenarios. Evaluation fixtures a
 
 ### `personalization/` and `profiling/`
 
-Typed personalization policy, observations/calibration, profile derivation and related deterministic scoring. Keep explicit preference, current-session state and observed profile distinct.
+Typed personalization policy, observations/calibration, profile derivation and deterministic scoring. Keep explicit preference, current-session state and observed profile distinct.
 
 ### `parsing/`
 
@@ -145,7 +155,7 @@ Conversation-support and feature configuration helpers. Do not place independent
 
 `src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
 
-Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47 and client-first architecture Issue #164.
+Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
 
 ## 6. Major safety boundaries
 
@@ -169,7 +179,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
 - browser/E2E: `tests/e2e/`
-- current testing docs: `docs/testing/README.md` and `docs/ai/testing/`
+- weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
 - CI: `.github/workflows/ci.yml`
 - Browser Regression: `.github/workflows/browser-regression.yml`
 
@@ -177,17 +187,21 @@ Do not use a green unrelated check to justify a changed responsibility boundary.
 
 ## 8. Documentation ownership
 
+Documentation placement is defined only by `docs/DOCUMENT_DICTIONARY.md`.
+
 - `README.md`: first-time product/development overview
 - `AGENTS.md`: repository-wide stable execution and architecture rules
-- `PROJECT_MAP.md`: current code navigation
-- `docs/ai/`: weekly-planning contract/status/roadmap/task/audit material
-- `docs/architecture/`: current architecture supplements plus explicitly historical stubs
-- `docs/testing/`: test-document index and historical roleplay records
-- `docs/weekly-planning/`: product-intent documentation; current runtime details remain subordinate to `docs/ai/`
+- `PROJECT_MAP.md`: current code/navigation map
+- `docs/README.md`: documentation entry point
+- `docs/domains/<owner>/`: current specification/architecture/policy/quality/roadmap/work for one responsibility
+- `docs/work/`: repository-wide task process/templates only
+- `docs/archive/`: historical evidence only
 
-Active task list: `docs/ai/tasks/README.md`.
+Do not recreate audience/tool buckets such as `docs/ai/`, `docs/testing/`, `strategy/`, `design/` or agent-specific queues. A testing policy for weekly planning belongs to the weekly-planning domain because that feature owns the quality contract.
 
-Completed/superseded files must not re-enter the execution queue only because they contain an old `Status: active`, branch name or PR number.
+Active work belongs either in the owning GitHub Issue or in the owning domain's `work/` directory when a durable technical checkpoint is necessary.
+
+Completed/superseded records move to `docs/archive/work/` and never re-enter the execution queue merely because they contain an old `Status: active`, branch name or PR number.
 
 ## 9. Change-location rule
 
@@ -203,5 +217,6 @@ Choose the directory by change reason, not by current caller:
 - approval/session orchestration → weekly `application/`
 - observability → weekly `trace/`
 - persistence → repository/feature-owned persistence boundary
+- documentation → `docs/domains/<responsibility>/<document-type>/` according to `DOCUMENT_DICTIONARY.md`
 
-If the same decision is recomputed in multiple directories, identify the single owner and make the other layers projections/facades rather than adding reconciliation logic.
+If the same decision is recomputed or documented as authoritative in multiple places, identify the single owner and make the other layers projections/references rather than adding reconciliation logic.

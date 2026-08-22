@@ -51,7 +51,7 @@ User approval
 Save
 ```
 
-詳細は [`docs/architecture/README.md`](./docs/architecture/README.md) と [`docs/ai/weekly-planning-current-contract-v5.md`](./docs/ai/weekly-planning-current-contract-v5.md) を参照してください。
+週間計画の正仕様は [`docs/domains/weekly-planning/`](./docs/domains/weekly-planning/README.md) に集約しています。runtime の責務境界は [`current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md) を参照してください。
 
 ## 技術構成
 
@@ -130,11 +130,13 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 
 ## ドキュメント
 
-リポジトリ全体の探索には [`PROJECT_MAP.md`](./PROJECT_MAP.md)、現在の architecture 文書には [`docs/architecture/README.md`](./docs/architecture/README.md) を使用します。
+文書の配置ルールは [`docs/DOCUMENT_DICTIONARY.md`](./docs/DOCUMENT_DICTIONARY.md) が正本です。文書は agent 名や用途ではなく、責務・文書種別・lifecycle で配置します。
 
-週間計画の現在契約は [`docs/ai/weekly-planning-current-contract-v5.md`](./docs/ai/weekly-planning-current-contract-v5.md)、現在位置は [`docs/ai/weekly-planning-current-contract-status.md`](./docs/ai/weekly-planning-current-contract-status.md)、実装順序は [`docs/ai/strategy/weekly-planning-roadmap.md`](./docs/ai/strategy/weekly-planning-roadmap.md) を参照してください。
+リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
 
-README はプロダクトと開発環境の概要を示す入口です。実装、テスト、current contract と内容が食い違う場合は、現在の実装と canonical documentation を基準にします。
+週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
+
+過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 
 ## 開発状況
 

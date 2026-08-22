@@ -1,23 +1,28 @@
-# StudyPlanner documentation
+# StudyPlanner Documentation
 
-Updated: 2026-08-22
+Documentation placement is governed by [DOCUMENT_DICTIONARY.md](DOCUMENT_DICTIONARY.md).
 
-## Directories
+## Read order
 
-- `ai/` — weekly-planning current contract/status/roadmaps, active tasks, audits and historical task records
-- `architecture/` — current architecture supplements and explicitly marked historical architecture stubs
-- `testing/` — current testing index plus historical roleplay specifications
-- `weekly-planning/` — product-intent documents and historical implementation guidance
+Repository work:
 
-## Where to start
+1. [`AGENTS.md`](../AGENTS.md)
+2. [`PROJECT_MAP.md`](../PROJECT_MAP.md)
+3. this index / documentation dictionary
+4. owning domain README
+5. canonical contract / current Issue / active work record
 
-For repository implementation work, start at root `AGENTS.md` and `PROJECT_MAP.md`.
+## Domains
 
-For weekly-planning behavior, use:
+- [Weekly planning](domains/weekly-planning/README.md)
+- [Client runtime](domains/client-runtime/README.md)
 
-1. `ai/weekly-planning-current-contract-v5.md`
-2. `ai/weekly-planning-current-contract-status.md`
-3. `ai/strategy/weekly-planning-roadmap.md`
-4. `ai/tasks/README.md`
+## Cross-cutting work
 
-A file being older, large, or detailed does not make it authoritative. Historical implementation guides and audits must not override current contract/code/tests.
+- [Work documentation](work/README.md)
+
+## History
+
+- [Archive](archive/README.md)
+
+`archive/` is evidence, not current instruction. Current decisions must live under their owning domain rather than under audience/tool folders such as `ai/`, `testing/`, `strategy/`, or `design/`.
