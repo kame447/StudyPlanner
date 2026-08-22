@@ -1,5 +1,57 @@
 # AGENTS.md
 
+## Mandatory execution discipline
+
+This section applies to every agent and every repository task. Read it before the first repository, code, GitHub, CI, or tool action. These rules are mandatory and must not be skipped for convenience.
+
+### Adversarial decision protocol
+
+- Do not commit to the first plausible explanation or action when evidence is incomplete.
+- Whenever a failure, ambiguity, architectural choice, or operational choice has more than one plausible explanation, generate at least three materially different hypotheses or candidate actions before choosing one.
+- For each candidate, identify the evidence that supports it, the evidence that would falsify it, its blast radius, and how directly it can be verified.
+- Choose the option with the strongest evidence and the lowest unnecessary risk, not the option that is most familiar or easiest to execute.
+- Ask explicitly: "What would make my current interpretation wrong?" Seek disconfirming evidence before acting on a high-impact assumption.
+- Do not invent artificial alternatives for a truly deterministic operation, but never treat an uncertain operation as deterministic merely to avoid comparison.
+
+### Repeat-action guard
+
+- Before repeating the same command, tool call, query, test, or write operation, state what materially changed since the previous attempt and why another attempt can produce new evidence.
+- If the same operation fails twice under materially identical inputs and conditions, a third identical attempt is prohibited. Change the inputs, inspect the preconditions, or switch to a different evidence source or tool path.
+- Treat `skipped`, truncated, incomplete, stale, cached, or missing output as missing evidence, not as evidence that the underlying action succeeded or failed.
+- When a tool path is unreliable, compare alternatives such as current repository state, exact diff, another API endpoint, workflow artifacts, test source, static code inspection, or a local reproduction before choosing the next step.
+- Never loop on tool discovery or metadata lookup when the needed evidence can be obtained through a more direct route.
+
+### Completion-loop contract
+
+- When the user asks to continue until a concrete condition is met, intermediate status reporting does not satisfy the request.
+- Continue the implement → verify → inspect → correct loop until the stated exit condition is actually satisfied or a genuine blocker requires user input, external permission, credentials, or a destructive decision that cannot be made safely without approval.
+- Do not stop merely because one check passed. Verify all relevant exit criteria using independent evidence.
+- Do not claim completion, merge readiness, or regression safety from partial signals. Use the exact current HEAD and current evidence.
+- If a task is interrupted, resume from the last verified checkpoint rather than reconstructing status from memory.
+
+### Durable checkpoint rule
+
+For multi-turn, long-running, high-risk, or interruption-prone work, maintain a durable checkpoint in the current canonical task/roadmap document or an appropriate `docs/ai/tasks/*-handoff.md` file. The checkpoint should contain, when relevant:
+
+- active branch and pull request
+- exact verified HEAD
+- completed changes
+- checks already run and their exact result
+- unresolved failures or competing hypotheses
+- the next concrete action
+- the explicit definition of done / exit criteria
+
+Update the checkpoint after meaningful milestones and before intentionally handing off incomplete work. Repository evidence is the source of truth; chat memory is not.
+
+### Verification discipline
+
+- Re-fetch mutable state immediately before a write when concurrent changes are possible.
+- Verify the exact changed code, not just the intended patch.
+- For code changes, use the strongest applicable independent checks: type checks, unit/integration tests, production build, CI, browser regression, rendered UI inspection, and exact diff review.
+- A green unrelated check cannot compensate for a failing relevant check.
+- If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
+- Never weaken a test, hide an error, or change an assertion solely to make CI green.
+
 ## Project overview
 
 This project is a study planning support web app.
