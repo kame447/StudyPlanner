@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+const FIXED_NOW = new Date('2026-08-22T09:00:00Z');
+const FIXED_TODAY = '2026-08-22';
+
 const CASES = [
   {
     name: 'study',
@@ -25,22 +28,13 @@ const CASES = [
 ];
 
 async function seedHome(page, planCase) {
-  await page.addInitScript(({ planCase: seed }) => {
-    const nowDate = new Date();
-    const tomorrowDate = new Date(nowDate);
-    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-    const tomorrow = [
-      tomorrowDate.getFullYear(),
-      String(tomorrowDate.getMonth() + 1).padStart(2, '0'),
-      String(tomorrowDate.getDate()).padStart(2, '0'),
-    ].join('-');
-    const now = nowDate.toISOString();
+  await page.addInitScript(({ planCase: seed, today, createdAt }) => {
     const user = {
       id: 'home-visual-user',
       email: 'home-visual@example.com',
       username: 'home-visual-user',
       avatar: '',
-      createdAt: now,
+      createdAt,
     };
     const plan = {
       id: `home-visual-${seed.name}`,
@@ -50,13 +44,13 @@ async function seedHome(page, planCase) {
       subject: '情報科学',
       type: seed.type,
       sourceType: seed.sourceType,
-      date: tomorrow,
+      date: today,
       startTime: '13:30',
       endTime: '15:00',
       memo: '',
       recurrence: null,
-      createdAt: now,
-      updatedAt: now,
+      createdAt,
+      updatedAt: createdAt,
     };
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
@@ -65,24 +59,34 @@ async function seedHome(page, planCase) {
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-  }, { planCase });
-}
-
-for (const planCase of CASES) {
-  test(`next-plan uses the ${planCase.expected} visual for ${planCase.name}`, async ({ page }) => {
-    await seedHome(page, planCase);
-    await page.goto('/');
-
-    const card = page.locator('.home-next-card');
-    const image = card.locator('.home-study-scene-image');
-
-    await expect(card).toHaveAttribute('data-next-plan-visual', planCase.expected);
-    await expect(image).toHaveAttribute(
-      'src',
-      `/assets/home/next-plan-${planCase.expected}.webp`,
-    );
-    await expect.poll(
-      () => image.evaluate((element) => element.complete && element.naturalWidth > 0),
-    ).toBe(true);
+  }, {
+    planCase,
+    today: FIXED_TODAY,
+    createdAt: FIXED_NOW.toISOString(),
   });
 }
+
+test.describe('home next-plan visual mapping', () => {
+  test.use({ timezoneId: 'UTC' });
+
+  for (const planCase of CASES) {
+    test(`next-plan uses the ${planCase.expected} visual for ${planCase.name}`, async ({ page }) => {
+      await page.clock.setFixedTime(FIXED_NOW);
+      await seedHome(page, planCase);
+      await page.goto('/');
+
+      const card = page.locator('.home-next-card');
+      const image = card.locator('.home-study-scene-image');
+
+      await expect(card).not.toHaveAttribute('data-next-plan-semantic', 'empty');
+      await expect(card).toHaveAttribute('data-next-plan-visual', planCase.expected);
+      await expect(image).toHaveAttribute(
+        'src',
+        `/assets/home/next-plan-${planCase.expected}.webp`,
+      );
+      await expect.poll(
+        () => image.evaluate((element) => element.complete && element.naturalWidth > 0),
+      ).toBe(true);
+    });
+  }
+});
