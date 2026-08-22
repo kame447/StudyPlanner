@@ -47,6 +47,12 @@
   cursor: pointer;
 }
 
+.bookshelf-recent-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .bookshelf-material-list-row > .bookshelf-row-menu-button,
 .bookshelf-recent-row > .bookshelf-row-menu-button {
   position: relative;
