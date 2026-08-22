@@ -1,0 +1,54 @@
+/*
+ * Home and schedule are sibling primary surfaces. Their outer frame and
+ * primary header must not jump when the active surface changes.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
+.schedule-workspace-shell {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 244, 218, 0.44), transparent 24%),
+    linear-gradient(180deg, #fbfdff 0%, #f5faf7 100%);
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+/* The HomeTopbar is the shared primary header. A second schedule-only title
+ * row made the whole surface move vertically when entering the calendar. */
+.schedule-app-header {
+  display: none !important;
+}
+
+/* Keep the schedule frame mathematically identical to the home frame at the
+ * same viewport size. The persistent PrimaryAppHeader owns its own width, so
+ * schedule-specific rules must not override that shared chrome geometry. */
+@media (max-width: 699px) {
+  .schedule-workspace-shell {
+    width: min(100%, 508px);
+    max-width: 508px;
+    padding-inline: 12px;
+  }
+}
+
+@media (min-width: 700px) {
+  .schedule-workspace-shell {
+    width: min(96vw, 1040px);
+    max-width: 1040px;
+    padding-inline: clamp(16px, 2.4vw, 30px);
+  }
+}
+
+@media (min-width: 900px) {
+  .schedule-workspace-shell {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+}
+
+/* Internal schedule scrolling must never become document scrolling. */
+.schedule-workspace-shell,
+.schedule-workspace-shell .schedule-main {
+  max-inline-size: 100%;
+  overflow-x: hidden;
+}

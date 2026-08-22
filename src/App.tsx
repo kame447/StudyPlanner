@@ -1,6 +1,6 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
+import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
@@ -9,9 +9,14 @@ import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { PrimaryAppHeader } from './components/PrimaryAppHeader';
+import {
+  PrimaryBottomNav,
+  type PrimaryNavItem,
+} from './components/PrimaryBottomNav';
+import { QuickAddMenu } from './components/QuickAddMenu';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
-import { StudyPlannerLogo } from './components/StudyPlannerLogo';
-import { UserAvatar } from './components/UserAvatar';
+import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
@@ -20,8 +25,13 @@ import {
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
-import { getUserDisplayName } from './lib/userProfile';
+import type { ViewMode } from './types/domain';
 
+const AiPlanningView = lazy(() =>
+  import('./components/AiPlanningView').then((module) => ({
+    default: module.AiPlanningView,
+  })),
+);
 const BookshelfView = lazy(() =>
   import('./components/BookshelfView').then((module) => ({
     default: module.BookshelfView,
@@ -58,15 +68,24 @@ const WeekView = lazy(() =>
   })),
 );
 
+type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
+
+const SCHEDULE_VIEW_MODES = new Set<ViewMode>(['month', 'week', 'day', 'todo']);
+
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
+  const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
+  const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
+  const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
+  const primaryBottomNavRef = useRef<HTMLElement | null>(null);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
   const {
@@ -150,6 +169,52 @@ export default function App() {
     completeWeeklyApprovalOperation,
   });
   const currentPath = window.location.pathname;
+  const isHomeSurface = primarySurface === 'home';
+  const isAiPlanningSurface = primarySurface === 'ai-planning';
+  const isWorkspaceSurface = primarySurface === 'workspace';
+  const isScheduleSurface = isWorkspaceSurface && SCHEDULE_VIEW_MODES.has(viewMode);
+  const activePrimaryNav: PrimaryNavItem = isHomeSurface
+    ? 'home'
+    : isAiPlanningSurface
+      ? 'ai-planning'
+      : viewMode === 'bookshelf'
+        ? 'bookshelf'
+        : viewMode === 'timetable'
+          ? 'timetable'
+          : 'schedule';
+  const primaryNavClassName = isScheduleSurface
+    ? 'schedule-bottom-nav'
+    : isAiPlanningSurface
+      ? 'ai-planning-home-nav'
+      : viewMode === 'bookshelf'
+        ? 'bookshelf-bottom-nav'
+        : viewMode === 'timetable'
+          ? 'timetable-bottom-nav'
+          : undefined;
+  const primaryHeaderClassName = isScheduleSurface
+    ? 'schedule-primary-header'
+    : isAiPlanningSurface
+      ? 'ai-planning-primary-header'
+      : isWorkspaceSurface && viewMode === 'timetable'
+        ? 'timetable-primary-header'
+        : isWorkspaceSurface
+          ? 'workspace-primary-header'
+          : 'home-primary-header';
+
+  useEffect(() => {
+    if (user?.id) {
+      setPrimarySurface('home');
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
+      return;
+    }
+
+    setMonthCreateRequestId((current) => current + 1);
+    setPendingMonthCreate(false);
+  }, [isScheduleSurface, pendingMonthCreate, viewMode]);
 
   if (currentPath === '/terms') {
     return <LegalPage kind="terms" />;
@@ -187,53 +252,171 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="app-shell">
-      <header className="app-header hero-card print-hide">
-        <StudyPlannerLogo />
-        <div className="header-actions">
-          <div className="user-badge header-profile-name">
-            {getUserDisplayName(user)}
-          </div>
-          <button
-            className="ghost-button my-page-trigger"
-            onClick={() => setIsMyPageOpen(true)}
-            type="button"
-            aria-label="マイページを開く"
-          >
-            <UserAvatar user={user} small />
-            <span className="my-page-trigger-label">マイページ</span>
-          </button>
-          <button
-            className="ghost-button header-settings-button"
-            onClick={() => setIsAppSettingsOpen(true)}
-            type="button"
-            aria-label="アプリ設定を開く"
-            title="アプリ設定"
-          >
-            <Settings aria-hidden="true" size={22} strokeWidth={1.9} />
-          </button>
-        </div>
-      </header>
+  function openAiPlanningSurface() {
+    setPrimarySurface('ai-planning');
+  }
 
-      <AppViewSwitcher viewMode={viewMode} onChange={setViewMode} />
+  function openScheduleSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('month');
+  }
+
+  function openMonthEventCreate() {
+    setPrimarySurface('workspace');
+
+    if (isScheduleSurface && viewMode === 'month') {
+      setMonthCreateRequestId((current) => current + 1);
+      return;
+    }
+
+    setPendingMonthCreate(true);
+    setViewMode('month');
+  }
+
+  function openHomeSurface() {
+    setPrimarySurface('home');
+  }
+
+  function openBookshelfSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('bookshelf');
+  }
+
+  function openReportSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('report');
+  }
+
+  function openTimetableSurface() {
+    setPrimarySurface('workspace');
+    setViewMode('timetable');
+  }
+
+  const primaryNavigation = {
+    onOpenAiPlanning: openAiPlanningSurface,
+    onOpenSchedule: openScheduleSurface,
+    onOpenHome: openHomeSurface,
+    onOpenBookshelf: openBookshelfSurface,
+    onOpenTimetable: openTimetableSurface,
+  };
+
+  return (
+    <div
+      className={
+        isWorkspaceSurface
+          ? isScheduleSurface
+            ? 'app-shell schedule-workspace-shell'
+            : 'app-shell'
+          : 'app-shell home-app-shell'
+      }
+    >
+      <PrimaryAppHeader
+        ref={primaryHeaderRef}
+        user={user}
+        plans={plans}
+        actuals={actuals}
+        todos={todos}
+        onOpenProfile={() => setIsMyPageOpen(true)}
+        onOpenSettings={() => setIsAppSettingsOpen(true)}
+        className={primaryHeaderClassName}
+      />
+
+      {isWorkspaceSurface ? (
+        isScheduleSurface ? (
+          <ScheduleToolbar
+            viewMode={viewMode}
+            selectedDate={selectedDate}
+            monthDate={monthDate}
+            onChangeView={(nextViewMode) => setViewMode(nextViewMode)}
+            onChangeMonth={changeMonth}
+            onChangeWeek={openWeek}
+            onChangeDay={openDay}
+          />
+        ) : viewMode === 'timetable' ? null : (
+          <AppViewSwitcher
+            viewMode={viewMode}
+            onChange={(nextViewMode) => {
+              setPrimarySurface('workspace');
+              setViewMode(nextViewMode);
+            }}
+          />
+        )
+      ) : null}
 
       {notice ? (
-        <div className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`} aria-live="polite">
+        <div
+          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
+          aria-live="polite"
+        >
           <div className={`app-notice app-toast ${notice.tone}`}>
             <span>{notice.text}</span>
             {notice.actionLabel && notice.onAction ? (
-              <button className="app-toast-action" onClick={() => { void notice.onAction?.(); }} type="button">
+              <button
+                className="app-toast-action"
+                onClick={() => {
+                  void notice.onAction?.();
+                }}
+                type="button"
+              >
                 {notice.actionLabel}
               </button>
             ) : null}
-            <button className="app-toast-close" onClick={dismissNotice} type="button" aria-label="通知を閉じる">×</button>
+            <button
+              className="app-toast-close"
+              onClick={dismissNotice}
+              type="button"
+              aria-label="通知を閉じる"
+            >
+              ×
+            </button>
           </div>
         </div>
       ) : null}
 
-      <main className="section-stack">
-        {viewMode === 'month' ? (
+      <main
+        className={
+          isWorkspaceSurface
+            ? isScheduleSurface
+              ? 'section-stack schedule-main'
+              : 'section-stack'
+            : 'home-main'
+        }
+      >
+        {isHomeSurface ? (
+          <HomeView
+            plans={plans}
+            actuals={actuals}
+            todos={todos}
+            studyMaterials={studyMaterials}
+            primaryHeaderRef={primaryHeaderRef}
+            primaryBottomNavRef={primaryBottomNavRef}
+            onOpenAiPlanning={openAiPlanningSurface}
+            onOpenSchedule={openScheduleSurface}
+            onOpenDay={(date) => {
+              setPrimarySurface('workspace');
+              openDay(date);
+            }}
+            onOpenTodo={() => {
+              setPrimarySurface('workspace');
+              setViewMode('todo');
+            }}
+            onOpenBookshelf={openBookshelfSurface}
+            onOpenReport={openReportSurface}
+          />
+        ) : null}
+
+        {isAiPlanningSurface ? (
+          <Suspense fallback={<SplashScreen />}>
+            <AiPlanningView
+              application={weeklyPlanning}
+              userId={user.id}
+              selectedDate={selectedDate}
+              plans={plans}
+            />
+          </Suspense>
+        ) : null}
+
+        {isWorkspaceSurface && viewMode === 'month' ? (
           <MonthView
             monthDate={monthDate}
             selectedDate={selectedDate}
@@ -241,6 +424,7 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            createRequestId={monthCreateRequestId}
             onSelectDate={selectDate}
             onChangeMonth={changeMonth}
             onOpenWeek={openWeek}
@@ -249,110 +433,127 @@ export default function App() {
           />
         ) : null}
 
-        <Suspense fallback={<SplashScreen />}>
-          {viewMode === 'week' ? (
-            <WeekView
-              selectedDate={selectedDate}
-              plans={plans}
-              actuals={actuals}
-              weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
-              onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks
-                ? weeklyPlanning.removeDraftBlock
-                : undefined}
-              onChangeWeek={openWeek}
-              onOpenDay={openDay}
-            />
-          ) : null}
+        {isWorkspaceSurface ? (
+          <Suspense fallback={<SplashScreen />}>
+            {viewMode === 'week' ? (
+              <WeekView
+                selectedDate={selectedDate}
+                plans={plans}
+                actuals={actuals}
+                weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
+                onRemoveWeeklyDraftBlock={
+                  weeklyPlanning.canEditDraftBlocks
+                    ? weeklyPlanning.removeDraftBlock
+                    : undefined
+                }
+                onOpenDay={openDay}
+              />
+            ) : null}
 
-          {viewMode === 'day' ? (
-            <DayView
-              selectedDate={selectedDate}
-              userId={user.id}
-              plans={plans}
-              actuals={actuals}
-              monthEvents={monthEvents}
-              studySubjects={studySubjects}
-              studyMaterials={studyMaterials}
-              scheduleTemplates={scheduleTemplates}
-              timetableTermId={activeTimetableTermId}
-              weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
-              onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks
-                ? weeklyPlanning.removeDraftBlock
-                : undefined}
-              onChangeDay={openDay}
-              onEditPlan={openEditPlan}
-              onDeletePlan={deletePlan}
-              onSavePlan={savePlanDraft}
-              onSaveActual={saveActual}
-              onSaveStandaloneActual={saveStandaloneActual}
-              onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
-              onDeleteActual={deleteActual}
-              onOpenBookshelf={() => setViewMode('bookshelf')}
-              onOpenAddMaterial={() => {
-                setBookshelfInitialAction('add-material');
-                setViewMode('bookshelf');
-              }}
-            />
-          ) : null}
+            {viewMode === 'day' ? (
+              <DayView
+                selectedDate={selectedDate}
+                userId={user.id}
+                plans={plans}
+                actuals={actuals}
+                monthEvents={monthEvents}
+                studySubjects={studySubjects}
+                studyMaterials={studyMaterials}
+                scheduleTemplates={scheduleTemplates}
+                timetableTermId={activeTimetableTermId}
+                weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
+                onRemoveWeeklyDraftBlock={
+                  weeklyPlanning.canEditDraftBlocks
+                    ? weeklyPlanning.removeDraftBlock
+                    : undefined
+                }
+                onChangeDay={openDay}
+                onEditPlan={openEditPlan}
+                onDeletePlan={deletePlan}
+                onSavePlan={savePlanDraft}
+                onSaveActual={saveActual}
+                onSaveStandaloneActual={saveStandaloneActual}
+                onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
+                onDeleteActual={deleteActual}
+                onOpenBookshelf={() => setViewMode('bookshelf')}
+                onOpenAddMaterial={() => {
+                  setBookshelfInitialAction('add-material');
+                  setViewMode('bookshelf');
+                }}
+              />
+            ) : null}
 
-          {viewMode === 'todo' ? (
-            <TodoView
-              userId={user.id}
-              selectedDate={selectedDate}
-              todos={todos}
-              onSaveTodo={saveTodo}
-              onScheduleTodo={scheduleTodoAsPlan}
-              onDeleteTodo={deleteTodo}
-            />
-          ) : null}
+            {viewMode === 'todo' ? (
+              <TodoView
+                userId={user.id}
+                selectedDate={selectedDate}
+                todos={todos}
+                onSaveTodo={saveTodo}
+                onScheduleTodo={scheduleTodoAsPlan}
+                onDeleteTodo={deleteTodo}
+              />
+            ) : null}
 
-          {viewMode === 'report' ? (
-            <ReportView
-              selectedDate={selectedDate}
-              plans={plans}
-              actuals={actuals}
-              studySubjects={studySubjects}
-              studyMaterials={studyMaterials}
-              onOpenDay={openDay}
-            />
-          ) : null}
+            {viewMode === 'report' ? (
+              <ReportView
+                selectedDate={selectedDate}
+                plans={plans}
+                actuals={actuals}
+                studySubjects={studySubjects}
+                studyMaterials={studyMaterials}
+                onOpenDay={openDay}
+              />
+            ) : null}
 
-          {viewMode === 'timetable' ? (
-            <TimetableView
-              userId={user.id}
-              activeTerm={activeTimetableTerm}
-              timetablePeriods={timetablePeriods}
-              scheduleTemplates={scheduleTemplates}
-              onActivateTerm={activateTimetableTerm}
-              onClearTermData={clearTimetableTermData}
-              onSaveTimetablePeriod={saveTimetablePeriod}
-              onDeleteTimetablePeriod={deleteTimetablePeriod}
-              onSaveScheduleTemplate={saveScheduleTemplate}
-              onDeleteScheduleTemplate={deleteScheduleTemplate}
-            />
-          ) : null}
+            {viewMode === 'timetable' ? (
+              <TimetableView
+                userId={user.id}
+                activeTerm={activeTimetableTerm}
+                timetablePeriods={timetablePeriods}
+                scheduleTemplates={scheduleTemplates}
+                onActivateTerm={activateTimetableTerm}
+                onClearTermData={clearTimetableTermData}
+                onSaveTimetablePeriod={saveTimetablePeriod}
+                onDeleteTimetablePeriod={deleteTimetablePeriod}
+                onSaveScheduleTemplate={saveScheduleTemplate}
+                onDeleteScheduleTemplate={deleteScheduleTemplate}
+              />
+            ) : null}
 
-          {viewMode === 'bookshelf' ? (
-            <BookshelfView
-              userId={user.id}
-              subjects={studySubjects}
-              materials={studyMaterials}
-              initialAction={bookshelfInitialAction}
-              onInitialActionHandled={() => setBookshelfInitialAction(null)}
-              onSaveSubject={saveStudySubject}
-              onDeleteSubject={deleteStudySubject}
-              onSaveMaterial={saveStudyMaterial}
-              onDeleteMaterial={deleteStudyMaterial}
-            />
-          ) : null}
-        </Suspense>
+            {viewMode === 'bookshelf' ? (
+              <BookshelfView
+                userId={user.id}
+                subjects={studySubjects}
+                materials={studyMaterials}
+                plans={plans}
+                actuals={actuals}
+                initialAction={bookshelfInitialAction}
+                onInitialActionHandled={() => setBookshelfInitialAction(null)}
+                onSaveSubject={saveStudySubject}
+                onDeleteSubject={deleteStudySubject}
+                onSaveMaterial={saveStudyMaterial}
+                onDeleteMaterial={deleteStudyMaterial}
+                onAddMaterialToPlan={() => setIsQuickEntryOpen(true)}
+              />
+            ) : null}
+          </Suspense>
+        ) : null}
       </main>
 
-      {viewMode === 'day' || viewMode === 'todo' ? (
-        <button className="daily-add-fab print-hide" onClick={() => setIsQuickEntryOpen(true)} type="button" aria-label="新規追加">
-          <span aria-hidden="true">＋</span>
-        </button>
+      {isScheduleSurface ? (
+        <QuickAddMenu
+          onAddSchedule={openMonthEventCreate}
+          onAddStudy={() => setIsQuickEntryOpen(true)}
+          onOpenAiPlanning={openAiPlanningSurface}
+        />
       ) : null}
+
+      <PrimaryBottomNav
+        ref={primaryBottomNavRef}
+        active={activePrimaryNav}
+        className={primaryNavClassName}
+        {...primaryNavigation}
+      />
 
       <PlanEditorPanel
         draft={editorDraft}
@@ -371,7 +572,9 @@ export default function App() {
         <RecurringPlanScopeDialog
           action={pendingRecurringPlanAction.kind}
           plan={pendingRecurringPlanAction.plan}
-          onSelect={(scope) => { void confirmRecurringPlanScope(scope); }}
+          onSelect={(scope) => {
+            void confirmRecurringPlanScope(scope);
+          }}
           onClose={cancelRecurringPlanScope}
         />
       ) : null}

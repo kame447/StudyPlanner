@@ -20,10 +20,13 @@ describe('weekly planning application boundary', () => {
     expect(app).not.toContain('onSubmitWeeklyPlanningTurn=');
   });
 
-  it('owns quick-entry wiring in the dedicated connector component', () => {
+  it('owns the manual quick-entry boundary in the dedicated connector component', () => {
     const connector = source('../../../components/WeeklyPlanningQuickEntryModal.tsx');
 
-    expect(connector).toContain('weeklyPlanningPendingTurn={state.pendingTurn}');
+    expect(connector).toContain('data-quick-entry-manual-only="true"');
+    expect(connector).toContain('weeklyPlanningPendingTurn={undefined}');
+    expect(connector).toContain('weeklyPlanningPendingApproval={undefined}');
+    expect(connector).not.toContain('weeklyPlanningPendingTurn={state.pendingTurn}');
     expect(connector).toContain('onSubmitWeeklyPlanningTurn={application.submitTurn}');
     expect(connector).toContain('onApproveWeeklyDraftBlocks={application.approveDraftBlocks}');
   });

@@ -737,9 +737,15 @@ export function TimetableView({
               {WEEKDAY_OPTIONS.map((weekday) => {
                 const cellKey = `${weekday.value}:${period.periodNumber}`;
                 const templates = templateByCell.get(cellKey) ?? [];
+                const primaryTemplate = templates[0];
 
                 return (
                   <button
+                    aria-label={
+                      primaryTemplate
+                        ? `${weekday.label}曜 ${period.label}限 ${primaryTemplate.title}を編集`
+                        : `${weekday.label}曜 ${period.label}限 授業を追加`
+                    }
                     className={
                       [
                         'timetable-grid-cell',
@@ -750,18 +756,26 @@ export function TimetableView({
                         .join(' ')
                     }
                     key={cellKey}
-                    onClick={() => {
-                      if (templates[0]) {
-                        openEditEditor(templates[0]);
+                    onClick={(event) => {
+                      if (primaryTemplate) {
+                        openEditEditor(primaryTemplate);
+                        return;
+                      }
+
+                      // Pointer users keep the deliberate double-tap gesture.
+                      // Keyboard-generated clicks have detail=0 and must remain
+                      // fully operable with Enter/Space.
+                      if (event.detail === 0) {
+                        openCreateEditor(weekday.value, period);
                       }
                     }}
                     onPointerDown={
-                      templates[0]
+                      primaryTemplate
                         ? undefined
                         : (event) => handleEmptyCellPointerDown(event, cellKey)
                     }
                     onPointerUp={
-                      templates[0]
+                      primaryTemplate
                         ? undefined
                         : (event) =>
                             handleEmptyCellPointerUp(
@@ -772,7 +786,7 @@ export function TimetableView({
                             )
                     }
                     onPointerCancel={
-                      templates[0]
+                      primaryTemplate
                         ? undefined
                         : () => {
                             emptyCellPointerRef.current = null;
@@ -792,7 +806,7 @@ export function TimetableView({
                               </span>
                             ) : null}
                             <span className="timetable-class-meta">
-                              {template.classroom || `${template.startTime}-${template.endTime}`}
+                              {template.classroom?.trim() || '教室未設定'}
                             </span>
                           </span>
                         ))}

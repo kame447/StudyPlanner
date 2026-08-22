@@ -10,18 +10,13 @@ import {
   createUnavailablePlannerRepository,
 } from './unavailableRepositories';
 
-const localRepositoryBundle = createRepositories({
-  authStorageGateway: createLocalAuthStorageGateway(),
-  plannerStorageGateway: createLocalPlannerStorageGateway(),
-});
-
 function canUseLocalFallback(): boolean {
-  if (import.meta.env.DEV) {
-    return true;
-  }
-
   if (typeof window === 'undefined') {
     return false;
+  }
+
+  if (import.meta.env.DEV) {
+    return true;
   }
 
   const host = window.location.hostname.trim().toLowerCase();
@@ -33,10 +28,17 @@ function canUseLocalFallback(): boolean {
   );
 }
 
+function createLocalRepositoryBundle() {
+  return createRepositories({
+    authStorageGateway: createLocalAuthStorageGateway(),
+    plannerStorageGateway: createLocalPlannerStorageGateway(),
+  });
+}
+
 const repositoryBundle = isFirebaseEnabled()
   ? createFirebaseRepositories()
   : canUseLocalFallback()
-    ? localRepositoryBundle
+    ? createLocalRepositoryBundle()
     : {
         authRepository: createUnavailableAuthRepository(),
         plannerRepository: createUnavailablePlannerRepository(),

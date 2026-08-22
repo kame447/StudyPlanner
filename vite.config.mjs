@@ -53,8 +53,39 @@ function preferredNetworkUrlPlugin() {
   };
 }
 
+function resolveVendorChunk(id) {
+  if (!id.includes('node_modules')) {
+    return undefined;
+  }
+
+  if (id.includes('/firebase/') || id.includes('/@firebase/')) {
+    return 'vendor-firebase';
+  }
+
+  if (
+    id.includes('/react/') ||
+    id.includes('/react-dom/') ||
+    id.includes('/scheduler/')
+  ) {
+    return 'vendor-react';
+  }
+
+  if (id.includes('/lucide-react/')) {
+    return 'vendor-icons';
+  }
+
+  return 'vendor-runtime';
+}
+
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: resolveVendorChunk,
+      },
+    },
+  },
   test: {
     alias: {
       'cloudflare:workers': path.join(

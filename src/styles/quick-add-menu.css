@@ -1,0 +1,193 @@
+/* Floating quick actions ----------------------------------------------------
+   Small actions grow from the FAB instead of opening as another full sheet.
+   Motion is intentionally short: the nearest action arrives first and each
+   following action is staggered by 40ms. */
+
+.quick-add-menu {
+  --quick-add-right: max(22px, calc((100vw - min(100vw, 900px)) / 2 + 22px));
+  --quick-add-bottom: calc(var(--schedule-nav-height, 72px) + 14px + env(safe-area-inset-bottom, 0px));
+}
+
+.quick-add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 43;
+  padding: 0;
+  border: 0;
+  background: rgba(17, 27, 43, 0);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease-out,
+    background 180ms ease-out;
+}
+
+.quick-add-menu.is-open .quick-add-backdrop {
+  background: rgba(17, 27, 43, 0.12);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.quick-add-options {
+  position: fixed;
+  z-index: 47;
+  right: var(--quick-add-right);
+  bottom: calc(var(--quick-add-bottom) + 68px);
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.quick-add-option {
+  --quick-add-delay: calc(var(--quick-add-index, 0) * 40ms);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  opacity: 0;
+  transform: translate3d(0, 13px, 0) scale(0.86);
+  transform-origin: right bottom;
+  transition:
+    transform 170ms cubic-bezier(0.4, 0, 0.65, 1),
+    opacity 120ms ease-in;
+  will-change: transform, opacity;
+}
+
+.quick-add-menu.is-open .quick-add-option {
+  pointer-events: auto;
+  animation: quick-add-option-in 240ms cubic-bezier(0.22, 1, 0.36, 1)
+    var(--quick-add-delay) both;
+}
+
+.quick-add-option-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(17, 35, 66, 0.1);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.quick-add-option-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border) 78%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+  color: var(--accent);
+  box-shadow: 0 8px 22px rgba(17, 35, 66, 0.11);
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.quick-add-option:hover .quick-add-option-label,
+.quick-add-option:focus-visible .quick-add-option-label {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
+  background: color-mix(in srgb, var(--surface) 91%, var(--accent) 9%);
+}
+
+.quick-add-option:hover .quick-add-option-icon,
+.quick-add-option:focus-visible .quick-add-option-icon {
+  transform: scale(1.045);
+  background: var(--accent);
+  color: #fff;
+}
+
+.quick-add-trigger {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.quick-add-trigger .quick-add-trigger-icon {
+  width: 28px;
+  height: 28px;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.quick-add-menu.is-open .quick-add-trigger .quick-add-trigger-icon {
+  transform: rotate(45deg);
+}
+
+.quick-add-menu.is-open .quick-add-trigger {
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+/* When a full editor/sheet takes over, the FAB finishes the hand-off instead
+   of remaining visible behind the modal. */
+.schedule-workspace-shell:has(.month-event-modal-overlay) .schedule-add-fab.daily-add-fab,
+.schedule-workspace-shell:has(.quick-entry-overlay) .schedule-add-fab.daily-add-fab {
+  transform: translate3d(0, -34px, 0) scale(0.72);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.schedule-workspace-shell:has(.month-day-sheet-overlay) .quick-add-options,
+.schedule-workspace-shell:has(.month-event-modal-overlay) .quick-add-options,
+.schedule-workspace-shell:has(.quick-entry-overlay) .quick-add-options {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes quick-add-option-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 13px, 0) scale(0.86);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translate3d(0, -1px, 0) scale(1.035);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (max-width: 520px) {
+  .quick-add-menu {
+    --quick-add-right: 18px;
+  }
+
+  .quick-add-option-label {
+    font-size: 0.8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-add-backdrop,
+  .quick-add-option,
+  .quick-add-option-icon,
+  .quick-add-trigger .quick-add-trigger-icon {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}

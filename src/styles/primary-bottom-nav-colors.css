@@ -1,0 +1,36 @@
+/*
+ * Final color contract for the persistent primary bottom navigation.
+ * Keep this file imported after every page-specific navigation stylesheet.
+ */
+.primary-bottom-nav button {
+  color: var(--home-gray, var(--text-muted));
+}
+
+.primary-bottom-nav button.active {
+  color: var(--primary-nav-active-accent, var(--accent));
+}
+
+.primary-bottom-nav .home-nav-active-circle {
+  background: var(--primary-nav-active-accent, var(--accent));
+  color: #fff;
+}
+
+/* Lucide icons are outline icons. Legacy home styles set fill: currentColor,
+ * which turns House, BookOpen and CalendarRange into filled white silhouettes.
+ * The selected glyph should instead be a white outline on the green circle. */
+.primary-bottom-nav .home-nav-active-circle svg,
+.primary-bottom-nav .home-nav-active-circle svg * {
+  color: #fff;
+  stroke: currentColor !important;
+  fill: none !important;
+}
+
+.primary-bottom-nav button.active > span:last-child {
+  color: var(--primary-nav-active-accent, var(--accent));
+}
+
+.primary-bottom-nav button:not(.active),
+.primary-bottom-nav button:not(.active) svg,
+.primary-bottom-nav button:not(.active) span:last-child {
+  color: var(--home-gray, var(--text-muted));
+}

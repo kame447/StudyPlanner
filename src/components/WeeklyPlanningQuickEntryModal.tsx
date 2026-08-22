@@ -8,6 +8,7 @@ import type {
   TodoTaskDraft,
 } from '../types/domain';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { useExitMotion } from '../hooks/useExitMotion';
 import { QuickEntryModal } from './QuickEntryModal';
 import './WeeklyPlanningQuickEntryModal.css';
 
@@ -26,6 +27,10 @@ interface WeeklyPlanningQuickEntryModalProps {
   onSaveLinkedActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
 }
 
+const NO_WEEKLY_DRAFT_BLOCKS: never[] = [];
+const NO_WEEKLY_PREVIEW_CANDIDATES: never[] = [];
+const NO_WEEKLY_MESSAGES: never[] = [];
+
 export function WeeklyPlanningQuickEntryModal({
   application,
   userId,
@@ -40,28 +45,14 @@ export function WeeklyPlanningQuickEntryModal({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: WeeklyPlanningQuickEntryModalProps) {
-  const { state, approvalAvailability, pendingDraftBlocks } = application;
-  const unavailableApproval =
-    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
-      ? approvalAvailability
-      : null;
-  const lastMessage = state.messages[state.messages.length - 1];
-  const weeklyPlanningMessages = unavailableApproval
-    ? [
-        ...state.messages,
-        {
-          id: 'weekly-planning-approval-unavailable',
-          role: 'assistant' as const,
-          content: unavailableApproval.message,
-          createdAt: lastMessage?.createdAt ?? '1970-01-01T00:00:00.000Z',
-        },
-      ]
-    : state.messages;
+  const { state } = application;
+  const { isExiting, requestExit } = useExitMotion(onClose);
 
   return (
     <div
-      className={unavailableApproval ? 'weekly-planning-approval-unavailable' : undefined}
-      data-weekly-approval-availability={approvalAvailability.kind}
+      data-quick-entry-manual-only="true"
+      data-weekly-approval-availability={application.approvalAvailability.kind}
+      data-weekly-planning-motion={isExiting ? 'closing' : 'open'}
     >
       <QuickEntryModal
         userId={userId}
@@ -70,14 +61,14 @@ export function WeeklyPlanningQuickEntryModal({
         actuals={actuals}
         materials={materials}
         subjects={subjects}
-        weeklyDraftBlocks={pendingDraftBlocks}
-        weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
-        weeklyPlanningMessages={weeklyPlanningMessages}
-        weeklyPlanningIntakeState={state.intakeState ?? null}
+        weeklyDraftBlocks={NO_WEEKLY_DRAFT_BLOCKS}
+        weeklyPlanningPreviewCandidates={NO_WEEKLY_PREVIEW_CANDIDATES}
+        weeklyPlanningMessages={NO_WEEKLY_MESSAGES}
+        weeklyPlanningIntakeState={null}
         weeklyPlanningWeekStartDate={state.weekStartDate}
         weeklyPlanningRevision={state.revision}
-        weeklyPlanningPendingTurn={state.pendingTurn}
-        weeklyPlanningPendingApproval={state.pendingApproval}
+        weeklyPlanningPendingTurn={undefined}
+        weeklyPlanningPendingApproval={undefined}
         onSubmitWeeklyPlanningTurn={application.submitTurn}
         onCancelWeeklyPlanningTurn={application.cancelTurn}
         onClearWeeklyPlanningConversation={application.clearConversation}
@@ -88,7 +79,7 @@ export function WeeklyPlanningQuickEntryModal({
         onRemoveWeeklyDraftBlock={application.removeDraftBlock}
         onClearWeeklyDraftBlocks={application.clearDraftBlocks}
         onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
-        onClose={onClose}
+        onClose={() => requestExit()}
         onSaveTodo={onSaveTodo}
         onSavePlan={onSavePlan}
         onSaveStandaloneActual={onSaveStandaloneActual}

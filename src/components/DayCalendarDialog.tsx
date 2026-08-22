@@ -17,22 +17,37 @@ interface DayCalendarDialogProps {
   onClose: () => void;
 }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidIsoDate(dateString: string): boolean {
+  if (!ISO_DATE_PATTERN.test(dateString)) {
+    return false;
+  }
+
+  const date = new Date(`${dateString}T00:00:00`);
+  return !Number.isNaN(date.getTime());
+}
+
+function normalizeSelectedDate(dateString: string, fallbackDate: string): string {
+  return isValidIsoDate(dateString) ? dateString : fallbackDate;
+}
+
 export function DayCalendarDialog({
   open,
   selectedDate,
   onSelectDate,
   onClose,
 }: DayCalendarDialogProps) {
-  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(selectedDate));
   const today = todayIsoDate();
+  const safeSelectedDate = normalizeSelectedDate(selectedDate, today);
+  const selectedMonth = startOfMonth(safeSelectedDate);
+  const [calendarMonth, setCalendarMonth] = useState(selectedMonth);
   const weekdayLabels = getWeekdayLabels();
   const days = useMemo(() => getMonthGrid(calendarMonth), [calendarMonth]);
 
   useEffect(() => {
-    if (open) {
-      setCalendarMonth(startOfMonth(selectedDate));
-    }
-  }, [open, selectedDate]);
+    setCalendarMonth(selectedMonth);
+  }, [selectedMonth]);
 
   if (!open) {
     return null;
@@ -71,7 +86,7 @@ export function DayCalendarDialog({
             </span>
           ))}
           {days.map(({ date, inCurrentMonth }) => {
-            const isSelected = date === selectedDate;
+            const isSelected = date === safeSelectedDate;
             const isToday = date === today;
             const tone = getCalendarDayTone(date);
 

@@ -1,8 +1,5 @@
 import { useState, type CSSProperties } from 'react';
 import {
-  addDays,
-  formatDateLabel,
-  formatMinutes,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -13,9 +10,10 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
-import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type { Actual, Plan, PlanSourceType } from '../types/domain';
+
+type WeekTimelineMode = 'plan' | 'actual';
 
 interface WeekViewProps {
   selectedDate: string;
@@ -23,13 +21,10 @@ interface WeekViewProps {
   actuals: Actual[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
-  onChangeWeek: (date: string) => void;
   onOpenDay: (date: string) => void;
 }
 
-type WeekTimelineMode = 'plan' | 'actual' | 'compare';
-
-interface WeekTimelineBaseBlock {
+interface WeekPreviewBaseBlock {
   id: string;
   title: string;
   subject: string;
@@ -37,124 +32,22 @@ interface WeekTimelineBaseBlock {
   sourceType?: PlanSourceType;
   startTime: string;
   endTime: string;
+  draft?: boolean;
 }
 
-interface WeekTimelineBlock extends WeekTimelineBaseBlock {
+interface WeekPreviewBlock extends WeekPreviewBaseBlock {
   lane: number;
   laneCount: number;
 }
 
-const WEEK_TIMELINE_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
+const WEEK_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+const MINUTES_PER_DAY = 24 * 60;
 
-function buildWeekTimelineLanes<T extends WeekTimelineBaseBlock>(
-  items: T[],
-): Array<T & WeekTimelineBlock> {
-  const sortedItems = [...items].sort((left, right) => {
-    const startDelta =
-      minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
-
-    if (startDelta !== 0) {
-      return startDelta;
-    }
-
-    return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
-  });
-
-  const activeLanes: Array<{ lane: number; endMinutes: number }> = [];
-  const laneById = new Map<string, number>();
-  let laneCount = 0;
-
-  sortedItems.forEach((item) => {
-    const startMinutes = minutesFromTime(item.startTime);
-    const endMinutes = Math.max(
-      startMinutes + minutesBetween(item.startTime, item.endTime),
-      startMinutes + 1,
-    );
-
-    for (let index = activeLanes.length - 1; index >= 0; index -= 1) {
-      if (activeLanes[index].endMinutes <= startMinutes) {
-        activeLanes.splice(index, 1);
-      }
-    }
-
-    const usedLanes = new Set(activeLanes.map((entry) => entry.lane));
-    let lane = 0;
-
-    while (usedLanes.has(lane)) {
-      lane += 1;
-    }
-
-    laneCount = Math.max(laneCount, lane + 1);
-    laneById.set(item.id, lane);
-    activeLanes.push({ lane, endMinutes });
-  });
-
-  return sortedItems.map((item) => ({
-    ...item,
-    lane: laneById.get(item.id) ?? 0,
-    laneCount,
-  }));
-}
-
-function buildWeekTimelineBlockStyle(
-  entry: WeekTimelineBlock,
-  inset: 'normal' | 'actual-inset' = 'normal',
-): CSSProperties {
-  const laneWidth = 100 / Math.max(entry.laneCount, 1);
-  const baseSidePadding = inset === 'actual-inset' ? 12 : 6;
-  const sidePadding =
-    entry.laneCount >= 3
-      ? Math.max(3, Math.round(baseSidePadding * 0.5))
-      : entry.laneCount >= 2
-        ? Math.max(4, Math.round(baseSidePadding * 0.75))
-        : baseSidePadding;
-  const durationMinutes = minutesBetween(entry.startTime, entry.endTime);
-
-  return {
-    top: `calc(${minutesFromTime(entry.startTime)} * var(--week-timeline-hour-height) / 60)`,
-    height: `max(calc(${durationMinutes} * var(--week-timeline-hour-height) / 60), var(--week-timeline-min-block-height))`,
-    left: `calc(${entry.lane * laneWidth}% + ${sidePadding}px)`,
-    width: `calc(${laneWidth}% - ${sidePadding * 2}px)`,
-  };
-}
-
-function getWeekTimelineDisplayClass(laneCount: number): string {
-  if (laneCount >= 3) {
-    return 'week-timeline-block--narrow';
-  }
-
-  if (laneCount >= 2) {
-    return 'week-timeline-block--compact';
-  }
-
-  return 'week-timeline-block--wide';
-}
-
-function getWeekTimelineDurationClass(startTime: string, endTime: string): string {
-  const durationMinutes = minutesBetween(startTime, endTime);
-
-  if (durationMinutes <= 15) {
-    return 'week-timeline-block--micro';
-  }
-
-  if (durationMinutes <= 30) {
-    return 'week-timeline-block--tiny';
-  }
-
-  if (durationMinutes <= 45) {
-    return 'week-timeline-block--short';
-  }
-
-  return '';
-}
-
-function getWeekTimelineBlockClass(entry: WeekTimelineBlock): string {
-  return [
-    getWeekTimelineDisplayClass(entry.laneCount),
-    getWeekTimelineDurationClass(entry.startTime, entry.endTime),
-  ]
-    .filter(Boolean)
-    .join(' ');
+function formatWeekDate(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00`);
+  const weekday = WEEKDAY_LABELS[date.getDay()] ?? '';
+  return `${date.getMonth() + 1}/${date.getDate()}(${weekday})`;
 }
 
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
@@ -165,393 +58,283 @@ function resolveActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject || '記録';
 }
 
+function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekPreviewBlock> {
+  const sorted = [...items].sort((left, right) => {
+    const startDelta = minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
+    if (startDelta !== 0) return startDelta;
+    return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
+  });
+  const active: Array<{ lane: number; endMinutes: number }> = [];
+  const laneById = new Map<string, number>();
+  let laneCount = 0;
+
+  sorted.forEach((item) => {
+    const startMinutes = minutesFromTime(item.startTime);
+    const endMinutes = Math.max(
+      startMinutes + minutesBetween(item.startTime, item.endTime),
+      startMinutes + 1,
+    );
+
+    for (let index = active.length - 1; index >= 0; index -= 1) {
+      if (active[index].endMinutes <= startMinutes) active.splice(index, 1);
+    }
+
+    const used = new Set(active.map((entry) => entry.lane));
+    let lane = 0;
+    while (used.has(lane)) lane += 1;
+
+    laneById.set(item.id, lane);
+    laneCount = Math.max(laneCount, lane + 1);
+    active.push({ lane, endMinutes });
+  });
+
+  return sorted.map((item) => ({
+    ...item,
+    lane: laneById.get(item.id) ?? 0,
+    laneCount: Math.max(laneCount, 1),
+  }));
+}
+
+function buildMarkerStyle(hour: number): CSSProperties {
+  return {
+    top: `${(hour / 24) * 100}%`,
+  };
+}
+
+function buildBlockStyle(entry: WeekPreviewBlock): CSSProperties {
+  const startMinutes = Math.max(0, minutesFromTime(entry.startTime));
+  const durationMinutes = Math.max(minutesBetween(entry.startTime, entry.endTime), 1);
+  const laneWidth = 100 / Math.max(entry.laneCount, 1);
+  const topPercent = (startMinutes / MINUTES_PER_DAY) * 100;
+  const heightPercent = (durationMinutes / MINUTES_PER_DAY) * 100;
+
+  return {
+    top: `${topPercent}%`,
+    height: `max(${heightPercent}%, 14px)`,
+    left: `calc(${entry.lane * laneWidth}% + 2px)`,
+    width: `calc(${laneWidth}% - 4px)`,
+    right: 'auto',
+  };
+}
+
+function getToneClass(entry: WeekPreviewBaseBlock): string {
+  const key = (entry.subject || entry.title || entry.id).trim();
+  const toneIndex = Array.from(key || entry.id).reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0,
+  ) % 8;
+  return `weekly-draft-tone-${toneIndex + 1}`;
+}
+
+function getDurationClass(entry: WeekPreviewBaseBlock): string {
+  const duration = minutesBetween(entry.startTime, entry.endTime);
+  if (duration <= 20) return 'schedule-week-block-micro';
+  if (duration <= 40) return 'schedule-week-block-short';
+  return '';
+}
+
 export function WeekView({
   selectedDate,
   plans,
   actuals,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
-  onChangeWeek,
   onOpenDay,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
   const weekDates = getWeekDates(selectedDate);
-  const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
+  const gridStyle = {
+    gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
+  } as CSSProperties;
+  const timelineStyle = { height: '100%' } as CSSProperties;
 
   return (
-    <section className="panel">
-      <div className="view-header-stack">
-        <div>
-          <div className="view-titlebar">
-            <h2>Weekly </h2>
-            <div className="view-title-actions print-hide">
-              <div className="nav-actions view-title-nav">
-                <button
-                  className="ghost-button nav-icon-button"
-                  onClick={() => onChangeWeek(addDays(selectedDate, -7))}
-                  type="button"
-                  aria-label="前週"
-                  title="前週"
-                >
-                  <span aria-hidden="true">＜</span>
-                </button>
-                <span className="week-range-chip">{weekRangeLabel}</span>
-                <button
-                  className="ghost-button nav-icon-button"
-                  onClick={() => onChangeWeek(addDays(selectedDate, 7))}
-                  type="button"
-                  aria-label="翌週"
-                  title="翌週"
-                >
-                  <span aria-hidden="true">＞</span>
-                </button>
-              </div>
-              <button
-                className="ghost-button view-print-button"
-                onClick={() => window.print()}
-                type="button"
-              >
-                印刷
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <section className="panel schedule-week-view">
       <div className="week-timeline-toolbar print-hide">
         <div className="segmented-control week-timeline-mode-control">
-          {(
-            [
-              ['plan', '予定'],
-              ['actual', '記録'],
-              ['compare', '比較'],
-            ] as const
-          ).map(([mode, label]) => (
-            <button
-              key={mode}
-              className={timelineMode === mode ? 'segment active' : 'segment'}
-              onClick={() => setTimelineMode(mode)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="week-timeline-legend">
-          <span className="week-timeline-legend-item">
-            <span className="week-timeline-legend-plan" />
+          <button
+            className={timelineMode === 'plan' ? 'segment active' : 'segment'}
+            onClick={() => setTimelineMode('plan')}
+            type="button"
+          >
             予定
-          </span>
-          <span className="week-timeline-legend-item">
-            <span className="week-timeline-legend-actual" />
+          </button>
+          <button
+            className={timelineMode === 'actual' ? 'segment active' : 'segment'}
+            onClick={() => setTimelineMode('actual')}
+            type="button"
+          >
             記録
-          </span>
-          <span className="week-timeline-legend-item">
-            <span className="week-timeline-legend-draft" />
-            仮予定
-          </span>
+          </button>
         </div>
       </div>
 
-      <div className="week-timeline-shell">
-        <div className="week-timeline-hours" aria-hidden="true">
-          <div className="week-timeline-corner" />
-          {WEEK_TIMELINE_HOURS.map((hour) => (
-            <div
-              key={hour}
-              className="week-timeline-hour-label"
-              style={{ height: 'var(--week-timeline-hour-height)' }}
-            >
-              {hour.toString().padStart(2, '0')}:00
+      <div className="weekly-draft-preview schedule-week-preview">
+        <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
+          <div className="weekly-draft-preview-grid schedule-week-preview-grid">
+            <div className="weekly-draft-preview-header" style={gridStyle}>
+              <div className="weekly-draft-preview-corner">時間</div>
+              {weekDates.map((date) => (
+                <button
+                  className="weekly-draft-preview-date"
+                  key={date}
+                  onClick={() => onOpenDay(date)}
+                  type="button"
+                >
+                  <strong>{formatWeekDate(date)}</strong>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <div className="week-timeline-days">
-        {weekDates.map((date) => {
-          const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
-          const dayPlanKeys = new Set(
-            dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
-          );
-          const linkedActuals = dayPlans.flatMap((plan) => {
-            const actual = actualByOccurrenceKey.get(
-              buildPlanOccurrenceKey(plan.id, plan.date),
-            );
-
-            return actual ? [{ actual, plan }] : [];
-          });
-          const standaloneActuals = actuals
-            .filter(
-              (actual) =>
-                actual.occurrenceDate === date &&
-                !dayPlanKeys.has(getActualOccurrenceKey(actual)),
-            )
-            .map((actual) => ({
-              actual,
-              plan: actual.planId ? planById.get(actual.planId) : undefined,
-            }));
-          const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
-            (left, right) =>
-              minutesFromTime(left.actual.actualStartTime) -
-              minutesFromTime(right.actual.actualStartTime),
-          );
-          const dayPlanMinutes = dayPlans.reduce(
-            (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
-            0,
-          );
-          const dayActualMinutes = dayActuals.reduce(
-            (sum, { actual }) =>
-              sum + minutesBetween(actual.actualStartTime, actual.actualEndTime),
-            0,
-          );
-          const dayDraftBlocks = weeklyDraftBlocks.filter(
-            (block) => block.date === date && block.status === 'draft',
-          );
-          const dayDraftMinutes = dayDraftBlocks.reduce(
-            (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
-            0,
-          );
-          const planBlocks = buildWeekTimelineLanes(
-            dayPlans.map((plan) => ({
-              id: buildPlanOccurrenceKey(plan.id, plan.date),
-              title: plan.title,
-              subject: plan.subject,
-              type: plan.type,
-              sourceType: plan.sourceType,
-              startTime: plan.startTime,
-              endTime: plan.endTime,
-            })),
-          );
-          const actualBlocks = buildWeekTimelineLanes(
-            dayActuals.map(({ actual, plan }) => ({
-              id: actual.id,
-              title: resolveActualTitle(actual, plan),
-              subject: resolveActualSubject(actual, plan),
-              type: plan?.type ?? 'other',
-              sourceType: plan?.sourceType,
-              startTime: actual.actualStartTime,
-              endTime: actual.actualEndTime,
-            })),
-          );
-          const draftBlocks = buildWeekTimelineLanes(
-            dayDraftBlocks.map((block) => ({
-              id: block.id,
-              title: block.title,
-              subject: block.subject || block.label,
-              type: block.type,
-              sourceType: undefined,
-              startTime: block.startTime,
-              endTime: block.endTime,
-            })),
-          );
-          const hasVisibleBlocks =
-            timelineMode === 'plan'
-              ? planBlocks.length > 0 || draftBlocks.length > 0
-              : timelineMode === 'actual'
-                ? actualBlocks.length > 0
-                : planBlocks.length > 0 ||
-                  draftBlocks.length > 0 ||
-                  actualBlocks.length > 0;
-
-          return (
-            <article key={date} className="week-timeline-day">
-              <div className="week-timeline-day-head">
-                  <button
-                    className="week-day-link"
-                    onClick={() => onOpenDay(date)}
-                    type="button"
+            <div className="weekly-draft-preview-body schedule-week-preview-body" style={gridStyle}>
+              <div className="weekly-draft-preview-time-axis" style={timelineStyle} aria-hidden="true">
+                {WEEK_HOURS.map((hour) => (
+                  <span
+                    className={[
+                      'weekly-draft-preview-time-label',
+                      hour === 0 ? 'weekly-draft-preview-time-label--start' : '',
+                      hour === 24 ? 'weekly-draft-preview-time-label--end' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    key={hour}
+                    style={buildMarkerStyle(hour)}
                   >
-                    {formatDateLabel(date)}
-                  </button>
-                  <p className="week-day-summary">
-                    <span className="week-day-summary-item">
-                      <span className="week-day-summary-label-full">計画</span>
-                      <span className="week-day-summary-label-short">計</span>{' '}
-                      <strong>{formatMinutes(dayPlanMinutes)}</strong>
-                    </span>
-                    <span className="week-day-summary-separator">/</span>
-                    <span className="week-day-summary-item">
-                      <span className="week-day-summary-label-full">記録</span>
-                      <span className="week-day-summary-label-short">実</span>{' '}
-                      <strong>{formatMinutes(dayActualMinutes)}</strong>
-                    </span>
-                    {dayDraftMinutes > 0 ? (
-                      <>
-                        <span className="week-day-summary-separator">/</span>
-                        <span className="week-day-summary-item">
-                          <span className="week-day-summary-label-full">仮</span>
-                          <span className="week-day-summary-label-short">仮</span>{' '}
-                          <strong>{formatMinutes(dayDraftMinutes)}</strong>
-                        </span>
-                      </>
-                    ) : null}
-                  </p>
+                    {String(hour).padStart(2, '0')}:00
+                  </span>
+                ))}
               </div>
 
-              <div
-                className={`week-timeline-canvas mode-${timelineMode}`}
-                style={{ height: 'calc(24 * var(--week-timeline-hour-height))' }}
-                onDoubleClick={() => onOpenDay(date)}
-              >
-                {Array.from({ length: 24 }, (_, index) => (
-                  <div
-                    key={index}
-                    className="week-timeline-grid-line"
-                    style={{ top: `calc(${index} * var(--week-timeline-hour-height))` }}
-                  />
-                ))}
+              {weekDates.map((date) => {
+                const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
+                const dayPlanKeys = new Set(
+                  dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
+                );
+                const linkedActuals = dayPlans.flatMap((plan) => {
+                  const actual = actualByOccurrenceKey.get(
+                    buildPlanOccurrenceKey(plan.id, plan.date),
+                  );
+                  return actual ? [{ actual, plan }] : [];
+                });
+                const standaloneActuals = actuals
+                  .filter(
+                    (actual) =>
+                      actual.occurrenceDate === date &&
+                      !dayPlanKeys.has(getActualOccurrenceKey(actual)),
+                  )
+                  .map((actual) => ({
+                    actual,
+                    plan: actual.planId ? planById.get(actual.planId) : undefined,
+                  }));
+                const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
+                  (left, right) =>
+                    minutesFromTime(left.actual.actualStartTime) -
+                    minutesFromTime(right.actual.actualStartTime),
+                );
+                const dayDraftBlocks = weeklyDraftBlocks.filter(
+                  (block) => block.date === date && block.status === 'draft',
+                );
 
-                {(timelineMode === 'plan' || timelineMode === 'compare') &&
-                  planBlocks.map((entry) => {
-                    const subjectLabel = getSubjectLabel(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
-                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
+                const planBlocks = buildLanes<WeekPreviewBaseBlock>([
+                  ...dayPlans.map((plan) => ({
+                    id: buildPlanOccurrenceKey(plan.id, plan.date),
+                    title: plan.title,
+                    subject: plan.subject,
+                    type: plan.type,
+                    sourceType: plan.sourceType,
+                    startTime: plan.startTime,
+                    endTime: plan.endTime,
+                  })),
+                  ...dayDraftBlocks.map((block) => ({
+                    id: block.id,
+                    title: block.title,
+                    subject: block.subject || block.label,
+                    type: block.type,
+                    startTime: block.startTime,
+                    endTime: block.endTime,
+                    draft: true,
+                  })),
+                ]);
+                const actualBlocks = buildLanes<WeekPreviewBaseBlock>(
+                  dayActuals.map(({ actual, plan }) => ({
+                    id: actual.id,
+                    title: resolveActualTitle(actual, plan),
+                    subject: resolveActualSubject(actual, plan),
+                    type: plan?.type ?? 'other',
+                    sourceType: plan?.sourceType,
+                    startTime: actual.actualStartTime,
+                    endTime: actual.actualEndTime,
+                  })),
+                );
+                const visibleBlocks = timelineMode === 'plan' ? planBlocks : actualBlocks;
 
-                    return (
-                      <button
-                        key={`plan-${entry.id}`}
-                        className={`week-timeline-block week-timeline-plan-block ${getWeekTimelineBlockClass(entry)}`}
-                        style={buildWeekTimelineBlockStyle(entry)}
-                        onClick={() => onOpenDay(date)}
-                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel].join(' / ')}
-                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel}
-                        type="button"
+                return (
+                  <button
+                    className="weekly-draft-preview-day-column schedule-week-day-column"
+                    key={date}
+                    onDoubleClick={() => onOpenDay(date)}
+                    style={timelineStyle}
+                    type="button"
+                    aria-label={`${formatWeekDate(date)}の${timelineMode === 'plan' ? '予定' : '記録'}`}
+                  >
+                    {WEEK_HOURS.map((hour) => (
+                      <span
+                        className="weekly-draft-preview-hour-line"
+                        key={`${date}-${hour}`}
+                        style={buildMarkerStyle(hour)}
+                      />
+                    ))}
+
+                    {visibleBlocks.map((entry) => (
+                      <span
+                        className={[
+                          'weekly-draft-preview-block',
+                          'weekly-draft-preview-block--overview',
+                          'schedule-week-block',
+                          getToneClass(entry),
+                          getDurationClass(entry),
+                          entry.draft ? 'schedule-week-block-draft' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        key={entry.id}
+                        style={buildBlockStyle(entry)}
+                        title={`${entry.title} / ${entry.startTime}-${entry.endTime}${entry.draft ? ' / 仮予定' : ''}`}
                       >
-                        <span className="week-timeline-entry-line">
-                          <strong className="week-timeline-block__title">
-                            {entry.title}
-                          </strong>
-                          <span className="week-timeline-meta">
-                            <span className="week-timeline-time">
-                              {entry.startTime}-{entry.endTime}
-                            </span>
-                            {showSubjectLabel ? (
-                              <span className="week-timeline-subject">{subjectLabel}</span>
-                            ) : null}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-
-                {(timelineMode === 'plan' || timelineMode === 'compare') &&
-                  draftBlocks.map((entry) => {
-                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
-                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
-
-                    return (
-                      <div
-                        key={`draft-${entry.id}`}
-                        className={`week-timeline-block week-timeline-draft-block ${getWeekTimelineBlockClass(entry)}`}
-                        style={buildWeekTimelineBlockStyle(entry)}
-                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel, '仮予定'].join(' / ')}
-                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel + '、仮予定'}
-                        role="group"
-                        onDoubleClick={(event) => event.stopPropagation()}
-                      >
-                        <span className="week-timeline-entry-line">
-                          <span className="week-timeline-title-row">
-                            <strong className="week-timeline-block__title">
-                              {entry.title}
-                            </strong>
-                            <span className="weekly-draft-badge">仮予定</span>
-                          </span>
-                          <span className="week-timeline-meta">
-                            <span className="week-timeline-time">
-                              {entry.startTime}-{entry.endTime}
-                            </span>
-                            {showSubjectLabel ? (
-                              <span className="week-timeline-subject">{subjectLabel}</span>
-                            ) : null}
-                          </span>
-                        </span>
-                        {onRemoveWeeklyDraftBlock ? (
-                          <button
-                            className="weekly-draft-remove-button"
+                        <strong>{entry.title}</strong>
+                        <small>{entry.startTime}-{entry.endTime}</small>
+                        {entry.draft && onRemoveWeeklyDraftBlock ? (
+                          <span
+                            className="schedule-week-draft-remove"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`${entry.title}を削除`}
                             onClick={(event) => {
+                              event.preventDefault();
                               event.stopPropagation();
                               onRemoveWeeklyDraftBlock(entry.id);
                             }}
-                            type="button"
-                            aria-label={`${entry.title}を削除`}
-                            title="仮予定を削除"
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter' && event.key !== ' ') return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onRemoveWeeklyDraftBlock(entry.id);
+                            }}
                           >
                             ×
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-
-                {(timelineMode === 'actual' || timelineMode === 'compare') &&
-                  actualBlocks.map((entry) => {
-                    const theme = getSubjectTheme(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
-                    const subjectLabel = getSubjectLabel(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
-                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
-
-                    return (
-                      <button
-                        key={`actual-${entry.id}`}
-                        className={`week-timeline-block week-timeline-actual-block ${getWeekTimelineBlockClass(entry)}`}
-                        style={{
-                          ...buildWeekTimelineBlockStyle(
-                            entry,
-                            timelineMode === 'compare' ? 'actual-inset' : 'normal',
-                          ),
-                          backgroundColor: theme.soft,
-                          borderColor: theme.border,
-                          color: theme.text,
-                          boxShadow:
-                            timelineMode === 'compare'
-                              ? `inset 5px 0 0 ${theme.fill}, 0 10px 18px rgba(24, 42, 39, 0.1)`
-                              : `inset 4px 0 0 ${theme.fill}`,
-                        }}
-                        onClick={() => onOpenDay(date)}
-                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel].join(' / ')}
-                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel}
-                        type="button"
-                      >
-                        <span className="week-timeline-entry-line">
-                          <strong className="week-timeline-block__title">
-                            {entry.title}
-                          </strong>
-                          <span className="week-timeline-meta">
-                            <span className="week-timeline-time">
-                              {entry.startTime}-{entry.endTime}
-                            </span>
-                            {showSubjectLabel ? (
-                              <span className="week-timeline-subject">{subjectLabel}</span>
-                            ) : null}
                           </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-
-                {!hasVisibleBlocks ? (
-                  <p className="week-timeline-empty">
-                    {timelineMode === 'actual' ? '記録なし' : '予定なし'}
-                  </p>
-                ) : null}
-              </div>
-            </article>
-          );
-        })}
+                        ) : null}
+                      </span>
+                    ))}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </section>

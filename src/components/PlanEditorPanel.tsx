@@ -1,6 +1,8 @@
+import { useId } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { minutesBetween } from '../lib/date';
-import { PlanFieldsEditor } from './PlanFieldsEditor';
 import type { PlanDraft } from '../types/domain';
+import { PlanFieldsEditor } from './PlanFieldsEditor';
 
 interface PlanEditorPanelProps {
   draft: PlanDraft | null;
@@ -21,12 +23,15 @@ export function PlanEditorPanel({
   onSubmit,
   onCancel,
 }: PlanEditorPanelProps) {
+  const headingId = useId();
+  const isOpen = draft !== null;
+  const { dialogRef, initialFocusRef } = useDialogFocus<HTMLElement>(isOpen, onCancel);
+
   if (!draft) {
     return null;
   }
 
   const currentDraft = draft;
-
   const hasInvalidTime =
     minutesBetween(currentDraft.startTime, currentDraft.endTime) <= 0;
 
@@ -45,14 +50,28 @@ export function PlanEditorPanel({
 
   return (
     <div className="overlay modal-overlay">
-      <aside className="modal-card plan-editor-modal">
+      <aside
+        ref={dialogRef}
+        className="modal-card plan-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        tabIndex={-1}
+      >
         <div className="section-stack">
           <div className="section-header">
             <div>
-              <h2>{heading}</h2>
+              <h2 id={headingId}>{heading}</h2>
               <p>入力項目は最小限に絞っています。</p>
             </div>
-            <button className="ghost-button" onClick={onCancel} type="button">
+            <button
+              ref={(node) => {
+                initialFocusRef.current = node;
+              }}
+              className="ghost-button"
+              onClick={onCancel}
+              type="button"
+            >
               閉じる
             </button>
           </div>

@@ -1,16 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { formatMonthLabel, startOfWeek, todayIsoDate } from '../lib/date';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useExitMotion } from '../hooks/useExitMotion';
+import { todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
-import { useMonthPager } from '../hooks/useMonthPager';
+import { MonthDaySheet } from './MonthDaySheet';
 import { MonthEventDialog } from './MonthEventDialog';
 import { MonthGridPanel } from './MonthGridPanel';
-import { MonthPickerDialog } from './MonthPickerDialog';
 import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
 
 interface MonthViewProps {
@@ -20,6 +14,7 @@ interface MonthViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  createRequestId?: number;
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
@@ -34,24 +29,20 @@ export function MonthView({
   plans,
   actuals,
   monthEvents,
+  createRequestId = 0,
   onSelectDate,
-  onChangeMonth,
-  onOpenWeek,
   onSaveMonthEvent,
   onDeleteMonthEvent,
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
-  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  const pager = useMonthPager({
-    monthDate,
-    disabled: Boolean(eventModalDate || isMonthPickerOpen),
-    onChangeMonth,
-  });
-  const { weeks, cells: grid } = useMemo(
-    () => buildMonthGrid(pager.activeMonthDate),
-    [pager.activeMonthDate],
-  );
-  const selectedWeek = startOfWeek(selectedDate);
+  const [eventModalInitialEventId, setEventModalInitialEventId] = useState<string | null>(null);
+  const [daySheetDate, setDaySheetDate] = useState<string | null>(null);
+  const { isExiting: isEventModalClosing, requestExit: requestCloseMonthEventEditor } =
+    useExitMotion(() => {
+      setEventModalDate(null);
+      setEventModalInitialEventId(null);
+    });
+  const grid = useMemo(() => buildMonthGrid(monthDate).cells, [monthDate]);
   const gridIndexByDate = useMemo(
     () => new Map(grid.map((cell, index) => [cell.date, index])),
     [grid],
@@ -60,6 +51,7 @@ export function MonthView({
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
+  const lastCreateRequestId = useRef(createRequestId);
   const todayDate = todayIsoDate();
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
@@ -78,7 +70,7 @@ export function MonthView({
 
     cellRefs.current.get(selectedDate)?.focus({ preventScroll: true });
     shouldFocusSelectedCell.current = false;
-  }, [selectedDate, pager.activeMonthDate]);
+  }, [monthDate, selectedDate]);
 
   const moveSelectionByKeyboard = useCallback(
     (currentDate: string, offset: number) => {
@@ -106,17 +98,27 @@ export function MonthView({
     [grid, gridIndexByDate, onSelectDate],
   );
 
-  function openMonthEventEditor(date: string) {
+  function openMonthEventEditor(date: string, initialEventId: string | null = null) {
     onSelectDate(date);
+    setDaySheetDate(null);
+    setEventModalInitialEventId(initialEventId);
     setEventModalDate(date);
   }
 
-  function handleCellClick(date: string) {
-    if (pager.suppressNextCellClick.current) {
-      pager.suppressNextCellClick.current = false;
+  function closeMonthEventEditor() {
+    requestCloseMonthEventEditor();
+  }
+
+  useEffect(() => {
+    if (createRequestId <= 0 || createRequestId === lastCreateRequestId.current) {
       return;
     }
 
+    lastCreateRequestId.current = createRequestId;
+    openMonthEventEditor(selectedDate);
+  }, [createRequestId, selectedDate]);
+
+  function handleCellClick(date: string) {
     const clickTimestamp = window.performance.now();
 
     if (
@@ -143,6 +145,7 @@ export function MonthView({
 
     pendingCellClickTimeout.current = window.setTimeout(() => {
       onSelectDate(date);
+      setDaySheetDate(date);
       pendingCellClickTimeout.current = null;
       lastCellClick.current = null;
     }, 240);
@@ -154,7 +157,7 @@ export function MonthView({
         return;
       }
 
-      if (eventModalDate || isMonthPickerOpen) {
+      if (eventModalDate || daySheetDate) {
         return;
       }
 
@@ -200,7 +203,7 @@ export function MonthView({
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [eventModalDate, isMonthPickerOpen, moveSelectionByKeyboard, selectedDate]);
+  }, [daySheetDate, eventModalDate, moveSelectionByKeyboard, selectedDate]);
 
   useEffect(() => {
     return () => {
@@ -213,123 +216,46 @@ export function MonthView({
   }, []);
 
   return (
-    <section className="panel swipe-view">
-      <div className="view-header-stack">
-        <div>
-          <div className="view-titlebar month-view-titlebar">
-            <h2>Monthly</h2>
-            <div className="view-title-actions print-hide month-view-title-actions">
-              <div className="nav-actions view-title-nav month-view-title-nav">
-                <button
-                  className="ghost-button nav-icon-button"
-                  onClick={() => pager.animateMonthChange(-1)}
-                  type="button"
-                  aria-label="前月"
-                >
-                  <span aria-hidden="true">＜</span>
-                </button>
-                <button
-                  className="ghost-button month-picker-trigger"
-                  onClick={() => setIsMonthPickerOpen(true)}
-                  type="button"
-                >
-                  {formatMonthLabel(pager.activeMonthDate)}
-                </button>
-                <button
-                  className="ghost-button nav-icon-button"
-                  onClick={() => pager.animateMonthChange(1)}
-                  type="button"
-                  aria-label="翌月"
-                >
-                  <span aria-hidden="true">＞</span>
-                </button>
-              </div>
-              <button
-                className="ghost-button view-print-button month-view-print-button"
-                onClick={() => window.print()}
-                type="button"
-              >
-                印刷
-              </button>
-            </div>
-          </div>
-        </div>
+    <section className="panel schedule-month-view">
+      <div className="schedule-month-static-grid">
+        <MonthGridPanel
+          monthDate={monthDate}
+          isCurrent
+          selectedDate={selectedDate}
+          todayDate={todayDate}
+          plans={plans}
+          actuals={actuals}
+          monthEvents={monthEvents}
+          registerCellRef={registerCellRef}
+          onCellClick={handleCellClick}
+          onMoveSelection={moveSelectionByKeyboard}
+          onOpenMonthEventEditor={(date) => openMonthEventEditor(date)}
+        />
       </div>
 
-      <div className="week-chip-row month-week-chip-row print-hide">
-        {weeks.map((week) => (
-          <button
-            key={week.startDate}
-            className={
-              selectedWeek === week.startDate ? 'week-chip active' : 'week-chip'
-            }
-            onClick={() => {
-              const focusDate =
-                week.dates.find((date) =>
-                  date.startsWith(pager.activeMonthDate.slice(0, 7)),
-                ) ?? week.startDate;
-              onOpenWeek(focusDate);
-            }}
-            type="button"
-          >
-            <span className="month-week-chip-full">{week.label}</span>
-            <span className="month-week-chip-short">{week.index + 1}週</span>
-          </button>
-        ))}
-      </div>
+      <MonthDaySheet
+        openDate={daySheetDate}
+        monthEvents={monthEvents}
+        onCreate={(date) => openMonthEventEditor(date)}
+        onEdit={(event) => openMonthEventEditor(daySheetDate ?? event.date, event.id)}
+        onClose={() => setDaySheetDate(null)}
+      />
 
       <div
-        className="month-pager-viewport"
-        ref={pager.pagerViewportRef}
-        onPointerDown={pager.handlePagerPointerDown}
-        onPointerMove={pager.handlePagerPointerMove}
-        onPointerUp={pager.finishPagerDrag}
-        onPointerCancel={pager.finishPagerDrag}
+        className={`month-event-dialog-motion ${
+          isEventModalClosing ? 'is-closing' : 'is-open'
+        }`}
       >
-        <div
-          className={[
-            'month-pager-track',
-            pager.pagerTransitionEnabled ? 'is-animated' : 'is-dragging',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          onTransitionEnd={pager.handlePagerTransitionEnd}
-          style={{ transform: pager.pagerTransform }}
-        >
-          {pager.visibleMonths.map((visibleMonthDate, panelIndex) => (
-            <MonthGridPanel
-              key={visibleMonthDate}
-              monthDate={visibleMonthDate}
-              isCurrent={panelIndex === pager.activeMonthIndex}
-              selectedDate={selectedDate}
-              todayDate={todayDate}
-              plans={plans}
-              actuals={actuals}
-              monthEvents={monthEvents}
-              registerCellRef={registerCellRef}
-              onCellClick={handleCellClick}
-              onMoveSelection={moveSelectionByKeyboard}
-              onOpenMonthEventEditor={openMonthEventEditor}
-            />
-          ))}
-        </div>
+        <MonthEventDialog
+          openDate={eventModalDate}
+          userId={userId}
+          monthEvents={monthEvents}
+          initialEventId={eventModalInitialEventId}
+          onSave={onSaveMonthEvent}
+          onDelete={onDeleteMonthEvent}
+          onClose={closeMonthEventEditor}
+        />
       </div>
-
-      <MonthEventDialog
-        openDate={eventModalDate}
-        userId={userId}
-        monthEvents={monthEvents}
-        onSave={onSaveMonthEvent}
-        onDelete={onDeleteMonthEvent}
-        onClose={() => setEventModalDate(null)}
-      />
-
-      <MonthPickerDialog
-        open={isMonthPickerOpen}
-        activeMonthDate={pager.activeMonthDate}
-        onSelectMonth={onChangeMonth}
-        onClose={() => setIsMonthPickerOpen(false)}
-      />
     </section>
   );
 }

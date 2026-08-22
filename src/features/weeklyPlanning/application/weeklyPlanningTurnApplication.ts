@@ -40,6 +40,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   userId: string;
   ownerId: string;
   userText: string;
+  supplementalContext?: string;
   selectedDate: string;
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
@@ -59,6 +60,7 @@ export function submitWeeklyPlanningApplicationTurn(
     session: params.session,
     ownerId: params.userId,
     userText: params.userText,
+    supplementalContext: params.supplementalContext,
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,

@@ -1,0 +1,111 @@
+/*
+ * AI planning is a primary application surface, not a dialog layered over Home.
+ * Reuse the Home shell's responsive width and bottom-navigation contract while
+ * keeping the persistent Home topbar above the chat.
+ */
+.app-shell.home-app-shell:has(.ai-planning-view) {
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding-top: clamp(6px, 1.05dvh, 10px);
+  padding-bottom: calc(var(--home-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
+}
+
+.home-main:has(.ai-planning-view) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(6px, 0.8dvh, 9px);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.ai-planning-primary-header.home-dashboard-default {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  align-content: initial;
+  gap: 0;
+}
+
+.ai-planning-primary-header .home-topbar {
+  width: 100%;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard {
+  position: relative;
+  inset: auto !important;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  background: transparent;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  border-radius: clamp(12px, 1.6vw, 18px);
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-conversation {
+  min-height: 0;
+}
+
+/* AI planning is the only active item on this surface. The legacy markup still
+ * wraps Home in the elevated circle, so neutralize that presentation here. */
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:first-child {
+  color: var(--accent);
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) {
+  color: var(--text-muted);
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) .home-nav-active-circle {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+  margin-top: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.app-shell.home-app-shell .ai-planning-view .home-bottom-nav.ai-planning-home-nav button:nth-child(3) .home-nav-active-circle svg {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+}
+
+@media (min-width: 700px) {
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-card {
+    border-radius: 18px;
+  }
+}
+
+@media (max-height: 760px) {
+  .app-shell.home-app-shell:has(.ai-planning-view) {
+    padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .home-main:has(.ai-planning-view) {
+    gap: 5px;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading {
+    padding-block: 8px;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer {
+    padding-block: 7px;
+  }
+}

@@ -1,0 +1,361 @@
+.app-shell.home-app-shell:has(.home-dashboard-default) {
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding-top: clamp(6px, 1.05dvh, 10px);
+}
+
+.home-main:has(.home-dashboard-default) {
+  min-height: 0;
+  height: 100%;
+}
+
+.home-dashboard-default {
+  --home-fit-gap-base: clamp(5px, 0.85dvh, 8px);
+  --home-fit-hero-height-base: clamp(145px, calc(23dvh - 18px), 226px);
+  --home-fit-row-height-base: clamp(40px, 5.7dvh, 50px);
+  --home-fit-gap: min(18px, calc(var(--home-fit-gap-base) + var(--home-relax-gap, 0px)));
+  --home-fit-hero-height: calc(var(--home-fit-hero-height-base) + var(--home-relax-hero, 0px));
+  --home-fit-row-height: min(50px, calc(var(--home-fit-row-height-base) + var(--home-relax-row, 0px)));
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  gap: var(--home-fit-gap);
+  overflow: hidden;
+}
+
+.home-dashboard-default .home-core-sections {
+  min-height: 0;
+  gap: var(--home-fit-gap);
+}
+
+.home-dashboard-default .home-material-measurements {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.home-dashboard-default .home-material-measurement {
+  width: 100%;
+}
+
+.home-dashboard-default .home-topbar {
+  min-height: min(62px, calc(clamp(50px, 7dvh, 62px) + var(--home-relax-topbar, 0px)));
+}
+
+.home-dashboard-default .home-streak-card {
+  min-height: clamp(46px, 6.3dvh, 54px);
+}
+
+.home-dashboard-default .home-date-display {
+  min-height: clamp(48px, 6.8dvh, 60px);
+}
+
+.home-dashboard-default .home-date-paper {
+  height: clamp(44px, 6dvh, 52px);
+}
+
+.home-dashboard-default .home-next-card {
+  height: var(--home-fit-hero-height);
+  min-height: 0;
+  padding-top: clamp(9px, 1.45dvh, 15px);
+  padding-bottom: clamp(46px, 6.5dvh, 62px);
+}
+
+.home-dashboard-default .home-study-scene {
+  height: calc(100% - clamp(40px, 6dvh, 49px));
+}
+
+.home-dashboard-default .home-start-button {
+  bottom: clamp(7px, 1.1dvh, 10px);
+  min-height: clamp(37px, 5.3dvh, 46px);
+}
+
+.home-dashboard-default .home-next-copy h1 {
+  margin-bottom: clamp(4px, 0.75dvh, 8px);
+  font-size: clamp(1.02rem, 2.15dvh, 1.32rem);
+}
+
+.home-dashboard-default .home-eyebrow {
+  margin-bottom: clamp(3px, 0.6dvh, 6px);
+}
+
+.home-dashboard-default .home-empty-copy {
+  font-size: clamp(0.64rem, 1.25dvh, 0.75rem);
+  line-height: 1.36;
+}
+
+.home-dashboard-default .home-panel {
+  padding: clamp(7px, 1dvh, 10px) clamp(9px, 1.2dvh, 12px) clamp(6px, 0.9dvh, 8px);
+}
+
+.home-dashboard-default .home-today-panel {
+  min-height: 0;
+  padding-top: calc(clamp(7px, 1dvh, 10px) + var(--home-relax-today-side, 0px));
+  padding-bottom: calc(clamp(6px, 0.9dvh, 8px) + var(--home-relax-today-side, 0px));
+}
+
+.home-dashboard-default .home-section-heading {
+  margin-bottom: clamp(3px, 0.55dvh, 6px);
+}
+
+.home-dashboard-default .home-schedule-list {
+  min-height: 0;
+  max-height: var(--home-dynamic-schedule-max, none);
+  overflow-y: auto;
+}
+
+.home-dashboard-default .home-schedule-row,
+.home-dashboard-default .home-schedule-empty {
+  min-height: var(--home-fit-row-height);
+  padding-top: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+  padding-bottom: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+}
+
+.home-dashboard-default .home-schedule-add-row {
+  min-height: clamp(32px, 4.5dvh, 40px);
+  padding-top: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+  padding-bottom: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+}
+
+.home-dashboard-default .home-alert-grid {
+  gap: var(--home-fit-gap);
+}
+
+.home-dashboard-default .home-alert-card {
+  padding: clamp(7px, 1dvh, 10px);
+  padding-block: calc(clamp(7px, 1dvh, 10px) + var(--home-relax-alert-side, 0px));
+}
+
+.home-dashboard-default .home-alert-heading {
+  margin-bottom: clamp(4px, 0.65dvh, 7px);
+}
+
+.home-dashboard-default .home-progress-panel {
+  min-height: 104px;
+}
+
+@media (max-height: 900px) {
+  .home-dashboard-default .home-streak-card {
+    gap: 5px;
+    padding: 4px 7px;
+  }
+
+  .home-dashboard-default .home-streak-flame {
+    width: 23px;
+    height: 23px;
+  }
+
+  .home-dashboard-default .home-streak-card strong {
+    font-size: 1rem;
+  }
+
+  .home-dashboard-default .home-streak-card span,
+  .home-dashboard-default .home-streak-card small {
+    font-size: 0.53rem;
+  }
+
+  .home-dashboard-default .home-date-display {
+    padding-top: 5px;
+  }
+
+  .home-dashboard-default .home-date-segment::before,
+  .home-dashboard-default .home-date-segment-year::after {
+    top: -5px;
+    height: 13px;
+  }
+
+  .home-dashboard-default .home-date-value {
+    font-size: clamp(0.86rem, 2dvh, 0.96rem);
+  }
+
+  .home-dashboard-default .home-date-unit {
+    font-size: clamp(0.57rem, 1.35dvh, 0.63rem);
+  }
+
+  .home-dashboard-default .home-icon-button,
+  .home-dashboard-default .home-avatar-button {
+    width: 33px;
+    height: 33px;
+    min-width: 33px;
+  }
+
+  .home-dashboard-default .home-avatar-button .user-avatar,
+  .home-dashboard-default .home-avatar-button img {
+    width: 31px;
+    height: 31px;
+  }
+
+  .home-dashboard-default .home-next-copy {
+    min-width: 0;
+    width: 58%;
+  }
+
+  .home-dashboard-default .home-next-meta {
+    gap: 3px;
+    font-size: 0.66rem;
+  }
+
+  .home-dashboard-default .home-start-button {
+    left: 14px;
+    right: 14px;
+    gap: 7px;
+    font-size: 0.84rem;
+  }
+
+  .home-dashboard-default .home-start-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .home-dashboard-default .home-section-heading h2 {
+    font-size: 0.75rem;
+  }
+
+  .home-dashboard-default .home-section-heading button {
+    font-size: 0.59rem;
+  }
+
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    padding-top: calc(3px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(3px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-schedule-content {
+    gap: 0;
+  }
+
+  .home-dashboard-default .home-schedule-content time {
+    font-size: 0.6rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-schedule-content strong {
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-content small {
+    font-size: 0.56rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-schedule-add-row strong {
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-empty {
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding: 7px 8px;
+    padding-block: calc(7px + var(--home-relax-alert-side, 0px));
+  }
+
+  .home-dashboard-default .home-alert-heading {
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 0.59rem;
+  }
+
+  .home-dashboard-default .home-alert-heading > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .home-dashboard-default .home-alert-heading b {
+    padding: 2px 5px;
+  }
+
+  .home-dashboard-default .home-alert-body {
+    grid-template-columns: 20px minmax(0, 1fr) 12px;
+    gap: 4px;
+  }
+
+  .home-dashboard-default .home-alert-body > svg:first-child {
+    width: 20px;
+    height: 20px;
+  }
+
+  .home-dashboard-default .home-alert-body > svg:last-child {
+    width: 13px;
+    height: 13px;
+  }
+
+  .home-dashboard-default .home-alert-body small {
+    font-size: 0.53rem;
+  }
+
+  .home-dashboard-default .home-alert-body strong {
+    font-size: 0.61rem;
+  }
+}
+
+@media (max-height: 800px) {
+  .home-dashboard-default .home-eyebrow {
+    margin-bottom: 2px;
+    font-size: 0.62rem;
+    line-height: 1;
+  }
+
+  .home-dashboard-default .home-next-copy h1 {
+    margin-bottom: 3px;
+    font-size: 0.96rem;
+    line-height: 1.08;
+  }
+
+  .home-dashboard-default .home-next-meta {
+    gap: 1px;
+    font-size: 0.58rem;
+    line-height: 1.05;
+  }
+
+  .home-dashboard-default .home-next-meta span {
+    min-height: 14px;
+    gap: 4px;
+  }
+
+  .home-dashboard-default .home-next-meta svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+@media (max-height: 760px) {
+  .home-dashboard-default {
+    --home-fit-gap-base: 5px;
+  }
+
+  .home-dashboard-default .home-study-scene {
+    transform: scale(0.86);
+    transform-origin: top right;
+  }
+}
+
+@media (max-height: 640px) {
+  .home-dashboard-default {
+    --home-fit-hero-height-base: 145px;
+    --home-fit-row-height-base: 40px;
+  }
+
+  .home-dashboard-default .home-study-scene {
+    transform: scale(0.8);
+  }
+
+  .home-dashboard-default .home-empty-copy {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}

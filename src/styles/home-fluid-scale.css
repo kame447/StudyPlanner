@@ -1,0 +1,468 @@
+/*
+ * Home sizing should follow both viewport axes. Phone layouts keep the
+ * compact game-like proportions, while tablet/desktop layouts use the
+ * available width instead of preserving a phone-width column in the center.
+ */
+
+/* On genuinely short screens the supplemental material card is the first
+ * section to yield. This is intentionally deterministic so mobile emulation
+ * and dynamic-viewport implementations cannot disagree about whether it fits.
+ */
+@media (max-height: 700px) {
+  .home-dashboard-default > .home-material-panel,
+  .home-dashboard-default .home-material-measurements {
+    display: none !important;
+  }
+}
+
+/* Tablet and wider --------------------------------------------------- */
+@media (min-width: 700px) {
+  .app-shell.home-app-shell {
+    width: min(96vw, 1040px);
+    max-width: 1040px;
+    padding-inline: clamp(16px, 2.4vw, 30px);
+  }
+
+  .home-dashboard {
+    --home-radius: 18px;
+    --home-radius-small: 14px;
+    --home-shadow-card: 0 9px 24px rgba(32, 55, 91, 0.055);
+  }
+
+  .home-topbar {
+    grid-template-columns:
+      minmax(150px, 0.78fr)
+      minmax(330px, 1.8fr)
+      minmax(154px, 0.8fr);
+    gap: clamp(9px, 1.25vw, 14px);
+    min-height: 70px;
+  }
+
+  .home-streak-card {
+    min-height: 62px;
+    gap: 9px;
+    padding: 8px 12px;
+    border-radius: 14px;
+  }
+
+  .home-streak-flame {
+    width: 31px;
+    height: 31px;
+  }
+
+  .home-streak-card span,
+  .home-streak-card small {
+    font-size: 0.66rem;
+  }
+
+  .home-streak-card strong {
+    font-size: 1.28rem;
+  }
+
+  .home-date-display {
+    min-height: 68px;
+    padding-top: 8px;
+  }
+
+  .home-date-paper {
+    height: 60px;
+    border-radius: 12px;
+  }
+
+  .home-date-value {
+    font-size: clamp(1rem, 1.65vw, 1.18rem);
+  }
+
+  .home-date-unit {
+    font-size: clamp(0.67rem, 1vw, 0.75rem);
+  }
+
+  .home-top-actions {
+    gap: 7px;
+  }
+
+  .home-icon-button,
+  .home-avatar-button,
+  .home-dashboard-default .home-icon-button,
+  .home-dashboard-default .home-avatar-button {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+  }
+
+  .home-avatar-button .user-avatar,
+  .home-avatar-button img,
+  .home-dashboard-default .home-avatar-button .user-avatar,
+  .home-dashboard-default .home-avatar-button img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .home-next-card {
+    padding-inline: clamp(20px, 2.3vw, 28px);
+    border-radius: 18px;
+  }
+
+  .home-next-copy,
+  .home-dashboard-default .home-next-copy {
+    width: 52%;
+    min-width: 310px;
+  }
+
+  .home-eyebrow {
+    font-size: 0.8rem;
+  }
+
+  .home-next-copy h1,
+  .home-dashboard-default .home-next-copy h1 {
+    font-size: clamp(1.35rem, 2.15vw, 1.72rem);
+  }
+
+  .home-next-meta,
+  .home-dashboard-default .home-next-meta {
+    gap: 5px;
+    font-size: clamp(0.78rem, 1.2vw, 0.9rem);
+    line-height: 1.15;
+  }
+
+  .home-next-meta span,
+  .home-dashboard-default .home-next-meta span {
+    min-height: 20px;
+    gap: 7px;
+  }
+
+  .home-next-meta svg,
+  .home-dashboard-default .home-next-meta svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .home-empty-copy {
+    max-width: 390px;
+    font-size: 0.86rem;
+    line-height: 1.55;
+  }
+
+  .home-study-scene {
+    width: 50%;
+  }
+
+  .home-start-button,
+  .home-dashboard-default .home-start-button {
+    left: clamp(20px, 2.3vw, 28px);
+    right: clamp(20px, 2.3vw, 28px);
+    min-height: 50px;
+    border-radius: 13px;
+    font-size: 0.98rem;
+  }
+
+  .home-start-icon,
+  .home-dashboard-default .home-start-icon {
+    width: 27px;
+    height: 27px;
+  }
+
+  .home-panel {
+    border-radius: 18px;
+  }
+
+  .home-dashboard-default .home-panel {
+    padding-inline: clamp(12px, 1.7vw, 18px);
+  }
+
+  .home-section-heading h2,
+  .home-dashboard-default .home-section-heading h2 {
+    font-size: 0.88rem;
+  }
+
+  .home-section-heading button,
+  .home-dashboard-default .home-section-heading button {
+    font-size: 0.7rem;
+  }
+
+  /* Vertical density is owned by home-fit.css, not by viewport width. */
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    min-height: var(--home-fit-row-height);
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    min-height: clamp(32px, calc(var(--home-fit-row-height) - 10px), 48px);
+  }
+
+  .home-dashboard-default .home-schedule-content {
+    gap: 2px;
+  }
+
+  .home-dashboard-default .home-schedule-content time {
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .home-dashboard-default .home-schedule-content strong,
+  .home-dashboard-default .home-schedule-add-row strong {
+    font-size: 0.82rem;
+    line-height: 1.15;
+  }
+
+  .home-dashboard-default .home-schedule-content small {
+    font-size: 0.64rem;
+    line-height: 1.1;
+  }
+
+  .home-alert-grid {
+    gap: clamp(8px, 1.25vw, 14px);
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding-inline: clamp(10px, 1.5vw, 15px);
+    border-radius: 18px;
+  }
+
+  .home-dashboard-default .home-alert-heading {
+    font-size: 0.7rem;
+  }
+
+  .home-dashboard-default .home-alert-body small {
+    font-size: 0.62rem;
+  }
+
+  .home-dashboard-default .home-alert-body strong {
+    font-size: 0.72rem;
+  }
+
+  .home-progress-panel,
+  .home-material-panel {
+    border-radius: 18px;
+  }
+
+  .home-material-panel {
+    padding-inline: clamp(12px, 1.7vw, 18px);
+  }
+
+  .home-material-row {
+    min-height: 72px;
+    grid-template-columns: 38px minmax(0, 1fr) 18px;
+    gap: 11px;
+    padding-inline: 12px;
+  }
+
+  .home-material-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .home-material-title-line strong {
+    font-size: 0.82rem;
+  }
+
+  .home-material-title-line b,
+  .home-material-copy small {
+    font-size: 0.68rem;
+  }
+
+  .weekly-progress-layout {
+    grid-template-columns:
+      clamp(64px, 10vw, 80px)
+      clamp(104px, 17vw, 150px)
+      minmax(0, 1fr);
+    gap: clamp(9px, 1.7vw, 16px);
+  }
+
+  .weekly-progress-ring {
+    width: clamp(62px, 8vw, 74px);
+    height: clamp(62px, 8vw, 74px);
+  }
+
+  .weekly-progress-summary {
+    font-size: clamp(0.58rem, 0.95vw, 0.7rem);
+  }
+
+  .weekly-progress-legend {
+    font-size: clamp(0.52rem, 0.8vw, 0.62rem);
+  }
+
+  .home-bottom-nav,
+  .home-dashboard-default .home-bottom-nav {
+    width: min(96vw, 1040px);
+  }
+}
+
+/* Tall tablets should scale the complete dashboard, not leave a phone-density
+ * column floating at the top. The dynamic relaxation variables distribute any
+ * remaining height across several sections instead of stretching one chart.
+ */
+@media (min-width: 700px) and (min-height: 1000px) {
+  .app-shell.home-app-shell {
+    --home-nav-height: 96px;
+    --home-nav-icon-size: 31px;
+    --home-nav-label-size: 0.78rem;
+    --home-nav-active-size: 49px;
+    --home-nav-active-icon-size: 27px;
+  }
+
+  .home-dashboard-default {
+    --home-fit-gap: min(22px, calc(var(--home-fit-gap-base) + 2px + var(--home-relax-gap, 0px)));
+    --home-fit-hero-height: min(350px, calc(var(--home-fit-hero-height-base) + 30px + var(--home-relax-hero, 0px)));
+    --home-fit-row-height: min(70px, calc(var(--home-fit-row-height-base) + var(--home-relax-row, 0px)));
+  }
+
+  .home-dashboard-default .home-topbar {
+    min-height: 78px;
+    padding-block: calc(4px + var(--home-relax-topbar, 0px) / 2);
+  }
+
+  .home-dashboard-default .home-streak-card {
+    min-height: 70px;
+    padding-block: 11px;
+  }
+
+  .home-dashboard-default .home-date-display {
+    min-height: 78px;
+  }
+
+  .home-dashboard-default .home-date-paper {
+    height: 70px;
+  }
+
+  .home-dashboard-default .home-next-card {
+    padding-top: 22px;
+    padding-bottom: 76px;
+  }
+
+  .home-dashboard-default .home-start-button {
+    min-height: 58px;
+    bottom: 13px;
+    font-size: 1.05rem;
+  }
+
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    padding-top: calc(9px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(9px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    padding-top: calc(8px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(8px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-today-panel {
+    padding-top: calc(11px + var(--home-relax-today-side, 0px));
+    padding-bottom: calc(10px + var(--home-relax-today-side, 0px));
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding-block: calc(13px + var(--home-relax-alert-side, 0px));
+  }
+
+  .home-dashboard-default .home-progress-panel {
+    min-height: 152px;
+    padding-top: calc(14px + var(--home-relax-progress-side, 0px));
+    padding-bottom: calc(15px + var(--home-relax-progress-side, 0px));
+  }
+
+  .weekly-progress-plot {
+    --weekly-progress-plot-height: 74px;
+  }
+
+  .weekly-progress-ring {
+    width: clamp(74px, 9vw, 86px);
+    height: clamp(74px, 9vw, 86px);
+  }
+
+  .home-material-panel {
+    padding-top: calc(18px + var(--home-relax-material-side, 0px));
+    padding-bottom: calc(17px + var(--home-relax-material-side, 0px));
+  }
+
+  .home-material-row {
+    min-height: 92px;
+    padding-block: 16px;
+  }
+}
+
+/* Large portrait tablets have significantly more vertical room than the
+ * 1024px-tall tablet class. Increase the whole dashboard proportionally so
+ * the extra space is shared by the existing components rather than left as a
+ * blank strip above navigation.
+ */
+@media (min-width: 900px) and (min-height: 1200px) {
+  .app-shell.home-app-shell {
+    --home-nav-height: 100px;
+  }
+
+  .home-dashboard-default {
+    --home-fit-gap: min(23px, calc(var(--home-fit-gap-base) + 3px + var(--home-relax-gap, 0px)));
+    --home-fit-hero-height: min(368px, calc(var(--home-fit-hero-height-base) + 48px + var(--home-relax-hero, 0px)));
+  }
+
+  .home-dashboard-default .home-topbar {
+    padding-block: calc(5px + var(--home-relax-topbar, 0px) / 2);
+  }
+
+  .home-dashboard-default .home-schedule-row,
+  .home-dashboard-default .home-schedule-empty {
+    padding-top: calc(11px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(11px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-schedule-add-row {
+    padding-top: calc(10px + var(--home-relax-schedule-side, 0px));
+    padding-bottom: calc(10px + var(--home-relax-schedule-side, 0px));
+  }
+
+  .home-dashboard-default .home-today-panel {
+    padding-top: calc(14px + var(--home-relax-today-side, 0px));
+    padding-bottom: calc(13px + var(--home-relax-today-side, 0px));
+  }
+
+  .home-dashboard-default .home-alert-card {
+    padding-block: calc(15px + var(--home-relax-alert-side, 0px));
+  }
+
+  .home-dashboard-default .home-progress-panel {
+    min-height: 168px;
+  }
+
+  .home-material-panel {
+    padding-top: calc(21px + var(--home-relax-material-side, 0px));
+    padding-bottom: calc(20px + var(--home-relax-material-side, 0px));
+  }
+
+  .home-material-row {
+    min-height: 100px;
+  }
+}
+
+/* Large tablets / desktop keep the dashboard cohesive instead of becoming a
+ * sparse full-width web page, but still use most of an iPad-class viewport.
+ */
+@media (min-width: 900px) {
+  .app-shell.home-app-shell {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+
+  .home-bottom-nav,
+  .home-dashboard-default .home-bottom-nav {
+    width: min(94vw, 1080px);
+  }
+
+  .home-topbar {
+    grid-template-columns:
+      minmax(170px, 0.78fr)
+      minmax(390px, 1.9fr)
+      minmax(172px, 0.78fr);
+  }
+
+  .home-next-copy,
+  .home-dashboard-default .home-next-copy {
+    min-width: 360px;
+  }
+
+  .home-study-scene {
+    width: 48%;
+  }
+}

@@ -3,7 +3,8 @@ import {
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
-import worker, { AiQuotaDurableObject } from './worker';
+import worker from './worker';
+import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';

@@ -104,7 +104,7 @@ function publicStateSummary() {
   };
 }
 
-function fakeClient(responses: string[]): {
+function fakeClient(responses: Array<string | Error>): {
   client: OpenAiCompatibleClient;
   calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]>;
 } {
@@ -117,6 +117,7 @@ function fakeClient(responses: string[]): {
         calls.push(input);
         const response = responses[index++];
         if (response === undefined) throw new Error('fake response exhausted');
+        if (response instanceof Error) throw response;
         return response;
       },
     },
@@ -255,6 +256,23 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       repairAttempted: false,
     });
     expect(result.document).toEqual(initial);
+  });
+
+  it('returns provider failure when a completeness retry request fails instead of accepting the no-op', async () => {
+    const fake = fakeClient([
+      JSON.stringify(existingTaskShell()),
+      focusedFallback(),
+      new Error('AI rate limit exceeded.'),
+    ]);
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText,
+      publicStateSummary: publicStateSummary(),
+    });
+
+    expect(fake.calls).toHaveLength(3);
+    expect(result.status).toBe('provider_failure');
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.providerError).toContain('AI rate limit exceeded.');
   });
 
   it('uses the focused temporal route after repair produced a schema-valid no-op', async () => {

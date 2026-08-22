@@ -1,0 +1,262 @@
+.primary-app-header {
+  width: min(calc(100vw - 24px), 484px);
+  margin-inline: auto;
+  align-self: start;
+  justify-self: center;
+}
+
+/*
+ * PrimaryAppHeader intentionally reuses the home dashboard context so the
+ * HomeTopbar gets exactly the same tokens and responsive child sizing. It is
+ * only a chrome wrapper, though, so none of the full-dashboard sizing or
+ * clipping rules are allowed to turn it into a second page layout.
+ */
+.primary-app-header.home-dashboard-default {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  align-content: initial;
+  gap: 0;
+}
+
+.primary-app-header .home-topbar {
+  width: 100%;
+}
+
+.workspace-primary-header,
+.ai-planning-primary-header {
+  justify-self: center;
+}
+
+/*
+ * Header and footer are persistent siblings of the changing page body. Home
+ * resolves the topbar relaxation once for the current viewport and writes it
+ * onto the persistent header element, so changing surfaces cannot remount or
+ * remeasure the chrome. The page body gets the remaining row.
+ */
+.app-shell.home-app-shell:has(> .primary-app-header) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding-top: clamp(6px, 0.8dvh, 9px);
+}
+
+.app-shell.home-app-shell:has(.ai-planning-view) > .home-main {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
+/*
+ * The footer used to inherit its geometry from .home-app-shell. Workspace
+ * surfaces do not have that ancestor, so the same PrimaryBottomNav component
+ * silently fell back to the old 62px navigation. The shared component now
+ * owns the home navigation metrics itself.
+ */
+.primary-bottom-nav {
+  --home-nav-height: 74px;
+  --home-nav-icon-size: 25px;
+  --home-nav-label-size: 0.66rem;
+  --home-nav-active-size: 40px;
+  --home-nav-active-icon-size: 22px;
+  width: min(508px, 100%);
+  height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding: 7px 8px env(safe-area-inset-bottom, 0px);
+}
+
+/* Schedule used to own a second 900px-wide footer contract. Keep the class as
+ * a surface marker only; the persistent footer must retain Home geometry and
+ * presentation when the active page changes. */
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav {
+  z-index: 95;
+  width: min(508px, 100%);
+  height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding: 7px 8px env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid #e4e9f0;
+  border-radius: 0;
+  background: rgba(255,255,255,0.98);
+  box-shadow: 0 -8px 24px rgba(34, 54, 88, 0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.primary-bottom-nav button {
+  color: var(--home-gray, var(--text-muted));
+}
+
+.primary-bottom-nav button:first-child:not(.active) {
+  color: var(--home-gray, var(--text-muted));
+}
+
+.primary-bottom-nav button.active {
+  color: var(--accent);
+}
+
+.primary-bottom-nav .home-nav-active-circle {
+  width: var(--home-nav-active-size);
+  height: var(--home-nav-active-size);
+  margin-top: -16px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 7px 18px var(--accent-shadow);
+}
+
+.primary-bottom-nav svg,
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav svg {
+  width: var(--home-nav-icon-size);
+  height: var(--home-nav-icon-size);
+}
+
+.primary-bottom-nav span:last-child,
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav span:last-child {
+  font-size: var(--home-nav-label-size);
+}
+
+.primary-bottom-nav .home-nav-active-circle svg,
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav .home-nav-active-circle svg {
+  width: var(--home-nav-active-icon-size);
+  height: var(--home-nav-active-icon-size);
+}
+
+/* Keep the workspace chrome on the same viewport grid as Home. */
+.app-shell:not(.home-app-shell):has(.primary-app-header) {
+  padding-top: clamp(6px, 1.05dvh, 10px);
+}
+
+.app-view-switcher {
+  position: static;
+  inset: auto;
+  top: auto;
+  bottom: auto;
+  z-index: auto;
+  width: min(100%, 508px);
+  margin-inline: auto;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-view-switcher.panel {
+  padding: 7px 8px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.schedule-workspace-shell {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.bookshelf-view,
+.report-view,
+.timetable-view {
+  min-width: 0;
+}
+
+@media (max-width: 699px) {
+  .app-shell:not(.home-app-shell):has(> .primary-app-header) {
+    padding-inline: 12px;
+  }
+}
+
+/* Home itself switches to 8px side padding at this breakpoint. Reproduce the
+ * same resolved header slot, including the 508px shell cap, on every page. */
+@media (max-width: 520px) {
+  .primary-app-header {
+    width: min(calc(100vw - 16px), 492px);
+  }
+
+  .app-shell:not(.home-app-shell):has(> .primary-app-header) {
+    padding-inline: 8px;
+  }
+}
+
+@media (max-height: 760px) {
+  .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
+    padding-top: 5px;
+  }
+
+  .primary-bottom-nav {
+    --home-nav-height: 68px;
+    --home-nav-icon-size: 23px;
+    --home-nav-label-size: 0.62rem;
+    --home-nav-active-size: 37px;
+    --home-nav-active-icon-size: 20px;
+    padding-top: 6px;
+  }
+
+  .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav {
+    padding-top: 6px;
+  }
+
+  .primary-bottom-nav .home-nav-active-circle {
+    margin-top: -14px;
+  }
+}
+
+@media (min-width: 700px) {
+  .primary-app-header {
+    width: min(
+      calc(96vw - 2 * clamp(16px, 2.4vw, 30px)),
+      calc(1040px - 2 * clamp(16px, 2.4vw, 30px))
+    );
+  }
+
+  .primary-bottom-nav,
+  .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav {
+    width: min(96vw, 1040px);
+  }
+
+  .app-shell:has(.bookshelf-view) {
+    width: min(96vw, 1040px);
+    max-width: 1040px;
+    padding-inline: clamp(16px, 2.4vw, 30px);
+  }
+}
+
+@media (min-width: 700px) and (min-height: 1000px) {
+  .primary-bottom-nav {
+    --home-nav-height: 96px;
+    --home-nav-icon-size: 31px;
+    --home-nav-label-size: 0.78rem;
+    --home-nav-active-size: 49px;
+    --home-nav-active-icon-size: 27px;
+  }
+}
+
+@media (min-width: 900px) {
+  .primary-app-header {
+    width: min(
+      calc(94vw - 2 * clamp(22px, 2.6vw, 34px)),
+      calc(1080px - 2 * clamp(22px, 2.6vw, 34px))
+    );
+  }
+
+  .primary-bottom-nav,
+  .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav {
+    width: min(94vw, 1080px);
+  }
+
+  .app-shell:has(.bookshelf-view) {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+}
+
+@media (min-width: 900px) and (min-height: 1200px) {
+  .primary-bottom-nav {
+    --home-nav-height: 100px;
+  }
+}
+
+@media (max-width: 540px) {
+  .app-view-switcher {
+    width: 100%;
+  }
+}

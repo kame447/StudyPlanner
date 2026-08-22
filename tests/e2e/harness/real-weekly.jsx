@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { WeeklyPlanningQuickEntryModal } from '../../../src/components/WeeklyPlanningQuickEntryModal';
+import { QuickEntryModal } from '../../../src/components/QuickEntryModal';
 import { useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import '../../../src/styles.css';
 
@@ -72,10 +72,27 @@ function RealWeeklyApplicationHarness() {
     scheduleTemplates: [],
     saveWeeklyApprovedPlan: saveApprovedPlan,
   });
+  const { state, approvalAvailability, pendingDraftBlocks } = application;
+  const unavailableApproval =
+    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
+      ? approvalAvailability
+      : null;
+  const lastMessage = state.messages[state.messages.length - 1];
+  const weeklyPlanningMessages = unavailableApproval
+    ? [
+        ...state.messages,
+        {
+          id: 'weekly-planning-approval-unavailable',
+          role: 'assistant',
+          content: unavailableApproval.message,
+          createdAt: lastMessage?.createdAt ?? '1970-01-01T00:00:00.000Z',
+        },
+      ]
+    : state.messages;
 
   useEffect(() => {
-    window.__realWeeklyState = application.state;
-  }, [application.state]);
+    window.__realWeeklyState = state;
+  }, [state]);
 
   useEffect(() => {
     window.__realWeeklyActions = {
@@ -95,14 +112,31 @@ function RealWeeklyApplicationHarness() {
   }
 
   return (
-    <WeeklyPlanningQuickEntryModal
-      application={application}
+    <QuickEntryModal
       userId="browser-real-weekly-user"
       selectedDate="2026-08-13"
       plans={[]}
       actuals={[]}
       materials={[]}
       subjects={[]}
+      weeklyDraftBlocks={pendingDraftBlocks}
+      weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
+      weeklyPlanningMessages={weeklyPlanningMessages}
+      weeklyPlanningIntakeState={state.intakeState ?? null}
+      weeklyPlanningWeekStartDate={state.weekStartDate}
+      weeklyPlanningRevision={state.revision}
+      weeklyPlanningPendingTurn={state.pendingTurn}
+      weeklyPlanningPendingApproval={state.pendingApproval}
+      onSubmitWeeklyPlanningTurn={application.submitTurn}
+      onCancelWeeklyPlanningTurn={application.cancelTurn}
+      onClearWeeklyPlanningConversation={application.clearConversation}
+      onAppendWeeklyPlanningMessage={application.appendMessage}
+      onResetWeeklyPlanningSession={application.resetSession}
+      onCreateWeeklyDraftBlocks={application.createDraftBlocks}
+      onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
+      onRemoveWeeklyDraftBlock={application.removeDraftBlock}
+      onClearWeeklyDraftBlocks={application.clearDraftBlocks}
+      onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
       onClose={() => {
         record('real-close');
         setOpen(false);

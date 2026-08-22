@@ -9,10 +9,21 @@ import { WeeklyPlanningQuickEntryModal } from './WeeklyPlanningQuickEntryModal';
 vi.mock('./QuickEntryModal', () => ({
   QuickEntryModal: (props: {
     weeklyPlanningMessages: Array<{ content: string }>;
+    weeklyDraftBlocks: unknown[];
+    weeklyPlanningPreviewCandidates?: unknown[];
+    weeklyPlanningIntakeState: unknown;
+    weeklyPlanningPendingTurn?: unknown;
+    weeklyPlanningPendingApproval?: unknown;
   }) => (
-    <div data-testid="quick-entry-modal">
-      {props.weeklyPlanningMessages.map((message) => message.content).join('|')}
-    </div>
+    <div
+      data-testid="quick-entry-modal"
+      data-weekly-message-count={props.weeklyPlanningMessages.length}
+      data-weekly-draft-count={props.weeklyDraftBlocks.length}
+      data-weekly-preview-count={props.weeklyPlanningPreviewCandidates?.length ?? 0}
+      data-has-weekly-intake={props.weeklyPlanningIntakeState ? 'true' : 'false'}
+      data-has-weekly-pending-turn={props.weeklyPlanningPendingTurn ? 'true' : 'false'}
+      data-has-weekly-pending-approval={props.weeklyPlanningPendingApproval ? 'true' : 'false'}
+    />
   ),
 }));
 
@@ -39,6 +50,9 @@ function application(kind: 'eligible' | 'recompute_required'): WeeklyPlanningApp
     clearConversation: () => false,
     appendMessage: noop,
     resetSession: noop,
+    startConversation: noop,
+    exportConversationSnapshot: () => null,
+    loadConversationSnapshot: () => false,
     createDraftBlocks: noop,
     removePreviewCandidate: noop,
     removeDraftBlock: noop,
@@ -61,8 +75,8 @@ const commonProps = {
   onSaveLinkedActual: async () => undefined,
 };
 
-describe('WeeklyPlanningQuickEntryModal restored draft lifecycle', () => {
-  it('shows recomputation guidance and marks approval unavailable', () => {
+describe('WeeklyPlanningQuickEntryModal manual quick-add boundary', () => {
+  it('does not expose weekly AI state inside add-study even when a draft is pending', () => {
     const renderer = create(
       <WeeklyPlanningQuickEntryModal
         {...commonProps}
@@ -70,45 +84,41 @@ describe('WeeklyPlanningQuickEntryModal restored draft lifecycle', () => {
       />,
     );
     const root = renderer.root.findByProps({
-      'data-weekly-approval-availability': 'recompute_required',
+      'data-quick-entry-manual-only': 'true',
     });
+    const modal = renderer.root.findByProps({ 'data-testid': 'quick-entry-modal' });
 
-    expect(root.props.className).toBe('weekly-planning-approval-unavailable');
-    expect(renderer.toJSON()).toEqual(expect.objectContaining({
-      children: expect.arrayContaining([
-        expect.objectContaining({
-          children: expect.arrayContaining([
-            expect.stringContaining('再読み込み前の仮予定です。最新条件で作り直してください。'),
-          ]),
-        }),
-      ]),
-    }));
+    expect(root.props['data-weekly-approval-availability']).toBe('recompute_required');
+    expect(modal.props['data-weekly-message-count']).toBe(0);
+    expect(modal.props['data-weekly-draft-count']).toBe(0);
+    expect(modal.props['data-weekly-preview-count']).toBe(0);
+    expect(modal.props['data-has-weekly-intake']).toBe('false');
+    expect(modal.props['data-has-weekly-pending-turn']).toBe('false');
+    expect(modal.props['data-has-weekly-pending-approval']).toBe('false');
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('再読み込み前の仮予定です');
   });
 
-  it('does not mark the modal unavailable while the current runtime is eligible', () => {
+  it('keeps the manual-only boundary for an eligible weekly planning runtime too', () => {
     const renderer = create(
       <WeeklyPlanningQuickEntryModal
         {...commonProps}
         application={application('eligible')}
       />,
     );
-    const root = renderer.root.findByProps({
-      'data-weekly-approval-availability': 'eligible',
-    });
 
-    expect(root.props.className).toBeUndefined();
-    expect(JSON.stringify(renderer.toJSON())).not.toContain('再読み込み前の仮予定です');
+    expect(
+      renderer.root.findByProps({ 'data-quick-entry-manual-only': 'true' }),
+    ).toBeTruthy();
   });
 
-  it('hides the approval action for the unavailable wrapper class', () => {
+  it('hides the manual/AI switch and AI panel only inside the manual-only quick-add wrapper', () => {
     const css = readFileSync(
-      new URL('./WeeklyPlanningQuickEntryModal.css', import.meta.url),
+      new URL('../styles/interaction-continuity.css', import.meta.url),
       'utf8',
     );
 
-    expect(css).toContain(
-      '.weekly-planning-approval-unavailable .weekly-draft-action-bar .primary-button',
-    );
-    expect(css).toContain('display: none');
+    expect(css).toContain("[data-quick-entry-manual-only='true'] .quick-entry-switch-card");
+    expect(css).toContain("[data-quick-entry-manual-only='true'] .quick-entry-ai-panel");
+    expect(css).toContain('display: none !important');
   });
 });

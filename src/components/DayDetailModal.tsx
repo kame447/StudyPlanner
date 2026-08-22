@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, NotebookPen, Pencil, Trash2, X } from 'lucide-react';
+import { useExitMotion } from '../hooks/useExitMotion';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
 import { ActualEditorCard } from './ActualEditorCard';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
@@ -19,6 +22,8 @@ interface DayDetailModalProps {
   onClose: () => void;
 }
 
+type PlanSheetMode = 'menu' | 'record';
+
 export function DayDetailModal({
   detailPlan,
   monthEvent,
@@ -34,23 +39,117 @@ export function DayDetailModal({
   onDeleteActual,
   onClose,
 }: DayDetailModalProps) {
+  const [planSheetMode, setPlanSheetMode] = useState<PlanSheetMode>('menu');
+  const { isExiting, requestExit } = useExitMotion(onClose);
+  const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
+
+  useEffect(() => {
+    setPlanSheetMode('menu');
+  }, [detailPlan?.id, standaloneActual?.id]);
+
   if (detailPlan) {
-    return (
-      <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={onClose}>
+    if (planSheetMode === 'menu') {
+      return (
         <div
-          className="modal-card daily-detail-modal"
+          className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+          onClick={() => requestExit()}
+        >
+          <section
+            className="modal-card daily-detail-modal schedule-action-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${detailPlan.title}の操作`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="schedule-action-handle" aria-hidden="true" />
+            <div className="schedule-action-topline">
+              <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
+                <X aria-hidden="true" size={22} />
+              </button>
+              <div>
+                <strong>{detailPlan.title}</strong>
+                <span>{detailPlan.startTime} - {detailPlan.endTime}</span>
+              </div>
+            </div>
+
+            <div className="schedule-action-list">
+              {!monthEvent ? (
+                <button
+                  className="schedule-action-item"
+                  onClick={() => {
+                    requestExit(() => {
+                      window.requestAnimationFrame(() => onEditPlan(detailPlan));
+                    });
+                  }}
+                  type="button"
+                >
+                  <span className="schedule-action-icon"><Pencil aria-hidden="true" size={24} /></span>
+                  <span className="schedule-action-copy">
+                    <strong>予定を編集</strong>
+                    <small>時間や内容を変更</small>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={22} />
+                </button>
+              ) : null}
+
+              <button
+                className="schedule-action-item"
+                onClick={() => setPlanSheetMode('record')}
+                type="button"
+              >
+                <span className="schedule-action-icon"><NotebookPen aria-hidden="true" size={24} /></span>
+                <span className="schedule-action-copy">
+                  <strong>{detailActual ? '記録を編集' : '記録を保存'}</strong>
+                  <small>実際の内容を保存</small>
+                </span>
+                <ChevronRight aria-hidden="true" size={22} />
+              </button>
+
+              {!monthEvent ? (
+                <button
+                  className="schedule-action-item danger"
+                  onClick={() => {
+                    void onDeletePlan(detailPlan).finally(() => requestExit());
+                  }}
+                  type="button"
+                >
+                  <span className="schedule-action-icon"><Trash2 aria-hidden="true" size={24} /></span>
+                  <span className="schedule-action-copy">
+                    <strong>削除</strong>
+                    <small>この予定を削除</small>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={22} />
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+        onClick={() => requestExit()}
+      >
+        <div
+          className="modal-card daily-detail-modal schedule-record-sheet"
           onClick={(event) => event.stopPropagation()}
         >
+          <div className="schedule-action-handle" aria-hidden="true" />
           <div className="daily-detail-modal-header">
-            <button className="ghost-button" onClick={onClose} type="button">
-              閉じる
+            <button className="schedule-action-back" onClick={() => setPlanSheetMode('menu')} type="button" aria-label="戻る">
+              <ChevronLeft aria-hidden="true" size={22} />
             </button>
             <div className="daily-detail-modal-heading">
-              <h2>{monthEvent ? '主要予定を記録登録' : '詳細入力'}</h2>
+              <h2>{detailActual ? '記録を編集' : '記録を保存'}</h2>
               <p>
                 {detailPlan.startTime} - {detailPlan.endTime} / {detailPlan.title}
               </p>
             </div>
+            <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
+              <X aria-hidden="true" size={21} />
+            </button>
           </div>
 
           <div className="daily-detail-modal-body">
@@ -64,10 +163,10 @@ export function DayDetailModal({
               onDeletePlan={onDeletePlan}
               onSaveActual={onSaveActual}
               onDeleteActual={onDeleteActual}
-              onClose={onClose}
+              onClose={() => requestExit()}
               forceOpen
               hideToggleButton
-              hidePlanActions={Boolean(monthEvent)}
+              hidePlanActions
             />
           </div>
         </div>
@@ -80,15 +179,17 @@ export function DayDetailModal({
   }
 
   return (
-    <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={onClose}>
+    <div
+      className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
+      onClick={() => requestExit()}
+    >
       <div
-        className="modal-card daily-detail-modal"
+        className="modal-card daily-detail-modal schedule-record-sheet"
         onClick={(event) => event.stopPropagation()}
       >
+        <div className="schedule-action-handle" aria-hidden="true" />
         <div className="daily-detail-modal-header">
-          <button className="ghost-button" onClick={onClose} type="button">
-            閉じる
-          </button>
+          <span className="schedule-action-header-spacer" />
           <div className="daily-detail-modal-heading">
             <h2>記録を編集</h2>
             <p>
@@ -96,6 +197,9 @@ export function DayDetailModal({
               {standaloneActual.title || '記録'}
             </p>
           </div>
+          <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
+            <X aria-hidden="true" size={21} />
+          </button>
         </div>
 
         <div className="daily-detail-modal-body">
@@ -107,7 +211,7 @@ export function DayDetailModal({
             onSaveStandaloneActual={onSaveStandaloneActual}
             onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
             onDeleteActual={onDeleteActual}
-            onClose={onClose}
+            onClose={() => requestExit()}
           />
         </div>
       </div>

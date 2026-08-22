@@ -1,0 +1,182 @@
+/* Home date plate ----------------------------------------------------
+ * Warm wooden plaque used by HomeDateDisplay. This file is loaded after the
+ * general home responsive/fit layers so the date component owns its visual
+ * treatment and cannot fall back to the old floating-ring design.
+ */
+
+.home-date-display {
+  position: relative;
+  min-width: 0;
+  min-height: 60px;
+  display: block;
+  padding-top: 5px;
+  color: #fffaf0;
+  text-decoration: none;
+}
+
+.home-date-paper {
+  position: relative;
+  height: 52px;
+  display: grid;
+  grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
+  overflow: visible;
+  border: 1px solid rgba(104, 59, 27, 0.28);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(89, 45, 19, 0.09)),
+    repeating-linear-gradient(
+      7deg,
+      #cf945d 0 7px,
+      #c88852 7px 13px,
+      #c2834e 13px 20px,
+      #d79c67 20px 27px
+    );
+  box-shadow:
+    0 5px 12px rgba(102, 65, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(82, 44, 20, 0.12);
+}
+
+.home-date-paper::after {
+  content: '';
+  position: absolute;
+  inset: 4px 7px auto;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 247, 230, 0.34), transparent);
+  pointer-events: none;
+}
+
+.home-date-segment {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 3px;
+  overflow: visible;
+  border-right: 1px solid rgba(255, 244, 226, 0.18);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.home-date-segment:first-child {
+  border-radius: 11px 0 0 11px;
+}
+
+.home-date-segment:last-child {
+  border-right: 0;
+  border-radius: 0 11px 11px 0;
+}
+
+/* Short wooden pegs replace the previous tall black notebook rings. */
+.home-date-segment::before,
+.home-date-segment-year::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  top: -3px;
+  width: 5px;
+  height: 11px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #5c3218, #754522 52%, #4e2a15);
+  box-shadow:
+    0 1px 2px rgba(68, 38, 18, 0.2),
+    inset 1px 0 0 rgba(255, 233, 199, 0.18);
+  pointer-events: none;
+}
+
+.home-date-segment::before {
+  left: 50%;
+}
+
+.home-date-segment-year::before {
+  left: 32%;
+}
+
+.home-date-segment-year::after {
+  left: 68%;
+}
+
+.home-date-value,
+.home-date-unit {
+  color: #fffaf0;
+  text-shadow:
+    0 1px 0 rgba(93, 56, 27, 0.38),
+    0 2px 4px rgba(70, 40, 18, 0.2);
+}
+
+.home-date-value {
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.home-date-unit {
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+@media (max-width: 520px) {
+  .home-date-paper {
+    grid-template-columns: 1.2fr 0.9fr 0.9fr 0.74fr;
+  }
+
+  .home-date-value {
+    font-size: 0.9rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.61rem;
+  }
+}
+
+@media (max-width: 455px) {
+  .home-date-value {
+    font-size: 0.82rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.56rem;
+  }
+}
+
+@media (max-height: 760px) {
+  .home-date-display {
+    min-height: 52px;
+    padding-top: 4px;
+  }
+
+  .home-date-paper {
+    height: 47px;
+  }
+
+  .home-date-segment::before,
+  .home-date-segment-year::after {
+    top: -2px;
+    height: 9px;
+  }
+
+  .home-date-value {
+    font-size: 0.88rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.59rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-date-value {
+    font-size: 0.76rem;
+  }
+
+  .home-date-unit {
+    font-size: 0.52rem;
+  }
+}

@@ -1,0 +1,131 @@
+.home-core-sections {
+  display: grid;
+  gap: 8px;
+}
+
+/* Header refinements ------------------------------------------------- */
+
+.home-top-actions > .home-icon-button:first-child {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.home-date-display {
+  padding-top: 6px;
+}
+
+.home-date-paper {
+  height: 52px;
+  grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
+  overflow: visible;
+  border-radius: 9px;
+}
+
+.home-date-segment {
+  position: relative;
+  overflow: visible;
+  padding-inline: 3px;
+}
+
+.home-date-segment:first-child {
+  border-radius: 9px 0 0 9px;
+}
+
+.home-date-segment:last-child {
+  border-radius: 0 9px 9px 0;
+}
+
+.home-date-segment::before,
+.home-date-segment-year::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  top: -6px;
+  width: 5px;
+  height: 14px;
+  transform: translateX(-50%);
+  border: 2px solid #17213a;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(23, 33, 58, 0.08);
+  pointer-events: none;
+}
+
+.home-date-segment::before {
+  left: 50%;
+}
+
+.home-date-segment-year::before {
+  left: 32%;
+}
+
+.home-date-segment-year::after {
+  left: 68%;
+}
+
+.home-date-value {
+  font-size: 0.98rem;
+}
+
+.home-date-unit {
+  font-size: 0.65rem;
+}
+
+/* Narrow phones keep the same two-column attention layout. */
+@media (max-width: 380px) {
+  .home-alert-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .home-alert-card {
+    padding: 8px 7px;
+  }
+
+  .home-alert-heading {
+    gap: 4px;
+    margin-bottom: 5px;
+    font-size: 0.6rem;
+  }
+
+  .home-alert-heading > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .home-alert-heading b {
+    padding: 2px 5px;
+  }
+
+  .home-alert-body {
+    grid-template-columns: 20px minmax(0, 1fr) 12px;
+    gap: 4px;
+  }
+
+  .home-alert-body > svg:first-child {
+    width: 20px;
+    height: 20px;
+  }
+
+  .home-alert-body > svg:last-child {
+    width: 14px;
+    height: 14px;
+  }
+
+  .home-alert-body small {
+    font-size: 0.54rem;
+  }
+
+  .home-alert-body strong {
+    font-size: 0.62rem;
+  }
+}
+
+/*
+ * Width responsiveness lives here. Height/density responsiveness is owned by
+ * home-fit.css so one viewport is never governed by two competing height
+ * systems.
+ */
