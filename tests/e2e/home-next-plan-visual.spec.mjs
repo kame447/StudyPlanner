@@ -26,8 +26,15 @@ const CASES = [
 
 async function seedHome(page, planCase) {
   await page.addInitScript(({ planCase: seed }) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
+    const nowDate = new Date();
+    const tomorrowDate = new Date(nowDate);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = [
+      tomorrowDate.getFullYear(),
+      String(tomorrowDate.getMonth() + 1).padStart(2, '0'),
+      String(tomorrowDate.getDate()).padStart(2, '0'),
+    ].join('-');
+    const now = nowDate.toISOString();
     const user = {
       id: 'home-visual-user',
       email: 'home-visual@example.com',
@@ -43,7 +50,7 @@ async function seedHome(page, planCase) {
       subject: '情報科学',
       type: seed.type,
       sourceType: seed.sourceType,
-      date: today,
+      date: tomorrow,
       startTime: '13:30',
       endTime: '15:00',
       memo: '',
