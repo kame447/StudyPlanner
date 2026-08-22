@@ -1,5 +1,12 @@
 import { BookOpenCheck, CalendarPlus, Plus, Sparkles } from 'lucide-react';
-import { useEffect, useId, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 
 interface QuickAddMenuProps {
   onAddSchedule: () => void;
@@ -32,24 +39,41 @@ export function QuickAddMenu({
 }: QuickAddMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuId = useId();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const actionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function closeMenu(restoreFocus = true) {
+    setIsOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    }
+  }
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') {
-      return;
+      return undefined;
     }
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      actionRefs.current[0]?.focus();
+    });
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setIsOpen(false);
+        event.preventDefault();
+        closeMenu();
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen]);
 
   function runAction(action: (typeof ACTIONS)[number]['id']) {
-    setIsOpen(false);
+    closeMenu(false);
 
     if (action === 'schedule') {
       onAddSchedule();
@@ -64,14 +88,44 @@ export function QuickAddMenu({
     onOpenAiPlanning();
   }
 
+  function handleMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!isOpen) return;
+
+    const availableActions = actionRefs.current.filter(
+      (action): action is HTMLButtonElement => action !== null,
+    );
+    if (availableActions.length === 0) return;
+
+    const activeIndex = Math.max(
+      0,
+      availableActions.findIndex((action) => action === document.activeElement),
+    );
+    let nextIndex = activeIndex;
+
+    if (event.key === 'ArrowDown') {
+      nextIndex = (activeIndex + 1) % availableActions.length;
+    } else if (event.key === 'ArrowUp') {
+      nextIndex =
+        (activeIndex - 1 + availableActions.length) % availableActions.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = availableActions.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    availableActions[nextIndex]?.focus();
+  }
+
   return (
     <div className={isOpen ? 'quick-add-menu is-open' : 'quick-add-menu'}>
       <button
         className="quick-add-backdrop print-hide"
-        aria-label="クイック追加メニューを閉じる"
-        aria-hidden={!isOpen}
-        tabIndex={isOpen ? 0 : -1}
-        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => closeMenu()}
         type="button"
       />
 
@@ -80,6 +134,7 @@ export function QuickAddMenu({
         id={menuId}
         role="menu"
         aria-hidden={!isOpen}
+        onKeyDown={handleMenuKeyDown}
       >
         {ACTIONS.map((action, index) => {
           const Icon = action.icon;
@@ -90,6 +145,9 @@ export function QuickAddMenu({
               className="quick-add-option"
               key={action.id}
               onClick={() => runAction(action.id)}
+              ref={(node) => {
+                actionRefs.current[index] = node;
+              }}
               role="menuitem"
               style={{ '--quick-add-index': revealIndex } as CSSProperties}
               tabIndex={isOpen ? 0 : -1}
@@ -105,12 +163,16 @@ export function QuickAddMenu({
       </div>
 
       <button
+        ref={triggerRef}
         className="daily-add-fab schedule-add-fab quick-add-trigger print-hide"
         aria-controls={menuId}
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label={isOpen ? 'クイック追加メニューを閉じる' : 'クイック追加メニューを開く'}
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={() => {
+          if (isOpen) closeMenu(false);
+          else setIsOpen(true);
+        }}
         type="button"
       >
         <Plus className="quick-add-trigger-icon" aria-hidden="true" />
