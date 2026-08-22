@@ -1,16 +1,28 @@
 # CLAUDE.md
 
-## Claude/Fable の役割
+このリポジトリでは、repository-level の正仕様を `AGENTS.md` と responsibility-owned canonical docs に集約する。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` を正とする。
 
-Claude/Fable はこのリポジトリでは上流工程担当である。
+## Read order
 
-- 担当するのは、調査、仕様と実装の差分整理、問題の言語化、タスク分解、Codex 向け実装タスクmd(`docs/ai/tasks/*.md`)の作成まで。
-- 原則としてアプリ本体のコード(src/、UI、CSS、scheduler、保存・承認導線)は実装しない。実装は Codex がタスクmdを読んで行う。
-- ユーザーが明示的に依頼した場合を除き、git add / commit / push はしない。
+1. `AGENTS.md`
+2. `PROJECT_MAP.md`
+3. `docs/README.md`
+4. 対象 responsibility の domain README
+5. canonical contract / current Issue / active work record
 
-## 参照先
+週間計画の場合:
 
-- 開発ガイド: `docs/ai/weekly-planning-pipeline-guide.md`
-- 調査・タスク作成手順: `.claude/skills/weekly-planning-pipeline-scout/SKILL.md`
-- Codex 側の実装ルール: `docs/ai/codex-task-guide.md`
-- タスクmdテンプレート: `docs/ai/task-brief-template.md`
+1. `docs/domains/weekly-planning/README.md`
+2. `docs/domains/weekly-planning/architecture/current-contract-v5.md`
+3. `docs/domains/weekly-planning/quality/test-philosophy.md`
+4. `docs/domains/weekly-planning/roadmap/current.md`
+5. 対象 Issue / `docs/domains/weekly-planning/work/README.md`
+
+## Rules
+
+- agent 名ごとの古い役割分担や historical task を current instruction として使わない。
+- audience/tool 名で `docs/ai/`、`docs/testing/` 等の新しい canonical bucket を作らない。
+- active task は owning domain の `work/` または owning Issue に置く。
+- 完了済み/superseded task と audit は `docs/archive/` の historical evidence として扱う。
+- Stable V5 の semantic ownership、Git/GitHub 操作、検証、完了条件は `AGENTS.md` と weekly-planning current contract を優先する。
+- 「Claude は調査だけ、Codex は実装だけ」の固定分担は current policy ではない。ユーザー依頼と利用可能な tool に従う。

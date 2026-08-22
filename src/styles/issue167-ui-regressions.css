@@ -1,0 +1,76 @@
+/* Issue #167 UI regression contracts -----------------------------------
+ * Keep these fixes narrowly scoped to the regressions reproduced by QA and
+ * mobile inspection. This file is loaded last so older redesign layers cannot
+ * reintroduce the broken paint or interaction geometry.
+ */
+
+/* Home date: the parent owns the continuous plaque surface in every theme. */
+:root[data-theme='dark'] .home-date-segment {
+  background: transparent;
+}
+
+/* WCAG AA contrast fixes reproduced by PR #166 browser-quality. */
+.weekly-progress-summary {
+  color: #68758a;
+}
+
+.weekly-progress-negative {
+  color: #d92d43;
+}
+
+:root[data-theme='dark'] .bookshelf-add-material-fab {
+  color: #10233f;
+}
+
+/* Bookshelf rows expose the primary open action and overflow menu as sibling
+ * controls. The DOM classes below are paired with BookshelfView's split
+ * controls so the menu never becomes a focusable descendant of another
+ * interactive element.
+ */
+.bookshelf-material-list-row,
+.bookshelf-recent-row {
+  position: relative;
+  cursor: default;
+}
+
+.bookshelf-row-open-button {
+  position: absolute;
+  z-index: 1;
+  inset: 0 48px 0 0;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: inherit;
+  cursor: pointer;
+}
+
+.bookshelf-recent-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bookshelf-material-list-row > .bookshelf-row-menu-button,
+.bookshelf-recent-row > .bookshelf-row-menu-button {
+  position: relative;
+  z-index: 2;
+}
+
+.bookshelf-row-open-button:focus-visible,
+.bookshelf-row-menu-button:focus-visible {
+  outline: 2px solid var(--bookshelf-blue);
+  outline-offset: -2px;
+}
+
+:root[data-theme='dark'] .bookshelf-row-menu-button {
+  color: var(--text-primary);
+}
+
+@media (max-width: 440px) {
+  .bookshelf-row-open-button {
+    right: 42px;
+  }
+}
