@@ -72,6 +72,13 @@ export function MonthGridPanel({
       }),
     [actuals, monthDate, monthEvents, plans],
   );
+  const weekRows = useMemo(
+    () =>
+      Array.from({ length: Math.ceil(projection.cells.length / 7) }, (_, weekIndex) =>
+        projection.cells.slice(weekIndex * 7, weekIndex * 7 + 7),
+      ),
+    [projection.cells],
+  );
 
   return (
     <article
@@ -79,133 +86,141 @@ export function MonthGridPanel({
       aria-hidden={!isCurrent}
     >
       <div className="month-grid" role="grid" aria-label="月間カレンダー">
-        {getWeekdayLabels().map((label, index) => (
+        <div className="month-grid-row month-grid-header-row" role="row">
+          {getWeekdayLabels().map((label, index) => (
+            <div
+              key={label}
+              role="columnheader"
+              className={[
+                'month-weekday',
+                index === 5 ? 'is-saturday' : '',
+                index === 6 ? 'is-holiday' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {weekRows.map((week, weekIndex) => (
           <div
-            key={label}
-            role="columnheader"
-            className={[
-              'month-weekday',
-              index === 5 ? 'is-saturday' : '',
-              index === 6 ? 'is-holiday' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+            className="month-grid-row"
+            role="row"
+            key={week[0]?.date ?? `week-${weekIndex}`}
           >
-            {label}
+            {week.map((cell) => {
+              const dayTone = getCalendarDayTone(cell.date);
+              const holidayName = getJapaneseHolidayName(cell.date);
+              const limitedMonthEvents = cell.monthEvents.slice(0, 3);
+              const cellClassName = [
+                'month-cell',
+                cell.inCurrentMonth ? '' : 'is-muted',
+                isCurrent && cell.date === selectedDate ? 'is-selected' : '',
+                cell.date === todayDate ? 'is-today' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+
+              return (
+                <button
+                  key={cell.date}
+                  role="gridcell"
+                  className={cellClassName}
+                  ref={isCurrent ? (node) => registerCellRef(cell.date, node) : undefined}
+                  onClick={isCurrent ? () => onCellClick(cell.date) : undefined}
+                  onKeyDown={
+                    isCurrent
+                      ? (event) => {
+                          switch (event.key) {
+                            case 'Enter':
+                              event.preventDefault();
+                              onOpenMonthEventEditor(cell.date);
+                              break;
+                            case 'ArrowLeft':
+                              event.preventDefault();
+                              onMoveSelection(cell.date, -1);
+                              break;
+                            case 'ArrowRight':
+                              event.preventDefault();
+                              onMoveSelection(cell.date, 1);
+                              break;
+                            case 'ArrowUp':
+                              event.preventDefault();
+                              onMoveSelection(cell.date, -7);
+                              break;
+                            case 'ArrowDown':
+                              event.preventDefault();
+                              onMoveSelection(cell.date, 7);
+                              break;
+                            default:
+                              break;
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={isCurrent && cell.date === selectedDate ? 0 : -1}
+                  aria-selected={isCurrent && cell.date === selectedDate}
+                  type="button"
+                >
+                  <div className="month-cell-head">
+                    <strong
+                      className={[
+                        'month-date-number',
+                        dayTone === 'saturday' ? 'is-saturday' : '',
+                        dayTone === 'holiday' ? 'is-holiday' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      {getCalendarDayNumber(cell.date)}
+                    </strong>
+                    {holidayName ? (
+                      <span
+                        className={[
+                          'month-holiday-label',
+                          getHolidayLabelLengthClass(holidayName),
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        title={holidayName}
+                      >
+                        {holidayName}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="month-study-summary">
+                    <span>目標 {formatCompactMinutes(cell.targetMinutes)}</span>
+                    <span>記録 {formatCompactMinutes(cell.actualMinutes)}</span>
+                  </p>
+
+                  <div className="month-major-event-list">
+                    {limitedMonthEvents.map((monthEvent) => (
+                      <span
+                        key={monthEvent.id}
+                        className="event-pill month-major-event-pill"
+                        title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
+                      >
+                        <span className="month-major-event-full">
+                          {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
+                        </span>
+                        <span className="month-major-event-short">{monthEvent.title}</span>
+                      </span>
+                    ))}
+
+                    {cell.monthEvents.length > limitedMonthEvents.length ? (
+                      <span className="month-event-more">
+                        +{cell.monthEvents.length - limitedMonthEvents.length}件
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         ))}
-
-        {projection.cells.map((cell) => {
-          const dayTone = getCalendarDayTone(cell.date);
-          const holidayName = getJapaneseHolidayName(cell.date);
-          const limitedMonthEvents = cell.monthEvents.slice(0, 3);
-          const cellClassName = [
-            'month-cell',
-            cell.inCurrentMonth ? '' : 'is-muted',
-            isCurrent && cell.date === selectedDate ? 'is-selected' : '',
-            cell.date === todayDate ? 'is-today' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-
-          return (
-            <button
-              key={cell.date}
-              role="gridcell"
-              className={cellClassName}
-              ref={isCurrent ? (node) => registerCellRef(cell.date, node) : undefined}
-              onClick={isCurrent ? () => onCellClick(cell.date) : undefined}
-              onKeyDown={
-                isCurrent
-                  ? (event) => {
-                      switch (event.key) {
-                        case 'Enter':
-                          event.preventDefault();
-                          onOpenMonthEventEditor(cell.date);
-                          break;
-                        case 'ArrowLeft':
-                          event.preventDefault();
-                          onMoveSelection(cell.date, -1);
-                          break;
-                        case 'ArrowRight':
-                          event.preventDefault();
-                          onMoveSelection(cell.date, 1);
-                          break;
-                        case 'ArrowUp':
-                          event.preventDefault();
-                          onMoveSelection(cell.date, -7);
-                          break;
-                        case 'ArrowDown':
-                          event.preventDefault();
-                          onMoveSelection(cell.date, 7);
-                          break;
-                        default:
-                          break;
-                      }
-                    }
-                  : undefined
-              }
-              tabIndex={isCurrent && cell.date === selectedDate ? 0 : -1}
-              aria-selected={isCurrent && cell.date === selectedDate}
-              type="button"
-            >
-              <div className="month-cell-head">
-                <strong
-                  className={[
-                    'month-date-number',
-                    dayTone === 'saturday' ? 'is-saturday' : '',
-                    dayTone === 'holiday' ? 'is-holiday' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  {getCalendarDayNumber(cell.date)}
-                </strong>
-                {holidayName ? (
-                  <span
-                    className={[
-                      'month-holiday-label',
-                      getHolidayLabelLengthClass(holidayName),
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    title={holidayName}
-                  >
-                    {holidayName}
-                  </span>
-                ) : null}
-              </div>
-
-              <p className="month-study-summary">
-                <span>目標 {formatCompactMinutes(cell.targetMinutes)}</span>
-                <span>記録 {formatCompactMinutes(cell.actualMinutes)}</span>
-              </p>
-
-              <div className="month-major-event-list">
-                {limitedMonthEvents.map((monthEvent) => (
-                  <span
-                    key={monthEvent.id}
-                    className="event-pill month-major-event-pill"
-                    title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
-                  >
-                    <span className="month-major-event-full">
-                      {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
-                    </span>
-                    <span className="month-major-event-short">
-                      {monthEvent.title}
-                    </span>
-                  </span>
-                ))}
-
-                {cell.monthEvents.length > limitedMonthEvents.length ? (
-                  <span className="month-event-more">
-                    +{cell.monthEvents.length - limitedMonthEvents.length}件
-                  </span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
       </div>
     </article>
   );
