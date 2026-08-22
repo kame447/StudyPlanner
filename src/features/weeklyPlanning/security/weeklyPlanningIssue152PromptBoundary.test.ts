@@ -18,12 +18,13 @@ function parseUserPayload(messages: ReturnType<typeof createWeeklyPlanningSemant
 }
 
 describe('Issue #152 semantic prompt data boundary', () => {
-  it.each(WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS)(
-    'keeps $id as user/context data instead of mutating the system policy',
-    ({ text }) => {
-      const baseline = createWeeklyPlanningSemanticBaseMessagesV5({
-        userText: '数学を20問進めたいです',
-      });
+  it('keeps the adversarial corpus as user/context data instead of mutating system policy', () => {
+    const baseline = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '数学を20問進めたいです',
+    });
+
+    for (const attack of WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS) {
+      const { text } = attack;
       const messages = createWeeklyPlanningSemanticBaseMessagesV5({
         userText: text,
         recentConversation: [
@@ -38,21 +39,22 @@ describe('Issue #152 semantic prompt data boundary', () => {
         },
       });
 
-      expect(messages[0]?.role).toBe('system');
-      expect(messages[0]?.content).toBe(baseline[0]?.content);
-      expect(messages[0]?.content).not.toContain(text);
+      expect(messages[0]?.role, attack.id).toBe('system');
+      expect(messages[0]?.content, attack.id).toBe(baseline[0]?.content);
+      expect(messages[0]?.content, attack.id).not.toContain(text);
 
       const payload = parseUserPayload(messages);
-      expect(payload.userText).toBe(text);
-      expect(payload.recentConversation.map((entry) => entry.content)).toEqual([text, text]);
-      expect(payload.publicStateSummary).toEqual(expect.objectContaining({
+      expect(payload.userText, attack.id).toBe(text);
+      expect(payload.recentConversation.map((entry) => entry.content), attack.id)
+        .toEqual([text, text]);
+      expect(payload.publicStateSummary, attack.id).toEqual(expect.objectContaining({
         tasks: [{ publicId: 'task-hostile', title: text }],
         components: [{ publicId: 'component-hostile', contextLabel: text }],
         userPlanningContext: [{ kind: 'concern', label: text, value: text }],
         lastAssistantMessage: text,
       }));
-    },
-  );
+    }
+  });
 
   it('preserves the system policy under arbitrary current/stored strings', () => {
     fc.assert(
