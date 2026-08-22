@@ -1,7 +1,6 @@
 /* Home date plate ----------------------------------------------------
- * Warm wooden plaque used by HomeDateDisplay. This file is loaded after the
- * general home responsive/fit layers so the date component owns its visual
- * treatment and cannot fall back to the old floating-ring design.
+ * Warm wooden plaque used by HomeDateDisplay. The plaque owns one continuous
+ * background; its four child cells own only alignment and separators.
  */
 
 .home-date-display {
@@ -18,7 +17,7 @@
   position: relative;
   height: 52px;
   display: grid;
-  grid-template-columns: 1.22fr 0.92fr 0.92fr 0.76fr;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
   overflow: visible;
   border: 1px solid rgba(104, 59, 27, 0.28);
   border-radius: 11px;
@@ -53,9 +52,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1px;
   padding: 0 3px;
-  overflow: visible;
   border-right: 1px solid rgba(255, 244, 226, 0.18);
   background: transparent;
   white-space: nowrap;
@@ -101,48 +98,36 @@
   left: 68%;
 }
 
-.home-date-value,
-.home-date-unit {
+.home-date-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: #fffaf0;
+  font-size: 0.98rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  text-align: center;
+  text-overflow: clip;
   text-shadow:
     0 1px 0 rgba(93, 56, 27, 0.38),
     0 2px 4px rgba(70, 40, 18, 0.2);
 }
 
-.home-date-value {
-  font-size: 0.98rem;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.025em;
-}
-
-.home-date-unit {
-  font-size: 0.65rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
 @media (max-width: 520px) {
   .home-date-paper {
-    grid-template-columns: 1.2fr 0.9fr 0.9fr 0.74fr;
+    grid-template-columns: minmax(0, 1.36fr) repeat(3, minmax(0, 1fr));
   }
 
   .home-date-value {
     font-size: 0.9rem;
-  }
-
-  .home-date-unit {
-    font-size: 0.61rem;
   }
 }
 
 @media (max-width: 455px) {
   .home-date-value {
     font-size: 0.82rem;
-  }
-
-  .home-date-unit {
-    font-size: 0.56rem;
   }
 }
 
@@ -165,18 +150,10 @@
   .home-date-value {
     font-size: 0.88rem;
   }
-
-  .home-date-unit {
-    font-size: 0.59rem;
-  }
 }
 
 @media (max-width: 380px) {
   .home-date-value {
     font-size: 0.76rem;
-  }
-
-  .home-date-unit {
-    font-size: 0.52rem;
   }
 }
