@@ -23,11 +23,57 @@ This section applies to every agent and every repository task. Read it before th
 
 ### Completion-loop contract
 
-- When the user asks to continue until a concrete condition is met, intermediate status reporting does not satisfy the request.
-- Continue the implement → verify → inspect → correct loop until the stated exit condition is actually satisfied or a genuine blocker requires user input, external permission, credentials, or a destructive decision that cannot be made safely without approval.
-- Do not stop merely because one check passed. Verify all relevant exit criteria using independent evidence.
-- Do not claim completion, merge readiness, or regression safety from partial signals. Use the exact current HEAD and current evidence.
-- If a task is interrupted, resume from the last verified checkpoint rather than reconstructing status from memory.
+For implementation, repair, CI, review-response, migration, or other work with a concrete completion condition, intermediate progress is not completion.
+
+After every tool result, code/document change, test result, workflow result, review result, or external-state change:
+
+1. Re-evaluate the explicit definition of done and every requested exit criterion against the exact current HEAD/state.
+2. If any criterion is unmet, determine the next concrete action and execute it instead of producing a final response.
+3. Treat `failed` verification as a loop-back condition: classify the failure, inspect evidence, correct the appropriate layer, and rerun the strongest relevant verification.
+4. Treat `queued`, `pending`, or `in_progress` verification as a poll/inspect condition. Continue following it to a terminal state when the result is required for completion.
+5. Treat `skipped`, truncated, stale, cached, missing, or cancelled verification as missing evidence unless the skip/cancellation is itself an intentional part of the applicable contract.
+
+Do not stop or produce a final response merely because:
+
+- a fix was committed or pushed
+- a pull request was opened or updated
+- CI or another asynchronous workflow was started
+- some checks passed
+- a failure or blocker candidate was identified
+- a retry is required
+- an external workflow is still running
+- substantial time or many tool calls have elapsed
+- an intermediate progress summary would be convenient
+
+A failed relevant check cannot be converted into completion by reporting the failure. It must route back to diagnosis and correction unless one of the explicit stop conditions below applies.
+
+A final response is allowed only when one of these conditions is true:
+
+1. All requested completion criteria are satisfied and verified on the exact current state.
+2. Further progress requires information, product judgment, approval, credentials, or a permission that only the user or an external owner can provide.
+3. A required tool/capability is genuinely unavailable after reasonable alternative evidence/tool paths have been exhausted.
+4. A hard external blocker makes further execution impossible in the current turn and cannot be resolved by polling, retrying with changed conditions, inspecting another source, or correcting the implementation/harness.
+5. Continuing would require a destructive or history-rewriting action for which this repository policy requires explicit user approval.
+
+Before sending the final response for a concrete implementation/repair task, perform a final completion audit. At minimum ask:
+
+- Is the requested implementation/change actually complete?
+- Are all relevant tests, CI gates, browser/visual/quality checks, and reviews in the required terminal state?
+- Were failures classified and resolved rather than hidden, weakened, or merely reported?
+- Is the active branch/PR based on the intended current base, with the exact diff reviewed?
+- Was merge/publish/post-merge verification completed when it is part of the request and safe to perform?
+- Is there any known actionable failure, pending required check, unresolved review thread, or unverified regression remaining?
+
+If any required answer is `no`, continue the execution loop instead of responding.
+
+For long-running or asynchronous tasks, use the following state transition model unless the task defines a stricter one:
+
+`INSPECT → IMPLEMENT → VERIFY → { failure: DIAGNOSE → IMPLEMENT, running: POLL → VERIFY, success: FINAL_AUDIT → { incomplete: IMPLEMENT/VERIFY, complete: DONE } }`
+
+- `failure` never transitions directly to `DONE`.
+- `running` never transitions directly to `DONE` when that result is part of the definition of done.
+- Intermediate commentary should state the current failure or next action briefly and then continue execution; do not turn an intermediate status report into an implicit handoff.
+- If a task is interrupted, resume from the last durable verified checkpoint and re-fetch mutable repository/CI state before acting; do not reconstruct completion from chat memory.
 
 ### Durable checkpoint rule
 
