@@ -27,7 +27,6 @@ export const PrimaryAppHeader = forwardRef<HTMLDivElement, PrimaryAppHeaderProps
   ) {
     const wrapperClassName = [
       'home-dashboard',
-      'home-dashboard-default',
       'primary-app-header',
       'print-hide',
       className,
