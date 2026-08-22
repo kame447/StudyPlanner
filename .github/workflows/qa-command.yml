@@ -1,0 +1,121 @@
+name: QA Command Dispatcher
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  dispatch:
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/qa') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate and dispatch QA command
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const actor = context.payload.comment.user.login;
+            const issueNumber = context.payload.issue.number;
+            const raw = context.payload.comment.body.trim();
+            const firstLine = raw.split(/\r?\n/, 1)[0].trim();
+            const match = firstLine.match(/^\/qa(?:\s+([a-z-]+))?\s*$/i);
+
+            if (actor !== owner) {
+              core.notice(`Ignoring QA command from unauthorized actor: ${actor}`);
+              return;
+            }
+
+            const help = [
+              'Available QA commands:',
+              '`/qa all` — broad E2E + normal visual/browser/quality gates',
+              '`/qa e2e` — existing broad Chromium browser regression',
+              '`/qa visual` — screenshot regression',
+              '`/qa cross-browser` — Chromium/Firefox/WebKit smoke',
+              '`/qa quality` — accessibility + responsive + runtime health',
+              '`/qa a11y` — automated WCAG scan',
+              '`/qa responsive` — viewport-boundary overflow checks',
+              '`/qa runtime` — console/page/network error checks',
+              '`/qa bundle` — production bundle budget',
+              '`/qa performance` — Lighthouse observations',
+              '`/qa stability` — repeated cross-browser flaky-test probe',
+              '`/qa coverage` — unit-test coverage intelligence',
+              '`/qa mutation` — targeted Stryker mutation test',
+              '`/qa audit` — npm dependency vulnerability audit',
+              '`/qa deep` — coverage + mutation + dependency audit',
+              '`/qa status` — latest QA workflow state for this branch',
+              '`/qa help` — show this help',
+            ].join('\n');
+
+            if (!match) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: help });
+              return;
+            }
+
+            const command = (match[1] || 'help').toLowerCase();
+            if (command === 'help') {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: help });
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
+            if (pr.head.repo.full_name !== `${owner}/${repo}`) {
+              core.setFailed('QA dispatch is restricted to same-repository pull requests.');
+              return;
+            }
+
+            if (command === 'status') {
+              const workflows = ['browser-regression.yml', 'ui-regression.yml', 'ui-quality-automation.yml', 'test-intelligence.yml'];
+              const lines = [];
+              for (const workflow_id of workflows) {
+                const { data } = await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id, branch: pr.head.ref, per_page: 1 });
+                const run = data.workflow_runs[0];
+                lines.push(run ? `- ${run.name}: ${run.status}${run.conclusion ? ` / ${run.conclusion}` : ''} — ${run.html_url}` : `- ${workflow_id}: no run found`);
+              }
+              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: `QA status for \`${pr.head.ref}\`:\n${lines.join('\n')}` });
+              return;
+            }
+
+            const plans = {
+              all: [
+                { workflow_id: 'browser-regression.yml' },
+                { workflow_id: 'ui-regression.yml', suite: 'all' },
+                { workflow_id: 'ui-quality-automation.yml', suite: 'all' },
+              ],
+              e2e: [{ workflow_id: 'browser-regression.yml' }],
+              visual: [{ workflow_id: 'ui-regression.yml', suite: 'visual' }],
+              'cross-browser': [{ workflow_id: 'ui-regression.yml', suite: 'cross-browser' }],
+              quality: [{ workflow_id: 'ui-quality-automation.yml', suite: 'quality' }],
+              a11y: [{ workflow_id: 'ui-quality-automation.yml', suite: 'a11y' }],
+              responsive: [{ workflow_id: 'ui-quality-automation.yml', suite: 'responsive' }],
+              runtime: [{ workflow_id: 'ui-quality-automation.yml', suite: 'runtime' }],
+              bundle: [{ workflow_id: 'ui-quality-automation.yml', suite: 'bundle' }],
+              performance: [{ workflow_id: 'ui-quality-automation.yml', suite: 'performance' }],
+              stability: [{ workflow_id: 'ui-quality-automation.yml', suite: 'stability' }],
+              coverage: [{ workflow_id: 'test-intelligence.yml', suite: 'coverage' }],
+              mutation: [{ workflow_id: 'test-intelligence.yml', suite: 'mutation' }],
+              audit: [{ workflow_id: 'test-intelligence.yml', suite: 'audit' }],
+              deep: [{ workflow_id: 'test-intelligence.yml', suite: 'all' }],
+            };
+
+            const selected = plans[command];
+            if (!selected) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: help });
+              return;
+            }
+
+            for (const plan of selected) {
+              const request = { owner, repo, workflow_id: plan.workflow_id, ref: pr.head.ref };
+              if (plan.suite) {
+                request.inputs = { suite: plan.suite };
+              }
+              await github.rest.actions.createWorkflowDispatch(request);
+            }
+
+            await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: `Queued \`/qa ${command}\` for \`${pr.head.ref}\`. Runs: https://github.com/${owner}/${repo}/actions` });
