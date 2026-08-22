@@ -167,7 +167,7 @@ for (const viewport of VIEWPORTS) {
     await seedHomeState(page, 1);
     await page.goto('/');
 
-    const home = page.locator('.home-dashboard-default');
+    const home = page.locator('.home-main > .home-dashboard-default');
     await expect(home).toBeVisible();
     await page.waitForTimeout(400);
 
@@ -196,7 +196,7 @@ for (const viewport of VIEWPORTS) {
     await seedHomeState(page, 4);
     await page.goto('/');
 
-    const home = page.locator('.home-dashboard-default');
+    const home = page.locator('.home-main > .home-dashboard-default');
     await expect(home).toBeVisible();
     await page.waitForTimeout(450);
 
