@@ -1,5 +1,15 @@
 /* Focused interaction fixes that must load after the primary theme/style bundles. */
 
+/* PrimaryAppHeader reuses Home tokens, but it is chrome rather than a Home layout surface. */
+.primary-app-header.home-dashboard {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  align-content: initial;
+  gap: 0;
+}
+
 /* Quick add is for direct study/record entry. AI planning lives on the AI planning surface. */
 [data-quick-entry-manual-only='true'] .quick-entry-switch-card,
 [data-quick-entry-manual-only='true'] .quick-entry-ai-panel {
