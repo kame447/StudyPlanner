@@ -1,11 +1,11 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / execution order
-Updated: 2026-08-18
+Updated: 2026-08-22
 
 Current contract: [../weekly-planning-current-contract-v5.md](../weekly-planning-current-contract-v5.md)
 Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-Current PR task: [../tasks/20260818-pr157-final-real-luna-merge-gate.md](../tasks/20260818-pr157-final-real-luna-merge-gate.md)
+Current priority: Issue #152 — Stable V5 adversarial conversation / prompt-injection security evaluation
 Human grounding policy: [../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md](../tasks/20260815-weekly-planning-human-grounding-dialogue-policy.md)
 Adaptive memory policy: [weekly-planning-adaptive-memory-learning-policy.md](weekly-planning-adaptive-memory-learning-policy.md)
 Decision-ownership audit: [../audits/20260816-pr130-decision-duplication-adversarial-audit.md](../audits/20260816-pr130-decision-duplication-adversarial-audit.md)
@@ -19,9 +19,11 @@ AI / deterministic application の責務、Fact Graph、scheduler、preview、ap
 
 ## 2. 完了済み基盤
 
-PR #109、#112、#113、#120、#127、#129、#130、#132、#140〜#151、#154、#155 までで Stable V5 production 一本化、production 到達不能 legacy runtime / parser / interpreter の削除、semantic ownership、human grounding / correction / Fact lifecycle hardening、scheduler / preview / approval 境界、Browser Regression、file-by-file SOLID hardening、主要な conversation-quality 修正を main へ統合した。
+PR #109、#112、#113、#120、#127、#129、#130、#132、#140〜#151、#154、#155、#157 までで Stable V5 production 一本化、production 到達不能 legacy runtime / parser / interpreter の削除、semantic ownership、human grounding / correction / Fact lifecycle hardening、scheduler / preview / approval 境界、Browser Regression、file-by-file SOLID hardening、主要な conversation-quality 修正を main へ統合した。
 
-PR #130 の後に露出した不足は Issue #156 / PR #157 で敵対的に再監査している。
+PR #157 は 2026-08-20 に merge 済みであり、Issue #156 / PR #157 を現在作業として再開しない。旧 final merge-gate task は `tasks/closed/` へ移動した。
+
+PR #162 では主要UIと専用AI計画surfaceが main へ統合された。これは Stable V5 の semantic ownership を変更するものではなく、週間計画UI責務分離の一部を前進させた。
 
 ## 3. 現在の architecture 評価
 
@@ -37,45 +39,44 @@ semantic meaning
 → renderer / compatibility / trace projection
 ```
 
-## 4. 現在の最優先: PR #157
+## 4. 現在の最優先: Issue #152
 
-現在は PR #157 を完了させる。他の feature や Issue へ先に広げない。
+PR #157 完了後の週間計画で、次の独立フェーズは Issue #152 の Stable V5 adversarial conversation / prompt-injection security evaluation である。
 
-PR #157 では current-turn grounding、質問意図、clarification、progress、quantity role、correction、completed-work state など、PR #130 後の real-Luna / adversarial audit で見つかった不足を typed contract として一般化して修正している。
+実装を先に増やすのではなく、direct / stored prompt injection、durable context poisoning、異常入力、Unicode / role confusion、数値 abuse などで現在の境界を攻撃し、実際に破れた箇所だけを owning layer で一般化して修正する。
 
-通常 CI と Browser Regression は green である。残る merge gate は repeated real `gpt-5.6-luna` application-path evaluation、visible transcript と Fact Graph / application state の review、最終文書同期である。
+固定日本語応答、raw Japanese semantic keyword/regex routing、特定ケース専用 patch で通さない。AI semantic ownership と deterministic application ownership の境界を security evaluation のために崩さない。
 
-Real Luna は `.github/weekly-planning-real-api-command.json` を更新して ChatGPT から繰り返し起動できる。通常 push ごとに heavy matrix を走らせず、checkpoint と merge-gate の節目で明示的に起動する。
-
-Real Luna が meaningful defect を出した場合は merge を止め、その意味を所有する層で一般化して修正する。固定日本語応答、raw Japanese semantic keyword/regex routing、特定ケース専用 patch で通さない。
-
-## 5. PR #157 完了順序
+## 5. Issue #152 の実行順序
 
 ```text
-repeated Real Luna merge gate
-→ transcript / Fact Graph review
-→ 必要なら一般化した修正 + deterministic regression
-→ 同じ Real Luna gate を再実行
-→ current contract/status/roadmap/task/docs index/PR本文を同期
-→ final CI / Browser Regression確認
-→ PR #157 merge
-→ Issue #156 close
-→ branch cleanup
+current main / contract の再確認
+→ threat / adversarial case inventory
+→ current boundary への攻撃と evidence 収集
+→ 実際に破れた owner layer の特定
+→ targeted deterministic regression
+→ 一般化した修正
+→ relevant Real Luna / browser verification
+→ current contract/status/roadmap/task/docs index の同期
+→ final CI / Browser Regression
+→ Issue #152 完了判定
 ```
 
-## 6. PR #157 の次
+緑のテストだけで安全性を宣言しない。visible transcript、typed state、Fact Graph、保存境界を必要に応じて確認する。
 
-PR #157 が完了した後は Issue #152 の Stable V5 adversarial conversation / prompt injection security evaluation を次の独立フェーズとする。
+## 6. Issue #152 の次
 
-Issue #152 では実装を先に増やさず、まず direct / stored prompt injection、durable context poisoning、異常入力、Unicode / role confusion、数値 abuse などで現在の境界を攻撃し、実際に破れた箇所だけを修正する。
+Issue #152 完了後の feature / architecture expansion は、その結果と既存 open Issue の依存関係を再確認して決める。
 
-その後の feature expansion は、security/adversarial evaluation の結果と既存 Issue の依存関係を見て決める。
+少なくとも Issue #52 の週間計画UI責務分離は未完である。PR #162 で専用AI計画surfaceは成立したが、`WeeklyPlanningQuickEntryModal` から generic `QuickEntryModal` への週間計画 application/callback plumbing が残っているため、Issue #52 を完了扱いにしない。
+
+privacy / personalization、cross-device approval uniqueness、saved-preview migration、trace運用などの既存独立scopeも、別Issueの owner を維持する。
 
 ## 7. Adaptive memory
 
 暗記・想起系は英単語専用 heuristic に戻さない。current-week acceptance、durable preference、observed learning profile を分離し、proposal は了承前に scheduler へ適用しない。
 
-大きな adaptive memory feature は PR #157 と Issue #152 の整合を崩してまで先行させない。
+大きな adaptive memory feature は security/adversarial evaluation と既存 owner 境界を崩してまで先行させない。
 
 ## 8. Prompt simplification
 
@@ -91,8 +92,10 @@ renderer output validation に残る output guardrail は raw-user semantic pars
 
 exact wording を自動 quality oracle にしない。自動テストは deterministic invariant、real API は stochastic model/application contract と会話品質の human-reviewed observation として扱う。
 
+PR #166 のQA自動化基盤はcross-cuttingな独立PRであり、このroadmapのfeature ownerではない。導入後は追加されたquality gateを適切な検証証拠として利用する。
+
 ## 10. 別 scope
 
-Issue #52 の大規模 weekly UI 責務分離と Issue #115 の raw-text regex weekly entry routing は独立 scope のまま維持する。
+Issue #52 の大規模 weekly UI 責務分離は独立 scope のまま維持する。
 
-privacy / personalization broader rollout、cross-device approval uniqueness、saved-preview migration も既存の独立 scope を維持する。
+privacy / personalization broader rollout、cross-device approval uniqueness、saved-preview migration、trace privacy / lifecycle / production recovery、client-first execution architecture も各既存Issueとcanonical taskのownerを維持する。
