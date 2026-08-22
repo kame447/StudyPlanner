@@ -35,7 +35,12 @@ export function PlanEditorPanel({
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCancelRef = useRef(onCancel);
   const isOpen = draft !== null;
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') {
@@ -49,7 +54,7 @@ export function PlanEditorPanel({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onCancel();
+        onCancelRef.current();
         return;
       }
 
@@ -88,7 +93,7 @@ export function PlanEditorPanel({
         if (previousFocus?.isConnected) previousFocus.focus();
       });
     };
-  }, [isOpen, onCancel]);
+  }, [isOpen]);
 
   if (!draft) {
     return null;
