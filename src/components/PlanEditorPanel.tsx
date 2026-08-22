@@ -65,7 +65,9 @@ export function PlanEditorPanel({
               <p>入力項目は最小限に絞っています。</p>
             </div>
             <button
-              ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
+              ref={(node) => {
+                initialFocusRef.current = node;
+              }}
               className="ghost-button"
               onClick={onCancel}
               type="button"
