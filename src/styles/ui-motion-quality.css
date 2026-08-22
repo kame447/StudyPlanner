@@ -40,12 +40,27 @@
 }
 
 /* Surface entry ----------------------------------------------------------- */
-.home-main > .home-dashboard,
+/* Home performs precise geometry measurements to fit the viewport. Keep its
+   entrance opacity-only so animation transforms cannot perturb those readings. */
+.home-main > .home-dashboard {
+  animation: ui-surface-fade var(--ui-motion-fast) ease-out both;
+}
+
 .home-main > .ai-planning-view,
 .section-stack > .schedule-month-view,
 .section-stack > .bookshelf-view,
 .section-stack > .timetable-view {
   animation: ui-surface-enter var(--ui-motion-base) var(--ui-motion-spring) both;
+}
+
+@keyframes ui-surface-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes ui-surface-enter {
@@ -130,7 +145,7 @@
 }
 
 .ai-planning-typing::after {
-  content: '計画を整理しています';
+  content: '内容を整理しています';
   margin-left: 7px;
   color: var(--text-muted);
   font-size: 0.76rem;
@@ -191,14 +206,6 @@
 .timetable-view button:focus-visible {
   outline: 3px solid var(--focus-outline);
   outline-offset: 2px;
-}
-
-/* The quick-add backdrop only dims the scene. A full-viewport blur is an
-   unnecessary GPU cost and can make the UI feel soft on low-end devices. */
-.quick-add-backdrop,
-.quick-add-menu.is-open .quick-add-backdrop {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
