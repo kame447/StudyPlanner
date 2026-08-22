@@ -70,7 +70,7 @@ async function sampleStableLayout(page) {
       };
     };
     const snapshot = () => {
-      const dashboard = document.querySelector('.home-dashboard-default');
+      const dashboard = document.querySelector('.home-main > .home-dashboard-default');
       const materials = [...document.querySelectorAll('.home-material-panel')].filter(visible);
       return {
         href: location.href,
@@ -88,7 +88,7 @@ async function sampleStableLayout(page) {
       };
     };
 
-    const dashboard = document.querySelector('.home-dashboard-default');
+    const dashboard = document.querySelector('.home-main > .home-dashboard-default');
     let styleMutationCount = 0;
     const observer = dashboard
       ? new MutationObserver((records) => {
@@ -157,7 +157,7 @@ const REPORTED_AND_THRESHOLD_VIEWPORTS = [
 test('home fitter settles and stays stable across tablet/desktop threshold sizes', async ({ page }) => {
   await seedHome(page);
   await page.goto('/');
-  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
 
   for (const viewport of REPORTED_AND_THRESHOLD_VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -182,7 +182,7 @@ test.describe('iPad Mini-like 1280x800 emulation', () => {
   test('does not oscillate after the responsive fitter settles', async ({ page }) => {
     await seedHome(page);
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(800);
 
     const result = await sampleStableLayout(page);
