@@ -101,7 +101,7 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   const accent = await normalizedAccent(page);
 
-  await expect(page.locator('.home-dashboard')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
   expectDarkSurface(await computedColor(page, '.home-streak-card', 'backgroundColor'));
   expect(await computedColor(page, '.home-bottom-nav button.active')).toBe(accent);
   await capture(page, 'dark-ocean-home-390x844');
@@ -129,10 +129,9 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   expect(await computedColor(page, '.ai-planning-send-button', 'backgroundColor')).toBe(accent);
   await capture(page, 'dark-ocean-ai-planning-390x844');
 
-  /* AI planning currently closes back to Home before changing workspace tabs. */
   await clickPrimaryNav(page, 'ホーム');
-  await expect(page.locator('.home-dashboard')).toBeVisible();
-  await clickPrimaryNav(page, '分析');
+  await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
+  await page.getByRole('button', { name: /詳細を見る/ }).click();
   await expect(page.locator('.report-view')).toBeVisible();
   const reportPanel = page.locator('.report-view .panel').first();
   await expect(reportPanel).toBeVisible();
@@ -169,7 +168,7 @@ test('theme mode and palette changes apply immediately and survive reload', asyn
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.locator('.home-dashboard')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
   expect(await normalizedAccent(page)).toBe(violetAccent);
   expect(await computedColor(page, '.home-bottom-nav button.active')).toBe(violetAccent);
 
