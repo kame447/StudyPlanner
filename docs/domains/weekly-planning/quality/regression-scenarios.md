@@ -68,6 +68,14 @@ progress basisを訂正した場合、以前のtotal/completedから導出され
 
 総量が存在しない/分からないworkへ、割合計算や分配の都合だけで架空のscope totalを作らない。
 
+### PROG-005: zero completed history does not block planning
+
+完了済みworkが0件、または過去実績が存在しないことだけを理由に週間計画を拒否しない。
+
+必要なscope / target / effort / availabilityが揃っていれば、未着手からでもplanning/scheduler pathへ進める。
+
+Historical evidence came from the old zero-progress draft regression, but current validation should target Stable V5 work compilation/readiness rather than the old intake adapter shape.
+
 ## 3. Dialogue / grounding
 
 ### DIALOGUE-001: known information is not re-requested
@@ -114,6 +122,18 @@ preview生成後にaccepted semantic state / source revisionが変わった場�
 ### PREVIEW-004: approval idempotency
 
 同じpreview/itemへのretry、response loss、multi-client approvalでduplicate Planを作らず、同じoperation/item identityへ収束する。
+
+### PREVIEW-005: individual pre-approval removal
+
+ユーザーは承認前の仮予定を1件ずつ除外できる。除外操作は正しいcandidate/block identityだけへ作用し、別の仮予定や保存済み予定を消さない。
+
+この能力はhistorical MVPで基本操作として実装済みだった。current application facadeにも`removePreviewCandidate` / `removeDraftBlock`が存在するが、2026-08-23監査時点のdedicated `AiPlanningView`週プレビューには個別削除UIが確認できない。
+
+したがってこれは**current UI regression candidate**としてIssue #52の専用画面分離完了条件で検証する。
+
+### PREVIEW-006: bulk discard / approval remain coherent
+
+個別除外を実装・移行しても、一括破棄/再調整と明示承認のboundaryを壊さない。preview candidateとpromoted draftのどちらを操作しているかをUI/applicationで一貫させる。
 
 ## 5. Lifecycle / state integrity
 
