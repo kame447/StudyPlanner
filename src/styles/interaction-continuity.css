@@ -51,3 +51,22 @@
     font-size: 0.8rem;
   }
 }
+
+/* Primary surfaces share one wide-screen chrome contract. */
+@media (min-width: 900px) {
+  .schedule-workspace-shell {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+
+  .schedule-app-header {
+    margin-inline: calc(-1 * clamp(22px, 2.6vw, 34px));
+    padding-inline: clamp(22px, 2.6vw, 34px);
+  }
+
+  .schedule-bottom-nav.home-bottom-nav {
+    width: min(94vw, 1080px);
+    max-width: 1080px;
+  }
+}
