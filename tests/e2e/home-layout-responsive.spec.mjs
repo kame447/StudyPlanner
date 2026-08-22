@@ -161,6 +161,44 @@ function expectBottomSpaceUsed(metrics) {
   expect(metrics.bottomGap).toBeLessThanOrEqual(MAX_BOTTOM_GAP);
 }
 
+async function expectScheduleTailAccessible(page, metrics) {
+  const scheduleIsScrollable = metrics.scheduleScrollHeight > metrics.scheduleClientHeight + 1;
+  if (!scheduleIsScrollable) {
+    if (metrics.addScheduleBottom !== null && metrics.scheduleBottom !== null) {
+      expect(metrics.addScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+    }
+    return;
+  }
+
+  const tail = await page.evaluate(() => {
+    const schedule = document.querySelector('.home-schedule-list');
+    const addRow = document.querySelector('.home-schedule-add-row');
+    if (!(schedule instanceof HTMLElement) || !(addRow instanceof HTMLElement)) {
+      return null;
+    }
+
+    schedule.scrollTop = schedule.scrollHeight;
+    const scheduleRect = schedule.getBoundingClientRect();
+    const addRowRect = addRow.getBoundingClientRect();
+    return {
+      overflowY: getComputedStyle(schedule).overflowY,
+      scrollTop: schedule.scrollTop,
+      maxScrollTop: schedule.scrollHeight - schedule.clientHeight,
+      scheduleTop: scheduleRect.top,
+      scheduleBottom: scheduleRect.bottom,
+      addRowTop: addRowRect.top,
+      addRowBottom: addRowRect.bottom,
+    };
+  });
+
+  expect(tail).not.toBeNull();
+  expect(['auto', 'scroll']).toContain(tail.overflowY);
+  expect(tail.maxScrollTop).toBeGreaterThan(0);
+  expect(tail.scrollTop).toBeGreaterThanOrEqual(tail.maxScrollTop - 1);
+  expect(tail.addRowTop).toBeGreaterThanOrEqual(tail.scheduleTop - 1);
+  expect(tail.addRowBottom).toBeLessThanOrEqual(tail.scheduleBottom + 1);
+}
+
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name} ${viewport.width}x${viewport.height} keeps the single-plan home layout bounded`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -185,10 +223,7 @@ for (const viewport of VIEWPORTS) {
       expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     }
     expect(metrics.progressHeight).toBeLessThanOrEqual(140);
-    expect(metrics.scheduleScrollHeight).toBeLessThanOrEqual(metrics.scheduleClientHeight + 1);
-    if (metrics.addScheduleBottom !== null && metrics.scheduleBottom !== null) {
-      expect(metrics.addScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
-    }
+    await expectScheduleTailAccessible(page, metrics);
   });
 
   test(`${viewport.name} ${viewport.width}x${viewport.height} prioritizes four plans over material progress`, async ({ page }) => {
