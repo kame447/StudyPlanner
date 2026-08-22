@@ -217,7 +217,7 @@ export function HomeView({
         const maxTopbarHeight = isWideTallViewport
           ? WIDE_TALL_MAX_TOPBAR_HEIGHT
           : DEFAULT_MAX_TOPBAR_HEIGHT;
-        const maxScheduleSideRelaxation = isWideTallViewport ? 12 : isTallViewport ? 11 : 2;
+        const maxScheduleSideRelaxation = isWideTallViewport ? 11 : isTallViewport ? 11 : 2;
         const maxTodaySideRelaxation = isWideTallViewport ? 14 : isTallViewport ? 12 : 5;
         const maxAlertSideRelaxation = isWideTallViewport ? 8 : isTallViewport ? 6 : 2;
         const maxProgressSideRelaxation = isWideTallViewport ? 22 : 0;
