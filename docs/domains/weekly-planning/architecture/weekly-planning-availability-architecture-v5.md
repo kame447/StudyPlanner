@@ -5,7 +5,7 @@ Updated: 2026-08-22
 
 Parent: [weekly-planning-dialogue-architecture-v5.md](weekly-planning-dialogue-architecture-v5.md)
 Semantic schema: [weekly-planning-semantic-schema-v5.md](weekly-planning-semantic-schema-v5.md)
-Current contract: [weekly-planning-current-contract-v5.md](../ai/weekly-planning-current-contract-v5.md)
+Current contract: [current-contract-v5.md](current-contract-v5.md)
 
 ## Responsibility
 
@@ -14,9 +14,6 @@ Availability is a deterministic scheduling boundary after user meaning has been 
 ```text
 accepted Fact Graph
 ├─ schedulable work
-│  ├─ task / component
-│  ├─ remaining workload
-│  └─ effort
 ├─ task-specific temporal constraints
 ├─ user-declared plan-wide availability
 └─ authoritative occupied sources
@@ -30,14 +27,14 @@ accepted Fact Graph
 
 - workload is work demand, not availability.
 - task temporal constraints are separate from plan-wide availability.
-- user language such as unavailable / preferred periods is interpreted semantically by AI, then calendar arithmetic is deterministic.
+- user language such as unavailable/preferred periods is interpreted semantically by AI; calendar arithmetic is deterministic.
 - existing plan IDs, timetable records, owner identity and concrete intervals are authoritative application data; AI does not invent or reinterpret them.
 - scheduler never creates free time by ignoring a hard occupied interval.
-- buffer / travel / life constraints must use their owning typed policy rather than ad-hoc text matching.
-- source failure must not be treated as an empty-success source when that source is required for safe scheduling.
+- buffer/travel/life constraints use their owning typed policy rather than ad-hoc text matching.
+- required source failure is not treated as empty-success.
 
 ## External calendars
 
-Google / Apple / Outlook calendar integration is not a current Stable V5 production source. The old production-adapter task is deferred under `docs/ai/tasks/superseded/20260731-weekly-planning-external-source-production-adapter.md`.
+Google/Apple/Outlook calendar integration is not a current Stable V5 production source. The prior adapter work is archived as superseded work under `docs/archive/work/superseded/`.
 
-If an external source is added later, define auth, pagination, atomic loading, privacy, retry and provenance contracts before connecting it to scheduler input. Do not pass arbitrary external event prose to the semantic model as trusted instruction.
+If an external source is added later, define auth, pagination, atomic loading, privacy, retry and provenance before connecting it to scheduler input. Arbitrary external event prose must not become trusted model instruction.
