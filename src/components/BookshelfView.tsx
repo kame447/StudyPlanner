@@ -554,16 +554,17 @@ export function BookshelfView({
                             <div
                               className="bookshelf-material-list-row"
                               key={material.id}
-                              role="button"
-                              tabIndex={0}
                               onClick={() => setSelectedMaterialId(material.id)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault();
-                                  setSelectedMaterialId(material.id);
-                                }
-                              }}
                             >
+                              <button
+                                className="bookshelf-row-open-button"
+                                type="button"
+                                aria-label={`${material.name}を開く`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedMaterialId(material.id);
+                                }}
+                              />
                               <MaterialCover material={material} subject={subject} compact />
                               <span className="bookshelf-material-row-copy">
                                 <strong>{material.name}</strong>
@@ -576,6 +577,7 @@ export function BookshelfView({
                                 </span>
                               </span>
                               <button
+                                className="bookshelf-row-menu-button"
                                 type="button"
                                 aria-label={`${material.name}のメニュー`}
                                 onClick={(event) => {
@@ -617,16 +619,17 @@ export function BookshelfView({
                 <div
                   className="bookshelf-recent-row"
                   key={material.id}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => setSelectedMaterialId(material.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedMaterialId(material.id);
-                    }
-                  }}
                 >
+                  <button
+                    className="bookshelf-row-open-button"
+                    type="button"
+                    aria-label={`${material.name}を開く`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedMaterialId(material.id);
+                    }}
+                  />
                   <MaterialCover material={material} subject={subject} compact />
                   <span>
                     <strong>{material.name}</strong>
@@ -639,6 +642,7 @@ export function BookshelfView({
                     })}
                   </time>
                   <button
+                    className="bookshelf-row-menu-button"
                     type="button"
                     aria-label={`${material.name}のメニュー`}
                     onClick={(event) => {
