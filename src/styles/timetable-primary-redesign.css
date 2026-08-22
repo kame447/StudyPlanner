@@ -1,6 +1,7 @@
 /* Primary timetable surface redesign.
- * This layer intentionally reuses TimetableView's existing data/edit/OCR behavior
- * and only changes presentation and interaction placement.
+ * This layer reuses TimetableView's existing data/edit/OCR behavior and owns
+ * layout/chrome only. Lesson-cell appearance is intentionally centralized in
+ * timetable-cell-readability.css so the accent perimeter has one source of truth.
  */
 
 .timetable-view {
@@ -57,36 +58,12 @@
   background: color-mix(in srgb, var(--surface) 97%, #f5f9ff 3%);
 }
 
-.timetable-view .timetable-grid-cell.has-class {
-  position: relative;
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, #d9ebff 82%, var(--surface) 18%),
-    color-mix(in srgb, #cce4ff 68%, var(--surface) 32%)
-  );
-  box-shadow: none;
-}
-
-.timetable-view .timetable-grid-cell.has-class:hover {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border) 42%);
-  background: color-mix(in srgb, #cfe6ff 82%, var(--surface) 18%);
-}
-
 .timetable-view .timetable-class-card {
   padding-inline: 8px;
 }
 
 .timetable-view .timetable-class-card strong {
   text-align: left;
-}
-
-.timetable-view .timetable-class-meta {
-  justify-self: start;
-  max-width: 100%;
-  padding-inline: 7px;
-  color: color-mix(in srgb, var(--accent) 66%, var(--text-muted) 34%);
-  background: color-mix(in srgb, var(--surface) 78%, #eaf4ff 22%);
 }
 
 .timetable-view .timetable-grid-actions {
@@ -107,7 +84,6 @@
   justify-content: flex-end;
   padding: 0 0 calc(var(--bottom-nav-height, 72px) + env(safe-area-inset-bottom, 0px));
   background: rgb(15 23 42 / 0.28);
-  backdrop-filter: blur(3px);
 }
 
 .modal-card.timetable-editor-modal {
@@ -182,26 +158,6 @@
 :root[data-theme='dark'] .timetable-view .timetable-grid-cell {
   background: var(--surface-strong);
   color: var(--text-primary);
-}
-
-:root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class {
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border) 64%);
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%),
-    color-mix(in srgb, var(--accent-strong) 18%, var(--surface-strong) 82%)
-  );
-  box-shadow: none;
-}
-
-:root[data-theme='dark'] .timetable-view .timetable-grid-cell.has-class:hover {
-  border-color: color-mix(in srgb, var(--accent) 62%, var(--border) 38%);
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface-strong) 78%);
-}
-
-:root[data-theme='dark'] .timetable-view .timetable-class-meta {
-  color: color-mix(in srgb, var(--accent) 76%, var(--text-primary) 24%);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft) 90%);
 }
 
 :root[data-theme='dark'] .timetable-modal-overlay {
