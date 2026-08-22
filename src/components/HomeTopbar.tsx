@@ -30,7 +30,12 @@ export function HomeTopbar({
   return (
     <header className="home-topbar">
       <div className="home-streak-card" aria-label={`連続学習 ${dashboard.currentStreak}日`}>
-        <Flame className="home-streak-flame" aria-hidden="true" size={30} />
+        <Flame
+          key={`streak-${dashboard.currentStreak}`}
+          className="home-streak-flame"
+          aria-hidden="true"
+          size={30}
+        />
         <div>
           <span>連続学習</span>
           <strong>{dashboard.currentStreak}日</strong>
