@@ -47,6 +47,7 @@ const MAX_VISIBLE_TODAY_ROWS = 4;
 const MIN_SCROLLABLE_SCHEDULE_HEIGHT = 40;
 const TARGET_BOTTOM_GAP = 8;
 const MATERIAL_FIT_HYSTERESIS_PX = 4;
+const MAX_LAYOUT_CONVERGENCE_PASSES = 4;
 const DEFAULT_MAX_NEXT_CARD_HEIGHT = 234;
 const TALL_MAX_NEXT_CARD_HEIGHT = 318;
 const WIDE_TALL_MAX_NEXT_CARD_HEIGHT = 350;
@@ -149,6 +150,7 @@ export function HomeView({
     }
 
     let frameId = 0;
+    let convergencePass = 0;
     const measure = () => {
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
@@ -484,21 +486,30 @@ export function HomeView({
           }
         }
 
-        applyLayoutRelaxation(nextRelaxation);
+        const relaxationChanged = applyLayoutRelaxation(nextRelaxation);
         if (!chromeLocked) lockPrimaryChrome();
+        if (relaxationChanged && convergencePass < MAX_LAYOUT_CONVERGENCE_PASSES) {
+          convergencePass += 1;
+          measure();
+        }
       });
     };
 
-    measure();
-    window.addEventListener('resize', measure);
-    window.visualViewport?.addEventListener('resize', measure);
+    const restartMeasurement = () => {
+      convergencePass = 0;
+      measure();
+    };
 
-    void document.fonts.ready.then(measure, () => undefined);
+    restartMeasurement();
+    window.addEventListener('resize', restartMeasurement);
+    window.visualViewport?.addEventListener('resize', restartMeasurement);
+
+    void document.fonts.ready.then(restartMeasurement, () => undefined);
 
     return () => {
       window.cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', measure);
-      window.visualViewport?.removeEventListener('resize', measure);
+      window.removeEventListener('resize', restartMeasurement);
+      window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
     dashboard.todayPlans.length,
