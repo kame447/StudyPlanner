@@ -143,6 +143,10 @@ test.describe('issue 167 UI regressions', () => {
             valueBox.right <= segmentBox.right + 0.75
           );
         }),
+        fullyVisible: segments.every((segment) => {
+          const value = segment.querySelector('.home-date-value');
+          return value instanceof HTMLElement && value.scrollWidth <= value.clientWidth + 1;
+        }),
       };
     });
 
@@ -152,6 +156,7 @@ test.describe('issue 167 UI regressions', () => {
     expect(dateState.texts[2]).toMatch(/^\d{1,2}$/);
     expect(dateState.texts[3]).toMatch(/^[日月火水木金土]$/);
     expect(dateState.contained).toBe(true);
+    expect(dateState.fullyVisible).toBe(true);
     expect(dateState.pageWidth).toBeLessThanOrEqual(dateState.viewportWidth + 1);
   });
 
