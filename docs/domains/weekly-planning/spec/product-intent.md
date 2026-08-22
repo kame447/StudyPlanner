@@ -19,11 +19,13 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 利用者は次を行える。
 
 - 曖昧な初期入力から週間計画の相談を始める
+- 過去の完了実績が0でも、これから始める学習として週間計画を作る
 - 学習対象、範囲、現在進捗、今回の到達目標、期限、利用不可時間、希望を会話で追加・修正する
 - 既存予定・時間割・生活制約と衝突しない候補を見る
 - 計画に大きく影響する未確定事項だけを確認する
 - 低影響の曖昧さに会話を支配されず、必要な論点から先に進める
 - 未保存previewを週/日単位で確認する
+- 承認前の仮予定を個別に除外・調整し、不要な候補を含めずに承認できる
 - 会話またはUIで条件を修正し、最新条件でpreviewを再生成する
 - 明示承認した内容だけを通常予定として保存する
 
@@ -58,6 +60,8 @@ this-plan target: 残り8問全部 / 今日は4問 / できる範囲
 
 現在進捗からremainingを導出できても、それだけで今回のtargetを勝手に決めない。open-ended workに架空の総量を作らない。
 
+完了実績が1件もないことは「計画不能」を意味しない。未着手から始めるユーザーも、必要なwork scope / effort / constraintsが揃えば同じ計画経路を利用できる。
+
 ### Preserve meaningful work units
 
 学習内容には「分けてもよい作業」と「一まとまりで扱うべき作業」がある。
@@ -83,6 +87,8 @@ AIが生成した文章だけで予定を確定しない。
 計画候補は未保存previewとして表示する。previewは現在のowner、conversation、state revision、source factsに束縛される。
 
 条件が変わった場合は古いpreviewを確定せず、最新条件で再計算する。保存には明示的な承認を要求する。
+
+review/approval段階では、ユーザーが「全体を承認する」以外に、不要な仮予定を個別に除外し、残した内容だけを承認できることを維持する。個別編集がpreview candidate段階かpromoted draft段階かはUI/application contractで一貫させ、正しいblock identityへ作用させる。
 
 ## Scheduling intent
 
@@ -123,6 +129,7 @@ legacy raw-text parserを意味理解のfallbackとして復活させない。
 週間計画機能のproduct-level完了条件は次である。
 
 - dedicated AI planning surfaceから自然に相談を開始できる
+- zero-progress / 未着手ユーザーも不必要に弾かれない
 - accepted factを失わず、訂正が古いderived state/previewを適切に無効化する
 - current progressと今回のtargetを混同しない
 - atomic workをscheduler都合で勝手に分割しない
@@ -130,8 +137,9 @@ legacy raw-text parserを意味理解のfallbackとして復活させない。
 - current 7-day baselineのreserve/slack behaviorを意図せず失わない
 - 未了承proposalや内部heuristicをsilent applyしない
 - previewと保存済み予定を区別する
+- 承認前に仮予定を個別に除外でき、削除対象identityを取り違えない
 - explicit approvalなしにsaveしない
-- desktop/mobileで主要な会話・preview・承認操作が成立する
+- desktop/mobileで主要な会話・preview・調整・承認操作が成立する
 - deterministic regression、Browser Regression、必要なreal-model evaluationで責務境界を検証できる
 
 2026-08-22以前の詳細な初期計画書は [historical product plan](../../../archive/weekly-planning/legacy/product-plan-pre-stable-v5.md) として保持する。旧parser、旧UI、当時の固定実装手順はcurrent contractを上書きしない。ただし、そこで確立され現在のcode/testsでも生きている原則はcurrent owning docsへ移管して維持する。
