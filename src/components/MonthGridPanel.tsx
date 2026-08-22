@@ -78,10 +78,11 @@ export function MonthGridPanel({
       className={isCurrent ? 'month-pager-panel is-current' : 'month-pager-panel'}
       aria-hidden={!isCurrent}
     >
-      <div className="month-grid">
+      <div className="month-grid" role="grid" aria-label="月間カレンダー">
         {getWeekdayLabels().map((label, index) => (
           <div
             key={label}
+            role="columnheader"
             className={[
               'month-weekday',
               index === 5 ? 'is-saturday' : '',
@@ -110,6 +111,7 @@ export function MonthGridPanel({
           return (
             <button
               key={cell.date}
+              role="gridcell"
               className={cellClassName}
               ref={isCurrent ? (node) => registerCellRef(cell.date, node) : undefined}
               onClick={isCurrent ? () => onCellClick(cell.date) : undefined}
