@@ -108,6 +108,14 @@ async function openBookshelf(page) {
   await expect(page.locator('.bookshelf-view')).toBeVisible();
 }
 
+async function openSchedule(page) {
+  await page
+    .locator('.primary-bottom-nav button')
+    .filter({ hasText: '予定' })
+    .click();
+  await expect(page.locator('.schedule-month-view')).toBeVisible();
+}
+
 test.describe('issue 167 UI regressions', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -135,6 +143,10 @@ test.describe('issue 167 UI regressions', () => {
             valueBox.right <= segmentBox.right + 0.75
           );
         }),
+        fullyVisible: segments.every((segment) => {
+          const value = segment.querySelector('.home-date-value');
+          return value instanceof HTMLElement && value.scrollWidth <= value.clientWidth + 1;
+        }),
       };
     });
 
@@ -144,6 +156,7 @@ test.describe('issue 167 UI regressions', () => {
     expect(dateState.texts[2]).toMatch(/^\d{1,2}$/);
     expect(dateState.texts[3]).toMatch(/^[日月火水木金土]$/);
     expect(dateState.contained).toBe(true);
+    expect(dateState.fullyVisible).toBe(true);
     expect(dateState.pageWidth).toBeLessThanOrEqual(dateState.viewportWidth + 1);
   });
 
@@ -170,6 +183,35 @@ test.describe('issue 167 UI regressions', () => {
     await openButton.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: '教材の詳細' })).toBeVisible();
+  });
+
+  test('exposes month selection as a keyboard-operable ARIA grid', async ({ page }) => {
+    await seedIssue167State(page);
+    await page.goto('/');
+    await openSchedule(page);
+
+    const grid = page.getByRole('grid', { name: '月間カレンダー' });
+    await expect(grid).toBeVisible();
+    await expect(grid.getByRole('columnheader')).toHaveCount(7);
+
+    const gridCells = grid.getByRole('gridcell');
+    await expect(gridCells).toHaveCount(42);
+
+    const selectedCell = grid.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(selectedCell).toHaveCount(1);
+    await expect(selectedCell).toHaveAttribute('tabindex', '0');
+
+    const selectedDateNumber = await selectedCell.locator('.month-date-number').textContent();
+    await selectedCell.focus();
+    await page.keyboard.press('ArrowRight');
+
+    const movedCell = grid.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(movedCell).toHaveCount(1);
+    await expect(movedCell).toBeFocused();
+    await expect(movedCell.locator('.month-date-number')).not.toHaveText(selectedDateNumber ?? '');
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.month-event-modal-overlay')).toBeVisible();
   });
 
   test('keeps the reproduced Home and dark Bookshelf color pairs above AA contrast', async ({ page }) => {
