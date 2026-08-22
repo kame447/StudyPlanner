@@ -39,7 +39,7 @@ async function seedHome(page) {
 test('home AI planning entry opens the dedicated Stable V5 conversation surface', async ({ page }) => {
   await seedHome(page);
   await page.goto('/');
-  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
 
   const homeTopbarBox = await page.locator('.home-topbar').boundingBox();
   const homeNavBox = await page.locator('.primary-bottom-nav').boundingBox();
@@ -120,10 +120,10 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
       modal: zIndexOf(document.querySelector('.my-page-modal')?.parentElement),
     };
   });
-  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
+  expect(profileStacking.modal).toBeGreaterThan(stacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.primary-bottom-nav button').nth(2).click();
   await expect(page.locator('.ai-planning-view')).toHaveCount(0);
-  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+  await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
 });
