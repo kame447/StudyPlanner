@@ -7,6 +7,7 @@ import { scheduleAppViewPreload } from './lib/preloadAppViews';
 import { installStudyPlannerSpeechRecognition } from './lib/studyPlannerSpeechRecognition';
 import './styles.css';
 import './styles/theme-surface-contract.css';
+import './styles/interaction-continuity.css';
 
 configureWeeklyPlanningTraceRepository();
 installStudyPlannerSpeechRecognition();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   ChevronDown,
@@ -22,7 +22,14 @@ const SCHEDULE_VIEW_OPTIONS: ReadonlyArray<{ mode: ViewMode; label: string }> = 
   { mode: 'todo', label: 'Todo' },
 ];
 
-const DAY_STRIP_RADIUS = 45;
+const INITIAL_DAY_STRIP_BUFFER = 35;
+const DAY_STRIP_EXTENSION_SIZE = 28;
+const DAY_STRIP_EDGE_THRESHOLD_PX = 360;
+
+interface DayStripWindow {
+  start: string;
+  end: string;
+}
 
 function parseDate(dateString: string): Date {
   return new Date(`${dateString}T00:00:00`);
@@ -62,55 +69,178 @@ function buildDateForMonth(sourceDate: string, monthDate: string): string {
     .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
+function createDayStripWindow(centerDate: string): DayStripWindow {
+  return {
+    start: addDays(centerDate, -INITIAL_DAY_STRIP_BUFFER),
+    end: addDays(centerDate, INITIAL_DAY_STRIP_BUFFER),
+  };
+}
+
+function buildDayStripDates(window: DayStripWindow): string[] {
+  const distance = dateDistanceInDays(window.start, window.end);
+  if (!Number.isFinite(distance) || distance < 0) {
+    return [window.start];
+  }
+
+  return Array.from({ length: distance + 1 }, (_, index) =>
+    addDays(window.start, index),
+  );
+}
+
+function getMonthBoundaryLabel(dateString: string): string | null {
+  const date = parseDate(dateString);
+  if (Number.isNaN(date.getTime()) || date.getDate() !== 1) {
+    return null;
+  }
+
+  return date.getMonth() === 0
+    ? `${date.getFullYear()}年 1月`
+    : `${date.getMonth() + 1}月`;
+}
+
+function setScrollLeftImmediately(element: HTMLDivElement, left: number) {
+  const previousScrollBehavior = element.style.scrollBehavior;
+  element.style.scrollBehavior = 'auto';
+  element.scrollLeft = Math.max(0, left);
+  element.style.scrollBehavior = previousScrollBehavior;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
 interface ScheduleDayStripProps {
   selectedDate: string;
   onChangeDay: (date: string) => void;
 }
 
 function ScheduleDayStrip({ selectedDate, onChangeDay }: ScheduleDayStripProps) {
-  const [rangeAnchor, setRangeAnchor] = useState(selectedDate);
+  const [dateWindow, setDateWindow] = useState<DayStripWindow>(() =>
+    createDayStripWindow(selectedDate),
+  );
   const stripRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
-  const hasCenteredOnceRef = useRef(false);
-  const dates = useMemo(
-    () =>
-      Array.from({ length: DAY_STRIP_RADIUS * 2 + 1 }, (_, index) =>
-        addDays(rangeAnchor, index - DAY_STRIP_RADIUS),
-      ),
-    [rangeAnchor],
-  );
+  const hasPositionedInitiallyRef = useRef(false);
+  const lastPositionedDateRef = useRef<string | null>(null);
+  const extensionDirectionRef = useRef<'prepend' | 'append' | null>(null);
+  const pendingPrependRef = useRef<{
+    scrollLeft: number;
+    scrollWidth: number;
+  } | null>(null);
+  const dates = useMemo(() => buildDayStripDates(dateWindow), [dateWindow]);
 
-  useEffect(() => {
-    if (Math.abs(dateDistanceInDays(rangeAnchor, selectedDate)) > DAY_STRIP_RADIUS - 8) {
-      setRangeAnchor(selectedDate);
+  useLayoutEffect(() => {
+    if (selectedDate >= dateWindow.start && selectedDate <= dateWindow.end) {
+      return;
     }
-  }, [rangeAnchor, selectedDate]);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const strip = stripRef.current;
-      const item = itemRefs.current.get(selectedDate);
+    pendingPrependRef.current = null;
+    extensionDirectionRef.current = null;
+    hasPositionedInitiallyRef.current = false;
+    lastPositionedDateRef.current = null;
+    setDateWindow(createDayStripWindow(selectedDate));
+  }, [dateWindow.end, dateWindow.start, selectedDate]);
 
-      if (!strip || !item) {
-        return;
-      }
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const pendingPrepend = pendingPrependRef.current;
+    if (!strip || !pendingPrepend) {
+      return;
+    }
 
-      const targetLeft = item.offsetLeft - strip.clientWidth / 2 + item.offsetWidth / 2;
+    const addedWidth = strip.scrollWidth - pendingPrepend.scrollWidth;
+    setScrollLeftImmediately(
+      strip,
+      pendingPrepend.scrollLeft + Math.max(0, addedWidth),
+    );
+    pendingPrependRef.current = null;
+    extensionDirectionRef.current = null;
+  }, [dateWindow.start]);
+
+  useLayoutEffect(() => {
+    if (extensionDirectionRef.current === 'append') {
+      extensionDirectionRef.current = null;
+    }
+  }, [dateWindow.end]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const item = itemRefs.current.get(selectedDate);
+    if (!strip || !item || pendingPrependRef.current) {
+      return;
+    }
+
+    if (
+      hasPositionedInitiallyRef.current &&
+      lastPositionedDateRef.current === selectedDate
+    ) {
+      return;
+    }
+
+    const targetLeft = Math.max(
+      0,
+      item.offsetLeft - strip.clientWidth / 2 + item.offsetWidth / 2,
+    );
+
+    if (!hasPositionedInitiallyRef.current) {
+      setScrollLeftImmediately(strip, targetLeft);
+      hasPositionedInitiallyRef.current = true;
+    } else {
       strip.scrollTo({
-        left: Math.max(0, targetLeft),
-        behavior: hasCenteredOnceRef.current ? 'smooth' : 'auto',
+        left: targetLeft,
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
-      hasCenteredOnceRef.current = true;
-    });
+    }
 
-    return () => window.cancelAnimationFrame(frame);
+    lastPositionedDateRef.current = selectedDate;
   }, [dates, selectedDate]);
 
+  function extendStripIfNeeded() {
+    const strip = stripRef.current;
+    if (
+      !strip ||
+      !hasPositionedInitiallyRef.current ||
+      extensionDirectionRef.current
+    ) {
+      return;
+    }
+
+    const rightDistance =
+      strip.scrollWidth - strip.clientWidth - strip.scrollLeft;
+
+    if (strip.scrollLeft <= DAY_STRIP_EDGE_THRESHOLD_PX) {
+      pendingPrependRef.current = {
+        scrollLeft: strip.scrollLeft,
+        scrollWidth: strip.scrollWidth,
+      };
+      extensionDirectionRef.current = 'prepend';
+      setDateWindow((current) => ({
+        ...current,
+        start: addDays(current.start, -DAY_STRIP_EXTENSION_SIZE),
+      }));
+      return;
+    }
+
+    if (rightDistance <= DAY_STRIP_EDGE_THRESHOLD_PX) {
+      extensionDirectionRef.current = 'append';
+      setDateWindow((current) => ({
+        ...current,
+        end: addDays(current.end, DAY_STRIP_EXTENSION_SIZE),
+      }));
+    }
+  }
+
   return (
-    <div ref={stripRef} className="schedule-day-strip" aria-label="日付を選択">
+    <div
+      ref={stripRef}
+      className="schedule-day-strip"
+      aria-label="日付を選択"
+      onScroll={extendStripIfNeeded}
+    >
       {dates.map((date) => {
         const selected = date === selectedDate;
         const weekday = getWeekdayLabel(date);
+        const monthBoundaryLabel = getMonthBoundaryLabel(date);
         const className = [
           selected ? 'active' : '',
           weekday === '土' ? 'is-saturday' : '',
@@ -120,20 +250,28 @@ function ScheduleDayStrip({ selectedDate, onChangeDay }: ScheduleDayStripProps) 
           .join(' ');
 
         return (
-          <button
-            key={date}
-            ref={(node) => {
-              if (node) itemRefs.current.set(date, node);
-              else itemRefs.current.delete(date);
-            }}
-            className={className}
-            onClick={() => onChangeDay(date)}
-            type="button"
-            aria-current={selected ? 'date' : undefined}
-          >
-            <span>{weekday}</span>
-            <strong>{dayNumber(date)}</strong>
-          </button>
+          <Fragment key={date}>
+            {monthBoundaryLabel ? (
+              <div className="schedule-day-month-boundary" aria-hidden="true">
+                <span>ここから</span>
+                <strong>{monthBoundaryLabel}</strong>
+              </div>
+            ) : null}
+            <button
+              ref={(node) => {
+                if (node) itemRefs.current.set(date, node);
+                else itemRefs.current.delete(date);
+              }}
+              className={className}
+              onClick={() => onChangeDay(date)}
+              type="button"
+              aria-current={selected ? 'date' : undefined}
+              aria-label={formatDayHeading(date)}
+            >
+              <span>{weekday}</span>
+              <strong>{dayNumber(date)}</strong>
+            </button>
+          </Fragment>
         );
       })}
     </div>
