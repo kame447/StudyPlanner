@@ -69,7 +69,8 @@ async function readChromeMetrics(page) {
     const actions = header.querySelector('.home-top-actions');
     const iconButton = header.querySelector('.home-icon-button');
     const activeCircle = nav.querySelector('.home-nav-active-circle');
-    const navButton = nav.querySelector('button');
+    const navButton = [...nav.querySelectorAll('button')]
+      .find((button) => !button.classList.contains('active')) ?? null;
     const navIcon = navButton?.querySelector('svg');
     const navLabel = navButton?.querySelector('span:last-child');
 
