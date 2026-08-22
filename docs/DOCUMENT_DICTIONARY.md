@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-22
+Updated: 2026-08-23
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、**責務 × 文書種別 × lifecycle** で一意に決める。
 
@@ -65,10 +65,13 @@ archiveは現在の実装命令にならない。
 - runtime ownership: `architecture/current-contract-v5.md`
 - semantic ownership: `architecture/weekly-planning-semantic-ownership-boundary-v5.md`
 - dialogue/runtime structure: `architecture/weekly-planning-dialogue-architecture-v5.md`
+- availability: `architecture/weekly-planning-availability-architecture-v5.md`
 - product intent: `spec/product-intent.md`
+- scheduling behavior: `policies/scheduling.md`
 - human grounding: `policies/human-grounding.md`
 - memory/learning policy: `policies/adaptive-memory.md`
 - test policy: `quality/test-philosophy.md`
+- regression scenarios: `quality/regression-scenarios.md`
 - execution order: `roadmap/current.md`
 
 ### Client runtime
@@ -103,6 +106,32 @@ active taskのfilenameは日付を含めてよい。canonical spec/architecture/
 
 historical文書内の旧path/branch/PRは当時の証跡として残してよい。current文書からarchiveへ依存して仕様を成立させない。
 
+### Archive invariant transfer gate
+
+**文書をarchiveへ移すことと、その文書に含まれる概念を廃止することは別である。**
+
+canonical / design / task / audit文書をarchiveへ移す前に、必ず次を行う。
+
+1. 文書内の「当時だけの実装手順」と「現在も成立する原則・不変条件・要件」を分離する。
+2. current production code、tests、open Issue、current canonical docsと照合する。
+3. 現在も生きている概念ごとにcurrent owner文書を一つ決める。
+4. current ownerに同じ概念が十分な強さで記述されていなければ、archive移動と同じ変更で昇格・統合する。
+5. current behaviorを証明する回帰scenarioがhistorical test planにしか存在しない場合は、version非依存のscenarioを`quality/`へ抽出する。
+
+禁止:
+
+- `closed` / `superseded` / 古いversionという理由だけで、その文書が確立した現役invariantまでcurrent docsから消す。
+- 詳細な旧文書を丸ごとcurrentへ戻して、古い実装手順まで再び正仕様にする。
+- archive文書だけが現行behaviorの唯一の説明になる状態を残す。
+
+正しい移行は次の形とする。
+
+```text
+historical task / design
+├─ old procedure / old type / old branch → archive
+└─ durable principle / invariant → current owning spec / architecture / policy / quality
+```
+
 ## 6. Naming rules
 
 禁止:
@@ -132,18 +161,20 @@ historical文書内の旧path/branch/PRは当時の証跡として残してよ�
 
 5で重複するなら新規文書を作らず、ownerを1つに寄せる。
 
+archiveへ移す場合は、さらに`Archive invariant transfer gate`を通す。
+
 ## 8. Migration map
 
 2026-08-22以前の主要pathは次へ移行した。
 
 - `docs/ai/weekly-planning-current-contract-v5.md` → `docs/domains/weekly-planning/architecture/current-contract-v5.md`
 - `docs/architecture/*` → `docs/domains/weekly-planning/architecture/` または `docs/archive/weekly-planning/`
-- `docs/weekly-planning/weekly-planning-spec.md` → `docs/domains/weekly-planning/spec/product-intent.md`
+- `docs/weekly-planning/weekly-planning-spec.md` → current principlesは`docs/domains/weekly-planning/spec/` / `policies/`へ、旧詳細計画はarchiveへ
 - `docs/ai/strategy/*` → owning domainの `policies/` / `roadmap/` / `personalization/` またはarchive
 - `docs/ai/testing/*` → `docs/domains/weekly-planning/quality/`
 - `docs/ai/tasks/*` → owning domainの `work/`、closed/supersededはarchive
 - `docs/ai/audits/` → `docs/archive/audits/`
-- `docs/testing/weekly-planning-roleplay-*` → `docs/archive/weekly-planning/legacy/`
+- `docs/testing/weekly-planning-roleplay-*` → historical原文はarchive、現役scenarioは`quality/regression-scenarios.md`
 
 ## 9. Update gate
 
@@ -155,4 +186,4 @@ historical文書内の旧path/branch/PRは当時の証跡として残してよ�
 - `README.md` のcanonical links（該当する場合）
 - Issue本文のcanonical task/spec path（該当する場合）
 
-移動後にcurrent文書が旧canonical pathを参照していないことを確認する。
+移動後にcurrent文書が旧canonical pathを参照していないことと、archiveされた文書だけがcurrent invariantの唯一の根拠になっていないことを確認する。
