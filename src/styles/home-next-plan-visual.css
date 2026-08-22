@@ -27,7 +27,12 @@
 }
 
 :root[data-theme='dark'] .home-study-scene {
-  background: var(--surface-strong);
+  --home-next-scene-blend: color-mix(
+    in srgb,
+    var(--surface-strong) 96%,
+    var(--accent) 4%
+  );
+  background: var(--home-next-scene-blend);
 }
 
 :root[data-theme='dark'] .home-study-scene::before {
@@ -55,10 +60,13 @@
 :root[data-theme='dark'] .home-study-scene::after {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--surface-strong) 98%, transparent) 0%,
-    color-mix(in srgb, var(--surface-strong) 76%, transparent) 12%,
-    color-mix(in srgb, var(--surface-strong) 22%, transparent) 34%,
-    transparent 52%
+    var(--home-next-scene-blend) 0%,
+    color-mix(in srgb, var(--home-next-scene-blend) 96%, transparent) 14%,
+    color-mix(in srgb, var(--home-next-scene-blend) 78%, transparent) 30%,
+    color-mix(in srgb, var(--home-next-scene-blend) 52%, transparent) 44%,
+    color-mix(in srgb, var(--home-next-scene-blend) 26%, transparent) 58%,
+    color-mix(in srgb, var(--home-next-scene-blend) 10%, transparent) 68%,
+    transparent 78%
   );
 }
 
