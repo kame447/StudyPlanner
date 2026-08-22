@@ -65,6 +65,6 @@
 
 @media (max-width: 440px) {
   .bookshelf-row-open-button {
-    inset-right: 42px;
+    right: 42px;
   }
 }
