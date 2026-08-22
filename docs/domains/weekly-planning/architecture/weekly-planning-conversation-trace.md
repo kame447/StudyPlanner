@@ -3,6 +3,9 @@
 Status: current architecture / schema v2
 Updated: 2026-08-22
 
+Parent contract: [current-contract-v5.md](current-contract-v5.md)
+Active work: [../work/README.md](../work/README.md)
+
 ## Responsibility
 
 Trace is a diagnostic journal. It is not planning domain state and must not decide readiness, scheduling, approval, authorization, billing or security outcomes.
@@ -32,12 +35,10 @@ Do not reintroduce Base64 stage chunking or large runtime snapshots as the defau
 
 Trace identity is bound to logical conversation / session / request and monotonic sequence information. Retry and reload must converge without creating additional empty sessions for the same logical conversation.
 
-Production verification for that recovery contract is tracked by Issue #89 and:
-`docs/ai/tasks/20260728-weekly-planning-trace-production-recovery.md`.
+Production recovery verification is tracked by Issue #89 and [20260728-trace-production-recovery.md](../work/20260728-trace-production-recovery.md).
 
 ## Privacy / lifecycle
 
-Raw account identity, retention, HMAC subject tokens, restricted access, audit, deletion, TTL and production governance are separate safety responsibilities tracked by Issue #45 and:
-`docs/ai/tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md`.
+Raw account identity, retention, HMAC subject tokens, restricted access, audit, deletion, TTL and production governance are separate safety responsibilities tracked by Issue #45 and [20260731-trace-privacy-and-lifecycle.md](../work/20260731-trace-privacy-and-lifecycle.md).
 
-Diagnostic value does not override privacy / retention requirements. Client-generated trace is observability evidence, not an authorization source.
+Diagnostic value does not override privacy/retention requirements. Client-generated trace is observability evidence, not an authorization source.
