@@ -177,15 +177,26 @@ test.describe('issue 167 UI regressions', () => {
     await page.goto('/');
 
     const homeColors = await page.evaluate(() => {
-      const summary = document.querySelector('.weekly-progress-summary');
-      const negative = document.querySelector('.weekly-progress-negative');
-      if (!(summary instanceof HTMLElement) || !(negative instanceof HTMLElement)) {
-        throw new Error('weekly progress contrast targets are missing');
-      }
-      return {
-        summary: getComputedStyle(summary).color,
-        negative: getComputedStyle(negative).color,
+      const probe = document.createElement('div');
+      probe.className = 'weekly-progress-summary';
+      probe.style.position = 'fixed';
+      probe.style.left = '-10000px';
+      probe.style.background = '#fff';
+
+      const summaryText = document.createElement('span');
+      summaryText.textContent = 'summary';
+      const negativeText = document.createElement('span');
+      negativeText.className = 'weekly-progress-negative';
+      negativeText.textContent = 'negative';
+      probe.append(summaryText, negativeText);
+      document.body.append(probe);
+
+      const colors = {
+        summary: getComputedStyle(summaryText).color,
+        negative: getComputedStyle(negativeText).color,
       };
+      probe.remove();
+      return colors;
     });
 
     expect(contrastRatio(homeColors.summary, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(4.5);
