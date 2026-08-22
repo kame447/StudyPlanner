@@ -1,0 +1,56 @@
+name: QA Result Summary
+
+on:
+  workflow_run:
+    workflows:
+      - Browser Regression
+      - UI Regression Matrix
+      - UI Quality Automation
+      - Test Intelligence
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish stable PR QA summary
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+            let pulls = run.pull_requests || [];
+
+            if (pulls.length === 0 && run.head_branch) {
+              const { data } = await github.rest.pulls.list({ owner, repo, state: 'open', head: `${owner}:${run.head_branch}`, per_page: 10 });
+              pulls = data.filter((pr) => pr.head.repo.full_name === `${owner}/${repo}`);
+            }
+
+            if (pulls.length === 0) {
+              core.notice('No open same-repository pull request is associated with this QA run.');
+              return;
+            }
+
+            const { data: jobsData } = await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: run.id, per_page: 100 });
+            const jobs = jobsData.jobs.map((job) => ({ name: job.name, status: job.status, conclusion: job.conclusion, url: job.html_url }));
+            const marker = `<!-- studyplanner-qa-summary:${run.name} -->`;
+            const rows = jobs.map((job) => `| ${job.name} | ${job.status} | ${job.conclusion || '-'} | [log](${job.url}) |`).join('\n');
+            const payload = { schemaVersion: 1, workflow: run.name, runId: run.id, status: run.status, conclusion: run.conclusion, headBranch: run.head_branch, headSha: run.head_sha, runUrl: run.html_url, jobs };
+            const body = [marker, `QA summary: ${run.name}`, '', `Run conclusion: \`${run.conclusion || run.status}\``, '', '| Job | Status | Conclusion | Details |', '| --- | --- | --- | --- |', rows || '| no jobs | - | - | - |', '', '<details><summary>Machine-readable result</summary>', '', '```json', JSON.stringify(payload, null, 2), '```', '</details>'].join('\n');
+
+            for (const pr of pulls) {
+              const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number, per_page: 100 });
+              const previous = comments.find((comment) => comment.user?.type === 'Bot' && comment.body?.includes(marker));
+              if (previous) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+              }
+            }

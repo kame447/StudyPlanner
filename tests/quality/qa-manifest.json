@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "controlPlane": {
+    "type": "pull-request-comment",
+    "prefix": "/qa",
+    "requiresDefaultBranchInstallation": true,
+    "authorizedActor": "repository-owner",
+    "sameRepositoryPullRequestsOnly": true,
+    "commands": ["all", "e2e", "visual", "cross-browser", "quality", "a11y", "responsive", "runtime", "bundle", "performance", "stability", "coverage", "mutation", "audit", "deep", "status", "help"]
+  },
+  "resultPlane": {
+    "type": "pull-request-comment",
+    "stablePerWorkflow": true,
+    "machineReadableJsonEmbedded": true,
+    "workflows": ["Browser Regression", "UI Regression Matrix", "UI Quality Automation", "Test Intelligence"]
+  },
+  "suites": {
+    "e2e": {"workflow": "browser-regression.yml", "blocking": true, "scope": "broad-chromium-browser-contracts", "artifact": "artifacts/playwright-results.json"},
+    "visual": {"workflow": "ui-regression.yml", "input": "visual", "blocking": true, "artifacts": ["ui-visual-regression-*", "playwright-visual-results.json"]},
+    "cross-browser": {"workflow": "ui-regression.yml", "input": "cross-browser", "blocking": true, "artifacts": ["ui-cross-browser-*", "playwright-cross-browser-results.json"]},
+    "a11y": {"workflow": "ui-quality-automation.yml", "input": "a11y", "blocking": true, "scope": "serious-and-critical-axe-violations"},
+    "responsive": {"workflow": "ui-quality-automation.yml", "input": "responsive", "blocking": true, "viewports": [360, 390, 768, 1024, 1440]},
+    "runtime": {"workflow": "ui-quality-automation.yml", "input": "runtime", "blocking": true, "scope": ["pageerror", "console-error", "same-origin-request-failure", "same-origin-5xx"]},
+    "bundle": {"workflow": "ui-quality-automation.yml", "input": "bundle", "blocking": true, "artifact": "artifacts/quality-gate/bundle-budget.json"},
+    "performance": {"workflow": "ui-quality-automation.yml", "input": "performance", "blocking": false, "runs": 3, "tool": "Lighthouse CI", "cadence": "weekly-or-manual"},
+    "stability": {"workflow": "ui-quality-automation.yml", "input": "stability", "blocking": true, "repeatEach": 3, "retries": 0, "cadence": "weekly-or-manual"},
+    "coverage": {"workflow": "test-intelligence.yml", "input": "coverage", "blocking": false, "artifact": "artifacts/coverage/coverage-summary.json", "cadence": "weekly-or-manual"},
+    "mutation": {"workflow": "test-intelligence.yml", "input": "mutation", "blocking": true, "target": "weekly-planning-semantic-core", "artifact": "reports/stryker/weekly-planning.json", "cadence": "weekly-or-manual"},
+    "audit": {"workflow": "test-intelligence.yml", "input": "audit", "blocking": true, "threshold": "high", "artifact": "artifacts/security/npm-audit.json", "cadence": "weekly-or-manual"}
+  }
+}
