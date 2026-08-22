@@ -7,6 +7,7 @@ Updated: 2026-08-22
 Tracking: Issue #164
 Baseline main: `8ab7cc292032a01eea2c1603b3bef3d43e262ec1`
 Related: #47, #51, #45, #52, #89, #128, #152, #160, #163
+Documentation placement: `docs/DOCUMENT_DICTIONARY.md`
 
 ## 0. 文書統制と Source of Truth
 
@@ -14,13 +15,13 @@ Related: #47, #51, #45, #52, #89, #128, #152, #160, #163
 
 Issue 本文は目的・背景・進捗管理の要約として扱い、要件、責務境界、受入条件、非機能要件、移行判定、WASM 採否、完了判定について本書と矛盾する場合は本書を優先する。
 
-`PROJECT_MAP.md` は探索用 architecture index、`docs/ai/strategy/weekly-planning-roadmap.md` は週間計画の実行順序、各既存 task は個別 scope の正本である。本書はそれらを上書きして別実装を作る文書ではない。既存 scope と重なる場合は既存 owner を再利用し、責務を二重化しない。
+`PROJECT_MAP.md` は探索用 repository index、`docs/domains/weekly-planning/roadmap/current.md` は週間計画の実行順序、各 owning Issue / domain work record は個別 scope の進行状態を所有する。本書はそれらを上書きして別実装を作る文書ではない。既存 scope と重なる場合は既存 owner を再利用し、責務を二重化しない。
 
 本書を変更する場合は、同一 PR で少なくとも以下を同期する。
 
 - 本書の `Updated` と変更履歴
 - Issue #164 の Source of Truth 記述
-- 影響する architecture / roadmap / task
+- 影響する architecture / roadmap / active work
 - 影響する requirement ID のテストまたは verification plan
 
 要件を満たせない実装上の都合を理由に、暗黙に要件を弱めてはならない。要件変更が必要な場合は、理由、代替案、リスク、採用判断を記録した上で本書を先に変更する。
@@ -90,13 +91,13 @@ owner mismatch、invalid payload、active session recovery 等の防御は存在
 
 ### 2.5 現行 server-authoritative operation
 
-週間計画 approval は既存 task `20260731-weekly-planning-approval-operational-rollout.md` において deterministic Plan ID、server transaction idempotency、operation/item ledger、owner/session/preview revision binding まで実装・自動検証済みである。
+週間計画 approval は [週間計画 approval production rollout](../../weekly-planning/work/20260731-approval-operational-rollout.md) において deterministic Plan ID、server transaction idempotency、operation/item ledger、owner/session/preview revision binding まで実装・自動検証済みである。
 
 本件でこの一意性契約を client-only へ戻してはならない。
 
 ### 2.6 既存 cloud session 方針
 
-`20260731-weekly-planning-synced-conversation-session-store.md` は conversation / Fact Graph / preview / draft / pending question を cloud authoritative revision へ同期する方針を持つ。
+[Stable V5 conversation / Fact Graph cloud session](../../weekly-planning/work/20260731-synced-conversation-session-store.md) は conversation / Fact Graph / preview / draft / pending question を cloud authoritative revision へ同期する方針を持つ。
 
 本件はこの方針と矛盾しない。端末は working replica と計算主体、cloud は共有 commit の authority として扱う。
 
@@ -446,9 +447,9 @@ Plan、Actual、DayNote、MonthEvent、Todo、StudySubject、StudyMaterial、Sch
 
 ### SYNC-030: Weekly Planning shared session
 
-Issue #47 / `20260731-weekly-planning-synced-conversation-session-store.md` の責務を再実装しない。
+Issue #47 / [Stable V5 conversation / Fact Graph cloud session](../../weekly-planning/work/20260731-synced-conversation-session-store.md) の責務を再実装しない。
 
-conversation、Fact Graph、preview、draft、machine pending question を cloud と共有する場合は同 task の atomic revision / conflict / offline reconciliation 契約を本要件の sync infrastructure 上へ接続する。
+conversation、Fact Graph、preview、draft、machine pending question を cloud と共有する場合は同 work record の atomic revision / conflict / offline reconciliation 契約を本要件の sync infrastructure 上へ接続する。
 
 ### SYNC-040: Personalization replica
 
@@ -875,7 +876,7 @@ Production では最低限、正常sync、reconnect、multi-device、server reje
 - [ ] relevant Browser Regression green
 - [ ] relevant Emulator / concurrency tests green
 - [ ] Production verification record がある
-- [ ] `PROJECT_MAP.md`、関連architecture、roadmap、taskが最終責務境界と同期している
+- [ ] `PROJECT_MAP.md`、関連domain docs、Issue / active workが最終責務境界と同期している
 
 ## 22. Merge Gates
 
@@ -986,7 +987,7 @@ Mitigation: SYNC-001 / SYNC-007 / OFF-004。
 - migration / rollback が運用可能である
 - performance が baseline から悪化していない
 - WASM は実測で採用または不採用が決定されている
-- architecture docs / issue / task / tests が同じ責務境界を示している
+- canonical domain docs / Issue / active work / tests が同じ責務境界を示している
 
 ## 26. Change Control
 
@@ -1011,3 +1012,5 @@ Initial canonical requirements baseline.
 Baseline main の実装を確認し、client-first execution、server shared authority、AI gateway、local durable state、offline sync、conflict、migration、security、performance、WASM adoption gate、verification、Definition of Done を統合した。
 
 同日 adversarial document review で requirement traceability を再監査し、AI責務表のID対応、personalization `SYNC-040`、Success Metrics、Stakeholders、Constraints、Traceability Matrix、Change Control を追加した。
+
+同日 documentation taxonomy migration で Source of Truth / roadmap / active-work references を responsibility-owned paths へ同期した。
