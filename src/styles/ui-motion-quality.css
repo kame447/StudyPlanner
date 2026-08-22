@@ -1,0 +1,224 @@
+/*
+ * Primary UI quality + motion contract.
+ *
+ * Keep motion purposeful: entering a surface, confirming the selected navigation
+ * target, rewarding a streak, and acknowledging a direct press. Avoid permanent
+ * decorative motion and avoid full-screen blur, which is expensive on mobile GPUs.
+ */
+
+:root {
+  --ui-motion-fast: 150ms;
+  --ui-motion-base: 210ms;
+  --ui-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Perceived loading ------------------------------------------------------- */
+/* Lazy routes should not replace the current shell with a second full-screen
+   splash. Keep the global boot splash large, but make in-shell fallbacks compact
+   and reserve enough space to avoid a noticeable layout jump. */
+.home-main .splash-screen,
+.section-stack .splash-screen {
+  min-height: clamp(190px, 38vh, 320px);
+  padding: 24px;
+  background: transparent;
+}
+
+.home-main .splash-screen__inner,
+.section-stack .splash-screen__inner {
+  width: min(320px, 100%);
+  gap: 12px;
+}
+
+.home-main .splash-screen__logo,
+.section-stack .splash-screen__logo {
+  width: min(210px, 58vw);
+}
+
+:root[data-theme='dark'] .splash-screen {
+  background: var(--app-background);
+  color: var(--text-primary);
+}
+
+/* Surface entry ----------------------------------------------------------- */
+.home-main > .home-dashboard,
+.home-main > .ai-planning-view,
+.section-stack > .schedule-month-view,
+.section-stack > .bookshelf-view,
+.section-stack > .timetable-view {
+  animation: ui-surface-enter var(--ui-motion-base) var(--ui-motion-spring) both;
+}
+
+@keyframes ui-surface-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 7px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Home: reward and visual hierarchy -------------------------------------- */
+.home-streak-flame {
+  transform-origin: 50% 82%;
+  animation: ui-streak-pop 520ms var(--ui-motion-spring) both;
+}
+
+@keyframes ui-streak-pop {
+  0% {
+    opacity: 0.76;
+    transform: translate3d(0, 3px, 0) rotate(-8deg) scale(0.76);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) rotate(5deg) scale(1.13);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0) scale(1);
+  }
+}
+
+.home-next-card {
+  transition:
+    transform var(--ui-motion-base) var(--ui-motion-spring),
+    border-color var(--ui-motion-fast) ease-out,
+    box-shadow var(--ui-motion-base) ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-next-card:hover {
+    transform: translate3d(0, -2px, 0);
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border) 76%);
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-shadow) 54%, transparent);
+  }
+}
+
+/* Primary navigation: the active icon is inserted only when selection
+   changes, so this one-shot spring doubles as immediate navigation feedback. */
+.home-nav-active-circle {
+  transform-origin: center;
+  animation: ui-nav-target-in 280ms var(--ui-motion-spring) both;
+}
+
+@keyframes ui-nav-target-in {
+  0% {
+    opacity: 0.62;
+    transform: scale(0.76);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* AI planning: keep the existing truthful status semantics, but make waiting
+   feel active without inventing internal stages the application does not expose. */
+.ai-planning-typing {
+  align-items: center;
+  min-height: 38px;
+}
+
+.ai-planning-typing::after {
+  content: '計画を整理しています';
+  margin-left: 7px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+  animation: ui-ai-status-breathe 1.25s ease-in-out infinite;
+}
+
+@keyframes ui-ai-status-breathe {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Timetable: use the single perimeter accent as the interaction language.
+   No second inner ring or shadow is introduced. */
+.timetable-view .timetable-grid-cell.has-class {
+  transform-origin: center;
+  transition:
+    transform var(--ui-motion-fast) var(--ui-motion-spring),
+    border-color var(--ui-motion-fast) ease-out,
+    background var(--ui-motion-fast) ease-out;
+}
+
+.timetable-view .timetable-grid-cell.has-class:active {
+  transform: scale(0.965);
+  border-color: color-mix(in srgb, var(--accent) 96%, white 4%);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-strong) 84%);
+}
+
+/* Bookshelf: cards should feel tangible, but only while the user acts on them. */
+.bookshelf-view button.bookshelf-material-list-row,
+.bookshelf-view button.bookshelf-subject-toggle,
+.bookshelf-view .bookshelf-icon-button {
+  transition:
+    transform var(--ui-motion-fast) var(--ui-motion-spring),
+    border-color var(--ui-motion-fast) ease-out,
+    background var(--ui-motion-fast) ease-out;
+}
+
+.bookshelf-view button.bookshelf-material-list-row:active,
+.bookshelf-view button.bookshelf-subject-toggle:active,
+.bookshelf-view .bookshelf-icon-button:active {
+  transform: scale(0.975);
+}
+
+/* Accessible focus -------------------------------------------------------- */
+.primary-bottom-nav button:focus-visible,
+.home-dashboard button:focus-visible,
+.ai-planning-view button:focus-visible,
+.schedule-workspace-shell button:focus-visible,
+.bookshelf-view button:focus-visible,
+.timetable-view button:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+
+/* The quick-add backdrop only dims the scene. A full-viewport blur is an
+   unnecessary GPU cost and can make the UI feel soft on low-end devices. */
+.quick-add-backdrop,
+.quick-add-menu.is-open .quick-add-backdrop {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-main > .home-dashboard,
+  .home-main > .ai-planning-view,
+  .section-stack > .schedule-month-view,
+  .section-stack > .bookshelf-view,
+  .section-stack > .timetable-view,
+  .home-streak-flame,
+  .home-nav-active-circle,
+  .ai-planning-typing::after,
+  .splash-screen__logo {
+    animation: none !important;
+  }
+
+  .home-next-card,
+  .timetable-view .timetable-grid-cell.has-class,
+  .bookshelf-view button.bookshelf-material-list-row,
+  .bookshelf-view button.bookshelf-subject-toggle,
+  .bookshelf-view .bookshelf-icon-button {
+    transition-duration: 1ms !important;
+  }
+}
