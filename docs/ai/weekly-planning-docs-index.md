@@ -13,25 +13,24 @@ Updated: 2026-08-22
 4. [human grounding policy](strategy/weekly-planning-human-grounding-dialogue-policy.md)
 5. [adaptive memory policy](strategy/weekly-planning-adaptive-memory-learning-policy.md)
 6. [test philosophy](testing/weekly-planning-test-philosophy.md)
-7. current Issue / `tasks/` の active task
+7. [active task index](tasks/README.md)
+8. current Issue / active task
 
-Stable V5 の architecture、現在位置、実行順序が衝突する場合は contract → status → roadmap → current task / Issue の順で確認し、不整合そのものを修正する。
+Stable V5 の architecture、現在位置、実行順序が衝突する場合は contract → status → roadmap → current Issue / task の順で確認し、不整合そのものを修正する。
 
 ## Current execution
 
-週間計画の次の feature/security priority は Issue #152 `Stable V5 adversarial conversation / prompt injection security evaluation`。PR #130 と PR #157 は merge 済みであり current work として再開しない。
+週間計画の次の feature/security priority は Issue #152 `Stable V5 adversarial conversation / prompt injection security evaluation`。
 
-Issue #52 の weekly UI responsibility separation は未完。PR #162 で専用 AI 計画 surface は導入済みだが generic QuickEntry への weekly-planning plumbing が残る。
+Issue #52 の weekly UI responsibility separation は未完。専用 AI 計画 surface は導入済みだが generic QuickEntry への weekly-planning plumbing が残る。
 
-PR #166 は cross-cutting QA automation の独立 draft PR であり、週間計画 feature owner ではない。
-
-privacy / personalization / approval uniqueness / saved-preview migration / trace / client-first execution は各 open Issue と canonical task の owner を維持する。
+privacy / personalization / approval uniqueness / saved-preview migration / trace / client-first execution は各 open Issue と active task index の owner を維持する。
 
 ## Document placement
 
-- `docs/ai/tasks/`: 未完了の実行 task のみ
-- `docs/ai/tasks/closed/`: 完了済み task / handoff / checkpoint
-- `docs/ai/tasks/superseded/`: 置換済み task
+- `docs/ai/tasks/`: 未完了の実行 task と active task index のみ
+- `docs/ai/tasks/closed/`: 完了済み task / handoff / checkpoint の短い completion record
+- `docs/ai/tasks/superseded/`: 置換済み・延期済み task
 - `docs/ai/strategy/`: 継続して有効な product / architecture policy と roadmap
 - `docs/ai/testing/`: 継続して有効な test policy
 - `docs/ai/audits/`: 検証 evidence。current execution queue ではない
