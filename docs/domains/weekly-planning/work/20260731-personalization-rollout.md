@@ -5,7 +5,7 @@ Priority: P2 after session authority
 Updated: 2026-08-22
 Tracking: Issue #47
 Depends on:
-- `20260731-weekly-planning-synced-conversation-session-store.md`
+- [20260731-synced-conversation-session-store.md](20260731-synced-conversation-session-store.md)
 - Issue #164 client-first storage / authority decisions
 
 ## Implemented foundation
