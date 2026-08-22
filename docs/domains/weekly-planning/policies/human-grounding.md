@@ -1,6 +1,6 @@
 # 週間計画 Human Grounding / Dynamic Dialogue Policy
 
-Status: canonical / active
+Status: canonical policy
 Updated: 2026-08-23
 Applies to: Stable V5 dialogue realization, proposal/acceptance dialogue, repair agenda, real-API conversation evaluation
 

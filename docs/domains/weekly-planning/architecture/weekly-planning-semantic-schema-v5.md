@@ -1,9 +1,10 @@
 # weeklyPlanning semantic schema v5
 
-Status: canonical explanatory contract
-Updated: 2026-08-22
+Status: supporting semantic schema reference
+Updated: 2026-08-23
 
 Parent contract: [current-contract-v5.md](current-contract-v5.md)
+Canonical semantic ownership: [weekly-planning-semantic-ownership-boundary-v5.md](weekly-planning-semantic-ownership-boundary-v5.md)
 Dialogue architecture: [weekly-planning-dialogue-architecture-v5.md](weekly-planning-dialogue-architecture-v5.md)
 
 ## Data flow
