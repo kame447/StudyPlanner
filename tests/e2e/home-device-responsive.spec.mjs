@@ -124,7 +124,7 @@ test.describe('Galaxy-class 360x640 mobile viewport', () => {
   test('prioritizes the core dashboard without clipping the add row', async ({ page }) => {
     await seedHome(page);
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(500);
 
     const metrics = await readMetrics(page);
@@ -149,7 +149,7 @@ test.describe('iPad-class portrait viewport', () => {
   test('uses most of the tablet width and keeps the bottom area filled', async ({ page }) => {
     await seedHome(page);
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(700);
 
     const metrics = await readMetrics(page);
@@ -171,7 +171,7 @@ test.describe('iPad-class landscape viewport', () => {
   test('stays proportionally large without horizontal overflow', async ({ page }) => {
     await seedHome(page);
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(700);
 
     const metrics = await readMetrics(page);
