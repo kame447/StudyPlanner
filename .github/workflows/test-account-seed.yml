@@ -1,6 +1,11 @@
 name: Test Account Seed
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/test-account-seed.yml
+      - tests/e2e/test-account-seed.seed.mjs
+      - tests/e2e/playwright.seed.config.mjs
   workflow_dispatch:
   push:
     branches:
@@ -12,17 +17,39 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
-  group: live-test-account-seed
+  group: live-test-account-seed-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
+  validate-seed-source:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Validate seed JavaScript syntax
+        run: |
+          node --check tests/e2e/test-account-seed.seed.mjs
+          node --check tests/e2e/playwright.seed.config.mjs
+
   seed-live-test-account:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: live-account-verification
+    permissions:
+      contents: read
+      issues: write
     env:
       STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}
       STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
