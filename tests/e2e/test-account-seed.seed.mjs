@@ -221,14 +221,27 @@ async function openQuickEntry(page) {
   return dialog;
 }
 
+async function ensureManualPlanInput(dialog) {
+  const manualButton = dialog.getByRole('button', { name: '手動入力', exact: true });
+  if (await locatorHasVisible(manualButton)) {
+    await manualButton.click();
+  }
+}
+
+async function chooseQuickEntryMode(dialog, modeName) {
+  const modeButton = dialog.getByRole('button', { name: modeName, exact: true });
+  await expect(modeButton).toBeVisible();
+  await modeButton.click();
+}
+
 async function ensurePlan(page, fixture) {
   await selectScheduleDate(page, fixture.date);
   if (await locatorHasVisible(page.getByText(fixture.title, { exact: true }))) return;
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '予定', exact: true }).click();
-  await dialog.getByRole('button', { name: '手動入力', exact: true }).click();
-  await dialog.getByRole('button', { name: '時間指定', exact: true }).click();
+  await ensureManualPlanInput(dialog);
+  await chooseQuickEntryMode(dialog, '時間指定');
   await dialog.locator('.quick-entry-title-field input').fill(fixture.title);
   await fieldControl(dialog, '教材', 'select').selectOption({
     label: `${fixture.material}（${fixture.subject}）`,
@@ -303,8 +316,8 @@ async function ensureTodo(page, fixture) {
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '予定', exact: true }).click();
-  await dialog.getByRole('button', { name: '手動入力', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Todo', exact: true }).click();
+  await ensureManualPlanInput(dialog);
+  await chooseQuickEntryMode(dialog, 'Todo');
   await dialog.locator('.quick-entry-title-field input').fill(fixture.title);
   await fieldControl(dialog, '教科', 'input').fill(fixture.subject);
   await fieldControl(dialog, '締切日', 'input').fill(fixture.dueDate);
