@@ -1,3 +1,4 @@
+// Branch-local patch executor. Removed before PR review.
 import fs from 'node:fs';
 
 function replaceOnce(path, before, after) {
