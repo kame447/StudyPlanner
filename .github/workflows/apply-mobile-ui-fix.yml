@@ -1,0 +1,73 @@
+name: Apply Mobile UI Fix
+
+on:
+  push:
+    branches:
+      - fix/mobile-modal-bookshelf-ai-focus
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.head_commit.message == 'chore: apply mobile ui patch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Apply scoped patch
+        run: node scripts/apply-mobile-ui-fix.mjs
+
+      - name: Verify patch shape
+        run: git diff --check
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test:run
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run targeted browser regressions
+        run: >-
+          ./tests/e2e/node_modules/.bin/playwright test
+          tests/e2e/bookshelf-surface.spec.mjs
+          tests/e2e/ai-planning-surface.spec.mjs
+          tests/e2e/mobile-record-sheet.spec.mjs
+          --config=tests/e2e/playwright.config.mjs
+
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/BookshelfView.tsx src/components/AiPlanningView.tsx src/styles/schedule-redesign.css tests/e2e/bookshelf-surface.spec.mjs tests/e2e/ai-planning-surface.spec.mjs tests/e2e/mobile-record-sheet.spec.mjs
+          git commit -m "fix: resolve mobile interaction regressions"
+          git push
