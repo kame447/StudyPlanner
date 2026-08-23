@@ -155,7 +155,7 @@ export function BookshelfView({
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
-  const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
+  const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [subjectManagerOpen, setSubjectManagerOpen] = useState(false);
@@ -200,15 +200,6 @@ export function BookshelfView({
       onInitialActionHandled?.();
     }
   }, [initialAction, onInitialActionHandled]);
-
-  useEffect(() => {
-    if (
-      expandedSubjectId === null ||
-      !subjectsWithFallback.some((subject) => subject.id === expandedSubjectId)
-    ) {
-      setExpandedSubjectId(subjectsWithFallback[0]?.id ?? null);
-    }
-  }, [expandedSubjectId, subjectsWithFallback]);
 
   useEffect(() => {
     if (
@@ -294,6 +285,15 @@ export function BookshelfView({
   ) {
     saveMaterialDetailPreferences(userId, materialId, nextPreferences);
     setPreferenceRevision((current) => current + 1);
+  }
+
+  function setSubjectExpanded(subjectId: string, expanded: boolean) {
+    setExpandedSubjectIds((current) => {
+      if (expanded) {
+        return current.includes(subjectId) ? current : [...current, subjectId];
+      }
+      return current.filter((candidateId) => candidateId !== subjectId);
+    });
   }
 
   function openMaterialMenu(material: StudyMaterial) {
@@ -446,7 +446,7 @@ export function BookshelfView({
                 key={subject.id}
                 onClick={() => {
                   setActiveSubjectId(subject.id);
-                  setExpandedSubjectId(subject.id);
+                  setSubjectExpanded(subject.id, true);
                 }}
                 type="button"
               >
@@ -514,7 +514,7 @@ export function BookshelfView({
               const subjectMaterials = (materialBySubjectId.get(subject.id) ?? []).filter(
                 (material) => filteredMaterialIds.has(material.id),
               );
-              const expanded = expandedSubjectId === subject.id;
+              const expanded = expandedSubjectIds.includes(subject.id);
 
               return (
                 <section
@@ -527,8 +527,9 @@ export function BookshelfView({
                 >
                   <button
                     className="bookshelf-subject-toggle"
-                    onClick={() => setExpandedSubjectId(expanded ? null : subject.id)}
+                    onClick={() => setSubjectExpanded(subject.id, !expanded)}
                     type="button"
+                    aria-expanded={expanded}
                     style={getSubjectStyle(subject.color)}
                   >
                     <span className="bookshelf-subject-symbol">
