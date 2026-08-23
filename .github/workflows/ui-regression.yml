@@ -1,0 +1,145 @@
+name: UI Regression Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: UI regression suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - visual
+          - cross-browser
+  pull_request:
+    branches:
+      - main
+      - ui/home-screen-redesign
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'vite.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-regression.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'vite.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-regression.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-regression:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'visual' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run visual regression matrix
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs
+
+      - name: Upload visual regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-visual-regression-${{ github.sha }}
+          path: |
+            artifacts/playwright-visual-results/
+            artifacts/playwright-visual-report/
+            artifacts/playwright-visual-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  cross-browser-smoke:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium, Firefox and WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run cross-browser smoke matrix
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs
+
+      - name: Upload cross-browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-cross-browser-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,12 +1,12 @@
 # 週間計画 Adaptive Memory Learning Policy
 
 Status: canonical policy
-Updated: 2026-08-22
+Updated: 2026-08-23
 Applies to: 暗記・想起を主要目的とする学習の提案、復習配置、personalization、長期記憶、会話grounding
 
 Parent contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Human grounding: [human-grounding.md](human-grounding.md)
-Personalization design: [../personalization/history-and-optimization-design.md](../personalization/history-and-optimization-design.md)
+Personalization index: [../personalization/README.md](../personalization/README.md)
 
 ## Core rule
 

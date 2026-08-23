@@ -1,5 +1,10 @@
 # Weekly Planning real-API evaluation policy
 
+Status: supporting quality policy
+Updated: 2026-08-23
+
+Parent test policy: [test-philosophy.md](test-philosophy.md)
+
 This document defines the default evaluation cadence for Stable V5 weekly-planning semantic/dialogue changes.
 
 ## Principle

@@ -19,6 +19,16 @@ Stable V5 is the sole production weekly-planning runtime. This directory is the 
 10. [Current roadmap](roadmap/current.md)
 11. [Active work](work/README.md)
 
+## Supporting current references
+
+These documents supplement the canonical owners above; they do not override them.
+
+- [Semantic / orchestration direction](architecture/semantic-v5-direction.md)
+- [Semantic schema reference](architecture/weekly-planning-semantic-schema-v5.md)
+- [Conversation trace architecture](architecture/weekly-planning-conversation-trace.md)
+- [Real-API evaluation policy](quality/real-api-eval-policy.md)
+- [Personalization index](personalization/README.md)
+
 ## Responsibility map
 
 - `spec/`: product intent and user-facing requirements

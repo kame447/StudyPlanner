@@ -1,0 +1,134 @@
+name: Test Intelligence
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Deep test-intelligence suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - coverage
+          - mutation
+          - audit
+  pull_request:
+    branches:
+      - main
+      - ui/home-screen-redesign
+    paths:
+      - '.github/workflows/test-intelligence.yml'
+      - 'stryker.config.mjs'
+  schedule:
+    - cron: '37 19 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-intelligence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'coverage' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Install matching Vitest coverage provider without changing manifests
+        run: npm install --no-save --package-lock=false @vitest/coverage-v8@3.2.4
+      - name: Verify coverage install did not mutate manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Collect unit-test coverage
+        run: npm run test:run -- --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=json --coverage.reportsDirectory=artifacts/coverage --testTimeout=15000
+      - name: Upload coverage intelligence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage-${{ github.sha }}
+          path: artifacts/coverage/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  mutation:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests before mutation tools install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Install pinned mutation toolchain without changing manifests
+        run: npm install --no-save --package-lock=false @stryker-mutator/core@9.6.1 @stryker-mutator/vitest-runner@9.6.1 @stryker-mutator/typescript-checker@9.6.1 typescript@5.6.3
+      - name: Verify mutation toolchain install did not mutate manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Run targeted weekly-planning mutation test
+        run: ./node_modules/.bin/stryker run stryker.config.mjs
+      - name: Upload mutation intelligence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-weekly-planning-${{ github.sha }}
+          path: reports/stryker/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  dependency-audit:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'audit' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Audit dependencies at high severity threshold
+        shell: bash
+        run: |
+          mkdir -p artifacts/security
+          set +e
+          npm audit --audit-level=high --json > artifacts/security/npm-audit.json
+          status=$?
+          set -e
+          node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync('artifacts/security/npm-audit.json','utf8')); console.log(JSON.stringify(r.metadata?.vulnerabilities ?? {}, null, 2));"
+          exit "$status"
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-${{ github.sha }}
+          path: artifacts/security/npm-audit.json
+          if-no-files-found: ignore
+          retention-days: 30

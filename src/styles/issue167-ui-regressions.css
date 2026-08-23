@@ -22,6 +22,28 @@
   color: #10233f;
 }
 
+/* The month calendar is an ARIA grid. Keep each semantic row as a real
+ * accessibility node while sharing the parent's seven visual columns. */
+.month-grid-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+/* The legacy generic month grid only paints a bottom edge on the final week.
+ * Row wrappers change :nth-last-child() scope, so restate that contract here.
+ * The redesigned Schedule calendar intentionally keeps separators on every
+ * week and therefore overrides the generic rule below.
+ */
+.month-grid-row:not(:last-child) .month-cell {
+  border-bottom-width: 0;
+}
+
+.schedule-month-view .month-grid-row .month-cell,
+.month-grid-row:last-child .month-cell {
+  border-bottom-width: 1px;
+}
+
 /* Bookshelf rows expose the primary open action and overflow menu as sibling
  * controls. The DOM classes below are paired with BookshelfView's split
  * controls so the menu never becomes a focusable descendant of another

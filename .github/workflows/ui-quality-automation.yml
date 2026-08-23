@@ -1,0 +1,208 @@
+name: UI Quality Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Quality suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - quality
+          - a11y
+          - responsive
+          - runtime
+          - bundle
+          - performance
+          - stability
+  pull_request:
+    branches:
+      - main
+      - ui/home-screen-redesign
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'tests/quality/**'
+      - 'scripts/ci/**'
+      - 'vite.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-quality-automation.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'tests/quality/**'
+      - 'scripts/ci/**'
+      - 'vite.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-quality-automation.yml'
+  schedule:
+    - cron: '17 18 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-quality:
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'quality' || inputs.suite == 'a11y' || inputs.suite == 'responsive' || inputs.suite == 'runtime') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests before isolated quality tools install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Install isolated Playwright and axe
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1 @axe-core/playwright@4.13.0
+      - name: Verify isolated install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+      - name: Build production bundle
+        run: npm run build
+      - name: Run browser quality gates
+        shell: bash
+        env:
+          QUALITY_SUITE: ${{ inputs.suite || 'quality' }}
+        run: |
+          extra_args=()
+          case "$QUALITY_SUITE" in
+            a11y)
+              extra_args+=(--grep "automated WCAG")
+              ;;
+            responsive)
+              extra_args+=(--grep "viewport boundaries")
+              ;;
+            runtime)
+              extra_args+=(--grep "uncaught errors")
+              ;;
+          esac
+          ./tests/e2e/node_modules/.bin/playwright test \
+            --config=tests/e2e/playwright.quality.config.mjs \
+            "${extra_args[@]}"
+      - name: Upload browser quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-browser-quality-${{ github.sha }}
+          path: |
+            artifacts/playwright-quality-results/
+            artifacts/playwright-quality-report/
+            artifacts/playwright-quality-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  bundle-budget:
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'bundle') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build production bundle
+        run: npm run build
+      - name: Enforce bundle budgets
+        run: node scripts/ci/check-bundle-budget.mjs
+      - name: Upload bundle budget report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-bundle-budget-${{ github.sha }}
+          path: artifacts/quality-gate/bundle-budget.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  lighthouse:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'performance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build production bundle
+        run: npm run build
+      - name: Install isolated Lighthouse CI
+        run: npm install --prefix /tmp/studyplanner-lhci --no-save --package-lock=false @lhci/cli@0.15.1
+      - name: Collect and assert Lighthouse observations
+        run: /tmp/studyplanner-lhci/node_modules/.bin/lhci autorun --config=tests/quality/lighthouserc.cjs
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-lighthouse-${{ github.sha }}
+          path: artifacts/lighthouse/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  stability-repeat:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'stability') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+      - name: Install Chromium, Firefox and WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+      - name: Build production bundle
+        run: npm run build
+      - name: Repeat cross-browser smoke without retries
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --repeat-each=3 --retries=0
+      - name: Upload stability artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-stability-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: ignore
+          retention-days: 14
