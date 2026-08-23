@@ -81,7 +81,10 @@ export function parseFocusedAuthorizationDecisionV5(
   try {
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
-    if (Object.keys(value).length !== 1 || !Object.hasOwn(value, 'decision')) return null;
+    if (
+      Object.keys(value).length !== 1
+      || !Object.prototype.hasOwnProperty.call(value, 'decision')
+    ) return null;
     const decision = value.decision;
     if (decision !== 'create_plan' && decision !== 'fallback') return null;
     return { decision };
