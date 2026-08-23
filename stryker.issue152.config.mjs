@@ -8,13 +8,9 @@ export default {
   tsconfigFile: 'tsconfig.json',
   mutate: [
     'src/features/weeklyPlanning/semantic/weeklyPlanningFocusedAuthorizationV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticBaseValidatorV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticValidatorV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts',
+    'src/features/weeklyPlanning/semantic/weeklyPlanningNumericSafetyV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticResponseValidationV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningContextualValidationBoundaryV5.ts',
-    'src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts',
   ],
   vitest: {
     configFile: 'vite.config.mjs',
