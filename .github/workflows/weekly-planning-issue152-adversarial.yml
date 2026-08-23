@@ -29,6 +29,7 @@ jobs:
       WEEKLY_PLANNING_ISSUE152_REAL_API: '1'
       WEEKLY_PLANNING_ISSUE152_OUTPUT_DIR: artifacts/issue152-adversarial-real-api
       WEEKLY_PLANNING_ISSUE152_TIMEOUT_MS: '600000'
+      WEEKLY_PLANNING_ISSUE152_CRITICAL_REPETITIONS: '3'
       VITE_AI_PROVIDER: openai
       VITE_AI_BASE_URL: https://api.openai.com/v1
       VITE_AI_MODEL: gpt-5.6-luna
