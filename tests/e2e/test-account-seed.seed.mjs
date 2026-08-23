@@ -456,7 +456,7 @@ test('seed the dedicated live test account with persistent visual fixtures', asy
   await expect(page.getByText('研究室に進捗共有', { exact: true })).toBeVisible();
 
   await primaryNavButton(page, 'ホーム').click();
-  await expect(page.locator('.home-dashboard-default')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'ホーム', exact: true })).toBeVisible();
 
   console.info('[TestAccountSeed] persistent fixtures verified', {
     date: today,
