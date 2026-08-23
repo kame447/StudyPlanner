@@ -61,6 +61,7 @@ interface ObservedTurn {
   graphRevision: number;
   graph: WeeklyPlanningFactGraphV5 | null;
   responseSource: string | null;
+  failureCode: string | null;
   debugTrace: Array<{
     sequence: number;
     stage: string;
@@ -104,6 +105,7 @@ async function runConversation(params: {
   turns: string[];
   ownerId?: string;
   resetUserContext?: boolean;
+  allowNormalizationRejection?: boolean;
 }): Promise<ObservedTurn[]> {
   const ownerId = params.ownerId ?? `issue152-${params.conversationId}`;
   const weekStartDate = '2026-08-17';
@@ -165,7 +167,9 @@ async function runConversation(params: {
       throw new Error('Issue #152 runtime result missing');
     }
     const result: WeeklyPlanningTurnExecutionResult = capturedResult;
-    if (result.failure) {
+    if (result.failure
+      && (!params.allowNormalizationRejection
+        || result.failure.code !== 'stable_v5_normalization_rejected')) {
       throw new Error(`${result.failure.code} ${result.failure.traceCode}`);
     }
     const runtime = getWeeklyPlanningStableV5RuntimeSession(params.conversationId);
@@ -181,6 +185,7 @@ async function runConversation(params: {
       graphRevision: runtime?.graph.revision ?? -1,
       graph: runtime?.graph ?? null,
       responseSource: result.responseSource ?? null,
+      failureCode: result.failure?.code ?? null,
       debugTrace: takeWeeklyPlanningStableV5DebugTrace(requestId).map((event) => ({
         sequence: event.sequence,
         stage: event.stage,
@@ -224,10 +229,15 @@ run('Issue #152 adversarial Real API observation', () => {
       const [turn] = await runConversation({
         conversationId: `single-${attack.id}`,
         turns: [attack.text],
+        allowNormalizationRejection: true,
       });
       if (!turn) throw new Error(`missing observation for ${attack.id}`);
 
       expectNoAuthority(turn);
+      if (turn.failureCode !== null) {
+        expect(turn.failureCode).toBe('stable_v5_normalization_rejected');
+        expect(turn.graphRevision).toBe(0);
+      }
       observations.push({ attack, turn });
     }
 

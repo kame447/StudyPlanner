@@ -67,6 +67,41 @@ function componentShellNeedsCurrentTurnEvidence(
   return labelChanged || roleChanged;
 }
 
+function collectStoredContextStrings(
+  publicStateSummary: Record<string, unknown> | undefined,
+): Set<string> {
+  const stored = new Set<string>();
+  const register = (value: unknown): void => {
+    if (typeof value !== 'string') return;
+    const normalized = normalizedEvidenceText(value);
+    if (normalized) stored.add(normalized);
+  };
+
+  recordArray(publicStateSummary?.tasks).forEach((task) => register(task.title));
+  recordArray(publicStateSummary?.components).forEach((component) => register(component.label));
+  recordArray(publicStateSummary?.uncertainties).forEach((uncertainty) => {
+    register(uncertainty.reason);
+    register(uncertainty.sourceText);
+  });
+  recordArray(publicStateSummary?.userPlanningContext).forEach((fact) => {
+    register(fact.label);
+    register(fact.value);
+  });
+  register(publicStateSummary?.lastAssistantMessage);
+  return stored;
+}
+
+function copiedExactlyFromStoredContext(params: {
+  value: string | null | undefined;
+  currentUserText: string;
+  storedContextStrings: ReadonlySet<string>;
+}): boolean {
+  if (!params.value) return false;
+  const normalizedValue = normalizedEvidenceText(params.value);
+  if (!normalizedValue || !params.storedContextStrings.has(normalizedValue)) return false;
+  return !normalizedEvidenceText(params.currentUserText).includes(normalizedValue);
+}
+
 export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   currentUserText?: string;
@@ -75,9 +110,22 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   if (params.currentUserText === undefined) return [];
 
   const errors: string[] = [];
+  const storedContextStrings = collectStoredContextStrings(params.publicStateSummary);
   const check = (sourceText: string, path: string): void => {
     if (!sourceTextGroundedInCurrentTurn(sourceText, params.currentUserText ?? '')) {
       errors.push(`${path}.sourceText:not-grounded-in-current-user-text`);
+    }
+  };
+  const checkStoredCopy = (
+    value: string | null | undefined,
+    path: string,
+  ): void => {
+    if (copiedExactlyFromStoredContext({
+      value,
+      currentUserText: params.currentUserText ?? '',
+      storedContextStrings,
+    })) {
+      errors.push(`${path}:copied-from-stored-context-without-current-mention`);
     }
   };
 
@@ -89,6 +137,9 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     const taskPath = `document.tasks[${taskIndex}]`;
     if (taskShellNeedsCurrentTurnEvidence(task, params.publicStateSummary)) {
       check(task.sourceText, taskPath);
+    }
+    if (!task.existingPublicId) {
+      checkStoredCopy(task.title, `${taskPath}.title`);
     }
 
     task.workloads.forEach((workload, workloadIndex) => {
@@ -104,7 +155,9 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
       check(recurrence.sourceText, `${taskPath}.recurrence[${recurrenceIndex}]`);
     });
     (task.durableContextSignals ?? []).forEach((signal, signalIndex) => {
-      check(signal.sourceText, `${taskPath}.durableContextSignals[${signalIndex}]`);
+      const signalPath = `${taskPath}.durableContextSignals[${signalIndex}]`;
+      check(signal.sourceText, signalPath);
+      checkStoredCopy(signal.value, `${signalPath}.value`);
     });
 
     (task.study?.components ?? []).forEach((component, componentIndex) => {
@@ -112,11 +165,16 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
       if (componentShellNeedsCurrentTurnEvidence(component, params.publicStateSummary)) {
         check(component.sourceText, componentPath);
       }
+      if (!component.existingPublicId) {
+        checkStoredCopy(component.label, `${componentPath}.label`);
+      }
       component.workloads.forEach((workload, workloadIndex) => {
         check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`);
       });
       (component.durableContextSignals ?? []).forEach((signal, signalIndex) => {
-        check(signal.sourceText, `${componentPath}.durableContextSignals[${signalIndex}]`);
+        const signalPath = `${componentPath}.durableContextSignals[${signalIndex}]`;
+        check(signal.sourceText, signalPath);
+        checkStoredCopy(signal.value, `${signalPath}.value`);
       });
     });
   });
@@ -131,10 +189,15 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     check(request.sourceText, `document.constraintSourceRequests[${index}]`);
   });
   (params.document.userContextFacts ?? []).forEach((fact, index) => {
-    check(fact.sourceText, `document.userContextFacts[${index}]`);
+    const factPath = `document.userContextFacts[${index}]`;
+    check(fact.sourceText, factPath);
+    checkStoredCopy(fact.label, `${factPath}.label`);
+    checkStoredCopy(fact.value, `${factPath}.value`);
   });
   params.document.uncertainties.forEach((uncertainty, index) => {
-    check(uncertainty.sourceText, `document.uncertainties[${index}]`);
+    const uncertaintyPath = `document.uncertainties[${index}]`;
+    check(uncertainty.sourceText, uncertaintyPath);
+    checkStoredCopy(uncertainty.reason, `${uncertaintyPath}.reason`);
   });
   params.document.corrections.forEach((correction, index) => {
     check(correction.sourceText, `document.corrections[${index}]`);
@@ -143,5 +206,5 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     check(decision.sourceText, `document.decisions[${index}]`);
   });
 
-  return [...new Set(errors)];
+  return errors;
 }
