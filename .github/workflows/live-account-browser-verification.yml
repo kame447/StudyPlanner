@@ -1,0 +1,52 @@
+name: Live Account Browser Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-account-browser-verification
+  cancel-in-progress: false
+
+jobs:
+  chromium-live-account:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: live-account-verification
+    env:
+      STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}
+      STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
+      STUDYPLANNER_LIVE_PASSWORD: ${{ secrets.STUDYPLANNER_LIVE_PASSWORD }}
+      STUDYPLANNER_LIVE_ACCESS_KEY: ${{ secrets.STUDYPLANNER_LIVE_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Verify required live-account secrets are configured
+        shell: bash
+        run: |
+          missing=0
+          for name in STUDYPLANNER_LIVE_BASE_URL STUDYPLANNER_LIVE_EMAIL STUDYPLANNER_LIVE_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::${name} is not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run isolated production account verification
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.live.config.mjs
