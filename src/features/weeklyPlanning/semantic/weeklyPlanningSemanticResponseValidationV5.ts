@@ -3,6 +3,9 @@ import {
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
 import {
+  validateWeeklyPlanningCurrentTurnProvenanceV5,
+} from './weeklyPlanningCurrentTurnProvenanceV5';
+import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -40,6 +43,7 @@ import {
 } from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
+  currentUserText?: string;
   publicStateSummary?: Record<string, unknown>;
 }
 
@@ -109,6 +113,11 @@ export function validateWeeklyPlanningSemanticResponseV5(
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
+    ...validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: input.currentUserText,
+      publicStateSummary: input.publicStateSummary,
+    }),
   ];
   return {
     document: errors.length === 0 ? document : null,

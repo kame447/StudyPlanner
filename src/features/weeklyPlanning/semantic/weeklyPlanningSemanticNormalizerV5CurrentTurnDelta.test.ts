@@ -95,7 +95,7 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 
-  it('does not reinterpret an AI-emitted planning window from raw current-turn text after the semantic boundary', async () => {
+  it('rejects an AI-emitted planning window copied from context without deterministically reinterpreting raw user text', async () => {
     const emittedWindow = {
       localId: 'window-emitted',
       kind: 'relative_week' as const,
@@ -105,7 +105,8 @@ describe('Stable V5 current-turn semantic delta contract', () => {
       sourceText: '来週の予定',
     };
     const initial = currentTaskDocument(emittedWindow);
-    const fake = client([JSON.stringify(initial)]);
+    const encoded = JSON.stringify(initial);
+    const fake = client([encoded, encoded]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '数学を進めたい',
@@ -123,11 +124,15 @@ describe('Stable V5 current-turn semantic delta contract', () => {
       },
     });
 
-    expect(result.status).toBe('accepted');
-    expect(result.document?.planningWindow).toEqual(emittedWindow);
-    expect(result.document?.tasks).toHaveLength(1);
-    expect(result.diagnostics.repairAttempted).toBe(false);
-    expect(fake.calls).toHaveLength(1);
+    expect(result.status).toBe('rejected');
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.repairAttempted).toBe(true);
+    expect(fake.calls).toHaveLength(2);
+    expect(result.diagnostics.validationErrors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('planningWindow.sourceText:not-grounded-in-current-user-text'),
+      ]),
+    );
     expect(result.diagnostics.algorithmicRepairs).not.toEqual(
       expect.arrayContaining([expect.stringContaining('copied-planning-window-removed')]),
     );

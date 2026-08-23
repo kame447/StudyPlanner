@@ -11,6 +11,7 @@ export default {
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticBaseValidatorV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticValidatorV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.ts',
+    'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticResponseValidationV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningContextualValidationBoundaryV5.ts',
     'src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts',
