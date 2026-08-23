@@ -91,14 +91,71 @@ function collectStoredContextStrings(
   return stored;
 }
 
+function contextualMachineBoundEntityValues(
+  publicStateSummary: Record<string, unknown> | undefined,
+): {
+  taskTitles: Set<string>;
+  componentLabels: Set<string>;
+} {
+  const taskTitles = new Set<string>();
+  const componentLabels = new Set<string>();
+  if (!publicStateSummary) return { taskTitles, componentLabels };
+
+  const pendingQuestion = isRecord(publicStateSummary.pendingQuestion)
+    ? publicStateSummary.pendingQuestion
+    : null;
+  const targetFactId = typeof pendingQuestion?.targetFactId === 'string'
+    ? pendingQuestion.targetFactId
+    : null;
+  if (!targetFactId) return { taskTitles, componentLabels };
+
+  const tasks = recordArray(publicStateSummary.tasks);
+  const components = recordArray(publicStateSummary.components);
+  const workloads = recordArray(publicStateSummary.workloads);
+  const targetWorkload = workloads.find((workload) => workload.publicId === targetFactId) ?? null;
+  const targetComponent = components.find((component) => component.publicId === targetFactId) ?? null;
+  const targetTask = tasks.find((task) => task.publicId === targetFactId) ?? null;
+
+  const taskPublicId = typeof targetWorkload?.taskPublicId === 'string'
+    ? targetWorkload.taskPublicId
+    : typeof targetComponent?.taskPublicId === 'string'
+      ? targetComponent.taskPublicId
+      : typeof targetTask?.publicId === 'string'
+        ? targetTask.publicId
+        : null;
+  const componentPublicId = typeof targetWorkload?.componentPublicId === 'string'
+    ? targetWorkload.componentPublicId
+    : typeof targetComponent?.publicId === 'string'
+      ? targetComponent.publicId
+      : null;
+
+  const task = taskPublicId
+    ? tasks.find((candidate) => candidate.publicId === taskPublicId) ?? null
+    : null;
+  if (typeof task?.title === 'string') {
+    taskTitles.add(normalizedEvidenceText(task.title));
+  }
+
+  const component = componentPublicId
+    ? components.find((candidate) => candidate.publicId === componentPublicId) ?? null
+    : null;
+  if (typeof component?.label === 'string') {
+    componentLabels.add(normalizedEvidenceText(component.label));
+  }
+
+  return { taskTitles, componentLabels };
+}
+
 function copiedExactlyFromStoredContext(params: {
   value: string | null | undefined;
   currentUserText: string;
   storedContextStrings: ReadonlySet<string>;
+  machineAuthorizedValues?: ReadonlySet<string>;
 }): boolean {
   if (!params.value) return false;
   const normalizedValue = normalizedEvidenceText(params.value);
   if (!normalizedValue || !params.storedContextStrings.has(normalizedValue)) return false;
+  if (params.machineAuthorizedValues?.has(normalizedValue)) return false;
   return !normalizedEvidenceText(params.currentUserText).includes(normalizedValue);
 }
 
@@ -111,6 +168,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
 
   const errors: string[] = [];
   const storedContextStrings = collectStoredContextStrings(params.publicStateSummary);
+  const machineBoundValues = contextualMachineBoundEntityValues(params.publicStateSummary);
   const check = (sourceText: string, path: string): void => {
     if (!sourceTextGroundedInCurrentTurn(sourceText, params.currentUserText ?? '')) {
       errors.push(`${path}.sourceText:not-grounded-in-current-user-text`);
@@ -119,11 +177,13 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   const checkStoredCopy = (
     value: string | null | undefined,
     path: string,
+    machineAuthorizedValues?: ReadonlySet<string>,
   ): void => {
     if (copiedExactlyFromStoredContext({
       value,
       currentUserText: params.currentUserText ?? '',
       storedContextStrings,
+      machineAuthorizedValues,
     })) {
       errors.push(`${path}:copied-from-stored-context-without-current-mention`);
     }
@@ -139,7 +199,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
       check(task.sourceText, taskPath);
     }
     if (!task.existingPublicId) {
-      checkStoredCopy(task.title, `${taskPath}.title`);
+      checkStoredCopy(task.title, `${taskPath}.title`, machineBoundValues.taskTitles);
     }
 
     task.workloads.forEach((workload, workloadIndex) => {
@@ -166,7 +226,11 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
         check(component.sourceText, componentPath);
       }
       if (!component.existingPublicId) {
-        checkStoredCopy(component.label, `${componentPath}.label`);
+        checkStoredCopy(
+          component.label,
+          `${componentPath}.label`,
+          machineBoundValues.componentLabels,
+        );
       }
       component.workloads.forEach((workload, workloadIndex) => {
         check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`);
