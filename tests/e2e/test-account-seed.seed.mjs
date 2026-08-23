@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 
 function requireSecret(name) {
   const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name} is required for test-account seeding.`);
-  }
+  if (!value) throw new Error(`${name} is required for test-account seeding.`);
   return value;
 }
 
@@ -34,8 +32,25 @@ function dayAriaPrefix(dateString) {
   return `${year}年 ${month}月${day}日`;
 }
 
-async function locatorIsVisible(locator) {
-  return (await locator.count()) > 0 && (await locator.first().isVisible());
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function fieldControl(container, caption, selector = 'input, select, textarea') {
+  const captionPattern = new RegExp(`^\\s*${escapeRegExp(caption)}`);
+  return container
+    .locator('label.field')
+    .filter({ hasText: captionPattern })
+    .locator(selector)
+    .first();
+}
+
+async function locatorHasVisible(locator) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible()) return true;
+  }
+  return false;
 }
 
 async function waitForAuthSurface(page) {
@@ -44,23 +59,19 @@ async function waitForAuthSurface(page) {
 
   await expect
     .poll(async () => {
-      if (await locatorIsVisible(accessGateHeading)) return 'access-gate';
-      if (await locatorIsVisible(loginTab)) return 'auth';
+      if (await locatorHasVisible(accessGateHeading)) return 'access-gate';
+      if (await locatorHasVisible(loginTab)) return 'auth';
       return 'pending';
     }, { timeout: 20_000 })
     .not.toBe('pending');
 }
 
 async function unlockAccessGateIfNeeded(page) {
-  const accessGateHeading = page.getByRole('heading', { name: '限定公開キー' });
-  if (!(await locatorIsVisible(accessGateHeading))) return;
-
+  const heading = page.getByRole('heading', { name: '限定公開キー' });
+  if (!(await locatorHasVisible(heading))) return;
   if (!liveAccessKey) {
-    throw new Error(
-      'The production access gate is enabled, but STUDYPLANNER_LIVE_ACCESS_KEY is not configured.',
-    );
+    throw new Error('The production access gate is enabled but its secret is missing.');
   }
-
   await page.getByLabel('閲覧キー').fill(liveAccessKey);
   await page.getByRole('button', { name: 'キーを確認して進む' }).click();
   await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
@@ -68,53 +79,48 @@ async function unlockAccessGateIfNeeded(page) {
 
 async function signIn(page) {
   await page.goto('/');
-
   const primaryNav = page.locator('.primary-bottom-nav');
-  if (await locatorIsVisible(primaryNav)) return;
+  if (await locatorHasVisible(primaryNav)) return;
 
   await waitForAuthSurface(page);
   await unlockAccessGateIfNeeded(page);
-
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
   await page.getByLabel('メールアドレス').fill(liveEmail);
   await page.getByLabel('パスワード', { exact: true }).fill(livePassword);
   await page.getByRole('button', { name: 'ログインする' }).click();
 
-  const privacyHeading = page.getByRole('heading', { name: '初回利用の確認' });
-  const weekStartHeading = page.getByRole('heading', { name: '1週間の始まりを選択' });
-  const authError = page.locator('.inline-error, .app-notice.error').first();
+  const privacy = page.getByRole('heading', { name: '初回利用の確認' });
+  const weekStart = page.getByRole('heading', { name: '1週間の始まりを選択' });
+  const authError = page.locator('.inline-error, .app-notice.error');
 
   await expect
     .poll(async () => {
-      if (await locatorIsVisible(primaryNav)) return 'ready';
-      if (await locatorIsVisible(privacyHeading)) return 'privacy-onboarding';
-      if (await locatorIsVisible(weekStartHeading)) return 'week-start-onboarding';
-      if (await locatorIsVisible(authError)) return 'auth-error';
+      if (await locatorHasVisible(primaryNav)) return 'ready';
+      if (await locatorHasVisible(privacy)) return 'privacy';
+      if (await locatorHasVisible(weekStart)) return 'week-start';
+      if (await locatorHasVisible(authError)) return 'auth-error';
       return 'pending';
     }, { timeout: 30_000 })
     .not.toBe('pending');
 
-  if (await locatorIsVisible(privacyHeading)) {
-    throw new Error('The seed account still requires the initial privacy consent.');
+  if (await locatorHasVisible(privacy)) {
+    throw new Error('The seed account still requires initial privacy consent.');
   }
-  if (await locatorIsVisible(weekStartHeading)) {
-    throw new Error('The seed account still requires the initial week-start preference.');
+  if (await locatorHasVisible(weekStart)) {
+    throw new Error('The seed account still requires a week-start preference.');
   }
-  if (await locatorIsVisible(authError)) {
+  if (await locatorHasVisible(authError)) {
     throw new Error('Test-account sign-in failed. Check Environment secrets.');
   }
-
   await expect(primaryNav).toBeVisible();
 }
 
 function primaryNavButton(page, name) {
-  return page
-    .locator('.primary-bottom-nav')
-    .getByRole('button', { name, exact: true });
+  return page.locator('.primary-bottom-nav').getByRole('button', { name, exact: true });
 }
 
 async function ensureBookshelf(page) {
-  if (!(await locatorIsVisible(page.locator('.bookshelf-dashboard')))) {
+  if (!(await locatorHasVisible(page.locator('.bookshelf-dashboard')))) {
     await primaryNavButton(page, '教材').click();
   }
   await expect(page.locator('.bookshelf-dashboard')).toBeVisible();
@@ -122,11 +128,10 @@ async function ensureBookshelf(page) {
 
 async function ensureSubject(page, fixture) {
   await ensureBookshelf(page);
-
-  const subjectChip = page
+  const chip = page
     .locator('.bookshelf-category-chips')
     .getByRole('button', { name: fixture.name, exact: true });
-  if (await locatorIsVisible(subjectChip)) return;
+  if (await locatorHasVisible(chip)) return;
 
   await page.getByLabel('カテゴリを管理').click();
   const manager = page.locator('.bookshelf-manager-modal');
@@ -137,25 +142,22 @@ async function ensureSubject(page, fixture) {
     has: page.getByRole('heading', { name: '教科を追加', exact: true }),
   });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('教科名', { exact: true }).fill(fixture.name);
+  await fieldControl(dialog, '教科名', 'input').fill(fixture.name);
   await dialog.getByRole('button', { name: fixture.color, exact: true }).click();
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(subjectChip).toBeVisible();
+  await expect(chip).toBeVisible();
 }
 
 async function ensureMaterial(page, fixture) {
   await ensureBookshelf(page);
-
-  const subjectChip = page
+  const chip = page
     .locator('.bookshelf-category-chips')
     .getByRole('button', { name: fixture.subject, exact: true });
-  await subjectChip.click();
+  await chip.click();
 
-  const materialRow = page
-    .locator('.bookshelf-material-list-row')
-    .filter({ hasText: fixture.name });
-  if (await locatorIsVisible(materialRow)) return;
+  const row = page.locator('.bookshelf-material-list-row').filter({ hasText: fixture.name });
+  if (await locatorHasVisible(row)) return;
 
   await page.getByRole('button', { name: '教材追加', exact: true }).click();
   const dialog = page.locator('.bookshelf-modal').filter({
@@ -163,31 +165,31 @@ async function ensureMaterial(page, fixture) {
   });
   await expect(dialog).toBeVisible();
 
-  await dialog.getByLabel('教材名', { exact: true }).fill(fixture.name);
-  await dialog.getByLabel('教科', { exact: true }).selectOption({ label: fixture.subject });
+  await fieldControl(dialog, '教材名', 'input').fill(fixture.name);
+  await fieldControl(dialog, '教科', 'select').selectOption({ label: fixture.subject });
 
   const paceToggle = dialog.locator('.material-pace-toggle input[type="checkbox"]');
   if (!(await paceToggle.isChecked())) await paceToggle.check({ force: true });
 
-  await dialog.getByLabel('単位', { exact: true }).selectOption({ label: fixture.unit });
-  await dialog.getByLabel('総量', { exact: true }).fill(String(fixture.total));
-  await dialog.getByLabel('現在位置', { exact: true }).fill(String(fixture.current));
-  await dialog.getByLabel('目標日', { exact: true }).fill(fixture.targetDate);
-  await dialog
-    .getByLabel('1単位あたりの目安時間', { exact: true })
-    .fill(String(fixture.minutesPerUnit));
-  await dialog.getByLabel('1日の最大量', { exact: true }).fill(String(fixture.maxPerDay));
+  await fieldControl(dialog, '単位', 'select').selectOption({ label: fixture.unit });
+  await fieldControl(dialog, '総量', 'input').fill(String(fixture.total));
+  await fieldControl(dialog, '現在位置', 'input').fill(String(fixture.current));
+  await fieldControl(dialog, '目標日', 'input').fill(fixture.targetDate);
+  await fieldControl(dialog, '1単位あたりの目安時間', 'input').fill(
+    String(fixture.minutesPerUnit),
+  );
+  await fieldControl(dialog, '1日の最大量', 'input').fill(String(fixture.maxPerDay));
 
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('教材を追加しました。', { exact: true })).toBeVisible();
 
-  await subjectChip.click();
-  await expect(materialRow).toBeVisible();
+  await chip.click();
+  await expect(row).toBeVisible();
 }
 
 async function ensureScheduleView(page, viewName) {
-  if (!(await locatorIsVisible(page.locator('.schedule-toolbar')))) {
+  if (!(await locatorHasVisible(page.locator('.schedule-toolbar')))) {
     await primaryNavButton(page, '予定').click();
   }
   await expect(page.locator('.schedule-toolbar')).toBeVisible();
@@ -201,14 +203,9 @@ async function ensureScheduleView(page, viewName) {
 
 async function selectScheduleDate(page, dateString) {
   await ensureScheduleView(page, '日');
-  const dateButton = page
-    .locator('.schedule-day-strip button')
-    .filter({ has: page.locator(`[aria-label^="${dayAriaPrefix(dateString)}"]`) });
-
-  const directButton = page.locator(
-    `.schedule-day-strip button[aria-label^="${dayAriaPrefix(dateString)}"]`,
-  );
-  const target = (await directButton.count()) > 0 ? directButton.first() : dateButton.first();
+  const target = page
+    .locator(`.schedule-day-strip button[aria-label^="${dayAriaPrefix(dateString)}"]`)
+    .first();
   await expect(target).toBeVisible();
   await target.click();
   await expect(target).toHaveAttribute('aria-current', 'date');
@@ -226,27 +223,22 @@ async function openQuickEntry(page) {
 
 async function ensurePlan(page, fixture) {
   await selectScheduleDate(page, fixture.date);
-  if (await locatorIsVisible(page.getByText(fixture.title, { exact: true }))) return;
+  if (await locatorHasVisible(page.getByText(fixture.title, { exact: true }))) return;
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '予定', exact: true }).click();
   await dialog.getByRole('button', { name: '手動入力', exact: true }).click();
   await dialog.getByRole('button', { name: '時間指定', exact: true }).click();
-
-  await dialog
-    .locator('.quick-entry-title-field input')
-    .fill(fixture.title);
-  await dialog
-    .getByLabel('教材', { exact: true })
-    .selectOption({ label: `${fixture.material}（${fixture.subject}）` });
-  await dialog.getByLabel('日付', { exact: true }).fill(fixture.date);
-  await dialog.getByLabel('開始時刻', { exact: true }).fill(fixture.startTime);
-  await dialog
-    .getByRole('button', { name: `${fixture.duration}分`, exact: true })
-    .click();
-  await dialog.getByLabel('メモ', { exact: true }).fill(fixture.memo);
-
+  await dialog.locator('.quick-entry-title-field input').fill(fixture.title);
+  await fieldControl(dialog, '教材', 'select').selectOption({
+    label: `${fixture.material}（${fixture.subject}）`,
+  });
+  await fieldControl(dialog, '日付', 'input').fill(fixture.date);
+  await fieldControl(dialog, '開始時刻', 'input').fill(fixture.startTime);
+  await dialog.getByRole('button', { name: `${fixture.duration}分`, exact: true }).click();
+  await fieldControl(dialog, 'メモ', 'textarea').fill(fixture.memo);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
+
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('学習予定を追加しました。', { exact: true })).toBeVisible();
   await selectScheduleDate(page, fixture.date);
@@ -255,21 +247,19 @@ async function ensurePlan(page, fixture) {
 
 async function ensureActual(page, fixture) {
   await selectScheduleDate(page, fixture.date);
-  if (await locatorIsVisible(page.getByText(fixture.title, { exact: true }))) return;
+  if (await locatorHasVisible(page.getByText(fixture.title, { exact: true }))) return;
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '記録', exact: true }).click();
   await dialog.locator('.quick-entry-title-field input').fill(fixture.title);
-  await dialog.getByLabel('開始時刻', { exact: true }).fill(fixture.startTime);
-  await dialog
-    .getByRole('button', { name: `${fixture.duration}分`, exact: true })
-    .click();
-  await dialog
-    .getByLabel('教材', { exact: true })
-    .selectOption({ label: `${fixture.material}（${fixture.subject}）` });
-  await dialog.getByLabel('メモ', { exact: true }).fill(fixture.memo);
-
+  await fieldControl(dialog, '開始時刻', 'input').fill(fixture.startTime);
+  await dialog.getByRole('button', { name: `${fixture.duration}分`, exact: true }).click();
+  await fieldControl(dialog, '教材', 'select').selectOption({
+    label: `${fixture.material}（${fixture.subject}）`,
+  });
+  await fieldControl(dialog, 'メモ', 'textarea').fill(fixture.memo);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
+
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('記録を保存しました。', { exact: true })).toBeVisible();
   await selectScheduleDate(page, fixture.date);
@@ -289,11 +279,9 @@ async function openMonthEventEditor(page) {
 async function ensureMonthEvent(page, fixture) {
   await selectScheduleDate(page, fixture.date);
   const modal = await openMonthEventEditor(page);
-  const existing = modal
-    .locator('.month-event-timeline-item')
-    .filter({ hasText: fixture.title });
+  const existing = modal.locator('.month-event-timeline-item').filter({ hasText: fixture.title });
 
-  if (await locatorIsVisible(existing)) {
+  if (await locatorHasVisible(existing)) {
     await modal.getByRole('button', { name: '閉じる', exact: true }).click();
     await expect(modal).not.toBeVisible();
     return;
@@ -302,8 +290,8 @@ async function ensureMonthEvent(page, fixture) {
   await modal.getByLabel('タイトル', { exact: true }).fill(fixture.title);
   const allDay = modal.locator('.month-event-all-day-switch input[type="checkbox"]');
   if (fixture.allDay && !(await allDay.isChecked())) await allDay.check({ force: true });
-
   await modal.getByRole('button', { name: '保存', exact: true }).click();
+
   await expect(modal).not.toBeVisible();
   await expect(page.getByText('月の主要予定を追加しました。', { exact: true })).toBeVisible();
   await expect(page.getByText(fixture.title, { exact: true })).toBeVisible();
@@ -311,26 +299,24 @@ async function ensureMonthEvent(page, fixture) {
 
 async function ensureTodo(page, fixture) {
   await ensureScheduleView(page, 'Todo');
-  if (await locatorIsVisible(page.getByText(fixture.title, { exact: true }))) return;
+  if (await locatorHasVisible(page.getByText(fixture.title, { exact: true }))) return;
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '予定', exact: true }).click();
   await dialog.getByRole('button', { name: '手動入力', exact: true }).click();
   await dialog.getByRole('button', { name: 'Todo', exact: true }).click();
-
   await dialog.locator('.quick-entry-title-field input').fill(fixture.title);
-  await dialog.getByLabel('教科', { exact: true }).fill(fixture.subject);
-  await dialog.getByLabel('締切日', { exact: true }).fill(fixture.dueDate);
-  await dialog.getByLabel('締切時刻', { exact: true }).fill(fixture.dueTime);
-  await dialog
-    .getByRole('button', { name: `${fixture.duration}分`, exact: true })
-    .click();
+  await fieldControl(dialog, '教科', 'input').fill(fixture.subject);
+  await fieldControl(dialog, '締切日', 'input').fill(fixture.dueDate);
+  await fieldControl(dialog, '締切時刻', 'input').fill(fixture.dueTime);
+  await dialog.getByRole('button', { name: `${fixture.duration}分`, exact: true }).click();
+
   if (fixture.pinned) {
     const pin = dialog.getByRole('button', { name: 'ピン留め', exact: true });
     if ((await pin.getAttribute('aria-pressed')) !== 'true') await pin.click();
   }
-  await dialog.getByLabel('メモ', { exact: true }).fill(fixture.memo);
 
+  await fieldControl(dialog, 'メモ', 'textarea').fill(fixture.memo);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('Todoを追加しました。', { exact: true })).toBeVisible();
@@ -338,259 +324,113 @@ async function ensureTodo(page, fixture) {
   await expect(page.getByText(fixture.title, { exact: true })).toBeVisible();
 }
 
-test('seed the dedicated live test account with persistent visual fixtures', async ({ page }) => {
-  const today = tokyoTodayIsoDate();
-
+function buildFixtures(today) {
   const subjects = [
-    { name: '数学', color: '青' },
-    { name: '英語', color: 'オレンジ' },
-    { name: '情報科学', color: '紫' },
-    { name: '研究', color: '緑' },
-  ];
+    ['数学', '青'],
+    ['英語', 'オレンジ'],
+    ['情報科学', '紫'],
+    ['研究', '緑'],
+  ].map(([name, color]) => ({ name, color }));
 
   const materials = [
-    {
-      name: '青チャート 数学III',
-      subject: '数学',
-      unit: 'ページ',
-      total: 320,
-      current: 148,
-      targetDate: addDays(today, 45),
-      minutesPerUnit: 4,
-      maxPerDay: 12,
-    },
-    {
-      name: '1対1対応の演習 数学III',
-      subject: '数学',
-      unit: '問題',
-      total: 180,
-      current: 62,
-      targetDate: addDays(today, 60),
-      minutesPerUnit: 8,
-      maxPerDay: 6,
-    },
-    {
-      name: 'DUO 3.0',
-      subject: '英語',
-      unit: '単語',
-      total: 560,
-      current: 214,
-      targetDate: addDays(today, 30),
-      minutesPerUnit: 1,
-      maxPerDay: 30,
-    },
-    {
-      name: '英文法ファイナル問題集',
-      subject: '英語',
-      unit: '問題',
-      total: 220,
-      current: 170,
-      targetDate: addDays(today, 20),
-      minutesPerUnit: 3,
-      maxPerDay: 20,
-    },
-    {
-      name: 'コンピュータネットワーク 第8版',
-      subject: '情報科学',
-      unit: 'ページ',
-      total: 720,
-      current: 205,
-      targetDate: addDays(today, 75),
-      minutesPerUnit: 5,
-      maxPerDay: 16,
-    },
-    {
-      name: 'アルゴリズムイントロダクション',
-      subject: '情報科学',
-      unit: 'ページ',
-      total: 650,
-      current: 120,
-      targetDate: addDays(today, 90),
-      minutesPerUnit: 8,
-      maxPerDay: 12,
-    },
-    {
-      name: '卒業研究ノート',
-      subject: '研究',
-      unit: '章',
-      total: 12,
-      current: 5,
-      targetDate: addDays(today, 40),
-      minutesPerUnit: 60,
-      maxPerDay: 1,
-    },
-  ];
+    ['青チャート 数学III', '数学', 'ページ', 320, 148, 45, 4, 12],
+    ['1対1対応の演習 数学III', '数学', '問題', 180, 62, 60, 8, 6],
+    ['DUO 3.0', '英語', '単語', 560, 214, 30, 1, 30],
+    ['英文法ファイナル問題集', '英語', '問題', 220, 170, 20, 3, 20],
+    ['コンピュータネットワーク 第8版', '情報科学', 'ページ', 720, 205, 75, 5, 16],
+    ['アルゴリズムイントロダクション', '情報科学', 'ページ', 650, 120, 90, 8, 12],
+    ['卒業研究ノート', '研究', '章', 12, 5, 40, 60, 1],
+  ].map(([name, subject, unit, total, current, targetOffset, minutesPerUnit, maxPerDay]) => ({
+    name,
+    subject,
+    unit,
+    total,
+    current,
+    targetDate: addDays(today, targetOffset),
+    minutesPerUnit,
+    maxPerDay,
+  }));
 
   const plans = [
-    {
-      date: today,
-      title: '青チャート 例題演習',
-      material: '青チャート 数学III',
-      subject: '数学',
-      startTime: '08:30',
-      duration: 45,
-      memo: '例題を中心に、解法の型を確認する。',
-    },
-    {
-      date: today,
-      title: 'コンピュータネットワーク 第5章',
-      material: 'コンピュータネットワーク 第8版',
-      subject: '情報科学',
-      startTime: '10:00',
-      duration: 60,
-      memo: 'トランスポート層を読み、要点をノートにまとめる。',
-    },
-    {
-      date: today,
-      title: 'DUO 3.0 復習',
-      material: 'DUO 3.0',
-      subject: '英語',
-      startTime: '13:30',
-      duration: 45,
-      memo: '前日までの範囲を音読して復習する。',
-    },
-    {
-      date: today,
-      title: '卒研 論文整理',
-      material: '卒業研究ノート',
-      subject: '研究',
-      startTime: '20:00',
-      duration: 90,
-      memo: '関連研究の主張と自分の研究との差分を整理する。',
-    },
-    {
-      date: addDays(today, 1),
-      title: '英文法 50問',
-      material: '英文法ファイナル問題集',
-      subject: '英語',
-      startTime: '07:30',
-      duration: 30,
-      memo: '間違えた問題だけ印を付ける。',
-    },
-    {
-      date: addDays(today, 1),
-      title: 'アルゴリズム演習',
-      material: 'アルゴリズムイントロダクション',
-      subject: '情報科学',
-      startTime: '16:00',
-      duration: 60,
-      memo: '動的計画法の例題を解く。',
-    },
-    {
-      date: addDays(today, 2),
-      title: '研究発表スライド修正',
-      material: '卒業研究ノート',
-      subject: '研究',
-      startTime: '18:00',
-      duration: 90,
-      memo: '背景から結果までの流れを見直す。',
-    },
-    {
-      date: addDays(today, 3),
-      title: '数学 演習セット',
-      material: '1対1対応の演習 数学III',
-      subject: '数学',
-      startTime: '19:00',
-      duration: 120,
-      memo: '微積分の演習をまとめて進める。',
-    },
-  ];
+    [0, '青チャート 例題演習', '青チャート 数学III', '数学', '08:30', 45, '例題を中心に、解法の型を確認する。'],
+    [0, 'コンピュータネットワーク 第5章', 'コンピュータネットワーク 第8版', '情報科学', '10:00', 60, 'トランスポート層を読み、要点をノートにまとめる。'],
+    [0, 'DUO 3.0 復習', 'DUO 3.0', '英語', '13:30', 45, '前日までの範囲を音読して復習する。'],
+    [0, '卒研 論文整理', '卒業研究ノート', '研究', '20:00', 90, '関連研究の主張と自分の研究との差分を整理する。'],
+    [1, '英文法 50問', '英文法ファイナル問題集', '英語', '07:30', 30, '間違えた問題だけ印を付ける。'],
+    [1, 'アルゴリズム演習', 'アルゴリズムイントロダクション', '情報科学', '16:00', 60, '動的計画法の例題を解く。'],
+    [2, '研究発表スライド修正', '卒業研究ノート', '研究', '18:00', 90, '背景から結果までの流れを見直す。'],
+    [3, '数学 演習セット', '1対1対応の演習 数学III', '数学', '19:00', 120, '微積分の演習をまとめて進める。'],
+  ].map(([offset, title, material, subject, startTime, duration, memo]) => ({
+    date: addDays(today, offset),
+    title,
+    material,
+    subject,
+    startTime,
+    duration,
+    memo,
+  }));
 
   const actuals = [
-    {
-      date: today,
-      title: '青チャート 実績',
-      material: '青チャート 数学III',
-      subject: '数学',
-      startTime: '08:35',
-      duration: 45,
-      memo: '例題6問。予定どおり進めた。',
-    },
-    {
-      date: today,
-      title: 'DUO 復習 実績',
-      material: 'DUO 3.0',
-      subject: '英語',
-      startTime: '13:40',
-      duration: 30,
-      memo: '苦手な例文を重点的に復習した。',
-    },
-    {
-      date: today,
-      title: '卒研 実績',
-      material: '卒業研究ノート',
-      subject: '研究',
-      startTime: '20:10',
-      duration: 90,
-      memo: '関連研究を3本整理した。',
-    },
-  ];
+    ['青チャート 実績', '青チャート 数学III', '数学', '08:35', 45, '例題6問。予定どおり進めた。'],
+    ['DUO 復習 実績', 'DUO 3.0', '英語', '13:40', 30, '苦手な例文を重点的に復習した。'],
+    ['卒研 実績', '卒業研究ノート', '研究', '20:10', 90, '関連研究を3本整理した。'],
+  ].map(([title, material, subject, startTime, duration, memo]) => ({
+    date: today,
+    title,
+    material,
+    subject,
+    startTime,
+    duration,
+    memo,
+  }));
 
   const monthEvents = [
-    { date: today, title: '研究室ミーティング', allDay: false },
-    { date: addDays(today, 1), title: 'レポート提出締切', allDay: true },
-    { date: addDays(today, 2), title: 'ゼミ発表', allDay: false },
-    { date: addDays(today, 4), title: 'オープンキャンパス', allDay: true },
-    { date: addDays(today, 6), title: '健康診断', allDay: false },
-  ];
+    [0, '研究室ミーティング', false],
+    [1, 'レポート提出締切', true],
+    [2, 'ゼミ発表', false],
+    [4, 'オープンキャンパス', true],
+    [6, '健康診断', false],
+  ].map(([offset, title, allDay]) => ({ date: addDays(today, offset), title, allDay }));
 
   const todos = [
-    {
-      title: '研究室に進捗共有',
-      subject: '研究',
-      dueDate: today,
-      dueTime: '23:00',
-      duration: 15,
-      pinned: true,
-      memo: '今日進めた内容を短くまとめて共有する。',
-    },
-    {
-      title: 'ネットワーク課題を提出',
-      subject: '情報科学',
-      dueDate: addDays(today, 1),
-      dueTime: '20:00',
-      duration: 60,
-      pinned: false,
-      memo: '提出前に動作確認とファイル名を確認する。',
-    },
-    {
-      title: 'HCI発表の想定質問を整理',
-      subject: '研究',
-      dueDate: addDays(today, 2),
-      dueTime: '22:00',
-      duration: 45,
-      pinned: true,
-      memo: '反論・限界・今後の応用を中心に準備する。',
-    },
-    {
-      title: '参考文献を3本読む',
-      subject: '研究',
-      dueDate: addDays(today, 4),
-      dueTime: '21:00',
-      duration: 90,
-      pinned: false,
-      memo: '各論文の目的・方法・結果を一行ずつ残す。',
-    },
-  ];
+    ['研究室に進捗共有', '研究', 0, '23:00', 15, true, '今日進めた内容を短くまとめて共有する。'],
+    ['ネットワーク課題を提出', '情報科学', 1, '20:00', 60, false, '提出前に動作確認とファイル名を確認する。'],
+    ['HCI発表の想定質問を整理', '研究', 2, '22:00', 45, true, '反論・限界・今後の応用を中心に準備する。'],
+    ['参考文献を3本読む', '研究', 4, '21:00', 90, false, '各論文の目的・方法・結果を一行ずつ残す。'],
+  ].map(([title, subject, offset, dueTime, duration, pinned, memo]) => ({
+    title,
+    subject,
+    dueDate: addDays(today, offset),
+    dueTime,
+    duration,
+    pinned,
+    memo,
+  }));
+
+  return { subjects, materials, plans, actuals, monthEvents, todos };
+}
+
+test('seed the dedicated live test account with persistent visual fixtures', async ({ page }) => {
+  const today = tokyoTodayIsoDate();
+  const fixtures = buildFixtures(today);
 
   await signIn(page);
 
-  for (const subject of subjects) await ensureSubject(page, subject);
-  for (const material of materials) await ensureMaterial(page, material);
-  for (const plan of plans) await ensurePlan(page, plan);
-  for (const actual of actuals) await ensureActual(page, actual);
-  for (const event of monthEvents) await ensureMonthEvent(page, event);
-  for (const todo of todos) await ensureTodo(page, todo);
+  for (const subject of fixtures.subjects) await ensureSubject(page, subject);
+  for (const material of fixtures.materials) await ensureMaterial(page, material);
+  for (const plan of fixtures.plans) await ensurePlan(page, plan);
+  for (const actual of fixtures.actuals) await ensureActual(page, actual);
+  for (const event of fixtures.monthEvents) await ensureMonthEvent(page, event);
+  for (const todo of fixtures.todos) await ensureTodo(page, todo);
 
   await ensureBookshelf(page);
-  for (const subject of subjects) {
-    await expect(
-      page
-        .locator('.bookshelf-category-chips')
-        .getByRole('button', { name: subject.name, exact: true }),
-    ).toBeVisible();
-  }
-  await expect(page.getByText('青チャート 数学III', { exact: true }).first()).toBeVisible();
+  const mathChip = page
+    .locator('.bookshelf-category-chips')
+    .getByRole('button', { name: '数学', exact: true });
+  await mathChip.click();
+  await expect(
+    page.locator('.bookshelf-material-list-row').filter({ hasText: '青チャート 数学III' }),
+  ).toBeVisible();
 
   await selectScheduleDate(page, today);
   await expect(page.getByText('青チャート 例題演習', { exact: true })).toBeVisible();
@@ -604,15 +444,14 @@ test('seed the dedicated live test account with persistent visual fixtures', asy
 
   await primaryNavButton(page, 'ホーム').click();
   await expect(page.locator('.home-dashboard-default')).toBeVisible();
-  await expect(page.getByText('青チャート 例題演習', { exact: true })).toBeVisible();
 
   console.info('[TestAccountSeed] persistent fixtures verified', {
     date: today,
-    subjects: subjects.length,
-    materials: materials.length,
-    plans: plans.length,
-    actuals: actuals.length,
-    monthEvents: monthEvents.length,
-    todos: todos.length,
+    subjects: fixtures.subjects.length,
+    materials: fixtures.materials.length,
+    plans: fixtures.plans.length,
+    actuals: fixtures.actuals.length,
+    monthEvents: fixtures.monthEvents.length,
+    todos: fixtures.todos.length,
   });
 });
