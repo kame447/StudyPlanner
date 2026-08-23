@@ -310,9 +310,42 @@ async function ensureMonthEvent(page, fixture) {
   await expect(page.getByText(fixture.title, { exact: true })).toBeVisible();
 }
 
+async function expandTodoSections(page) {
+  while (true) {
+    const expandButton = page
+      .locator('.todo-section-toggle')
+      .filter({ hasText: 'すべて表示' })
+      .first();
+    if (!(await locatorHasVisible(expandButton))) return;
+    await expandButton.click();
+  }
+}
+
+function todoRows(page, title) {
+  return page.locator('.todo-view-item').filter({ hasText: title });
+}
+
+async function normalizeTodoRows(page, title) {
+  await expandTodoSections(page);
+  let rows = todoRows(page, title);
+  let count = await rows.count();
+
+  while (count > 1) {
+    await rows.last().getByRole('button', { name: '削除', exact: true }).click();
+    const expectedCount = count - 1;
+    await expect
+      .poll(async () => todoRows(page, title).count(), { timeout: 10_000 })
+      .toBe(expectedCount);
+    rows = todoRows(page, title);
+    count = expectedCount;
+  }
+
+  return count === 1;
+}
+
 async function ensureTodo(page, fixture) {
   await ensureScheduleView(page, 'Todo');
-  if (await locatorHasVisible(page.getByText(fixture.title, { exact: true }))) return;
+  if (await normalizeTodoRows(page, fixture.title)) return;
 
   const dialog = await openQuickEntry(page);
   await dialog.getByRole('tab', { name: '予定', exact: true }).click();
@@ -334,7 +367,9 @@ async function ensureTodo(page, fixture) {
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('Todoを追加しました。', { exact: true })).toBeVisible();
   await ensureScheduleView(page, 'Todo');
-  await expect(page.getByText(fixture.title, { exact: true })).toBeVisible();
+  await expandTodoSections(page);
+  await expect(todoRows(page, fixture.title).first()).toBeVisible();
+  await normalizeTodoRows(page, fixture.title);
 }
 
 function buildFixtures(today) {
@@ -453,7 +488,9 @@ test('seed the dedicated live test account with persistent visual fixtures', asy
   await expect(page.getByText('研究室ミーティング', { exact: true })).toBeVisible();
 
   await ensureScheduleView(page, 'Todo');
-  await expect(page.getByText('研究室に進捗共有', { exact: true })).toBeVisible();
+  await expandTodoSections(page);
+  await expect(todoRows(page, '研究室に進捗共有')).toHaveCount(1);
+  await expect(todoRows(page, '研究室に進捗共有').first()).toBeVisible();
 
   await primaryNavButton(page, 'ホーム').click();
   await expect(page.getByRole('region', { name: 'ホーム', exact: true })).toBeVisible();
