@@ -1,7 +1,7 @@
 # Weekly Planning Conversation Trace Architecture
 
-Status: current architecture / schema v2
-Updated: 2026-08-22
+Status: supporting trace architecture / schema v2
+Updated: 2026-08-23
 
 Parent contract: [current-contract-v5.md](current-contract-v5.md)
 Active work: [../work/README.md](../work/README.md)

@@ -1,7 +1,7 @@
 # Weekly Planning Stable V5 semantic ownership boundary
 
-Status: canonical supplement
-Updated: 2026-08-16
+Status: canonical semantic ownership contract
+Updated: 2026-08-23
 Integration base: the semantic rule contract inventory merged from PR #142.
 
 This document narrows the ownership boundary already stated in `weekly-planning-dialogue-architecture-v5.md`. The goal is to prevent application-internal decisions from drifting into the LLM layer while also avoiding deterministic re-interpretation of raw user text.

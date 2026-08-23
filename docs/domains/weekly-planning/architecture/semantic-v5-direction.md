@@ -1,10 +1,12 @@
 # Stable V5 semantic / orchestration direction
 
-Status: canonical architecture direction
-Updated: 2026-08-22
+Status: supporting architecture note
+Updated: 2026-08-23
+
+Parent contract: [current-contract-v5.md](current-contract-v5.md)
+Canonical semantic ownership: [weekly-planning-semantic-ownership-boundary-v5.md](weekly-planning-semantic-ownership-boundary-v5.md)
 
 References:
-- [Current contract](current-contract-v5.md)
 - [Current roadmap](../roadmap/current.md)
 - [Human grounding policy](../policies/human-grounding.md)
 - [Adaptive memory policy](../policies/adaptive-memory.md)
