@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-08-22
+Updated: 2026-08-23
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Human grounding policy: [../policies/human-grounding.md](../policies/human-grounding.md)
@@ -14,6 +14,8 @@ Active work: [../work/README.md](../work/README.md)
 PR #109, #112, #113, #120, #127, #129, #130, #132, #140–#151, #154, #155 and #157 established Stable V5 production ownership, legacy semantic-runtime isolation, Fact lifecycle, scheduler/preview/approval boundaries and conversation-quality hardening.
 
 PR #162 merged the primary UI and dedicated AI-planning surface without changing semantic ownership.
+
+PR #166 merged cross-cutting browser, visual, accessibility, runtime and test-intelligence QA automation. It is infrastructure shared across the product rather than weekly-planning feature ownership.
 
 ## Current priority: Issue #152
 
@@ -41,8 +43,6 @@ current main / contract refresh
 - Issue #128: saved-preview migration/compatibility.
 - Issue #160: AI usage/cost observability.
 - Issue #164: client-first execution, owned by the separate [client-runtime domain](../../client-runtime/README.md).
-
-PR #166 is cross-cutting QA automation infrastructure rather than weekly-planning feature ownership.
 
 ## Architecture direction
 
