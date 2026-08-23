@@ -28,7 +28,7 @@ permissions:
 
 concurrency:
   group: test-intelligence-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.head_ref == 'test/issue152-adversarial-validation-lab' }}
 
 jobs:
   coverage:
