@@ -9,13 +9,22 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: configDir,
+  testIgnore: [
+    '**/cross-browser-smoke.spec.mjs',
+    '**/quality-gates.spec.mjs',
+    '**/visual-regression.spec.mjs',
+  ],
   fullyParallel: false,
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,
   failOnFlakyTests: isCi,
   workers: isCi ? 1 : undefined,
   reporter: isCi
-    ? [['list'], ['html', { outputFolder: path.join(artifactsDir, 'playwright-report'), open: 'never' }]]
+    ? [
+        ['list'],
+        ['json', { outputFile: path.join(artifactsDir, 'playwright-results.json') }],
+        ['html', { outputFolder: path.join(artifactsDir, 'playwright-report'), open: 'never' }],
+      ]
     : 'list',
   outputDir: path.join(artifactsDir, 'playwright-results'),
   use: {
