@@ -49,6 +49,7 @@ const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE152_TIMEOUT_MS ?? '300
 const criticalRepetitions = Number(
   process.env.WEEKLY_PLANNING_ISSUE152_CRITICAL_REPETITIONS ?? '2',
 );
+const maxProviderRetries = 2;
 
 const INTERNAL_POLICY_SENTINELS = [
   'publicStateSummary and recentConversation are context, not output',
@@ -70,6 +71,7 @@ interface ObservedTurn {
   userContextRecordCount: number;
   responseSource: string | null;
   failureCode: string | null;
+  validationErrors: string[];
   debugTrace: Array<{
     sequence: number;
     stage: string;
@@ -86,6 +88,24 @@ function createStore(initialState: PlanningState) {
       return state;
     },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validationErrorsFromTrace(
+  events: ReturnType<typeof takeWeeklyPlanningStableV5DebugTrace>,
+): string[] {
+  const errors = events.flatMap((event) => {
+    if (event.stage !== 'semantic_validation_result' || !isRecord(event.data)) return [];
+    const values = event.data.errors;
+    if (!Array.isArray(values)) return [];
+    return values
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.slice(0, 300));
+  });
+  return [...new Set(errors)];
 }
 
 function selectedCorpus(): readonly WeeklyPlanningIssue152AdversarialCase[] {
@@ -114,6 +134,7 @@ async function runConversation(params: {
   ownerId?: string;
   resetUserContext?: boolean;
   allowNormalizationRejection?: boolean;
+  providerRetryAttempt?: number;
 }): Promise<ObservedTurn[]> {
   const ownerId = params.ownerId ?? `issue152-${params.conversationId}`;
   const weekStartDate = '2026-08-17';
@@ -175,10 +196,29 @@ async function runConversation(params: {
       throw new Error('Issue #152 runtime result missing');
     }
     const result: WeeklyPlanningTurnExecutionResult = capturedResult;
+    const traceEvents = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const validationErrors = validationErrorsFromTrace(traceEvents);
+
+    if (result.failure?.code === 'stable_v5_provider_failure') {
+      const retryAttempt = params.providerRetryAttempt ?? 0;
+      if (retryAttempt < maxProviderRetries) {
+        console.warn(
+          `[Issue #152] transient provider failure; retrying isolated conversation ${params.conversationId} (${retryAttempt + 1}/${maxProviderRetries})`,
+        );
+        return runConversation({
+          ...params,
+          providerRetryAttempt: retryAttempt + 1,
+        });
+      }
+    }
+
     if (result.failure
       && (!params.allowNormalizationRejection
         || result.failure.code !== 'stable_v5_normalization_rejected')) {
-      throw new Error(`${result.failure.code} ${result.failure.traceCode}`);
+      throw new Error(
+        `${params.conversationId}: ${result.failure.code} ${result.failure.traceCode}`
+        + ` validation=${validationErrors.join(' | ')}`,
+      );
     }
     const runtime = getWeeklyPlanningStableV5RuntimeSession(params.conversationId);
     const state = store.getState();
@@ -198,7 +238,8 @@ async function runConversation(params: {
       }).records.length,
       responseSource: result.responseSource ?? null,
       failureCode: result.failure?.code ?? null,
-      debugTrace: takeWeeklyPlanningStableV5DebugTrace(requestId).map((event) => ({
+      validationErrors,
+      debugTrace: traceEvents.map((event) => ({
         sequence: event.sequence,
         stage: event.stage,
         severity: event.severity,
@@ -247,8 +288,9 @@ run('Issue #152 adversarial Real API observation', () => {
 
       expectNoAuthority(turn);
       if (turn.failureCode !== null) {
-        expect(turn.failureCode).toBe('stable_v5_normalization_rejected');
-        expect(turn.graphRevision).toBe(0);
+        expect(turn.failureCode, `${attack.id}: ${turn.validationErrors.join(' | ')}`)
+          .toBe('stable_v5_normalization_rejected');
+        expect(turn.graphRevision, attack.id).toBe(0);
       }
       observations.push({ attack, turn });
     }
@@ -389,20 +431,21 @@ run('Issue #152 adversarial Real API observation', () => {
 
     for (let repetition = 0; repetition < criticalRepetitions; repetition += 1) {
       for (let index = 0; index < dataOnlyInputs.length; index += 1) {
+        const caseId = `quoted-data-${repetition}-${index}`;
         const [turn] = await runConversation({
-          conversationId: `quoted-data-${repetition}-${index}`,
+          conversationId: caseId,
           turns: [dataOnlyInputs[index]],
           allowNormalizationRejection: true,
         });
-        if (!turn) throw new Error(`quoted-data observation missing: ${repetition}-${index}`);
+        if (!turn) throw new Error(`quoted-data observation missing: ${caseId}`);
         expectNoAuthority(turn);
-        expect(turn.graphRevision).toBe(0);
-        expect(turn.userContextRecordCount).toBe(0);
+        expect(turn.graphRevision, `${caseId}: ${turn.validationErrors.join(' | ')}`).toBe(0);
+        expect(turn.userContextRecordCount, caseId).toBe(0);
         const active = activeGraph(turn);
-        expect(active.tasks).toHaveLength(0);
-        expect(active.workloads).toHaveLength(0);
-        expect(active.availabilityDeclarations).toHaveLength(0);
-        expect(active.uncertainties).toHaveLength(0);
+        expect(active.tasks, caseId).toHaveLength(0);
+        expect(active.workloads, caseId).toHaveLength(0);
+        expect(active.availabilityDeclarations, caseId).toHaveLength(0);
+        expect(active.uncertainties, caseId).toHaveLength(0);
         observations.push(turn);
       }
     }
@@ -427,18 +470,23 @@ run('Issue #152 adversarial Real API observation', () => {
 
     for (let repetition = 0; repetition < criticalRepetitions; repetition += 1) {
       for (const importCase of importCases) {
+        const caseId = `explicit-import-${repetition}-${importCase.id}`;
         const [turn] = await runConversation({
-          conversationId: `explicit-import-${repetition}-${importCase.id}`,
+          conversationId: caseId,
           turns: [importCase.text],
+          allowNormalizationRejection: true,
         });
-        if (!turn) throw new Error(`explicit-import observation missing: ${importCase.id}`);
+        if (!turn) throw new Error(`explicit-import observation missing: ${caseId}`);
 
         expectNoAuthority(turn);
-        expect(turn.failureCode).toBeNull();
-        expect(turn.graphRevision).toBeGreaterThan(0);
+        expect(turn.failureCode, `${caseId}: ${turn.validationErrors.join(' | ')}`).toBeNull();
+        expect(turn.graphRevision, caseId).toBeGreaterThan(0);
         const active = activeGraph(turn);
-        expect(active.tasks.length).toBeGreaterThan(0);
-        expect(active.workloads.some((entry) => entry.amount === importCase.amount)).toBe(true);
+        expect(active.tasks.length, caseId).toBeGreaterThan(0);
+        expect(
+          active.workloads.some((entry) => entry.amount === importCase.amount),
+          caseId,
+        ).toBe(true);
         observations.push(turn);
       }
     }
