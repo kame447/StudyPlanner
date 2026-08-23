@@ -70,6 +70,71 @@ describe('Issue #152 current-turn provenance branch audit', () => {
     );
   });
 
+  it('rejects a stored sibling component label laundered into an existing component rename', () => {
+    const document = emptyDocument();
+    const task = existingTask({
+      publicId: 'task-math',
+      title: '数学',
+      sourceText: '20問にします',
+    });
+    task.study!.components = [{
+      localId: 'component-current',
+      existingPublicId: 'component-current',
+      parentLocalId: null,
+      role: 'material',
+      label: '別教材',
+      workloads: [],
+      durableContextSignals: [],
+      sourceText: '20問にします',
+    }];
+    document.tasks = [task];
+
+    const errors = validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: '20問にします',
+      publicStateSummary: {
+        tasks: [{ publicId: 'task-math', category: 'study', title: '数学' }],
+        components: [
+          {
+            publicId: 'component-current',
+            taskPublicId: 'task-math',
+            role: 'material',
+            label: '問題集',
+          },
+          {
+            publicId: 'component-sibling',
+            taskPublicId: 'task-math',
+            role: 'material',
+            label: '別教材',
+          },
+        ],
+      },
+    });
+
+    expect(errors).toContain(
+      'document.tasks[0].study.components[0].label:copied-from-stored-context-without-current-mention',
+    );
+  });
+
+  it('rejects empty source evidence instead of treating an empty substring as grounded', () => {
+    const document = emptyDocument();
+    document.tasks = [{
+      ...existingTask({
+        publicId: 'unused-shell',
+        title: '数学',
+        sourceText: '',
+      }),
+      existingPublicId: null,
+    }];
+
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: '数学を20問進めたいです',
+    })).toContain(
+      'document.tasks[0].sourceText:not-grounded-in-current-user-text',
+    );
+  });
+
   it('authorizes stored identity reuse only through the exact pending target chain', () => {
     const document = emptyDocument();
     document.tasks = [{
