@@ -37,6 +37,16 @@ function boundRecord(
   return candidates.find((candidate) => candidate.publicId === publicId) ?? null;
 }
 
+function taskTitleChangedFromBound(
+  task: SemanticTaskV5,
+  publicStateSummary: Record<string, unknown> | undefined,
+): boolean {
+  if (!task.existingPublicId) return false;
+  const bound = boundRecord(publicStateSummary, 'tasks', task.existingPublicId);
+  return typeof bound?.title === 'string'
+    && normalizedEvidenceText(bound.title) !== normalizedEvidenceText(task.title);
+}
+
 function taskShellNeedsCurrentTurnEvidence(
   task: SemanticTaskV5,
   publicStateSummary: Record<string, unknown> | undefined,
@@ -45,11 +55,20 @@ function taskShellNeedsCurrentTurnEvidence(
   const bound = boundRecord(publicStateSummary, 'tasks', task.existingPublicId);
   if (!bound) return false;
 
-  const titleChanged = typeof bound.title === 'string'
-    && normalizedEvidenceText(bound.title) !== normalizedEvidenceText(task.title);
+  const titleChanged = taskTitleChangedFromBound(task, publicStateSummary);
   const categoryChanged = typeof bound.category === 'string'
     && bound.category !== task.category;
   return titleChanged || categoryChanged;
+}
+
+function componentLabelChangedFromBound(
+  component: SemanticStudyComponentV5,
+  publicStateSummary: Record<string, unknown> | undefined,
+): boolean {
+  if (!component.existingPublicId) return false;
+  const bound = boundRecord(publicStateSummary, 'components', component.existingPublicId);
+  return typeof bound?.label === 'string'
+    && normalizedEvidenceText(bound.label) !== normalizedEvidenceText(component.label);
 }
 
 function componentShellNeedsCurrentTurnEvidence(
@@ -60,8 +79,7 @@ function componentShellNeedsCurrentTurnEvidence(
   const bound = boundRecord(publicStateSummary, 'components', component.existingPublicId);
   if (!bound) return false;
 
-  const labelChanged = typeof bound.label === 'string'
-    && normalizedEvidenceText(bound.label) !== normalizedEvidenceText(component.label);
+  const labelChanged = componentLabelChangedFromBound(component, publicStateSummary);
   const roleChanged = typeof bound.role === 'string'
     && bound.role !== component.role;
   return labelChanged || roleChanged;
@@ -200,6 +218,8 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     }
     if (!task.existingPublicId) {
       checkStoredCopy(task.title, `${taskPath}.title`, machineBoundValues.taskTitles);
+    } else if (taskTitleChangedFromBound(task, params.publicStateSummary)) {
+      checkStoredCopy(task.title, `${taskPath}.title`);
     }
 
     task.workloads.forEach((workload, workloadIndex) => {
@@ -231,6 +251,8 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
           `${componentPath}.label`,
           machineBoundValues.componentLabels,
         );
+      } else if (componentLabelChangedFromBound(component, params.publicStateSummary)) {
+        checkStoredCopy(component.label, `${componentPath}.label`);
       }
       component.workloads.forEach((workload, workloadIndex) => {
         check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`);
