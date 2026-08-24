@@ -21,7 +21,7 @@ command -v npm >/dev/null 2>&1 || {
   exit 1
 }
 
-npx --yes "skills@${SKILLS_CLI_VERSION}" add "${DIAGRAM_DESIGN_SOURCE}" \
+DISABLE_TELEMETRY=1 npx --yes "skills@${SKILLS_CLI_VERSION}" add "${DIAGRAM_DESIGN_SOURCE}" \
   --agent codex \
   --agent claude-code \
   --copy \
