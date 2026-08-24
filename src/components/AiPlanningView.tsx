@@ -360,10 +360,6 @@ export function AiPlanningView({
   }, [chatIndex.activeChatId, isBusy, state.messages.length, visibleBlocks.length]);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (imageAttachment) {
         URL.revokeObjectURL(imageAttachment.previewUrl);
