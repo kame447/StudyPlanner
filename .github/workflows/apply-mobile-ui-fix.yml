@@ -24,7 +24,7 @@ jobs:
           cache: npm
 
       - name: Apply scoped patch
-        run: node scripts/apply-mobile-ui-fix.mjs
+        run: node scripts/apply-mobile-ui-fix-v2.mjs
 
       - name: Verify patch shape
         run: git diff --check
@@ -61,6 +61,7 @@ jobs:
           tests/e2e/bookshelf-surface.spec.mjs
           tests/e2e/ai-planning-surface.spec.mjs
           tests/e2e/mobile-record-sheet.spec.mjs
+          tests/e2e/home-layout-responsive.spec.mjs
           --config=tests/e2e/playwright.config.mjs
 
       - name: Commit verified patch
@@ -68,6 +69,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/BookshelfView.tsx src/components/AiPlanningView.tsx src/styles/schedule-redesign.css tests/e2e/bookshelf-surface.spec.mjs tests/e2e/ai-planning-surface.spec.mjs tests/e2e/mobile-record-sheet.spec.mjs
+          git add \
+            src/components/BookshelfView.tsx \
+            src/styles/schedule-redesign.css \
+            src/styles/home.css \
+            src/styles/theme-surface-contract.css \
+            tests/e2e/bookshelf-surface.spec.mjs \
+            tests/e2e/ai-planning-surface.spec.mjs \
+            tests/e2e/mobile-record-sheet.spec.mjs \
+            tests/e2e/home-layout-responsive.spec.mjs
           git commit -m "fix: resolve mobile interaction regressions"
           git push
