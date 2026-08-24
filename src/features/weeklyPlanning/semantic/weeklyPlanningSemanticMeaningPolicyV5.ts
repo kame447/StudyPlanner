@@ -9,10 +9,22 @@ export type WeeklyPlanningSemanticRuleRetentionBasisV5 =
 
 export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
+    id: 'semantic_meaning_ownership',
+    retentionBasis: 'semantic_scope_boundary',
+    retentionReason: 'The model must own utterance-level meaning while deterministic code owns representation, state, safety, scheduling, and persistence; collapsing those responsibilities can cause supported meaning to be omitted merely because later code cannot recover it.',
+    instruction: 'Interpret user meaning and conversational context yourself. Deterministic code validates representation and state and handles safety, scheduling, and persistence; it does not recover semantic meaning that you omit or replace with a guess.',
+  },
+  {
     id: 'current_turn_scope',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'Schema and validators can reject malformed output, but cannot decide which supported meanings belong to the current utterance rather than copied context.',
     instruction: 'Interpret every supported explicit current-turn contribution into facts, including side contributions; a pending question must not suppress other stated facts.',
+  },
+  {
+    id: 'semantic_uncertainty_preservation',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'Schema can validate an uncertainty once emitted but cannot know when the utterance remained semantically ambiguous; guessing or silently dropping that meaning is an interpretation error.',
+    instruction: 'If supported current-turn meaning remains genuinely ambiguous after using available context, emit uncertainty for only the unresolved semantic target rather than guessing or dropping the supported clause. Preserve other independently supported facts.',
   },
   {
     id: 'quoted_serialized_data_boundary',
@@ -91,6 +103,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether recurrence or an external source request was explicitly requested is an utterance-level semantic decision, not a schema default.',
     instruction: 'Emit recurrence and external source requests only when explicit. When the user explicitly describes recurring cadence together with per-occurrence work, represent the recurrence and per-occurrence workload consistently; do not invent recurrence from a one-off amount.',
+  },
+  {
+    id: 'durable_concern_basis',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'A typed concern basis prevents malformed categories but cannot determine whether the user actually expressed a durable subjective difficulty rather than a neutral workload description; that distinction requires semantic interpretation.',
+    instruction: 'Emit an entity-local durable concern only when current user meaning explicitly supports one concern basis: difficulty, weakness, worry, low_confidence, behind, or motivation_problem. Descriptive amount, relative size, frequency, duration, or workload comparison alone supports none of these bases; if no basis is supported, emit no concern signal. Preserve the user concern wording in value or use null; do not invent a diagnosis, stronger concern, or priority.',
   },
   {
     id: 'durable_learning_preference',
