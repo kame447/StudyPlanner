@@ -235,6 +235,10 @@ test.describe('mobile overlay stability', () => {
 
     const targetDay = pickerModal.locator('.mini-calendar-day:not(.is-outside):not(.is-selected)').first();
     await expect(targetDay).toBeVisible();
+    const targetDayLabel = await targetDay.getAttribute('aria-label');
+    if (!targetDayLabel) {
+      throw new Error('Target day must expose a stable accessible label.');
+    }
 
     const ownsHitTarget = await targetDay.evaluate((element) => {
       const box = element.getBoundingClientRect();
@@ -244,7 +248,8 @@ test.describe('mobile overlay stability', () => {
     expect(ownsHitTarget).toBe(true);
 
     await targetDay.click();
-    await expect(targetDay).toHaveClass(/is-selected/);
+    const selectedTargetDay = pickerModal.getByRole('button', { name: targetDayLabel, exact: true });
+    await expect(selectedTargetDay).toHaveClass(/is-selected/);
     const knob = pickerModal.locator('.mini-calendar-selection-knob');
     await expect(knob).toHaveClass(/is-ready/);
     await expect(knob).toHaveClass(/is-animated/);
