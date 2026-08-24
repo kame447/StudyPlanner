@@ -192,9 +192,16 @@ test.describe('mobile interaction regressions', () => {
     const information = page.locator('.bookshelf-subject-toggle').filter({ hasText: '情報科学' });
     const research = page.locator('.bookshelf-subject-toggle').filter({ hasText: '研究' });
 
-    if ((await information.getAttribute('aria-expanded')) !== 'true') {
+    if ((await information.getAttribute('aria-expanded')) === 'true') {
       await information.click();
     }
+    if ((await research.getAttribute('aria-expanded')) === 'true') {
+      await research.click();
+    }
+    await expect(information).toHaveAttribute('aria-expanded', 'false');
+    await expect(research).toHaveAttribute('aria-expanded', 'false');
+
+    await information.click();
     await research.click();
 
     await expect(information).toHaveAttribute('aria-expanded', 'true');
