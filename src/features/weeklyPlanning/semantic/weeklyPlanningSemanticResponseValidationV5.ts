@@ -6,6 +6,9 @@ import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
 import {
+  validateWeeklyPlanningDecisionTargetReferencesV5,
+} from './weeklyPlanningDecisionReferenceValidationV5';
+import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -107,6 +110,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       input.publicStateSummary,
     ),
+    ...validateWeeklyPlanningDecisionTargetReferencesV5(document),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
       document,
       publicStateSummary: input.publicStateSummary,
