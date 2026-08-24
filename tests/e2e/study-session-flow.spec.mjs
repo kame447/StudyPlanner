@@ -66,17 +66,26 @@ async function seedStudySession(page, { dark = false } = {}) {
   }, { useDark: dark });
 }
 
-test('study start opens the timer and flows directly into record saving', async ({ page }) => {
+test('study session waits for an explicit start and then flows into record saving', async ({ page }) => {
   await seedStudySession(page);
   await page.goto('/');
 
   await page.getByRole('button', { name: '学習を開始する' }).click();
-  const session = page.getByRole('dialog', { name: '学習中' });
-  await expect(session).toBeVisible();
-  await expect(session.getByRole('heading', { name: '卒業研究' })).toBeVisible();
-  await expect(session.getByText('通常タイマー', { exact: true })).toBeVisible();
+  const ready = page.getByRole('dialog', { name: '学習を開始' });
+  await expect(ready).toBeVisible();
+  await expect(ready.getByRole('heading', { name: '卒業研究' })).toBeVisible();
+  await expect(ready.getByRole('button', { name: /通常タイマー/ })).toHaveAttribute('aria-pressed', 'true');
 
+  const readyElapsed = ready.locator('[data-study-session-elapsed]');
+  await expect(readyElapsed).toHaveText('00:00:00');
+  await page.waitForTimeout(1100);
+  await expect(readyElapsed).toHaveText('00:00:00');
+
+  await ready.getByRole('button', { name: 'スタート' }).click();
+  const session = page.getByRole('dialog', { name: '学習中' });
   const elapsed = session.locator('[data-study-session-elapsed]');
+  await expect(session).toBeVisible();
+  await expect(session.getByRole('button', { name: /通常タイマー/ })).toBeDisabled();
   await expect(elapsed).not.toHaveText('00:00:00', { timeout: 2500 });
 
   await session.getByRole('button', { name: '一時停止' }).click();
@@ -98,6 +107,28 @@ test('study start opens the timer and flows directly into record saving', async 
     const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]');
     return actuals.length;
   })).toBe(1);
+});
+
+test('pomodoro can be selected before start and exposes focus and break UI', async ({ page }) => {
+  await seedStudySession(page);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: '学習を開始する' }).click();
+  const ready = page.getByRole('dialog', { name: '学習を開始' });
+  const pomodoro = ready.getByRole('button', { name: /ポモドーロ/ });
+  await pomodoro.click();
+
+  await expect(pomodoro).toHaveAttribute('aria-pressed', 'true');
+  await expect(ready.locator('[data-pomodoro-phase]')).toHaveText('集中');
+  await expect(ready.locator('[data-study-session-phase-remaining]')).toHaveText('25:00');
+  await expect(ready.getByText('1 / 3 セット ・ 次は 休憩 5分', { exact: true })).toBeVisible();
+  await expect(ready.getByText('現段階では休憩もセッションの総学習時間に含めて記録します。', { exact: true })).toBeVisible();
+
+  await ready.getByRole('button', { name: 'スタート' }).click();
+  const session = page.getByRole('dialog', { name: '学習中' });
+  await expect(session.getByRole('button', { name: /ポモドーロ/ })).toBeDisabled();
+  await expect(session.locator('[data-study-session-phase-remaining]')).not.toHaveText('25:00', { timeout: 2500 });
+  await expect(session.getByText(/総経過/)).toBeVisible();
 });
 
 test('startup canvas remains white while a saved dark theme is being restored', async ({ page }) => {

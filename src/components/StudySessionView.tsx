@@ -40,6 +40,11 @@ interface StudySessionProviderProps {
 
 type StudySessionLauncher = (plan: Plan) => void;
 type SessionPhase = 'timer' | 'record';
+type StudyMode = 'normal' | 'pomodoro';
+
+const POMODORO_FOCUS_MS = 25 * 60_000;
+const POMODORO_BREAK_MS = 5 * 60_000;
+const POMODORO_CYCLE_MS = POMODORO_FOCUS_MS + POMODORO_BREAK_MS;
 
 const StudySessionLaunchContext = createContext<StudySessionLauncher | null>(null);
 
@@ -81,6 +86,15 @@ function formatMinutesLabel(totalMinutes: number): string {
   return minutes > 0 ? `${hours}時間${minutes}分` : `${hours}時間`;
 }
 
+function formatPomodoroTime(totalMs: number): string {
+  const safeSeconds = Math.max(0, Math.ceil(totalMs / 1000));
+  const minutes = Math.floor(safeSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = (safeSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
@@ -96,10 +110,10 @@ function resolveMaterial(plan: Plan, materials: StudyMaterial[]): StudyMaterial 
   return materials.find((material) => material.name === materialName) ?? null;
 }
 
-function buildInitialTracker(nowMs: number): TrackerState {
+function buildInitialTracker(): TrackerState {
   return {
-    anchorMs: nowMs,
-    runningFromMs: nowMs,
+    anchorMs: null,
+    runningFromMs: null,
     elapsedBeforeMs: 0,
   };
 }
@@ -117,18 +131,47 @@ function StudySessionView({
 }) {
   const initialNow = useMemo(() => Date.now(), []);
   const [phase, setPhase] = useState<SessionPhase>('timer');
+  const [studyMode, setStudyMode] = useState<StudyMode>('normal');
   const [nowMs, setNowMs] = useState(initialNow);
-  const [tracker, setTracker] = useState<TrackerState>(() => buildInitialTracker(initialNow));
+  const [tracker, setTracker] = useState<TrackerState>(buildInitialTracker);
   const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(null);
   const [progressInput, setProgressInput] = useState('');
   const [observationProgressInput, setObservationProgressInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
   const plannedMinutes = Math.max(1, minutesBetween(plan.startTime, plan.endTime));
   const plannedMs = plannedMinutes * 60_000;
   const elapsedMs = getElapsedMs(tracker, nowMs);
+  const isStarted = tracker.anchorMs !== null;
   const remainingMs = Math.max(plannedMs - elapsedMs, 0);
-  const progressDegrees = clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
+  const normalProgressDegrees = clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
+
+  const pomodoroElapsedInCycle = elapsedMs % POMODORO_CYCLE_MS;
+  const pomodoroIsFocus = pomodoroElapsedInCycle < POMODORO_FOCUS_MS;
+  const pomodoroPhaseElapsedMs = pomodoroIsFocus
+    ? pomodoroElapsedInCycle
+    : pomodoroElapsedInCycle - POMODORO_FOCUS_MS;
+  const pomodoroPhaseDurationMs = pomodoroIsFocus
+    ? POMODORO_FOCUS_MS
+    : POMODORO_BREAK_MS;
+  const pomodoroPhaseRemainingMs = Math.max(
+    pomodoroPhaseDurationMs - pomodoroPhaseElapsedMs,
+    0,
+  );
+  const pomodoroProgressDegrees =
+    clampPercent((pomodoroPhaseElapsedMs / pomodoroPhaseDurationMs) * 100) * 3.6;
+  const totalPomodoroSets = Math.max(1, Math.ceil(plannedMs / POMODORO_CYCLE_MS));
+  const currentPomodoroSet = Math.min(
+    totalPomodoroSets,
+    Math.floor(elapsedMs / POMODORO_CYCLE_MS) + 1,
+  );
+  const pomodoroPhaseLabel = pomodoroIsFocus ? '集中' : '休憩';
+  const pomodoroNextLabel = pomodoroIsFocus ? '休憩 5分' : '集中 25分';
+
+  const progressDegrees = studyMode === 'pomodoro'
+    ? pomodoroProgressDegrees
+    : normalProgressDegrees;
   const material = resolveMaterial(plan, materials);
   const materialUnitLabel = material ? getMaterialUnitLabel(material) : '単位';
   const numericProgress = Number(progressInput);
@@ -154,6 +197,11 @@ function StudySessionView({
   const ringStyle = {
     '--study-session-progress': `${progressDegrees}deg`,
   } as CSSProperties;
+  const dialogLabel = phase === 'record'
+    ? '学習を記録'
+    : isStarted
+      ? '学習中'
+      : '学習を開始';
 
   useEffect(() => {
     if (phase !== 'timer' || tracker.runningFromMs === null) return undefined;
@@ -169,6 +217,17 @@ function StudySessionView({
       document.body.style.overflow = previousBodyOverflow;
     };
   }, []);
+
+  function startTimer() {
+    const startedAt = Date.now();
+    setNowMs(startedAt);
+    setTracker({
+      anchorMs: startedAt,
+      runningFromMs: startedAt,
+      elapsedBeforeMs: 0,
+    });
+    setError('');
+  }
 
   function pauseTimer() {
     const pausedAt = Date.now();
@@ -191,9 +250,11 @@ function StudySessionView({
   }
 
   function finishTimer() {
+    if (tracker.anchorMs === null) return;
+
     const finishedAt = Date.now();
     const finalElapsedMs = Math.max(getElapsedMs(tracker, finishedAt), 1000);
-    const anchorMs = tracker.anchorMs ?? finishedAt - finalElapsedMs;
+    const anchorMs = tracker.anchorMs;
     const storedDurationMs = Math.max(finalElapsedMs, 60_000);
     const measuredRange = buildMeasuredRange(anchorMs, storedDurationMs);
     const draft = createActualDraftForPlan(plan);
@@ -201,7 +262,6 @@ function StudySessionView({
     setNowMs(finishedAt);
     setTracker((current) => ({
       ...current,
-      anchorMs,
       runningFromMs: null,
       elapsedBeforeMs: finalElapsedMs,
     }));
@@ -289,13 +349,18 @@ function StudySessionView({
   }
 
   return (
-    <div className="study-session-overlay" role="dialog" aria-modal="true" aria-label={phase === 'timer' ? '学習中' : '学習を記録'}>
+    <div
+      className="study-session-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={dialogLabel}
+    >
       <div className="study-session-page">
         <header className="study-session-header">
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
           </button>
-          <h1>{phase === 'timer' ? '学習中' : '学習を記録'}</h1>
+          <h1>{dialogLabel}</h1>
           <span className="study-session-header-spacer" aria-hidden="true" />
         </header>
 
@@ -310,28 +375,83 @@ function StudySessionView({
                 <div><dt><FileText size={18} aria-hidden="true" />内容</dt><dd>{plan.memo.trim() || plan.subject || plan.title}</dd></div>
               </dl>
 
-              <div className="study-session-mode-badge">通常タイマー</div>
-              <div className="study-session-timer-ring" style={ringStyle}>
-                <div className="study-session-timer-inner">
-                  <span>経過時間</span>
-                  <strong data-study-session-elapsed>{formatDurationDisplay(elapsedMs)}</strong>
-                  <b>残り {formatDurationDisplay(remainingMs)}</b>
+              <div className="study-session-mode-section">
+                <span className="study-session-mode-label">学習方式</span>
+                <div className="study-session-mode-picker" role="group" aria-label="学習方式">
+                  <button
+                    type="button"
+                    className={studyMode === 'normal' ? 'active' : ''}
+                    aria-pressed={studyMode === 'normal'}
+                    disabled={isStarted}
+                    onClick={() => setStudyMode('normal')}
+                  >
+                    <strong>通常タイマー</strong>
+                    <small>予定時間を通して計測</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={studyMode === 'pomodoro' ? 'active' : ''}
+                    aria-pressed={studyMode === 'pomodoro'}
+                    disabled={isStarted}
+                    onClick={() => setStudyMode('pomodoro')}
+                  >
+                    <strong>ポモドーロ</strong>
+                    <small>集中25分 + 休憩5分</small>
+                  </button>
                 </div>
               </div>
 
-              <div className="study-session-controls">
-                <button
-                  type="button"
-                  className="study-session-control primary"
-                  onClick={tracker.runningFromMs === null ? resumeTimer : pauseTimer}
-                >
-                  {tracker.runningFromMs === null ? <Play size={22} aria-hidden="true" /> : <Pause size={22} aria-hidden="true" />}
-                  {tracker.runningFromMs === null ? '再開' : '一時停止'}
-                </button>
-                <button type="button" className="study-session-control danger" onClick={finishTimer}>
-                  <Square size={19} aria-hidden="true" />終了する
-                </button>
+              <div className="study-session-timer-ring" style={ringStyle} data-study-mode={studyMode}>
+                <div className="study-session-timer-inner">
+                  {studyMode === 'pomodoro' ? (
+                    <>
+                      <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
+                      <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
+                      <b>{currentPomodoroSet} / {totalPomodoroSets} セット ・ 次は {pomodoroNextLabel}</b>
+                    </>
+                  ) : (
+                    <>
+                      <span>{isStarted ? '経過時間' : '開始前'}</span>
+                      <strong data-study-session-elapsed>{formatDurationDisplay(elapsedMs)}</strong>
+                      <b>{isStarted ? `残り ${formatDurationDisplay(remainingMs)}` : `予定 ${formatMinutesLabel(plannedMinutes)}`}</b>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {studyMode === 'pomodoro' ? (
+                <div className="study-session-pomodoro-status">
+                  <div className="study-session-pomodoro-flow" aria-label="ポモドーロの進行">
+                    <span className={pomodoroIsFocus ? 'active' : ''}>集中</span>
+                    <i aria-hidden="true">→</i>
+                    <span className={!pomodoroIsFocus ? 'active' : ''}>休憩</span>
+                    <i aria-hidden="true">→</i>
+                    <span>集中</span>
+                  </div>
+                  <small>現段階では休憩もセッションの総学習時間に含めて記録します。</small>
+                  {isStarted ? <span className="study-session-total-elapsed">総経過 {formatDurationDisplay(elapsedMs)}</span> : null}
+                </div>
+              ) : null}
+
+              {!isStarted ? (
+                <button type="button" className="study-session-control primary study-session-start-button" onClick={startTimer}>
+                  <Play size={22} aria-hidden="true" />スタート
+                </button>
+              ) : (
+                <div className="study-session-controls">
+                  <button
+                    type="button"
+                    className="study-session-control primary"
+                    onClick={tracker.runningFromMs === null ? resumeTimer : pauseTimer}
+                  >
+                    {tracker.runningFromMs === null ? <Play size={22} aria-hidden="true" /> : <Pause size={22} aria-hidden="true" />}
+                    {tracker.runningFromMs === null ? '再開' : '一時停止'}
+                  </button>
+                  <button type="button" className="study-session-control danger" onClick={finishTimer}>
+                    <Square size={19} aria-hidden="true" />終了する
+                  </button>
+                </div>
+              )}
             </section>
 
             <section className="study-session-card study-session-context-card">
@@ -344,7 +464,9 @@ function StudySessionView({
                 <span><small>現在のメモ</small><strong>{plan.memo.trim() || 'メモはありません'}</strong></span>
               </div>
             </section>
-            <p className="study-session-helper">終了後にそのまま記録画面へ進みます</p>
+            <p className="study-session-helper">
+              {isStarted ? '終了後にそのまま記録画面へ進みます' : 'スタートを押すまで計測されません'}
+            </p>
           </main>
         ) : recordDraft ? (
           <main className="study-session-content study-session-record-view">
