@@ -4,7 +4,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
-  createWeeklyPlanningSemanticMeaningPolicyV5,
+  WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 
 describe('Stable V5 durable concern basis contract', () => {
@@ -15,11 +15,16 @@ describe('Stable V5 durable concern basis contract', () => {
     expect(signal.properties.basis.enum).toEqual([...SEMANTIC_DURABLE_CONCERN_BASES_V5]);
   });
 
-  it('keeps the closed concern basis without a regression-specific prompt guard', () => {
+  it('keeps the semantic evidence boundary in addition to the closed enum', () => {
     expect(SEMANTIC_DURABLE_CONCERN_BASES_V5).not.toContain('other' as any);
-    const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(prompt).not.toContain('A concern requires explicit evidence');
-    expect(prompt).not.toContain('workload size alone');
-    expect(prompt).not.toContain('must not imply priority');
+    const rule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (candidate) => candidate.id === 'durable_concern_basis',
+    );
+
+    expect(rule).toBeDefined();
+    expect(rule?.instruction).toContain('explicitly supports one concern basis');
+    expect(rule?.instruction).toContain('workload comparison alone supports none');
+    expect(rule?.instruction).toContain('emit no concern signal');
+    expect(rule?.instruction).toContain('do not invent a diagnosis');
   });
 });
