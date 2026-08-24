@@ -110,7 +110,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       input.publicStateSummary,
     ),
-    ...validateWeeklyPlanningDecisionTargetReferencesV5(document),
+    ...validateWeeklyPlanningDecisionTargetReferencesV5(
+      document,
+      input.publicStateSummary,
+    ),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
       document,
       publicStateSummary: input.publicStateSummary,
