@@ -1,15 +1,32 @@
 import { expect, test } from '@playwright/test';
 
+function formatIsoDate(year, monthIndex, day) {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function currentMonthDays() {
   const now = new Date();
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return {
-    startDate: `${year}-${month}-10`,
-    middleDate: `${year}-${month}-11`,
-    endDate: `${year}-${month}-12`,
-    outsideDate: `${year}-${month}-13`,
-  };
+  const monthIndex = now.getMonth();
+
+  for (let day = 2; day <= 20; day += 1) {
+    if (new Date(year, monthIndex, day).getDay() !== 1) {
+      continue;
+    }
+
+    return {
+      startDate: formatIsoDate(year, monthIndex, day),
+      middleDate: formatIsoDate(year, monthIndex, day + 1),
+      endDate: formatIsoDate(year, monthIndex, day + 2),
+      outsideDate: formatIsoDate(year, monthIndex, day + 3),
+      startDay: day,
+      middleDay: day + 1,
+      endDay: day + 2,
+      outsideDay: day + 3,
+    };
+  }
+
+  throw new Error('Could not find a Monday in the current month test window.');
 }
 
 async function seedRangeTestState(page) {
@@ -61,13 +78,13 @@ test.describe('multi-day month events', () => {
     hasTouch: true,
   });
 
-  test('saves independent start/end dates and renders every covered day', async ({ page }) => {
+  test('saves one date range and paints one continuous bar across covered cells', async ({ page }) => {
     const dates = currentMonthDays();
     await seedRangeTestState(page);
     await openSchedule(page);
 
     const grid = page.getByRole('grid', { name: '月間カレンダー' });
-    const startCell = cellForDay(grid, page, 10);
+    const startCell = cellForDay(grid, page, dates.startDay);
     await expect(startCell).toBeVisible();
     await startCell.focus();
     await page.keyboard.press('Enter');
@@ -79,21 +96,22 @@ test.describe('multi-day month events', () => {
 
     const startDateButton = editor.getByRole('button', { name: '開始日' });
     const endDateButton = editor.getByRole('button', { name: '終了日' });
-    await expect(startDateButton).toContainText('10日');
-    await expect(endDateButton).toContainText('10日');
+    await expect(startDateButton).toContainText(`${dates.startDay}日`);
+    await expect(endDateButton).toContainText(`${dates.startDay}日`);
 
     await endDateButton.click();
     const picker = editorOverlay.locator(':scope > .date-picker-overlay');
     await expect(picker).toBeVisible();
     const endDay = picker
       .locator('.mini-calendar-day:not(.is-outside)')
-      .filter({ hasText: /^12$/ })
+      .filter({ hasText: new RegExp(`^${dates.endDay}$`) })
       .first();
     await expect(endDay).toBeVisible();
     await endDay.click();
 
-    await expect(startDateButton).toContainText('10日');
-    await expect(endDateButton).toContainText('12日');
+    await expect(picker).toHaveCount(0);
+    await expect(startDateButton).toContainText(`${dates.startDay}日`);
+    await expect(endDateButton).toContainText(`${dates.endDay}日`);
     await editor.getByRole('button', { name: '保存' }).click();
 
     await expect.poll(() =>
@@ -110,9 +128,45 @@ test.describe('multi-day month events', () => {
     ).toEqual({ date: dates.startDate, endDate: dates.endDate });
 
     await expect(editorOverlay).toHaveCount(0, { timeout: 5000 });
-    await expect(cellForDay(grid, page, 10)).toContainText('複数日イベント');
-    await expect(cellForDay(grid, page, 11)).toContainText('複数日イベント');
-    await expect(cellForDay(grid, page, 12)).toContainText('複数日イベント');
-    await expect(cellForDay(grid, page, 13)).not.toContainText('複数日イベント');
+
+    const rangeBar = cellForDay(grid, page, dates.startDay)
+      .locator('.month-range-segment')
+      .filter({ hasText: '複数日イベント' });
+    await expect(rangeBar).toHaveCount(1);
+    await expect(cellForDay(grid, page, dates.outsideDay)).not.toContainText('複数日イベント');
+
+    const middleIndependentPill = cellForDay(grid, page, dates.middleDay)
+      .locator('.month-major-event-pill')
+      .filter({ hasText: '複数日イベント' });
+    const endIndependentPill = cellForDay(grid, page, dates.endDay)
+      .locator('.month-major-event-pill')
+      .filter({ hasText: '複数日イベント' });
+    await expect(middleIndependentPill).toHaveCount(0);
+    await expect(endIndependentPill).toHaveCount(0);
+
+    const geometry = await rangeBar.evaluate((element) => {
+      const barBox = element.getBoundingClientRect();
+      const cell = element.closest('[role="gridcell"]');
+      if (!(cell instanceof HTMLElement)) return null;
+      const cellBox = cell.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        widthRatio: barBox.width / cellBox.width,
+        leftRadius: Number.parseFloat(style.borderTopLeftRadius),
+        rightRadius: Number.parseFloat(style.borderTopRightRadius),
+        barTop: barBox.top,
+        barBottom: barBox.bottom,
+        cellTop: cellBox.top,
+        cellBottom: cellBox.bottom,
+      };
+    });
+
+    expect(geometry).not.toBeNull();
+    expect(geometry.widthRatio).toBeGreaterThan(2.8);
+    expect(geometry.widthRatio).toBeLessThan(3.1);
+    expect(geometry.leftRadius).toBeGreaterThan(0);
+    expect(geometry.rightRadius).toBeGreaterThan(0);
+    expect(geometry.barTop).toBeGreaterThanOrEqual(geometry.cellTop);
+    expect(geometry.barBottom).toBeLessThanOrEqual(geometry.cellBottom + 1);
   });
 });
