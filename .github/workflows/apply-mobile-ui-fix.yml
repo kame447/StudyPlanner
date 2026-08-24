@@ -1,3 +1,4 @@
+# Temporary branch-local verifier; removed before PR review.
 name: Apply Mobile UI Fix
 
 on:
