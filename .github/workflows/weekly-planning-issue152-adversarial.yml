@@ -8,6 +8,7 @@ on:
       - '.github/workflows/weekly-planning-issue152-adversarial.yml'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/security/weeklyPlanningIssue152AdversarialCorpus.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
@@ -84,7 +85,8 @@ jobs:
         run: |
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts \
-            src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts
 
       - name: Upload safe successful observations
         if: success()
