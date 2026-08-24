@@ -155,7 +155,9 @@ export function BookshelfView({
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
-  const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>([]);
+  const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>(() =>
+    subjects[0]?.id ? [subjects[0].id] : [],
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [subjectManagerOpen, setSubjectManagerOpen] = useState(false);
