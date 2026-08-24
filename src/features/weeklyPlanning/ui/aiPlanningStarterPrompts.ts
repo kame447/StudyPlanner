@@ -46,6 +46,10 @@ function compareCandidates(left: StarterPromptCandidate, right: StarterPromptCan
   return left.prompt.localeCompare(right.prompt, 'ja');
 }
 
+function storedValue(value: string): string {
+  return JSON.stringify(value);
+}
+
 function addCandidate(
   candidates: StarterPromptCandidate[],
   seenTargets: Set<string>,
@@ -74,7 +78,7 @@ export function buildAiPlanningStarterPrompts({
     .forEach((plan) => {
       addCandidate(candidates, seenTargets, {
         key: plan.title,
-        prompt: `${formatShortDate(plan.date)}の${plan.title}に向けて学習計画を作って`,
+        prompt: `登録済み模試名: ${storedValue(plan.title)}。${formatShortDate(plan.date)}のこの模試に向けて学習計画を作って`,
         priority: 0,
         date: plan.date,
       });
@@ -95,9 +99,9 @@ export function buildAiPlanningStarterPrompts({
       const overdue = Boolean(todo.dueDate && todo.dueDate < referenceDate);
       const prompt = todo.dueDate
         ? overdue
-          ? `${todo.title}を優先して終えられるように計画して`
-          : `${todo.title}を${formatShortDate(todo.dueDate)}までに終えられるように計画して`
-        : `${todo.title}を進める学習計画を作って`;
+          ? `登録済みTodo名: ${storedValue(todo.title)}。このTodoを優先して終えられるように計画して`
+          : `登録済みTodo名: ${storedValue(todo.title)}。このTodoを${formatShortDate(todo.dueDate)}までに終えられるように計画して`
+        : `登録済みTodo名: ${storedValue(todo.title)}。このTodoを進める学習計画を作って`;
       addCandidate(candidates, seenTargets, {
         key: todo.title,
         prompt,
@@ -121,9 +125,9 @@ export function buildAiPlanningStarterPrompts({
       const overdue = Boolean(targetDate && targetDate < referenceDate);
       const prompt = targetDate
         ? overdue
-          ? `${material.name}を優先して進める学習計画を作って`
-          : `${material.name}を${formatShortDate(targetDate)}までに終えられるように計画して`
-        : `${material.name}を今週進める学習計画を作って`;
+          ? `登録済み教材名: ${storedValue(material.name)}。この教材を優先して進める学習計画を作って`
+          : `登録済み教材名: ${storedValue(material.name)}。この教材を${formatShortDate(targetDate)}までに終えられるように計画して`
+        : `登録済み教材名: ${storedValue(material.name)}。この教材を今週進める学習計画を作って`;
       addCandidate(candidates, seenTargets, {
         key: material.name,
         prompt,
@@ -138,7 +142,7 @@ export function buildAiPlanningStarterPrompts({
     .forEach((plan) => {
       addCandidate(candidates, seenTargets, {
         key: plan.title,
-        prompt: `${plan.title}を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        prompt: `登録済み期限予定名: ${storedValue(plan.title)}。この予定を${formatShortDate(plan.date)}までに終えられるように計画して`,
         priority: 1,
         date: plan.date,
       });
