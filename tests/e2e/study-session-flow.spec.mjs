@@ -109,6 +109,44 @@ test('study session waits for an explicit start and then flows into record savin
   })).toBe(1);
 });
 
+test('study session enters from the right and an edge swipe uses the existing exit confirmation', async ({ page }) => {
+  await seedStudySession(page);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: '学習を開始する' }).click();
+  const ready = page.getByRole('dialog', { name: '学習を開始' });
+  const sessionPage = ready.locator('.study-session-page');
+  await expect(ready).toBeVisible();
+  await expect.poll(async () => sessionPage.evaluate((element) => getComputedStyle(element).animationName))
+    .toContain('study-session-enter-from-right');
+
+  await ready.getByRole('button', { name: 'スタート' }).click();
+  const session = page.getByRole('dialog', { name: '学習中' });
+  await expect(session).toBeVisible();
+
+  const box = await sessionPage.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+
+  const dialogPromise = new Promise((resolve) => {
+    page.once('dialog', async (dialog) => {
+      expect(dialog.message()).toBe(
+        '学習セッションを終了してホームに戻りますか？ 計測内容は保存されません。',
+      );
+      await dialog.dismiss();
+      resolve();
+    });
+  });
+
+  await page.mouse.move(box.x + 8, box.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 118, box.y + 182, { steps: 4 });
+  await page.mouse.up();
+  await dialogPromise;
+
+  await expect(session).toBeVisible();
+});
+
 test('pomodoro can be selected before start and exposes focus and break UI', async ({ page }) => {
   await seedStudySession(page);
   await page.goto('/');

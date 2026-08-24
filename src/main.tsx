@@ -5,6 +5,7 @@ import { StudyPlannerAppRoot } from './components/StudyPlannerAppRoot';
 import { configureWeeklyPlanningTraceRepository } from './features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository';
 import { scheduleAppViewPreload } from './lib/preloadAppViews';
 import { installStudyPlannerSpeechRecognition } from './lib/studyPlannerSpeechRecognition';
+import { installStudySessionSwipeNavigation } from './lib/studySessionSwipeNavigation';
 import './styles.css';
 import './styles/theme-surface-contract.css';
 import './styles/interaction-continuity.css';
@@ -14,6 +15,10 @@ installStudyPlannerSpeechRecognition();
 
 const currentPath = window.location.pathname;
 const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
+
+if (!isAdminRoute) {
+  installStudySessionSwipeNavigation();
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
