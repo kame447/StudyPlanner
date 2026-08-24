@@ -1,0 +1,48 @@
+/* Mobile interaction regressions ----------------------------------------- */
+
+/*
+ * DayDetailModal renders a drag handle, header, and scrollable body.
+ * The shared modal contract only reserves two rows, which lets the body
+ * overlap the header/close action on compact screens. Keep all three regions
+ * explicit and let only the body scroll.
+ */
+.modal-card.daily-detail-modal.schedule-action-sheet,
+.modal-card.daily-detail-modal.schedule-record-sheet {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.modal-card.daily-detail-modal.schedule-record-sheet {
+  overflow: hidden;
+}
+
+/*
+ * Build the Home timeline connector from the complete schedule row instead
+ * of a fixed-height tail hanging from each clock marker. Row height changes
+ * can no longer create gaps between adjacent markers.
+ */
+.home-time-dot::after {
+  content: none;
+}
+
+.home-schedule-row::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: -1px;
+  bottom: -1px;
+  left: 18px;
+  border-left: 1px dashed color-mix(in srgb, var(--home-muted) 46%, transparent);
+  pointer-events: none;
+}
+
+.home-schedule-list > .home-schedule-row:first-child::before {
+  top: 50%;
+}
+
+.home-schedule-row:not(:has(~ .home-schedule-row))::before {
+  bottom: 50%;
+}
+
+.home-time-dot {
+  z-index: 2;
+}
