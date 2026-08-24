@@ -9,6 +9,7 @@ export default {
   mutate: [
     'src/features/weeklyPlanning/semantic/weeklyPlanningFocusedAuthorizationV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts',
+    'src/features/weeklyPlanning/semantic/weeklyPlanningDecisionReferenceValidationV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningNumericSafetyV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticResponseValidationV5.ts',
   ],
