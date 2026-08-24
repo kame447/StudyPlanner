@@ -1,1 +1,0 @@
-Run the temporary multi-day month-event verifier. Remove this file after verification.
