@@ -92,9 +92,9 @@ test('AI planning starters use registered exam, unfinished task, and active mate
   await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
 
   const expected = [
-    `${shortDate(examDate)}の情報処理試験に向けて学習計画を作って`,
-    `英語レポートを${shortDate(todoDate)}までに終えられるように計画して`,
-    `基本情報問題集を${shortDate(materialDate)}までに終えられるように計画して`,
+    `登録済み模試名: ${JSON.stringify('情報処理試験')}。${shortDate(examDate)}のこの模試に向けて学習計画を作って`,
+    `登録済みTodo名: ${JSON.stringify('英語レポート')}。このTodoを${shortDate(todoDate)}までに終えられるように計画して`,
+    `登録済み教材名: ${JSON.stringify('基本情報問題集')}。この教材を${shortDate(materialDate)}までに終えられるように計画して`,
   ];
 
   for (let index = 0; index < expected.length; index += 1) {
