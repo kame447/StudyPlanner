@@ -1,12 +1,31 @@
-const EDGE_START_PX = 38;
-const TRIGGER_DISTANCE_PX = 88;
-const MAX_PREVIEW_PX = 132;
+const EDGE_START_RATIO = 0.25;
+const EDGE_START_MIN_PX = 72;
+const EDGE_START_MAX_PX = 96;
+const TRIGGER_DISTANCE_PX = 56;
+const MAX_PREVIEW_PX = 160;
+const VERTICAL_CANCEL_MIN_PX = 104;
+const VERTICAL_CANCEL_RATIO = 1.35;
+const END_VERTICAL_RATIO = 0.75;
 
 interface ActiveSwipe {
   pointerId: number;
   startX: number;
   startY: number;
   page: HTMLElement;
+}
+
+export function getStudySessionSwipeStartLimit(width: number): number {
+  return Math.min(
+    EDGE_START_MAX_PX,
+    Math.max(EDGE_START_MIN_PX, width * EDGE_START_RATIO),
+  );
+}
+
+export function isStudySessionBackSwipe(deltaX: number, deltaY: number): boolean {
+  return (
+    deltaX >= TRIGGER_DISTANCE_PX &&
+    deltaX >= Math.abs(deltaY) * END_VERTICAL_RATIO
+  );
 }
 
 function resetSwipe(activeSwipe: ActiveSwipe | null) {
@@ -21,12 +40,14 @@ export function installStudySessionSwipeNavigation() {
   function handlePointerDown(event: PointerEvent) {
     if (!event.isPrimary) return;
     const target = event.target instanceof Element ? event.target : null;
-    const overlay = target?.closest('.study-session-overlay[aria-label="学習中"]');
+    const overlay = target?.closest(
+      '.study-session-overlay[aria-label="学習中"], .study-session-overlay[aria-label="学習を開始"]',
+    );
     const page = target?.closest('.study-session-page');
     if (!(overlay instanceof HTMLElement) || !(page instanceof HTMLElement)) return;
 
     const rect = page.getBoundingClientRect();
-    if (event.clientX - rect.left > EDGE_START_PX) return;
+    if (event.clientX - rect.left > getStudySessionSwipeStartLimit(rect.width)) return;
 
     activeSwipe = {
       pointerId: event.pointerId,
@@ -48,7 +69,10 @@ export function installStudySessionSwipeNavigation() {
       return;
     }
 
-    if (Math.abs(deltaY) > Math.max(42, deltaX * 0.72)) {
+    if (
+      Math.abs(deltaY) > VERTICAL_CANCEL_MIN_PX &&
+      Math.abs(deltaY) > deltaX * VERTICAL_CANCEL_RATIO
+    ) {
       resetSwipe(activeSwipe);
       activeSwipe = null;
       return;
@@ -65,9 +89,8 @@ export function installStudySessionSwipeNavigation() {
 
     const swipe = activeSwipe;
     const deltaX = event.clientX - swipe.startX;
-    const deltaY = Math.abs(event.clientY - swipe.startY);
-    const shouldNavigateBack =
-      deltaX >= TRIGGER_DISTANCE_PX && deltaY <= Math.max(48, deltaX * 0.65);
+    const deltaY = event.clientY - swipe.startY;
+    const shouldNavigateBack = isStudySessionBackSwipe(deltaX, deltaY);
 
     resetSwipe(swipe);
     activeSwipe = null;
