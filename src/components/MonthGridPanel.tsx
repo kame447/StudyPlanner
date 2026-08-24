@@ -5,7 +5,7 @@ import {
   getJapaneseHolidayName,
   getWeekdayLabels,
 } from '../lib/date';
-import { formatMonthEventTimeRange } from '../lib/monthEvents';
+import { formatMonthEventTimeRangeForDate } from '../lib/monthEvents';
 import { buildMonthPanelProjection } from '../lib/monthViewProjection';
 import type { Actual, MonthEvent, Plan } from '../types/domain';
 
@@ -197,18 +197,25 @@ export function MonthGridPanel({
                   </p>
 
                   <div className="month-major-event-list">
-                    {limitedMonthEvents.map((monthEvent) => (
-                      <span
-                        key={monthEvent.id}
-                        className="event-pill month-major-event-pill"
-                        title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
-                      >
-                        <span className="month-major-event-full">
-                          {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
+                    {limitedMonthEvents.map((monthEvent) => {
+                      const timeLabel = formatMonthEventTimeRangeForDate(
+                        monthEvent,
+                        cell.date,
+                      );
+
+                      return (
+                        <span
+                          key={monthEvent.id}
+                          className="event-pill month-major-event-pill"
+                          title={`${timeLabel} ${monthEvent.title}`}
+                        >
+                          <span className="month-major-event-full">
+                            {timeLabel} {monthEvent.title}
+                          </span>
+                          <span className="month-major-event-short">{monthEvent.title}</span>
                         </span>
-                        <span className="month-major-event-short">{monthEvent.title}</span>
-                      </span>
-                    ))}
+                      );
+                    })}
 
                     {cell.monthEvents.length > limitedMonthEvents.length ? (
                       <span className="month-event-more">
