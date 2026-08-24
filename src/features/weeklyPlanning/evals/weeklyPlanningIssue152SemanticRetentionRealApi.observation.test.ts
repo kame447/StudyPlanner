@@ -62,6 +62,15 @@ function writeArtifact(value: unknown): void {
   );
 }
 
+function recordObservation(
+  observations: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  observations[key] = value;
+  writeArtifact(observations);
+}
+
 async function runTurn(params: {
   conversationId: string;
   userText: string;
@@ -169,7 +178,7 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       conversationId: 'ambiguous-modifier',
       userText: '数学と英語を勉強したいです。30分くらいです。',
     });
-    observations.ambiguousModifier = ambiguousModifier;
+    recordObservation(observations, 'ambiguousModifier', ambiguousModifier);
     const ambiguousActive = active(ambiguousModifier);
     const thirtyAssignments = [
       ...ambiguousActive.workloads.filter((fact) => fact.amount === 30),
@@ -181,7 +190,7 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       conversationId: 'named-daypart',
       userText: '夜に数学を勉強したいです。',
     });
-    observations.namedDaypart = namedDaypart;
+    recordObservation(observations, 'namedDaypart', namedDaypart);
     const daypartActive = active(namedDaypart);
     const nightTiming = [
       ...daypartActive.temporalConstraints,
@@ -194,11 +203,23 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       expect(fact.endTime).toBeNull();
     }
 
+    const softPreference = await runTurn({
+      conversationId: 'soft-preference',
+      userText: 'できれば数学は夜にやりたいです。',
+    });
+    recordObservation(observations, 'softPreference', softPreference);
+    const softActive = active(softPreference);
+    const softTiming = softActive.temporalConstraints.filter((fact) =>
+      fact.source.sourceText.includes('できれば'));
+    expect(softTiming.length).toBeGreaterThan(0);
+    expect(softTiming.every((fact) => fact.constraintLevel === 'soft')).toBe(true);
+    expect(softTiming.some((fact) => fact.constraintLevel === 'hard')).toBe(false);
+
     const unrelatedQuantities = await runTurn({
       conversationId: 'unrelated-quantities',
       userText: '数学を100問、英語を20ページ進めたいです。',
     });
-    observations.unrelatedQuantities = unrelatedQuantities;
+    recordObservation(observations, 'unrelatedQuantities', unrelatedQuantities);
     const relationActive = active(unrelatedQuantities);
     expect(relationActive.relations).toHaveLength(0);
     expect(relationActive.workloads.some((fact) => fact.amount === 100)).toBe(true);
@@ -208,18 +229,93 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       conversationId: 'standard-unit',
       userText: '英単語を200語覚えたいです。',
     });
-    observations.standardUnit = standardUnit;
+    recordObservation(observations, 'standardUnit', standardUnit);
     const unitActive = active(standardUnit);
     const wordWorkload = unitActive.workloads.find((fact) => fact.amount === 200);
     expect(wordWorkload?.unitCode).toBe('word');
     expect(wordWorkload?.unitCode).not.toBe('custom');
+
+    const examYearUnit = await runTurn({
+      conversationId: 'exam-year-unit',
+      userText: '過去問を2年分解きたいです。',
+    });
+    recordObservation(observations, 'examYearUnit', examYearUnit);
+    const examYearActive = active(examYearUnit);
+    const examYearWorkload = examYearActive.workloads.find((fact) => fact.amount === 2);
+    expect(examYearWorkload?.unitCode).toBe('exam_year');
+
+    const nonStudyTask = await runTurn({
+      conversationId: 'non-study-task',
+      userText: '来週、買い物に30分使う予定も入れたいです。',
+    });
+    recordObservation(observations, 'nonStudyTask', nonStudyTask);
+    const nonStudyActive = active(nonStudyTask);
+    expect(nonStudyActive.tasks.some((fact) => fact.category === 'non_study')).toBe(true);
+
+    const allowedDate = await runTurn({
+      conversationId: 'allowed-date',
+      userText: '来週の計画で、数学20問は火曜日だけにしてください。',
+    });
+    recordObservation(observations, 'allowedDate', allowedDate);
+    const allowedDateActive = active(allowedDate);
+    expect(allowedDateActive.taskDateRules.some((fact) => fact.kind === 'allowed_date')).toBe(true);
+    expect(allowedDateActive.taskDateRules.some((fact) =>
+      fact.kind === 'allowed_date' && fact.constraintLevel === 'hard')).toBe(true);
+
+    const excludedDate = await runTurn({
+      conversationId: 'excluded-date',
+      userText: '来週の計画で、数学20問は水曜日にはやらないでください。',
+    });
+    recordObservation(observations, 'excludedDate', excludedDate);
+    const excludedDateActive = active(excludedDate);
+    expect(excludedDateActive.taskDateRules.some((fact) => fact.kind === 'excluded_date')).toBe(true);
+    expect(excludedDateActive.taskDateRules.some((fact) =>
+      fact.kind === 'excluded_date' && fact.constraintLevel === 'hard')).toBe(true);
+
+    const singleDayPlan = await runTurn({
+      conversationId: 'single-day-plan',
+      userText: '8月25日だけの計画を作りたいです。数学を20問進めたいです。',
+    });
+    recordObservation(observations, 'singleDayPlan', singleDayPlan);
+    const singleDayActive = active(singleDayPlan);
+    expect(singleDayActive.planningWindows.some((fact) =>
+      fact.kind === 'absolute'
+      && fact.start === '2026-08-25'
+      && fact.end === '2026-08-25')).toBe(true);
+
+    const wholeDayUnavailable = await runTurn({
+      conversationId: 'whole-day-unavailable',
+      userText: '来週の計画では、8月25日は一日勉強できません。',
+      allowNormalizationRejection: true,
+    });
+    recordObservation(observations, 'wholeDayUnavailable', wholeDayUnavailable);
+    const dayOffActive = active(wholeDayUnavailable);
+    expect(dayOffActive.planningWindows.some((fact) =>
+      fact.kind === 'absolute'
+      && fact.start === '2026-08-25'
+      && fact.end === '2026-08-25')).toBe(false);
+    expect(dayOffActive.availabilityDeclarations.some((fact) =>
+      fact.kind === 'unavailable'
+      && fact.constraintLevel === 'hard'
+      && fact.startTime === null
+      && fact.endTime === null)).toBe(true);
+
+    const ambiguousSource = await runTurn({
+      conversationId: 'ambiguous-source',
+      userText: '来週の計画を作りたいです。予定を見て調整してください。',
+      allowNormalizationRejection: true,
+    });
+    recordObservation(observations, 'ambiguousSource', ambiguousSource);
+    const sourceActive = active(ambiguousSource);
+    expect(sourceActive.constraintSourceRequests).toHaveLength(0);
+    expect(sourceActive.uncertainties.some((fact) => fact.field === 'constraintSource')).toBe(true);
 
     const qualitativeProgress = await runTurn({
       conversationId: 'qualitative-progress',
       userText: '英単語はだいぶ進んでいます。残りも勉強したいです。',
       allowNormalizationRejection: true,
     });
-    observations.qualitativeProgress = qualitativeProgress;
+    recordObservation(observations, 'qualitativeProgress', qualitativeProgress);
     const qualitativeActive = active(qualitativeProgress);
     expect(qualitativeActive.workloads).toHaveLength(0);
     expect(qualitativeActive.effortEstimates).toHaveLength(0);
@@ -228,7 +324,7 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       conversationId: 'event-occurrence',
       userText: '9月1日にTOEICを受けます。来週は英語を勉強したいです。',
     });
-    observations.eventOccurrence = eventOccurrence;
+    recordObservation(observations, 'eventOccurrence', eventOccurrence);
     const eventActive = active(eventOccurrence);
     expect(eventActive.temporalConstraints.some((fact) =>
       fact.kind === 'deadline' && fact.source.sourceText.includes('9月1日'))).toBe(false);
@@ -238,7 +334,7 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       userText: '卒論プロジェクトを進めたいです。作業内容はまだ分解できていません。',
       allowNormalizationRejection: true,
     });
-    observations.undecomposedProject = undecomposedProject;
+    recordObservation(observations, 'undecomposedProject', undecomposedProject);
     const projectActive = active(undecomposedProject);
     expect(projectActive.uncertainties.some((fact) => fact.field === 'work_breakdown')).toBe(true);
 
@@ -248,7 +344,10 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       allowNormalizationRejection: true,
     });
     const neutralContext = contextFor('neutral-large-workload');
-    observations.neutralLargeWorkload = { turn: neutralLargeWorkload, context: neutralContext };
+    recordObservation(observations, 'neutralLargeWorkload', {
+      turn: neutralLargeWorkload,
+      context: neutralContext,
+    });
     expect(neutralContext.some((record) => record.kind === 'concern')).toBe(false);
 
     const explicitConcern = await runTurn({
@@ -257,9 +356,10 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
       allowNormalizationRejection: true,
     });
     const concernContext = contextFor('explicit-concern');
-    observations.explicitConcern = { turn: explicitConcern, context: concernContext };
+    recordObservation(observations, 'explicitConcern', {
+      turn: explicitConcern,
+      context: concernContext,
+    });
     expect(concernContext.some((record) => record.kind === 'concern')).toBe(true);
-
-    writeArtifact(observations);
   }, timeoutMs);
 });
