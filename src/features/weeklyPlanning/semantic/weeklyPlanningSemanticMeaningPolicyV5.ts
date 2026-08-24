@@ -48,7 +48,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Named/current-task timing is task timing; availability is plan-wide; planningWindow covers the whole plan. Completion-by timing is that task\'s hard deadline temporalConstraint; an existing task uses its minimal existingPublicId shell plus the constraint. Do not drop timing because it misses a pending question. night=later night, evening=early evening. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic.',
+    instruction: 'Named/current-task timing is task timing; availability is plan-wide; planningWindow covers the whole plan. Completion-by timing is that task\'s hard deadline temporalConstraint; an existing task uses its minimal existingPublicId shell plus the constraint. Do not drop timing because it misses a pending question. night=later night, evening=early evening. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic; deterministic calendar code resolves them.',
   },
   {
     id: 'availability_absence',
@@ -60,7 +60,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'contextual_reference_binding',
     retentionBasis: 'contextual_reference_resolution',
     retentionReason: 'Resolving omitted/pronominal referents against conversation and typed public state requires contextual language understanding; deterministic code must not guess from labels or raw text.',
-    instruction: 'Resolve omitted/pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty. Unresolved-reference uncertainty targets document, never itself. Keep unrelated activities separate; relations only when stated.',
+    instruction: 'Resolve omitted/pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty. Unresolved-reference uncertainty targets document, never itself. Keep unrelated activities separate. Emit relations only when stated.',
   },
   {
     id: 'explicit_recurrence_sources',
