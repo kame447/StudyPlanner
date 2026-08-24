@@ -9,6 +9,7 @@ on:
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/security/weeklyPlanningIssue152AdversarialCorpus.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
@@ -84,15 +85,16 @@ jobs:
       - name: Run Issue 152 adversarial Real API audit
         run: |
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts
 
-      - name: Upload safe successful observations
-        if: success()
+      - name: Upload safe observations
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: issue152-adversarial-real-api-${{ github.sha }}
           path: artifacts/issue152-adversarial-real-api/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
