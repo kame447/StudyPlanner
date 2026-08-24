@@ -1,0 +1,516 @@
+.study-session-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal-content) + 40);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--app-background);
+  color: var(--text-primary);
+}
+
+.study-session-page {
+  width: min(820px, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top, 0px)) 18px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.study-session-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 46px 1fr 46px;
+  align-items: center;
+  min-height: 64px;
+  margin: -14px -18px 12px;
+  padding: max(14px, env(safe-area-inset-top, 0px)) 18px 8px;
+  background: color-mix(in srgb, var(--app-background) 92%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.study-session-header h1 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.28rem, 5vw, 1.6rem);
+  line-height: 1.2;
+}
+
+.study-session-icon-button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(31, 43, 43, 0.08);
+}
+
+.study-session-header-spacer {
+  width: 42px;
+  height: 42px;
+}
+
+.study-session-content {
+  display: grid;
+  gap: 14px;
+}
+
+.study-session-card {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+
+.study-session-primary-card,
+.study-session-record-summary,
+.study-session-record-card,
+.study-session-record-detail-card {
+  padding: clamp(18px, 4vw, 28px);
+}
+
+.study-session-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.study-session-eyebrow svg,
+.study-session-plan-meta svg {
+  color: var(--home-blue, var(--accent));
+}
+
+.study-session-primary-card h2,
+.study-session-record-summary h2 {
+  margin: 0 0 18px;
+  font-size: clamp(2rem, 8vw, 3.1rem);
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.study-session-plan-meta {
+  display: grid;
+  margin: 0;
+}
+
+.study-session-plan-meta > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.study-session-plan-meta > div:last-child {
+  border-bottom: 0;
+}
+
+.study-session-plan-meta dt,
+.study-session-plan-meta dd {
+  margin: 0;
+}
+
+.study-session-plan-meta dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--home-blue, var(--accent));
+  font-weight: 800;
+}
+
+.study-session-plan-meta dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.study-session-mode-badge {
+  width: max-content;
+  margin: 16px auto 0;
+  padding: 6px 14px;
+  border: 1px solid color-mix(in srgb, var(--home-blue, var(--accent)) 45%, transparent);
+  border-radius: 999px;
+  color: var(--home-blue, var(--accent));
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.study-session-timer-ring {
+  width: min(390px, 82vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 12px auto 18px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--home-blue, var(--accent)) 0 var(--study-session-progress, 0deg),
+    color-mix(in srgb, var(--home-blue, var(--accent)) 10%, transparent) var(--study-session-progress, 0deg) 360deg
+  );
+  padding: 12px;
+}
+
+.study-session-timer-inner {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  text-align: center;
+}
+
+.study-session-timer-inner > span {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.study-session-timer-inner > strong {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2.45rem, 11vw, 4.9rem);
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.study-session-timer-inner > b {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--home-blue, var(--accent)) 9%, transparent);
+  color: var(--home-blue, var(--accent));
+  font-size: 0.92rem;
+}
+
+.study-session-controls {
+  display: grid;
+  grid-template-columns: 1.15fr 0.95fr;
+  gap: 12px;
+}
+
+.study-session-control,
+.study-session-save-button {
+  min-height: 58px;
+  border-radius: 18px;
+  font: inherit;
+  font-weight: 900;
+}
+
+.study-session-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.study-session-control.primary,
+.study-session-save-button {
+  border: 0;
+  background: linear-gradient(135deg, var(--home-blue, #2c77d7), color-mix(in srgb, var(--home-blue, #2c77d7) 75%, #154b9b));
+  color: #fff;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--home-blue, #2c77d7) 22%, transparent);
+}
+
+.study-session-control.danger {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--danger);
+}
+
+.study-session-context-card {
+  padding: 4px 20px;
+}
+
+.study-session-context-row,
+.study-session-record-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 74px;
+}
+
+.study-session-context-row + .study-session-context-row {
+  border-top: 1px solid var(--border);
+}
+
+.study-session-context-row > span:last-child,
+.study-session-record-row > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.study-session-context-row small,
+.study-session-record-row small {
+  color: var(--text-muted);
+}
+
+.study-session-context-row strong,
+.study-session-record-row strong {
+  overflow-wrap: anywhere;
+}
+
+.study-session-context-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--home-blue, var(--accent)) 9%, transparent);
+  color: var(--home-blue, var(--accent));
+}
+
+.study-session-context-icon.material {
+  background: rgba(41, 156, 111, 0.1);
+  color: #299c6f;
+}
+
+.study-session-helper {
+  margin: 0;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.study-session-plan-meta.compact > div {
+  min-height: 42px;
+}
+
+.study-session-actual-time {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--home-blue, var(--accent));
+  font-weight: 800;
+}
+
+.study-session-actual-time strong {
+  font-size: clamp(2rem, 8vw, 3.1rem);
+  line-height: 1;
+}
+
+.study-session-time-adjust {
+  margin-top: 14px;
+  color: var(--text-muted);
+}
+
+.study-session-time-adjust summary {
+  width: max-content;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.study-session-time-adjust > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.study-session-time-adjust label,
+.study-session-field-grid label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.study-session-time-adjust input,
+.study-session-field-grid input,
+.study-session-progress-input-row input,
+.study-session-note-field textarea {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--textarea-background);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.study-session-time-adjust input,
+.study-session-field-grid input,
+.study-session-progress-input-row input {
+  min-height: 46px;
+  padding: 0 12px;
+}
+
+.study-session-record-card h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.study-session-segments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.study-session-segments button {
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--input-border);
+  border-radius: 15px;
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 850;
+}
+
+.study-session-segments button.active {
+  border-color: var(--home-blue, var(--accent));
+  background: var(--home-blue, var(--accent));
+  color: #fff;
+}
+
+.study-session-aligned-card {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 15px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--home-blue, var(--accent)) 8%, transparent);
+}
+
+.study-session-aligned-card span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.study-session-field-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.study-session-record-detail-card {
+  display: grid;
+  gap: 16px;
+}
+
+.study-session-progress-editor {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.study-session-progress-editor > label {
+  font-weight: 900;
+}
+
+.study-session-progress-input-row {
+  display: grid;
+  grid-template-columns: auto minmax(80px, 130px) auto;
+  gap: 8px;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  color: var(--home-blue, var(--accent));
+  font-weight: 900;
+}
+
+.study-session-progress-editor small {
+  color: var(--text-muted);
+}
+
+.study-session-note-field {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-weight: 900;
+}
+
+.study-session-note-field > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.study-session-note-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  padding: 12px 14px;
+}
+
+.study-session-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.study-session-save-button {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.study-session-save-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+@media (max-width: 520px) {
+  .study-session-page {
+    padding-inline: 12px;
+  }
+
+  .study-session-header {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .study-session-primary-card,
+  .study-session-record-summary,
+  .study-session-record-card,
+  .study-session-record-detail-card {
+    padding: 18px;
+  }
+
+  .study-session-plan-meta > div {
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .study-session-controls {
+    grid-template-columns: 1fr 0.92fr;
+  }
+
+  .study-session-timer-ring {
+    width: min(330px, 80vw);
+    padding: 9px;
+  }
+}
+
+@media (max-width: 360px) {
+  .study-session-plan-meta > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding: 8px 0;
+  }
+
+  .study-session-controls,
+  .study-session-segments,
+  .study-session-time-adjust > div {
+    grid-template-columns: 1fr;
+  }
+
+  .study-session-timer-inner > strong {
+    font-size: 2.35rem;
+  }
+}

@@ -33,7 +33,7 @@ function StartupSurface({
       <div style={loading ? { display: 'none' } : undefined}>
         {children}
       </div>
-      {loading ? <SplashScreen /> : null}
+      {loading ? <SplashScreen fixedLight /> : null}
     </>
   );
 }

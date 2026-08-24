@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
+import { StudySessionProvider } from './components/StudySessionView';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
@@ -229,7 +230,7 @@ export default function App() {
   }
 
   if (booting) {
-    return <SplashScreen />;
+    return <SplashScreen fixedLight />;
   }
 
   if (!user || !appAccessGranted) {
@@ -383,26 +384,28 @@ export default function App() {
         }
       >
         {isHomeSurface ? (
-          <HomeView
-            plans={plans}
-            actuals={actuals}
-            todos={todos}
-            studyMaterials={studyMaterials}
-            primaryHeaderRef={primaryHeaderRef}
-            primaryBottomNavRef={primaryBottomNavRef}
-            onOpenAiPlanning={openAiPlanningSurface}
-            onOpenSchedule={openScheduleSurface}
-            onOpenDay={(date) => {
-              setPrimarySurface('workspace');
-              openDay(date);
-            }}
-            onOpenTodo={() => {
-              setPrimarySurface('workspace');
-              setViewMode('todo');
-            }}
-            onOpenBookshelf={openBookshelfSurface}
-            onOpenReport={openReportSurface}
-          />
+          <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
+            <HomeView
+              plans={plans}
+              actuals={actuals}
+              todos={todos}
+              studyMaterials={studyMaterials}
+              primaryHeaderRef={primaryHeaderRef}
+              primaryBottomNavRef={primaryBottomNavRef}
+              onOpenAiPlanning={openAiPlanningSurface}
+              onOpenSchedule={openScheduleSurface}
+              onOpenDay={(date) => {
+                setPrimarySurface('workspace');
+                openDay(date);
+              }}
+              onOpenTodo={() => {
+                setPrimarySurface('workspace');
+                setViewMode('todo');
+              }}
+              onOpenBookshelf={openBookshelfSurface}
+              onOpenReport={openReportSurface}
+            />
+          </StudySessionProvider>
         ) : null}
 
         {isAiPlanningSurface ? (

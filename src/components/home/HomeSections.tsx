@@ -17,6 +17,7 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
+import { useStudySessionLauncher } from '../StudySessionView';
 
 export type HomeSectionId =
   | 'getting-started'
@@ -198,6 +199,7 @@ export function NextPlanSection({
   onOpenAiPlanning: () => void;
   onOpenDay: (date: string) => void;
 }) {
+  const startStudySession = useStudySessionLauncher();
   const nextPlan = dashboard.nextPlan;
   const nextPlanPresentation = nextPlan
     ? resolveHomeNextPlanPresentation(nextPlan, studyMaterials)
@@ -206,6 +208,20 @@ export function NextPlanSection({
   const NextPlanDetailIcon =
     nextPlanPresentation?.semanticKind === 'other' ? CalendarDays : BookOpen;
   const usesStartAction = nextPlanPresentation?.semanticKind === 'study';
+
+  function handlePrimaryAction() {
+    if (!nextPlan) {
+      onOpenAiPlanning();
+      return;
+    }
+
+    if (usesStartAction && startStudySession) {
+      startStudySession(nextPlan);
+      return;
+    }
+
+    onOpenDay(nextPlan.date);
+  }
 
   return (
     <section
@@ -251,7 +267,7 @@ export function NextPlanSection({
       <button
         className="home-start-button"
         type="button"
-        onClick={() => nextPlan ? onOpenDay(dashboard.today) : onOpenAiPlanning()}
+        onClick={handlePrimaryAction}
       >
         <span className="home-start-icon">
           {nextPlan && !usesStartAction ? <ChevronRight aria-hidden="true" size={18} /> : '▶'}
