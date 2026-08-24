@@ -10,8 +10,12 @@ on:
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts'
+      - 'src/features/weeklyPlanning/evals/weeklyPlanningIssue152SemanticRetentionRealApi.observation.test.ts'
       - 'src/features/weeklyPlanning/security/weeklyPlanningIssue152AdversarialCorpus.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningCurrentTurnProvenanceV5.ts'
+      - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticMeaningPolicyV5.ts'
+      - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts'
+      - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRepairPromptV5.ts'
       - 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
   workflow_dispatch:
 
@@ -88,7 +92,8 @@ jobs:
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts \
-            src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152SemanticRetentionRealApi.observation.test.ts
 
       - name: Upload safe observations
         if: always()
