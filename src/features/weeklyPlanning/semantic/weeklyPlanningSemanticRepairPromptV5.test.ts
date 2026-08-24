@@ -18,7 +18,7 @@ function repairPayload(messages: Array<{ role: string; content: string }>): {
 }
 
 describe('Stable V5 semantic repair prompt', () => {
-  it('keeps dangling-correction repair local, bound, compact, and preservation-safe', () => {
+  it('keeps dangling-correction repair local, bound, bounded, and preservation-safe', () => {
     const invalidResponse = JSON.stringify({
       tasks: [{
         localId: 'task-1',
@@ -53,6 +53,7 @@ describe('Stable V5 semantic repair prompt', () => {
     ]);
     expect(payload.requiredChanges).toHaveLength(1);
     expect(directive).toContain('missing replacement facts');
+    expect(directive).toContain('currentUserText');
     expect(directive).toContain('schema-valid task/component');
     expect(directive).toContain('keep valid fields');
     expect(directive).toContain('correction.replacementLocalId');
@@ -60,7 +61,9 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(directive).toContain('exact existingPublicIds');
     expect(directive).toContain('Preserve unrelated supported current-turn facts');
     expect(directive).toContain('schema-valid fields from the invalid response');
-    expect(bytes(directive)).toBeLessThanOrEqual(450);
+    // This is a runaway guard, not a compaction target. Provenance and
+    // preservation instructions must not be removed merely to satisfy bytes.
+    expect(bytes(directive)).toBeLessThanOrEqual(1024);
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
