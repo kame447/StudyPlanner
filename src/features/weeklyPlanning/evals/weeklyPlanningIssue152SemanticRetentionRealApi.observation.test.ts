@@ -1,6 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { resetUserPlanningContextRuntimeForTestV1 } from '../../userPlanningContext/userPlanningContextSpace';
+import {
+  resetUserPlanningContextRuntimeForTestV1,
+  userPlanningContextPromptSummaryV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   getWeeklyPlanningStableV5RuntimeSession,
@@ -149,11 +152,18 @@ function active(turn: ObservedTurn) {
   return createWeeklyPlanningActiveSchedulerGraphViewV5(turn.graph);
 }
 
+function contextFor(conversationId: string) {
+  return userPlanningContextPromptSummaryV1({
+    ownerId: `issue152-retention-${conversationId}`,
+    currentDate: '2026-08-17',
+  });
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #152 compacted semantic retention Real API audit', () => {
   it('preserves load-bearing distinctions that prompt compaction previously shortened', async () => {
-    const observations: Record<string, ObservedTurn> = {};
+    const observations: Record<string, unknown> = {};
 
     const ambiguousModifier = await runTurn({
       conversationId: 'ambiguous-modifier',
@@ -231,6 +241,24 @@ run('Issue #152 compacted semantic retention Real API audit', () => {
     observations.undecomposedProject = undecomposedProject;
     const projectActive = active(undecomposedProject);
     expect(projectActive.uncertainties.some((fact) => fact.field === 'work_breakdown')).toBe(true);
+
+    const neutralLargeWorkload = await runTurn({
+      conversationId: 'neutral-large-workload',
+      userText: '英単語は2000語あって量が多いです。',
+      allowNormalizationRejection: true,
+    });
+    const neutralContext = contextFor('neutral-large-workload');
+    observations.neutralLargeWorkload = { turn: neutralLargeWorkload, context: neutralContext };
+    expect(neutralContext.some((record) => record.kind === 'concern')).toBe(false);
+
+    const explicitConcern = await runTurn({
+      conversationId: 'explicit-concern',
+      userText: '英単語が苦手で、かなり不安です。',
+      allowNormalizationRejection: true,
+    });
+    const concernContext = contextFor('explicit-concern');
+    observations.explicitConcern = { turn: explicitConcern, context: concernContext };
+    expect(concernContext.some((record) => record.kind === 'concern')).toBe(true);
 
     writeArtifact(observations);
   }, timeoutMs);
