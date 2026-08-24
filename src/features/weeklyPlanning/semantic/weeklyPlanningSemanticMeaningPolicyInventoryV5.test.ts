@@ -51,6 +51,10 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
   });
 
   it('keeps historically load-bearing semantic distinctions explicit after prompt compaction audits', () => {
+    expect(instructionFor('semantic_meaning_ownership')).toContain('does not recover semantic meaning');
+    expect(instructionFor('semantic_uncertainty_preservation')).toContain('rather than guessing');
+    expect(instructionFor('semantic_uncertainty_preservation')).toContain('Preserve other independently supported facts');
+
     expect(instructionFor('task_decomposition_status')).toContain('needs_breakdown');
     expect(instructionFor('task_decomposition_status')).toContain('never invent constituents');
 
@@ -73,5 +77,9 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
 
     expect(instructionFor('contextual_reference_binding')).toContain('Emit relations only when stated');
     expect(instructionFor('contextual_reference_binding')).toContain('workload size');
+
+    expect(instructionFor('durable_concern_basis')).toContain('relative size');
+    expect(instructionFor('durable_concern_basis')).toContain('if no basis is supported, emit no concern signal');
+    expect(instructionFor('durable_concern_basis')).toContain('do not invent a diagnosis');
   });
 });
