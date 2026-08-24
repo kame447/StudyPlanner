@@ -4,6 +4,7 @@
   min-height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
+  background: var(--app-background);
 }
 
 .study-session-page {
