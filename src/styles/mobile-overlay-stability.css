@@ -1,0 +1,27 @@
+/* Keep full-screen mobile overlays pinned while only their content scrolls. */
+.study-session-overlay {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.study-session-page {
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The month-event date picker is nested beside the editor card.
+   Raise the picker stack above that editor instead of rendering behind it. */
+.month-event-modal-overlay > .date-picker-overlay {
+  z-index: calc(var(--z-modal-content) + 2);
+}
+
+.month-event-modal-overlay > .date-picker-overlay > .compact-date-picker-modal {
+  z-index: calc(var(--z-modal-content) + 3);
+}
