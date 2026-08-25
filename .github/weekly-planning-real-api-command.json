@@ -1,6 +1,6 @@
 {
-  "profile": "checkpoint",
+  "profile": "merge-gate",
   "repetitions": 3,
-  "request_id": "20260826-pr195-timebox-overasking-checkpoint-3",
-  "reason": "Rerun the Issue #156 time-box overasking checkpoint after classifying the prior failure as an incorrect test contract rather than a production regression. The exact 金フレ daily-hour request correctly produced a 60-minute recurring workload but intentionally entered the existing spaced-memory learning-strategy proposal. This checkpoint must verify that the proposal never degrades into progress/content-scope interrogation, that the explicit rejection『普通に詰め込みで大丈夫です』is bound to the pending proposal and proceeds to preview with the original 60-minute daily sessions intact, and that reading, thesis, weekday vocabulary, and remaining-time variants do not ask redundant scope questions. Existing Issue #156 completion and remaining-effort controls must remain green."
+  "request_id": "20260826-pr195-timebox-overasking-merge-gate-1",
+  "reason": "Final repeated real-Luna gate for PR #195 after checkpoint 3/3 success and manual transcript review. Revalidate the exact 金フレ daily-hour request as a 60-minute daily workload, the intentional spaced-memory proposal, explicit rejection『普通に詰め込みで大丈夫です』to rejected proposal state, and 12 unsplit 60-minute preview candidates with no redundant progress/content-scope question. Also re-run reading, thesis, weekday vocabulary, remaining-time, completion, remaining-effort, typed renderer, and all-question-code coverage so the timebox semantic change cannot regress existing Stable V5 dialogue contracts."
 }
