@@ -1,0 +1,203 @@
+/* Schedule month-event polish ------------------------------------------------
+ * Keep the editor, nested date picker, and multi-day bars on one interaction
+ * contract. This file is loaded after the legacy modal/schedule layers so the
+ * compact mobile geometry cannot be overwritten by older two-row rules.
+ */
+
+/* Month event editor ---------------------------------------------------------
+ * The editor has three vertical regions: header, scrollable body, and optional
+ * destructive actions. Model all three explicitly so the body never paints
+ * across the header or footer on short mobile viewports.
+ */
+.modal-card.month-event-modal {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.month-event-editor-header,
+.month-event-editor-actions {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  background: var(--surface);
+}
+
+.month-event-editor-body {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.month-event-editor-actions {
+  margin-top: 0;
+}
+
+/* The date picker is nested in the editor overlay. Pin it to the viewport and
+ * make the picker itself the top hit-test surface rather than merely relying
+ * on a numerically larger z-index.
+ */
+.month-event-modal-overlay > .date-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal-content) + 20);
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 12px
+    max(12px, env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.month-event-modal-overlay > .date-picker-overlay > .compact-date-picker-modal {
+  z-index: calc(var(--z-modal-content) + 21);
+  max-height: min(
+    82dvh,
+    calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px)
+  );
+  pointer-events: auto;
+}
+
+/* Date-picker selection motion ----------------------------------------------
+ * Geometry moves first with a spring-like easing. Text color trails slightly,
+ * so a tap reads as one selected object moving rather than several unrelated
+ * style changes.
+ */
+.mini-calendar-grid {
+  position: relative;
+  isolation: isolate;
+}
+
+.mini-calendar-selection-knob {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  display: block;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
+  box-shadow: 0 8px 18px var(--accent-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transform-origin: center;
+  will-change: transform, width, height;
+}
+
+.mini-calendar-selection-knob.is-ready {
+  opacity: 1;
+}
+
+.mini-calendar-selection-knob.is-animated {
+  transition:
+    transform 260ms cubic-bezier(0.2, 1.36, 0.38, 1),
+    width 260ms cubic-bezier(0.2, 1.36, 0.38, 1),
+    height 260ms cubic-bezier(0.2, 1.36, 0.38, 1),
+    border-radius 180ms ease-out 45ms;
+}
+
+.mini-calendar-day {
+  position: relative;
+  z-index: 2;
+  transition:
+    color 150ms ease-out 55ms,
+    border-color 150ms ease-out 55ms,
+    background-color 150ms ease-out 55ms,
+    box-shadow 150ms ease-out 55ms;
+}
+
+.mini-calendar-day.is-selected {
+  border-color: transparent;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+
+/* Multi-day month bars -------------------------------------------------------
+ * A multi-day MonthEvent remains one domain record. Paint one visual segment
+ * per calendar week from its first covered cell, extending over the adjacent
+ * cells instead of repeating one pill inside every cell.
+ */
+.schedule-month-view .month-cell.has-month-range-segment {
+  z-index: 3;
+  overflow: visible !important;
+}
+
+.schedule-month-view .month-range-segment {
+  position: absolute;
+  z-index: 8;
+  top: calc(clamp(3px, 0.65dvh, 6px) + 27px + var(--month-range-lane, 0) * 19px);
+  left: 3px;
+  width: calc(var(--month-range-span-days, 1) * 100% - 6px);
+  min-width: 0;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, #6ec9a2 30%, var(--surface) 70%);
+  color: var(--text);
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.schedule-month-view .month-range-segment.continues-before {
+  left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.schedule-month-view .month-range-segment.continues-after {
+  width: calc(var(--month-range-span-days, 1) * 100% - 3px);
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.schedule-month-view .month-range-segment.continues-before.continues-after {
+  width: calc(var(--month-range-span-days, 1) * 100%);
+}
+
+.schedule-month-view .month-range-segment > span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.52rem;
+  font-weight: 700;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-month-view .month-range-segment.tone-1 {
+  background: color-mix(in srgb, #f4b85c 31%, var(--surface) 69%);
+}
+
+.schedule-month-view .month-range-segment.tone-2 {
+  background: color-mix(in srgb, #a787ef 27%, var(--surface) 73%);
+}
+
+.schedule-month-view .month-range-segment.tone-3 {
+  background: color-mix(in srgb, #72aefa 28%, var(--surface) 72%);
+}
+
+.schedule-month-view .month-range-segment.tone-4 {
+  background: color-mix(in srgb, #ef7b9f 25%, var(--surface) 75%);
+}
+
+.schedule-month-view .month-major-event-list {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-calendar-selection-knob,
+  .mini-calendar-day {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}

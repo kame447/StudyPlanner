@@ -38,11 +38,30 @@ async function seedMobileOverlayState(page) {
       createdAt: now,
       updatedAt: now,
     };
+    const monthEvent = {
+      id: 'mobile-overlay-month-event',
+      userId: user.id,
+      date: today,
+      endDate: today,
+      title: '予定ピッカー検証',
+      startTime: '09:00',
+      endTime: '10:00',
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      url: '',
+      memo: '',
+      checklist: [],
+      locationTags: [],
+      createdAt: now,
+      updatedAt: now,
+    };
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
     localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
+    localStorage.setItem('studyplanner.monthEvents', JSON.stringify([monthEvent]));
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
@@ -117,20 +136,65 @@ test.describe('mobile overlay stability', () => {
     expect(afterScroll.bottom).toBeCloseTo(afterScroll.viewportHeight, 0);
   });
 
-  test('month event date picker renders above the editor and accepts a date selection', async ({ page }) => {
+  test('existing month event editor keeps three regions separated and date picker owns the hit target', async ({ page }) => {
     await seedMobileOverlayState(page);
     await openSchedule(page);
 
     const grid = page.getByRole('grid', { name: '月間カレンダー' });
     const selectedCell = grid.locator('[role="gridcell"][aria-selected="true"]');
     await expect(selectedCell).toHaveCount(1);
-    await selectedCell.focus();
-    await page.keyboard.press('Enter');
+    await selectedCell.click();
+
+    const daySheet = page.locator('.month-day-sheet');
+    await expect(daySheet).toBeVisible();
+    await daySheet.locator('.month-day-sheet-event').filter({ hasText: '予定ピッカー検証' }).click();
 
     const editorOverlay = page.locator('.month-event-modal-overlay');
     const editor = editorOverlay.locator('.month-event-modal');
+    const editorHeader = editor.locator('.month-event-editor-header');
+    const editorBody = editor.locator('.month-event-editor-body');
+    const editorActions = editor.locator('.month-event-editor-actions');
     await expect(editorOverlay).toBeVisible();
     await expect(editor).toBeVisible();
+    await expect(editorHeader).toBeVisible();
+    await expect(editorBody).toBeVisible();
+    await expect(editorActions).toBeVisible();
+
+    const editorGeometry = await editor.evaluate((element) => {
+      const header = element.querySelector('.month-event-editor-header');
+      const body = element.querySelector('.month-event-editor-body');
+      const actions = element.querySelector('.month-event-editor-actions');
+      if (
+        !(header instanceof HTMLElement) ||
+        !(body instanceof HTMLElement) ||
+        !(actions instanceof HTMLElement)
+      ) {
+        return null;
+      }
+
+      const editorBox = element.getBoundingClientRect();
+      const headerBox = header.getBoundingClientRect();
+      const bodyBox = body.getBoundingClientRect();
+      const actionsBox = actions.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        editorTop: editorBox.top,
+        editorBottom: editorBox.bottom,
+        viewportHeight: window.innerHeight,
+        headerBottom: headerBox.bottom,
+        bodyTop: bodyBox.top,
+        bodyBottom: bodyBox.bottom,
+        actionsTop: actionsBox.top,
+        rowTemplate: style.gridTemplateRows,
+      };
+    });
+
+    expect(editorGeometry).not.toBeNull();
+    expect(editorGeometry.editorTop).toBeGreaterThanOrEqual(-1);
+    expect(editorGeometry.editorBottom).toBeLessThanOrEqual(editorGeometry.viewportHeight + 1);
+    expect(editorGeometry.bodyTop).toBeGreaterThanOrEqual(editorGeometry.headerBottom - 1);
+    expect(editorGeometry.actionsTop).toBeGreaterThanOrEqual(editorGeometry.bodyBottom - 1);
+    expect(editorGeometry.rowTemplate.split(' ')).toHaveLength(3);
 
     const startDateButton = editor.getByRole('button', { name: '開始日' });
     const beforeLabel = (await startDateButton.textContent())?.trim() ?? '';
@@ -145,23 +209,60 @@ test.describe('mobile overlay stability', () => {
       const editor = document.querySelector('.month-event-modal');
       const pickerOverlay = document.querySelector('.month-event-modal-overlay > .date-picker-overlay');
       const pickerModal = pickerOverlay?.querySelector('.day-calendar-modal');
-      if (!(editor instanceof HTMLElement) || !(pickerOverlay instanceof HTMLElement) || !(pickerModal instanceof HTMLElement)) {
+      if (
+        !(editor instanceof HTMLElement) ||
+        !(pickerOverlay instanceof HTMLElement) ||
+        !(pickerModal instanceof HTMLElement)
+      ) {
         return null;
       }
+      const pickerBox = pickerModal.getBoundingClientRect();
       return {
         editor: Number.parseInt(getComputedStyle(editor).zIndex, 10),
         pickerOverlay: Number.parseInt(getComputedStyle(pickerOverlay).zIndex, 10),
         pickerModal: Number.parseInt(getComputedStyle(pickerModal).zIndex, 10),
+        pickerTop: pickerBox.top,
+        pickerBottom: pickerBox.bottom,
+        viewportHeight: window.innerHeight,
       };
     });
 
     expect(layers).not.toBeNull();
     expect(layers.pickerOverlay).toBeGreaterThan(layers.editor);
     expect(layers.pickerModal).toBeGreaterThan(layers.pickerOverlay);
+    expect(layers.pickerTop).toBeGreaterThanOrEqual(-1);
+    expect(layers.pickerBottom).toBeLessThanOrEqual(layers.viewportHeight + 1);
 
     const targetDay = pickerModal.locator('.mini-calendar-day:not(.is-outside):not(.is-selected)').first();
     await expect(targetDay).toBeVisible();
+    const targetDayLabel = await targetDay.getAttribute('aria-label');
+    if (!targetDayLabel) {
+      throw new Error('Target day must expose a stable accessible label.');
+    }
+
+    const ownsHitTarget = await targetDay.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return hit === element || element.contains(hit);
+    });
+    expect(ownsHitTarget).toBe(true);
+
     await targetDay.click();
+    const selectedTargetDay = pickerModal.getByRole('button', { name: targetDayLabel, exact: true });
+    await expect(selectedTargetDay).toHaveClass(/is-selected/);
+    const knob = pickerModal.locator('.mini-calendar-selection-knob');
+    await expect(knob).toHaveClass(/is-ready/);
+    await expect(knob).toHaveClass(/is-animated/);
+
+    const motion = await knob.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        transitionDuration: style.transitionDuration,
+        transitionTimingFunction: style.transitionTimingFunction,
+      };
+    });
+    expect(motion.transitionDuration).not.toBe('0s');
+    expect(motion.transitionTimingFunction).toContain('cubic-bezier');
 
     await expect(pickerOverlay).toHaveCount(0);
     await expect(editorOverlay).toBeVisible();
