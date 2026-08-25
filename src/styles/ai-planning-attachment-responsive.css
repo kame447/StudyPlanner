@@ -6,7 +6,11 @@
   }
 
   .ai-planning-view.home-dashboard .ai-planning-composer {
-    grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
+    justify-self: center;
+    margin: 0 0 10px;
+    grid-template-columns: 36px minmax(0, 1fr) 36px 36px !important;
     gap: 3px;
     min-width: 0;
   }
@@ -40,8 +44,10 @@
 
 @media (max-width: 360px) {
   .ai-planning-view.home-dashboard .ai-planning-composer {
+    width: calc(100% - 12px);
+    max-width: calc(100% - 12px);
+    grid-template-columns: 34px minmax(0, 1fr) 34px 34px !important;
     gap: 2px;
-    margin-inline: 6px;
     padding-inline: 6px;
   }
 
