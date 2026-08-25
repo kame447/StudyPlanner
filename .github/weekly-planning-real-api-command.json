@@ -1,6 +1,6 @@
 {
   "profile": "checkpoint",
   "repetitions": 3,
-  "request_id": "20260826-pr195-timebox-overasking-checkpoint-1",
-  "reason": "Adversarially validate that explicit time-boxed plans do not trigger unnecessary progress or content-scope questions. Run the exact 金フレ daily-hour request plus daily reading, thesis time-boxing, weekday vocabulary, and remaining-time report cases through the real gpt-5.6-luna application path. Each time-boxed case must produce schedulable minute/hour work and preview candidates without a machine clarification question. Keep the existing Issue #156 completion-based conversations in the same checkpoint as controls so genuinely missing progress still produces a progress question. Inspect transcripts and Fact Graphs rather than treating green assertions alone as sufficient."
+  "request_id": "20260826-pr195-timebox-overasking-checkpoint-2",
+  "reason": "Rerun the adversarial time-box overasking checkpoint after correcting only the real-API test timeout. The previous checkpoint reached the new test but Vitest stopped it at the default 5-second timeout before the first scenario completed; existing Issue #156 control suites passed. This run must execute the exact 金フレ daily-hour case and the four time-box variants fully, require schedulable minute/hour work with no progress/content-scope question, and keep the completion-based controls green."
 }
