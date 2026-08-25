@@ -88,7 +88,9 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
 
   const session = page.getByRole('dialog', { name: '学習中' });
   const sessionPage = session.locator('.study-session-page');
+  const elapsed = session.locator('[data-study-session-elapsed]');
   await expect(session).toBeVisible();
+  await expect(elapsed).not.toHaveText('00:00:00', { timeout: 2500 });
 
   const dialogPromise = expectExitDialog(page);
   const feedback = await sessionPage.evaluate((element) => {
