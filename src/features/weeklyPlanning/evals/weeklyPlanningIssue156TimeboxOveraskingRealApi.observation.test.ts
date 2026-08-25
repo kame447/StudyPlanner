@@ -38,13 +38,22 @@ const outputDir = process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR
   ?? 'artifacts/issue156-real-api';
 const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? '300000');
 
+interface LearningStrategyRecordObservation {
+  id: string;
+  kind: string;
+  status: string;
+}
+
 interface Observation {
+  index: number;
   name: string;
   userText: string;
   assistantText: string;
   questionContext: unknown;
   graph: WeeklyPlanningFactGraphV5;
   draftCandidateCount: number;
+  draftDurations: number[];
+  learningStrategyProposalRecords: LearningStrategyRecordObservation[];
 }
 
 function createStore(initialState: PlanningState) {
@@ -96,10 +105,10 @@ function asksForContentProgress(text: string): boolean {
   return /完成を?100%|何%|進捗|どこまで|何ページ|何語|何問|全体の範囲|残り.{0,8}(ページ|語|問)/.test(text);
 }
 
-async function singleTurn(params: {
+async function conversation(params: {
   name: string;
-  userText: string;
-}): Promise<Observation> {
+  userTurns: string[];
+}): Promise<Observation[]> {
   const weekStartDate = '2026-08-24';
   const ownerId = `issue156-timebox-${params.name}`;
   const conversationId = `issue156-timebox-${params.name}`;
@@ -136,39 +145,71 @@ async function singleTurn(params: {
     },
   };
 
-  const submission = await submitWeeklyPlanningApplicationTurn({
-    session,
-    userId: ownerId,
-    ownerId,
-    userText: params.userText,
-    selectedDate: '2026-08-26',
-    plans: [],
-    scheduleTemplates: [],
-    weekStartsOn: 'monday',
-    getState: store.getState,
-    dispatch: store.dispatch,
-  }, services);
+  const observations: Observation[] = [];
+  for (let index = 0; index < params.userTurns.length; index += 1) {
+    capturedResult = null;
+    const userText = params.userTurns[index];
+    const submission = await submitWeeklyPlanningApplicationTurn({
+      session,
+      userId: ownerId,
+      ownerId,
+      userText,
+      selectedDate: '2026-08-26',
+      plans: [],
+      scheduleTemplates: [],
+      weekStartsOn: 'monday',
+      getState: store.getState,
+      dispatch: store.dispatch,
+    }, services);
 
-  expect(submission.accepted, params.name).toBe(true);
-  if (capturedResult === null) throw new Error(`${params.name}: runtime result missing`);
-  const result: WeeklyPlanningTurnExecutionResult = capturedResult;
-  if (result.failure) {
-    throw new Error(`${params.name}: ${result.failure.code} ${result.failure.traceCode}`);
+    expect(submission.accepted, `${params.name} turn ${index + 1}`).toBe(true);
+    if (capturedResult === null) {
+      throw new Error(`${params.name} turn ${index + 1}: runtime result missing`);
+    }
+    const result: WeeklyPlanningTurnExecutionResult = capturedResult;
+    if (result.failure) {
+      throw new Error(
+        `${params.name} turn ${index + 1}: ${result.failure.code} ${result.failure.traceCode}`,
+      );
+    }
+    const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
+    if (!runtime) throw new Error(`${params.name} turn ${index + 1}: runtime session missing`);
+
+    observations.push({
+      index: index + 1,
+      name: params.name,
+      userText,
+      assistantText: store.getState().lastAssistantMessage ?? result.message,
+      questionContext: store.getState().intakeState?.lastQuestionContext ?? null,
+      graph: structuredClone(runtime.graph),
+      draftCandidateCount: result.draftCandidates.length,
+      draftDurations: result.draftCandidates.map((candidate) => candidate.durationMinutes),
+      learningStrategyProposalRecords: (
+        store.getState().intakeState?.learningStrategyProposalRecords ?? []
+      ).map((record) => ({
+        id: record.id,
+        kind: record.kind,
+        status: record.status,
+      })),
+    });
   }
-  const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
-  if (!runtime) throw new Error(`${params.name}: runtime session missing`);
 
-  return {
-    name: params.name,
-    userText: params.userText,
-    assistantText: store.getState().lastAssistantMessage ?? result.message,
-    questionContext: store.getState().intakeState?.lastQuestionContext ?? null,
-    graph: structuredClone(runtime.graph),
-    draftCandidateCount: result.draftCandidates.length,
-  };
+  return observations;
 }
 
-function expectDirectTimebox(params: {
+async function singleTurn(params: {
+  name: string;
+  userText: string;
+}): Promise<Observation> {
+  const [observation] = await conversation({
+    name: params.name,
+    userTurns: [params.userText],
+  });
+  if (!observation) throw new Error(`${params.name}: observation missing`);
+  return observation;
+}
+
+function expectTimeboxMeaning(params: {
   observation: Observation;
   expectedMinutes: number;
   expectedRecurrence?: 'daily' | 'weekdays' | null;
@@ -176,14 +217,9 @@ function expectDirectTimebox(params: {
 }): void {
   const { observation } = params;
   expect(
-    machineQuestionCode(observation.questionContext),
-    `${observation.name}: ${observation.assistantText}`,
-  ).toBeNull();
-  expect(
     asksForContentProgress(observation.assistantText),
     `${observation.name}: ${observation.assistantText}`,
   ).toBe(false);
-  expect(observation.draftCandidateCount, observation.name).toBeGreaterThan(0);
 
   const timeWorkloads = activeWorkloads(observation.graph).filter((workload) =>
     timeAmountMinutes(workload) === params.expectedMinutes
@@ -191,8 +227,10 @@ function expectDirectTimebox(params: {
     && workload.quantityRole !== 'scope_total');
   expect(timeWorkloads, observation.name).not.toHaveLength(0);
   if (params.expectedRole) {
-    expect(timeWorkloads.some((workload) => workload.quantityRole === params.expectedRole), observation.name)
-      .toBe(true);
+    expect(
+      timeWorkloads.some((workload) => workload.quantityRole === params.expectedRole),
+      observation.name,
+    ).toBe(true);
   }
 
   if (params.expectedRecurrence) {
@@ -206,15 +244,76 @@ function expectDirectTimebox(params: {
   }
 }
 
+function expectDirectTimebox(params: {
+  observation: Observation;
+  expectedMinutes: number;
+  expectedRecurrence?: 'daily' | 'weekdays' | null;
+  expectedRole?: 'target' | 'remaining';
+}): void {
+  expectTimeboxMeaning(params);
+  expect(
+    machineQuestionCode(params.observation.questionContext),
+    `${params.observation.name}: ${params.observation.assistantText}`,
+  ).toBeNull();
+  expect(params.observation.draftCandidateCount, params.observation.name).toBeGreaterThan(0);
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 timeboxed planning overasking real API gate', () => {
-  it('does not ask progress when time already determines the plan', async () => {
+  it('uses explicit time as schedulable work and does not turn strategy choice into scope interrogation', async () => {
+    const goldPhraseTurns = await conversation({
+      name: 'gold-frase-daily-hour',
+      userTurns: [
+        '明日から9/7までTOEIC対策に金フレをやりたいです。1日1時間やりたいです',
+        '普通に詰め込みで大丈夫です',
+      ],
+    });
+    const goldPhraseProposal = goldPhraseTurns[0];
+    const goldPhraseRejected = goldPhraseTurns[1];
+    if (!goldPhraseProposal || !goldPhraseRejected) {
+      throw new Error('gold-frase-daily-hour: expected two observations');
+    }
+
+    expectTimeboxMeaning({
+      observation: goldPhraseProposal,
+      expectedMinutes: 60,
+      expectedRecurrence: 'daily',
+      expectedRole: 'target',
+    });
+    expect(
+      machineQuestionCode(goldPhraseProposal.questionContext),
+      goldPhraseProposal.assistantText,
+    ).toBe('learning_strategy_proposal');
+    expect(goldPhraseProposal.learningStrategyProposalRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'spaced_memory_practice', status: 'pending' }),
+      ]),
+    );
+
+    expectTimeboxMeaning({
+      observation: goldPhraseRejected,
+      expectedMinutes: 60,
+      expectedRecurrence: 'daily',
+      expectedRole: 'target',
+    });
+    expect(
+      machineQuestionCode(goldPhraseRejected.questionContext),
+      goldPhraseRejected.assistantText,
+    ).toBeNull();
+    expect(goldPhraseRejected.learningStrategyProposalRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
+      ]),
+    );
+    expect(goldPhraseRejected.draftCandidateCount).toBeGreaterThan(0);
+    expect(goldPhraseRejected.draftDurations.length).toBeGreaterThan(0);
+    expect(
+      goldPhraseRejected.draftDurations.every((duration) => duration === 60),
+      JSON.stringify(goldPhraseRejected.draftDurations),
+    ).toBe(true);
+
     const observations = [
-      await singleTurn({
-        name: 'gold-frase-daily-hour',
-        userText: '明日から9/7までTOEIC対策に金フレをやりたいです。1日1時間やりたいです',
-      }),
       await singleTurn({
         name: 'reading-daily-thirty',
         userText: '8/27から9/7まで、毎日30分だけ本を読みたいです。読み切れなくても大丈夫です',
@@ -235,30 +334,33 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
 
     expectDirectTimebox({
       observation: observations[0],
-      expectedMinutes: 60,
-      expectedRecurrence: 'daily',
-      expectedRole: 'target',
-    });
-    expectDirectTimebox({
-      observation: observations[1],
       expectedMinutes: 30,
       expectedRecurrence: 'daily',
       expectedRole: 'target',
     });
     expectDirectTimebox({
-      observation: observations[2],
+      observation: observations[1],
       expectedMinutes: 180,
       expectedRecurrence: null,
       expectedRole: 'target',
     });
-    expectDirectTimebox({
-      observation: observations[3],
+
+    expectTimeboxMeaning({
+      observation: observations[2],
       expectedMinutes: 45,
       expectedRecurrence: 'weekdays',
       expectedRole: 'target',
     });
+    expect(
+      ['learning_strategy_proposal', null],
+      observations[2].assistantText,
+    ).toContain(machineQuestionCode(observations[2].questionContext));
+    if (machineQuestionCode(observations[2].questionContext) === null) {
+      expect(observations[2].draftCandidateCount).toBeGreaterThan(0);
+    }
+
     expectDirectTimebox({
-      observation: observations[4],
+      observation: observations[3],
       expectedMinutes: 120,
       expectedRecurrence: null,
       expectedRole: 'remaining',
@@ -267,7 +369,7 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(
       `${outputDir}/timebox-overasking.json`,
-      `${JSON.stringify(observations, null, 2)}\n`,
+      `${JSON.stringify({ goldPhraseTurns, observations }, null, 2)}\n`,
     );
   }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 300_000);
 });
