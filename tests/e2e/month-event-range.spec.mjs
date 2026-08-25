@@ -23,14 +23,17 @@ function currentMonthDays() {
       middleDay: day + 1,
       endDay: day + 2,
       outsideDay: day + 3,
+      repeatedStartDay: day + 7,
+      repeatedMiddleDay: day + 8,
+      repeatedEndDay: day + 9,
     };
   }
 
   throw new Error('Could not find a Monday in the current month test window.');
 }
 
-async function seedRangeTestState(page) {
-  await page.addInitScript(() => {
+async function seedRangeTestState(page, monthEvents = []) {
+  await page.addInitScript(({ seededMonthEvents }) => {
     const now = new Date().toISOString();
     const user = {
       id: 'month-range-user',
@@ -44,11 +47,11 @@ async function seedRangeTestState(page) {
     localStorage.setItem('studyplanner.session', user.id);
     localStorage.setItem('studyplanner.plans', '[]');
     localStorage.setItem('studyplanner.actuals', '[]');
-    localStorage.setItem('studyplanner.monthEvents', '[]');
+    localStorage.setItem('studyplanner.monthEvents', JSON.stringify(seededMonthEvents));
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-  });
+  }, { seededMonthEvents: monthEvents });
 }
 
 async function openSchedule(page) {
@@ -67,6 +70,35 @@ function cellForDay(grid, page, day) {
       }),
     })
     .first();
+}
+
+async function readRangeGeometry(rangeBar) {
+  return rangeBar.evaluate((element) => {
+    const barBox = element.getBoundingClientRect();
+    const cell = element.closest('[role="gridcell"]');
+    if (!(cell instanceof HTMLElement)) return null;
+    const cellBox = cell.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      widthRatio: barBox.width / cellBox.width,
+      leftRadius: Number.parseFloat(style.borderTopLeftRadius),
+      rightRadius: Number.parseFloat(style.borderTopRightRadius),
+      barTop: barBox.top,
+      barBottom: barBox.bottom,
+      cellTop: cellBox.top,
+      cellBottom: cellBox.bottom,
+    };
+  });
+}
+
+function expectThreeDayRangeGeometry(geometry) {
+  expect(geometry).not.toBeNull();
+  expect(geometry.widthRatio).toBeGreaterThan(2.8);
+  expect(geometry.widthRatio).toBeLessThan(3.1);
+  expect(geometry.leftRadius).toBeGreaterThan(0);
+  expect(geometry.rightRadius).toBeGreaterThan(0);
+  expect(geometry.barTop).toBeGreaterThanOrEqual(geometry.cellTop);
+  expect(geometry.barBottom).toBeLessThanOrEqual(geometry.cellBottom + 1);
 }
 
 test.describe('multi-day month events', () => {
@@ -144,29 +176,57 @@ test.describe('multi-day month events', () => {
     await expect(middleIndependentPill).toHaveCount(0);
     await expect(endIndependentPill).toHaveCount(0);
 
-    const geometry = await rangeBar.evaluate((element) => {
-      const barBox = element.getBoundingClientRect();
-      const cell = element.closest('[role="gridcell"]');
-      if (!(cell instanceof HTMLElement)) return null;
-      const cellBox = cell.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        widthRatio: barBox.width / cellBox.width,
-        leftRadius: Number.parseFloat(style.borderTopLeftRadius),
-        rightRadius: Number.parseFloat(style.borderTopRightRadius),
-        barTop: barBox.top,
-        barBottom: barBox.bottom,
-        cellTop: cellBox.top,
-        cellBottom: cellBox.bottom,
-      };
-    });
+    expectThreeDayRangeGeometry(await readRangeGeometry(rangeBar));
+  });
 
-    expect(geometry).not.toBeNull();
-    expect(geometry.widthRatio).toBeGreaterThan(2.8);
-    expect(geometry.widthRatio).toBeLessThan(3.1);
-    expect(geometry.leftRadius).toBeGreaterThan(0);
-    expect(geometry.rightRadius).toBeGreaterThan(0);
-    expect(geometry.barTop).toBeGreaterThanOrEqual(geometry.cellTop);
-    expect(geometry.barBottom).toBeLessThanOrEqual(geometry.cellBottom + 1);
+  test('repeated multi-day occurrences stay continuous instead of falling back to daily pills', async ({ page }, testInfo) => {
+    const dates = currentMonthDays();
+    const now = new Date().toISOString();
+    const recurringEvent = {
+      id: 'recurring-range-event',
+      userId: 'month-range-user',
+      date: dates.startDate,
+      endDate: dates.endDate,
+      title: '毎週の合宿',
+      startTime: '09:00',
+      endTime: '18:00',
+      repeat: 'weekly',
+      repeatUntil: null,
+      excludedDates: [],
+      url: '',
+      memo: '',
+      checklist: [],
+      locationTags: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await seedRangeTestState(page, [recurringEvent]);
+    await openSchedule(page);
+
+    const grid = page.getByRole('grid', { name: '月間カレンダー' });
+    const repeatedStartCell = cellForDay(grid, page, dates.repeatedStartDay);
+    const repeatedRangeBar = repeatedStartCell
+      .locator('.month-range-segment')
+      .filter({ hasText: '毎週の合宿' });
+
+    await expect(repeatedRangeBar).toHaveCount(1);
+    await expect(
+      cellForDay(grid, page, dates.repeatedMiddleDay)
+        .locator('.month-major-event-pill')
+        .filter({ hasText: '毎週の合宿' }),
+    ).toHaveCount(0);
+    await expect(
+      cellForDay(grid, page, dates.repeatedEndDay)
+        .locator('.month-major-event-pill')
+        .filter({ hasText: '毎週の合宿' }),
+    ).toHaveCount(0);
+
+    expectThreeDayRangeGeometry(await readRangeGeometry(repeatedRangeBar));
+
+    await page.screenshot({
+      path: testInfo.outputPath('recurring-multi-day-range.png'),
+      fullPage: true,
+    });
   });
 });
