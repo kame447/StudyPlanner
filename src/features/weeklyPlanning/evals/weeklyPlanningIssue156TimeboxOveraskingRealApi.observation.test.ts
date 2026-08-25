@@ -56,6 +56,8 @@ interface Observation {
   learningStrategyProposalRecords: LearningStrategyRecordObservation[];
 }
 
+type ConversationTurn = string | ((observations: readonly Observation[]) => string | null);
+
 function createStore(initialState: PlanningState) {
   let state = structuredClone(initialState);
   return {
@@ -107,7 +109,7 @@ function asksForContentProgress(text: string): boolean {
 
 async function conversation(params: {
   name: string;
-  userTurns: string[];
+  userTurns: ConversationTurn[];
 }): Promise<Observation[]> {
   const weekStartDate = '2026-08-24';
   const ownerId = `issue156-timebox-${params.name}`;
@@ -147,8 +149,11 @@ async function conversation(params: {
 
   const observations: Observation[] = [];
   for (let index = 0; index < params.userTurns.length; index += 1) {
+    const turn = params.userTurns[index];
+    const userText = typeof turn === 'function' ? turn(observations) : turn;
+    if (userText === null) break;
+
     capturedResult = null;
-    const userText = params.userTurns[index];
     const submission = await submitWeeklyPlanningApplicationTurn({
       session,
       userId: ownerId,
@@ -278,13 +283,15 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
       name: 'gold-frase-daily-hour',
       userTurns: [
         '明日から9/7までTOEIC対策に金フレをやりたいです。1日1時間やりたいです',
-        '普通に詰め込みで大丈夫です',
+        (observations) => machineQuestionCode(observations[0]?.questionContext ?? null)
+          === 'learning_strategy_proposal'
+          ? '普通に詰め込みで大丈夫です'
+          : null,
       ],
     });
     const goldPhraseFirst = goldPhraseTurns[0];
-    const goldPhraseFollowup = goldPhraseTurns[1];
-    if (!goldPhraseFirst || !goldPhraseFollowup) {
-      throw new Error('gold-frase-daily-hour: expected two observations');
+    if (!goldPhraseFirst) {
+      throw new Error('gold-frase-daily-hour: expected an initial observation');
     }
 
     expectTimeboxMeaning({
@@ -298,43 +305,42 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
       ['learning_strategy_proposal', null],
       goldPhraseFirst.assistantText,
     ).toContain(firstQuestionCode);
+
     if (firstQuestionCode === 'learning_strategy_proposal') {
       expect(goldPhraseFirst.learningStrategyProposalRecords).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ kind: 'spaced_memory_practice', status: 'pending' }),
         ]),
       );
+
+      const goldPhraseFollowup = goldPhraseTurns[1];
+      if (!goldPhraseFollowup) {
+        throw new Error('gold-frase-daily-hour: expected rejection follow-up for pending proposal');
+      }
+      expectTimeboxMeaning({
+        observation: goldPhraseFollowup,
+        expectedMinutes: 60,
+        expectedRecurrence: 'daily',
+        expectedRole: 'target',
+      });
+      expect(
+        machineQuestionCode(goldPhraseFollowup.questionContext),
+        goldPhraseFollowup.assistantText,
+      ).toBeNull();
+      expect(goldPhraseFollowup.learningStrategyProposalRecords).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
+        ]),
+      );
+      expectAllCandidateDurations(goldPhraseFollowup, 60);
     } else {
+      expect(goldPhraseTurns).toHaveLength(1);
       expectAllCandidateDurations(goldPhraseFirst, 60);
       expect(
         goldPhraseFirst.learningStrategyProposalRecords.some((record) => record.status === 'pending'),
         goldPhraseFirst.assistantText,
       ).toBe(false);
     }
-
-    expectTimeboxMeaning({
-      observation: goldPhraseFollowup,
-      expectedMinutes: 60,
-      expectedRecurrence: 'daily',
-      expectedRole: 'target',
-    });
-    expect(
-      machineQuestionCode(goldPhraseFollowup.questionContext),
-      goldPhraseFollowup.assistantText,
-    ).toBeNull();
-    if (firstQuestionCode === 'learning_strategy_proposal') {
-      expect(goldPhraseFollowup.learningStrategyProposalRecords).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
-        ]),
-      );
-    } else {
-      expect(
-        goldPhraseFollowup.learningStrategyProposalRecords.some((record) => record.status === 'pending'),
-        goldPhraseFollowup.assistantText,
-      ).toBe(false);
-    }
-    expectAllCandidateDurations(goldPhraseFollowup, 60);
 
     const observations = [
       await singleTurn({
