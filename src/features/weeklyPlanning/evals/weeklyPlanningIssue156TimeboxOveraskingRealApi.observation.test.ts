@@ -36,6 +36,7 @@ import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGr
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR
   ?? 'artifacts/issue156-real-api';
+const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? '300000');
 
 interface Observation {
   name: string;
@@ -268,5 +269,5 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
       `${outputDir}/timebox-overasking.json`,
       `${JSON.stringify(observations, null, 2)}\n`,
     );
-  });
+  }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 300_000);
 });
