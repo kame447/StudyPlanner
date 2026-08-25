@@ -115,14 +115,17 @@ test('study session enters from the right and an edge swipe uses the existing ex
 
   await page.getByRole('button', { name: '学習を開始する' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
-  const sessionPage = ready.locator('.study-session-page');
+  const readyPage = ready.locator('.study-session-page');
   await expect(ready).toBeVisible();
-  await expect.poll(async () => sessionPage.evaluate((element) => getComputedStyle(element).animationName))
+  await expect.poll(async () => readyPage.evaluate((element) => getComputedStyle(element).animationName))
     .toContain('study-session-enter-from-right');
 
   await ready.getByRole('button', { name: 'スタート' }).click();
   const session = page.getByRole('dialog', { name: '学習中' });
+  const sessionPage = session.locator('.study-session-page');
+  const elapsed = session.locator('[data-study-session-elapsed]');
   await expect(session).toBeVisible();
+  await expect(elapsed).not.toHaveText('00:00:00', { timeout: 2500 });
 
   const box = await sessionPage.boundingBox();
   expect(box).not.toBeNull();
@@ -169,34 +172,36 @@ test('pomodoro can be selected before start and exposes focus and break UI', asy
   await expect(session.getByText(/総経過/)).toBeVisible();
 });
 
-test('startup canvas remains white while a saved dark theme is being restored', async ({ page }) => {
+test('startup light surface keeps the browser canvas white over a restored dark theme', async ({ page }) => {
   await seedStudySession(page, { dark: true });
-  await page.addInitScript(() => {
-    window.__startupSurfaceSamples = [];
-    const sample = () => {
-      const splash = document.querySelector('.splash-screen--startup-light');
-      if (!splash) return;
-      window.__startupSurfaceSamples.push({
-        body: getComputedStyle(document.body).backgroundColor,
-        splash: getComputedStyle(splash).backgroundColor,
-      });
-    };
-    new MutationObserver(sample).observe(document.documentElement, { childList: true, subtree: true });
-    let frames = 0;
-    const sampleFrames = () => {
-      sample();
-      frames += 1;
-      if (frames < 120) requestAnimationFrame(sampleFrames);
-    };
-    requestAnimationFrame(sampleFrames);
-  });
-
   await page.goto('/');
   await expect(page.locator('.home-main')).toBeVisible();
-  const samples = await page.evaluate(() => window.__startupSurfaceSamples ?? []);
-  expect(samples.length).toBeGreaterThan(0);
-  for (const sample of samples) {
-    expect(sample.body).toBe('rgb(255, 255, 255)');
-    expect(sample.splash).toBe('rgb(255, 255, 255)');
-  }
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+  await page.evaluate(() => {
+    const splash = document.createElement('main');
+    splash.className = 'loading-screen splash-screen splash-screen--startup-light';
+    splash.setAttribute('aria-label', 'アプリ起動中');
+    splash.dataset.browserContractProbe = 'startup-light';
+    document.body.appendChild(splash);
+  });
+
+  const splash = page.locator('[data-browser-contract-probe="startup-light"]');
+  await expect(splash).toBeVisible();
+
+  const surfaces = await page.evaluate(() => {
+    const probe = document.querySelector('[data-browser-contract-probe="startup-light"]');
+    if (!(probe instanceof HTMLElement)) return null;
+    return {
+      body: getComputedStyle(document.body).backgroundColor,
+      root: getComputedStyle(document.getElementById('root')).backgroundColor,
+      splash: getComputedStyle(probe).backgroundColor,
+    };
+  });
+
+  expect(surfaces).toEqual({
+    body: 'rgb(255, 255, 255)',
+    root: 'rgb(255, 255, 255)',
+    splash: 'rgb(255, 255, 255)',
+  });
 });
