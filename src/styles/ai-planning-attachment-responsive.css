@@ -13,10 +13,10 @@
 
   .ai-planning-view.home-dashboard .ai-planning-composer textarea {
     min-width: 0;
-    font-size: 16px;
   }
 
-  .ai-chat-drawer-layer .ai-chat-search input {
+  .ai-planning-view.home-dashboard .ai-planning-composer textarea:focus,
+  .ai-chat-drawer-layer .ai-chat-search input:focus {
     font-size: 16px;
   }
 
