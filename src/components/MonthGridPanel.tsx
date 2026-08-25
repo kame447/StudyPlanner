@@ -1,11 +1,16 @@
 import { useMemo, type CSSProperties } from 'react';
 import {
+  addDays,
   formatCompactMinutes,
   getCalendarDayTone,
   getJapaneseHolidayName,
   getWeekdayLabels,
 } from '../lib/date';
-import { formatMonthEventTimeRangeForDate } from '../lib/monthEvents';
+import {
+  doesMonthEventOccurOnDate,
+  formatMonthEventTimeRangeForDate,
+  getMonthEventEndDate,
+} from '../lib/monthEvents';
 import { buildMonthPanelProjection } from '../lib/monthViewProjection';
 import type { Actual, MonthEvent, Plan } from '../types/domain';
 
@@ -37,10 +42,6 @@ function getHolidayLabelLengthClass(holidayName: string): string {
   return '';
 }
 
-function getMonthEventEndDate(monthEvent: MonthEvent): string {
-  return monthEvent.endDate ?? monthEvent.date;
-}
-
 function isMultiDayMonthEvent(monthEvent: MonthEvent): boolean {
   return getMonthEventEndDate(monthEvent).localeCompare(monthEvent.date) > 0;
 }
@@ -64,10 +65,28 @@ interface MonthRangeSegment {
   continuesAfter: boolean;
 }
 
-function buildMonthRangeSegments(
-  week: Array<{ date: string }>,
-  monthEvents: MonthEvent[],
-): MonthRangeSegment[] {
+interface ProjectedMonthCell {
+  date: string;
+  monthEvents: MonthEvent[];
+}
+
+function collectMultiDayEvents(week: ProjectedMonthCell[]): MonthEvent[] {
+  const eventsById = new Map<string, MonthEvent>();
+
+  week.forEach((cell) => {
+    cell.monthEvents.forEach((monthEvent) => {
+      if (isMultiDayMonthEvent(monthEvent)) {
+        eventsById.set(monthEvent.id, monthEvent);
+      }
+    });
+  });
+
+  return [...eventsById.values()];
+}
+
+function buildUnassignedMonthRangeSegments(
+  week: ProjectedMonthCell[],
+): Array<Omit<MonthRangeSegment, 'lane'>> {
   const weekStart = week[0]?.date;
   const weekEnd = week[week.length - 1]?.date;
 
@@ -75,60 +94,75 @@ function buildMonthRangeSegments(
     return [];
   }
 
-  const candidates = monthEvents
-    .filter((monthEvent) => {
-      if (!isMultiDayMonthEvent(monthEvent)) {
-        return false;
+  const segments: Array<Omit<MonthRangeSegment, 'lane'>> = [];
+
+  for (const monthEvent of collectMultiDayEvents(week)) {
+    let segmentStart: number | null = null;
+
+    for (let cellIndex = 0; cellIndex <= week.length; cellIndex += 1) {
+      const cell = week[cellIndex];
+      const occursInCell = Boolean(
+        cell?.monthEvents.some((candidate) => candidate.id === monthEvent.id),
+      );
+
+      if (occursInCell && segmentStart === null) {
+        segmentStart = cellIndex;
+        continue;
       }
 
-      const endDate = getMonthEventEndDate(monthEvent);
-      return monthEvent.date.localeCompare(weekEnd) <= 0 && endDate.localeCompare(weekStart) >= 0;
-    })
-    .sort((left, right) => {
-      const leftStart = left.date.localeCompare(weekStart) < 0 ? weekStart : left.date;
-      const rightStart = right.date.localeCompare(weekStart) < 0 ? weekStart : right.date;
-      const startOrder = leftStart.localeCompare(rightStart);
-
-      if (startOrder !== 0) {
-        return startOrder;
+      if (occursInCell || segmentStart === null) {
+        continue;
       }
 
-      const endOrder = getMonthEventEndDate(right).localeCompare(getMonthEventEndDate(left));
-      if (endOrder !== 0) {
-        return endOrder;
-      }
+      const endIndex = cellIndex - 1;
+      const startsAtWeekBoundary = segmentStart === 0;
+      const endsAtWeekBoundary = endIndex === week.length - 1;
 
-      return left.title.localeCompare(right.title, 'ja');
-    });
+      segments.push({
+        monthEvent,
+        startIndex: segmentStart,
+        endIndex,
+        continuesBefore:
+          startsAtWeekBoundary &&
+          doesMonthEventOccurOnDate(monthEvent, addDays(weekStart, -1)),
+        continuesAfter:
+          endsAtWeekBoundary &&
+          doesMonthEventOccurOnDate(monthEvent, addDays(weekEnd, 1)),
+      });
+      segmentStart = null;
+    }
+  }
 
+  return segments.sort((left, right) => {
+    if (left.startIndex !== right.startIndex) {
+      return left.startIndex - right.startIndex;
+    }
+
+    const leftLength = left.endIndex - left.startIndex;
+    const rightLength = right.endIndex - right.startIndex;
+    if (leftLength !== rightLength) {
+      return rightLength - leftLength;
+    }
+
+    return left.monthEvent.title.localeCompare(right.monthEvent.title, 'ja');
+  });
+}
+
+function buildMonthRangeSegments(week: ProjectedMonthCell[]): MonthRangeSegment[] {
   const laneEndIndexes = Array.from({ length: MAX_MONTH_EVENT_LANES }, () => -1);
   const segments: MonthRangeSegment[] = [];
 
-  for (const monthEvent of candidates) {
-    const endDate = getMonthEventEndDate(monthEvent);
-    const clippedStart = monthEvent.date.localeCompare(weekStart) < 0 ? weekStart : monthEvent.date;
-    const clippedEnd = endDate.localeCompare(weekEnd) > 0 ? weekEnd : endDate;
-    const startIndex = week.findIndex((cell) => cell.date === clippedStart);
-    const endIndex = week.findIndex((cell) => cell.date === clippedEnd);
+  for (const segment of buildUnassignedMonthRangeSegments(week)) {
+    const lane = laneEndIndexes.findIndex(
+      (laneEndIndex) => laneEndIndex < segment.startIndex,
+    );
 
-    if (startIndex < 0 || endIndex < startIndex) {
-      continue;
-    }
-
-    const lane = laneEndIndexes.findIndex((laneEndIndex) => laneEndIndex < startIndex);
     if (lane < 0) {
       continue;
     }
 
-    laneEndIndexes[lane] = endIndex;
-    segments.push({
-      monthEvent,
-      startIndex,
-      endIndex,
-      lane,
-      continuesBefore: monthEvent.date.localeCompare(weekStart) < 0,
-      continuesAfter: endDate.localeCompare(weekEnd) > 0,
-    });
+    laneEndIndexes[lane] = segment.endIndex;
+    segments.push({ ...segment, lane });
   }
 
   return segments;
@@ -211,7 +245,7 @@ export function MonthGridPanel({
         </div>
 
         {weekRows.map((week, weekIndex) => {
-          const rangeSegments = buildMonthRangeSegments(week, monthEvents);
+          const rangeSegments = buildMonthRangeSegments(week);
 
           return (
             <div
@@ -304,7 +338,7 @@ export function MonthGridPanel({
 
                       return (
                         <span
-                          key={`${segment.monthEvent.id}-${week[0]?.date ?? weekIndex}`}
+                          key={`${segment.monthEvent.id}-${week[0]?.date ?? weekIndex}-${segment.startIndex}`}
                           className={[
                             'month-range-segment',
                             `tone-${toneIndex}`,
