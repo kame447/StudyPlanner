@@ -182,6 +182,11 @@ function normalizeCurrentWeekBlocks(
   return sortByDateTime(Array.from(uniqueById.values()));
 }
 
+function shouldKeepComposerFocusAfterSubmit(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !window.matchMedia('(max-width: 500px), (pointer: coarse)').matches;
+}
+
 export function AiPlanningView({
   application,
   userId,
@@ -520,17 +525,24 @@ export function AiPlanningView({
         : `画像「${attachment.file.name}」をもとに学習計画を作って`
       : value;
 
+    let shouldRestoreComposerFocus = shouldKeepComposerFocusAfterSubmit();
     setText('');
+    if (!shouldRestoreComposerFocus) {
+      inputRef.current?.blur();
+    }
+
     try {
       const result = await application.submitTurn(displayText, supplementalContext);
       if (!result.accepted) {
         setText(value);
+        shouldRestoreComposerFocus = true;
         return;
       }
       clearImageAttachment();
       persistActiveChat();
     } catch (submitError) {
       setText(value);
+      shouldRestoreComposerFocus = true;
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -538,7 +550,9 @@ export function AiPlanningView({
       );
       persistActiveChat();
     } finally {
-      window.requestAnimationFrame(() => inputRef.current?.focus());
+      if (shouldRestoreComposerFocus) {
+        window.requestAnimationFrame(() => inputRef.current?.focus());
+      }
     }
   }
 
