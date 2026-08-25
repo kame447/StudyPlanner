@@ -79,12 +79,31 @@ describe('Stable V5 duplicate workload placement normalization', () => {
     ]);
   });
 
-  it('accepts the normalized document without a second provider request', async () => {
-    const duplicated = workload('workload-1');
+  it('removes the exact same typed and evidence payload when only localId differs', () => {
+    const taskCopy = workload('workload-task');
+    const componentCopy = workload('workload-component');
+    const result = normalizeExactDuplicateWorkloadPlacementV5(response({
+      taskWorkloads: [taskCopy],
+      componentWorkloads: [[componentCopy]],
+    }));
+    const parsed = JSON.parse(result.rawResponse) as {
+      tasks: Array<{ workloads: unknown[]; study: { components: Array<{ workloads: unknown[] }> } }>;
+    };
+
+    expect(parsed.tasks[0]?.workloads).toEqual([]);
+    expect(parsed.tasks[0]?.study.components[0]?.workloads).toEqual([componentCopy]);
+    expect(result.repairs).toEqual([
+      'duplicate-workload-removed-from-task:task-1:workload-task',
+    ]);
+  });
+
+  it('accepts different-localId duplicate placement without a second provider request', async () => {
+    const taskCopy = workload('workload-task');
+    const componentCopy = workload('workload-component');
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => response({
-        taskWorkloads: [duplicated],
-        componentWorkloads: [[{ ...duplicated }]],
+        taskWorkloads: [taskCopy],
+        componentWorkloads: [[componentCopy]],
       })),
     };
 
@@ -101,7 +120,7 @@ describe('Stable V5 duplicate workload placement normalization', () => {
       repairAttempted: false,
       validationErrors: [],
       algorithmicRepairs: [
-        'duplicate-workload-removed-from-task:task-1:workload-1',
+        'duplicate-workload-removed-from-task:task-1:workload-task',
       ],
     });
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
@@ -120,10 +139,10 @@ describe('Stable V5 duplicate workload placement normalization', () => {
   });
 
   it('does not choose an owner when the same fact appears in multiple components', () => {
-    const duplicated = workload('workload-1');
+    const taskCopy = workload('workload-task');
     const rawResponse = response({
-      taskWorkloads: [duplicated],
-      componentWorkloads: [[{ ...duplicated }], [{ ...duplicated }]],
+      taskWorkloads: [taskCopy],
+      componentWorkloads: [[workload('workload-component-1')], [workload('workload-component-2')]],
     });
 
     expect(normalizeExactDuplicateWorkloadPlacementV5(rawResponse)).toEqual({
@@ -132,10 +151,15 @@ describe('Stable V5 duplicate workload placement normalization', () => {
     });
   });
 
-  it('leaves unrelated task and component workloads unchanged', () => {
+  it('leaves workloads with distinct evidence unchanged', () => {
+    const taskWorkload = workload('workload-task');
+    const componentWorkload = {
+      ...workload('workload-component'),
+      sourceText: '分野1の別枠を2時間',
+    };
     const rawResponse = response({
-      taskWorkloads: [workload('workload-task')],
-      componentWorkloads: [[workload('workload-component')]],
+      taskWorkloads: [taskWorkload],
+      componentWorkloads: [[componentWorkload]],
     });
 
     expect(normalizeExactDuplicateWorkloadPlacementV5(rawResponse)).toEqual({

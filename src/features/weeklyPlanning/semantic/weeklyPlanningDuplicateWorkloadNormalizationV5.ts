@@ -1,14 +1,20 @@
 /*
  * Allowed deterministic normalization boundary
  *
- * This module may remove only a byte-equivalent semantic value duplicated under
- * the same workload localId. It does not read user text and must not decide that
- * different labels, units, quantities, roles, targets, or localIds mean the same
- * thing. Any non-exact case must remain unchanged and be rejected or repaired by
- * the semantic AI through the normal validation loop.
+ * This module may remove only an exact duplicate workload placement when one
+ * task-level workload and exactly one nested component workload carry the same
+ * typed/evidence payload. workload.localId is an identity token, not semantic
+ * meaning, so equality deliberately ignores only that field. All other fields,
+ * including sourceText, must remain byte-equivalent.
+ *
+ * The code does not interpret sourceText, infer that different labels/units/
+ * quantities/roles mean the same thing, perform unit conversion, or choose an
+ * owner when multiple components contain the same payload. Any non-exact or
+ * multiply-owned case must remain unchanged and be rejected or repaired by the
+ * semantic AI through the normal validation loop.
  *
  * Do not extend this code with fuzzy matching, unit conversion, label similarity,
- * source-text inspection, or scenario-specific merging. Those are semantic
+ * source-text interpretation, or scenario-specific merging. Those are semantic
  * decisions and belong to the AI-owned layer.
  *
  * Canonical rationale:
@@ -41,8 +47,20 @@ function equalValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(canonicalValue(left)) === JSON.stringify(canonicalValue(right));
 }
 
-function workloadsFromComponents(task: Record<string, unknown>): Map<string, unknown[]> {
-  const byLocalId = new Map<string, unknown[]>();
+function semanticWorkloadValue(workload: Record<string, unknown>): Record<string, unknown> {
+  const { localId: _localId, ...semanticValue } = workload;
+  return semanticValue;
+}
+
+function equalWorkloadMeaning(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return equalValue(semanticWorkloadValue(left), semanticWorkloadValue(right));
+}
+
+function workloadsFromComponents(task: Record<string, unknown>): Record<string, unknown>[] {
+  const workloads: Record<string, unknown>[] = [];
   const study = isRecord(task.study) ? task.study : null;
   const components = Array.isArray(study?.components) ? study.components : [];
 
@@ -50,12 +68,10 @@ function workloadsFromComponents(task: Record<string, unknown>): Map<string, unk
     if (!isRecord(component) || !Array.isArray(component.workloads)) continue;
     for (const workload of component.workloads) {
       if (!isRecord(workload) || typeof workload.localId !== 'string') continue;
-      const existing = byLocalId.get(workload.localId) ?? [];
-      existing.push(workload);
-      byLocalId.set(workload.localId, existing);
+      workloads.push(workload);
     }
   }
-  return byLocalId;
+  return workloads;
 }
 
 export function normalizeExactDuplicateWorkloadPlacementV5(
@@ -75,14 +91,15 @@ export function normalizeExactDuplicateWorkloadPlacementV5(
   let changed = false;
   const tasks = parsed.tasks.map((taskValue) => {
     if (!isRecord(taskValue) || !Array.isArray(taskValue.workloads)) return taskValue;
-    const nestedByLocalId = workloadsFromComponents(taskValue);
+    const nestedWorkloads = workloadsFromComponents(taskValue);
     const taskLocalId = typeof taskValue.localId === 'string'
       ? taskValue.localId
       : 'unknown-task';
     const workloads = taskValue.workloads.filter((workload) => {
       if (!isRecord(workload) || typeof workload.localId !== 'string') return true;
-      const nested = nestedByLocalId.get(workload.localId) ?? [];
-      if (nested.length !== 1 || !equalValue(workload, nested[0])) return true;
+      const nestedMatches = nestedWorkloads.filter((nested) =>
+        equalWorkloadMeaning(workload, nested));
+      if (nestedMatches.length !== 1) return true;
       repairs.push(
         `duplicate-workload-removed-from-task:${taskLocalId}:${workload.localId}`,
       );
