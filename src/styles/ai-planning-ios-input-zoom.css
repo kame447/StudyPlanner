@@ -1,0 +1,6 @@
+@media (max-width: 520px) {
+  .ai-planning-view .ai-planning-composer textarea,
+  .ai-chat-drawer-layer .ai-chat-search input {
+    font-size: 16px;
+  }
+}
