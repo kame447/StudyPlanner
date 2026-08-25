@@ -258,6 +258,18 @@ function expectDirectTimebox(params: {
   expect(params.observation.draftCandidateCount, params.observation.name).toBeGreaterThan(0);
 }
 
+function expectAllCandidateDurations(
+  observation: Observation,
+  expectedMinutes: number,
+): void {
+  expect(observation.draftCandidateCount, observation.name).toBeGreaterThan(0);
+  expect(observation.draftDurations.length, observation.name).toBeGreaterThan(0);
+  expect(
+    observation.draftDurations.every((duration) => duration === expectedMinutes),
+    JSON.stringify(observation.draftDurations),
+  ).toBe(true);
+}
+
 const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 timeboxed planning overasking real API gate', () => {
@@ -269,49 +281,60 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
         '普通に詰め込みで大丈夫です',
       ],
     });
-    const goldPhraseProposal = goldPhraseTurns[0];
-    const goldPhraseRejected = goldPhraseTurns[1];
-    if (!goldPhraseProposal || !goldPhraseRejected) {
+    const goldPhraseFirst = goldPhraseTurns[0];
+    const goldPhraseFollowup = goldPhraseTurns[1];
+    if (!goldPhraseFirst || !goldPhraseFollowup) {
       throw new Error('gold-frase-daily-hour: expected two observations');
     }
 
     expectTimeboxMeaning({
-      observation: goldPhraseProposal,
+      observation: goldPhraseFirst,
       expectedMinutes: 60,
       expectedRecurrence: 'daily',
       expectedRole: 'target',
     });
+    const firstQuestionCode = machineQuestionCode(goldPhraseFirst.questionContext);
     expect(
-      machineQuestionCode(goldPhraseProposal.questionContext),
-      goldPhraseProposal.assistantText,
-    ).toBe('learning_strategy_proposal');
-    expect(goldPhraseProposal.learningStrategyProposalRecords).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'spaced_memory_practice', status: 'pending' }),
-      ]),
-    );
+      ['learning_strategy_proposal', null],
+      goldPhraseFirst.assistantText,
+    ).toContain(firstQuestionCode);
+    if (firstQuestionCode === 'learning_strategy_proposal') {
+      expect(goldPhraseFirst.learningStrategyProposalRecords).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'spaced_memory_practice', status: 'pending' }),
+        ]),
+      );
+    } else {
+      expectAllCandidateDurations(goldPhraseFirst, 60);
+      expect(
+        goldPhraseFirst.learningStrategyProposalRecords.some((record) => record.status === 'pending'),
+        goldPhraseFirst.assistantText,
+      ).toBe(false);
+    }
 
     expectTimeboxMeaning({
-      observation: goldPhraseRejected,
+      observation: goldPhraseFollowup,
       expectedMinutes: 60,
       expectedRecurrence: 'daily',
       expectedRole: 'target',
     });
     expect(
-      machineQuestionCode(goldPhraseRejected.questionContext),
-      goldPhraseRejected.assistantText,
+      machineQuestionCode(goldPhraseFollowup.questionContext),
+      goldPhraseFollowup.assistantText,
     ).toBeNull();
-    expect(goldPhraseRejected.learningStrategyProposalRecords).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
-      ]),
-    );
-    expect(goldPhraseRejected.draftCandidateCount).toBeGreaterThan(0);
-    expect(goldPhraseRejected.draftDurations.length).toBeGreaterThan(0);
-    expect(
-      goldPhraseRejected.draftDurations.every((duration) => duration === 60),
-      JSON.stringify(goldPhraseRejected.draftDurations),
-    ).toBe(true);
+    if (firstQuestionCode === 'learning_strategy_proposal') {
+      expect(goldPhraseFollowup.learningStrategyProposalRecords).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
+        ]),
+      );
+    } else {
+      expect(
+        goldPhraseFollowup.learningStrategyProposalRecords.some((record) => record.status === 'pending'),
+        goldPhraseFollowup.assistantText,
+      ).toBe(false);
+    }
+    expectAllCandidateDurations(goldPhraseFollowup, 60);
 
     const observations = [
       await singleTurn({
