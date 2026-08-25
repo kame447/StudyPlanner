@@ -136,7 +136,7 @@ test.describe('mobile overlay stability', () => {
     expect(afterScroll.bottom).toBeCloseTo(afterScroll.viewportHeight, 0);
   });
 
-  test('existing month event editor keeps three regions separated and date picker owns the hit target', async ({ page }) => {
+  test('existing month event editor owns the viewport and date picker owns the hit target', async ({ page }, testInfo) => {
     await seedMobileOverlayState(page);
     await openSchedule(page);
 
@@ -149,16 +149,78 @@ test.describe('mobile overlay stability', () => {
     await expect(daySheet).toBeVisible();
     await daySheet.locator('.month-day-sheet-event').filter({ hasText: '予定ピッカー検証' }).click();
 
+    const motionRoot = page.locator('body > .month-event-dialog-motion');
     const editorOverlay = page.locator('.month-event-modal-overlay');
     const editor = editorOverlay.locator('.month-event-modal');
     const editorHeader = editor.locator('.month-event-editor-header');
     const editorBody = editor.locator('.month-event-editor-body');
     const editorActions = editor.locator('.month-event-editor-actions');
+    await expect(motionRoot).toHaveCount(1);
     await expect(editorOverlay).toBeVisible();
     await expect(editor).toBeVisible();
     await expect(editorHeader).toBeVisible();
     await expect(editorBody).toBeVisible();
     await expect(editorActions).toBeVisible();
+
+    const viewportOwnership = await editorOverlay.evaluate((element) => {
+      const overlayBox = element.getBoundingClientRect();
+      const overlayStyle = getComputedStyle(element);
+      const toolbar = document.querySelector('.schedule-toolbar');
+      const bottomNav = document.querySelector('.schedule-bottom-nav');
+      const header = element.querySelector('.month-event-editor-header');
+
+      if (
+        !(toolbar instanceof HTMLElement) ||
+        !(bottomNav instanceof HTMLElement) ||
+        !(header instanceof HTMLElement)
+      ) {
+        return null;
+      }
+
+      const ownsPoint = (x, y) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === element || (hit instanceof Node && element.contains(hit));
+      };
+      const toolbarBox = toolbar.getBoundingClientRect();
+      const bottomNavBox = bottomNav.getBoundingClientRect();
+      const headerBox = header.getBoundingClientRect();
+      const headerHit = document.elementFromPoint(
+        headerBox.left + headerBox.width / 2,
+        headerBox.top + headerBox.height / 2,
+      );
+
+      return {
+        position: overlayStyle.position,
+        top: overlayBox.top,
+        left: overlayBox.left,
+        right: overlayBox.right,
+        bottom: overlayBox.bottom,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        motionRootIsBodyChild: element.parentElement?.parentElement === document.body,
+        ownsToolbarPoint: ownsPoint(
+          toolbarBox.left + toolbarBox.width / 2,
+          toolbarBox.top + toolbarBox.height / 2,
+        ),
+        ownsBottomNavPoint: ownsPoint(
+          bottomNavBox.left + bottomNavBox.width / 2,
+          bottomNavBox.top + bottomNavBox.height / 2,
+        ),
+        headerOwnsHitTarget:
+          headerHit === header || (headerHit instanceof Node && header.contains(headerHit)),
+      };
+    });
+
+    expect(viewportOwnership).not.toBeNull();
+    expect(viewportOwnership.position).toBe('fixed');
+    expect(viewportOwnership.motionRootIsBodyChild).toBe(true);
+    expect(viewportOwnership.top).toBeCloseTo(0, 0);
+    expect(viewportOwnership.left).toBeCloseTo(0, 0);
+    expect(viewportOwnership.right).toBeCloseTo(viewportOwnership.viewportWidth, 0);
+    expect(viewportOwnership.bottom).toBeCloseTo(viewportOwnership.viewportHeight, 0);
+    expect(viewportOwnership.ownsToolbarPoint).toBe(true);
+    expect(viewportOwnership.ownsBottomNavPoint).toBe(true);
+    expect(viewportOwnership.headerOwnsHitTarget).toBe(true);
 
     const editorGeometry = await editor.evaluate((element) => {
       const header = element.querySelector('.month-event-editor-header');
@@ -196,6 +258,11 @@ test.describe('mobile overlay stability', () => {
     expect(editorGeometry.actionsTop).toBeGreaterThanOrEqual(editorGeometry.bodyBottom - 1);
     expect(editorGeometry.rowTemplate.split(' ')).toHaveLength(3);
 
+    await page.screenshot({
+      path: testInfo.outputPath('month-event-editor-viewport.png'),
+      fullPage: false,
+    });
+
     const startDateButton = editor.getByRole('button', { name: '開始日' });
     const beforeLabel = (await startDateButton.textContent())?.trim() ?? '';
     await startDateButton.click();
@@ -206,21 +273,21 @@ test.describe('mobile overlay stability', () => {
     await expect(pickerModal).toBeVisible();
 
     const layers = await page.evaluate(() => {
-      const editor = document.querySelector('.month-event-modal');
-      const pickerOverlay = document.querySelector('.month-event-modal-overlay > .date-picker-overlay');
-      const pickerModal = pickerOverlay?.querySelector('.day-calendar-modal');
+      const editorElement = document.querySelector('.month-event-modal');
+      const pickerOverlayElement = document.querySelector('.month-event-modal-overlay > .date-picker-overlay');
+      const pickerModalElement = pickerOverlayElement?.querySelector('.day-calendar-modal');
       if (
-        !(editor instanceof HTMLElement) ||
-        !(pickerOverlay instanceof HTMLElement) ||
-        !(pickerModal instanceof HTMLElement)
+        !(editorElement instanceof HTMLElement) ||
+        !(pickerOverlayElement instanceof HTMLElement) ||
+        !(pickerModalElement instanceof HTMLElement)
       ) {
         return null;
       }
-      const pickerBox = pickerModal.getBoundingClientRect();
+      const pickerBox = pickerModalElement.getBoundingClientRect();
       return {
-        editor: Number.parseInt(getComputedStyle(editor).zIndex, 10),
-        pickerOverlay: Number.parseInt(getComputedStyle(pickerOverlay).zIndex, 10),
-        pickerModal: Number.parseInt(getComputedStyle(pickerModal).zIndex, 10),
+        editor: Number.parseInt(getComputedStyle(editorElement).zIndex, 10),
+        pickerOverlay: Number.parseInt(getComputedStyle(pickerOverlayElement).zIndex, 10),
+        pickerModal: Number.parseInt(getComputedStyle(pickerModalElement).zIndex, 10),
         pickerTop: pickerBox.top,
         pickerBottom: pickerBox.bottom,
         viewportHeight: window.innerHeight,
