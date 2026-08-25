@@ -15,8 +15,8 @@
     min-width: 0;
   }
 
-  .ai-planning-view.home-dashboard .ai-planning-composer textarea:focus,
-  .ai-chat-drawer-layer .ai-chat-search input:focus {
+  .ai-planning-view.home-dashboard .ai-planning-composer textarea,
+  .ai-chat-drawer-layer .ai-chat-search input {
     font-size: 16px;
   }
 
