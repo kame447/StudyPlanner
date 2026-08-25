@@ -20,7 +20,7 @@ async function seedHome(page) {
   });
 }
 
-test('AI planning keeps photo, microphone, and send actions visible on a 360px mobile viewport', async ({ page }) => {
+test('AI planning keeps mobile actions visible and text inputs at an iOS-safe size', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 });
   await seedHome(page);
   await page.goto('/');
@@ -36,7 +36,9 @@ test('AI planning keeps photo, microphone, and send actions visible on a 360px m
   await expect(page.locator('.ai-planning-mic-button')).toBeVisible();
   await expect(page.locator('.ai-planning-send-button')).toBeVisible();
 
-  const composerBox = await page.locator('.ai-planning-composer').boundingBox();
+  const composer = page.locator('.ai-planning-composer');
+  const composerInput = composer.locator('textarea');
+  const composerBox = await composer.boundingBox();
   const micBox = await page.locator('.ai-planning-mic-button').boundingBox();
   const sendBox = await page.locator('.ai-planning-send-button').boundingBox();
   expect(composerBox).not.toBeNull();
@@ -44,4 +46,27 @@ test('AI planning keeps photo, microphone, and send actions visible on a 360px m
   expect(sendBox).not.toBeNull();
   expect(micBox.x + micBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
   expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
+
+  const composerFontSize = await composerInput.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
+  );
+  expect(composerFontSize).toBeGreaterThanOrEqual(16);
+
+  await composerInput.focus();
+  await composerInput.fill('明日の数学を1時間にして');
+  await expect(composerInput).toHaveValue('明日の数学を1時間にして');
+
+  const mobileLayout = await page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+  }));
+  expect(mobileLayout.documentWidth).toBeLessThanOrEqual(mobileLayout.innerWidth + 1);
+
+  await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
+  const chatSearchInput = page.getByRole('searchbox', { name: 'チャットを検索' });
+  await expect(chatSearchInput).toBeVisible();
+  const searchFontSize = await chatSearchInput.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
+  );
+  expect(searchFontSize).toBeGreaterThanOrEqual(16);
 });
