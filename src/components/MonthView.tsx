@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useExitMotion } from '../hooks/useExitMotion';
 import { todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
@@ -241,21 +242,26 @@ export function MonthView({
         onClose={() => setDaySheetDate(null)}
       />
 
-      <div
-        className={`month-event-dialog-motion ${
-          isEventModalClosing ? 'is-closing' : 'is-open'
-        }`}
-      >
-        <MonthEventDialog
-          openDate={eventModalDate}
-          userId={userId}
-          monthEvents={monthEvents}
-          initialEventId={eventModalInitialEventId}
-          onSave={onSaveMonthEvent}
-          onDelete={onDeleteMonthEvent}
-          onClose={closeMonthEventEditor}
-        />
-      </div>
+      {eventModalDate
+        ? createPortal(
+            <div
+              className={`month-event-dialog-motion ${
+                isEventModalClosing ? 'is-closing' : 'is-open'
+              }`}
+            >
+              <MonthEventDialog
+                openDate={eventModalDate}
+                userId={userId}
+                monthEvents={monthEvents}
+                initialEventId={eventModalInitialEventId}
+                onSave={onSaveMonthEvent}
+                onDelete={onDeleteMonthEvent}
+                onClose={closeMonthEventEditor}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }
