@@ -230,7 +230,7 @@ function expectTimeboxMeaning(params: {
     timeAmountMinutes(workload) === params.expectedMinutes
     && workload.quantityRole !== 'completed'
     && workload.quantityRole !== 'scope_total');
-  expect(timeWorkloads, observation.name).not.toHaveLength(0);
+  expect(timeWorkloads, observation.name).toHaveLength(1);
   if (params.expectedRole) {
     expect(
       timeWorkloads.some((workload) => workload.quantityRole === params.expectedRole),
@@ -266,9 +266,15 @@ function expectDirectTimebox(params: {
 function expectAllCandidateDurations(
   observation: Observation,
   expectedMinutes: number,
+  expectedCount?: number,
 ): void {
-  expect(observation.draftCandidateCount, observation.name).toBeGreaterThan(0);
-  expect(observation.draftDurations.length, observation.name).toBeGreaterThan(0);
+  if (expectedCount === undefined) {
+    expect(observation.draftCandidateCount, observation.name).toBeGreaterThan(0);
+    expect(observation.draftDurations.length, observation.name).toBeGreaterThan(0);
+  } else {
+    expect(observation.draftCandidateCount, observation.name).toBe(expectedCount);
+    expect(observation.draftDurations, observation.name).toHaveLength(expectedCount);
+  }
   expect(
     observation.draftDurations.every((duration) => duration === expectedMinutes),
     JSON.stringify(observation.draftDurations),
@@ -332,10 +338,10 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
           expect.objectContaining({ kind: 'spaced_memory_practice', status: 'rejected' }),
         ]),
       );
-      expectAllCandidateDurations(goldPhraseFollowup, 60);
+      expectAllCandidateDurations(goldPhraseFollowup, 60, 12);
     } else {
       expect(goldPhraseTurns).toHaveLength(1);
-      expectAllCandidateDurations(goldPhraseFirst, 60);
+      expectAllCandidateDurations(goldPhraseFirst, 60, 12);
       expect(
         goldPhraseFirst.learningStrategyProposalRecords.some((record) => record.status === 'pending'),
         goldPhraseFirst.assistantText,
