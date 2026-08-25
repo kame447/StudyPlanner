@@ -20,7 +20,7 @@ async function seedHome(page) {
   });
 }
 
-test('AI planning keeps mobile actions visible and text inputs at an iOS-safe size', async ({ page }) => {
+test('AI planning keeps mobile actions visible and focused text inputs at an iOS-safe size', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 });
   await seedHome(page);
   await page.goto('/');
@@ -47,12 +47,12 @@ test('AI planning keeps mobile actions visible and text inputs at an iOS-safe si
   expect(micBox.x + micBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
   expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width + 1);
 
+  await composerInput.focus();
   const composerFontSize = await composerInput.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).fontSize),
   );
   expect(composerFontSize).toBeGreaterThanOrEqual(16);
 
-  await composerInput.focus();
   await composerInput.fill('明日の数学を1時間にして');
   await expect(composerInput).toHaveValue('明日の数学を1時間にして');
 
@@ -65,6 +65,7 @@ test('AI planning keeps mobile actions visible and text inputs at an iOS-safe si
   await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
   const chatSearchInput = page.getByRole('searchbox', { name: 'チャットを検索' });
   await expect(chatSearchInput).toBeVisible();
+  await chatSearchInput.focus();
   const searchFontSize = await chatSearchInput.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).fontSize),
   );
