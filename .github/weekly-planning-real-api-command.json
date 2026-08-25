@@ -1,6 +1,6 @@
 {
   "profile": "checkpoint",
   "repetitions": 3,
-  "request_id": "20260826-pr195-timebox-overasking-checkpoint-2",
-  "reason": "Rerun the adversarial time-box overasking checkpoint after correcting only the real-API test timeout. The previous checkpoint reached the new test but Vitest stopped it at the default 5-second timeout before the first scenario completed; existing Issue #156 control suites passed. This run must execute the exact 金フレ daily-hour case and the four time-box variants fully, require schedulable minute/hour work with no progress/content-scope question, and keep the completion-based controls green."
+  "request_id": "20260826-pr195-timebox-overasking-checkpoint-3",
+  "reason": "Rerun the Issue #156 time-box overasking checkpoint after classifying the prior failure as an incorrect test contract rather than a production regression. The exact 金フレ daily-hour request correctly produced a 60-minute recurring workload but intentionally entered the existing spaced-memory learning-strategy proposal. This checkpoint must verify that the proposal never degrades into progress/content-scope interrogation, that the explicit rejection『普通に詰め込みで大丈夫です』is bound to the pending proposal and proceeds to preview with the original 60-minute daily sessions intact, and that reading, thesis, weekday vocabulary, and remaining-time variants do not ask redundant scope questions. Existing Issue #156 completion and remaining-effort controls must remain green."
 }
