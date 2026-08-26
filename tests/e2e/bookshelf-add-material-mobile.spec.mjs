@@ -51,48 +51,79 @@ async function openBookshelf(page) {
   await expect(page.locator('.bookshelf-view')).toBeVisible();
 }
 
+async function readFabGeometry(fab) {
+  return fab.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return {
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      right: window.innerWidth - rect.right,
+      bottom: window.innerHeight - rect.bottom,
+      position: style.position,
+      radius: style.borderRadius,
+      fontSize: style.fontSize,
+    };
+  });
+}
+
 test.describe('bookshelf add-material mobile surface', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('uses a circular plus FAB and opens the add form inside the visual viewport', async ({ page }) => {
+  test('keeps the plus fixed to the viewport and opens a bottom sheet from any scroll position', async ({ page }, testInfo) => {
     await seedBookshelfMobileState(page);
     await page.goto('/');
     await openBookshelf(page);
 
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const bookshelfTransform = await page.locator('.bookshelf-view').evaluate((element) =>
+      getComputedStyle(element).transform,
+    );
+    expect(bookshelfTransform).toBe('none');
 
     const fab = page.locator('.bookshelf-add-material-fab');
     await expect(fab).toBeVisible();
     await expect(fab).toHaveAccessibleName('教材追加');
 
-    const fabGeometry = await fab.evaluate((button) => {
-      const rect = button.getBoundingClientRect();
-      const style = getComputedStyle(button);
-      return {
-        width: rect.width,
-        height: rect.height,
-        right: window.innerWidth - rect.right,
-        bottom: window.innerHeight - rect.bottom,
-        position: style.position,
-        radius: style.borderRadius,
-        fontSize: style.fontSize,
-      };
-    });
+    const beforeScroll = await readFabGeometry(fab);
+    expect(beforeScroll.position).toBe('fixed');
+    expect(beforeScroll.width).toBeCloseTo(56, 0);
+    expect(beforeScroll.height).toBeCloseTo(56, 0);
+    expect(beforeScroll.right).toBeGreaterThanOrEqual(14);
+    expect(beforeScroll.bottom).toBeGreaterThan(74);
+    expect(beforeScroll.radius).toBe('50%');
+    expect(beforeScroll.fontSize).toBe('0px');
 
-    expect(fabGeometry.position).toBe('fixed');
-    expect(fabGeometry.width).toBeCloseTo(56, 0);
-    expect(fabGeometry.height).toBeCloseTo(56, 0);
-    expect(fabGeometry.right).toBeGreaterThanOrEqual(14);
-    expect(fabGeometry.bottom).toBeGreaterThan(58);
-    expect(fabGeometry.radius).toBe('50%');
-    expect(fabGeometry.fontSize).toBe('0px');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(50);
+
+    const scrollY = await page.evaluate(() => window.scrollY);
+    expect(scrollY).toBeGreaterThan(0);
+
+    const afterScroll = await readFabGeometry(fab);
+    expect(Math.abs(afterScroll.top - beforeScroll.top)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterScroll.right - beforeScroll.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterScroll.bottom - beforeScroll.bottom)).toBeLessThanOrEqual(1);
+
+    await testInfo.attach('bookshelf-fab-scrolled.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
 
     await fab.click();
 
-    const overlay = page.locator('.bookshelf-view > .modal-overlay');
+    const overlay = page.locator('.bookshelf-view > .modal-overlay').filter({
+      has: page.locator(':scope > .bookshelf-modal'),
+    });
     const modal = overlay.locator(':scope > .bookshelf-modal');
     await expect(page.getByRole('heading', { name: '教材を追加' })).toBeVisible();
     await expect(modal).toBeVisible();
+
+    await modal.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+      );
+    });
 
     const modalGeometry = await overlay.evaluate((overlayElement) => {
       const modalElement = overlayElement.querySelector('.bookshelf-modal');
@@ -101,27 +132,43 @@ test.describe('bookshelf add-material mobile surface', () => {
       }
       const overlayRect = overlayElement.getBoundingClientRect();
       const modalRect = modalElement.getBoundingClientRect();
+      const overlayStyle = getComputedStyle(overlayElement);
+      const modalStyle = getComputedStyle(modalElement);
+      const visualViewportHeight = window.visualViewport?.height ?? window.innerHeight;
       return {
         overlayTop: overlayRect.top,
         overlayBottom: overlayRect.bottom,
         overlayHeight: overlayRect.height,
-        overlayOverflowY: getComputedStyle(overlayElement).overflowY,
+        overlayPosition: overlayStyle.position,
+        overlayOverflowY: overlayStyle.overflowY,
         modalTop: modalRect.top,
         modalBottom: modalRect.bottom,
         modalScrollTop: modalElement.scrollTop,
+        modalBottomLeftRadius: modalStyle.borderBottomLeftRadius,
+        modalTopLeftRadius: modalStyle.borderTopLeftRadius,
         viewportHeight: window.innerHeight,
+        visualViewportHeight,
         pageWidth: document.documentElement.scrollWidth,
         viewportWidth: document.documentElement.clientWidth,
       };
     });
 
+    expect(modalGeometry.overlayPosition).toBe('fixed');
     expect(Math.abs(modalGeometry.overlayTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(modalGeometry.overlayHeight - modalGeometry.viewportHeight)).toBeLessThanOrEqual(1);
     expect(modalGeometry.overlayBottom).toBeLessThanOrEqual(modalGeometry.viewportHeight + 1);
     expect(modalGeometry.overlayOverflowY).toBe('hidden');
     expect(modalGeometry.modalTop).toBeGreaterThanOrEqual(0);
-    expect(modalGeometry.modalBottom).toBeLessThanOrEqual(modalGeometry.viewportHeight + 1);
+    expect(Math.abs(modalGeometry.modalBottom - modalGeometry.viewportHeight)).toBeLessThanOrEqual(1);
+    expect(modalGeometry.modalBottom).toBeLessThanOrEqual(modalGeometry.visualViewportHeight + 1);
     expect(modalGeometry.modalScrollTop).toBe(0);
+    expect(modalGeometry.modalTopLeftRadius).not.toBe('0px');
+    expect(modalGeometry.modalBottomLeftRadius).toBe('0px');
     expect(modalGeometry.pageWidth).toBeLessThanOrEqual(modalGeometry.viewportWidth + 1);
+
+    await testInfo.attach('bookshelf-add-material-sheet.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
   });
 });
