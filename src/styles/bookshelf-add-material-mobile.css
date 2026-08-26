@@ -64,13 +64,20 @@
 
 /* Mirror Schedule's quick-entry sheet geometry. The overlay owns the viewport;
  * the material card owns vertical scrolling because this form is longer than
- * the Schedule quick-entry form. */
+ * the Schedule quick-entry form. Generic modal overlays reserve a stable
+ * scrollbar gutter, so clear that reservation when the overlay itself no
+ * longer scrolls. */
 .bookshelf-view > .modal-overlay:has(> .bookshelf-modal) {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
   align-items: flex-end;
   padding: 0;
   overflow: hidden;
+  scrollbar-gutter: auto;
   overscroll-behavior: contain;
   background: rgba(18, 24, 36, 0.38);
   animation: planner-sheet-overlay-in 180ms ease-out both;
