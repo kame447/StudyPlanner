@@ -1,5 +1,8 @@
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from '../semantic/weeklyPlanningPlacementGraphViewV5';
+import {
   runWeeklyPlanningStableV5PlanningStage,
 } from './weeklyPlanningStableV5PlanningStage';
 import {
@@ -48,7 +51,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
   const preview = executeWeeklyPlanningStableV5Preview({
     input,
-    graph: semantic.graph,
+    graph: createWeeklyPlanningPlacementGraphViewV5(semantic.graph),
     schedulerInput: responseRoute.schedulerInput,
     requestContext,
   });
