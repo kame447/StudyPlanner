@@ -13,11 +13,13 @@
   animation: ui-surface-fade var(--ui-motion-fast) ease-out both;
 }
 
+/* Keep the approved Bookshelf FAB appearance; only its containing-block
+ * behavior changes. */
 .bookshelf-view .bookshelf-add-material-fab {
   position: fixed;
   right: max(18px, calc((100vw - 1040px) / 2 + 24px));
-  bottom: calc(74px + 14px + env(safe-area-inset-bottom, 0px));
-  z-index: 45;
+  bottom: calc(var(--app-bottom-nav-clearance) + 14px);
+  z-index: 80;
   width: 56px;
   height: 56px;
   min-width: 56px;
@@ -28,9 +30,9 @@
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--bookshelf-blue);
   color: #fff;
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 10px 22px rgba(8, 118, 249, 0.24);
   font-size: 0;
   line-height: 0;
   cursor: pointer;
@@ -44,7 +46,7 @@
 
 .bookshelf-view .bookshelf-add-material-fab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow: 0 12px 24px rgba(8, 118, 249, 0.3);
 }
 
 .bookshelf-view .bookshelf-add-material-fab:active {
@@ -52,7 +54,7 @@
 }
 
 .bookshelf-view .bookshelf-add-material-fab:focus-visible {
-  outline: 3px solid var(--focus-outline);
+  outline: 3px solid color-mix(in srgb, var(--bookshelf-blue) 34%, transparent);
   outline-offset: 3px;
 }
 
@@ -109,9 +111,10 @@
   background: var(--surface);
 }
 
-@media (max-width: 520px) {
+@media (max-width: 760px) {
   .bookshelf-view .bookshelf-add-material-fab {
     right: 18px;
+    bottom: calc(var(--app-bottom-nav-clearance) + 14px);
   }
 
   .bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal {
