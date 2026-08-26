@@ -28,6 +28,8 @@ function compilation(
       availabilityWindows: [],
       sourceSelections: [],
       relations: [],
+      hardDateBounds: [],
+      preferredPlacements: [],
       sourceFactRefs: [],
     },
     issues: [],
