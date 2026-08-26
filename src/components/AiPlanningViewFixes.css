@@ -250,6 +250,65 @@
   z-index: 940;
 }
 
+.ai-planning-preview-modal {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.ai-planning-preview-period-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fbff;
+}
+
+.ai-planning-preview-period-nav > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.ai-planning-preview-period-nav strong {
+  overflow: hidden;
+  color: #20324e;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-planning-preview-period-nav small {
+  color: #738198;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.ai-planning-preview-period-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #fff;
+  color: #0878f9;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ai-planning-preview-period-nav button:disabled {
+  border-color: #e2e8f0;
+  color: #a7b2c2;
+  cursor: default;
+  opacity: 0.72;
+}
+
 .ai-chat-drawer-layer {
   position: fixed;
   inset: 0;
@@ -468,6 +527,29 @@
   .ai-planning-view.home-dashboard .ai-planning-plan-card {
     width: calc(100% - 38px);
     margin-left: 38px;
+  }
+
+  .ai-planning-preview-period-nav {
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  .ai-planning-preview-period-nav button {
+    width: 38px;
+    min-height: 36px;
+    padding: 0;
+  }
+
+  .ai-planning-preview-period-nav button span {
+    display: none;
+  }
+
+  .ai-planning-preview-period-nav strong {
+    font-size: 0.74rem;
+  }
+
+  .ai-planning-preview-period-nav small {
+    font-size: 0.62rem;
   }
 }
 
