@@ -1,16 +1,9 @@
-import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import { addDays, minutesBetween, sortByDateTime } from '../lib/date';
+import { addDays, sortByDateTime } from '../lib/date';
 
 export interface AiPlanningPreviewDateRange {
   startDate: string;
   endDate: string;
-}
-
-export interface AiPlanningPreviewSummary {
-  count: number;
-  totalMinutes: number;
-  dateRange: AiPlanningPreviewDateRange | null;
 }
 
 export function normalizeAiPlanningPreviewBlocks(
@@ -37,21 +30,6 @@ export function getAiPlanningPreviewDateRange(
   return {
     startDate: first.date,
     endDate: last.date,
-  };
-}
-
-export function buildAiPlanningPreviewSummary(
-  blocks: readonly WeeklyPlanDraftBlock[],
-): AiPlanningPreviewSummary {
-  const normalized = normalizeAiPlanningPreviewBlocks(blocks);
-
-  return {
-    count: normalized.length,
-    totalMinutes: normalized.reduce(
-      (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
-      0,
-    ),
-    dateRange: getAiPlanningPreviewDateRange(normalized),
   };
 }
 
@@ -83,14 +61,6 @@ export function buildAiPlanningPreviewDatePages(
   }
 
   return pages;
-}
-
-export function selectAiPlanningPreviewCandidates(
-  candidates: readonly WeeklyDraftCandidate[],
-  blocks: readonly WeeklyPlanDraftBlock[],
-): WeeklyDraftCandidate[] {
-  const blockIds = new Set(blocks.map((block) => block.id));
-  return candidates.filter((candidate) => blockIds.has(candidate.stableKey));
 }
 
 export function clampAiPlanningPreviewPageIndex(
