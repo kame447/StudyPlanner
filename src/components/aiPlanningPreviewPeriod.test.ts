@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { addDays } from '../lib/date';
 import {
   buildAiPlanningPreviewDatePages,
   clampAiPlanningPreviewPageIndex,
@@ -24,6 +25,12 @@ function block(id: string, date: string): WeeklyPlanDraftBlock {
     createdAt: '2026-08-26T00:00:00.000Z',
     updatedAt: '2026-08-26T00:00:00.000Z',
   };
+}
+
+function dailyBlocks(startDate: string, dayCount: number): WeeklyPlanDraftBlock[] {
+  return Array.from({ length: dayCount }, (_, index) =>
+    block(`daily-${index + 1}`, addDays(startDate, index)),
+  );
 }
 
 const GOLD_PHRASE_DATES = [
@@ -84,6 +91,46 @@ describe('aiPlanningPreviewPeriod', () => {
         '2026-09-07',
       ],
     ]);
+  });
+
+  it('paginates a 30-day plan into four full weeks and two remaining days', () => {
+    const pages = buildAiPlanningPreviewDatePages(dailyBlocks('2026-08-01', 30));
+
+    expect(pages.map((page) => page.length)).toEqual([7, 7, 7, 7, 2]);
+    expect(pages[0]?.[0]).toBe('2026-08-01');
+    expect(pages[4]).toEqual(['2026-08-29', '2026-08-30']);
+    expect(pages.flat()).toHaveLength(30);
+  });
+
+  it('paginates a 31-day plan into four full weeks and three remaining days', () => {
+    const pages = buildAiPlanningPreviewDatePages(dailyBlocks('2026-08-01', 31));
+
+    expect(pages.map((page) => page.length)).toEqual([7, 7, 7, 7, 3]);
+    expect(pages[4]).toEqual(['2026-08-29', '2026-08-30', '2026-08-31']);
+    expect(pages.flat()).toHaveLength(31);
+  });
+
+  it('keeps a 31-day month-crossing plan continuous while paging every seven days', () => {
+    const blocks = dailyBlocks('2026-08-27', 31);
+    const pages = buildAiPlanningPreviewDatePages(blocks);
+
+    expect(getAiPlanningPreviewDateRange(blocks)).toEqual({
+      startDate: '2026-08-27',
+      endDate: '2026-09-26',
+    });
+    expect(pages.map((page) => page.length)).toEqual([7, 7, 7, 7, 3]);
+    expect(pages[0]).toEqual([
+      '2026-08-27',
+      '2026-08-28',
+      '2026-08-29',
+      '2026-08-30',
+      '2026-08-31',
+      '2026-09-01',
+      '2026-09-02',
+    ]);
+    expect(pages[4]).toEqual(['2026-09-24', '2026-09-25', '2026-09-26']);
+    expect(pages.flat().map((date, index) => date === addDays('2026-08-27', index)))
+      .not.toContain(false);
   });
 
   it('includes empty calendar days inside the plan range so each page stays chronological', () => {
