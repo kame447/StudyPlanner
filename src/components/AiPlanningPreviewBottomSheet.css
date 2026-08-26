@@ -1,7 +1,12 @@
+.ai-planning-view-shell-v2.is-preview-open .ai-planning-view {
+  pointer-events: none;
+}
+
 .ai-planning-view-shell-v2.is-preview-open .ai-planning-conversation {
   overflow-y: hidden;
   overscroll-behavior: none;
   touch-action: none;
+  -webkit-overflow-scrolling: auto;
 }
 
 .ai-planning-preview-overlay-v2 {
