@@ -43,6 +43,14 @@ jobs:
       - name: Regenerate approved visual snapshots
         run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs --update-snapshots
 
+      - name: Upload generated Bookshelf baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookshelf-baselines-${{ github.sha }}
+          path: tests/e2e/visual-regression.spec.mjs-snapshots/bookshelf-*-linux.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Keep only Bookshelf baseline changes
         shell: bash
         run: |
@@ -59,4 +67,4 @@ jobs:
           git commit -m 'test: approve audited Bookshelf add visuals'
           git push origin HEAD:fix/bookshelf-add-material-mobile
 
-# One-shot baseline refresh. The successful job deletes this workflow itself.
+# One-shot refresh triggered via an explicit fast-forward ref update. The successful job deletes itself.
