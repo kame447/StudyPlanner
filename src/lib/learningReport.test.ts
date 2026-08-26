@@ -173,6 +173,28 @@ describe('learning report overview', () => {
     expect(overview.weekPlannedMinutes).toBe(120);
     expect(overview.monthPlannedMinutes).toBe(180);
   });
+
+  it('ignores invalid negative-duration records in current and lifetime totals', () => {
+    const overview = buildLearningReportOverview({
+      referenceDate: '2026-08-24',
+      plans: [],
+      actuals: [
+        makeActual({ id: 'valid-record' }),
+        makeActual({
+          id: 'invalid-record',
+          actualStartTime: '11:00',
+          actualEndTime: '10:00',
+        }),
+      ],
+      subjects,
+      materials,
+    });
+
+    expect(overview.todayMinutes).toBe(60);
+    expect(overview.weekMinutes).toBe(60);
+    expect(overview.monthMinutes).toBe(60);
+    expect(overview.lifetimeMinutes).toBe(60);
+  });
 });
 
 describe('learning report model', () => {
@@ -321,6 +343,33 @@ describe('learning report model', () => {
     expect(
       report.breakdown.reduce((sum, entry) => sum + entry.minutes, 0),
     ).toBe(report.actualMinutes);
+  });
+
+  it('drops invalid negative-duration records before all report projections', () => {
+    const report = buildLearningReportModel({
+      scope: 'day',
+      anchorDate: '2026-08-24',
+      materialFilter: ALL_MATERIALS_FILTER,
+      plans: [],
+      actuals: [
+        makeActual({ id: 'valid-record' }),
+        makeActual({
+          id: 'invalid-record',
+          actualStartTime: '11:00',
+          actualEndTime: '10:00',
+        }),
+      ],
+      subjects,
+      materials,
+    });
+
+    expect(report.actualMinutes).toBe(60);
+    expect(
+      report.buckets.reduce((sum, bucket) => sum + bucket.actualMinutes, 0),
+    ).toBe(60);
+    expect(
+      report.breakdown.reduce((sum, entry) => sum + entry.minutes, 0),
+    ).toBe(60);
   });
 });
 
