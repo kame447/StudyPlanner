@@ -4,9 +4,17 @@ import {
 } from './weeklyPlanningCalendarResolver';
 import type {
   RecurrenceFactV5,
-  TemporalConstraintFactV5,
   WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
+
+interface WeeklyPlanningRecurringTemporalConstraintV5 {
+  id: string;
+  taskId: string;
+  targetFactId: string;
+  kind: string;
+  constraintLevel?: string;
+  dateExpression: string | null;
+}
 
 export interface WeeklyPlanningRecurringDateBoundsGraphViewV5 {
   readonly workloads: ReadonlyArray<Pick<
@@ -17,15 +25,7 @@ export interface WeeklyPlanningRecurringDateBoundsGraphViewV5 {
     RecurrenceFactV5,
     'id' | 'taskId' | 'targetFactId' | 'kind'
   >>;
-  readonly temporalConstraints: ReadonlyArray<Pick<
-    TemporalConstraintFactV5,
-    | 'id'
-    | 'taskId'
-    | 'targetFactId'
-    | 'kind'
-    | 'constraintLevel'
-    | 'dateExpression'
-  >>;
+  readonly temporalConstraints: ReadonlyArray<WeeklyPlanningRecurringTemporalConstraintV5>;
 }
 
 export interface WeeklyPlanningRecurringDateBoundV5 {
@@ -43,7 +43,7 @@ function isSimpleExpandedRecurrenceKind(
 }
 
 function resolvedConstraintDate(params: {
-  constraint: Pick<TemporalConstraintFactV5, 'kind' | 'dateExpression'>;
+  constraint: Pick<WeeklyPlanningRecurringTemporalConstraintV5, 'kind' | 'dateExpression'>;
   currentDate: string;
   weekStartsOn?: CalendarWeekStartsOn;
 }): string | null {
@@ -134,8 +134,9 @@ export function filterWeeklyPlanningRecurringDatesByHardBoundsV5(params: {
   dates: readonly string[];
   bound: WeeklyPlanningRecurringDateBoundV5 | undefined;
 }): string[] {
-  if (!params.bound) return [...params.dates];
+  const bound = params.bound;
+  if (!bound) return [...params.dates];
   return params.dates.filter((date) =>
-    (!params.bound?.startDate || date >= params.bound.startDate)
-    && (!params.bound?.endDate || date <= params.bound.endDate));
+    (!bound.startDate || date >= bound.startDate)
+    && (!bound.endDate || date <= bound.endDate));
 }
