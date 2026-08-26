@@ -46,21 +46,29 @@ async function addPreviewCardLayoutFixture(page) {
 async function expectPreviewCardCenteredAndContained(page) {
   const conversation = page.locator('.ai-planning-conversation');
   const previewCard = page.locator('[data-testid="ai-preview-layout-fixture"]');
-  const [conversationBox, previewBox] = await Promise.all([
-    conversation.boundingBox(),
+  const [scrollContent, previewBox] = await Promise.all([
+    conversation.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const paddingLeft = Number.parseFloat(style.paddingLeft);
+      const paddingRight = Number.parseFloat(style.paddingRight);
+
+      return {
+        left: rect.left + paddingLeft,
+        right: rect.left + element.clientWidth - paddingRight,
+      };
+    }),
     previewCard.boundingBox(),
   ]);
 
-  expect(conversationBox).not.toBeNull();
   expect(previewBox).not.toBeNull();
 
-  const conversationRight = conversationBox.x + conversationBox.width;
   const previewRight = previewBox.x + previewBox.width;
-  const leftGap = previewBox.x - conversationBox.x;
-  const rightGap = conversationRight - previewRight;
+  const leftGap = previewBox.x - scrollContent.left;
+  const rightGap = scrollContent.right - previewRight;
 
-  expect(previewBox.x).toBeGreaterThanOrEqual(conversationBox.x - 1);
-  expect(previewRight).toBeLessThanOrEqual(conversationRight + 1);
+  expect(previewBox.x).toBeGreaterThanOrEqual(scrollContent.left - 1);
+  expect(previewRight).toBeLessThanOrEqual(scrollContent.right + 1);
   expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(2);
 }
 
