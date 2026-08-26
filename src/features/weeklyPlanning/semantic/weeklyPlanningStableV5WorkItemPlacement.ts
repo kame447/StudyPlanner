@@ -82,7 +82,10 @@ function eligibleDates(params: {
     graph: params.graph,
     taskId: params.item.taskId,
     targetFactId,
-    currentDate: params.dates[0] ?? params.input.horizon.startDate,
+    currentDate: params.input.horizon.referenceDate
+      ?? params.dates[0]
+      ?? params.input.horizon.startDate,
+    weekStartsOn: params.input.horizon.weekStartsOn,
   });
   return allowed.filter((date) =>
     params.dates.includes(date)

@@ -261,6 +261,7 @@ export function createWeeklyPlanningSchedulerContext(params: {
   return {
     ownerId: params.ownerId,
     currentDate: params.requestContext.currentDate,
+    weekStartsOn: params.requestContext.weekStartsOn,
     planningStartDate: params.horizon?.startDate ?? '',
     planningEndDate: params.horizon?.endDate ?? '',
     timeZone: params.requestContext.timeZone,
