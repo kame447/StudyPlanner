@@ -214,7 +214,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
       modal: zIndexOf(document.querySelector('.my-page-modal')?.parentElement),
     };
   });
-  expect(profileStacking.modal).toBeGreaterThan(stacking.ai);
+  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.primary-bottom-nav button').nth(2).click();
