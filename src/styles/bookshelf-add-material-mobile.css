@@ -1,0 +1,91 @@
+/* Bookshelf add-material mobile contracts.
+ * Keep the add action aligned with the app's circular FAB pattern and keep
+ * bookshelf modal surfaces pinned to the visual viewport on mobile Safari.
+ */
+
+.bookshelf-add-material-fab {
+  position: fixed;
+  right: max(18px, calc((100vw - 1040px) / 2 + 24px));
+  bottom: calc(var(--app-bottom-nav-clearance) + 16px);
+  z-index: 80;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  display: inline-grid;
+  place-items: center;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bookshelf-blue);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(8, 118, 249, 0.24);
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.bookshelf-add-material-fab svg {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2;
+}
+
+.bookshelf-add-material-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(8, 118, 249, 0.3);
+}
+
+.bookshelf-add-material-fab:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.bookshelf-add-material-fab:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bookshelf-blue) 34%, transparent);
+  outline-offset: 3px;
+}
+
+:root[data-theme='dark'] .bookshelf-add-material-fab {
+  background: #6fb2ff;
+  color: #10233f;
+}
+
+/* The generic modal overlay is scrollable. When it is mounted inside the
+ * already-scrolled Bookshelf surface, iOS Safari can restore a non-zero
+ * scroll position and open the form with its header above the visual
+ * viewport. Make the overlay itself non-scrollable; the card owns scrolling.
+ */
+.bookshelf-view > .modal-overlay {
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  align-items: start;
+  overflow: hidden;
+  overscroll-behavior: none;
+  padding:
+    max(10px, env(safe-area-inset-top, 0px))
+    10px
+    max(10px, env(safe-area-inset-bottom, 0px));
+}
+
+.bookshelf-view > .modal-overlay > .modal-card {
+  margin-top: 0;
+  max-height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 20px
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+  .bookshelf-add-material-fab {
+    right: 18px;
+    bottom: calc(var(--app-bottom-nav-clearance) + 14px);
+  }
+
+  .bookshelf-view > .modal-overlay > .bookshelf-modal {
+    width: calc(100vw - 20px);
+  }
+}
