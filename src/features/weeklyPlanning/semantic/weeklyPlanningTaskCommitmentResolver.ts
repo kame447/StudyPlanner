@@ -12,7 +12,6 @@ import {
 } from './weeklyPlanningRecurrenceCalendarV5';
 import {
   resolvedWeeklyPlanningDateExpressionForFactV5,
-  resolveWeeklyPlanningSingleDateExpressionV5,
   type WeeklyPlanningResolvedDateExpressionsV5,
 } from './weeklyPlanningResolvedDateExpressionsV5';
 
@@ -113,7 +112,7 @@ function resolveDates(params: {
   constraint: TemporalConstraintFactV2;
   context: TaskCommitmentResolutionContext;
   planningDates: string[];
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: TaskCommitmentResolutionIssue[];
 }): string[] {
   const recurrences = params.graph.recurrences.filter((recurrence) =>
@@ -140,17 +139,10 @@ function resolveDates(params: {
     : null;
 
   if (params.constraint.dateExpression) {
-    const resolution = params.resolvedDateExpressions
-      ? resolvedWeeklyPlanningDateExpressionForFactV5({
-          resolved: params.resolvedDateExpressions,
-          factId: params.constraint.id,
-        })
-      : resolveWeeklyPlanningSingleDateExpressionV5({
-          factId: params.constraint.id,
-          expression: params.constraint.dateExpression,
-          currentDate: params.context.currentDate,
-          weekStartsOn: params.context.weekStartsOn,
-        });
+    const resolution = resolvedWeeklyPlanningDateExpressionForFactV5({
+      resolved: params.resolvedDateExpressions,
+      factId: params.constraint.id,
+    });
     if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
       params.issues.push({
         code: 'unsupported_commitment_date_expression',
@@ -159,7 +151,7 @@ function resolveDates(params: {
         blocking: true,
         details: {
           expression: params.constraint.dateExpression,
-          resolutionStatus: resolution?.status ?? 'unsupported_expression',
+          resolutionStatus: resolution?.status ?? 'missing_resolved_snapshot',
         },
       });
       return [];
@@ -218,7 +210,7 @@ function createEndPoint(
 export function resolveWeeklyPlanningTaskCommitments(params: {
   graph: WeeklyPlanningTaskCommitmentGraphView;
   context: TaskCommitmentResolutionContext;
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskCommitmentResolutionResult {
   const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
