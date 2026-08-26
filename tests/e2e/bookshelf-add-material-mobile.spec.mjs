@@ -138,10 +138,11 @@ test.describe('bookshelf add-material surface', () => {
     await waitForAnimations(scheduleSheet);
     const scheduleSheetGeometry = await readSheetGeometry(scheduleSheet);
     const intendedSheetInset = scheduleSheetGeometry.left;
-    const intendedSheetWidth = scheduleSheetGeometry.viewportWidth - intendedSheetInset * 2;
 
     // Linux Chromium can reserve a classic layout scrollbar on Schedule's
-    // right edge. Its left edge still exposes the intended 16px mobile inset.
+    // right edge. The left edge still exposes the intended 16px mobile inset.
+    // Bookshelf is checked by both rendered edges below; those two edge checks
+    // already define its width without double-counting a platform scrollbar.
     expect(Math.abs(intendedSheetInset - 16)).toBeLessThanOrEqual(1);
 
     await testInfo.attach('schedule-add-reference.png', {
@@ -246,7 +247,6 @@ test.describe('bookshelf add-material surface', () => {
 
     expect(Math.abs(modalGeometry.modalLeft - intendedSheetInset)).toBeLessThanOrEqual(1);
     expect(Math.abs(modalGeometry.modalRight - intendedSheetInset)).toBeLessThanOrEqual(1);
-    expect(Math.abs(modalGeometry.modalWidth - intendedSheetWidth)).toBeLessThanOrEqual(1);
 
     await testInfo.attach('bookshelf-add-aligned.png', {
       body: await page.screenshot({ fullPage: false }),
