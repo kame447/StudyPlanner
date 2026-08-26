@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan } from '../../../types/domain';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
@@ -10,6 +13,9 @@ import type {
 import type {
   GenericSchedulerInput,
 } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import {
   scheduleWeeklyPlanningStableV5Preview,
 } from './weeklyPlanningStableV5PreviewScheduler';
@@ -111,6 +117,12 @@ function graph(): WeeklyPlanningFactGraphV5 {
   };
 }
 
+function placementGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+  );
+}
+
 function vocabularyGraph(preferredPeriod?: 'evening'): WeeklyPlanningFactGraphV5 {
   const source = {
     conversationId: 'conversation-vocabulary',
@@ -185,7 +197,7 @@ describe('Stable V5 preview scheduler', () => {
   it('places application work after an existing plan without sending placement to AI', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput(),
-      graph: graph(),
+      graph: placementGraph(graph()),
       plans: [existingPlan()],
     });
 
@@ -225,7 +237,7 @@ describe('Stable V5 preview scheduler', () => {
           graphRevision: 1,
         }],
       }),
-      graph: graph(),
+      graph: placementGraph(graph()),
     });
 
     expect(result.status).toBe('insufficient_capacity');
@@ -295,7 +307,7 @@ describe('Stable V5 preview scheduler', () => {
           sourceFactId: 'preferred-night-1',
         }],
       }),
-      graph: preferredGraph,
+      graph: placementGraph(preferredGraph),
     });
 
     expect(result.status).toBe('ready');
@@ -336,7 +348,7 @@ describe('Stable V5 preview scheduler', () => {
         }],
         sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
       }),
-      graph: vocabularyGraph('evening'),
+      graph: placementGraph(vocabularyGraph('evening')),
     });
 
     expect(result.status).toBe('ready');
