@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: bookshelf-baseline-refresh
+  cancel-in-progress: true
+
 jobs:
   update-bookshelf-baselines:
     runs-on: ubuntu-latest
@@ -52,7 +56,7 @@ jobs:
           git add "$snapshot_dir"/bookshelf-*-linux.png
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test: approve bookshelf add-surface visuals'
+          git commit -m 'test: approve audited Bookshelf add visuals'
           git push origin HEAD:fix/bookshelf-add-material-mobile
 
-# Trigger after the adversarial responsive audit; the job deletes this workflow.
+# One-shot baseline refresh. The successful job deletes this workflow itself.
