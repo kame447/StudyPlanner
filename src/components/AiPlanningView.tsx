@@ -1,68 +1,23 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type CSSProperties,
-  type KeyboardEvent,
-} from 'react';
-import {
-  BookOpen,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  CircleUserRound,
-  LoaderCircle,
-  Menu,
-  MessageCircle,
-  Mic,
-  Plus,
-  Send,
-  X,
-} from 'lucide-react';
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import {
   createAiPlanningChat,
-  deleteAiPlanningChat,
   deriveAiPlanningChatTitle,
-  hasStoredAiPlanningChatIndex,
   loadAiPlanningChatIndex,
-  loadAiPlanningChatSnapshot,
   saveAiPlanningChatIndex,
   saveAiPlanningChatSnapshot,
-  searchAiPlanningChats,
-  setActiveAiPlanningChat,
   updateAiPlanningChatRecord,
-  type AiPlanningChatIndex,
 } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
-import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import { buildAiPlanningStarterPrompts } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
-import { validateAiImageFile } from '../lib/aiImageAttachment';
-import {
-  formatMinutes,
-  minutesBetween,
-  minutesFromTime,
-  parseTimeToMinutes,
-  sortByDateTime,
-} from '../lib/date';
-import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
-import { plannerRepository } from '../repositories';
-import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
-import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
-import {
-  buildAiPlanningPreviewDatePages,
-  clampAiPlanningPreviewPageIndex,
-  getAiPlanningPreviewDateRange,
-  normalizeAiPlanningPreviewBlocks,
-} from './aiPlanningPreviewPeriod';
-import './AiPlanningView.css';
-import './AiPlanningViewFixes.css';
+import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
+import type { Plan } from '../types/domain';
+import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
+import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
+import './AiPlanningPreviewDialog.css';
 
 interface AiPlanningViewProps {
   application: WeeklyPlanningApplication;
@@ -71,142 +26,11 @@ interface AiPlanningViewProps {
   plans: Plan[];
 }
 
-interface PendingPlanningImageAttachment {
-  file: File;
-  previewUrl: string;
-}
-
-interface SpeechRecognitionAlternativeLike {
-  transcript: string;
-}
-
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  0: SpeechRecognitionAlternativeLike;
-}
-
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: ArrayLike<SpeechRecognitionResultLike>;
-}
-
-interface SpeechRecognitionErrorEventLike {
-  error: string;
-  message?: string;
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-type SpeechRecognitionWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor;
-  webkitSpeechRecognition?: SpeechRecognitionConstructor;
-};
-
-const PREVIEW_START_HOUR = 0;
-const PREVIEW_END_HOUR = 24;
-const PREVIEW_HOUR_HEIGHT = 42;
-const PREVIEW_HOURS = Array.from(
-  { length: PREVIEW_END_HOUR - PREVIEW_START_HOUR + 1 },
-  (_, index) => PREVIEW_START_HOUR + index,
-);
-const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-
-function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
-  if (typeof window === 'undefined') return null;
-  const speechWindow = window as SpeechRecognitionWindow;
-  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
-}
-
-function speechRecognitionErrorMessage(error: string, detail?: string): string {
-  const normalizedDetail = detail?.trim();
-  if (normalizedDetail) return normalizedDetail;
-
-  switch (error) {
-    case 'not-allowed':
-    case 'service-not-allowed':
-      return 'マイクの使用が許可されていません。ブラウザのマイク権限を許可して再試行してください。';
-    case 'audio-capture':
-      return '利用できるマイクを確認できませんでした。端末のマイク設定を確認してください。';
-    case 'no-speech':
-      return '音声を認識できませんでした。もう一度話してください。';
-    case 'network':
-      return '音声文字起こしAPIへ接続できませんでした。Workerの接続設定を確認してください。';
-    default:
-      return '音声入力に失敗しました。もう一度試してください。';
-  }
-}
-
-function formatDateLabel(date: string): string {
-  const [, month = '', day = ''] = date.split('-');
-  const weekday = new Date(`${date}T00:00:00`).getDay();
-  return `${Number(month)}/${Number(day)} ${WEEKDAY_LABELS[weekday] ?? ''}`;
-}
-
-function timelineStyle(startTime: string, endTime: string): CSSProperties {
-  const rangeStart = PREVIEW_START_HOUR * 60;
-  const rangeEnd = PREVIEW_END_HOUR * 60;
-  const start = Math.max(rangeStart, minutesFromTime(startTime));
-  const end = Math.min(rangeEnd, parseTimeToMinutes(endTime, 'end'));
-  const top = ((start - rangeStart) / 60) * PREVIEW_HOUR_HEIGHT;
-  const height = Math.max(
-    18,
-    ((Math.max(start, end) - start) / 60) * PREVIEW_HOUR_HEIGHT,
-  );
-  return { top: `${top}px`, height: `${height}px` };
-}
-
-function toneClass(block: WeeklyPlanDraftBlock): string {
-  const key = (block.label || block.subject || block.title || block.id).trim();
-  const index =
-    Array.from(key).reduce((sum, character) => sum + character.charCodeAt(0), 0) % 8;
-  return `weekly-draft-tone-${index + 1}`;
-}
-
-function shouldKeepComposerFocusAfterSubmit(): boolean {
-  if (typeof window === 'undefined') return false;
-  return !window.matchMedia('(max-width: 500px), (pointer: coarse)').matches;
-}
-
-export function AiPlanningView({
-  application,
-  userId,
-  selectedDate,
-  plans,
-}: AiPlanningViewProps) {
+export function AiPlanningView(props: AiPlanningViewProps) {
+  const { application, userId, plans } = props;
   const { state, pendingDraftBlocks, approvalAvailability } = application;
-  const [text, setText] = useState('');
-  const [error, setError] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewPageIndex, setPreviewPageIndex] = useState(0);
-  const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
-  const [chatQuery, setChatQuery] = useState('');
-  const [chatIndex, setChatIndex] = useState<AiPlanningChatIndex>(() =>
-    loadAiPlanningChatIndex(userId),
-  );
-  const [imageAttachment, setImageAttachment] =
-    useState<PendingPlanningImageAttachment | null>(null);
-  const [isReadingAttachment, setIsReadingAttachment] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
-  const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const conversationRef = useRef<HTMLDivElement | null>(null);
-  const didInitializeChatsRef = useRef(false);
-  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speechBaseTextRef = useRef('');
-  const speechFinalTextRef = useRef('');
+  const [previewError, setPreviewError] = useState('');
   const previewCandidates = state.previewCandidates ?? [];
   const localPreviewBlocks = useMemo(
     () =>
@@ -223,466 +47,56 @@ export function AiPlanningView({
       ),
     [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
   );
-  const previewDateRange = useMemo(
-    () => getAiPlanningPreviewDateRange(allPreviewBlocks),
-    [allPreviewBlocks],
-  );
-  const previewDatePages = useMemo(
-    () => buildAiPlanningPreviewDatePages(allPreviewBlocks),
-    [allPreviewBlocks],
-  );
-  const activePreviewPageIndex = clampAiPlanningPreviewPageIndex(
-    previewPageIndex,
-    previewDatePages.length,
-  );
-  const previewPageDates = previewDatePages[activePreviewPageIndex] ?? [];
-  const previewPageDateSet = useMemo(
-    () => new Set(previewPageDates),
-    [previewPageDates],
-  );
-  const visibleBlocks = useMemo(
-    () => allPreviewBlocks.filter((block) => previewPageDateSet.has(block.date)),
-    [allPreviewBlocks, previewPageDateSet],
-  );
-  const previewPlanSignature = useMemo(
-    () => allPreviewBlocks.map((block) => `${block.id}:${block.date}`).join('|'),
-    [allPreviewBlocks],
-  );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
-  const isComposerBusy = isBusy || isReadingAttachment;
-  const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
-  const totalMinutes = useMemo(
-    () =>
-      allPreviewBlocks.reduce(
-        (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
-        0,
-      ),
-    [allPreviewBlocks],
-  );
-  const previewGroups = useMemo(
-    () =>
-      previewPageDates.map((date) => ({
-        date,
-        blocks: visibleBlocks.filter((block) => block.date === date),
-        existingPlans: sortByDateTime(plans.filter((plan) => plan.date === date)),
-      })),
-    [plans, previewPageDates, visibleBlocks],
-  );
-  const displayedDraftCount = allPreviewBlocks.length;
-  const activePreviewPageStart = previewPageDates[0] ?? previewDateRange?.startDate ?? '';
-  const activePreviewPageEnd =
-    previewPageDates[previewPageDates.length - 1] ?? previewDateRange?.endDate ?? '';
-  const previewGridColumns = `62px repeat(${Math.max(
-    previewGroups.length,
-    1,
-  )}, minmax(108px, 1fr))`;
-  const previewGridMinWidth = 62 + Math.max(previewGroups.length, 1) * 108;
-  const visibleChats = useMemo(
-    () => searchAiPlanningChats(userId, chatIndex.chats, chatQuery),
-    [chatIndex.chats, chatQuery, userId],
-  );
-  const activeChat =
-    chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId) ??
-    chatIndex.chats[0];
-  const starterPrompts = useMemo(
-    () =>
-      buildAiPlanningStarterPrompts({
-        referenceDate: selectedDate,
-        plans,
-        todos: starterTodos,
-        materials: starterMaterials,
-      }),
-    [plans, selectedDate, starterMaterials, starterTodos],
-  );
 
-  function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
-    const chatId = baseIndex.activeChatId;
+  function persistActiveChatSnapshot() {
     const snapshot = application.exportConversationSnapshot();
-    const messages = snapshot?.planningState.messages ?? state.messages;
-    const now = snapshot?.savedAt ?? new Date().toISOString();
-    let nextIndex = updateAiPlanningChatRecord(baseIndex, chatId, {
-      title: deriveAiPlanningChatTitle(messages),
-      updatedAt: now,
-      weekStartDate:
-        snapshot?.weekStartDate ??
-        baseIndex.chats.find((chat) => chat.id === chatId)?.weekStartDate ??
-        null,
-    });
+    if (!snapshot) return;
 
-    if (snapshot) {
-      saveAiPlanningChatSnapshot(userId, chatId, snapshot);
-      nextIndex = updateAiPlanningChatRecord(nextIndex, chatId, {
+    const currentIndex = loadAiPlanningChatIndex(userId);
+    const activeChatId = currentIndex.activeChatId;
+    const activeChat = currentIndex.chats.find((chat) => chat.id === activeChatId);
+    if (!activeChat) {
+      const created = createAiPlanningChat(currentIndex);
+      saveAiPlanningChatSnapshot(userId, created.chat.id, snapshot);
+      const nextCreatedIndex = updateAiPlanningChatRecord(created.index, created.chat.id, {
+        title: deriveAiPlanningChatTitle(snapshot.planningState.messages),
+        updatedAt: snapshot.savedAt,
         weekStartDate: snapshot.weekStartDate,
       });
-    }
-
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
-    return nextIndex;
-  }
-
-  useEffect(() => {
-    if (didInitializeChatsRef.current) return;
-    didInitializeChatsRef.current = true;
-    const hadStoredChatIndex = hasStoredAiPlanningChatIndex(userId);
-    const loadedIndex = loadAiPlanningChatIndex(userId);
-    const loadedActive =
-      loadedIndex.chats.find((chat) => chat.id === loadedIndex.activeChatId) ??
-      loadedIndex.chats[0];
-    const snapshot = loadedActive
-      ? loadAiPlanningChatSnapshot(userId, loadedActive)
-      : null;
-
-    if (snapshot) {
-      application.loadConversationSnapshot(snapshot);
-      setChatIndex(loadedIndex);
+      saveAiPlanningChatIndex(userId, nextCreatedIndex);
       return;
     }
 
-    const currentSnapshot = application.exportConversationSnapshot();
-    if (!hadStoredChatIndex && loadedActive && currentSnapshot) {
-      saveAiPlanningChatSnapshot(userId, loadedActive.id, currentSnapshot);
-      const migratedIndex = updateAiPlanningChatRecord(loadedIndex, loadedActive.id, {
-        title: deriveAiPlanningChatTitle(currentSnapshot.planningState.messages),
-        updatedAt: currentSnapshot.savedAt,
-        weekStartDate: currentSnapshot.weekStartDate,
-      });
-      saveAiPlanningChatIndex(userId, migratedIndex);
-      setChatIndex(migratedIndex);
-      return;
-    }
-
-    saveAiPlanningChatIndex(userId, loadedIndex);
-    setChatIndex(loadedIndex);
-  }, [application, userId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void Promise.all([
-      plannerRepository.getTodos(userId),
-      plannerRepository.getStudyMaterials(userId),
-    ]).then(
-      ([todos, materials]) => {
-        if (cancelled) return;
-        setStarterTodos(todos);
-        setStarterMaterials(materials);
-      },
-      () => {
-        if (cancelled) return;
-        setStarterTodos([]);
-        setStarterMaterials([]);
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    setPreviewPageIndex(0);
-  }, [previewPlanSignature]);
-
-  useEffect(() => {
-    const node = conversationRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [chatIndex.activeChatId, displayedDraftCount, isBusy, state.messages.length]);
-
-  useEffect(() => {
-    return () => {
-      if (imageAttachment) {
-        URL.revokeObjectURL(imageAttachment.previewUrl);
-      }
-    };
-  }, [imageAttachment]);
-
-  useEffect(() => {
-    return () => {
-      const recognition = speechRecognitionRef.current;
-      if (!recognition) return;
-      recognition.onresult = null;
-      recognition.onerror = null;
-      recognition.onend = null;
-      recognition.abort();
-      speechRecognitionRef.current = null;
-    };
-  }, []);
-
-  function clearImageAttachment() {
-    setImageAttachment(null);
-    if (attachmentInputRef.current) {
-      attachmentInputRef.current.value = '';
-    }
-  }
-
-  function openImagePicker() {
-    if (isComposerBusy || isListening) return;
-    attachmentInputRef.current?.click();
-  }
-
-  function handleImageAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    const validationError = validateAiImageFile(file);
-
-    if (validationError) {
-      setError(validationError);
-      event.target.value = '';
-      return;
-    }
-
-    setError('');
-    setImageAttachment({
-      file,
-      previewUrl: URL.createObjectURL(file),
+    saveAiPlanningChatSnapshot(userId, activeChatId, snapshot);
+    const nextIndex = updateAiPlanningChatRecord(currentIndex, activeChatId, {
+      title: deriveAiPlanningChatTitle(snapshot.planningState.messages),
+      updatedAt: snapshot.savedAt,
+      weekStartDate: snapshot.weekStartDate,
     });
+    saveAiPlanningChatIndex(userId, nextIndex);
   }
 
-  function toggleSpeechRecognition() {
-    if (isComposerBusy) return;
+  function openPreviewFromLegacySurface(event: ReactMouseEvent<HTMLDivElement>) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const trigger = target.closest('.ai-planning-preview-button');
+    if (!trigger) return;
 
-    if (isListening) {
-      speechRecognitionRef.current?.stop();
-      return;
-    }
-
-    const SpeechRecognition = getSpeechRecognitionConstructor();
-    if (!SpeechRecognition) {
-      setError(
-        'このブラウザでは音声入力を利用できません。ChromeやSafariなど対応ブラウザで試してください。',
-      );
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ja-JP';
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    speechBaseTextRef.current = text;
-    speechFinalTextRef.current = '';
-    setError('');
-
-    recognition.onresult = (event) => {
-      let finalTranscript = speechFinalTextRef.current;
-      let interimTranscript = '';
-
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result?.[0]?.transcript?.trim() ?? '';
-        if (!transcript) continue;
-
-        if (result.isFinal) {
-          finalTranscript = [finalTranscript, transcript].filter(Boolean).join(' ');
-        } else {
-          interimTranscript = [interimTranscript, transcript].filter(Boolean).join(' ');
-        }
-      }
-
-      speechFinalTextRef.current = finalTranscript;
-      const recognizedText = [finalTranscript, interimTranscript].filter(Boolean).join(' ');
-      const baseText = speechBaseTextRef.current.trimEnd();
-      const nextText = [baseText, recognizedText].filter(Boolean).join('\n');
-      setText(nextText.slice(0, 4000));
-    };
-
-    recognition.onerror = (event) => {
-      if (event.error === 'aborted') return;
-      setError(speechRecognitionErrorMessage(event.error, event.message));
-    };
-
-    recognition.onend = () => {
-      if (speechRecognitionRef.current === recognition) {
-        speechRecognitionRef.current = null;
-      }
-      setIsListening(false);
-      window.requestAnimationFrame(() => inputRef.current?.focus());
-    };
-
-    speechRecognitionRef.current = recognition;
-    setIsListening(true);
-
-    try {
-      recognition.start();
-    } catch (speechError) {
-      speechRecognitionRef.current = null;
-      setIsListening(false);
-      setError(
-        speechError instanceof Error
-          ? `音声入力を開始できませんでした: ${speechError.message}`
-          : '音声入力を開始できませんでした。',
-      );
-    }
-  }
-
-  async function submitMessage() {
-    const value = text.trim();
-    const attachment = imageAttachment;
-    if ((!value && !attachment) || isComposerBusy || isListening) return;
-
-    setError('');
-    let supplementalContext: string | undefined;
-
-    if (attachment) {
-      setIsReadingAttachment(true);
-      try {
-        const extraction = await extractPlanningImageAttachment(attachment.file);
-        supplementalContext = extraction.text;
-      } catch (attachmentError) {
-        setError(
-          attachmentError instanceof Error
-            ? attachmentError.message
-            : '画像を読み取れませんでした。',
-        );
-        return;
-      } finally {
-        setIsReadingAttachment(false);
-      }
-    }
-
-    const displayText = attachment
-      ? value
-        ? `${value}\n\n画像: ${attachment.file.name}`
-        : `画像「${attachment.file.name}」をもとに学習計画を作って`
-      : value;
-
-    let shouldRestoreComposerFocus = shouldKeepComposerFocusAfterSubmit();
-    setText('');
-    if (!shouldRestoreComposerFocus) {
-      inputRef.current?.blur();
-    }
-
-    try {
-      const result = await application.submitTurn(displayText, supplementalContext);
-      if (!result.accepted) {
-        setText(value);
-        shouldRestoreComposerFocus = true;
-        return;
-      }
-      clearImageAttachment();
-      persistActiveChat();
-    } catch (submitError) {
-      setText(value);
-      shouldRestoreComposerFocus = true;
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : 'メッセージを送信できませんでした。',
-      );
-      persistActiveChat();
-    } finally {
-      if (shouldRestoreComposerFocus) {
-        window.requestAnimationFrame(() => inputRef.current?.focus());
-      }
-    }
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key !== 'Enter' ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing ||
-      event.nativeEvent.keyCode === 229
-    ) {
-      return;
-    }
     event.preventDefault();
-    void submitMessage();
-  }
-
-  function useStarterPrompt(prompt: string) {
-    setText(prompt);
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(prompt.length, prompt.length);
-    });
-  }
-
-  function switchChat(chatId: string) {
-    if (isBusy || isListening || chatId === chatIndex.activeChatId) {
-      setIsChatDrawerOpen(false);
-      return;
-    }
-    const persistedIndex = persistActiveChat();
-    const target = persistedIndex.chats.find((chat) => chat.id === chatId);
-    if (!target) return;
-    const snapshot = loadAiPlanningChatSnapshot(userId, target);
-    const loaded = snapshot ? application.loadConversationSnapshot(snapshot) : true;
-    if (!snapshot) application.startConversation();
-    if (!loaded) {
-      setError(
-        'このチャットを開けませんでした。処理中の操作を完了してから再試行してください。',
-      );
-      return;
-    }
-    const nextIndex = setActiveAiPlanningChat(persistedIndex, chatId);
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
-    setText('');
-    clearImageAttachment();
-    setError('');
-    setIsPreviewOpen(false);
-    setPreviewPageIndex(0);
-    setIsChatDrawerOpen(false);
-  }
-
-  function createChat() {
-    if (isBusy || isListening) return;
-    const persistedIndex = persistActiveChat();
-    const created = createAiPlanningChat(persistedIndex);
-    application.startConversation();
-    saveAiPlanningChatIndex(userId, created.index);
-    setChatIndex(created.index);
-    setChatQuery('');
-    setText('');
-    clearImageAttachment();
-    setError('');
-    setIsPreviewOpen(false);
-    setPreviewPageIndex(0);
-    setIsChatDrawerOpen(false);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
-  }
-
-  function removeChat(chatId: string) {
-    if (isBusy || isListening) return;
-    const chat = chatIndex.chats.find((item) => item.id === chatId);
-    if (!chat) return;
-    if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
-
-    const persistedIndex = persistActiveChat();
-    const wasActive = persistedIndex.activeChatId === chatId;
-    const nextIndex = deleteAiPlanningChat(userId, persistedIndex, chatId);
-
-    if (wasActive) {
-      const target =
-        nextIndex.chats.find((item) => item.id === nextIndex.activeChatId) ??
-        nextIndex.chats[0];
-      const snapshot = target ? loadAiPlanningChatSnapshot(userId, target) : null;
-      if (snapshot) application.loadConversationSnapshot(snapshot);
-      else application.startConversation();
-      setText('');
-      clearImageAttachment();
-      setError('');
-      setIsPreviewOpen(false);
-      setPreviewPageIndex(0);
-    }
-
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
+    event.stopPropagation();
+    setPreviewError('');
+    setIsPreviewOpen(true);
   }
 
   function promotePreview() {
     if (previewCandidates.length === 0 || allPreviewBlocks.length === 0) return;
-    const planBlockIds = new Set(allPreviewBlocks.map((block) => block.id));
-    const planCandidates = previewCandidates.filter((candidate) =>
-      planBlockIds.has(candidate.stableKey),
+    const blockIds = new Set(allPreviewBlocks.map((block) => block.id));
+    const candidates = previewCandidates.filter((candidate) =>
+      blockIds.has(candidate.stableKey),
     );
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: planCandidates,
+      candidates,
       userId,
       createdAt: new Date().toISOString(),
     });
@@ -692,7 +106,7 @@ export function AiPlanningView({
       application.clearDraftBlocks();
     }
     application.createDraftBlocks(blocks);
-    window.requestAnimationFrame(() => persistActiveChat());
+    window.requestAnimationFrame(persistActiveChatSnapshot);
   }
 
   async function saveDrafts() {
@@ -702,462 +116,45 @@ export function AiPlanningView({
     ) {
       return;
     }
-    setError('');
+
+    setPreviewError('');
     try {
       await application.approveDraftBlocks();
-      persistActiveChat();
+      persistActiveChatSnapshot();
       setIsPreviewOpen(false);
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : '週間計画を保存できませんでした。',
+    } catch (error) {
+      setPreviewError(
+        error instanceof Error ? error.message : '週間計画を保存できませんでした。',
       );
-      persistActiveChat();
+      persistActiveChatSnapshot();
     }
   }
 
   function focusComposer() {
     setIsPreviewOpen(false);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLTextAreaElement>('.ai-planning-composer textarea')?.focus();
+    });
   }
 
   return (
-    <section className="ai-planning-view home-dashboard" aria-label="AI計画">
-      <AiPlanningChatSidebar
-        open={isChatDrawerOpen}
-        chats={visibleChats}
-        activeChatId={chatIndex.activeChatId}
-        query={chatQuery}
-        disabled={isBusy || isListening}
-        onQueryChange={setChatQuery}
-        onCreate={createChat}
-        onSelect={switchChat}
-        onDelete={removeChat}
-        onClose={() => setIsChatDrawerOpen(false)}
-      />
-
-      <div className="ai-planning-card">
-        <div className="ai-planning-heading">
-          <button
-            className="ai-planning-chat-menu-button"
-            type="button"
-            aria-label="チャット一覧を開く"
-            onClick={() => setIsChatDrawerOpen(true)}
-          >
-            <Menu aria-hidden="true" size={22} />
-          </button>
-          <div>
-            <h1>AI計画</h1>
-            <p>
-              {activeChat?.title === '新しいチャット'
-                ? '対話で学習計画を作成・必要に応じて調整'
-                : activeChat?.title ??
-                  '対話で学習計画を作成・必要に応じて調整'}
-            </p>
-          </div>
-        </div>
-
-        <div className="ai-planning-conversation" ref={conversationRef}>
-          {state.messages.length === 0 &&
-          displayedDraftCount === 0 &&
-          !state.pendingTurn ? (
-            <div className="ai-planning-starters" aria-label="入力例">
-              <p>
-                計画したいことをそのまま入力できます。登録内容に合わせた候補からも始められます。
-              </p>
-              <div className="ai-planning-starter-list">
-                {starterPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => useStarterPrompt(prompt)}
-                  >
-                    <span>{prompt}</span>
-                    <ChevronRight aria-hidden="true" size={16} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {state.messages.map((message) => (
-            <div
-              className={`ai-planning-message-row ${
-                message.role === 'user' ? 'user' : 'assistant'
-              }`}
-              key={message.id}
-            >
-              {message.role === 'assistant' ? (
-                <span className="ai-planning-message-avatar">
-                  <MessageCircle size={19} aria-hidden="true" />
-                </span>
-              ) : null}
-              <div className="ai-planning-message-body">
-                <div className="ai-planning-bubble">{message.content}</div>
-              </div>
-              {message.role === 'user' ? (
-                <span className="ai-planning-message-avatar user">
-                  <CircleUserRound size={19} aria-hidden="true" />
-                </span>
-              ) : null}
-            </div>
-          ))}
-
-          {state.pendingTurn ? (
-            <div
-              className="ai-planning-message-row assistant"
-              role="status"
-              aria-label="AIが回答を作成中"
-            >
-              <span className="ai-planning-message-avatar">
-                <MessageCircle size={19} aria-hidden="true" />
-              </span>
-              <div className="ai-planning-message-body">
-                <div className="ai-planning-bubble ai-planning-typing">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {displayedDraftCount > 0 ? (
-            <div className="ai-planning-plan-card">
-              <div className="ai-planning-plan-card-head">
-                <div>
-                  <span>計画案</span>
-                  <strong>{displayedDraftCount}件の予定を作成</strong>
-                </div>
-                <b>{displayedDraftCount}件</b>
-              </div>
-              <div className="ai-planning-plan-summary">
-                <span>
-                  <CalendarDays size={16} aria-hidden="true" />対象{' '}
-                  {previewDateRange
-                    ? `${formatDateLabel(previewDateRange.startDate)} - ${formatDateLabel(
-                        previewDateRange.endDate,
-                      )}`
-                    : '-'}
-                </span>
-                <span>
-                  <BookOpen size={16} aria-hidden="true" />合計{' '}
-                  {formatMinutes(totalMinutes)}
-                </span>
-              </div>
-              <button
-                className="ai-planning-preview-button"
-                type="button"
-                onClick={() => setIsPreviewOpen(true)}
-              >
-                <CalendarDays size={18} aria-hidden="true" />
-                計画プレビューを確認
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            </div>
-          ) : null}
-
-          {error ? (
-            <p className="ai-planning-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="ai-planning-composer">
-          <input
-            ref={attachmentInputRef}
-            className="ai-planning-attachment-input"
-            type="file"
-            accept="image/png,image/jpeg"
-            tabIndex={-1}
-            aria-hidden="true"
-            onChange={handleImageAttachmentChange}
-          />
-          {imageAttachment ? (
-            <div
-              className="ai-planning-attachment-preview"
-              aria-label={`添付画像 ${imageAttachment.file.name}`}
-            >
-              <div className="ai-planning-attachment-thumbnail">
-                <img src={imageAttachment.previewUrl} alt="添付画像のプレビュー" />
-                <button
-                  className="ai-planning-attachment-remove"
-                  type="button"
-                  aria-label="添付画像を削除"
-                  disabled={isReadingAttachment}
-                  onClick={clearImageAttachment}
-                >
-                  <X size={13} aria-hidden="true" />
-                </button>
-                {isReadingAttachment ? (
-                  <span className="ai-planning-attachment-loading" aria-hidden="true">
-                    <LoaderCircle size={20} />
-                  </span>
-                ) : null}
-              </div>
-              <span>
-                {isReadingAttachment
-                  ? '画像を読み取り中...'
-                  : imageAttachment.file.name}
-              </span>
-            </div>
-          ) : null}
-          <button
-            className="ai-planning-composer-side"
-            type="button"
-            aria-label="写真を追加"
-            title="写真を追加"
-            disabled={isComposerBusy || isListening}
-            onClick={openImagePicker}
-          >
-            <Plus size={24} />
-          </button>
-          <textarea
-            ref={inputRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            maxLength={4000}
-            placeholder={isListening ? '音声を認識中...' : '予定や目標を入力...'}
-            disabled={isComposerBusy || isListening}
-          />
-          <button
-            className="ai-planning-mic-button"
-            type="button"
-            aria-label={isListening ? '音声入力を停止' : '音声入力'}
-            aria-pressed={isListening}
-            title={
-              speechRecognitionSupported
-                ? isListening
-                  ? '音声入力を停止'
-                  : '音声入力'
-                : 'このブラウザは音声入力に対応していません'
-            }
-            disabled={isComposerBusy}
-            onClick={toggleSpeechRecognition}
-            style={
-              isListening
-                ? { background: '#eaf4ff', color: '#0878f9' }
-                : undefined
-            }
-          >
-            <Mic size={21} aria-hidden="true" />
-          </button>
-          <button
-            className="ai-planning-send-button"
-            type="button"
-            aria-label="送信"
-            disabled={
-              (!text.trim() && !imageAttachment) || isComposerBusy || isListening
-            }
-            onClick={() => void submitMessage()}
-          >
-            <Send size={20} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      {isPreviewOpen && displayedDraftCount > 0 ? (
-        <div
-          className="ai-planning-preview-overlay"
-          role="presentation"
-          onClick={() => setIsPreviewOpen(false)}
-        >
-          <section
-            className="ai-planning-preview-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="計画プレビュー"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="ai-planning-preview-header">
-              <button type="button" onClick={() => setIsPreviewOpen(false)}>
-                <X size={18} />閉じる
-              </button>
-              <div>
-                <h2>計画プレビュー</h2>
-                <p>
-                  {previewDateRange
-                    ? `${formatDateLabel(previewDateRange.startDate)} - ${formatDateLabel(
-                        previewDateRange.endDate,
-                      )}`
-                    : '-'}
-                </p>
-              </div>
-              <span>{displayedDraftCount}件</span>
-            </header>
-
-            <div
-              className="ai-planning-preview-period-nav"
-              aria-label="計画期間の表示範囲"
-            >
-              <button
-                type="button"
-                aria-label="前の期間を表示"
-                disabled={activePreviewPageIndex <= 0}
-                onClick={() =>
-                  setPreviewPageIndex((current) =>
-                    clampAiPlanningPreviewPageIndex(
-                      current - 1,
-                      previewDatePages.length,
-                    ),
-                  )
-                }
-              >
-                <ChevronLeft size={18} aria-hidden="true" />
-                <span>前の7日</span>
-              </button>
-              <div>
-                <strong>
-                  {activePreviewPageStart && activePreviewPageEnd
-                    ? `${formatDateLabel(activePreviewPageStart)} - ${formatDateLabel(
-                        activePreviewPageEnd,
-                      )}`
-                    : '-'}
-                </strong>
-                <small>
-                  {previewDatePages.length > 0
-                    ? `${activePreviewPageIndex + 1} / ${previewDatePages.length}`
-                    : '0 / 0'}
-                </small>
-              </div>
-              <button
-                type="button"
-                aria-label="次の期間を表示"
-                disabled={activePreviewPageIndex >= previewDatePages.length - 1}
-                onClick={() =>
-                  setPreviewPageIndex((current) =>
-                    clampAiPlanningPreviewPageIndex(
-                      current + 1,
-                      previewDatePages.length,
-                    ),
-                  )
-                }
-              >
-                <span>次の7日</span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="ai-planning-preview-scroll">
-              <div
-                className="ai-planning-week-grid"
-                style={{ minWidth: `${previewGridMinWidth}px` }}
-              >
-                <div
-                  className="ai-planning-week-header"
-                  style={{ gridTemplateColumns: previewGridColumns }}
-                >
-                  <span>時間</span>
-                  {previewGroups.map((group) => (
-                    <div key={group.date}>
-                      <strong>{formatDateLabel(group.date)}</strong>
-                      <small>{group.blocks.length}件</small>
-                    </div>
-                  ))}
-                </div>
-                <div
-                  className="ai-planning-week-body"
-                  style={{
-                    gridTemplateColumns: previewGridColumns,
-                    height: `${
-                      (PREVIEW_END_HOUR - PREVIEW_START_HOUR) *
-                      PREVIEW_HOUR_HEIGHT
-                    }px`,
-                  }}
-                >
-                  <div className="ai-planning-time-axis">
-                    {PREVIEW_HOURS.map((hour) => (
-                      <span
-                        key={hour}
-                        style={{
-                          top: `${
-                            (hour - PREVIEW_START_HOUR) * PREVIEW_HOUR_HEIGHT
-                          }px`,
-                        }}
-                      >
-                        {String(hour).padStart(2, '0')}:00
-                      </span>
-                    ))}
-                  </div>
-                  {previewGroups.map((group) => (
-                    <div className="ai-planning-day-column" key={group.date}>
-                      {PREVIEW_HOURS.map((hour) => (
-                        <span
-                          className="ai-planning-hour-line"
-                          key={hour}
-                          style={{
-                            top: `${
-                              (hour - PREVIEW_START_HOUR) * PREVIEW_HOUR_HEIGHT
-                            }px`,
-                          }}
-                        />
-                      ))}
-                      {group.existingPlans.map((plan) => (
-                        <div
-                          className="ai-planning-existing-block"
-                          key={plan.id}
-                          style={timelineStyle(plan.startTime, plan.endTime)}
-                          title={`${plan.title} ${plan.startTime}-${plan.endTime}`}
-                        >
-                          <strong>{plan.title}</strong>
-                          <small>
-                            {plan.startTime}-{plan.endTime}
-                          </small>
-                        </div>
-                      ))}
-                      {group.blocks.map((block) => (
-                        <div
-                          className={`ai-planning-draft-block ${toneClass(block)}`}
-                          key={block.id}
-                          style={timelineStyle(block.startTime, block.endTime)}
-                          title={`${block.title} ${block.startTime}-${block.endTime}`}
-                        >
-                          <strong>{block.title}</strong>
-                          <small>
-                            {block.startTime}-{block.endTime}
-                          </small>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <footer className="ai-planning-preview-actions">
-              <button
-                className="ai-planning-secondary-action"
-                type="button"
-                onClick={focusComposer}
-              >
-                さらに調整
-              </button>
-              {hasLocalPreview ? (
-                <button
-                  className="ai-planning-primary-action"
-                  type="button"
-                  onClick={promotePreview}
-                >
-                  この内容で仮予定にする
-                </button>
-              ) : (
-                <button
-                  className="ai-planning-primary-action"
-                  type="button"
-                  disabled={isBusy || approvalAvailability.kind !== 'eligible'}
-                  onClick={() => void saveDrafts()}
-                >
-                  {state.pendingApproval ? '保存中...' : 'この内容で保存'}
-                </button>
-              )}
-            </footer>
-          </section>
-        </div>
+    <div className="ai-planning-view-shell-v2" onClickCapture={openPreviewFromLegacySurface}>
+      <AiPlanningViewLegacy {...props} />
+      {isPreviewOpen && allPreviewBlocks.length > 0 ? (
+        <AiPlanningPreviewDialog
+          blocks={allPreviewBlocks}
+          plans={plans}
+          error={previewError}
+          hasLocalPreview={hasLocalPreview}
+          isBusy={isBusy}
+          isSaving={Boolean(state.pendingApproval)}
+          canSave={approvalAvailability.kind === 'eligible'}
+          onClose={() => setIsPreviewOpen(false)}
+          onAdjust={focusComposer}
+          onPromote={promotePreview}
+          onSave={() => void saveDrafts()}
+        />
       ) : null}
-    </section>
+    </div>
   );
 }
