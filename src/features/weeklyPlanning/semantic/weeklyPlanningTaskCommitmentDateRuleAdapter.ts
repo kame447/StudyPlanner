@@ -25,7 +25,7 @@ export type WeeklyPlanningTaskCommitmentDateRuleGraphView =
 export function resolveWeeklyPlanningTaskCommitmentsWithDateRules(params: {
   graph: WeeklyPlanningTaskCommitmentDateRuleGraphView;
   context: TaskCommitmentResolutionContext;
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskCommitmentWithDateRulesResult {
   const dateRules = resolveWeeklyPlanningTaskDateRules({
     graph: params.graph,
