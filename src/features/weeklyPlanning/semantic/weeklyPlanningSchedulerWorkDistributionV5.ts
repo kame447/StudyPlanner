@@ -10,6 +10,7 @@ import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import {
   calendarWeekday,
   listCalendarDatesInclusive,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
 import {
   filterWeeklyPlanningRecurringDatesByHardBoundsV5,
@@ -285,12 +286,15 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   items: readonly GenericPlanningWorkItem[];
   startDate: string;
   endDate: string;
+  currentDate?: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   preferredSessionMinutes?: number | null;
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
   const recurringDateBounds = resolveWeeklyPlanningRecurringDateBoundsV5({
     graph: params.graph,
-    currentDate: params.startDate,
+    currentDate: params.currentDate ?? params.startDate,
+    weekStartsOn: params.weekStartsOn,
   });
   const recurrenceDistributed = dates.length === 0
     ? [...params.items]

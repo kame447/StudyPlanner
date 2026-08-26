@@ -47,7 +47,10 @@ import type {
   ResolvedTaskDateEligibility,
   TaskDateRuleResolutionIssue,
 } from './weeklyPlanningTaskDateRuleResolver';
-import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
+import {
+  isValidCalendarDate,
+  type CalendarWeekStartsOn,
+} from './weeklyPlanningCalendarResolver';
 import {
   distributeGenericSchedulerWorkItemsV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
@@ -82,6 +85,8 @@ export interface GenericSchedulerPlanningHorizon {
   endDate: string;
   timeZone: string;
   planningWindowFactIds: string[];
+  referenceDate?: string;
+  weekStartsOn?: CalendarWeekStartsOn;
 }
 
 export interface GenericSchedulerTaskRelation {
@@ -177,7 +182,9 @@ export interface GenericSchedulerInputCompilationResult {
   issues: GenericSchedulerInputIssue[];
 }
 
-export type GenericSchedulerInputContext = AvailabilityResolutionContext;
+export type GenericSchedulerInputContext = AvailabilityResolutionContext & {
+  weekStartsOn?: CalendarWeekStartsOn;
+};
 
 function semanticUncertaintyIssues(
   graph: WeeklyPlanningGenericSchedulerGraphView,
@@ -501,6 +508,8 @@ export function compileGenericSchedulerInput(params: {
     items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
+    currentDate: params.context.currentDate,
+    weekStartsOn: params.context.weekStartsOn,
   });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
@@ -516,6 +525,8 @@ export function compileGenericSchedulerInput(params: {
       endDate: params.context.planningEndDate,
       timeZone: params.context.timeZone,
       planningWindowFactIds: params.graph.planningWindows.map((fact) => fact.id),
+      referenceDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
     },
     movableWorkItems,
     fixedTaskReservations: commitments.reservations,
