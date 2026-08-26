@@ -192,16 +192,18 @@ test('AI planning preview rises from the bottom and follows a swipe-down dismiss
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(preview).toBeVisible();
 
-  const presentation = await preview.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return {
-      animationName: style.animationName,
-      bottomGap: window.innerHeight - rect.bottom,
-    };
-  });
-  expect(presentation.animationName).toContain('planner-bottom-sheet-in');
-  expect(Math.abs(presentation.bottomGap)).toBeLessThanOrEqual(1);
+  const animationName = await preview.evaluate(
+    (element) => getComputedStyle(element).animationName,
+  );
+  expect(animationName).toContain('planner-bottom-sheet-in');
+  await expect
+    .poll(() =>
+      preview.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return Math.abs(window.innerHeight - rect.bottom);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
 
   const dragFeedback = await swipeSheetDown(preview);
   expect(dragFeedback.movePrevented).toBe(true);
