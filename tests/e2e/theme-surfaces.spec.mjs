@@ -132,10 +132,12 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   await clickPrimaryNav(page, 'ホーム');
   await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
   await page.getByRole('button', { name: /詳細を見る/ }).click();
-  await expect(page.locator('.report-view')).toBeVisible();
-  const reportPanel = page.locator('.report-view .panel').first();
-  await expect(reportPanel).toBeVisible();
-  expectDarkSurface(await reportPanel.evaluate((element) => getComputedStyle(element).backgroundColor));
+  await expect(page.locator('.learning-report-view')).toBeVisible();
+  const reportSummaryCard = page.locator('.learning-report-summary-card').first();
+  await expect(reportSummaryCard).toBeVisible();
+  expectDarkSurface(
+    await reportSummaryCard.evaluate((element) => getComputedStyle(element).backgroundColor),
+  );
   await capture(page, 'dark-ocean-report-390x844');
 });
 
