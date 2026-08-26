@@ -1,7 +1,7 @@
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
-import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
   hardDateBoundForTargetV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
@@ -29,7 +29,7 @@ import {
 
 export interface WeeklyPlanningPlacementRuntimeContextV5 {
   input: GenericSchedulerInput;
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningPlacementGraphViewV5;
   dates: string[];
   windowsByDate: Map<string, PlacementWindow[]>;
   hardAvailableByDate: Map<string, PlacementWindow[]>;
