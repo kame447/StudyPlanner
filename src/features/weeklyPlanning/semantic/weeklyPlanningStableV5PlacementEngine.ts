@@ -1,8 +1,8 @@
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
-import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
+import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
   buildHardAvailableWindowsByDate,
   buildPlacementBusyIntervals,
@@ -41,7 +41,7 @@ const DEFAULT_BREAK_MINUTES = 10;
 
 export function scheduleWeeklyPlanningStableV5Preview(params: {
   input: GenericSchedulerInput;
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningPlacementGraphViewV5;
   plans?: readonly Plan[];
   scheduleTemplates?: readonly ScheduleTemplate[];
   timetableTermId?: string;
