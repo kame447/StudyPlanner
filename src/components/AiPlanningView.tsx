@@ -14,11 +14,13 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
+import { useExitMotion } from '../hooks/useExitMotion';
 import type { Plan } from '../types/domain';
 import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
+import './AiPlanningPreviewBottomSheet.css';
 
 interface AiPlanningViewProps {
   application: WeeklyPlanningApplication;
@@ -32,6 +34,8 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const { isExiting: isPreviewClosing, requestExit: requestClosePreview } =
+    useExitMotion(() => setIsPreviewOpen(false));
   const previewCandidates = state.previewCandidates ?? [];
   const localPreviewBlocks = useMemo(
     () =>
@@ -122,7 +126,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     try {
       await application.approveDraftBlocks();
       persistActiveChatSnapshot();
-      setIsPreviewOpen(false);
+      requestClosePreview();
     } catch (error) {
       setPreviewError(
         error instanceof Error ? error.message : '週間計画を保存できませんでした。',
@@ -132,9 +136,10 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   }
 
   function focusComposer() {
-    setIsPreviewOpen(false);
-    window.requestAnimationFrame(() => {
-      document.querySelector<HTMLTextAreaElement>('.ai-planning-composer textarea')?.focus();
+    requestClosePreview(() => {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLTextAreaElement>('.ai-planning-composer textarea')?.focus();
+      });
     });
   }
 
@@ -142,19 +147,23 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     <div className="ai-planning-view-shell-v2" onClickCapture={openPreviewFromLegacySurface}>
       <AiPlanningViewLegacy {...props} />
       {isPreviewOpen && allPreviewBlocks.length > 0 ? (
-        <AiPlanningPreviewDialog
-          blocks={allPreviewBlocks}
-          plans={plans}
-          error={previewError}
-          hasLocalPreview={hasLocalPreview}
-          isBusy={isBusy}
-          isSaving={Boolean(state.pendingApproval)}
-          canSave={approvalAvailability.kind === 'eligible'}
-          onClose={() => setIsPreviewOpen(false)}
-          onAdjust={focusComposer}
-          onPromote={promotePreview}
-          onSave={() => void saveDrafts()}
-        />
+        <div
+          className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}
+        >
+          <AiPlanningPreviewDialog
+            blocks={allPreviewBlocks}
+            plans={plans}
+            error={previewError}
+            hasLocalPreview={hasLocalPreview}
+            isBusy={isBusy}
+            isSaving={Boolean(state.pendingApproval)}
+            canSave={approvalAvailability.kind === 'eligible'}
+            onClose={() => requestClosePreview()}
+            onAdjust={focusComposer}
+            onPromote={promotePreview}
+            onSave={() => void saveDrafts()}
+          />
+        </div>
       ) : null}
     </div>
   );

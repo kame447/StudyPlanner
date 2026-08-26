@@ -93,6 +93,47 @@ async function seedMultiweekDraftPlan(page) {
   });
 }
 
+async function swipeSheetDown(sheet) {
+  return sheet.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const identifier = 17;
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + 28;
+    const target = element;
+
+    const makeTouch = (x, y) => ({
+      identifier,
+      clientX: x,
+      clientY: y,
+    });
+    const makeTouchList = (touch) => ({
+      0: touch ?? undefined,
+      length: touch ? 1 : 0,
+      item: (index) => (touch && index === 0 ? touch : null),
+    });
+    const dispatchTouch = (type, x, y, active) => {
+      const touch = makeTouch(x, y);
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', {
+        value: makeTouchList(active ? touch : null),
+      });
+      Object.defineProperty(event, 'changedTouches', {
+        value: makeTouchList(touch),
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    dispatchTouch('touchstart', startX, startY, true);
+    const movePrevented = dispatchTouch('touchmove', startX + 3, startY + 96, true);
+    const dragOffset = element.style.getPropertyValue('--planner-bottom-sheet-drag-y');
+    const dragging = element.classList.contains('is-bottom-sheet-dragging');
+    dispatchTouch('touchend', startX + 3, startY + 124, false);
+
+    return { movePrevented, dragOffset, dragging };
+  });
+}
+
 test('AI planning preview fits seven days and restores tap-to-day detail on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedMultiweekDraftPlan(page);
@@ -139,4 +180,35 @@ test('AI planning preview fits seven days and restores tap-to-day detail on mobi
     path: 'artifacts/ai-planning-preview-overview-day-mobile.png',
     fullPage: true,
   });
+});
+
+test('AI planning preview rises from the bottom and follows a swipe-down dismissal', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page);
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+
+  const animationName = await preview.evaluate(
+    (element) => getComputedStyle(element).animationName,
+  );
+  expect(animationName).toContain('planner-bottom-sheet-in');
+  await expect
+    .poll(() =>
+      preview.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return Math.abs(window.innerHeight - rect.bottom);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+
+  const dragFeedback = await swipeSheetDown(preview);
+  expect(dragFeedback.movePrevented).toBe(true);
+  expect(dragFeedback.dragging).toBe(true);
+  expect(Number.parseFloat(dragFeedback.dragOffset)).toBeGreaterThan(70);
+
+  await expect(preview).toBeHidden({ timeout: 1500 });
 });

@@ -31,6 +31,46 @@ async function openSchedule(page) {
   await expect(page.locator('.schedule-month-view')).toBeVisible();
 }
 
+async function swipeDown(sheet, startFromHandle = false) {
+  return sheet.evaluate((element, useHandle) => {
+    const target = useHandle
+      ? element.querySelector('.month-day-sheet-handle, .schedule-action-handle') ?? element
+      : element;
+    const rect = element.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const identifier = 23;
+    const startX = targetRect.left + targetRect.width / 2;
+    const startY = useHandle ? targetRect.top + targetRect.height / 2 : rect.top + 28;
+
+    const makeTouch = (x, y) => ({ identifier, clientX: x, clientY: y });
+    const makeTouchList = (touch) => ({
+      0: touch ?? undefined,
+      length: touch ? 1 : 0,
+      item: (index) => (touch && index === 0 ? touch : null),
+    });
+    const dispatchTouch = (type, x, y, active) => {
+      const touch = makeTouch(x, y);
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', {
+        value: makeTouchList(active ? touch : null),
+      });
+      Object.defineProperty(event, 'changedTouches', {
+        value: makeTouchList(touch),
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    dispatchTouch('touchstart', startX, startY, true);
+    const movePrevented = dispatchTouch('touchmove', startX + 2, startY + 92, true);
+    const dragOffset = element.style.getPropertyValue('--planner-bottom-sheet-drag-y');
+    const dragging = element.classList.contains('is-bottom-sheet-dragging');
+    dispatchTouch('touchend', startX + 2, startY + 128, false);
+
+    return { movePrevented, dragOffset, dragging };
+  }, startFromHandle);
+}
+
 test('quick add grows from the FAB with ordered actions and hands off to the schedule editor', async ({
   page,
 }) => {
@@ -113,4 +153,37 @@ test('day detail rises as a bottom sheet and transfers the add action without a 
   await expect
     .poll(() => globalFab.evaluate((element) => getComputedStyle(element).opacity))
     .toBe('1');
+});
+
+test('existing day and event bottom sheets follow the finger and dismiss on swipe down', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedSchedule(page);
+  await openSchedule(page);
+
+  const dayCell = page.locator('.schedule-month-view .month-cell:not(.is-muted)').first();
+  await dayCell.click();
+
+  const dayOverlay = page.locator('.month-day-sheet-overlay');
+  const daySheet = page.locator('.month-day-sheet');
+  await expect(daySheet).toBeVisible();
+
+  const dayDrag = await swipeDown(daySheet, true);
+  expect(dayDrag.movePrevented).toBe(true);
+  expect(dayDrag.dragging).toBe(true);
+  expect(Number.parseFloat(dayDrag.dragOffset)).toBeGreaterThan(70);
+  await expect(dayOverlay).toHaveCount(0, { timeout: 1500 });
+
+  const trigger = page.locator('.quick-add-trigger');
+  await trigger.click();
+  await page.getByRole('menuitem', { name: '予定を追加' }).click();
+
+  const eventOverlay = page.locator('.month-event-modal-overlay');
+  const eventSheet = page.locator('.month-event-modal');
+  await expect(eventSheet).toBeVisible();
+
+  const eventDrag = await swipeDown(eventSheet);
+  expect(eventDrag.movePrevented).toBe(true);
+  expect(eventDrag.dragging).toBe(true);
+  expect(Number.parseFloat(eventDrag.dragOffset)).toBeGreaterThan(70);
+  await expect(eventOverlay).toHaveCount(0, { timeout: 1500 });
 });

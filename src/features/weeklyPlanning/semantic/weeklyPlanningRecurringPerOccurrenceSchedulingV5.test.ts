@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
@@ -62,6 +63,32 @@ function graph(): WeeklyPlanningFactGraphV5 {
       createdRevision: 1,
     }],
   };
+}
+
+function addTemporalConstraint(
+  value: WeeklyPlanningFactGraphV5,
+  params: {
+    id: string;
+    kind: Extract<TemporalConstraintFactV5['kind'], 'earliest_start' | 'deadline' | 'latest_end'>;
+    dateExpression: string;
+    constraintLevel?: TemporalConstraintFactV5['constraintLevel'];
+    targetFactId?: string;
+  },
+) {
+  value.temporalConstraints.push({
+    id: params.id,
+    taskId: 'task-mock-exam',
+    targetFactId: params.targetFactId ?? 'component-math',
+    kind: params.kind,
+    constraintLevel: params.constraintLevel ?? 'hard',
+    dateExpression: params.dateExpression,
+    namedTimePeriod: null,
+    startTime: null,
+    endTime: null,
+    precision: 'exact',
+    source: source(params.id),
+    createdRevision: 1,
+  });
 }
 
 function compile(
@@ -171,6 +198,103 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
 
     expect(compiled.status).toBe('empty');
     expect(compiled.input).toBeNull();
+  });
+
+  it('clips recurring occurrences after a hard deadline or latest end', () => {
+    for (const kind of ['deadline', 'latest_end'] as const) {
+      const value = graph();
+      addTemporalConstraint(value, {
+        id: `hard-${kind}`,
+        kind,
+        dateExpression: '2026-08-19',
+      });
+
+      const compiled = compile(value);
+
+      expect(compiled.status).toBe('ready');
+      expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+        '2026-08-17',
+        '2026-08-18',
+        '2026-08-19',
+      ]);
+    }
+  });
+
+  it('clips recurring occurrences before a hard earliest start', () => {
+    const value = graph();
+    addTemporalConstraint(value, {
+      id: 'hard-earliest-start',
+      kind: 'earliest_start',
+      dateExpression: '2026-08-21',
+    });
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-21',
+      '2026-08-22',
+      '2026-08-23',
+    ]);
+  });
+
+  it('intersects multiple hard recurring date bounds', () => {
+    const value = graph();
+    addTemporalConstraint(value, {
+      id: 'hard-earliest-start',
+      kind: 'earliest_start',
+      dateExpression: '2026-08-19',
+    });
+    addTemporalConstraint(value, {
+      id: 'hard-deadline',
+      kind: 'deadline',
+      dateExpression: '2026-08-21',
+    });
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+    ]);
+  });
+
+  it('inherits a task-level hard date bound for a recurring component workload', () => {
+    const value = graph();
+    addTemporalConstraint(value, {
+      id: 'task-deadline',
+      kind: 'deadline',
+      dateExpression: '2026-08-19',
+      targetFactId: 'task-mock-exam',
+    });
+
+    expect(compile(value).input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+    ]);
+  });
+
+  it('does not turn soft or unrelated component date preferences into hard recurrence bounds', () => {
+    const soft = graph();
+    addTemporalConstraint(soft, {
+      id: 'soft-deadline',
+      kind: 'deadline',
+      dateExpression: '2026-08-19',
+      constraintLevel: 'soft',
+    });
+    expect(compile(soft).input?.movableWorkItems).toHaveLength(7);
+
+    const unrelatedTarget = graph();
+    addTemporalConstraint(unrelatedTarget, {
+      id: 'other-component-deadline',
+      kind: 'deadline',
+      dateExpression: '2026-08-19',
+      targetFactId: 'component-english',
+    });
+    expect(compile(unrelatedTarget).input?.movableWorkItems).toHaveLength(7);
   });
 
   it('intersects an occurrence date with task exclusions and returns no partial preview', () => {

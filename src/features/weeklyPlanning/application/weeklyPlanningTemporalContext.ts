@@ -8,6 +8,10 @@ import {
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
 import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import {
+  resolveWeeklyPlanningRecurringDateBoundsV5,
+  type WeeklyPlanningRecurringDateBoundsGraphViewV5,
+} from '../semantic/weeklyPlanningRecurringDateBoundsV5';
 
 const DEFAULT_PLANNING_DAY_COUNT = 7;
 
@@ -32,6 +36,9 @@ export interface WeeklyPlanningTemporalGraphView {
     factId: string;
     status: string;
   }>;
+  workloads?: WeeklyPlanningRecurringDateBoundsGraphViewV5['workloads'];
+  recurrences?: WeeklyPlanningRecurringDateBoundsGraphViewV5['recurrences'];
+  temporalConstraints?: WeeklyPlanningRecurringDateBoundsGraphViewV5['temporalConstraints'];
 }
 
 interface ZonedClockParts {
@@ -127,14 +134,66 @@ export function createWeeklyPlanningLegacyRequestContext(params: {
   };
 }
 
-function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
-  if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
+function activeFacts<T extends { id: string }>(
+  graph: WeeklyPlanningTemporalGraphView,
+  facts: readonly T[],
+): T[] {
+  if (graph.factLifecycles.length === 0) return [...facts];
   const activeIds = new Set(
     graph.factLifecycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
-  return graph.planningWindows.filter((window) => activeIds.has(window.id));
+  return facts.filter((fact) => activeIds.has(fact.id));
+}
+
+function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
+  return activeFacts(graph, graph.planningWindows);
+}
+
+function recurringDateBoundsGraph(
+  graph: WeeklyPlanningTemporalGraphView,
+): WeeklyPlanningRecurringDateBoundsGraphViewV5 {
+  return {
+    workloads: activeFacts(graph, graph.workloads ?? []),
+    recurrences: activeFacts(graph, graph.recurrences ?? []),
+    temporalConstraints: activeFacts(graph, graph.temporalConstraints ?? []),
+  };
+}
+
+function fallbackPlanningHorizon(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  selectedDate: string;
+  requestContext: WeeklyPlanningTurnRequestContext;
+}): { startDate: string; endDate: string } | null {
+  const defaultEndDate = addCalendarDays(
+    params.selectedDate,
+    DEFAULT_PLANNING_DAY_COUNT - 1,
+  );
+  if (!defaultEndDate) return null;
+
+  let endDate = defaultEndDate;
+  const recurringBounds = resolveWeeklyPlanningRecurringDateBoundsV5({
+    graph: recurringDateBoundsGraph(params.graph),
+    currentDate: params.requestContext.currentDate,
+    weekStartsOn: params.requestContext.weekStartsOn,
+  });
+  for (const bound of recurringBounds) {
+    if (bound.endDate && bound.endDate > endDate) {
+      endDate = bound.endDate;
+      continue;
+    }
+    if (!bound.endDate && bound.startDate && bound.startDate > params.selectedDate) {
+      const recurringDefaultEnd = addCalendarDays(
+        bound.startDate,
+        DEFAULT_PLANNING_DAY_COUNT - 1,
+      );
+      if (recurringDefaultEnd && recurringDefaultEnd > endDate) {
+        endDate = recurringDefaultEnd;
+      }
+    }
+  }
+  return { startDate: params.selectedDate, endDate };
 }
 
 function frozenGroundingRange(params: {
@@ -163,8 +222,7 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
   const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
   if (windows.length === 0) {
-    const endDate = addCalendarDays(params.selectedDate, DEFAULT_PLANNING_DAY_COUNT - 1);
-    return endDate ? { startDate: params.selectedDate, endDate } : null;
+    return fallbackPlanningHorizon(params);
   }
 
   const window = windows[0];
