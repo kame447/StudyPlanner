@@ -78,13 +78,27 @@ async function seedMultiweekDraftPlan(page) {
       createdAt: now,
       updatedAt: now,
     }));
+    const previewCandidates = draftBlocks.map((block, index) => ({
+      stableKey: block.id,
+      date: block.date,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      durationMinutes: 60,
+      title: block.title,
+      field: block.subject,
+      year: index + 1,
+      estimatedMinutes: 60,
+      source: 'weekly_exam_prep',
+      approvalStatus: 'unapproved',
+      workItemKey: 'gold-phrase',
+    }));
     const planningState = {
       weekStartDate,
       revision: 1,
       conversationRequestSequence: 0,
-      mode: 'awaiting_approval',
+      mode: 'draft_created',
       draftBlocks,
-      previewCandidates: [],
+      previewCandidates,
       messages: [],
       updatedAt: now,
     };
@@ -208,7 +222,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
 });
 
-test('multiweek AI plan keeps full totals and pages the timeline on mobile', async ({ page }) => {
+test('multiweek AI plan keeps full totals, pages the timeline, and promotes every day on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedMultiweekDraftPlan(page);
   await page.goto('/');
@@ -239,6 +253,11 @@ test('multiweek AI plan keeps full totals and pages the timeline on mobile', asy
   await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(5);
   await expect(previousButton).toBeEnabled();
   await expect(nextButton).toBeDisabled();
+
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await expect(preview.locator('.ai-planning-preview-header')).toContainText('12件');
+  await expect(planCard).toContainText('12件の予定を作成');
+  await expect(preview.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
 
   const previewBox = await preview.boundingBox();
   expect(previewBox?.width ?? 0).toBeLessThanOrEqual(390);
