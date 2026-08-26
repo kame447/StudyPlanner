@@ -3,14 +3,15 @@
  * The Bookshelf surface used to keep the shared translate3d entry animation
  * after it finished. A transformed ancestor becomes the containing block for
  * position: fixed descendants, so the FAB and modal were effectively fixed to
- * the scrolled Bookshelf content instead of the viewport on iOS. Keep this
- * surface opacity-only and use the same bottom-origin geometry as schedule
- * creation surfaces.
+ * the scrolled Bookshelf content instead of the viewport on iOS. Keep the root
+ * surface free of transform/opacity animations so fixed descendants also keep
+ * their expected stacking relationship with the primary navigation.
  */
 
-/* Fixed descendants must resolve against the viewport, not Bookshelf content. */
+/* Fixed descendants must resolve against the viewport, and modal z-indexes
+ * must not be trapped in a root stacking context below the bottom nav. */
 .section-stack > .bookshelf-view {
-  animation: ui-surface-fade var(--ui-motion-fast) ease-out both;
+  animation: none;
 }
 
 /* Keep the approved Bookshelf FAB appearance; only its containing-block
@@ -124,7 +125,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .section-stack > .bookshelf-view,
   .bookshelf-view > .modal-overlay:has(> .bookshelf-modal),
   .bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal {
     animation-duration: 1ms !important;
