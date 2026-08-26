@@ -74,22 +74,6 @@ export function resolveWeeklyPlanningDateExpressionsV5(params: {
   };
 }
 
-export function resolveWeeklyPlanningSingleDateExpressionV5(params: {
-  factId: string;
-  expression: string;
-  currentDate: string;
-  weekStartsOn?: CalendarWeekStartsOn;
-}): WeeklyPlanningResolvedDateExpressionV5 {
-  const resolved = resolveWeeklyPlanningDateExpressionsV5({
-    graph: {
-      taskDateRules: [{ id: params.factId, dateExpression: params.expression }],
-    },
-    currentDate: params.currentDate,
-    weekStartsOn: params.weekStartsOn,
-  });
-  return resolved.facts[0];
-}
-
 export function resolvedWeeklyPlanningDateExpressionForFactV5(params: {
   resolved: WeeklyPlanningResolvedDateExpressionsV5;
   factId: string;
