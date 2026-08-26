@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -85,6 +91,12 @@ function graph(dateExpression = 'tomorrow'): WeeklyPlanningFactGraphV5 {
   };
 }
 
+function placementGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+  );
+}
+
 describe('Stable V5 relative hard-date reference', () => {
   it('resolves relative hard bounds from the request date instead of the planning-horizon start', () => {
     const value = graph();
@@ -106,7 +118,7 @@ describe('Stable V5 relative hard-date reference', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');
@@ -147,7 +159,7 @@ describe('Stable V5 relative hard-date reference', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');
