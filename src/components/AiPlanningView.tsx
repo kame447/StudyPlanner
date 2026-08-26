@@ -18,6 +18,7 @@ import type { Plan } from '../types/domain';
 import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
 import './AiPlanningPreviewDialog.css';
+import './AiPlanningPreviewDialogLayout.css';
 
 interface AiPlanningViewProps {
   application: WeeklyPlanningApplication;
