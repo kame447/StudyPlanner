@@ -173,9 +173,9 @@ function toneClass(block: WeeklyPlanDraftBlock): string {
   return `weekly-draft-tone-${index + 1}`;
 }
 
-function shouldKeepComposerFocusAfterSubmit(): boolean {
+function shouldReleaseComposerFocusAfterSubmit(): boolean {
   if (typeof window === 'undefined') return false;
-  return !window.matchMedia('(max-width: 500px), (pointer: coarse)').matches;
+  return window.matchMedia('(max-width: 500px), (pointer: coarse)').matches;
 }
 
 export function AiPlanningView({
@@ -500,7 +500,6 @@ export function AiPlanningView({
         speechRecognitionRef.current = null;
       }
       setIsListening(false);
-      window.requestAnimationFrame(() => inputRef.current?.focus());
     };
 
     speechRecognitionRef.current = recognition;
@@ -550,9 +549,9 @@ export function AiPlanningView({
         : `画像「${attachment.file.name}」をもとに学習計画を作って`
       : value;
 
-    let shouldRestoreComposerFocus = shouldKeepComposerFocusAfterSubmit();
+    const shouldReleaseComposerFocus = shouldReleaseComposerFocusAfterSubmit();
     setText('');
-    if (!shouldRestoreComposerFocus) {
+    if (shouldReleaseComposerFocus) {
       inputRef.current?.blur();
     }
 
@@ -560,24 +559,18 @@ export function AiPlanningView({
       const result = await application.submitTurn(displayText, supplementalContext);
       if (!result.accepted) {
         setText(value);
-        shouldRestoreComposerFocus = true;
         return;
       }
       clearImageAttachment();
       persistActiveChat();
     } catch (submitError) {
       setText(value);
-      shouldRestoreComposerFocus = true;
       setError(
         submitError instanceof Error
           ? submitError.message
           : 'メッセージを送信できませんでした。',
       );
       persistActiveChat();
-    } finally {
-      if (shouldRestoreComposerFocus) {
-        window.requestAnimationFrame(() => inputRef.current?.focus());
-      }
     }
   }
 
@@ -596,10 +589,6 @@ export function AiPlanningView({
 
   function useStarterPrompt(prompt: string) {
     setText(prompt);
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(prompt.length, prompt.length);
-    });
   }
 
   function switchChat(chatId: string) {
@@ -644,7 +633,6 @@ export function AiPlanningView({
     setIsPreviewOpen(false);
     setPreviewPageIndex(0);
     setIsChatDrawerOpen(false);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function removeChat(chatId: string) {
@@ -717,9 +705,8 @@ export function AiPlanningView({
     }
   }
 
-  function focusComposer() {
+  function closePreviewForAdjustment() {
     setIsPreviewOpen(false);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   return (
@@ -1132,7 +1119,7 @@ export function AiPlanningView({
               <button
                 className="ai-planning-secondary-action"
                 type="button"
-                onClick={focusComposer}
+                onClick={closePreviewForAdjustment}
               >
                 さらに調整
               </button>

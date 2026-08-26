@@ -197,12 +197,8 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     }
   }
 
-  function focusComposer() {
-    requestClosePreview(() => {
-      window.requestAnimationFrame(() => {
-        document.querySelector<HTMLTextAreaElement>('.ai-planning-composer textarea')?.focus();
-      });
-    });
+  function closePreviewForAdjustment() {
+    requestClosePreview();
   }
 
   return (
@@ -225,7 +221,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
             isSaving={Boolean(state.pendingApproval)}
             canSave={approvalAvailability.kind === 'eligible'}
             onClose={() => requestClosePreview()}
-            onAdjust={focusComposer}
+            onAdjust={closePreviewForAdjustment}
             onPromote={promotePreview}
             onSave={() => void saveDrafts()}
           />
