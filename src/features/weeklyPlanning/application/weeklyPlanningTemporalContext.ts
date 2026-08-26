@@ -9,9 +9,11 @@ import {
 } from '../semantic/weeklyPlanningCalendarResolver';
 import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
-  resolveWeeklyPlanningRecurringDateBoundsV5,
-  type WeeklyPlanningRecurringDateBoundsGraphViewV5,
-} from '../semantic/weeklyPlanningRecurringDateBoundsV5';
+  hardDateBoundForTargetV5,
+  WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
+  type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningSchedulerHardDateBoundV5,
+} from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 
 const DEFAULT_PLANNING_DAY_COUNT = 7;
 
@@ -36,9 +38,18 @@ export interface WeeklyPlanningTemporalGraphView {
     factId: string;
     status: string;
   }>;
-  workloads?: WeeklyPlanningRecurringDateBoundsGraphViewV5['workloads'];
-  recurrences?: WeeklyPlanningRecurringDateBoundsGraphViewV5['recurrences'];
-  temporalConstraints?: WeeklyPlanningRecurringDateBoundsGraphViewV5['temporalConstraints'];
+  workloads?: ReadonlyArray<{
+    id: string;
+    taskId: string;
+    componentId: string | null;
+    perOccurrence: boolean;
+  }>;
+  recurrences?: ReadonlyArray<{
+    id: string;
+    taskId: string;
+    targetFactId: string;
+    kind: string;
+  }>;
 }
 
 interface ZonedClockParts {
@@ -151,20 +162,39 @@ function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
   return activeFacts(graph, graph.planningWindows);
 }
 
-function recurringDateBoundsGraph(
-  graph: WeeklyPlanningTemporalGraphView,
-): WeeklyPlanningRecurringDateBoundsGraphViewV5 {
-  return {
-    workloads: activeFacts(graph, graph.workloads ?? []),
-    recurrences: activeFacts(graph, graph.recurrences ?? []),
-    temporalConstraints: activeFacts(graph, graph.temporalConstraints ?? []),
-  };
+function isExpandedRecurrenceKind(kind: string): boolean {
+  return kind === 'daily' || kind === 'weekdays' || kind === 'weekends';
+}
+
+function recurringHardDateBounds(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+}): WeeklyPlanningSchedulerHardDateBoundV5[] {
+  const workloads = activeFacts(params.graph, params.graph.workloads ?? []);
+  const recurrences = activeFacts(params.graph, params.graph.recurrences ?? []);
+  const result: WeeklyPlanningSchedulerHardDateBoundV5[] = [];
+  for (const workload of workloads) {
+    if (!workload.perOccurrence) continue;
+    const targetFactId = workload.componentId ?? workload.taskId;
+    const matchingRecurrences = recurrences.filter((recurrence) =>
+      recurrence.taskId === workload.taskId
+      && recurrence.targetFactId === targetFactId
+      && isExpandedRecurrenceKind(recurrence.kind));
+    if (matchingRecurrences.length !== 1) continue;
+    const bound = hardDateBoundForTargetV5({
+      bounds: params.resolvedTemporalConstraints.hardDateBounds,
+      taskId: workload.taskId,
+      targetFactId,
+    });
+    if (bound) result.push(bound);
+  }
+  return result;
 }
 
 function fallbackPlanningHorizon(params: {
   graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
-  requestContext: WeeklyPlanningTurnRequestContext;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): { startDate: string; endDate: string } | null {
   const defaultEndDate = addCalendarDays(
     params.selectedDate,
@@ -173,10 +203,9 @@ function fallbackPlanningHorizon(params: {
   if (!defaultEndDate) return null;
 
   let endDate = defaultEndDate;
-  const recurringBounds = resolveWeeklyPlanningRecurringDateBoundsV5({
-    graph: recurringDateBoundsGraph(params.graph),
-    currentDate: params.requestContext.currentDate,
-    weekStartsOn: params.requestContext.weekStartsOn,
+  const recurringBounds = recurringHardDateBounds({
+    graph: params.graph,
+    resolvedTemporalConstraints: params.resolvedTemporalConstraints,
   });
   for (const bound of recurringBounds) {
     if (bound.endDate && bound.endDate > endDate) {
@@ -217,12 +246,17 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
   graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
   groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
 }): { startDate: string; endDate: string } | null {
   const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
   if (windows.length === 0) {
-    return fallbackPlanningHorizon(params);
+    return fallbackPlanningHorizon({
+      graph: params.graph,
+      selectedDate: params.selectedDate,
+      resolvedTemporalConstraints: params.resolvedTemporalConstraints,
+    });
   }
 
   const window = windows[0];
@@ -265,12 +299,6 @@ export function createWeeklyPlanningSchedulerContext(params: {
     planningStartDate: params.horizon?.startDate ?? '',
     planningEndDate: params.horizon?.endDate ?? '',
     timeZone: params.requestContext.timeZone,
-    namedTimePeriods: {
-      morning: { startTime: '06:00', endTime: '12:00' },
-      afternoon: { startTime: '12:00', endTime: '17:00' },
-      evening: { startTime: '17:00', endTime: '21:00' },
-      night: { startTime: '21:00', endTime: '24:00' },
-      before_sleep: { startTime: '21:00', endTime: '24:00' },
-    },
+    namedTimePeriods: WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
   };
 }
