@@ -3,9 +3,9 @@ import type {
 } from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
-import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
   minutesFromPlacementTime,
   placementTimeFromMinutes,
@@ -25,7 +25,7 @@ type WorkItemWithObservationSource = GenericPlanningWorkItem & {
 };
 
 function taskForCandidate(
-  graph: WeeklyPlanningFactGraphV5,
+  graph: WeeklyPlanningPlacementGraphViewV5,
   taskId: string,
 ) {
   const task = graph.tasks.find((candidate) => candidate.id === taskId);
@@ -36,7 +36,7 @@ function taskForCandidate(
 }
 
 function fieldLabelForItem(
-  graph: WeeklyPlanningFactGraphV5,
+  graph: WeeklyPlanningPlacementGraphViewV5,
   item: GenericPlanningWorkItem,
 ): string {
   if (item.componentId) {
@@ -76,7 +76,7 @@ export function fixedTaskPlacementEnds(
 
 export function createPlacementCandidate(params: {
   input: GenericSchedulerInput;
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningPlacementGraphViewV5;
   item: GenericPlanningWorkItem;
   slot: MinuteInterval;
   duration: number;
