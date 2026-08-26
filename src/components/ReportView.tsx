@@ -63,21 +63,24 @@ function SummaryCard({
   Icon: ComponentType<LucideProps>;
   lifetime?: boolean;
 }) {
+  const detail = lifetime
+    ? 'これまでの学習記録'
+    : plannedMinutes && plannedMinutes > 0
+      ? `予定 ${formatMinutes(plannedMinutes)}`
+      : '予定なし';
+
   return (
-    <article className="learning-report-summary-card">
+    <article
+      className="learning-report-summary-card"
+      aria-label={`${label} ${formatMinutes(minutes)} ${detail}`}
+    >
       <div className="learning-report-summary-icon" aria-hidden="true">
         <Icon />
       </div>
       <div className="learning-report-summary-copy">
         <span>{label}</span>
         <strong>{formatMinutes(minutes)}</strong>
-        <small>
-          {lifetime
-            ? 'これまでの学習記録'
-            : plannedMinutes && plannedMinutes > 0
-              ? `予定 ${formatMinutes(plannedMinutes)}`
-              : '予定なし'}
-        </small>
+        <small>{detail}</small>
       </div>
     </article>
   );
@@ -88,17 +91,16 @@ function shouldShowMonthLabel(index: number, total: number): boolean {
 }
 
 export function ReportView({
-  selectedDate,
   plans,
   actuals,
   studySubjects = [],
   studyMaterials = [],
   onBack,
 }: ReportViewProps) {
-  const [scope, setScope] = useState<LearningReportScope>('week');
-  const [anchorDate, setAnchorDate] = useState(selectedDate);
-  const [materialFilter, setMaterialFilter] = useState(ALL_MATERIALS_FILTER);
   const referenceDate = todayIsoDate();
+  const [scope, setScope] = useState<LearningReportScope>('week');
+  const [anchorDate, setAnchorDate] = useState(referenceDate);
+  const [materialFilter, setMaterialFilter] = useState(ALL_MATERIALS_FILTER);
   const overview = useMemo(
     () =>
       buildLearningReportOverview({
@@ -273,7 +275,7 @@ export function ReportView({
 
             <div
               className={`learning-report-chart scope-${scope}`}
-              role="img"
+              role="list"
               aria-label={`${rangeLabel}の学習時間 合計 ${formatMinutes(report.actualMinutes)}`}
               style={
                 {
@@ -300,6 +302,7 @@ export function ReportView({
                   <div
                     className="learning-report-chart-item"
                     key={bucket.key}
+                    role="listitem"
                     aria-label={`${bucket.label} ${bucket.sublabel ?? ''} ${formatMinutes(bucket.actualMinutes)}`}
                   >
                     <div className="learning-report-chart-bar-area">
