@@ -1,11 +1,17 @@
 import {
   canonicalWeekdayIndex,
-  type CalendarWeekStartsOn,
   type CalendarDateRange,
-  resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  resolveWeeklyPlanningDateExpressionsV5,
+  type WeeklyPlanningDateExpressionGraphViewV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
-export interface WeeklyPlanningTemporalConstraintGraphViewV5 {
+export interface WeeklyPlanningTemporalConstraintGraphViewV5
+  extends WeeklyPlanningDateExpressionGraphViewV5 {
   readonly workloads: ReadonlyArray<{
     taskId: string;
     componentId: string | null;
@@ -122,16 +128,13 @@ function schedulerTargets(
 
 function resolvedHardConstraintDate(params: {
   constraint: WeeklyPlanningTemporalConstraintGraphViewV5['temporalConstraints'][number];
-  currentDate: string;
-  weekStartsOn: CalendarWeekStartsOn;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): string | null {
-  if (!params.constraint.dateExpression) return null;
-  const resolved = resolveCanonicalDateExpression({
-    expression: params.constraint.dateExpression,
-    currentDate: params.currentDate,
-    weekStartsOn: params.weekStartsOn,
+  const resolved = resolvedWeeklyPlanningDateExpressionForFactV5({
+    resolved: params.resolvedDateExpressions,
+    factId: params.constraint.id,
   });
-  if (resolved.status !== 'resolved') return null;
+  if (resolved?.status !== 'resolved' || !resolved.range) return null;
   if (params.constraint.kind === 'earliest_start') return resolved.range.start;
   if (
     params.constraint.kind === 'deadline'
@@ -144,8 +147,7 @@ function resolvedHardConstraintDate(params: {
 
 function resolveHardDateBounds(params: {
   graph: WeeklyPlanningTemporalConstraintGraphViewV5;
-  currentDate: string;
-  weekStartsOn: CalendarWeekStartsOn;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): WeeklyPlanningResolvedHardDateBoundV5[] {
   return schedulerTargets(params.graph).flatMap((target) => {
     let startDate: string | null = null;
@@ -165,8 +167,7 @@ function resolveHardDateBounds(params: {
       }
       const date = resolvedHardConstraintDate({
         constraint,
-        currentDate: params.currentDate,
-        weekStartsOn: params.weekStartsOn,
+        resolvedDateExpressions: params.resolvedDateExpressions,
       });
       if (!date) continue;
       if (constraint.kind === 'earliest_start') {
@@ -187,20 +188,19 @@ function resolveHardDateBounds(params: {
 }
 
 function preferredDateScope(params: {
+  constraintId: string;
   expression: string | null;
-  currentDate: string;
-  weekStartsOn: CalendarWeekStartsOn;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): WeeklyPlanningResolvedPreferredDateScopeV5 | null {
   if (!params.expression) return { kind: 'all' };
   const weekday = canonicalWeekdayIndex(params.expression);
   if (weekday !== null) return { kind: 'weekday', weekday };
   if (params.expression.startsWith('custom:')) return null;
-  const resolved = resolveCanonicalDateExpression({
-    expression: params.expression,
-    currentDate: params.currentDate,
-    weekStartsOn: params.weekStartsOn,
+  const resolved = resolvedWeeklyPlanningDateExpressionForFactV5({
+    resolved: params.resolvedDateExpressions,
+    factId: params.constraintId,
   });
-  if (resolved.status !== 'resolved') return null;
+  if (resolved?.status !== 'resolved' || !resolved.range) return null;
   return {
     kind: 'range',
     startDate: resolved.range.start,
@@ -243,8 +243,7 @@ function preferredWindow(params: {
 
 function resolvePreferredWindows(params: {
   graph: WeeklyPlanningTemporalConstraintGraphViewV5;
-  currentDate: string;
-  weekStartsOn: CalendarWeekStartsOn;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   namedTimePeriods: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): WeeklyPlanningResolvedPreferredWindowV5[] {
   const result: WeeklyPlanningResolvedPreferredWindowV5[] = [];
@@ -262,9 +261,9 @@ function resolvePreferredWindows(params: {
         continue;
       }
       const dateScope = preferredDateScope({
+        constraintId: constraint.id,
         expression: constraint.dateExpression,
-        currentDate: params.currentDate,
-        weekStartsOn: params.weekStartsOn,
+        resolvedDateExpressions: params.resolvedDateExpressions,
       });
       if (!dateScope) continue;
       const window = preferredWindow({
@@ -288,21 +287,25 @@ export function resolveWeeklyPlanningTemporalConstraintsV5(params: {
   currentDate: string;
   weekStartsOn?: CalendarWeekStartsOn;
   namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
 }): WeeklyPlanningResolvedTemporalConstraintsV5 {
-  const weekStartsOn = params.weekStartsOn ?? 'monday';
-  const namedTimePeriods = params.namedTimePeriods ?? WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5;
-  return {
-    referenceDate: params.currentDate,
-    weekStartsOn,
-    hardDateBounds: resolveHardDateBounds({
+  const resolvedDateExpressions = params.resolvedDateExpressions
+    ?? resolveWeeklyPlanningDateExpressionsV5({
       graph: params.graph,
       currentDate: params.currentDate,
-      weekStartsOn,
+      weekStartsOn: params.weekStartsOn,
+    });
+  const namedTimePeriods = params.namedTimePeriods ?? WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5;
+  return {
+    referenceDate: resolvedDateExpressions.referenceDate,
+    weekStartsOn: resolvedDateExpressions.weekStartsOn,
+    hardDateBounds: resolveHardDateBounds({
+      graph: params.graph,
+      resolvedDateExpressions,
     }),
     preferredWindows: resolvePreferredWindows({
       graph: params.graph,
-      currentDate: params.currentDate,
-      weekStartsOn,
+      resolvedDateExpressions,
       namedTimePeriods,
     }),
   };
