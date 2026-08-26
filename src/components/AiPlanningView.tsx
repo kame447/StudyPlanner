@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -61,24 +61,58 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isPreviewOpen) return;
     const conversation = shellRef.current?.querySelector<HTMLElement>(
       '.ai-planning-conversation',
     );
     if (!conversation) return;
 
-    const lockedScrollTop = conversation.scrollTop;
+    const root = document.documentElement;
+    const body = document.body;
+    const lockedConversationScrollTop = conversation.scrollTop;
+    const lockedWindowScrollX = window.scrollX;
+    const lockedWindowScrollY = window.scrollY;
+    const previousRootOverflow = root.style.overflow;
+    const previousRootOverscrollBehavior = root.style.overscrollBehavior;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyLeft = body.style.left;
+    const previousBodyRight = body.style.right;
+    const previousBodyWidth = body.style.width;
+
     const keepBackgroundScrollPinned = () => {
-      if (conversation.scrollTop !== lockedScrollTop) {
-        conversation.scrollTop = lockedScrollTop;
+      if (conversation.scrollTop !== lockedConversationScrollTop) {
+        conversation.scrollTop = lockedConversationScrollTop;
       }
     };
+
+    root.style.overflow = 'hidden';
+    root.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+    body.style.position = 'fixed';
+    body.style.top = `-${lockedWindowScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
 
     keepBackgroundScrollPinned();
     conversation.addEventListener('scroll', keepBackgroundScrollPinned, { passive: true });
     return () => {
       conversation.removeEventListener('scroll', keepBackgroundScrollPinned);
+      root.style.overflow = previousRootOverflow;
+      root.style.overscrollBehavior = previousRootOverscrollBehavior;
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.left = previousBodyLeft;
+      body.style.right = previousBodyRight;
+      body.style.width = previousBodyWidth;
+      window.scrollTo(lockedWindowScrollX, lockedWindowScrollY);
     };
   }, [isPreviewOpen]);
 
