@@ -1,9 +1,9 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-23
+Updated: 2026-08-26
 
-この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、**責務 × 文書種別 × lifecycle** で一意に決める。
+この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
 ## 1. 配置キー
 
@@ -13,6 +13,7 @@ Updated: 2026-08-23
 
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
+- `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
 - `work/`: repository横断のtask運用ルール・template
 - `archive/`: current decisionを所有しない履歴・監査証跡
 
@@ -80,6 +81,12 @@ archiveは現在の実装命令にならない。
 
 client-first executionの正仕様は `spec/client-first-execution-requirements.md`。作業状態はIssue #164を正とし、同じrequirements本文をtask文書へ複製しない。
 
+### Reporting
+
+入口: `docs/domains/reporting/README.md`
+
+学習レポートのuser-facing requirement、情報階層、集計不変条件、navigation contractの正仕様は `spec/learning-report.md` とする。集計の詳細実装はproduction code/testsを正とし、specへfield-level実装を重複させない。
+
 ## 4. Work record rules
 
 未完了taskは責務domainの `work/` に置く。横断的なtask template/運用規則だけ `docs/work/` に置く。
@@ -108,7 +115,7 @@ historical文書内の旧path/branch/PRは当時の証跡として残してよ�
 
 ### Archive invariant transfer gate
 
-**文書をarchiveへ移すことと、その文書に含まれる概念を廃止することは別である。**
+文書をarchiveへ移すことと、その文書に含まれる概念を廃止することは別である。
 
 canonical / design / task / audit文書をarchiveへ移す前に、必ず次を行う。
 
