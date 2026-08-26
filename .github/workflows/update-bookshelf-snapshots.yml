@@ -55,4 +55,4 @@ jobs:
           git commit -m 'test: approve bookshelf circular FAB visuals'
           git push origin HEAD:fix/bookshelf-add-material-mobile
 
-# Triggered via an explicit fast-forward ref update so the push-only updater runs.
+# Trigger the updater after the geometry audit; the job deletes this workflow.
