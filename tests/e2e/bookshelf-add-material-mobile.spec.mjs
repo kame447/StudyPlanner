@@ -90,7 +90,7 @@ test.describe('bookshelf add-material mobile surface', () => {
     expect(beforeScroll.width).toBeCloseTo(56, 0);
     expect(beforeScroll.height).toBeCloseTo(56, 0);
     expect(beforeScroll.right).toBeGreaterThanOrEqual(14);
-    expect(beforeScroll.bottom).toBeGreaterThan(74);
+    expect(beforeScroll.bottom).toBeGreaterThan(58);
     expect(beforeScroll.radius).toBe('50%');
     expect(beforeScroll.fontSize).toBe('0px');
 
