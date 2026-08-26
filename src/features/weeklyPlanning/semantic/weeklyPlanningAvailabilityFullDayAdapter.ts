@@ -6,6 +6,9 @@ import {
   type ExternalConstraintSourceSnapshot,
   type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
+import type {
+  WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 const RESOLVER_WEEKDAY_KEY_BY_CANONICAL: Readonly<Record<string, string>> = {
   'weekday:sunday': 'sun',
@@ -54,6 +57,7 @@ export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
 }): AvailabilityResolutionResult {
   const graph: WeeklyPlanningAvailabilityGraphView = {
     revision: params.graph.revision,
@@ -66,5 +70,6 @@ export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
     graph,
     context: params.context,
     externalSources: params.externalSources,
+    resolvedDateExpressions: params.resolvedDateExpressions,
   });
 }
