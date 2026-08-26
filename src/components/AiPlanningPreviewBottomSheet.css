@@ -7,6 +7,7 @@
 .ai-planning-preview-overlay-v2 {
   align-items: end;
   justify-items: center;
+  overscroll-behavior: none;
 }
 
 .ai-planning-preview-dialog-v2 {
@@ -30,6 +31,7 @@
 
 .ai-planning-preview-dialog-v2 .ai-planning-preview-header {
   padding-top: 16px;
+  touch-action: none;
 }
 
 .ai-planning-preview-dialog-v2.is-bottom-sheet-dragging {
