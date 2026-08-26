@@ -1,10 +1,12 @@
-import type { SemanticRecurrenceKind } from './weeklyPlanningSemanticDocument';
-import type { SemanticAvailabilityRecurrenceKind } from './weeklyPlanningSemanticDocumentV2';
+import type {
+  SemanticAvailabilityRecurrenceKindV5,
+  SemanticRecurrenceKindV5,
+} from './weeklyPlanningSemanticTypesV5';
 import { calendarWeekday } from './weeklyPlanningCalendarResolver';
 
 export type WeeklyPlanningCalendarRecurrenceKindV5 =
-  | SemanticRecurrenceKind
-  | SemanticAvailabilityRecurrenceKind;
+  | SemanticRecurrenceKindV5
+  | SemanticAvailabilityRecurrenceKindV5;
 
 export interface WeeklyPlanningCalendarRecurrenceResolutionV5 {
   calendarDates: string[] | null;
@@ -78,6 +80,9 @@ export function resolveWeeklyPlanningCalendarRecurrenceDatesV5(params: {
       invalidDays: [],
     };
   }
+  if (params.kind === 'times_per_week') {
+    return { calendarDates: null, invalidDays: [] };
+  }
 
   return explicitWeekdayScope({ dates: params.dates, days: params.days });
 }
@@ -93,6 +98,7 @@ export function isWeeklyPlanningCalendarExpandableRecurrenceV5(params: {
   ) {
     return true;
   }
+  if (params.kind === 'times_per_week') return false;
   const resolution = explicitWeekdayScope({ dates: [], days: params.days });
   return resolution.calendarDates !== null && resolution.invalidDays.length === 0;
 }
