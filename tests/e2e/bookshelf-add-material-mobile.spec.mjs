@@ -19,7 +19,7 @@ function seedBookshelfMobileState(page) {
       createdAt,
       updatedAt: createdAt,
     };
-    const materials = Array.from({ length: 12 }, (_, index) => ({
+    const materials = Array.from({ length: 24 }, (_, index) => ({
       id: `bookshelf-mobile-material-${index + 1}`,
       userId: user.id,
       name: `モバイル回帰教材 ${index + 1}`,
@@ -98,10 +98,29 @@ async function readSheetGeometry(sheet) {
   });
 }
 
-test.describe('bookshelf add-material mobile surface', () => {
-  test.use({ viewport: { width: 390, height: 844 } });
+async function measureScheduleFab(page) {
+  await openSchedule(page);
+  const scheduleFab = page.locator('.schedule-add-fab.daily-add-fab');
+  await expect(scheduleFab).toBeVisible();
+  return readFabGeometry(scheduleFab);
+}
 
-  test('matches Schedule FAB and keeps the add sheet on the same mobile inset from any Bookshelf scroll position', async ({ page }, testInfo) => {
+async function expectBookshelfFabToMatch(page, scheduleFabGeometry) {
+  await openBookshelf(page);
+  const fab = page.locator('.bookshelf-add-material-fab');
+  await expect(fab).toBeVisible();
+  const geometry = await readFabGeometry(fab);
+  expect(geometry.position).toBe('fixed');
+  expect(geometry.width).toBeCloseTo(scheduleFabGeometry.width, 0);
+  expect(geometry.height).toBeCloseTo(scheduleFabGeometry.height, 0);
+  expect(Math.abs(geometry.right - scheduleFabGeometry.right)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.bottom - scheduleFabGeometry.bottom)).toBeLessThanOrEqual(1);
+  return { fab, geometry };
+}
+
+test.describe('bookshelf add-material surface', () => {
+  test('matches Schedule FAB and material-sheet geometry after mobile page scrolling', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await seedBookshelfMobileState(page);
     await page.goto('/');
 
@@ -121,9 +140,8 @@ test.describe('bookshelf add-material mobile surface', () => {
     const intendedSheetInset = scheduleSheetGeometry.left;
     const intendedSheetWidth = scheduleSheetGeometry.viewportWidth - intendedSheetInset * 2;
 
-    // Chromium on Linux reserves a classic scrollbar on the layout viewport,
-    // so Schedule's rendered right edge can include a desktop-only gutter.
-    // Its left edge still exposes the intended mobile 16px sheet inset.
+    // Linux Chromium can reserve a classic layout scrollbar on Schedule's
+    // right edge. Its left edge still exposes the intended 16px mobile inset.
     expect(Math.abs(intendedSheetInset - 16)).toBeLessThanOrEqual(1);
 
     await testInfo.attach('schedule-add-reference.png', {
@@ -167,18 +185,21 @@ test.describe('bookshelf add-material mobile surface', () => {
 
     await fab.click();
 
-    const overlay = page.locator('.bookshelf-view > .modal-overlay').filter({
-      has: page.locator(':scope > .bookshelf-modal'),
-    });
+    const overlay = page.locator(
+      '.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid)',
+    );
     const modal = overlay.locator(':scope > .bookshelf-modal');
     await expect(page.getByRole('heading', { name: '教材を追加' })).toBeVisible();
     await expect(modal).toBeVisible();
+    await expect(fab).toHaveCSS('opacity', '0');
+    await expect(fab).toHaveCSS('pointer-events', 'none');
     await waitForAnimations(modal);
 
     const modalGeometry = await overlay.evaluate((overlayElement) => {
-      const modalElement = overlayElement.querySelector('.bookshelf-modal');
+      const materialGrid = overlayElement.querySelector('.bookshelf-material-edit-grid');
+      const modalElement = materialGrid?.closest('.bookshelf-modal');
       if (!(modalElement instanceof HTMLElement)) {
-        throw new Error('bookshelf modal was not mounted');
+        throw new Error('bookshelf material modal was not mounted');
       }
       const overlayRect = overlayElement.getBoundingClientRect();
       const modalRect = modalElement.getBoundingClientRect();
@@ -231,5 +252,21 @@ test.describe('bookshelf add-material mobile surface', () => {
       body: await page.screenshot({ fullPage: false }),
       contentType: 'image/png',
     });
+  });
+
+  test('tracks Schedule FAB geometry across medium, tablet, and tall-tablet viewports', async ({ page }) => {
+    await seedBookshelfMobileState(page);
+
+    for (const viewport of [
+      { width: 600, height: 900 },
+      { width: 768, height: 1024 },
+      { width: 1024, height: 1366 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+
+      const scheduleFabGeometry = await measureScheduleFab(page);
+      await expectBookshelfFabToMatch(page, scheduleFabGeometry);
+    }
   });
 });
