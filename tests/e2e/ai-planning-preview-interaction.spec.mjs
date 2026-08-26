@@ -155,6 +155,7 @@ async function startOverlayOpacitySampler(page) {
         opacity: Number.parseFloat(style.opacity) || 0,
         pointerEvents: style.pointerEvents,
         closing: Boolean(document.querySelector('.ai-planning-preview-motion.is-closing')),
+        dismissing: overlay.classList.contains('is-bottom-sheet-drag-dismissing'),
       });
       window.requestAnimationFrame(sample);
     };
@@ -261,17 +262,11 @@ test('AI planning preview keeps background scroll locked and closes without over
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   const overlay = page.locator('.ai-planning-preview-overlay-v2');
   const motion = page.locator('.ai-planning-preview-motion');
+  const shell = page.locator('.ai-planning-view-shell-v2');
   await expect(preview).toBeVisible();
+  await expect(shell).toHaveClass(/is-preview-open/);
   await expect(conversation).toHaveCSS('overflow-y', 'hidden');
-
-  await startOverlayOpacitySampler(page);
-  const dragFeedback = await swipeSheetDown(preview);
-  expect(dragFeedback.movePrevented).toBe(true);
-
-  await expect(motion).toHaveClass(/is-closing/);
-  await expect(overlay).toHaveCSS('pointer-events', 'auto');
-  await expect(overlay).toHaveCSS('touch-action', 'none');
-  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
 
   const conversationBox = await conversation.boundingBox();
   expect(conversationBox).not.toBeNull();
@@ -285,6 +280,17 @@ test('AI planning preview keeps background scroll locked and closes without over
   await page.waitForTimeout(40);
   expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
 
+  await startOverlayOpacitySampler(page);
+  const dragFeedback = await swipeSheetDown(preview);
+  expect(dragFeedback.movePrevented).toBe(true);
+
+  await expect(motion).toHaveClass(/is-closing/);
+  await expect(shell).toHaveClass(/is-preview-open/);
+  await expect(overlay).toHaveCSS('pointer-events', 'auto');
+  await expect(overlay).toHaveCSS('touch-action', 'none');
+  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
+
   await expect(preview).toBeHidden({ timeout: 1500 });
 
   const samples = await page.evaluate(() => window.__aiPlanningPreviewOverlaySamples ?? []);
@@ -292,8 +298,11 @@ test('AI planning preview keeps background scroll locked and closes without over
   expect(closingSamples.length).toBeGreaterThan(0);
   expect(closingSamples.every((sample) => sample.pointerEvents !== 'none')).toBe(true);
 
-  const opacityRestart = samples.some((sample, index) =>
-    index > 0 && sample.opacity - samples[index - 1].opacity > 0.12,
+  const dismissStartIndex = samples.findIndex((sample) => sample.dismissing);
+  expect(dismissStartIndex).toBeGreaterThanOrEqual(0);
+  const dismissSamples = samples.slice(dismissStartIndex);
+  const opacityRestart = dismissSamples.some((sample, index) =>
+    index > 0 && sample.opacity - dismissSamples[index - 1].opacity > 0.12,
   );
   expect(opacityRestart).toBe(false);
 });
