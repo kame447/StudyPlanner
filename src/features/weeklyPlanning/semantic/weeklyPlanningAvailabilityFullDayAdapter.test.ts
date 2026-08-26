@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveWeeklyPlanningAvailabilityWithFullDayRules } from './weeklyPlanningAvailabilityFullDayAdapter';
 import type { AvailabilityDeclarationFact } from './weeklyPlanningFactGraphV2';
+import { resolveWeeklyPlanningDateExpressionsV5 } from './weeklyPlanningResolvedDateExpressionsV5';
 
 function declaration(
   partial: Partial<AvailabilityDeclarationFact> = {},
@@ -28,23 +29,35 @@ function declaration(
   };
 }
 
+const context = {
+  ownerId: 'user-1',
+  currentDate: '2026-08-12',
+  planningStartDate: '2026-08-17',
+  planningEndDate: '2026-08-23',
+  timeZone: 'Asia/Tokyo',
+} as const;
+
+function resolveAvailability(value: AvailabilityDeclarationFact) {
+  const graph = {
+    revision: 1,
+    availabilityDeclarations: [value],
+    constraintSourceRequests: [],
+  };
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph,
+    currentDate: context.currentDate,
+  });
+  return resolveWeeklyPlanningAvailabilityWithFullDayRules({
+    graph,
+    context,
+    externalSources: [],
+    resolvedDateExpressions,
+  });
+}
+
 describe('weeklyPlanningAvailabilityFullDayAdapter', () => {
   it('accepts canonical weekday:<day> values emitted by Stable V5 semantic normalization', () => {
-    const result = resolveWeeklyPlanningAvailabilityWithFullDayRules({
-      graph: {
-        revision: 1,
-        availabilityDeclarations: [declaration()],
-        constraintSourceRequests: [],
-      },
-      context: {
-        ownerId: 'user-1',
-        currentDate: '2026-08-12',
-        planningStartDate: '2026-08-17',
-        planningEndDate: '2026-08-23',
-        timeZone: 'Asia/Tokyo',
-      },
-      externalSources: [],
-    });
+    const result = resolveAvailability(declaration());
 
     expect(result.readiness).toBe('ready');
     expect(result.issues).toEqual([]);
@@ -59,24 +72,10 @@ describe('weeklyPlanningAvailabilityFullDayAdapter', () => {
   });
 
   it('keeps legacy short weekday keys accepted during migration', () => {
-    const result = resolveWeeklyPlanningAvailabilityWithFullDayRules({
-      graph: {
-        revision: 1,
-        availabilityDeclarations: [declaration({
-          dateExpression: null,
-          days: ['tue'],
-        })],
-        constraintSourceRequests: [],
-      },
-      context: {
-        ownerId: 'user-1',
-        currentDate: '2026-08-12',
-        planningStartDate: '2026-08-17',
-        planningEndDate: '2026-08-23',
-        timeZone: 'Asia/Tokyo',
-      },
-      externalSources: [],
-    });
+    const result = resolveAvailability(declaration({
+      dateExpression: null,
+      days: ['tue'],
+    }));
 
     expect(result.readiness).toBe('ready');
     expect(result.issues).toEqual([]);
