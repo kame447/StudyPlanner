@@ -1,3 +1,9 @@
+.ai-planning-view-shell-v2.is-preview-open .ai-planning-conversation {
+  overflow-y: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
 .ai-planning-preview-overlay-v2 {
   align-items: end;
   justify-items: center;
