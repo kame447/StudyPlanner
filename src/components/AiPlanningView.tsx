@@ -1,4 +1,10 @@
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import {
   createAiPlanningChat,
@@ -34,6 +40,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const { isExiting: isPreviewClosing, requestExit: requestClosePreview } =
     useExitMotion(() => setIsPreviewOpen(false));
   const previewCandidates = state.previewCandidates ?? [];
@@ -53,6 +60,27 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
+
+  useEffect(() => {
+    if (!isPreviewOpen) return;
+    const conversation = shellRef.current?.querySelector<HTMLElement>(
+      '.ai-planning-conversation',
+    );
+    if (!conversation) return;
+
+    const lockedScrollTop = conversation.scrollTop;
+    const keepBackgroundScrollPinned = () => {
+      if (conversation.scrollTop !== lockedScrollTop) {
+        conversation.scrollTop = lockedScrollTop;
+      }
+    };
+
+    keepBackgroundScrollPinned();
+    conversation.addEventListener('scroll', keepBackgroundScrollPinned, { passive: true });
+    return () => {
+      conversation.removeEventListener('scroll', keepBackgroundScrollPinned);
+    };
+  }, [isPreviewOpen]);
 
   function persistActiveChatSnapshot() {
     const snapshot = application.exportConversationSnapshot();
@@ -144,7 +172,11 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   }
 
   return (
-    <div className="ai-planning-view-shell-v2" onClickCapture={openPreviewFromLegacySurface}>
+    <div
+      ref={shellRef}
+      className={`ai-planning-view-shell-v2 ${isPreviewOpen ? 'is-preview-open' : ''}`}
+      onClickCapture={openPreviewFromLegacySurface}
+    >
       <AiPlanningViewLegacy {...props} />
       {isPreviewOpen && allPreviewBlocks.length > 0 ? (
         <div
