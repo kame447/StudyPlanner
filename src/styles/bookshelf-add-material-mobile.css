@@ -1,11 +1,9 @@
 /* Bookshelf add-material mobile contracts.
  *
- * The Bookshelf surface used to keep the shared translate3d entry animation
- * after it finished. A transformed ancestor becomes the containing block for
- * position: fixed descendants, so the FAB and modal were effectively fixed to
- * the scrolled Bookshelf content instead of the viewport on iOS. Keep the root
- * surface free of transform/opacity animations so fixed descendants also keep
- * their expected stacking relationship with the primary navigation.
+ * Keep this surface on the same viewport geometry as Schedule. The Bookshelf
+ * root must stay free of transforms so fixed descendants resolve against the
+ * viewport, while the add FAB and material editor mirror the Schedule add
+ * action rather than owning a second set of mobile offsets.
  */
 
 /* Fixed descendants must resolve against the viewport, and modal z-indexes
@@ -14,13 +12,13 @@
   animation: none;
 }
 
-/* Keep the approved Bookshelf FAB appearance; only its containing-block
- * behavior changes. */
+/* Match Schedule's FAB geometry, including its responsive desktop/tablet and
+ * short/tall viewport overrides. */
 .bookshelf-view .bookshelf-add-material-fab {
   position: fixed;
-  right: max(18px, calc((100vw - 1040px) / 2 + 24px));
-  bottom: calc(var(--app-bottom-nav-clearance) + 14px);
-  z-index: 80;
+  right: max(22px, calc((100vw - min(100vw, 508px)) / 2 + 22px));
+  bottom: calc(74px + 14px + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
   width: 56px;
   height: 56px;
   min-width: 56px;
@@ -33,7 +31,7 @@
   border-radius: 50%;
   background: var(--bookshelf-blue);
   color: #fff;
-  box-shadow: 0 10px 22px rgba(8, 118, 249, 0.24);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--bookshelf-blue) 30%, transparent);
   font-size: 0;
   line-height: 0;
   cursor: pointer;
@@ -47,7 +45,7 @@
 
 .bookshelf-view .bookshelf-add-material-fab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(8, 118, 249, 0.3);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--bookshelf-blue) 34%, transparent);
 }
 
 .bookshelf-view .bookshelf-add-material-fab:active {
@@ -64,10 +62,20 @@
   color: #10233f;
 }
 
-/* Treat the material editor like the schedule creation sheet: the overlay is
- * fixed to the visual viewport and the card enters from the bottom. The card,
- * not the page or overlay, owns vertical scrolling. */
-.bookshelf-view > .modal-overlay:has(> .bookshelf-modal) {
+/* Schedule hands its FAB off when a full editor opens. Do the same here so a
+ * second add affordance cannot remain visible or interactive through the
+ * material editor backdrop. */
+.bookshelf-view:has(> .modal-overlay > .bookshelf-modal .bookshelf-material-edit-grid)
+  .bookshelf-add-material-fab {
+  transform: translate3d(0, -34px, 0) scale(0.72);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+/* Scope the sheet override to the material editor. Subject management also
+ * uses .bookshelf-modal and must retain the generic dialog contract. */
+.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid) {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -75,22 +83,23 @@
   min-height: 100dvh;
   max-height: 100dvh;
   align-items: flex-end;
-  justify-content: center;
   padding: 0;
   overflow: hidden;
-  overscroll-behavior: none;
+  scrollbar-gutter: auto;
+  overscroll-behavior: contain;
   background: rgba(18, 24, 36, 0.38);
   animation: planner-sheet-overlay-in 180ms ease-out both;
 }
 
-.bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal {
-  width: min(100%, 720px);
-  max-width: 720px;
-  max-height: min(
-    92dvh,
-    calc(100dvh - env(safe-area-inset-top, 0px) - 8px)
-  );
-  margin: 0;
+/* Schedule's quick-entry card is min(620px, 100vw - 32px). Reuse that exact
+ * horizontal contract while Bookshelf keeps its longer form scrollable. */
+.bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
+  max-height: 92dvh;
+  margin: 0 auto;
   padding-bottom: max(18px, env(safe-area-inset-bottom, 0px));
   border-radius: 28px 28px 0 0;
   border-bottom: 0;
@@ -103,7 +112,10 @@
   animation: planner-bottom-sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal .section-header {
+.bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid)
+  .section-header {
   position: sticky;
   top: -1px;
   z-index: 4;
@@ -112,21 +124,35 @@
   background: var(--surface);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 520px) {
   .bookshelf-view .bookshelf-add-material-fab {
     right: 18px;
-    bottom: calc(var(--app-bottom-nav-clearance) + 14px);
   }
+}
 
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal {
-    width: 100%;
-    max-width: 100%;
+@media (max-height: 760px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    bottom: calc(68px + 14px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 700px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    right: max(30px, calc((100vw - min(96vw, 1040px)) / 2 + 30px));
+  }
+}
+
+@media (min-width: 900px) and (min-height: 1200px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    bottom: calc(112px + 14px + env(safe-area-inset-bottom, 0px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal),
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal) > .bookshelf-modal {
+  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
+  .bookshelf-view
+    > .modal-overlay
+    > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
   }
