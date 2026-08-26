@@ -58,15 +58,17 @@ describe('weekly planning recurrence calendar semantics', () => {
   });
 
   it('keeps count-only frequency recurrence outside calendar expansion', () => {
-    expect(resolveWeeklyPlanningCalendarRecurrenceDatesV5({
-      kind: 'times_per_week',
-      days: [],
-      dates,
-    })).toEqual({ calendarDates: null, invalidDays: [] });
-    expect(isWeeklyPlanningCalendarExpandableRecurrenceV5({
-      kind: 'times_per_week',
-      days: [],
-    })).toBe(false);
+    for (const days of [[], ['wed', 'fri']]) {
+      expect(resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+        kind: 'times_per_week',
+        days,
+        dates,
+      })).toEqual({ calendarDates: null, invalidDays: [] });
+      expect(isWeeklyPlanningCalendarExpandableRecurrenceV5({
+        kind: 'times_per_week',
+        days,
+      })).toBe(false);
+    }
   });
 
   it('keeps ungrounded weekly and custom recurrence outside calendar expansion', () => {
