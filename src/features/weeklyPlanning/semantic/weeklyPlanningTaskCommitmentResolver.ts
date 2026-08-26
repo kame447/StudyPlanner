@@ -14,6 +14,9 @@ import {
   resolvedWeeklyPlanningDateExpressionForFactV5,
   type WeeklyPlanningResolvedDateExpressionsV5,
 } from './weeklyPlanningResolvedDateExpressionsV5';
+import {
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 
 export interface WeeklyPlanningTaskCommitmentGraphView {
   readonly revision: number;
@@ -116,8 +119,12 @@ function resolveDates(params: {
   issues: TaskCommitmentResolutionIssue[];
 }): string[] {
   const recurrences = params.graph.recurrences.filter((recurrence) =>
-    recurrence.taskId === params.constraint.taskId
-    && recurrence.targetFactId === params.constraint.taskId);
+    weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: recurrence.taskId,
+      constraintTargetFactId: recurrence.targetFactId,
+      taskId: params.constraint.taskId,
+      targetFactId: params.constraint.targetFactId,
+    }));
   if (recurrences.length > 1) {
     params.issues.push({
       code: 'ambiguous_commitment_recurrence',
