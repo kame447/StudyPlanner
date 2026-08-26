@@ -38,9 +38,11 @@
   position: relative;
   inset: auto !important;
   z-index: auto;
+  box-sizing: border-box;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -51,17 +53,40 @@
 }
 
 .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-card {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   margin: 0;
+  overflow-x: hidden;
   border-radius: clamp(12px, 1.6vw, 18px);
 }
 
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading > div,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-message-row,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-message-body,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head > div,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-summary {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading p {
+  max-width: 100%;
+}
+
 .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-conversation {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
 }
 
 .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card {
@@ -70,6 +95,47 @@
   max-width: 100%;
   min-width: 0;
   margin: 4px auto 18px;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head > div {
+  flex: 1 1 auto;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head strong {
+  overflow-wrap: anywhere;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head b {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-preview-button {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer-side,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-mic-button,
+.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-send-button {
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 /* AI planning is the only active item on this surface. The legacy markup still
@@ -99,6 +165,29 @@
 @media (min-width: 700px) {
   .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-card {
     border-radius: 18px;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card {
+    width: 100%;
+    max-width: 100%;
+    margin: 4px auto 18px;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer {
+    box-sizing: border-box;
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
+    justify-self: center;
+    margin: 0 0 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer {
+    width: calc(100% - 12px);
+    max-width: calc(100% - 12px);
   }
 }
 
