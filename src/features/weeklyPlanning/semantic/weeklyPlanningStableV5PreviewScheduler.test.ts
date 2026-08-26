@@ -20,6 +20,16 @@ import {
   scheduleWeeklyPlanningStableV5Preview,
 } from './weeklyPlanningStableV5PreviewScheduler';
 
+function active(factId: string, createdRevision = 1) {
+  return {
+    factId,
+    status: 'active' as const,
+    createdRevision,
+    terminalRevision: null,
+    supersededByFactId: null,
+  };
+}
+
 function workItem(overrides: Partial<GenericPlanningWorkItem> = {}): GenericPlanningWorkItem {
   return {
     version: 'weekly-planning-generic-work-item-v1',
@@ -114,6 +124,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
       },
       createdRevision: 1,
     }],
+    factLifecycles: [active('task-1')],
   };
 }
 
@@ -161,14 +172,13 @@ function vocabularyGraph(preferredPeriod?: 'evening'): WeeklyPlanningFactGraphV5
         },
         createdRevision: 2,
       }],
-      factLifecycles: [{
-        factId: 'preferred-vocabulary-time',
-        status: 'active' as const,
-        createdRevision: 2,
-        terminalRevision: null,
-        supersededByFactId: null,
-      }],
-    } : {}),
+      factLifecycles: [
+        active('task-vocabulary'),
+        active('preferred-vocabulary-time', 2),
+      ],
+    } : {
+      factLifecycles: [active('task-vocabulary')],
+    }),
   };
 }
 
@@ -269,13 +279,10 @@ describe('Stable V5 preview scheduler', () => {
         },
         createdRevision: 2,
       }],
-      factLifecycles: [{
-        factId: 'preferred-night-1',
-        status: 'active',
-        createdRevision: 2,
-        terminalRevision: null,
-        supersededByFactId: null,
-      }],
+      factLifecycles: [
+        active('task-1'),
+        active('preferred-night-1', 2),
+      ],
     };
     const item = workItem({
       estimatedMinutes: 180,
