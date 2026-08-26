@@ -1,0 +1,14 @@
+/* Input focus policy ------------------------------------------------------- */
+
+/*
+ * iOS Safari may zoom the page when a text-capable control receives focus
+ * at a computed font size below 16 CSS px. Enforce that threshold before
+ * focus without disabling the user's normal pinch zoom.
+ */
+@media (max-width: 768px), (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='hidden']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

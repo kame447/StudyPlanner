@@ -136,3 +136,32 @@ for (const theme of ['light', 'dark']) {
     expect(pageErrors).toEqual([]);
   });
 }
+
+test('mobile WebKit does not auto-focus text controls and sees at least 16px before focus', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'webkit-mobile', 'iOS-specific contract');
+
+  await seedRegressionUser(page);
+  await page.goto('/');
+
+  await clickPrimaryNav(page, 'AI計画');
+  const composer = page.locator('.ai-planning-composer textarea');
+  await expect(composer).toBeVisible();
+  await expect(composer).not.toBeFocused();
+  expect(await composer.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+
+  const starter = page.locator('.ai-planning-starter-list button').first();
+  if (await starter.isVisible()) {
+    await starter.click();
+    await expect(composer).not.toBeFocused();
+  }
+
+  await clickPrimaryNav(page, '教材');
+  await page.getByRole('button', { name: '教材を検索' }).click();
+  const search = page.getByPlaceholder('教材名・カテゴリで検索');
+  await expect(search).toBeVisible();
+  await expect(search).not.toBeFocused();
+  expect(await search.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+
+  await search.click();
+  await expect(search).toBeFocused();
+});
