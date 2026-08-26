@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import type {
   WeeklyPlanningSchedulerHardDateBoundV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
@@ -138,6 +144,12 @@ function graph(params: {
   };
 }
 
+function placementGraph(params: Parameters<typeof graph>[0]) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph(params)),
+  );
+}
+
 describe('Stable V5 hard date bound placement', () => {
   it('never places ordinary movable work after a compiled hard deadline', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
@@ -147,7 +159,7 @@ describe('Stable V5 hard date bound placement', () => {
           sourceFactIds: ['deadline-1'],
         })],
       }),
-      graph: graph({
+      graph: placementGraph({
         constraints: [{
           id: 'deadline-1',
           kind: 'deadline',
@@ -169,7 +181,7 @@ describe('Stable V5 hard date bound placement', () => {
           sourceFactIds: ['earliest-start-1'],
         })],
       }),
-      graph: graph({
+      graph: placementGraph({
         constraints: [{
           id: 'earliest-start-1',
           kind: 'earliest_start',
@@ -192,7 +204,7 @@ describe('Stable V5 hard date bound placement', () => {
           sourceFactIds: ['earliest-start-1', 'latest-end-1'],
         })],
       }),
-      graph: graph({
+      graph: placementGraph({
         constraints: [
           {
             id: 'earliest-start-1',
@@ -224,7 +236,7 @@ describe('Stable V5 hard date bound placement', () => {
           sourceFactIds: ['task-start-1', 'task-deadline-1'],
         })],
       }),
-      graph: graph({
+      graph: placementGraph({
         withComponent: true,
         constraints: [
           {
@@ -254,7 +266,7 @@ describe('Stable V5 hard date bound placement', () => {
           sourceFactIds: ['earliest-start-1', 'deadline-1'],
         })],
       }),
-      graph: graph({
+      graph: placementGraph({
         constraints: [
           {
             id: 'earliest-start-1',
@@ -278,7 +290,7 @@ describe('Stable V5 hard date bound placement', () => {
   it('does not turn a soft deadline into a compiled hard placement bound', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput(),
-      graph: graph({
+      graph: placementGraph({
         constraints: [{
           id: 'soft-deadline-1',
           kind: 'deadline',
