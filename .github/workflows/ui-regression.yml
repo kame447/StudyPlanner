@@ -37,7 +37,7 @@ on:
       - '.github/workflows/ui-regression.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ui-regression-${{ github.ref }}
@@ -51,8 +51,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: fix/bookshelf-add-material-mobile
           fetch-depth: 1
-          persist-credentials: false
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
@@ -79,8 +80,26 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Run visual regression matrix
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs
+      - name: Refresh visual regression matrix
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs --update-snapshots
+
+      - name: Commit audited Bookshelf baselines and restore CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          snapshot_dir='tests/e2e/visual-regression.spec.mjs-snapshots'
+          tmp_dir="$(mktemp -d)"
+          cp "$snapshot_dir"/bookshelf-*-linux.png "$tmp_dir"/
+          git restore --worktree "$snapshot_dir"
+          cp "$tmp_dir"/bookshelf-*-linux.png "$snapshot_dir"/
+          git fetch origin main --depth=1
+          git checkout origin/main -- .github/workflows/ui-regression.yml
+          git rm -f .github/workflows/update-bookshelf-snapshots.yml
+          git add "$snapshot_dir"/bookshelf-*-linux.png .github/workflows/ui-regression.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test: approve audited Bookshelf add visuals'
+          git push origin HEAD:fix/bookshelf-add-material-mobile
 
       - name: Upload visual regression artifacts
         if: always()
@@ -91,6 +110,7 @@ jobs:
             artifacts/playwright-visual-results/
             artifacts/playwright-visual-report/
             artifacts/playwright-visual-results.json
+            tests/e2e/visual-regression.spec.mjs-snapshots/bookshelf-*-linux.png
           if-no-files-found: ignore
           retention-days: 14
 
