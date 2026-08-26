@@ -53,6 +53,8 @@ function graphWithRecurringBound(params: {
   dateExpression: string;
   constraintLevel?: TemporalConstraintFactV5['constraintLevel'];
   constraintStatus?: 'active' | 'removed';
+  recurrenceKind?: WeeklyPlanningFactGraphV5['recurrences'][number]['kind'];
+  recurrenceDays?: string[];
 }): WeeklyPlanningFactGraphV5 {
   const constraintStatus = params.constraintStatus ?? 'active';
   return {
@@ -84,10 +86,10 @@ function graphWithRecurringBound(params: {
       id: 'recurrence-1',
       taskId: 'task-1',
       targetFactId: 'task-1',
-      kind: 'daily',
+      kind: params.recurrenceKind ?? 'daily',
       count: null,
-      days: [],
-      source: source('recurrence-1', '毎日'),
+      days: params.recurrenceDays ?? [],
+      source: source('recurrence-1', '繰り返し'),
       createdRevision: 1,
     }],
     temporalConstraints: [{
@@ -253,6 +255,25 @@ describe('weekly planning temporal context', () => {
       graph: graphWithRecurringBound({
         kind: 'deadline',
         dateExpression: '2026-09-07',
+      }),
+      selectedDate: '2026-08-26',
+      requestContext,
+    })).toEqual({ startDate: '2026-08-26', endDate: '2026-09-07' });
+  });
+
+  it('uses the same explicit-day recurrence meaning when extending the fallback horizon', () => {
+    const requestContext = createWeeklyPlanningTurnRequestContext({
+      startedAtIso: '2026-08-26T08:40:00.000Z',
+      timeZone: 'Asia/Tokyo',
+      weekStartsOn: 'monday',
+    });
+
+    expect(resolveHorizon({
+      graph: graphWithRecurringBound({
+        kind: 'deadline',
+        dateExpression: '2026-09-07',
+        recurrenceKind: 'custom',
+        recurrenceDays: ['wed', 'fri', 'sun'],
       }),
       selectedDate: '2026-08-26',
       requestContext,
