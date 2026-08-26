@@ -1,10 +1,10 @@
-import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import type {
+  WeeklyPlanningSchedulerPreferredPlacementV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
-  calendarWeekday,
-  canonicalWeekdayIndex,
-  resolveCanonicalDateExpression,
-} from './weeklyPlanningCalendarResolver';
+  WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   clampPlacementWindowsToNotBefore,
   intervalsOverlap,
@@ -23,73 +23,30 @@ export interface PreferredPlacement {
 }
 
 const MIN_USEFUL_FRAGMENT_MINUTES = 30;
-const DEFAULT_NAMED_TIME_PERIODS: Record<string, { startTime: string; endTime: string }> = {
-  morning: { startTime: '06:00', endTime: '12:00' },
-  afternoon: { startTime: '12:00', endTime: '17:00' },
-  evening: { startTime: '17:00', endTime: '21:00' },
-  night: { startTime: '21:00', endTime: '24:00' },
-  before_sleep: { startTime: '21:00', endTime: '24:00' },
-};
-
-function datesForExpression(params: {
-  expression: string | null;
-  dates: string[];
-}): string[] | null {
-  if (!params.expression) return [...params.dates];
-  const weekdayIndex = canonicalWeekdayIndex(params.expression);
-  if (weekdayIndex !== null) {
-    return params.dates.filter((date) => calendarWeekday(date) === weekdayIndex);
-  }
-  if (params.expression.startsWith('custom:')) return null;
-  const resolved = resolveCanonicalDateExpression({
-    expression: params.expression,
-    currentDate: params.dates[0] ?? '',
-  });
-  if (resolved.status !== 'resolved') return null;
-  return params.dates.filter(
-    (date) => date >= resolved.range.start && date <= resolved.range.end,
-  );
-}
 
 export function preferredPlacementsForWorkItem(params: {
-  graph: WeeklyPlanningFactGraphV5;
+  placements: readonly WeeklyPlanningSchedulerPreferredPlacementV5[];
   item: GenericPlanningWorkItem;
   dates: string[];
-  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): PreferredPlacement[] {
-  const activeIds = new Set(
-    params.graph.factLifecycles
-      .filter((entry) => entry.status === 'active')
-      .map((entry) => entry.factId),
-  );
-  const namedTimePeriods = params.namedTimePeriods ?? DEFAULT_NAMED_TIME_PERIODS;
-  return params.graph.temporalConstraints
-    .filter((constraint) =>
-      activeIds.has(constraint.id)
-      && constraint.taskId === params.item.taskId
-      && constraint.kind === 'preferred_window')
-    .flatMap((constraint) => {
-      const dates = datesForExpression({
-        expression: constraint.dateExpression,
-        dates: params.dates,
-      });
-      if (!dates || dates.length === 0) return [];
-      let window: PlacementWindow | null = null;
-      if (constraint.startTime && constraint.endTime) {
-        window = {
-          start: minutesFromPlacementTime(constraint.startTime),
-          end: minutesFromPlacementTime(constraint.endTime),
-        };
-      } else if (constraint.namedTimePeriod) {
-        const resolved = namedTimePeriods[constraint.namedTimePeriod];
-        if (!resolved) return [];
-        window = {
-          start: minutesFromPlacementTime(resolved.startTime),
-          end: minutesFromPlacementTime(resolved.endTime),
-        };
-      }
-      if (window && window.end <= window.start) return [];
-      return [{ dates, window }];
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  const allowedDates = new Set(params.dates);
+  return params.placements
+    .filter((placement) =>
+      placement.taskId === params.item.taskId
+      && placement.targetFactId === targetFactId)
+    .flatMap((placement) => {
+      const dates = placement.dates.filter((date) => allowedDates.has(date));
+      if (dates.length === 0) return [];
+      return [{
+        dates,
+        window: placement.window
+          ? {
+              start: placement.window.startMinute,
+              end: placement.window.endMinute,
+            }
+          : null,
+      }];
     });
 }
 
@@ -98,7 +55,7 @@ export function preferredNamedTimePeriodPlacementV5(params: {
   namedTimePeriod: string;
   namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): PreferredPlacement[] {
-  const periods = params.namedTimePeriods ?? DEFAULT_NAMED_TIME_PERIODS;
+  const periods = params.namedTimePeriods ?? WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5;
   const resolved = periods[params.namedTimePeriod];
   if (!resolved || params.dates.length === 0) return [];
   const window = {
@@ -199,7 +156,7 @@ export function findPlacementSlot(params: {
       });
       const orderedWindows = params.preferLongSegment
         ? [...windows].sort((left, right) =>
-            (right.end - right.start) - (left.end - left.start) || left.start - right.start)
+            (right.end - left.start) - (left.end - right.start) || left.start - right.start)
         : windows;
       for (const window of orderedWindows) {
         const slot = slotInWindow({
