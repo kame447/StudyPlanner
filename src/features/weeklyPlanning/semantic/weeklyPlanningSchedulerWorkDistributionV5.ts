@@ -284,7 +284,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   items: readonly GenericPlanningWorkItem[];
   startDate: string;
   endDate: string;
-  hardDateBounds: readonly WeeklyPlanningSchedulerHardDateBoundV5[];
+  hardDateBounds?: readonly WeeklyPlanningSchedulerHardDateBoundV5[];
   preferredSessionMinutes?: number | null;
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
@@ -294,7 +294,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
         graph: params.graph,
         item,
         dates,
-        hardDateBounds: params.hardDateBounds,
+        hardDateBounds: params.hardDateBounds ?? [],
       }));
   const dayDistributed = dates.length === 0
     ? recurrenceDistributed
