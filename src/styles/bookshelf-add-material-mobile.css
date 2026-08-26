@@ -12,11 +12,11 @@
   animation: none;
 }
 
-/* Match the Schedule add FAB geometry exactly. Schedule's persistent chrome
- * is 74px tall on normal phones and compacts to 68px on short viewports. */
+/* Match Schedule's FAB geometry, including its responsive desktop/tablet and
+ * short/tall viewport overrides. */
 .bookshelf-view .bookshelf-add-material-fab {
   position: fixed;
-  right: max(22px, calc((100vw - min(100vw, 508px)) / 2 + 22px));
+  right: max(22px, calc((100vw - min(100vw, 900px)) / 2 + 22px));
   bottom: calc(74px + 14px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
   width: 56px;
@@ -62,12 +62,20 @@
   color: #10233f;
 }
 
-/* Mirror Schedule's quick-entry sheet geometry. The overlay owns the viewport;
- * the material card owns vertical scrolling because this form is longer than
- * the Schedule quick-entry form. Generic modal overlays reserve a stable
- * scrollbar gutter, so clear that reservation when the overlay itself no
- * longer scrolls. */
-.bookshelf-view > .modal-overlay:has(> .bookshelf-modal) {
+/* Schedule hands its FAB off when a full editor opens. Do the same here so a
+ * second add affordance cannot remain visible or interactive through the
+ * material editor backdrop. */
+.bookshelf-view:has(> .modal-overlay > .bookshelf-modal .bookshelf-material-edit-grid)
+  .bookshelf-add-material-fab {
+  transform: translate3d(0, -34px, 0) scale(0.72);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+/* Scope the sheet override to the material editor. Subject management also
+ * uses .bookshelf-modal and must retain the generic dialog contract. */
+.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid) {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -84,9 +92,10 @@
 }
 
 /* Schedule's quick-entry card is min(620px, 100vw - 32px). Reuse that exact
- * horizontal contract so the two creation surfaces line up on phones and
- * desktop, while Bookshelf keeps its longer form scrollable. */
-.bookshelf-view > .modal-overlay > .bookshelf-modal {
+ * horizontal contract while Bookshelf keeps its longer form scrollable. */
+.bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
   width: min(620px, calc(100vw - 32px));
   max-width: 620px;
   max-height: 92dvh;
@@ -103,7 +112,10 @@
   animation: planner-bottom-sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.bookshelf-view > .modal-overlay > .bookshelf-modal .section-header {
+.bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid)
+  .section-header {
   position: sticky;
   top: -1px;
   z-index: 4;
@@ -124,9 +136,23 @@
   }
 }
 
+@media (min-width: 700px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    right: max(30px, calc((100vw - min(96vw, 1040px)) / 2 + 30px));
+  }
+}
+
+@media (min-width: 900px) and (min-height: 1200px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    bottom: calc(112px + 14px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal),
-  .bookshelf-view > .modal-overlay > .bookshelf-modal {
+  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
+  .bookshelf-view
+    > .modal-overlay
+    > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
   }
