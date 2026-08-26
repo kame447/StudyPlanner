@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type PlanningFactLifecycleEntryV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -13,6 +20,16 @@ function source(id: string) {
     semanticLocalId: id,
     sourceText: '相対日付の範囲で毎日1時間やる',
     origin: 'user' as const,
+  };
+}
+
+function active(factId: string): PlanningFactLifecycleEntryV5 {
+  return {
+    factId,
+    status: 'active',
+    createdRevision: 1,
+    terminalRevision: null,
+    supersededByFactId: null,
   };
 }
 
@@ -82,14 +99,29 @@ function graph(dateExpression = 'tomorrow'): WeeklyPlanningFactGraphV5 {
       source: source('recurrence-1'),
       createdRevision: 1,
     }],
+    factLifecycles: [
+      active('task-1'),
+      active('workload-1'),
+      active('earliest-start-1'),
+      active('latest-end-1'),
+      active('recurrence-1'),
+    ],
   };
+}
+
+function activeGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningActiveSchedulerGraphViewV5(value);
+}
+
+function placementGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningPlacementGraphViewV5(activeGraph(value));
 }
 
 describe('Stable V5 relative hard-date reference', () => {
   it('resolves relative hard bounds from the request date instead of the planning-horizon start', () => {
     const value = graph();
     const compiled = compileGenericSchedulerInput({
-      graph: value,
+      graph: activeGraph(value),
       context: {
         ownerId: 'owner-1',
         currentDate: '2026-08-26',
@@ -106,7 +138,7 @@ describe('Stable V5 relative hard-date reference', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');
@@ -127,7 +159,7 @@ describe('Stable V5 relative hard-date reference', () => {
       '2026-09-05',
     ];
     const compiled = compileGenericSchedulerInput({
-      graph: value,
+      graph: activeGraph(value),
       context: {
         ownerId: 'owner-1',
         currentDate: '2026-08-30',
@@ -147,7 +179,7 @@ describe('Stable V5 relative hard-date reference', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');

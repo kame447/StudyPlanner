@@ -1,5 +1,14 @@
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from '../semantic/weeklyPlanningResolvedDateExpressionsV5';
+import {
+  resolveWeeklyPlanningTemporalConstraintsV5,
+} from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import {
   createWeeklyPlanningSemanticPipelineV5,
@@ -94,10 +103,25 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     conversationId: input.conversationId,
   });
   const activeWindowsBefore = activeStableV5PlanningWindows(runtimeSession.graph);
+  const activeSchedulerGraphBefore = createWeeklyPlanningActiveSchedulerGraphViewV5(
+    runtimeSession.graph,
+  );
+  const resolvedDateExpressionsBefore = resolveWeeklyPlanningDateExpressionsV5({
+    graph: activeSchedulerGraphBefore,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+  });
+  const resolvedTemporalConstraintsBefore = resolveWeeklyPlanningTemporalConstraintsV5({
+    graph: activeSchedulerGraphBefore,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+    resolvedDateExpressions: resolvedDateExpressionsBefore,
+  });
   const fallbackHorizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: runtimeSession.graph,
+    graph: activeSchedulerGraphBefore,
     selectedDate: input.selectedDate,
     requestContext,
+    resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
     groundingRecords: input.previousState?.groundingRecords,
   });
   const recentConversation = input.messages
@@ -125,6 +149,8 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       selectedDate: input.selectedDate,
       requestContext,
       requestContextSource: temporal.source,
+      resolvedDateExpressions: resolvedDateExpressionsBefore,
+      resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
       fallbackHorizon,
       horizonCriteria: {
         moreThanOneActiveWindow: 'return null',

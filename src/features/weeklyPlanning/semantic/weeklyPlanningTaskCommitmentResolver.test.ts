@@ -3,6 +3,9 @@ import {
   createEmptyWeeklyPlanningFactGraphV2,
   type WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
+import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 import { resolveWeeklyPlanningTaskCommitments } from './weeklyPlanningTaskCommitmentResolver';
 
 function source(semanticLocalId: string, sourceText: string) {
@@ -54,9 +57,29 @@ const context = {
   timeZone: 'Asia/Tokyo',
 } as const;
 
+function resolve(
+  value: WeeklyPlanningFactGraphV2,
+  contextOverride: typeof context | {
+    currentDate: string;
+    planningStartDate: string;
+    planningEndDate: string;
+    timeZone: string;
+  } = context,
+) {
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: value,
+    currentDate: contextOverride.currentDate,
+  });
+  return resolveWeeklyPlanningTaskCommitments({
+    graph: value,
+    context: contextOverride,
+    resolvedDateExpressions,
+  });
+}
+
 describe('weekly planning task commitment resolver', () => {
   it('resolves a hard fixed task into a task-bound reservation', () => {
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: graph(), context });
+    const result = resolve(graph());
 
     expect(result).toMatchObject({ readiness: 'ready', issues: [] });
     expect(result.reservations).toEqual([
@@ -87,7 +110,7 @@ describe('weekly planning task commitment resolver', () => {
       },
     ];
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result.issues).toEqual([]);
     expect(result.reservations).toHaveLength(5);
@@ -100,12 +123,39 @@ describe('weekly planning task commitment resolver', () => {
     ]);
   });
 
+  it('expands custom commitments from canonical weekdays by the shared calendar rule', () => {
+    const value = graph();
+    value.temporalConstraints[0].dateExpression = null;
+    value.recurrences = [
+      {
+        id: 'recurrence-custom',
+        taskId: 'task-dinner',
+        targetFactId: 'task-dinner',
+        kind: 'custom',
+        count: null,
+        days: ['wed', 'fri', 'sun'],
+        source: source('recurrence-custom', '水金日'),
+        createdRevision: 1,
+      },
+    ];
+
+    const result = resolve(value);
+
+    expect(result.readiness).toBe('ready');
+    expect(result.issues).toEqual([]);
+    expect(result.reservations.map((item) => item.start.date)).toEqual([
+      '2026-07-22',
+      '2026-07-24',
+      '2026-07-26',
+    ]);
+  });
+
   it('keeps cross-midnight commitments as next-day reservations', () => {
     const value = graph();
     value.temporalConstraints[0].startTime = '23:00';
     value.temporalConstraints[0].endTime = '00:30';
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result.reservations[0]).toMatchObject({
       start: { date: '2026-07-22', time: '23:00' },
@@ -117,7 +167,7 @@ describe('weekly planning task commitment resolver', () => {
     const value = graph();
     value.temporalConstraints[0].dateExpression = null;
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result.reservations).toEqual([]);
     expect(result.readiness).toBe('needs_resolution');
@@ -132,15 +182,13 @@ describe('weekly planning task commitment resolver', () => {
   it('allows an unscoped fixed interval only when the plan is one day', () => {
     const value = graph();
     value.temporalConstraints[0].dateExpression = null;
+    const oneDayContext = {
+      ...context,
+      planningStartDate: '2026-07-22',
+      planningEndDate: '2026-07-22',
+    };
 
-    const result = resolveWeeklyPlanningTaskCommitments({
-      graph: value,
-      context: {
-        ...context,
-        planningStartDate: '2026-07-22',
-        planningEndDate: '2026-07-22',
-      },
-    });
+    const result = resolve(value, oneDayContext);
 
     expect(result.readiness).toBe('ready');
     expect(result.reservations[0].start.date).toBe('2026-07-22');
@@ -150,7 +198,7 @@ describe('weekly planning task commitment resolver', () => {
     for (const level of ['unknown', 'soft'] as const) {
       const value = graph();
       value.temporalConstraints[0].constraintLevel = level;
-      const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+      const result = resolve(value);
 
       expect(result.reservations).toEqual([]);
       expect(result.issues[0].code).toBe(
@@ -187,7 +235,7 @@ describe('weekly planning task commitment resolver', () => {
       },
     ];
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result.reservations).toEqual([]);
     expect(result.issues).toContainEqual({
@@ -203,7 +251,7 @@ describe('weekly planning task commitment resolver', () => {
     const value = graph();
     value.temporalConstraints[0].dateExpression = 'custom:試験前日';
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result.reservations).toEqual([]);
     expect(result.readiness).toBe('needs_resolution');
@@ -221,7 +269,7 @@ describe('weekly planning task commitment resolver', () => {
     value.temporalConstraints[0].kind = 'latest_end';
     value.temporalConstraints[0].startTime = null;
 
-    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+    const result = resolve(value);
 
     expect(result).toEqual({
       reservations: [],

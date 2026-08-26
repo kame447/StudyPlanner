@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function workItem(): GenericPlanningWorkItem {
@@ -51,6 +57,8 @@ function input(): GenericSchedulerInput {
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
+    hardDateBounds: [],
+    preferredPlacements: [],
     sourceFactRefs: ['task-1', 'workload-1'],
   };
 }
@@ -72,14 +80,27 @@ function graph(): WeeklyPlanningFactGraphV5 {
       },
       createdRevision: 1,
     }],
+    factLifecycles: [{
+      factId: 'task-1',
+      status: 'active',
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
+    }],
   };
+}
+
+function placementGraph() {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph()),
+  );
 }
 
 describe('Stable V5 preview scheduler request-time cutoff', () => {
   it('never places a today block before the request-time cutoff', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: input(),
-      graph: graph(),
+      graph: placementGraph(),
       notBefore: { date: '2026-08-11', time: '14:56' },
     });
 
@@ -95,7 +116,7 @@ describe('Stable V5 preview scheduler request-time cutoff', () => {
   it('reports insufficient capacity when today has already ended', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: input(),
-      graph: graph(),
+      graph: placementGraph(),
       notBefore: { date: '2026-08-11', time: '24:00' },
     });
 

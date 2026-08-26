@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
+import type {
+  WeeklyPlanningSchedulerHardDateBoundV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -15,6 +24,16 @@ function source(id: string) {
     semanticLocalId: id,
     sourceText: 'レポートを進める',
     origin: 'user' as const,
+  };
+}
+
+function active(factId: string) {
+  return {
+    factId,
+    status: 'active' as const,
+    createdRevision: 1,
+    terminalRevision: null,
+    supersededByFactId: null,
   };
 }
 
@@ -46,7 +65,10 @@ function workItem(overrides: Partial<GenericPlanningWorkItem> = {}): GenericPlan
   };
 }
 
-function schedulerInput(item = workItem()): GenericSchedulerInput {
+function schedulerInput(params: {
+  item?: GenericPlanningWorkItem;
+  hardDateBounds?: WeeklyPlanningSchedulerHardDateBoundV5[];
+} = {}): GenericSchedulerInput {
   return {
     version: 'weekly-planning-generic-scheduler-input-v2',
     graphRevision: 1,
@@ -57,13 +79,30 @@ function schedulerInput(item = workItem()): GenericSchedulerInput {
       timeZone: 'Asia/Tokyo',
       planningWindowFactIds: [],
     },
-    movableWorkItems: [item],
+    movableWorkItems: [params.item ?? workItem()],
     fixedTaskReservations: [],
     taskDateEligibilities: [],
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
+    hardDateBounds: params.hardDateBounds ?? [],
+    preferredPlacements: [],
     sourceFactRefs: ['task-1', 'workload-1'],
+  };
+}
+
+function hardBound(params: {
+  targetFactId?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  sourceFactIds: string[];
+}): WeeklyPlanningSchedulerHardDateBoundV5 {
+  return {
+    taskId: 'task-1',
+    targetFactId: params.targetFactId ?? 'task-1',
+    startDate: params.startDate ?? null,
+    endDate: params.endDate ?? null,
+    sourceFactIds: params.sourceFactIds,
   };
 }
 
@@ -112,19 +151,28 @@ function graph(params: {
       source: source(constraint.id),
       createdRevision: 1,
     })),
+    factLifecycles: [
+      active('task-1'),
+      ...(params.withComponent ? [active('component-1')] : []),
+      ...params.constraints.map((constraint) => active(constraint.id)),
+    ],
   };
 }
 
+function placementGraph(params: Parameters<typeof graph>[0]) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph(params)),
+  );
+}
+
 describe('Stable V5 hard date bound placement', () => {
-  it('never places ordinary movable work after a hard deadline', () => {
+  it('never places ordinary movable work after a compiled hard deadline', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput(),
-      graph: graph({
-        constraints: [{
-          id: 'deadline-1',
-          kind: 'deadline',
-          dateExpression: '2026-08-19',
-        }],
+      input: schedulerInput({
+        hardDateBounds: [hardBound({ endDate: '2026-08-19', sourceFactIds: ['deadline-1'] })],
+      }),
+      graph: placementGraph({
+        constraints: [{ id: 'deadline-1', kind: 'deadline', dateExpression: '2026-08-19' }],
       }),
     });
 
@@ -133,15 +181,13 @@ describe('Stable V5 hard date bound placement', () => {
     expect(scheduled.candidates[0].date <= '2026-08-19').toBe(true);
   });
 
-  it('never places ordinary movable work before a hard earliest start', () => {
+  it('never places ordinary movable work before a compiled hard earliest start', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput(),
-      graph: graph({
-        constraints: [{
-          id: 'earliest-start-1',
-          kind: 'earliest_start',
-          dateExpression: '2026-08-21',
-        }],
+      input: schedulerInput({
+        hardDateBounds: [hardBound({ startDate: '2026-08-21', sourceFactIds: ['earliest-start-1'] })],
+      }),
+      graph: placementGraph({
+        constraints: [{ id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-21' }],
       }),
     });
 
@@ -150,21 +196,19 @@ describe('Stable V5 hard date bound placement', () => {
     expect(scheduled.candidates[0].date >= '2026-08-21').toBe(true);
   });
 
-  it('intersects hard start and end bounds down to an exact allowed date', () => {
+  it('intersects compiled hard start and end bounds down to an exact allowed date', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput(),
-      graph: graph({
+      input: schedulerInput({
+        hardDateBounds: [hardBound({
+          startDate: '2026-08-20',
+          endDate: '2026-08-20',
+          sourceFactIds: ['earliest-start-1', 'latest-end-1'],
+        })],
+      }),
+      graph: placementGraph({
         constraints: [
-          {
-            id: 'earliest-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-20',
-          },
-          {
-            id: 'latest-end-1',
-            kind: 'latest_end',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-20' },
+          { id: 'latest-end-1', kind: 'latest_end', dateExpression: '2026-08-20' },
         ],
       }),
     });
@@ -173,23 +217,23 @@ describe('Stable V5 hard date bound placement', () => {
     expect(scheduled.candidates.map((candidate) => candidate.date)).toEqual(['2026-08-20']);
   });
 
-  it('inherits a task-level hard bound for component work', () => {
+  it('applies a compiler-inherited task bound to component work', () => {
     const item = workItem({ componentId: 'component-1' });
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput(item),
-      graph: graph({
+      input: schedulerInput({
+        item,
+        hardDateBounds: [hardBound({
+          targetFactId: 'component-1',
+          startDate: '2026-08-20',
+          endDate: '2026-08-20',
+          sourceFactIds: ['task-start-1', 'task-deadline-1'],
+        })],
+      }),
+      graph: placementGraph({
         withComponent: true,
         constraints: [
-          {
-            id: 'task-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-20',
-          },
-          {
-            id: 'task-deadline-1',
-            kind: 'deadline',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'task-start-1', kind: 'earliest_start', dateExpression: '2026-08-20' },
+          { id: 'task-deadline-1', kind: 'deadline', dateExpression: '2026-08-20' },
         ],
       }),
     });
@@ -198,21 +242,19 @@ describe('Stable V5 hard date bound placement', () => {
     expect(scheduled.candidates.map((candidate) => candidate.date)).toEqual(['2026-08-20']);
   });
 
-  it('fails closed when hard date bounds leave no eligible day', () => {
+  it('fails closed when compiled hard date bounds leave no eligible day', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
-      input: schedulerInput(),
-      graph: graph({
+      input: schedulerInput({
+        hardDateBounds: [hardBound({
+          startDate: '2026-08-22',
+          endDate: '2026-08-20',
+          sourceFactIds: ['earliest-start-1', 'deadline-1'],
+        })],
+      }),
+      graph: placementGraph({
         constraints: [
-          {
-            id: 'earliest-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-22',
-          },
-          {
-            id: 'deadline-1',
-            kind: 'deadline',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-22' },
+          { id: 'deadline-1', kind: 'deadline', dateExpression: '2026-08-20' },
         ],
       }),
     });
@@ -222,10 +264,10 @@ describe('Stable V5 hard date bound placement', () => {
     expect(scheduled.unscheduledWorkItemIds).toEqual(['work-item-1']);
   });
 
-  it('does not turn a soft deadline into a hard placement bound', () => {
+  it('does not turn a soft deadline into a compiled hard placement bound', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput(),
-      graph: graph({
+      graph: placementGraph({
         constraints: [{
           id: 'soft-deadline-1',
           kind: 'deadline',

@@ -50,6 +50,7 @@ export interface WeeklyPlanningGroundingRecord {
 export type WeeklyPlanningRepairAgendaDomain =
   | 'semantic_uncertainty'
   | 'planning_horizon'
+  | 'temporal_constraint'
   | 'work_item'
   | 'commitment'
   | 'task_date_rule'

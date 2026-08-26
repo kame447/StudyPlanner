@@ -40,12 +40,13 @@ export type WeeklyPlanningStableDialogueDecisionV5 =
 const DOMAIN_PRIORITY: Record<GenericSchedulerInputIssue['domain'], number> = {
   semantic_uncertainty: 0,
   planning_horizon: 1,
-  availability: 2,
-  commitment: 3,
-  task_date_rule: 4,
-  work_item: 5,
-  relation: 6,
-  deduplication: 7,
+  temporal_constraint: 2,
+  availability: 3,
+  commitment: 4,
+  task_date_rule: 5,
+  work_item: 6,
+  relation: 7,
+  deduplication: 8,
 };
 
 const WORK_ITEM_CODE_PRIORITY: Record<string, number> = {

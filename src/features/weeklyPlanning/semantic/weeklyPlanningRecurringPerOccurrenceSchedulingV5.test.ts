@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type PlanningFactLifecycleEntryV5,
   type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -14,6 +21,16 @@ function source(id: string) {
     semanticLocalId: id,
     sourceText: '来週は毎日2時間ずつ',
     origin: 'user' as const,
+  };
+}
+
+function active(factId: string): PlanningFactLifecycleEntryV5 {
+  return {
+    factId,
+    status: 'active',
+    createdRevision: 1,
+    terminalRevision: null,
+    supersededByFactId: null,
   };
 }
 
@@ -28,15 +45,26 @@ function graph(): WeeklyPlanningFactGraphV5 {
       source: source('task-mock-exam'),
       createdRevision: 1,
     }],
-    components: [{
-      id: 'component-math',
-      taskId: 'task-mock-exam',
-      parentComponentId: null,
-      role: 'subject',
-      label: '数学',
-      source: source('component-math'),
-      createdRevision: 1,
-    }],
+    components: [
+      {
+        id: 'component-math',
+        taskId: 'task-mock-exam',
+        parentComponentId: null,
+        role: 'subject',
+        label: '数学',
+        source: source('component-math'),
+        createdRevision: 1,
+      },
+      {
+        id: 'component-english',
+        taskId: 'task-mock-exam',
+        parentComponentId: null,
+        role: 'subject',
+        label: '英語',
+        source: source('component-english'),
+        createdRevision: 1,
+      },
+    ],
     workloads: [{
       id: 'workload-math-daily',
       taskId: 'task-mock-exam',
@@ -62,7 +90,20 @@ function graph(): WeeklyPlanningFactGraphV5 {
       source: source('recurrence-math-daily'),
       createdRevision: 1,
     }],
+    factLifecycles: [
+      active('task-mock-exam'),
+      active('component-math'),
+      active('component-english'),
+      active('workload-math-daily'),
+      active('recurrence-math-daily'),
+    ],
   };
+}
+
+function placementGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+  );
 }
 
 function addTemporalConstraint(
@@ -89,6 +130,7 @@ function addTemporalConstraint(
     source: source(params.id),
     createdRevision: 1,
   });
+  value.factLifecycles.push(active(params.id));
 }
 
 function compile(
@@ -97,7 +139,7 @@ function compile(
   planningEndDate = '2026-08-23',
 ) {
   return compileGenericSchedulerInput({
-    graph: value,
+    graph: createWeeklyPlanningActiveSchedulerGraphViewV5(value),
     context: {
       ownerId: 'owner-1',
       currentDate: '2026-08-14',
@@ -128,7 +170,7 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');
@@ -166,9 +208,27 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
     expect(compiled.input?.movableWorkItems[0].requiredDate).toBeUndefined();
   });
 
-  it('does not borrow recurrence semantics from a different exact target', () => {
+  it('inherits a task-level recurrence for component work', () => {
     const value = graph();
     value.recurrences[0].targetFactId = 'task-mock-exam';
+
+    const compiled = compile(value);
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
+      '2026-08-23',
+    ]);
+  });
+
+  it('does not borrow recurrence semantics from a sibling component', () => {
+    const value = graph();
+    value.recurrences[0].targetFactId = 'component-english';
 
     const compiled = compile(value);
 
@@ -277,7 +337,7 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
     ]);
   });
 
-  it('does not turn soft or unrelated component date preferences into hard recurrence bounds', () => {
+  it('does not turn soft or sibling component date preferences into hard recurrence bounds', () => {
     const soft = graph();
     addTemporalConstraint(soft, {
       id: 'soft-deadline',
@@ -287,14 +347,14 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
     });
     expect(compile(soft).input?.movableWorkItems).toHaveLength(7);
 
-    const unrelatedTarget = graph();
-    addTemporalConstraint(unrelatedTarget, {
+    const siblingTarget = graph();
+    addTemporalConstraint(siblingTarget, {
       id: 'other-component-deadline',
       kind: 'deadline',
       dateExpression: '2026-08-19',
       targetFactId: 'component-english',
     });
-    expect(compile(unrelatedTarget).input?.movableWorkItems).toHaveLength(7);
+    expect(compile(siblingTarget).input?.movableWorkItems).toHaveLength(7);
   });
 
   it('intersects an occurrence date with task exclusions and returns no partial preview', () => {
@@ -309,12 +369,13 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
       source: source('exclude-wednesday'),
       createdRevision: 1,
     }];
+    value.factLifecycles.push(active('exclude-wednesday'));
     const compiled = compile(value);
     expect(compiled.status).toBe('ready');
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('insufficient_capacity');

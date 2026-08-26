@@ -5,6 +5,12 @@ import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
 } from './weeklyPlanningGenericSchedulerInput';
+import type {
+  WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import type {
+  WeeklyPlanningResolvedTemporalConstraintsV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 
 type CompilerInput = Parameters<typeof compileGenericSchedulerInput>[0];
 type SchedulerGraph = CompilerInput['graph'];
@@ -22,6 +28,8 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   sessionMinutes: number;
   context: CompilerInput['context'];
   externalSources: CompilerInput['externalSources'];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedTemporalConstraints?: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): GenericSchedulerInputCompilationResult | null {
   if (!Number.isFinite(params.sessionMinutes) || params.sessionMinutes <= 0) return null;
 
@@ -70,6 +78,8 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
     graph: projectedGraph,
     context: params.context,
     externalSources: params.externalSources,
+    resolvedDateExpressions: params.resolvedDateExpressions,
+    resolvedTemporalConstraints: params.resolvedTemporalConstraints,
   });
   if (!compiled.input) return compiled;
 

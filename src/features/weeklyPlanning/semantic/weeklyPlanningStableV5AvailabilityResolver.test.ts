@@ -6,6 +6,9 @@ import {
   resolveWeeklyPlanningAvailability,
 } from './weeklyPlanningAvailabilityResolver';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   createWeeklyPlanningAvailabilityResolverGraphV5,
 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 import {
@@ -72,12 +75,17 @@ describe('Stable V5 availability resolver compatibility', () => {
     });
     expect(canonical.status).toBe('applied');
 
+    const graph = createWeeklyPlanningAvailabilityResolverGraphV5({
+      revision: canonical.graph.revision,
+      availabilityDeclarations: canonical.graph.availabilityDeclarations,
+      constraintSourceRequests: canonical.graph.constraintSourceRequests,
+    });
+    const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+      graph,
+      currentDate: '2026-07-22',
+    });
     const resolved = resolveWeeklyPlanningAvailability({
-      graph: createWeeklyPlanningAvailabilityResolverGraphV5({
-        revision: canonical.graph.revision,
-        availabilityDeclarations: canonical.graph.availabilityDeclarations,
-        constraintSourceRequests: canonical.graph.constraintSourceRequests,
-      }),
+      graph,
       context: {
         ownerId: 'owner-1',
         currentDate: '2026-07-22',
@@ -104,6 +112,7 @@ describe('Stable V5 availability resolver compatibility', () => {
           attemptCount: 1,
         },
       ],
+      resolvedDateExpressions,
     });
 
     expect(resolved.readiness).toBe('ready');
