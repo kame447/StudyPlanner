@@ -40,6 +40,13 @@ function graph(): WeeklyPlanningFactGraphV5 {
       },
       createdRevision: 1,
     }],
+    factLifecycles: [{
+      factId: 'task-1',
+      status: 'active',
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
+    }],
   };
 }
 
@@ -150,6 +157,8 @@ function input(params: {
     })),
     sourceSelections: [],
     relations: [],
+    hardDateBounds: [],
+    preferredPlacements: [],
     sourceFactRefs: ['task-1'],
   };
 }
