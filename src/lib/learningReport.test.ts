@@ -289,6 +289,39 @@ describe('learning report model', () => {
     ]);
     expect(report.actualMinutes).toBe(120);
   });
+
+  it('groups records without a material by subject instead of using the record title', () => {
+    const report = buildLearningReportModel({
+      scope: 'day',
+      anchorDate: '2026-08-24',
+      materialFilter: ALL_MATERIALS_FILTER,
+      plans: [],
+      actuals: [
+        makeActual({
+          id: 'actual-subject-only',
+          title: '動的計画法の復習',
+          subject: '情報科学',
+          materialId: null,
+          materialName: '',
+        }),
+      ],
+      subjects,
+      materials,
+    });
+
+    expect(report.actualMinutes).toBe(60);
+    expect(report.breakdown).toHaveLength(1);
+    expect(report.breakdown[0]).toMatchObject({
+      key: 'subject:情報科学',
+      label: '情報科学',
+      subject: '情報科学',
+      minutes: 60,
+      ratio: 1,
+    });
+    expect(
+      report.breakdown.reduce((sum, entry) => sum + entry.minutes, 0),
+    ).toBe(report.actualMinutes);
+  });
 });
 
 describe('learning report material options', () => {
