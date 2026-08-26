@@ -57,6 +57,8 @@ function input(): GenericSchedulerInput {
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
+    hardDateBounds: [],
+    preferredPlacements: [],
     sourceFactRefs: ['task-1', 'workload-1'],
   };
 }
@@ -77,6 +79,13 @@ function graph(): WeeklyPlanningFactGraphV5 {
         origin: 'user',
       },
       createdRevision: 1,
+    }],
+    factLifecycles: [{
+      factId: 'task-1',
+      status: 'active',
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
     }],
   };
 }
