@@ -144,7 +144,10 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   }
 
   return (
-    <div className="ai-planning-view-shell-v2" onClickCapture={openPreviewFromLegacySurface}>
+    <div
+      className={`ai-planning-view-shell-v2 ${isPreviewOpen ? 'is-preview-open' : ''}`}
+      onClickCapture={openPreviewFromLegacySurface}
+    >
       <AiPlanningViewLegacy {...props} />
       {isPreviewOpen && allPreviewBlocks.length > 0 ? (
         <div
