@@ -1,11 +1,13 @@
 import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type { TaskDateRuleFact } from './weeklyPlanningFactGraphV2';
 import {
-  calendarWeekday,
   intersectCalendarDates,
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
 
 export interface WeeklyPlanningTaskDateRuleGraphView {
   readonly tasks: ReadonlyArray<{ id: string }>;
@@ -51,16 +53,6 @@ interface MutableTaskDateEligibility {
   explicitAllowedRuleByDate: Map<string, string>;
   excludedRuleByDate: Map<string, string>;
 }
-
-const WEEKDAY_INDEX: Record<string, number> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
 
 function mutableState(
   mutable: Map<string, MutableTaskDateEligibility>,
@@ -131,44 +123,22 @@ function resolveRecurrenceDates(params: {
   planningDates: string[];
   issues: TaskDateRuleResolutionIssue[];
 }): string[] | null {
-  if (params.recurrence.kind === 'daily') return [...params.planningDates];
-  if (params.recurrence.kind === 'weekdays') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day !== null && day >= 1 && day <= 5;
-    });
-  }
-  if (params.recurrence.kind === 'weekends') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day === 0 || day === 6;
-    });
-  }
-  if (params.recurrence.kind === 'custom') return null;
-  if (params.recurrence.days.length === 0) return null;
-
-  const indexes = new Set<number>();
-  let invalid = false;
-  for (const day of params.recurrence.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
-      invalid = true;
-      params.issues.push({
-        code: 'invalid_task_recurrence_weekday',
-        taskDateRuleFactId: params.recurrence.id,
-        taskId: params.recurrence.taskId,
-        blocking: true,
-        details: { day },
-      });
-    } else {
-      indexes.add(index);
-    }
-  }
-  if (invalid || indexes.size === 0) return null;
-  return params.planningDates.filter((date) => {
-    const day = calendarWeekday(date);
-    return day !== null && indexes.has(day);
+  const resolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: params.recurrence.kind,
+    days: params.recurrence.days,
+    dates: params.planningDates,
   });
+  for (const day of resolution.invalidDays) {
+    params.issues.push({
+      code: 'invalid_task_recurrence_weekday',
+      taskDateRuleFactId: params.recurrence.id,
+      taskId: params.recurrence.taskId,
+      blocking: true,
+      details: { day },
+    });
+  }
+  if (resolution.invalidDays.length > 0) return null;
+  return resolution.calendarDates;
 }
 
 export function resolveWeeklyPlanningTaskDateRules(params: {
