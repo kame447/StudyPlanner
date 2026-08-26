@@ -29,6 +29,7 @@ import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain'
 export type LearningReportScope = 'day' | 'week' | 'month';
 
 export const ALL_MATERIALS_FILTER = '__all_materials__';
+const UNSET_BREAKDOWN_LABEL = '未設定';
 
 export interface LearningReportRange {
   startDate: string;
@@ -95,6 +96,12 @@ export interface BuildLearningReportModelInput extends LearningReportDataInput {
   materialFilter: string;
 }
 
+interface ResolvedBreakdownSeed {
+  key: string;
+  label: string;
+  subject: string;
+}
+
 function formatFullDate(date: string): string {
   const [year, month, day] = date.split('-');
   return `${year}年${month}月${day}日`;
@@ -142,6 +149,23 @@ function resolveRecordMaterial(
     materialsByName,
     fallbackSubject: record.subjectLabel,
   });
+}
+
+function resolveBreakdownSeed(
+  record: NormalizedStudyRecordForDisplay,
+  materialsById: Map<string, StudyMaterial>,
+  materialsByName: Map<string, StudyMaterial>,
+): ResolvedBreakdownSeed {
+  if (record.materialId || record.materialName) {
+    return resolveRecordMaterial(record, materialsById, materialsByName);
+  }
+
+  const subject = record.subjectLabel.trim() || UNSET_BREAKDOWN_LABEL;
+  return {
+    key: `subject:${subject}`,
+    label: subject,
+    subject,
+  };
 }
 
 function filterRecordsByMaterial(
@@ -273,14 +297,14 @@ function buildBreakdown({
   >();
 
   records.forEach((record) => {
-    const material = resolveRecordMaterial(record, materialsById, materialsByName);
-    const current = grouped.get(material.key) ?? {
-      label: material.label,
-      subject: material.subject,
+    const seed = resolveBreakdownSeed(record, materialsById, materialsByName);
+    const current = grouped.get(seed.key) ?? {
+      label: seed.label,
+      subject: seed.subject,
       minutes: 0,
     };
 
-    grouped.set(material.key, {
+    grouped.set(seed.key, {
       ...current,
       minutes: current.minutes + record.durationMinutes,
     });
@@ -296,7 +320,7 @@ function buildBreakdown({
     .filter((entry) => entry.minutes > 0)
     .sort((left, right) => right.minutes - left.minutes)
     .map((entry, index) => {
-      const subjectKey = entry.subject || '未設定';
+      const subjectKey = entry.subject || UNSET_BREAKDOWN_LABEL;
       const subjectVariantIndex = subjectVariantCounts.get(subjectKey) ?? 0;
       subjectVariantCounts.set(subjectKey, subjectVariantIndex + 1);
 
