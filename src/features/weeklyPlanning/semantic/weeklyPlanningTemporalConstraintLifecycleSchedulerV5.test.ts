@@ -7,6 +7,7 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import { createWeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -128,7 +129,7 @@ function compileAndSchedule(value: WeeklyPlanningFactGraphV5) {
   ]);
   return scheduleWeeklyPlanningStableV5Preview({
     input: compiled.input!,
-    graph: value,
+    graph: createWeeklyPlanningPlacementGraphViewV5(activeGraph),
   });
 }
 
