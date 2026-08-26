@@ -25,6 +25,10 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ホームでは、今日の予定、次の予定、週間の進捗、継続状況をまとめて確認できます。時間割は授業などの固定予定として管理し、週間計画の空き時間計算にも利用します。
 
+### 学習レポート
+
+ホームの週間進捗から、今日・今週・今月・累計の学習時間、期間ごとの推移、教材・科目別の内訳を確認できます。レポートは主要タブではなく、ホームから必要なときに開く二次画面として扱います。
+
 ### レスポンシブ UI
 
 デスクトップ、タブレット、スマートフォンに対応し、ライトモードとダークモードを利用できます。
@@ -135,6 +139,8 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
 
 週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
+
+学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
 
 過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 

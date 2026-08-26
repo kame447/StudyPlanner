@@ -16,6 +16,7 @@ Repository work:
 
 - [Weekly planning](domains/weekly-planning/README.md)
 - [Client runtime](domains/client-runtime/README.md)
+- [Reporting](domains/reporting/README.md)
 
 ## Cross-cutting work
 

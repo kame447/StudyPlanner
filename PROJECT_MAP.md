@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-22
+Updated: 2026-08-26
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -31,6 +31,13 @@ Client-first/runtime work:
 2. `docs/domains/client-runtime/spec/client-first-execution-requirements.md`
 3. Issue #164
 
+Reporting work:
+
+1. `docs/domains/reporting/README.md`
+2. `docs/domains/reporting/spec/learning-report.md`
+3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
+4. `src/components/ReportView.tsx`
+
 `docs/archive/` is evidence, not current instruction.
 
 ## 2. Application shell
@@ -47,11 +54,12 @@ UI components and interaction surfaces. Examples:
 
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
 - calendar / home / bookshelf / timetable views
+- `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
 - `QuickEntryModal.tsx`: generic quick/manual entry surface
 - `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
-- admin/report views
+- admin views
 
-UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization or persistence decisions.
+UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence or reporting aggregation decisions.
 
 ### `src/hooks/`
 
@@ -78,6 +86,10 @@ External/service integration and the separate single-event natural-language subs
 ### `src/lib/`
 
 Small reusable deterministic helpers and cross-cutting utility logic. Domain-changing policy should not be hidden here merely to avoid creating a feature module.
+
+`src/lib/learningReport.ts` owns deterministic user-facing report aggregation/projection for the reporting domain. Its output must preserve the report invariant that selected-period actual total, trend-bucket total and breakdown total are the same filtered Actual set.
+
+Legacy/general report helpers remain in `src/lib/reportAnalytics.ts`; new user-facing learning report behavior should not be reimplemented inside JSX.
 
 ### `src/types/`
 
@@ -175,9 +187,14 @@ Trace is best-effort diagnostic evidence, never authorization or planning truth.
 
 Client-first execution does not mean client-authoritative shared state. Storage/reconciliation changes must align with Issue #164.
 
+### Reporting
+
+学習レポートは既存のPlan/Actual/教材情報を決定論的に集計するprojectionであり、LLMを数値・評価の正本にしない。ReportViewは保存・スケジューリング・意味解釈を所有しない。
+
 ## 7. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
+- reporting aggregation: `src/lib/learningReport.test.ts`
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
 - CI: `.github/workflows/ci.yml`
@@ -209,6 +226,7 @@ Choose the directory by change reason, not by current caller:
 
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
+- learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - natural-language meaning → weekly `semantic/`
 - readiness/proposal/work decision → weekly `planning/`
 - placement/availability → weekly `scheduling/`

@@ -182,7 +182,9 @@ export default function App() {
         ? 'bookshelf'
         : viewMode === 'timetable'
           ? 'timetable'
-          : 'schedule';
+          : viewMode === 'report'
+            ? 'home'
+            : 'schedule';
   const primaryNavClassName = isScheduleSurface
     ? 'schedule-bottom-nav'
     : isAiPlanningSurface
@@ -333,7 +335,7 @@ export default function App() {
             onChangeWeek={openWeek}
             onChangeDay={openDay}
           />
-        ) : viewMode === 'timetable' ? null : (
+        ) : viewMode === 'timetable' || viewMode === 'report' ? null : (
           <AppViewSwitcher
             viewMode={viewMode}
             onChange={(nextViewMode) => {
@@ -504,7 +506,7 @@ export default function App() {
                 actuals={actuals}
                 studySubjects={studySubjects}
                 studyMaterials={studyMaterials}
-                onOpenDay={openDay}
+                onBack={openHomeSurface}
               />
             ) : null}
 

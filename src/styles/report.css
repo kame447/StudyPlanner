@@ -1,746 +1,685 @@
-﻿.report-grid,
-.report-metrics-grid {
+.app-shell:has(.learning-report-view) {
+  width: min(96vw, 1040px);
+  max-width: 1040px;
+  margin: 0 auto;
+  gap: 0;
+  padding-inline: clamp(10px, 2.4vw, 28px);
+}
+
+.app-shell:has(.learning-report-view) > .primary-app-header,
+.app-shell:has(.learning-report-view) > .app-view-switcher {
+  display: none;
+}
+
+.app-shell:has(.learning-report-view) > main {
+  display: block;
+  min-width: 0;
+}
+
+.learning-report-view {
+  width: min(100%, 760px);
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(8px, 1.4vw, 16px) 0 28px;
   display: grid;
   gap: 14px;
+  color: var(--text-primary);
 }
 
-.report-range-toolbar {
+.learning-report-view *,
+.learning-report-view *::before,
+.learning-report-view *::after {
+  box-sizing: border-box;
+}
+
+.learning-report-view .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.learning-report-header {
   display: grid;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.report-range-form {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  align-items: end;
-}
-
-.report-metrics-grid {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  margin-top: 18px;
-}
-
-.report-metrics-panel {
-  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   gap: 8px;
-  margin-top: 10px;
+  align-items: center;
+  min-height: 48px;
 }
 
-.report-metrics-primary,
-.report-metric-chips {
+.learning-report-header h1 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.3rem, 4.8vw, 1.65rem);
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.learning-report-header-spacer {
+  width: 44px;
+  height: 44px;
+}
+
+.learning-report-icon-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.learning-report-icon-button svg {
+  width: 26px;
+  height: 26px;
+}
+
+.learning-report-icon-button:hover,
+.learning-report-icon-button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+
+.learning-report-icon-button:focus-visible,
+.learning-report-scope-tabs button:focus-visible,
+.learning-report-material-filter select:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+
+.learning-report-summary-grid {
   display: grid;
-  gap: 8px;
-}
-
-.report-metrics-primary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.report-metric-chips {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.report-grid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-}
-
-.report-daily-review-layout {
+.learning-report-summary-card {
+  min-width: 0;
+  min-height: 104px;
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-  gap: 14px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-strong);
+  box-shadow: 0 5px 18px rgba(22, 29, 33, 0.05);
 }
 
-@media screen and (max-width: 900px) {
-  .report-daily-review-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.learning-report-summary-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft) 90%);
+  color: var(--accent);
 }
 
-.report-card {
-  padding: 20px;
+.learning-report-summary-icon svg {
+  width: 21px;
+  height: 21px;
 }
 
-.report-pie-card {
-  padding: 14px;
-}
-
-.report-metric-card {
+.learning-report-summary-copy {
+  min-width: 0;
   display: grid;
   gap: 2px;
-  min-height: 0;
-  padding: 7px 9px;
-  border-radius: 12px;
-  background: var(--surface-soft);
+}
+
+.learning-report-summary-copy > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.learning-report-summary-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(1.08rem, 4.3vw, 1.55rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.learning-report-summary-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.learning-report-scope-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 46px;
+  padding: 3px;
   border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
 }
 
-.report-metric-card.primary {
-  gap: 3px;
-  padding: 9px 10px;
+.learning-report-scope-tabs button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
 }
 
-.report-metric-chips .report-metric-card {
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px;
-  align-items: baseline;
+.learning-report-scope-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 5px 14px var(--accent-shadow);
 }
 
-.report-metric-label,
-.report-metric-help,
-.report-timeline-date {
+.learning-report-period-navigation {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+}
+
+.learning-report-period-navigation > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  white-space: nowrap;
+  font-size: clamp(0.8rem, 3vw, 1rem);
+}
+
+.learning-report-material-filter {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
   color: var(--text-muted);
 }
 
-.report-metric-value {
-  font-size: 0.88rem;
-  line-height: 1.1;
+.learning-report-material-filter svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
 }
 
-.report-metric-card.primary .report-metric-value {
-  font-size: 1.18rem;
-  line-height: 1.1;
+.learning-report-material-filter select {
+  min-width: 0;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 30px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
-.report-metric-label {
-  font-size: 0.66rem;
+.learning-report-card,
+.learning-report-empty,
+.learning-report-insight {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-strong);
+  box-shadow: 0 5px 18px rgba(22, 29, 33, 0.04);
 }
 
-.report-metric-chips .report-metric-label {
-  font-size: 0.62rem;
+.learning-report-card {
+  padding: 16px;
 }
 
-.report-metric-chips .report-metric-value {
-  text-align: right;
-}
-
-.report-bar-chart-shell {
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 18px;
-  align-items: stretch;
-}
-
-.report-bar-chart-axis {
-  height: 320px;
-  display: grid;
-  grid-template-rows: repeat(6, minmax(0, 1fr));
-}
-
-.report-bar-chart-axis-tick {
+.learning-report-card-heading {
+  min-width: 0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   align-items: flex-start;
 }
 
-.report-bar-chart-axis-label {
-  transform: translateY(-50%);
+.learning-report-card-heading > div:first-child {
+  min-width: 0;
+}
+
+.learning-report-card-heading h2,
+.learning-report-empty h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.learning-report-card-heading p,
+.learning-report-empty p,
+.learning-report-insight p {
+  margin: 3px 0 0;
   color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.learning-report-period-total {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+}
+
+.learning-report-period-total strong,
+.learning-report-heading-total {
+  color: var(--accent);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.learning-report-period-total span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.learning-report-chart {
+  --learning-report-chart-height: 210px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(
+    var(--learning-report-bucket-count),
+    minmax(0, 1fr)
+  );
+  gap: clamp(2px, 1.4vw, 12px);
+  align-items: end;
+  margin-top: 18px;
+  padding: 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(25% - 0.5px),
+    color-mix(in srgb, var(--border) 72%, transparent) 25%,
+    transparent calc(25% + 0.5px),
+    transparent calc(50% - 0.5px),
+    color-mix(in srgb, var(--border) 72%, transparent) 50%,
+    transparent calc(50% + 0.5px),
+    transparent calc(75% - 0.5px),
+    color-mix(in srgb, var(--border) 72%, transparent) 75%,
+    transparent calc(75% + 0.5px)
+  );
+  background-size: 100% var(--learning-report-chart-height);
+  background-repeat: no-repeat;
+}
+
+.learning-report-chart-item {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: var(--learning-report-chart-height) 38px;
+  gap: 7px;
+  align-items: end;
+}
+
+.learning-report-chart-bar-area {
+  position: relative;
+  width: 100%;
+  height: var(--learning-report-chart-height);
+  display: flex;
+  align-items: end;
+  justify-content: center;
+}
+
+.learning-report-chart-bar {
+  width: min(30px, 72%);
+  min-height: 0;
+  border-radius: 8px 8px 2px 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 78%, white 22%),
+    var(--accent)
+  );
+  box-shadow: 0 5px 12px var(--accent-shadow);
+}
+
+.learning-report-chart-value {
+  position: absolute;
+  left: 50%;
+  bottom: calc(min(100%, var(--learning-report-value-position, 0%)) + 4px);
+  transform: translateX(-50%);
+  color: var(--accent-strong);
+  font-size: 0.61rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.learning-report-chart-bar-area:has(.learning-report-chart-value) .learning-report-chart-value {
+  bottom: auto;
+  top: 0;
+}
+
+.learning-report-chart-label {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  align-content: start;
+  justify-items: center;
+  text-align: center;
+}
+
+.learning-report-chart-label strong,
+.learning-report-chart-label span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-report-chart-label strong {
+  font-size: 0.66rem;
+}
+
+.learning-report-chart-label span {
+  color: var(--text-muted);
+  font-size: 0.6rem;
+}
+
+.learning-report-chart-label.hidden-label {
+  visibility: hidden;
+}
+
+.learning-report-chart.scope-month {
+  gap: 2px;
+}
+
+.learning-report-chart.scope-month .learning-report-chart-bar {
+  width: min(10px, 78%);
+  min-width: 2px;
+  border-radius: 4px 4px 1px 1px;
+}
+
+.learning-report-breakdown-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.learning-report-breakdown-item {
+  --learning-report-entry-color: var(--accent);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.learning-report-breakdown-item:last-child {
+  border-bottom: 0;
+}
+
+.learning-report-breakdown-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: color-mix(
+    in srgb,
+    var(--learning-report-entry-color) 13%,
+    var(--surface-soft) 87%
+  );
+  color: var(--learning-report-entry-color);
+}
+
+.learning-report-breakdown-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.learning-report-breakdown-body,
+.learning-report-breakdown-copy,
+.learning-report-breakdown-value {
+  min-width: 0;
+  display: grid;
+}
+
+.learning-report-breakdown-body {
+  gap: 6px;
+}
+
+.learning-report-breakdown-copy {
+  gap: 1px;
+}
+
+.learning-report-breakdown-copy strong,
+.learning-report-breakdown-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-report-breakdown-copy strong {
+  font-size: 0.82rem;
+}
+
+.learning-report-breakdown-copy span {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.learning-report-breakdown-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--progress-track-background);
+}
+
+.learning-report-breakdown-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--learning-report-entry-color);
+}
+
+.learning-report-breakdown-value {
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+}
+
+.learning-report-breakdown-value strong {
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
-.report-bar-chart-scroll {
-  overflow-x: auto;
-  padding-bottom: 6px;
-}
-
-.report-bar-chart-grid {
-  position: relative;
-  min-width: max-content;
-  height: 320px;
-  display: grid;
-  grid-template-rows: repeat(6, minmax(0, 1fr));
-}
-
-.report-bar-chart-grid-line {
-  border-top: 1px solid var(--border);
-}
-
-.report-bar-chart-bars {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  gap: 18px;
-  align-items: stretch;
-  padding: 0 8px 0 10px;
-}
-
-.report-bar-item {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: 8px;
-  align-items: end;
-  justify-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  min-width: 0;
-  height: 100%;
-  align-self: stretch;
-}
-
-.report-bar-value,
-.report-bar-label,
-.report-bar-sublabel {
-  display: block;
-  text-align: center;
-}
-
-.report-bar-value,
-.report-bar-sublabel {
-  color: var(--text-muted);
-}
-
-.report-bar-value {
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.report-bar-column-track {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  align-self: stretch;
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  border-bottom: 1px solid var(--border-strong);
-}
-
-.report-bar-column-fill {
-  width: min(52px, 74%);
-  min-height: 0;
-  border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, #739bcf 0%, #567fb6 100%);
-  box-shadow: 0 10px 18px rgba(86, 127, 182, 0.18);
-}
-
-.report-bar-label {
-  font-weight: 700;
-}
-
-.report-bar-sublabel {
-  font-size: 0.76rem;
-}
-
-.report-pie-layout {
-  display: grid;
-  grid-template-columns: minmax(128px, 150px) minmax(0, 1fr);
-  gap: 14px;
-  align-items: center;
-  margin-top: 12px;
-}
-
-.report-pie-chart-wrap {
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-}
-
-.report-pie-chart {
-  position: relative;
-  width: clamp(120px, 15vw, 150px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background-repeat: no-repeat;
-  background-size: cover;
-  box-shadow: inset 0 0 0 1px var(--border), 0 10px 18px rgba(31, 43, 43, 0.08);
-}
-
-.report-pie-slice-label {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  padding: 1px 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 42%, transparent);
-  color: var(--text);
+.learning-report-breakdown-value span {
+  color: var(--learning-report-entry-color);
   font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.2;
-  pointer-events: none;
+  font-weight: 900;
 }
 
-.report-pie-total {
+.learning-report-insight {
   display: grid;
-  gap: 2px;
-  justify-items: center;
-  text-align: center;
-}
-
-.report-pie-total strong {
-  font-size: 0.88rem;
-}
-
-.report-pie-total span {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-}
-
-.report-pie-legend {
-  display: grid;
-  gap: 6px;
-}
-
-.report-pie-legend-item {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  padding: 2px 0;
-}
-
-.report-pie-legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.report-pie-legend-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  min-width: 0;
-  align-items: baseline;
-}
-
-.report-pie-legend-body strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.84rem;
-}
-
-.report-pie-legend-body span {
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  white-space: nowrap;
-}
-
-.subject-breakdown-list,
-.report-timeline {
-  display: grid;
-  gap: 12px;
-}
-
-.report-timeline-scroll {
-  max-height: 420px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.subject-breakdown-item,
-.report-timeline-item {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-}
-
-.subject-breakdown-track {
-  height: 8px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--progress-track-background);
-}
-
-.subject-breakdown-fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.report-timeline-item {
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: center;
-  text-align: left;
-  color: inherit;
-  min-height: 74px;
-}
-
-.report-timeline-body {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.report-timeline-body strong,
-.report-timeline-body span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-view .section-header {
+  grid-template-columns: 42px minmax(0, 1fr);
   gap: 10px;
-}
-
-.report-scope-tabs {
-  min-width: min(360px, 100%);
-  gap: 6px;
-}
-
-.report-scope-tabs .segment {
-  min-height: 34px;
-  padding: 6px 11px;
-  font-size: 0.9rem;
-}
-
-.report-view > .panel:first-child {
-  padding: 16px;
-}
-
-.report-view > .panel:first-child .section-header h2 {
-  font-size: 1.25rem;
-}
-
-.report-view > .panel:first-child .section-header p {
-  margin-top: 3px;
-  font-size: 0.82rem;
-}
-
-.report-ranking-list,
-.report-comparison-list,
-.report-compact-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.report-ranking-item,
-.report-comparison-item,
-.report-compact-item {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-}
-
-.report-ranking-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  padding: 13px 14px;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-strong) 95%);
 }
 
-.report-color-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-.report-ranking-subject,
-.report-ranking-ratio,
-.report-compact-item span,
-.report-comparison-label span,
-.report-summary-line {
-  color: var(--text-muted);
-  font-size: 0.84rem;
-}
-
-.report-comparison-item {
+.learning-report-insight-icon,
+.learning-report-empty-icon {
+  width: 42px;
+  height: 42px;
   display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: center;
-}
-
-.report-comparison-item.interactive {
-  cursor: pointer;
-}
-
-.report-comparison-item.interactive:hover {
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft) 88%);
   color: var(--accent);
 }
 
-.report-comparison-legend {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  color: var(--text-muted);
+.learning-report-insight-icon svg,
+.learning-report-empty-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.learning-report-insight strong {
+  color: var(--accent-strong);
   font-size: 0.82rem;
 }
 
-.report-comparison-legend span {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.report-comparison-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-
-.report-comparison-legend i.planned,
-.report-comparison-fill.planned {
-  background: #9aa8b6;
-}
-
-.report-comparison-legend i.actual,
-.report-comparison-fill.actual {
-  background: #567fb6;
-}
-
-.report-comparison-plot {
-  --comparison-item-width: 70px;
+.learning-report-empty {
+  min-height: 190px;
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.report-comparison-axis {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 210px;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  text-align: right;
-  padding-top: 1px;
-}
-
-.report-comparison-scroll {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
-}
-
-.report-comparison-chart {
-  position: relative;
-  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
   gap: 14px;
-  align-items: end;
-  width: max-content;
-  min-width: 100%;
+  align-items: center;
+  padding: 24px 20px;
 }
 
-.report-comparison-grid-lines {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 210px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  pointer-events: none;
-}
-
-.report-comparison-grid-lines span {
-  display: block;
-  width: 100%;
-  border-top: 1px solid var(--border);
-}
-
-.report-comparison-grid-lines span:last-child {
-  border-top-color: var(--border-strong);
-}
-
-.report-comparison-column {
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  min-height: 0;
-}
-
-.report-comparison-column-track {
-  position: relative;
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  width: 100%;
-  height: 210px;
-  min-height: 0;
-}
-
-.report-comparison-bar-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(10px, 18px));
-  gap: 8px;
-  align-items: end;
-  justify-content: center;
-  height: 100%;
-  width: 100%;
-}
-
-.report-comparison-bar {
-  position: relative;
-  height: 100%;
-  min-width: 0;
-}
-
-.report-comparison-fill {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  width: 100%;
-  height: var(--bar-height);
-  min-height: 0;
-  border-radius: 8px 8px 0 0;
-  z-index: 1;
-}
-
-.report-comparison-value {
-  position: absolute;
-  left: 50%;
-  bottom: min(calc(var(--bar-height) + 8px), calc(100% - 1.45em));
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: 68px;
-  padding: 1px 3px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  color: var(--text);
-  font-size: 0.66rem;
-  font-weight: 700;
-  line-height: 1.08;
-  text-align: center;
-  white-space: normal;
-  pointer-events: none;
-  z-index: 3;
-}
-
-.report-comparison-value span {
-  display: block;
-}
-
-.report-comparison-value.staggered {
-  bottom: min(calc(var(--bar-height) + 22px), calc(100% - 1.45em));
-}
-
-.report-comparison-label {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.report-comparison-label strong,
-.report-comparison-label span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-summary-line {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-@media screen and (max-width: 720px) {
-  .report-metrics-panel {
-    gap: 8px;
-    margin-top: 12px;
+@media (max-width: 520px) {
+  .app-shell:has(.learning-report-view) {
+    width: 100%;
+    padding-inline: 10px;
   }
 
-  .report-metrics-primary {
-    gap: 8px;
-  }
-
-  .report-metric-chips {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .report-metric-card {
-    padding: 8px 9px;
-    border-radius: 12px;
-  }
-
-  .report-metric-card.primary {
-    padding: 10px;
-  }
-
-  .report-metric-card.primary .report-metric-value {
-    font-size: 1.18rem;
-  }
-
-  .report-pie-layout {
-    grid-template-columns: minmax(112px, 132px) minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .report-pie-chart {
-    width: clamp(112px, 34vw, 132px);
-  }
-
-  .report-pie-card {
-    padding: 12px;
-  }
-
-  .report-pie-legend {
-    gap: 5px;
-  }
-
-  .report-pie-legend-body {
-    gap: 6px;
-  }
-
-  .report-pie-legend-body strong {
-    font-size: 0.78rem;
-  }
-
-  .report-pie-legend-body span {
-    font-size: 0.68rem;
-  }
-
-  .report-comparison-plot {
-    --comparison-item-width: 76px;
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 7px;
-  }
-
-  .report-comparison-axis {
-    height: 184px;
-    font-size: 0.66rem;
-  }
-
-  .report-comparison-chart {
+  .learning-report-view {
     gap: 12px;
   }
 
-  .report-comparison-grid-lines {
-    height: 184px;
+  .learning-report-summary-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    min-height: 96px;
+    padding: 11px;
+    border-radius: 16px;
   }
 
-  .report-comparison-column-track {
-    height: 184px;
+  .learning-report-summary-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
   }
 
-  .report-comparison-bar-pair {
-    grid-template-columns: repeat(2, minmax(9px, 13px));
-    gap: 7px;
+  .learning-report-summary-icon svg {
+    width: 18px;
+    height: 18px;
   }
 
-  .report-comparison-value {
-    max-width: 56px;
-    padding: 1px 2px;
-    font-size: 0.54rem;
+  .learning-report-card {
+    padding: 14px;
+    border-radius: 18px;
   }
 
-  .report-comparison-value.staggered {
-    bottom: min(calc(var(--bar-height) + 17px), calc(100% - 1.45em));
+  .learning-report-card-heading {
+    gap: 8px;
   }
 
-  .report-comparison-label strong,
-  .report-comparison-label span {
-    font-size: 0.68rem;
+  .learning-report-chart {
+    --learning-report-chart-height: 184px;
+    padding-inline: 0;
+  }
+
+  .learning-report-chart-value {
+    font-size: 0.56rem;
+  }
+
+  .learning-report-breakdown-item {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .learning-report-breakdown-icon {
+    width: 38px;
+    height: 38px;
   }
 }
 
+@media (max-width: 380px) {
+  .learning-report-summary-grid {
+    gap: 8px;
+  }
+
+  .learning-report-summary-card {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 7px;
+    padding: 10px 9px;
+  }
+
+  .learning-report-summary-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .learning-report-summary-copy strong {
+    font-size: 1rem;
+  }
+
+  .learning-report-summary-copy > span {
+    font-size: 0.72rem;
+  }
+
+  .learning-report-summary-copy small {
+    font-size: 0.61rem;
+  }
+
+  .learning-report-period-navigation > strong {
+    font-size: 0.76rem;
+  }
+
+  .learning-report-card-heading {
+    display: grid;
+  }
+
+  .learning-report-period-total {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .learning-report-breakdown-value strong {
+    font-size: 0.72rem;
+  }
+}
+
+@media (min-width: 700px) {
+  .learning-report-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .learning-report-summary-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+}
