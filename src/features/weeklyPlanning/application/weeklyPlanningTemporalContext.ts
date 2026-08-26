@@ -7,7 +7,11 @@ import {
   isValidCalendarDate,
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
+import type { RecurrenceFact } from '../semantic/weeklyPlanningFactGraph';
 import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import {
+  isWeeklyPlanningCalendarExpandableRecurrenceV5,
+} from '../semantic/weeklyPlanningRecurrenceCalendarV5';
 import {
   hardDateBoundForTargetV5,
   WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
@@ -44,12 +48,10 @@ export interface WeeklyPlanningTemporalGraphView {
     componentId: string | null;
     perOccurrence: boolean;
   }>;
-  recurrences?: ReadonlyArray<{
-    id: string;
-    taskId: string;
-    targetFactId: string;
-    kind: string;
-  }>;
+  recurrences?: ReadonlyArray<Pick<
+    RecurrenceFact,
+    'id' | 'taskId' | 'targetFactId' | 'kind' | 'days'
+  >>;
 }
 
 interface ZonedClockParts {
@@ -163,10 +165,6 @@ function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
   return activeFacts(graph, graph.planningWindows);
 }
 
-function isExpandedRecurrenceKind(kind: string): boolean {
-  return kind === 'daily' || kind === 'weekdays' || kind === 'weekends';
-}
-
 function recurringHardDateBounds(params: {
   graph: WeeklyPlanningTemporalGraphView;
   resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
@@ -180,7 +178,10 @@ function recurringHardDateBounds(params: {
     const matchingRecurrences = recurrences.filter((recurrence) =>
       recurrence.taskId === workload.taskId
       && recurrence.targetFactId === targetFactId
-      && isExpandedRecurrenceKind(recurrence.kind));
+      && isWeeklyPlanningCalendarExpandableRecurrenceV5({
+        kind: recurrence.kind,
+        days: recurrence.days,
+      }));
     if (matchingRecurrences.length !== 1) continue;
     const bound = hardDateBoundForTargetV5({
       bounds: params.resolvedTemporalConstraints.hardDateBounds,
