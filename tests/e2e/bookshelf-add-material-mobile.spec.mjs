@@ -101,7 +101,7 @@ async function readSheetGeometry(sheet) {
 test.describe('bookshelf add-material mobile surface', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('matches Schedule FAB position and sheet width from any Bookshelf scroll position', async ({ page }, testInfo) => {
+  test('matches Schedule FAB and keeps the add sheet on the same mobile inset from any Bookshelf scroll position', async ({ page }, testInfo) => {
     await seedBookshelfMobileState(page);
     await page.goto('/');
 
@@ -118,6 +118,13 @@ test.describe('bookshelf add-material mobile surface', () => {
     await expect(scheduleSheet).toBeVisible();
     await waitForAnimations(scheduleSheet);
     const scheduleSheetGeometry = await readSheetGeometry(scheduleSheet);
+    const intendedSheetInset = scheduleSheetGeometry.left;
+    const intendedSheetWidth = scheduleSheetGeometry.viewportWidth - intendedSheetInset * 2;
+
+    // Chromium on Linux reserves a classic scrollbar on the layout viewport,
+    // so Schedule's rendered right edge can include a desktop-only gutter.
+    // Its left edge still exposes the intended mobile 16px sheet inset.
+    expect(Math.abs(intendedSheetInset - 16)).toBeLessThanOrEqual(1);
 
     await testInfo.attach('schedule-add-reference.png', {
       body: await page.screenshot({ fullPage: false }),
@@ -216,9 +223,9 @@ test.describe('bookshelf add-material mobile surface', () => {
     expect(modalGeometry.modalBottomLeftRadius).toBe('0px');
     expect(modalGeometry.pageWidth).toBeLessThanOrEqual(modalGeometry.viewportWidth + 1);
 
-    expect(Math.abs(modalGeometry.modalLeft - scheduleSheetGeometry.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(modalGeometry.modalRight - scheduleSheetGeometry.right)).toBeLessThanOrEqual(1);
-    expect(Math.abs(modalGeometry.modalWidth - scheduleSheetGeometry.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(modalGeometry.modalLeft - intendedSheetInset)).toBeLessThanOrEqual(1);
+    expect(Math.abs(modalGeometry.modalRight - intendedSheetInset)).toBeLessThanOrEqual(1);
+    expect(Math.abs(modalGeometry.modalWidth - intendedSheetWidth)).toBeLessThanOrEqual(1);
 
     await testInfo.attach('bookshelf-add-aligned.png', {
       body: await page.screenshot({ fullPage: false }),
