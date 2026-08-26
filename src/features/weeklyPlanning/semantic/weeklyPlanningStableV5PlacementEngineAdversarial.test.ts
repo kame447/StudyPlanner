@@ -79,6 +79,22 @@ function graph(taskIds: string[]): WeeklyPlanningFactGraphV5 {
       source: { ...source, semanticLocalId: `workload-${taskId}` },
       createdRevision: 1,
     })),
+    factLifecycles: taskIds.flatMap((taskId) => [
+      {
+        factId: taskId,
+        status: 'active' as const,
+        createdRevision: 1,
+        terminalRevision: null,
+        supersededByFactId: null,
+      },
+      {
+        factId: `workload-${taskId}`,
+        status: 'active' as const,
+        createdRevision: 1,
+        terminalRevision: null,
+        supersededByFactId: null,
+      },
+    ]),
   };
 }
 
@@ -105,6 +121,8 @@ function input(items: GenericPlanningWorkItem[]): GenericSchedulerInput {
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
+    hardDateBounds: [],
+    preferredPlacements: [],
     sourceFactRefs: items.flatMap((value) => value.sourceFactRefs),
   };
 }
