@@ -49,8 +49,16 @@ import type {
 } from './weeklyPlanningTaskDateRuleResolver';
 import {
   isValidCalendarDate,
+  listCalendarDatesInclusive,
   type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
+import {
+  materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
+  resolveWeeklyPlanningTemporalConstraintsV5,
+  type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningSchedulerHardDateBoundV5,
+  type WeeklyPlanningSchedulerPreferredPlacementV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   distributeGenericSchedulerWorkItemsV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
@@ -107,6 +115,8 @@ export interface GenericSchedulerInput {
   availabilityWindows: AvailabilityWindowFact[];
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
+  hardDateBounds?: WeeklyPlanningSchedulerHardDateBoundV5[];
+  preferredPlacements?: WeeklyPlanningSchedulerPreferredPlacementV5[];
   sourceFactRefs: string[];
 }
 
@@ -298,6 +308,8 @@ function collectSourceFactRefs(params: {
   windows: AvailabilityWindowFact[];
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
+  hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
 }): string[] {
   const refs = new Set<string>();
   for (const fact of params.graph.planningWindows) refs.add(fact.id);
@@ -315,6 +327,10 @@ function collectSourceFactRefs(params: {
   for (const window of params.windows) refs.add(window.sourceRef);
   for (const selection of params.selections) refs.add(selection.requestFactId);
   for (const relation of params.relations) refs.add(relation.factId);
+  for (const bound of params.hardDateBounds) {
+    for (const ref of bound.sourceFactIds) refs.add(ref);
+  }
+  for (const preferred of params.preferredPlacements) refs.add(preferred.sourceFactId);
   return [...refs].sort();
 }
 
@@ -379,6 +395,7 @@ export function compileGenericSchedulerInput(params: {
   externalSources?: ExternalConstraintSourceSnapshot[];
   estimateCalibrationMultiplier?: number | null;
   observedEstimateOverrides?: readonly GenericSchedulerObservedEstimateOverride[];
+  resolvedTemporalConstraints?: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
@@ -503,13 +520,31 @@ export function compileGenericSchedulerInput(params: {
     return { status: 'needs_resolution', input: null, issues };
   }
 
+  const resolvedTemporalConstraints = params.resolvedTemporalConstraints
+    ?? resolveWeeklyPlanningTemporalConstraintsV5({
+      graph: params.graph,
+      currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
+      namedTimePeriods: params.context.namedTimePeriods,
+    });
+  const hardDateBounds = resolvedTemporalConstraints.hardDateBounds.map((bound) => ({
+    ...bound,
+    sourceFactIds: [...bound.sourceFactIds],
+  }));
+  const horizonDates = listCalendarDatesInclusive(
+    params.context.planningStartDate,
+    params.context.planningEndDate,
+  ) ?? [];
+  const preferredPlacements = materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
+    resolved: resolvedTemporalConstraints,
+    dates: horizonDates,
+  });
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
     items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
-    currentDate: params.context.currentDate,
-    weekStartsOn: params.context.weekStartsOn,
+    hardDateBounds,
   });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
@@ -534,6 +569,8 @@ export function compileGenericSchedulerInput(params: {
     availabilityWindows: availability.windows,
     sourceSelections: availability.sourceSelections,
     relations,
+    hardDateBounds,
+    preferredPlacements,
     sourceFactRefs: collectSourceFactRefs({
       graph: params.graph,
       movableWorkItems,
@@ -542,6 +579,8 @@ export function compileGenericSchedulerInput(params: {
       windows: availability.windows,
       selections: availability.sourceSelections,
       relations,
+      hardDateBounds,
+      preferredPlacements,
     }),
   };
 
