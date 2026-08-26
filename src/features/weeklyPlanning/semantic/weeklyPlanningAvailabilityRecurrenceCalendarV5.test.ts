@@ -4,6 +4,9 @@ import {
   type AvailabilityDeclarationFact,
 } from './weeklyPlanningFactGraphV2';
 import { resolveWeeklyPlanningAvailability } from './weeklyPlanningAvailabilityResolver';
+import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 function source(id: string) {
   return {
@@ -40,15 +43,26 @@ const context = {
   timeZone: 'Asia/Tokyo',
 } as const;
 
+function resolve(days: string[]) {
+  const graph = {
+    ...createEmptyWeeklyPlanningFactGraphV2(),
+    revision: 1,
+    availabilityDeclarations: [declaration(days)],
+  };
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph,
+    currentDate: context.currentDate,
+  });
+  return resolveWeeklyPlanningAvailability({
+    graph,
+    context,
+    resolvedDateExpressions,
+  });
+}
+
 describe('weekly planning availability recurrence calendar integration', () => {
   it('uses canonical custom weekdays from the shared recurrence calendar', () => {
-    const graph = {
-      ...createEmptyWeeklyPlanningFactGraphV2(),
-      revision: 1,
-      availabilityDeclarations: [declaration(['wed', 'fri', 'sun'])],
-    };
-
-    const result = resolveWeeklyPlanningAvailability({ graph, context });
+    const result = resolve(['wed', 'fri', 'sun']);
 
     expect(result.readiness).toBe('ready');
     expect(result.issues).toEqual([]);
@@ -60,13 +74,7 @@ describe('weekly planning availability recurrence calendar integration', () => {
   });
 
   it('keeps a non-canonical weekday blocking instead of inventing a meaning', () => {
-    const graph = {
-      ...createEmptyWeeklyPlanningFactGraphV2(),
-      revision: 1,
-      availabilityDeclarations: [declaration(['wed', '水曜'])],
-    };
-
-    const result = resolveWeeklyPlanningAvailability({ graph, context });
+    const result = resolve(['wed', '水曜']);
 
     expect(result.readiness).toBe('needs_resolution');
     expect(result.windows).toEqual([]);
