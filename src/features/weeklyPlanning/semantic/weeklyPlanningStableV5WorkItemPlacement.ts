@@ -3,6 +3,9 @@ import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import {
+  resolveWeeklyPlanningHardDateBoundForTargetV5,
+} from './weeklyPlanningRecurringDateBoundsV5';
+import {
   preferredTaskDistributedDateV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
 import { isHeavyWeeklyPlanningWorkItemV5 } from './weeklyPlanningStableV5ExecutionPolicy';
@@ -63,6 +66,7 @@ function sessionChunks(item: GenericPlanningWorkItem): number[] {
 
 function eligibleDates(params: {
   input: GenericSchedulerInput;
+  graph: WeeklyPlanningFactGraphV5;
   item: GenericPlanningWorkItem;
   dates: readonly string[];
 }): string[] {
@@ -73,10 +77,19 @@ function eligibleDates(params: {
     ? [...params.dates]
     : eligibility.allowedDates;
   const excluded = new Set(eligibility?.excludedDates ?? []);
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  const hardDateBound = resolveWeeklyPlanningHardDateBoundForTargetV5({
+    graph: params.graph,
+    taskId: params.item.taskId,
+    targetFactId,
+    currentDate: params.dates[0] ?? params.input.horizon.startDate,
+  });
   return allowed.filter((date) =>
     params.dates.includes(date)
     && !excluded.has(date)
-    && (!params.item.requiredDate || date === params.item.requiredDate));
+    && (!params.item.requiredDate || date === params.item.requiredDate)
+    && (!hardDateBound.startDate || date >= hardDateBound.startDate)
+    && (!hardDateBound.endDate || date <= hardDateBound.endDate));
 }
 
 function findWorkItemSlot(params: {
@@ -147,6 +160,7 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
 
   const rawAllowedDates = eligibleDates({
     input: params.context.input,
+    graph: params.context.graph,
     item: params.item,
     dates: params.context.dates,
   });
