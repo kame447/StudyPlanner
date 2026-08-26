@@ -51,7 +51,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
   const preview = executeWeeklyPlanningStableV5Preview({
     input,
-    graph: createWeeklyPlanningPlacementGraphViewV5(semantic.graph),
+    graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph),
     schedulerInput: responseRoute.schedulerInput,
     requestContext,
   });
