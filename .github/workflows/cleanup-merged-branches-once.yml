@@ -1,0 +1,49 @@
+name: Cleanup merged branches once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cleanup-merged-branches-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete verified stale branches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branches=(
+            "agent/issue156-prompt-simplification-adversarial-audit"
+            "dummy-do-not-create"
+            "fix/bookshelf-add-material-mobile"
+            "fix/issue52-ai-planning-ios-overflow"
+            "fix/issue52-ai-planning-multiweek-preview"
+            "fix/issue52-preview-scroll-bleed"
+            "fix/issue52-preview-touch-scroll-lock"
+            "fix/issue52-relative-date-reference"
+            "fix/issue167-ui-regressions"
+            "fix/issue193-ai-planning-ios-zoom"
+            "refactor/issue203-weekly-planning-constraint-ownership"
+            "tooling/diagram-design-explanations"
+            "ui/learning-report-redesign"
+          )
+
+          for branch in "${branches[@]}"; do
+            if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+              echo "Deleting ${branch}"
+              git push origin --delete "${branch}"
+            else
+              echo "Already absent: ${branch}"
+            fi
+          done
