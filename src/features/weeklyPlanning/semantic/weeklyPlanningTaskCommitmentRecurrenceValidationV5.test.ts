@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyWeeklyPlanningFactGraphV2 } from './weeklyPlanningFactGraphV2';
+import { resolveWeeklyPlanningDateExpressionsV5 } from './weeklyPlanningResolvedDateExpressionsV5';
 import { resolveWeeklyPlanningTaskCommitments } from './weeklyPlanningTaskCommitmentResolver';
 
 function source(id: string) {
@@ -42,6 +43,10 @@ describe('weekly planning commitment recurrence validation', () => {
         createdRevision: 1,
       }],
     };
+    const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+      graph,
+      currentDate: '2026-08-26',
+    });
 
     const result = resolveWeeklyPlanningTaskCommitments({
       graph,
@@ -51,6 +56,7 @@ describe('weekly planning commitment recurrence validation', () => {
         planningEndDate: '2026-08-30',
         timeZone: 'Asia/Tokyo',
       },
+      resolvedDateExpressions,
     });
 
     expect(result.readiness).toBe('needs_resolution');
