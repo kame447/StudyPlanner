@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-async function seedMultiweekDraftPlan(page) {
-  await page.addInitScript(() => {
+async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
+  await page.addInitScript(({ seededMessageCount }) => {
     const now = new Date().toISOString();
     const today = new Date();
     const user = {
@@ -56,6 +56,14 @@ async function seedMultiweekDraftPlan(page) {
       approvalStatus: 'unapproved',
       workItemKey: 'gold-phrase',
     }));
+    const messages = Array.from({ length: seededMessageCount }, (_, index) => ({
+      id: `message-${index + 1}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: index % 2 === 0
+        ? `学習計画の確認メッセージ ${index + 1}。背景側を十分スクロール可能にするための回帰テスト用会話です。`
+        : `了解しました。計画内容を確認しながら調整します。これは背景スクロール漏れを検出する回帰テスト用メッセージ ${index + 1} です。`,
+      createdAt: now,
+    }));
     const planningState = {
       weekStartDate,
       revision: 1,
@@ -63,7 +71,7 @@ async function seedMultiweekDraftPlan(page) {
       mode: 'draft_created',
       draftBlocks,
       previewCandidates,
-      messages: [],
+      messages,
       updatedAt: now,
     };
 
@@ -90,7 +98,7 @@ async function seedMultiweekDraftPlan(page) {
         conversationId: null,
       }),
     );
-  });
+  }, { seededMessageCount: messageCount });
 }
 
 async function swipeSheetDown(sheet) {
@@ -131,6 +139,27 @@ async function swipeSheetDown(sheet) {
     dispatchTouch('touchend', startX + 3, startY + 124, false);
 
     return { movePrevented, dragOffset, dragging };
+  });
+}
+
+async function startOverlayOpacitySampler(page) {
+  await page.evaluate(() => {
+    const overlay = document.querySelector('.ai-planning-preview-overlay-v2');
+    window.__aiPlanningPreviewOverlaySamples = [];
+    if (!(overlay instanceof HTMLElement)) return;
+
+    const sample = () => {
+      if (!overlay.isConnected) return;
+      const style = getComputedStyle(overlay);
+      window.__aiPlanningPreviewOverlaySamples.push({
+        opacity: Number.parseFloat(style.opacity) || 0,
+        pointerEvents: style.pointerEvents,
+        closing: Boolean(document.querySelector('.ai-planning-preview-motion.is-closing')),
+      });
+      window.requestAnimationFrame(sample);
+    };
+
+    window.requestAnimationFrame(sample);
   });
 }
 
@@ -211,4 +240,60 @@ test('AI planning preview rises from the bottom and follows a swipe-down dismiss
   expect(Number.parseFloat(dragFeedback.dragOffset)).toBeGreaterThan(70);
 
   await expect(preview).toBeHidden({ timeout: 1500 });
+});
+
+test('AI planning preview keeps background scroll locked and closes without overlay flicker', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page, { messageCount: 18 });
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+
+  const conversation = page.locator('.ai-planning-conversation');
+  const backgroundScrollTop = await conversation.evaluate((element) => {
+    const maxScrollTop = Math.max(element.scrollHeight - element.clientHeight, 0);
+    if (maxScrollTop <= 0) return -1;
+    element.scrollTop = Math.min(180, maxScrollTop);
+    return element.scrollTop;
+  });
+  expect(backgroundScrollTop).toBeGreaterThanOrEqual(0);
+
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  const overlay = page.locator('.ai-planning-preview-overlay-v2');
+  const motion = page.locator('.ai-planning-preview-motion');
+  await expect(preview).toBeVisible();
+  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
+
+  await startOverlayOpacitySampler(page);
+  const dragFeedback = await swipeSheetDown(preview);
+  expect(dragFeedback.movePrevented).toBe(true);
+
+  await expect(motion).toHaveClass(/is-closing/);
+  await expect(overlay).toHaveCSS('pointer-events', 'auto');
+  await expect(overlay).toHaveCSS('touch-action', 'none');
+  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
+
+  const conversationBox = await conversation.boundingBox();
+  expect(conversationBox).not.toBeNull();
+  if (conversationBox) {
+    await page.mouse.move(
+      conversationBox.x + conversationBox.width / 2,
+      conversationBox.y + conversationBox.height / 2,
+    );
+    await page.mouse.wheel(0, 720);
+  }
+  await page.waitForTimeout(40);
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
+
+  await expect(preview).toBeHidden({ timeout: 1500 });
+
+  const samples = await page.evaluate(() => window.__aiPlanningPreviewOverlaySamples ?? []);
+  const closingSamples = samples.filter((sample) => sample.closing);
+  expect(closingSamples.length).toBeGreaterThan(0);
+  expect(closingSamples.every((sample) => sample.pointerEvents !== 'none')).toBe(true);
+
+  const opacityRestart = samples.some((sample, index) =>
+    index > 0 && sample.opacity - samples[index - 1].opacity > 0.12,
+  );
+  expect(opacityRestart).toBe(false);
 });
