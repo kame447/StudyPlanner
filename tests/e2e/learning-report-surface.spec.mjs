@@ -166,7 +166,11 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
   await expect(
     page.getByRole('heading', { name: '教材・科目別の学習時間' }),
   ).toBeVisible();
-  await expect(page.getByText('アルゴリズムイントロダクション').first()).toBeVisible();
+  await expect(
+    page
+      .locator('.learning-report-breakdown-item')
+      .filter({ hasText: 'アルゴリズムイントロダクション' }),
+  ).toBeVisible();
 
   const trend = page.getByRole('list', { name: /の学習時間 合計/ });
   await expect(trend).toBeVisible();
