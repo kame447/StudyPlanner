@@ -84,6 +84,8 @@ function schedulerInput(overrides: Partial<GenericSchedulerInput> = {}): Generic
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
+    hardDateBounds: [],
+    preferredPlacements: [],
     sourceFactRefs: ['task-1', 'workload-1'],
     ...overrides,
   };
@@ -231,7 +233,7 @@ describe('Stable V5 preview scheduler', () => {
     expect(result.unscheduledWorkItemIds).toEqual(['work-item-1']);
   });
 
-  it('lets an explicit preferred night window outrank the default daytime heuristic', () => {
+  it('lets a compiled preferred night window outrank the default daytime heuristic', () => {
     const preferredGraph: WeeklyPlanningFactGraphV5 = {
       ...graph(),
       revision: 2,
@@ -285,6 +287,13 @@ describe('Stable V5 preview scheduler', () => {
           planningWindowFactIds: [],
         },
         movableWorkItems: [item],
+        preferredPlacements: [{
+          taskId: 'task-1',
+          targetFactId: 'task-1',
+          dates: ['2026-08-18'],
+          window: { startMinute: 21 * 60, endMinute: 24 * 60 },
+          sourceFactId: 'preferred-night-1',
+        }],
       }),
       graph: preferredGraph,
     });
@@ -299,7 +308,7 @@ describe('Stable V5 preview scheduler', () => {
     });
   });
 
-  it('lets an explicit vocabulary evening preference control placement without an automatic vocabulary schedule', () => {
+  it('lets a compiled vocabulary evening preference control placement without an automatic vocabulary schedule', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({
         graphRevision: 2,
@@ -310,6 +319,21 @@ describe('Stable V5 preview scheduler', () => {
           planningWindowFactIds: [],
         },
         movableWorkItems: [vocabularyWorkItem({ index: 1, amount: 80, start: 1, end: 80 })],
+        preferredPlacements: [{
+          taskId: 'task-vocabulary',
+          targetFactId: 'task-vocabulary',
+          dates: [
+            '2026-08-17',
+            '2026-08-18',
+            '2026-08-19',
+            '2026-08-20',
+            '2026-08-21',
+            '2026-08-22',
+            '2026-08-23',
+          ],
+          window: { startMinute: 17 * 60, endMinute: 21 * 60 },
+          sourceFactId: 'preferred-vocabulary-time',
+        }],
         sourceFactRefs: ['task-vocabulary', 'workload-vocabulary', 'effort-vocabulary'],
       }),
       graph: vocabularyGraph('evening'),
