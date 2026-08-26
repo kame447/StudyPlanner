@@ -27,6 +27,16 @@ function source(id: string) {
   };
 }
 
+function active(factId: string) {
+  return {
+    factId,
+    status: 'active' as const,
+    createdRevision: 1,
+    terminalRevision: null,
+    supersededByFactId: null,
+  };
+}
+
 function workItem(overrides: Partial<GenericPlanningWorkItem> = {}): GenericPlanningWorkItem {
   return {
     version: 'weekly-planning-generic-work-item-v1',
@@ -141,6 +151,11 @@ function graph(params: {
       source: source(constraint.id),
       createdRevision: 1,
     })),
+    factLifecycles: [
+      active('task-1'),
+      ...(params.withComponent ? [active('component-1')] : []),
+      ...params.constraints.map((constraint) => active(constraint.id)),
+    ],
   };
 }
 
@@ -154,17 +169,10 @@ describe('Stable V5 hard date bound placement', () => {
   it('never places ordinary movable work after a compiled hard deadline', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({
-        hardDateBounds: [hardBound({
-          endDate: '2026-08-19',
-          sourceFactIds: ['deadline-1'],
-        })],
+        hardDateBounds: [hardBound({ endDate: '2026-08-19', sourceFactIds: ['deadline-1'] })],
       }),
       graph: placementGraph({
-        constraints: [{
-          id: 'deadline-1',
-          kind: 'deadline',
-          dateExpression: '2026-08-19',
-        }],
+        constraints: [{ id: 'deadline-1', kind: 'deadline', dateExpression: '2026-08-19' }],
       }),
     });
 
@@ -176,17 +184,10 @@ describe('Stable V5 hard date bound placement', () => {
   it('never places ordinary movable work before a compiled hard earliest start', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({
-        hardDateBounds: [hardBound({
-          startDate: '2026-08-21',
-          sourceFactIds: ['earliest-start-1'],
-        })],
+        hardDateBounds: [hardBound({ startDate: '2026-08-21', sourceFactIds: ['earliest-start-1'] })],
       }),
       graph: placementGraph({
-        constraints: [{
-          id: 'earliest-start-1',
-          kind: 'earliest_start',
-          dateExpression: '2026-08-21',
-        }],
+        constraints: [{ id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-21' }],
       }),
     });
 
@@ -206,16 +207,8 @@ describe('Stable V5 hard date bound placement', () => {
       }),
       graph: placementGraph({
         constraints: [
-          {
-            id: 'earliest-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-20',
-          },
-          {
-            id: 'latest-end-1',
-            kind: 'latest_end',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-20' },
+          { id: 'latest-end-1', kind: 'latest_end', dateExpression: '2026-08-20' },
         ],
       }),
     });
@@ -239,16 +232,8 @@ describe('Stable V5 hard date bound placement', () => {
       graph: placementGraph({
         withComponent: true,
         constraints: [
-          {
-            id: 'task-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-20',
-          },
-          {
-            id: 'task-deadline-1',
-            kind: 'deadline',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'task-start-1', kind: 'earliest_start', dateExpression: '2026-08-20' },
+          { id: 'task-deadline-1', kind: 'deadline', dateExpression: '2026-08-20' },
         ],
       }),
     });
@@ -268,16 +253,8 @@ describe('Stable V5 hard date bound placement', () => {
       }),
       graph: placementGraph({
         constraints: [
-          {
-            id: 'earliest-start-1',
-            kind: 'earliest_start',
-            dateExpression: '2026-08-22',
-          },
-          {
-            id: 'deadline-1',
-            kind: 'deadline',
-            dateExpression: '2026-08-20',
-          },
+          { id: 'earliest-start-1', kind: 'earliest_start', dateExpression: '2026-08-22' },
+          { id: 'deadline-1', kind: 'deadline', dateExpression: '2026-08-20' },
         ],
       }),
     });
