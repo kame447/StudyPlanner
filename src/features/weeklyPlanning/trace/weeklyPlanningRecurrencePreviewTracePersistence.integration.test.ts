@@ -98,6 +98,18 @@ function recurringGraph(): WeeklyPlanningFactGraphV5 {
       source: source('recurrence-daily'),
       createdRevision: 1,
     }],
+    factLifecycles: [
+      'task-mock',
+      'component-math',
+      'workload-daily',
+      'recurrence-daily',
+    ].map((factId) => ({
+      factId,
+      status: 'active' as const,
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
+    })),
   };
 }
 
