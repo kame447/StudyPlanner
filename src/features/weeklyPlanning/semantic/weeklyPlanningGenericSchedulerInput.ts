@@ -53,6 +53,10 @@ import {
   type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
   resolveWeeklyPlanningTemporalConstraintsV5,
   type WeeklyPlanningResolvedTemporalConstraintsV5,
@@ -395,21 +399,30 @@ export function compileGenericSchedulerInput(params: {
   externalSources?: ExternalConstraintSourceSnapshot[];
   estimateCalibrationMultiplier?: number | null;
   observedEstimateOverrides?: readonly GenericSchedulerObservedEstimateOverride[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
   resolvedTemporalConstraints?: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
     ...validateHorizon(params),
   ];
+  const resolvedDateExpressions = params.resolvedDateExpressions
+    ?? resolveWeeklyPlanningDateExpressionsV5({
+      graph: params.graph,
+      currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
+    });
 
   const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
     graph: params.graph,
     context: {
       currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
       planningStartDate: params.context.planningStartDate,
       planningEndDate: params.context.planningEndDate,
       timeZone: params.context.timeZone,
     },
+    resolvedDateExpressions,
   });
   const commitments = commitmentResolution.commitments;
   const taskDateRules = commitmentResolution.dateRules;
@@ -498,6 +511,7 @@ export function compileGenericSchedulerInput(params: {
     }),
     context: params.context,
     externalSources: params.externalSources,
+    resolvedDateExpressions,
   });
   issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
     domain: 'availability',
@@ -526,6 +540,7 @@ export function compileGenericSchedulerInput(params: {
       currentDate: params.context.currentDate,
       weekStartsOn: params.context.weekStartsOn,
       namedTimePeriods: params.context.namedTimePeriods,
+      resolvedDateExpressions,
     });
   const hardDateBounds = resolvedTemporalConstraints.hardDateBounds.map((bound) => ({
     ...bound,
