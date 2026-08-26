@@ -147,12 +147,16 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
     page.locator('.primary-bottom-nav button[aria-current="page"]'),
   ).toContainText('ホーム');
 
-  await expect(page.getByText('今日', { exact: true })).toBeVisible();
-  await expect(page.getByText('今週', { exact: true })).toBeVisible();
-  await expect(page.getByText('今月', { exact: true })).toBeVisible();
-  await expect(page.getByText('累計', { exact: true })).toBeVisible();
-  await expect(page.getByText('1時間30分').first()).toBeVisible();
-  await expect(page.getByText('2時間').first()).toBeVisible();
+  const todayCard = page.locator('.learning-report-summary-card').filter({ hasText: '今日' });
+  const weekCard = page.locator('.learning-report-summary-card').filter({ hasText: '今週' });
+  const monthCard = page.locator('.learning-report-summary-card').filter({ hasText: '今月' });
+  const lifetimeCard = page.locator('.learning-report-summary-card').filter({ hasText: '累計' });
+
+  await expect(todayCard).toContainText('1.5時間');
+  await expect(todayCard).toContainText('予定 2時間');
+  await expect(weekCard).toContainText('1.5時間');
+  await expect(monthCard).toContainText('1.5時間');
+  await expect(lifetimeCard).toContainText('2時間');
 
   await expect(page.getByRole('tab', { name: '週' })).toHaveAttribute(
     'aria-selected',
@@ -164,10 +168,14 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
   ).toBeVisible();
   await expect(page.getByText('アルゴリズムイントロダクション').first()).toBeVisible();
 
+  const trend = page.getByRole('list', { name: /の学習時間 合計/ });
+  await expect(trend).toBeVisible();
+  await expect(trend.getByRole('listitem')).toHaveCount(7);
+
   await page
     .getByLabel('表示する教材')
     .selectOption('material:learning-report-material-algorithm');
-  await expect(page.getByText('合計 1時間30分')).toBeVisible();
+  await expect(page.getByText('合計 1.5時間')).toBeVisible();
 
   await page.getByRole('tab', { name: '月' }).click();
   await expect(page.getByRole('tab', { name: '月' })).toHaveAttribute(
