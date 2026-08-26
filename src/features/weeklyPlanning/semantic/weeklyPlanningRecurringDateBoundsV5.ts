@@ -72,6 +72,18 @@ function earlierDate(left: string | null, right: string): string {
   return left === null || right < left ? right : left;
 }
 
+function constraintAppliesToRecurringTarget(params: {
+  constraint: WeeklyPlanningRecurringTemporalConstraintV5;
+  taskId: string;
+  targetFactId: string;
+}): boolean {
+  return params.constraint.taskId === params.taskId
+    && (
+      params.constraint.targetFactId === params.targetFactId
+      || params.constraint.targetFactId === params.taskId
+    );
+}
+
 export function resolveWeeklyPlanningRecurringDateBoundsV5(params: {
   graph: WeeklyPlanningRecurringDateBoundsGraphViewV5;
   currentDate: string;
@@ -97,8 +109,11 @@ export function resolveWeeklyPlanningRecurringDateBoundsV5(params: {
     for (const constraint of params.graph.temporalConstraints) {
       if (
         constraint.constraintLevel !== 'hard'
-        || constraint.taskId !== workload.taskId
-        || constraint.targetFactId !== targetFactId
+        || !constraintAppliesToRecurringTarget({
+          constraint,
+          taskId: workload.taskId,
+          targetFactId,
+        })
       ) {
         continue;
       }
