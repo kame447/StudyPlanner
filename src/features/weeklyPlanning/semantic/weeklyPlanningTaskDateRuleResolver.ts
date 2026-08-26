@@ -10,7 +10,6 @@ import {
 } from './weeklyPlanningRecurrenceCalendarV5';
 import {
   resolvedWeeklyPlanningDateExpressionForFactV5,
-  resolveWeeklyPlanningSingleDateExpressionV5,
   type WeeklyPlanningResolvedDateExpressionsV5,
 } from './weeklyPlanningResolvedDateExpressionsV5';
 
@@ -79,24 +78,15 @@ function mutableState(
 
 function resolveRuleDates(params: {
   rule: TaskDateRuleFact;
-  currentDate: string;
-  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: TaskDateRuleResolutionIssue[];
 }): string[] | null {
-  const resolution = params.resolvedDateExpressions
-    ? resolvedWeeklyPlanningDateExpressionForFactV5({
-        resolved: params.resolvedDateExpressions,
-        factId: params.rule.id,
-      })
-    : resolveWeeklyPlanningSingleDateExpressionV5({
-        factId: params.rule.id,
-        expression: params.rule.dateExpression,
-        currentDate: params.currentDate,
-        weekStartsOn: params.weekStartsOn,
-      });
+  const resolution = resolvedWeeklyPlanningDateExpressionForFactV5({
+    resolved: params.resolvedDateExpressions,
+    factId: params.rule.id,
+  });
   if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
     params.issues.push({
       code: 'unsupported_task_date_expression',
@@ -105,7 +95,7 @@ function resolveRuleDates(params: {
       blocking: true,
       details: {
         expression: params.rule.dateExpression,
-        resolutionStatus: resolution?.status ?? 'unsupported_expression',
+        resolutionStatus: resolution?.status ?? 'missing_resolved_snapshot',
       },
     });
     return null;
@@ -161,7 +151,7 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
   weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskDateRuleResolutionResult {
   const issues: TaskDateRuleResolutionIssue[] = [];
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
@@ -192,8 +182,6 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     }
     const dates = resolveRuleDates({
       rule,
-      currentDate: params.currentDate,
-      weekStartsOn: params.weekStartsOn,
       planningStartDate: params.planningStartDate,
       planningEndDate: params.planningEndDate,
       resolvedDateExpressions: params.resolvedDateExpressions,
