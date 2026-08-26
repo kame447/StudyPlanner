@@ -63,6 +63,7 @@ test.describe('bookshelf add-material mobile surface', () => {
 
     const fab = page.locator('.bookshelf-add-material-fab');
     await expect(fab).toBeVisible();
+    await expect(fab).toHaveAccessibleName('教材追加');
 
     const fabGeometry = await fab.evaluate((button) => {
       const rect = button.getBoundingClientRect();
