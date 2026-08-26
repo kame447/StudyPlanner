@@ -34,7 +34,7 @@ export interface WeeklyPlanningTemporalGraphView {
     start: string | null;
     end: string | null;
   }>;
-  factLifecycles: ReadonlyArray<{
+  factLifecycles?: ReadonlyArray<{
     factId: string;
     status: string;
   }>;
@@ -149,9 +149,10 @@ function activeFacts<T extends { id: string }>(
   graph: WeeklyPlanningTemporalGraphView,
   facts: readonly T[],
 ): T[] {
-  if (graph.factLifecycles.length === 0) return [...facts];
+  const lifecycles = graph.factLifecycles ?? [];
+  if (lifecycles.length === 0) return [...facts];
   const activeIds = new Set(
-    graph.factLifecycles
+    lifecycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
