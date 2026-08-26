@@ -10,6 +10,9 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   resolveWeeklyPlanningTaskCommitments,
 } from './weeklyPlanningTaskCommitmentResolver';
 
@@ -61,7 +64,7 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 fixed commitment resolver compatibility', () => {
-  it('passes Fact Graph V5 directly to the common commitment resolver', () => {
+  it('passes Fact Graph V5 directly to the common commitment resolver with the captured date snapshot', () => {
     const canonical = canonicalizeWeeklyPlanningSemanticDocumentV5({
       graph: createEmptyWeeklyPlanningFactGraphV5(),
       document: document(),
@@ -73,6 +76,10 @@ describe('Stable V5 fixed commitment resolver compatibility', () => {
     });
 
     expect(canonical.status).toBe('applied');
+    const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+      graph: canonical.graph,
+      currentDate: '2026-07-22',
+    });
     const resolved = resolveWeeklyPlanningTaskCommitments({
       graph: canonical.graph,
       context: {
@@ -81,6 +88,7 @@ describe('Stable V5 fixed commitment resolver compatibility', () => {
         planningEndDate: '2026-07-24',
         timeZone: 'Asia/Tokyo',
       },
+      resolvedDateExpressions,
     });
 
     expect(resolved.readiness).toBe('ready');
