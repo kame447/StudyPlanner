@@ -11,11 +11,16 @@ import {
   intersectCalendarDates,
   isValidCalendarDate,
   listCalendarDatesInclusive,
-  resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
 import {
   resolveWeeklyPlanningCalendarRecurrenceDatesV5,
 } from './weeklyPlanningRecurrenceCalendarV5';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  resolveWeeklyPlanningSingleDateExpressionV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 export interface WeeklyPlanningAvailabilityGraphView {
   readonly revision: number;
@@ -101,6 +106,7 @@ export type ExternalConstraintSourceSnapshot =
 export interface AvailabilityResolutionContext {
   ownerId: string;
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
   timeZone: string;
@@ -184,6 +190,7 @@ function resolveDeclarationDates(params: {
   declaration: AvailabilityDeclarationFact;
   context: AvailabilityResolutionContext;
   planningDates: string[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
   issues: AvailabilityResolutionIssue[];
 }): string[] {
   let dates: string[] | null = recurrenceDates({
@@ -193,18 +200,25 @@ function resolveDeclarationDates(params: {
   });
 
   if (params.declaration.dateExpression) {
-    const resolution = resolveCanonicalDateExpression({
-      expression: params.declaration.dateExpression,
-      currentDate: params.context.currentDate,
-    });
-    if (resolution.status !== 'resolved') {
+    const resolution = params.resolvedDateExpressions
+      ? resolvedWeeklyPlanningDateExpressionForFactV5({
+          resolved: params.resolvedDateExpressions,
+          factId: params.declaration.id,
+        })
+      : resolveWeeklyPlanningSingleDateExpressionV5({
+          factId: params.declaration.id,
+          expression: params.declaration.dateExpression,
+          currentDate: params.context.currentDate,
+          weekStartsOn: params.context.weekStartsOn,
+        });
+    if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
       params.issues.push({
         code: 'unsupported_date_expression',
         sourceFactId: params.declaration.id,
         blocking: true,
         details: {
           expression: params.declaration.dateExpression,
-          resolutionStatus: resolution.status,
+          resolutionStatus: resolution?.status ?? 'unsupported_expression',
         },
       });
       return [];
@@ -342,6 +356,7 @@ function resolveUserDeclarations(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   planningDates: string[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
   issues: AvailabilityResolutionIssue[];
 }): AvailabilityWindowFact[] {
   const windows: AvailabilityWindowFact[] = [];
@@ -358,6 +373,7 @@ function resolveUserDeclarations(params: {
       declaration,
       context: params.context,
       planningDates: params.planningDates,
+      resolvedDateExpressions: params.resolvedDateExpressions,
       issues: params.issues,
     });
     const bounds = resolveTimeBounds({
@@ -556,6 +572,7 @@ export function resolveWeeklyPlanningAvailability(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
 }): AvailabilityResolutionResult {
   const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
@@ -579,6 +596,7 @@ export function resolveWeeklyPlanningAvailability(params: {
     graph: params.graph,
     context: params.context,
     planningDates,
+    resolvedDateExpressions: params.resolvedDateExpressions,
     issues,
   });
   const external = resolveExternalSources({
