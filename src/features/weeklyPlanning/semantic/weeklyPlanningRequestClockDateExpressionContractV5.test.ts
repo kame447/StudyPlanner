@@ -4,6 +4,9 @@ import {
   type WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 function source(id: string) {
   return {
@@ -129,5 +132,71 @@ describe('weekly planning request-clock date expression contract', () => {
     expect(result.status).toBe('ready');
     expect(result.input?.availabilityWindows.map((item) => item.start.date))
       .toEqual(sundayStartNextWeek);
+  });
+
+  it('uses the captured grounding snapshot even if a downstream compile sees a later clock', () => {
+    const value = graph();
+    value.taskDateRules = [{
+      id: 'date-rule-tomorrow',
+      taskId: 'task-1',
+      targetFactId: 'task-1',
+      kind: 'allowed_date',
+      dateExpression: 'tomorrow',
+      constraintLevel: 'hard',
+      source: source('date-rule-tomorrow'),
+      createdRevision: 1,
+    }];
+    value.temporalConstraints = [{
+      id: 'commitment-tomorrow',
+      taskId: 'task-1',
+      targetFactId: 'task-1',
+      kind: 'fixed_interval',
+      constraintLevel: 'hard',
+      dateExpression: 'tomorrow',
+      namedTimePeriod: null,
+      startTime: '18:00',
+      endTime: '19:00',
+      precision: 'exact',
+      source: source('commitment-tomorrow'),
+      createdRevision: 1,
+    }];
+    value.availabilityDeclarations = [{
+      id: 'availability-tomorrow',
+      kind: 'unavailable',
+      dateExpression: 'tomorrow',
+      namedTimePeriod: null,
+      startTime: '10:00',
+      endTime: '11:00',
+      recurrenceKind: null,
+      days: [],
+      constraintLevel: 'hard',
+      resolutionStatus: 'unresolved',
+      source: source('availability-tomorrow'),
+      createdRevision: 1,
+    }];
+    const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+      graph: value,
+      currentDate: '2026-08-26',
+      weekStartsOn: 'monday',
+    });
+
+    const result = compileGenericSchedulerInput({
+      graph: value,
+      context: {
+        ...schedulerContext,
+        currentDate: '2026-09-02',
+        weekStartsOn: 'monday',
+        planningStartDate: '2026-08-27',
+        planningEndDate: '2026-08-27',
+      },
+      resolvedDateExpressions,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.input?.taskDateEligibilities[0]?.allowedDates).toEqual(['2026-08-27']);
+    expect(result.input?.fixedTaskReservations.map((item) => item.start.date))
+      .toEqual(['2026-08-27']);
+    expect(result.input?.availabilityWindows.map((item) => item.start.date))
+      .toEqual(['2026-08-27']);
   });
 });
