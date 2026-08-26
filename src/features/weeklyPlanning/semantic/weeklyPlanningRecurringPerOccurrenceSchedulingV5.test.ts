@@ -261,7 +261,23 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
     ]);
   });
 
-  it('does not turn soft or differently targeted date preferences into hard recurrence bounds', () => {
+  it('inherits a task-level hard date bound for a recurring component workload', () => {
+    const value = graph();
+    addTemporalConstraint(value, {
+      id: 'task-deadline',
+      kind: 'deadline',
+      dateExpression: '2026-08-19',
+      targetFactId: 'task-mock-exam',
+    });
+
+    expect(compile(value).input?.movableWorkItems.map((item) => item.requiredDate)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+    ]);
+  });
+
+  it('does not turn soft or unrelated component date preferences into hard recurrence bounds', () => {
     const soft = graph();
     addTemporalConstraint(soft, {
       id: 'soft-deadline',
@@ -271,14 +287,14 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
     });
     expect(compile(soft).input?.movableWorkItems).toHaveLength(7);
 
-    const differentTarget = graph();
-    addTemporalConstraint(differentTarget, {
-      id: 'task-deadline',
+    const unrelatedTarget = graph();
+    addTemporalConstraint(unrelatedTarget, {
+      id: 'other-component-deadline',
       kind: 'deadline',
       dateExpression: '2026-08-19',
-      targetFactId: 'task-mock-exam',
+      targetFactId: 'component-english',
     });
-    expect(compile(differentTarget).input?.movableWorkItems).toHaveLength(7);
+    expect(compile(unrelatedTarget).input?.movableWorkItems).toHaveLength(7);
   });
 
   it('intersects an occurrence date with task exclusions and returns no partial preview', () => {
