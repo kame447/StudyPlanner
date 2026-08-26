@@ -14,6 +14,7 @@ import {
 import {
   filterWeeklyPlanningDatesByHardBoundV5,
   hardDateBoundForTargetV5,
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
   type WeeklyPlanningSchedulerHardDateBoundV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
@@ -59,8 +60,12 @@ function recurringPerOccurrenceSlices(params: {
 
   const targetFactId = params.item.componentId ?? params.item.taskId;
   const recurrences = params.graph.recurrences.filter((recurrence) =>
-    recurrence.taskId === params.item.taskId
-    && recurrence.targetFactId === targetFactId);
+    weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: recurrence.taskId,
+      constraintTargetFactId: recurrence.targetFactId,
+      taskId: params.item.taskId,
+      targetFactId,
+    }));
   if (recurrences.length !== 1) return [params.item];
 
   const recurrence = recurrences[0];
