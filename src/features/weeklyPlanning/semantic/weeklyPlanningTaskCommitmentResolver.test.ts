@@ -100,6 +100,33 @@ describe('weekly planning task commitment resolver', () => {
     ]);
   });
 
+  it('expands custom commitments from canonical weekdays by the shared calendar rule', () => {
+    const value = graph();
+    value.temporalConstraints[0].dateExpression = null;
+    value.recurrences = [
+      {
+        id: 'recurrence-custom',
+        taskId: 'task-dinner',
+        targetFactId: 'task-dinner',
+        kind: 'custom',
+        count: null,
+        days: ['wed', 'fri', 'sun'],
+        source: source('recurrence-custom', '水金日'),
+        createdRevision: 1,
+      },
+    ];
+
+    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+
+    expect(result.readiness).toBe('ready');
+    expect(result.issues).toEqual([]);
+    expect(result.reservations.map((item) => item.start.date)).toEqual([
+      '2026-07-22',
+      '2026-07-24',
+      '2026-07-26',
+    ]);
+  });
+
   it('keeps cross-midnight commitments as next-day reservations', () => {
     const value = graph();
     value.temporalConstraints[0].startTime = '23:00';
