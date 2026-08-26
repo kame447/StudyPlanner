@@ -8,12 +8,14 @@ import type {
 } from './weeklyPlanningSemanticDocumentV2';
 import {
   addCalendarDays,
-  calendarWeekday,
   intersectCalendarDates,
   isValidCalendarDate,
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
 
 export interface WeeklyPlanningAvailabilityGraphView {
   readonly revision: number;
@@ -139,15 +141,6 @@ export interface AvailabilityResolutionResult {
 
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const RESOLVED_CLOCK_PATTERN = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
-const WEEKDAY_INDEX: Record<string, number> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
 
 function stableHash(input: string): string {
   let hash = 2166136261;
@@ -169,39 +162,22 @@ function recurrenceDates(params: {
 }): string[] | null {
   const recurrence = params.declaration.recurrenceKind;
   if (!recurrence) return null;
-  if (recurrence === 'daily') return [...params.planningDates];
-  if (recurrence === 'weekdays') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day !== null && day >= 1 && day <= 5;
-    });
-  }
-  if (recurrence === 'weekends') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day === 0 || day === 6;
-    });
-  }
 
-  const dayIndexes = new Set<number>();
-  for (const day of params.declaration.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
-      params.issues.push({
-        code: 'invalid_weekday',
-        sourceFactId: params.declaration.id,
-        blocking: true,
-        details: { day },
-      });
-    } else {
-      dayIndexes.add(index);
-    }
-  }
-  if (dayIndexes.size === 0) return null;
-  return params.planningDates.filter((date) => {
-    const day = calendarWeekday(date);
-    return day !== null && dayIndexes.has(day);
+  const resolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: recurrence,
+    days: params.declaration.days,
+    dates: params.planningDates,
   });
+  for (const day of resolution.invalidDays) {
+    params.issues.push({
+      code: 'invalid_weekday',
+      sourceFactId: params.declaration.id,
+      blocking: true,
+      details: { day },
+    });
+  }
+  if (resolution.invalidDays.length > 0) return null;
+  return resolution.calendarDates;
 }
 
 function resolveDeclarationDates(params: {
