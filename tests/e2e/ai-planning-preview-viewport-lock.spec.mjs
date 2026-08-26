@@ -126,8 +126,8 @@ async function shortTouchDrag(sheet) {
 
     dispatch('touchstart', startX, startY, true);
     const pendingMovePrevented = dispatch('touchmove', startX + 1, startY + 4, true);
-    const verticalMovePrevented = dispatch('touchmove', startX + 2, startY + 30, true);
-    dispatch('touchend', startX + 2, startY + 30, false);
+    const verticalMovePrevented = dispatch('touchmove', startX + 2, startY + 24, true);
+    dispatch('touchend', startX + 2, startY + 24, false);
     return { pendingMovePrevented, verticalMovePrevented };
   });
 }
