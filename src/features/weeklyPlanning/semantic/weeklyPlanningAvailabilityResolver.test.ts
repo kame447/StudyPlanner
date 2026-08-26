@@ -6,6 +6,9 @@ import {
   type WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   resolveWeeklyPlanningAvailability,
   type AvailabilityResolutionContext,
   type ExternalConstraintEvent,
@@ -123,11 +126,29 @@ function failedTimetable(): ExternalConstraintSourceSnapshot {
   };
 }
 
+function resolveAvailability(params: {
+  value: WeeklyPlanningFactGraphV2;
+  context?: AvailabilityResolutionContext;
+  externalSources?: ExternalConstraintSourceSnapshot[];
+}) {
+  const resolutionContext = params.context ?? context();
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: params.value,
+    currentDate: resolutionContext.currentDate,
+    weekStartsOn: resolutionContext.weekStartsOn,
+  });
+  return resolveWeeklyPlanningAvailability({
+    graph: params.value,
+    context: resolutionContext,
+    externalSources: params.externalSources,
+    resolvedDateExpressions,
+  });
+}
+
 describe('weekly planning availability resolver', () => {
   it('resolves recurring weekday unavailability without parsing source text', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ declarations: [declaration()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ declarations: [declaration()] }),
     });
 
     expect(result.readiness).toBe('ready');
@@ -145,8 +166,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('resolves named weekend periods only from injected policy', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({
+    const result = resolveAvailability({
+      value: graph({
         declarations: [declaration({
           id: 'availability-weekend',
           kind: 'preferred',
@@ -156,7 +177,6 @@ describe('weekly planning availability resolver', () => {
           constraintLevel: 'soft',
         })],
       }),
-      context: context(),
     });
 
     expect(result.windows).toHaveLength(2);
@@ -173,8 +193,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('blocks unresolved named periods instead of inventing clock times', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({
+    const result = resolveAvailability({
+      value: graph({
         declarations: [declaration({
           namedTimePeriod: 'before_sleep',
           endTime: null,
@@ -195,8 +215,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('resolves a canonical tomorrow anchor and open-ended availability', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({
+    const result = resolveAvailability({
+      value: graph({
         declarations: [declaration({
           id: 'availability-tomorrow',
           kind: 'available',
@@ -206,7 +226,6 @@ describe('weekly planning availability resolver', () => {
           recurrenceKind: null,
         })],
       }),
-      context: context(),
     });
 
     expect(result.windows).toEqual([
@@ -219,14 +238,13 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('keeps custom date expressions unresolved', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({
+    const result = resolveAvailability({
+      value: graph({
         declarations: [declaration({
           dateExpression: 'custom:試験前日',
           recurrenceKind: null,
         })],
       }),
-      context: context(),
     });
 
     expect(result.windows).toEqual([]);
@@ -239,9 +257,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('imports a successful owner-bound timetable and selects its source', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request()] }),
       externalSources: [successfulTimetable()],
     });
 
@@ -268,9 +285,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('treats success with zero events as a valid empty schedule', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request()] }),
       externalSources: [successfulTimetable([])],
     });
 
@@ -286,9 +302,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('does not treat a failed fetch as an empty schedule', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request()] }),
       externalSources: [failedTimetable()],
     });
 
@@ -308,9 +323,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('rejects the whole external source import on owner mismatch', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request()] }),
       externalSources: [successfulTimetable([
         classEvent(),
         classEvent({ eventId: 'class-other-user', ownerId: 'user-2' }),
@@ -328,9 +342,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('handles stop_using without fetching or importing events', () => {
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request({ requestedAction: 'stop_using' })] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request({ requestedAction: 'stop_using' })] }),
       externalSources: [],
     });
 
@@ -346,9 +359,8 @@ describe('weekly planning availability resolver', () => {
 
   it('deduplicates repeated authoritative events by source identity and interval', () => {
     const event = classEvent();
-    const result = resolveWeeklyPlanningAvailability({
-      graph: graph({ requests: [request()] }),
-      context: context(),
+    const result = resolveAvailability({
+      value: graph({ requests: [request()] }),
       externalSources: [successfulTimetable([event, { ...event }])],
     });
 
@@ -356,8 +368,8 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('rejects invalid planning dates before resolving any facts', () => {
-    const reversed = resolveWeeklyPlanningAvailability({
-      graph: graph({ declarations: [declaration()] }),
+    const reversed = resolveAvailability({
+      value: graph({ declarations: [declaration()] }),
       context: context({
         planningStartDate: '2026-07-27',
         planningEndDate: '2026-07-20',
@@ -366,8 +378,8 @@ describe('weekly planning availability resolver', () => {
     expect(reversed.readiness).toBe('needs_resolution');
     expect(reversed.issues[0].code).toBe('invalid_planning_date_range');
 
-    const impossible = resolveWeeklyPlanningAvailability({
-      graph: graph({ declarations: [declaration()] }),
+    const impossible = resolveAvailability({
+      value: graph({ declarations: [declaration()] }),
       context: context({ currentDate: '2026-02-30' }),
     });
     expect(impossible.readiness).toBe('needs_resolution');
