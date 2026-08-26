@@ -7,10 +7,10 @@ import type {
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
 import {
-  calendarWeekday,
-  listCalendarDatesInclusive,
-} from './weeklyPlanningCalendarResolver';
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
 import {
   filterWeeklyPlanningDatesByHardBoundV5,
   hardDateBoundForTargetV5,
@@ -46,26 +46,6 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly relations?: ReadonlyArray<TaskRelationFact>;
 }
 
-function recurrenceDates(
-  recurrence: RecurrenceFact,
-  dates: readonly string[],
-): string[] | null {
-  if (recurrence.kind === 'daily') return [...dates];
-  if (recurrence.kind === 'weekdays') {
-    return dates.filter((date) => {
-      const weekday = calendarWeekday(date);
-      return weekday !== null && weekday >= 1 && weekday <= 5;
-    });
-  }
-  if (recurrence.kind === 'weekends') {
-    return dates.filter((date) => {
-      const weekday = calendarWeekday(date);
-      return weekday === 0 || weekday === 6;
-    });
-  }
-  return null;
-}
-
 function recurringPerOccurrenceSlices(params: {
   graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
   item: GenericPlanningWorkItem;
@@ -93,10 +73,19 @@ function recurringPerOccurrenceSlices(params: {
     dates: params.dates,
     bound: hardBound,
   });
-  const occurrenceDates = recurrenceDates(recurrence, boundedDates);
-  if (occurrenceDates === null) return [params.item];
+  const recurrenceResolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: recurrence.kind,
+    days: recurrence.days,
+    dates: boundedDates,
+  });
+  if (
+    recurrenceResolution.calendarDates === null
+    || recurrenceResolution.invalidDays.length > 0
+  ) {
+    return [params.item];
+  }
 
-  return occurrenceDates.map((date) => ({
+  return recurrenceResolution.calendarDates.map((date) => ({
     ...params.item,
     id: `${params.item.id}:recurrence:${recurrence.id}:${date}`,
     requiredDate: date,
