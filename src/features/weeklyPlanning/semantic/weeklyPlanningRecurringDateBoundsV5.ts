@@ -28,12 +28,15 @@ export interface WeeklyPlanningRecurringDateBoundsGraphViewV5 {
   readonly temporalConstraints: ReadonlyArray<WeeklyPlanningRecurringTemporalConstraintV5>;
 }
 
-export interface WeeklyPlanningRecurringDateBoundV5 {
+export interface WeeklyPlanningHardDateBoundV5 {
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface WeeklyPlanningRecurringDateBoundV5 extends WeeklyPlanningHardDateBoundV5 {
   taskId: string;
   targetFactId: string;
   recurrenceFactId: string;
-  startDate: string | null;
-  endDate: string | null;
 }
 
 function isSimpleExpandedRecurrenceKind(
@@ -72,7 +75,7 @@ function earlierDate(left: string | null, right: string): string {
   return left === null || right < left ? right : left;
 }
 
-function constraintAppliesToRecurringTarget(params: {
+function constraintAppliesToTarget(params: {
   constraint: WeeklyPlanningRecurringTemporalConstraintV5;
   taskId: string;
   targetFactId: string;
@@ -82,6 +85,44 @@ function constraintAppliesToRecurringTarget(params: {
       params.constraint.targetFactId === params.targetFactId
       || params.constraint.targetFactId === params.taskId
     );
+}
+
+export function resolveWeeklyPlanningHardDateBoundForTargetV5(params: {
+  graph: Pick<WeeklyPlanningRecurringDateBoundsGraphViewV5, 'temporalConstraints'>;
+  taskId: string;
+  targetFactId: string;
+  currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
+}): WeeklyPlanningHardDateBoundV5 {
+  let startDate: string | null = null;
+  let endDate: string | null = null;
+  for (const constraint of params.graph.temporalConstraints) {
+    if (
+      constraint.constraintLevel !== 'hard'
+      || !constraintAppliesToTarget({
+        constraint,
+        taskId: params.taskId,
+        targetFactId: params.targetFactId,
+      })
+    ) {
+      continue;
+    }
+    const date = resolvedConstraintDate({
+      constraint,
+      currentDate: params.currentDate,
+      weekStartsOn: params.weekStartsOn,
+    });
+    if (!date) continue;
+    if (constraint.kind === 'earliest_start') {
+      startDate = laterDate(startDate, date);
+    } else if (
+      constraint.kind === 'deadline'
+      || constraint.kind === 'latest_end'
+    ) {
+      endDate = earlierDate(endDate, date);
+    }
+  }
+  return { startDate, endDate };
 }
 
 export function resolveWeeklyPlanningRecurringDateBoundsV5(params: {
@@ -104,41 +145,18 @@ export function resolveWeeklyPlanningRecurringDateBoundsV5(params: {
       continue;
     }
 
-    let startDate: string | null = null;
-    let endDate: string | null = null;
-    for (const constraint of params.graph.temporalConstraints) {
-      if (
-        constraint.constraintLevel !== 'hard'
-        || !constraintAppliesToRecurringTarget({
-          constraint,
-          taskId: workload.taskId,
-          targetFactId,
-        })
-      ) {
-        continue;
-      }
-      const date = resolvedConstraintDate({
-        constraint,
-        currentDate: params.currentDate,
-        weekStartsOn: params.weekStartsOn,
-      });
-      if (!date) continue;
-      if (constraint.kind === 'earliest_start') {
-        startDate = laterDate(startDate, date);
-      } else if (
-        constraint.kind === 'deadline'
-        || constraint.kind === 'latest_end'
-      ) {
-        endDate = earlierDate(endDate, date);
-      }
-    }
-
+    const hardBound = resolveWeeklyPlanningHardDateBoundForTargetV5({
+      graph: params.graph,
+      taskId: workload.taskId,
+      targetFactId,
+      currentDate: params.currentDate,
+      weekStartsOn: params.weekStartsOn,
+    });
     result.push({
       taskId: workload.taskId,
       targetFactId,
       recurrenceFactId: matchingRecurrences[0].id,
-      startDate,
-      endDate,
+      ...hardBound,
     });
   }
 
@@ -147,7 +165,7 @@ export function resolveWeeklyPlanningRecurringDateBoundsV5(params: {
 
 export function filterWeeklyPlanningRecurringDatesByHardBoundsV5(params: {
   dates: readonly string[];
-  bound: WeeklyPlanningRecurringDateBoundV5 | undefined;
+  bound: WeeklyPlanningHardDateBoundV5 | undefined;
 }): string[] {
   const bound = params.bound;
   if (!bound) return [...params.dates];
