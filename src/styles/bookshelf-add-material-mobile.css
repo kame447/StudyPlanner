@@ -83,14 +83,14 @@
   animation: planner-sheet-overlay-in 180ms ease-out both;
 }
 
-/* Do not include :has() on the card selector. Keeping the card rule explicit
- * prevents the legacy .bookshelf-modal viewport inset from becoming the
- * effective mobile width while preserving the overlay discriminator above. */
+/* Schedule's quick-entry card is min(620px, 100vw - 32px). Reuse that exact
+ * horizontal contract so the two creation surfaces line up on phones and
+ * desktop, while Bookshelf keeps its longer form scrollable. */
 .bookshelf-view > .modal-overlay > .bookshelf-modal {
-  width: min(100%, 720px);
-  max-width: 720px;
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
   max-height: 92dvh;
-  margin: 0;
+  margin: 0 auto;
   padding-bottom: max(18px, env(safe-area-inset-bottom, 0px));
   border-radius: 28px 28px 0 0;
   border-bottom: 0;
