@@ -250,13 +250,9 @@ test('AI planning preview keeps background scroll locked and closes without over
   await page.locator('.primary-bottom-nav button').first().click();
 
   const conversation = page.locator('.ai-planning-conversation');
-  const backgroundScrollTop = await conversation.evaluate((element) => {
-    const maxScrollTop = Math.max(element.scrollHeight - element.clientHeight, 0);
-    if (maxScrollTop <= 0) return -1;
-    element.scrollTop = Math.min(180, maxScrollTop);
-    return element.scrollTop;
-  });
-  expect(backgroundScrollTop).toBeGreaterThanOrEqual(0);
+  expect(
+    await conversation.evaluate((element) => element.scrollHeight > element.clientHeight),
+  ).toBe(true);
 
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
@@ -266,7 +262,33 @@ test('AI planning preview keeps background scroll locked and closes without over
   await expect(preview).toBeVisible();
   await expect(shell).toHaveClass(/is-preview-open/);
   await expect(conversation).toHaveCSS('overflow-y', 'hidden');
-  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
+
+  // Locator.click() legitimately scrolls the trigger into view. Capture the lock baseline only
+  // after the preview is open, then verify preview/closing gestures cannot move it further.
+  const lockedScrollTop = await conversation.evaluate((element) => element.scrollTop);
+
+  const previewScroll = preview.locator('.ai-planning-preview-overview-scroll');
+  const previewScrollBox = await previewScroll.boundingBox();
+  expect(previewScrollBox).not.toBeNull();
+  if (previewScrollBox) {
+    await page.mouse.move(
+      previewScrollBox.x + previewScrollBox.width / 2,
+      previewScrollBox.y + Math.min(previewScrollBox.height / 2, 220),
+    );
+    await page.mouse.wheel(0, 720);
+  }
+  await page.waitForTimeout(40);
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(lockedScrollTop);
+
+  await startOverlayOpacitySampler(page);
+  const dragFeedback = await swipeSheetDown(preview);
+  expect(dragFeedback.movePrevented).toBe(true);
+
+  await expect(motion).toHaveClass(/is-closing/);
+  await expect(shell).toHaveClass(/is-preview-open/);
+  await expect(overlay).toHaveCSS('pointer-events', 'auto');
+  await expect(overlay).toHaveCSS('touch-action', 'none');
+  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
 
   const conversationBox = await conversation.boundingBox();
   expect(conversationBox).not.toBeNull();
@@ -278,18 +300,7 @@ test('AI planning preview keeps background scroll locked and closes without over
     await page.mouse.wheel(0, 720);
   }
   await page.waitForTimeout(40);
-  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
-
-  await startOverlayOpacitySampler(page);
-  const dragFeedback = await swipeSheetDown(preview);
-  expect(dragFeedback.movePrevented).toBe(true);
-
-  await expect(motion).toHaveClass(/is-closing/);
-  await expect(shell).toHaveClass(/is-preview-open/);
-  await expect(overlay).toHaveCSS('pointer-events', 'auto');
-  await expect(overlay).toHaveCSS('touch-action', 'none');
-  await expect(conversation).toHaveCSS('overflow-y', 'hidden');
-  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(backgroundScrollTop);
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(lockedScrollTop);
 
   await expect(preview).toBeHidden({ timeout: 1500 });
 
