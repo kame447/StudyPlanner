@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 const WEEK = [
@@ -35,6 +41,12 @@ function graph(): WeeklyPlanningFactGraphV5 {
       createdRevision: 1,
     }],
   };
+}
+
+function placementGraph() {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph()),
+  );
 }
 
 function wordItem(params: {
@@ -155,7 +167,7 @@ describe('Stable V5 distribution adversarial audit', () => {
   it('does not collapse a generic long workload onto the first day', () => {
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: input({ items: [longWorkItem()] }),
-      graph: graph(),
+      graph: placementGraph(),
     });
 
     expect(result.status).toBe('ready');
@@ -174,7 +186,10 @@ describe('Stable V5 distribution adversarial audit', () => {
       wordItem({ id: 'word-2', label: '英単語 100語', amount: 100, ordinalStart: 100, ordinalEnd: 199 }),
       wordItem({ id: 'word-3', label: '英単語 100語', amount: 100, ordinalStart: 200, ordinalEnd: 299 }),
     ];
-    const result = scheduleWeeklyPlanningStableV5Preview({ input: input({ items }), graph: graph() });
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: input({ items }),
+      graph: placementGraph(),
+    });
 
     expect(result.status).toBe('ready');
     expect(result.candidates).toHaveLength(items.length);
@@ -192,7 +207,7 @@ describe('Stable V5 distribution adversarial audit', () => {
         items: [wordItem({ durationMinutes: 35 })],
         unavailableDates: ['2026-08-18'],
       }),
-      graph: graph(),
+      graph: placementGraph(),
     });
 
     expect(result.status).toBe('ready');
@@ -208,7 +223,7 @@ describe('Stable V5 distribution adversarial audit', () => {
     const allowedDates = ['2026-08-17', '2026-08-19', '2026-08-21'];
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: input({ allowedDates }),
-      graph: graph(),
+      graph: placementGraph(),
     });
 
     expect(result.status).toBe('ready');
@@ -224,7 +239,7 @@ describe('Stable V5 distribution adversarial audit', () => {
         dates: twoDays,
         unavailableDates: [twoDays[1]],
       }),
-      graph: graph(),
+      graph: placementGraph(),
     });
 
     expect(result.status).toBe('ready');
@@ -238,7 +253,7 @@ describe('Stable V5 distribution adversarial audit', () => {
       const dates = WEEK.slice(0, dayCount);
       const result = scheduleWeeklyPlanningStableV5Preview({
         input: input({ dates }),
-        graph: graph(),
+        graph: placementGraph(),
       });
 
       expect(result.status, `dayCount=${dayCount}`).toBe('ready');
