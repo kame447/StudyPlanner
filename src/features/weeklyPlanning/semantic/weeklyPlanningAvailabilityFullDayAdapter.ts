@@ -57,7 +57,7 @@ export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): AvailabilityResolutionResult {
   const graph: WeeklyPlanningAvailabilityGraphView = {
     revision: params.graph.revision,
