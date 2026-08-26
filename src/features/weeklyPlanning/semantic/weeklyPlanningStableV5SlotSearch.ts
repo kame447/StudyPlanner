@@ -156,7 +156,7 @@ export function findPlacementSlot(params: {
       });
       const orderedWindows = params.preferLongSegment
         ? [...windows].sort((left, right) =>
-            (right.end - left.start) - (left.end - right.start) || left.start - right.start)
+            (right.end - right.start) - (left.end - left.start) || left.start - right.start)
         : windows;
       for (const window of orderedWindows) {
         const slot = slotInWindow({
