@@ -11,12 +11,12 @@ function source(id: string) {
     conversationId: 'relative-hard-date-reference',
     turnId: 'turn-1',
     semanticLocalId: id,
-    sourceText: '明日だけ毎日1時間やる',
+    sourceText: '相対日付の範囲で毎日1時間やる',
     origin: 'user' as const,
   };
 }
 
-function graph(): WeeklyPlanningFactGraphV5 {
+function graph(dateExpression = 'tomorrow'): WeeklyPlanningFactGraphV5 {
   return {
     ...createEmptyWeeklyPlanningFactGraphV5(),
     revision: 1,
@@ -49,7 +49,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
         targetFactId: 'task-1',
         kind: 'earliest_start',
         constraintLevel: 'hard',
-        dateExpression: 'tomorrow',
+        dateExpression,
         namedTimePeriod: null,
         startTime: null,
         endTime: null,
@@ -63,7 +63,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
         targetFactId: 'task-1',
         kind: 'latest_end',
         constraintLevel: 'hard',
-        dateExpression: 'tomorrow',
+        dateExpression,
         namedTimePeriod: null,
         startTime: null,
         endTime: null,
@@ -113,5 +113,44 @@ describe('Stable V5 relative hard-date reference', () => {
     expect(scheduled.candidates.map((candidate) => candidate.date)).toEqual([
       '2026-08-27',
     ]);
+  });
+
+  it('preserves the user week-start convention when resolving relative hard bounds', () => {
+    const value = graph('this_week');
+    const expectedDates = [
+      '2026-08-30',
+      '2026-08-31',
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+      '2026-09-04',
+      '2026-09-05',
+    ];
+    const compiled = compileGenericSchedulerInput({
+      graph: value,
+      context: {
+        ownerId: 'owner-1',
+        currentDate: '2026-08-30',
+        planningStartDate: '2026-08-30',
+        planningEndDate: '2026-09-05',
+        timeZone: 'Asia/Tokyo',
+        weekStartsOn: 'sunday',
+      },
+    });
+
+    expect(compiled.status).toBe('ready');
+    expect(compiled.input?.movableWorkItems.map((item) => item.requiredDate)).toEqual(expectedDates);
+    expect(compiled.input?.horizon).toMatchObject({
+      referenceDate: '2026-08-30',
+      weekStartsOn: 'sunday',
+    });
+
+    const scheduled = scheduleWeeklyPlanningStableV5Preview({
+      input: compiled.input!,
+      graph: value,
+    });
+
+    expect(scheduled.status).toBe('ready');
+    expect(scheduled.candidates.map((candidate) => candidate.date)).toEqual(expectedDates);
   });
 });
