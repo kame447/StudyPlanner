@@ -3,11 +3,16 @@ import type { TaskDateRuleFact } from './weeklyPlanningFactGraphV2';
 import {
   intersectCalendarDates,
   listCalendarDatesInclusive,
-  resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
 import {
   resolveWeeklyPlanningCalendarRecurrenceDatesV5,
 } from './weeklyPlanningRecurrenceCalendarV5';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  resolveWeeklyPlanningSingleDateExpressionV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 export interface WeeklyPlanningTaskDateRuleGraphView {
   readonly tasks: ReadonlyArray<{ id: string }>;
@@ -75,15 +80,24 @@ function mutableState(
 function resolveRuleDates(params: {
   rule: TaskDateRuleFact;
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
   issues: TaskDateRuleResolutionIssue[];
 }): string[] | null {
-  const resolution = resolveCanonicalDateExpression({
-    expression: params.rule.dateExpression,
-    currentDate: params.currentDate,
-  });
-  if (resolution.status !== 'resolved') {
+  const resolution = params.resolvedDateExpressions
+    ? resolvedWeeklyPlanningDateExpressionForFactV5({
+        resolved: params.resolvedDateExpressions,
+        factId: params.rule.id,
+      })
+    : resolveWeeklyPlanningSingleDateExpressionV5({
+        factId: params.rule.id,
+        expression: params.rule.dateExpression,
+        currentDate: params.currentDate,
+        weekStartsOn: params.weekStartsOn,
+      });
+  if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
     params.issues.push({
       code: 'unsupported_task_date_expression',
       taskDateRuleFactId: params.rule.id,
@@ -91,7 +105,7 @@ function resolveRuleDates(params: {
       blocking: true,
       details: {
         expression: params.rule.dateExpression,
-        resolutionStatus: resolution.status,
+        resolutionStatus: resolution?.status ?? 'unsupported_expression',
       },
     });
     return null;
@@ -144,8 +158,10 @@ function resolveRecurrenceDates(params: {
 export function resolveWeeklyPlanningTaskDateRules(params: {
   graph: WeeklyPlanningTaskDateRuleGraphView;
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskDateRuleResolutionResult {
   const issues: TaskDateRuleResolutionIssue[] = [];
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
@@ -177,8 +193,10 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     const dates = resolveRuleDates({
       rule,
       currentDate: params.currentDate,
+      weekStartsOn: params.weekStartsOn,
       planningStartDate: params.planningStartDate,
       planningEndDate: params.planningEndDate,
+      resolvedDateExpressions: params.resolvedDateExpressions,
       issues,
     });
     if (!dates) continue;
