@@ -36,6 +36,86 @@ async function seedHome(page) {
   });
 }
 
+async function seedMultiweekDraftPlan(page) {
+  await page.addInitScript(() => {
+    const now = new Date().toISOString();
+    const today = new Date();
+    const user = {
+      id: 'ai-planning-multiweek-user',
+      email: 'ai-planning-multiweek@example.com',
+      username: 'ai-planning-multiweek-user',
+      avatar: '',
+      createdAt: now,
+    };
+    const toIsoDate = (value) => {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const addDays = (value, amount) => {
+      const next = new Date(value);
+      next.setDate(next.getDate() + amount);
+      return next;
+    };
+    const monday = new Date(today);
+    const weekday = monday.getDay();
+    monday.setDate(monday.getDate() + (weekday === 0 ? -6 : 1 - weekday));
+    const weekStartDate = toIsoDate(monday);
+    const draftBlocks = Array.from({ length: 12 }, (_, index) => ({
+      id: `gold-${index + 1}`,
+      userId: user.id,
+      date: toIsoDate(addDays(today, index + 1)),
+      startTime: '19:00',
+      endTime: '20:00',
+      title: '金フレ',
+      subject: 'TOEIC',
+      type: 'study',
+      label: '金フレ',
+      source: 'ai',
+      status: 'draft',
+      userEdited: false,
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const planningState = {
+      weekStartDate,
+      revision: 1,
+      conversationRequestSequence: 0,
+      mode: 'awaiting_approval',
+      draftBlocks,
+      previewCandidates: [],
+      messages: [],
+      updatedAt: now,
+    };
+    const storageKey = `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`;
+
+    localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+    localStorage.setItem('studyplanner.session', user.id);
+    localStorage.setItem('studyplanner.plans', '[]');
+    localStorage.setItem('studyplanner.actuals', '[]');
+    localStorage.setItem('studyplanner.todos.v1', '[]');
+    localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        version: 3,
+        ownerId: user.id,
+        payload: { version: 2, state: planningState },
+      }),
+    );
+    localStorage.setItem(
+      `studyplanner.weeklyPlanning.activeSession.${user.id}`,
+      JSON.stringify({
+        version: 1,
+        ownerId: user.id,
+        weekStartDate,
+        conversationId: null,
+      }),
+    );
+  });
+}
+
 test('home AI planning entry opens the dedicated Stable V5 conversation surface', async ({ page }) => {
   await seedHome(page);
   await page.goto('/');
@@ -126,4 +206,44 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await page.locator('.primary-bottom-nav button').nth(2).click();
   await expect(page.locator('.ai-planning-view')).toHaveCount(0);
   await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+});
+
+test('multiweek AI plan keeps full totals and pages the timeline on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page);
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+
+  const planCard = page.locator('.ai-planning-plan-card');
+  await expect(planCard).toBeVisible();
+  await expect(planCard).toContainText('12件の予定を作成');
+  await expect(planCard).toContainText('合計 12時間');
+  await expect(planCard).not.toContainText('今週の計画案');
+
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+  await expect(preview.locator('.ai-planning-preview-header')).toContainText('12件');
+  await expect(preview.locator('.ai-planning-preview-period-nav')).toContainText('1 / 2');
+  await expect(preview.locator('.ai-planning-week-header > div')).toHaveCount(7);
+  await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(7);
+
+  const previousButton = preview.getByRole('button', { name: '前の期間を表示' });
+  const nextButton = preview.getByRole('button', { name: '次の期間を表示' });
+  await expect(previousButton).toBeDisabled();
+  await expect(nextButton).toBeEnabled();
+  await nextButton.click();
+
+  await expect(preview.locator('.ai-planning-preview-period-nav')).toContainText('2 / 2');
+  await expect(preview.locator('.ai-planning-week-header > div')).toHaveCount(5);
+  await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(5);
+  await expect(previousButton).toBeEnabled();
+  await expect(nextButton).toBeDisabled();
+
+  const previewBox = await preview.boundingBox();
+  expect(previewBox?.width ?? 0).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: 'artifacts/ai-planning-multiweek-preview-mobile.png',
+    fullPage: true,
+  });
 });
