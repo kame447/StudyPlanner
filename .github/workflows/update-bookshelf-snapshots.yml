@@ -52,7 +52,7 @@ jobs:
           git add "$snapshot_dir"/bookshelf-*-linux.png
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test: approve bookshelf circular FAB visuals'
+          git commit -m 'test: approve bookshelf add-surface visuals'
           git push origin HEAD:fix/bookshelf-add-material-mobile
 
-# Trigger the updater after the geometry audit; the job deletes this workflow.
+# Trigger after the adversarial responsive audit; the job deletes this workflow.
