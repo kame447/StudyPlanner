@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 const WEEK = [
@@ -76,6 +82,12 @@ function graph(taskIds: string[]): WeeklyPlanningFactGraphV5 {
   };
 }
 
+function placementGraph(taskIds: string[]) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph(taskIds)),
+  );
+}
+
 function input(items: GenericPlanningWorkItem[]): GenericSchedulerInput {
   return {
     version: 'weekly-planning-generic-scheduler-input-v2',
@@ -102,7 +114,7 @@ describe('Stable V5 placement engine adversarial integration', () => {
     const taskIds = ['task-a', 'task-b', 'task-c'];
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: input(taskIds.map((taskId) => item(taskId))),
-      graph: graph(taskIds),
+      graph: placementGraph(taskIds),
     });
     expect(result.status).toBe('ready');
     expect(result.candidates.map((candidate) => candidate.date)).toEqual(WEEK.slice(0, 3));
@@ -130,7 +142,7 @@ describe('Stable V5 placement engine adversarial integration', () => {
     }];
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: value,
-      graph: graph(['task-a', 'task-b']),
+      graph: placementGraph(['task-a', 'task-b']),
     });
     expect(result.status).toBe('ready');
     expect(result.candidates[0].date >= '2026-08-21').toBe(true);
@@ -155,7 +167,7 @@ describe('Stable V5 placement engine adversarial integration', () => {
     }];
     const result = scheduleWeeklyPlanningStableV5Preview({
       input: value,
-      graph: graph(['task-a', 'task-b']),
+      graph: placementGraph(['task-a', 'task-b']),
     });
     expect(result.status).toBe('ready');
     const first = result.candidates.find((candidate) => candidate.workItemKey === 'item-task-a')!;
@@ -191,7 +203,10 @@ describe('Stable V5 placement engine adversarial integration', () => {
         graphRevision: 1,
       },
     ];
-    const result = scheduleWeeklyPlanningStableV5Preview({ input: value, graph: graph(['task-a']) });
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: value,
+      graph: placementGraph(['task-a']),
+    });
     expect(result.status).toBe('ready');
     expect(result.candidates[0]).toMatchObject({
       date: WEEK[0],
