@@ -98,6 +98,7 @@ function datesFromRecurrence(params: {
       details: { day },
     });
   }
+  if (resolution.invalidDays.length > 0) return [];
   return resolution.calendarDates ?? [];
 }
 
