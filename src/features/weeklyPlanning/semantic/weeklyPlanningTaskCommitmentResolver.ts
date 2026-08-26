@@ -2,12 +2,14 @@ import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type { TemporalConstraintFactV2 } from './weeklyPlanningFactGraphV2';
 import {
   addCalendarDays,
-  calendarWeekday,
   intersectCalendarDates,
   isValidCalendarDate,
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
 
 export interface WeeklyPlanningTaskCommitmentGraphView {
   readonly revision: number;
@@ -66,15 +68,6 @@ export interface TaskCommitmentResolutionResult {
 }
 
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
-const WEEKDAY_INDEX: Record<string, number> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
 
 function stableHash(input: string): string {
   let hash = 2166136261;
@@ -91,39 +84,21 @@ function datesFromRecurrence(params: {
   constraint: TemporalConstraintFactV2;
   issues: TaskCommitmentResolutionIssue[];
 }): string[] {
-  if (params.recurrence.kind === 'daily') return [...params.planningDates];
-  if (params.recurrence.kind === 'weekdays') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day !== null && day >= 1 && day <= 5;
-    });
-  }
-  if (params.recurrence.kind === 'weekends') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day === 0 || day === 6;
-    });
-  }
-
-  const indexes = new Set<number>();
-  for (const day of params.recurrence.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
-      params.issues.push({
-        code: 'invalid_commitment_weekday',
-        temporalConstraintFactId: params.constraint.id,
-        taskId: params.constraint.taskId,
-        blocking: true,
-        details: { day },
-      });
-    } else {
-      indexes.add(index);
-    }
-  }
-  return params.planningDates.filter((date) => {
-    const day = calendarWeekday(date);
-    return day !== null && indexes.has(day);
+  const resolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: params.recurrence.kind,
+    days: params.recurrence.days,
+    dates: params.planningDates,
   });
+  for (const day of resolution.invalidDays) {
+    params.issues.push({
+      code: 'invalid_commitment_weekday',
+      temporalConstraintFactId: params.constraint.id,
+      taskId: params.constraint.taskId,
+      blocking: true,
+      details: { day },
+    });
+  }
+  return resolution.calendarDates ?? [];
 }
 
 function resolveDates(params: {
