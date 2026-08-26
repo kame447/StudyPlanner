@@ -16,7 +16,7 @@
  * short/tall viewport overrides. */
 .bookshelf-view .bookshelf-add-material-fab {
   position: fixed;
-  right: max(22px, calc((100vw - min(100vw, 900px)) / 2 + 22px));
+  right: max(22px, calc((100vw - min(100vw, 508px)) / 2 + 22px));
   bottom: calc(74px + 14px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
   width: 56px;
