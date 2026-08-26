@@ -21,6 +21,9 @@ import {
   projectWeeklyPlanningMemoryObservedPaceV5,
 } from '../semantic/weeklyPlanningMemoryObservedPaceProjectionV5';
 import {
+  resolveWeeklyPlanningTemporalConstraintsV5,
+} from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
+import {
   decideWeeklyPlanningStableDialogueV5,
   type WeeklyPlanningStableQuestionV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
@@ -119,10 +122,17 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
+  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
+    graph: activeGraph,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+  });
   const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: semantic.graph,
+    graph: activeGraph,
     selectedDate: input.selectedDate,
     requestContext,
+    resolvedTemporalConstraints,
     groundingRecords: input.previousState?.groundingRecords,
   });
   const continuationAccepted = stableV5RelevantContinuationAccepted({
@@ -138,9 +148,10 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     continuationAccepted,
   });
   const horizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: semantic.graph,
+    graph: activeGraph,
     selectedDate: input.selectedDate,
     requestContext,
+    resolvedTemporalConstraints,
     groundingRecords,
   });
   const schedulerContext = createWeeklyPlanningSchedulerContext({
@@ -156,7 +167,6 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     horizon,
     timeZone: requestContext.timeZone,
   });
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
   const observedPaceProjection = projectWeeklyPlanningMemoryObservedPaceV5({
     ownerId: input.userId,
     graph: activeGraph,
@@ -169,6 +179,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     context: schedulerContext,
     externalSources,
     observedEstimateOverrides: observedPaceProjection.estimateOverrides,
+    resolvedTemporalConstraints,
   });
   const learningStrategyProposals = semantic.normalization.document
     ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
@@ -196,6 +207,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         sessionMinutes: acceptedCalibration.selectedSessionMinutes,
         context: schedulerContext,
         externalSources,
+        resolvedTemporalConstraints,
       })
     : null;
   const acceptedMemorySessionCompilation = applyAcceptedMemorySessionProjectionV5({
@@ -265,6 +277,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     schedulerContext,
     externalSources,
     activeGraph,
+    resolvedTemporalConstraints,
     observedPaceProjection,
     baselineCompilation,
     acceptedMemorySessionCompilation,
