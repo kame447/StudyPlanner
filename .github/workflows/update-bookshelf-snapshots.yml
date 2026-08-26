@@ -54,3 +54,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'test: approve bookshelf circular FAB visuals'
           git push origin HEAD:fix/bookshelf-add-material-mobile
+
+# Triggered via an explicit fast-forward ref update so the push-only updater runs.
