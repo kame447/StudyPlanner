@@ -1,27 +1,30 @@
-import { useMemo, useState, type CSSProperties } from 'react';
 import {
-  formatCompactDate,
-  formatDateLabel,
-  formatMinutes,
-  formatMonthLabel,
-  getWeekDates,
-  getWeekdayLabel,
-} from '../lib/date';
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ComponentType,
+} from 'react';
 import {
-  buildMonthWeekComparisons,
-  buildRangeDailyComparisons,
-  buildReportSummary,
-  buildYearMonthComparisons,
-  getComparisonChartMax,
-  getComparisonTicks,
-  getMaterialChartColor,
-  getMaterialChartEntries,
-  getReportScopeRange,
-  UNSET_SUBJECT_LABEL,
-  type ReportPeriodComparison,
-  type ReportScope,
-  type ReportTotalEntry,
-} from '../lib/reportAnalytics';
+  BookOpen,
+  CalendarDays,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Flag,
+  Sparkles,
+  type LucideProps,
+} from 'lucide-react';
+import {
+  ALL_MATERIALS_FILTER,
+  buildLearningReportMaterialOptions,
+  buildLearningReportModel,
+  buildLearningReportOverview,
+  formatLearningReportRangeLabel,
+  shiftLearningReportAnchor,
+  type LearningReportScope,
+} from '../lib/learningReport';
+import { formatMinutes, todayIsoDate } from '../lib/date';
 import type {
   Actual,
   Plan,
@@ -35,654 +38,355 @@ interface ReportViewProps {
   actuals: Actual[];
   studySubjects?: StudySubject[];
   studyMaterials?: StudyMaterial[];
-  onOpenDay: (date: string) => void;
+  onBack: () => void;
 }
 
-const REPORT_SCOPES: Array<{ value: ReportScope; label: string }> = [
+const REPORT_SCOPES: ReadonlyArray<{
+  value: LearningReportScope;
+  label: string;
+}> = [
   { value: 'day', label: '日' },
   { value: 'week', label: '週' },
   { value: 'month', label: '月' },
-  { value: 'year', label: '年' },
 ];
 
-const MATERIAL_PIE_LABEL_THRESHOLD = 0.1;
-
-function formatRate(rate: number | null): string {
-  return rate === null ? '-' : `${Math.round(rate)}%`;
-}
-
-function formatStackedMinutes(minutes: number): string[] {
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-
-  if (hours > 0 && remainingMinutes > 0) {
-    return [`${hours}時間`, `${remainingMinutes}分`];
-  }
-
-  if (hours > 0) {
-    return [`${hours}時間`];
-  }
-
-  return [`${remainingMinutes}分`];
-}
-
-function buildMaterialPieGradient(entries: ReportTotalEntry[]): string {
-  const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
-  let cursor = 0;
-
-  const stops = entries.map((entry, index) => {
-    const start = cursor;
-    const share = totalMinutes === 0 ? 0 : (entry.minutes / totalMinutes) * 100;
-    const end = index === entries.length - 1 ? 100 : cursor + share;
-    cursor = end;
-
-    return `${getMaterialChartColor(entry, index)} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
-  });
-
-  return `conic-gradient(${stops.join(', ')})`;
-}
-
-function formatShare(minutes: number, totalMinutes: number): string {
-  if (totalMinutes <= 0) {
-    return '0%';
-  }
-
-  const percent = (minutes / totalMinutes) * 100;
-
-  return percent > 0 && percent < 1 ? '<1%' : `${Math.round(percent)}%`;
-}
-
-function MetricCard({
+function SummaryCard({
   label,
-  value,
-  variant = 'compact',
-  help,
+  minutes,
+  plannedMinutes,
+  Icon,
+  lifetime = false,
 }: {
   label: string;
-  value: string;
-  variant?: 'primary' | 'compact';
-  help?: string;
+  minutes: number;
+  plannedMinutes?: number;
+  Icon: ComponentType<LucideProps>;
+  lifetime?: boolean;
 }) {
   return (
-    <article className={`report-metric-card ${variant}`}>
-      <span className="report-metric-label">{label}</span>
-      <strong className="report-metric-value">{value}</strong>
-      {help ? <span className="report-metric-help">{help}</span> : null}
+    <article className="learning-report-summary-card">
+      <div className="learning-report-summary-icon" aria-hidden="true">
+        <Icon />
+      </div>
+      <div className="learning-report-summary-copy">
+        <span>{label}</span>
+        <strong>{formatMinutes(minutes)}</strong>
+        <small>
+          {lifetime
+            ? 'これまでの学習記録'
+            : plannedMinutes && plannedMinutes > 0
+              ? `予定 ${formatMinutes(plannedMinutes)}`
+              : '予定なし'}
+        </small>
+      </div>
     </article>
   );
 }
 
-function MaterialPieChart({
-  title,
-  entries,
-  emptyText,
-}: {
-  title: string;
-  entries: ReportTotalEntry[];
-  emptyText: string;
-}) {
-  const chartEntries = getMaterialChartEntries(entries);
-  const chartTotalMinutes = chartEntries.reduce(
-    (sum, entry) => sum + entry.minutes,
-    0,
-  );
-  let sliceCursor = 0;
-  const chartSlices = chartEntries.map((entry, index) => {
-    const share = chartTotalMinutes === 0 ? 0 : entry.minutes / chartTotalMinutes;
-    const middle = sliceCursor + share / 2;
-    const angle = (middle * 360 - 90) * (Math.PI / 180);
-    sliceCursor += share;
-
-    return {
-      entry,
-      index,
-      share,
-      left: 50 + Math.cos(angle) * 31,
-      top: 50 + Math.sin(angle) * 31,
-    };
-  });
-
-  return (
-    <section className="panel report-card report-pie-card">
-      <div className="section-header">
-        <div>
-          <h2>{title}</h2>
-        </div>
-      </div>
-      {chartEntries.length === 0 ? (
-        <p className="empty-copy">{emptyText}</p>
-      ) : (
-        <div className="report-pie-layout">
-          <div className="report-pie-chart-wrap">
-            <div
-              className="report-pie-chart"
-              role="img"
-              aria-label={`${title}: ${formatMinutes(chartTotalMinutes)}`}
-              style={{ background: buildMaterialPieGradient(chartEntries) }}
-            >
-              {chartSlices
-                .filter((slice) => slice.share >= MATERIAL_PIE_LABEL_THRESHOLD)
-                .map((slice) => (
-                  <span
-                    className="report-pie-slice-label"
-                    key={slice.entry.key}
-                    style={{
-                      left: `${slice.left}%`,
-                      top: `${slice.top}%`,
-                    }}
-                  >
-                    {Math.round(slice.share * 100)}%
-                  </span>
-                ))}
-            </div>
-            <div className="report-pie-total">
-              <strong>{formatMinutes(chartTotalMinutes)}</strong>
-              <span>記録時間ベース</span>
-            </div>
-          </div>
-          <div className="report-pie-legend">
-            {chartEntries.map((entry, index) => (
-              <div className="report-pie-legend-item" key={entry.key}>
-                <span
-                  className="report-pie-legend-dot"
-                  style={{ backgroundColor: getMaterialChartColor(entry, index) }}
-                />
-                <div className="report-pie-legend-body">
-                  <strong title={entry.label}>{entry.label}</strong>
-                  <span>
-                    {formatMinutes(entry.minutes)} /{' '}
-                    {formatShare(entry.minutes, chartTotalMinutes)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
+function shouldShowMonthLabel(index: number, total: number): boolean {
+  return index === 0 || index === total - 1 || (index + 1) % 5 === 0;
 }
 
-function ComparisonBars({
-  title,
-  entries,
-  onOpenDay,
-}: {
-  title: string;
-  entries: ReportPeriodComparison[];
-  onOpenDay?: (date: string) => void;
-}) {
-  const maxMinutes = getComparisonChartMax(Math.max(
-    60,
-    ...entries.flatMap((entry) => [entry.plannedMinutes, entry.actualMinutes]),
-  ));
-  const tickMinutes = getComparisonTicks(maxMinutes);
-
-  return (
-    <section className="panel report-card">
-      <div className="section-header">
-        <div>
-          <h2>{title}</h2>
-        </div>
-        <div className="report-comparison-legend" aria-hidden="true">
-          <span>
-            <i className="planned" />
-            予定
-          </span>
-          <span>
-            <i className="actual" />
-            記録
-          </span>
-        </div>
-      </div>
-      <div className="report-comparison-plot">
-        <div className="report-comparison-axis" aria-hidden="true">
-          {tickMinutes.map((minutes) => (
-            <span key={minutes}>{formatMinutes(minutes)}</span>
-          ))}
-        </div>
-        <div className="report-comparison-scroll">
-          <div
-            className="report-comparison-chart"
-            style={{
-              gridTemplateColumns: `repeat(${entries.length}, minmax(var(--comparison-item-width), 1fr))`,
-            }}
-          >
-            <div className="report-comparison-grid-lines" aria-hidden="true">
-              {tickMinutes.map((minutes) => (
-                <span key={minutes} />
-              ))}
-            </div>
-            {entries.map((entry) => {
-              const plannedHeight =
-                entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
-              const actualHeight =
-                entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
-              const shouldStaggerLabels =
-                entry.plannedMinutes > 0 &&
-                entry.actualMinutes > 0 &&
-                Math.abs(plannedHeight - actualHeight) < 12;
-              const content = (
-                <>
-                  <div className="report-comparison-column">
-                    <div className="report-comparison-column-track">
-                      <div className="report-comparison-bar-pair">
-                        <div
-                          className="report-comparison-bar"
-                          style={{ '--bar-height': `${plannedHeight}%` } as CSSProperties}
-                        >
-                          {entry.plannedMinutes > 0 ? (
-                            <span className="report-comparison-value planned">
-                              {formatStackedMinutes(entry.plannedMinutes).map((line) => (
-                                <span key={line}>{line}</span>
-                              ))}
-                            </span>
-                          ) : null}
-                          <div
-                            className="report-comparison-fill planned"
-                            title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
-                          />
-                        </div>
-                        <div
-                          className="report-comparison-bar"
-                          style={{ '--bar-height': `${actualHeight}%` } as CSSProperties}
-                        >
-                          {entry.actualMinutes > 0 ? (
-                            <span
-                              className={
-                                shouldStaggerLabels
-                                  ? 'report-comparison-value actual staggered'
-                                  : 'report-comparison-value actual'
-                              }
-                            >
-                              {formatStackedMinutes(entry.actualMinutes).map((line) => (
-                                <span key={line}>{line}</span>
-                              ))}
-                            </span>
-                          ) : null}
-                          <div
-                            className="report-comparison-fill actual"
-                            title={`記録 ${formatMinutes(entry.actualMinutes)}`}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="report-comparison-label">
-                    <strong>{entry.label}</strong>
-                    {entry.sublabel ? <span>{entry.sublabel}</span> : null}
-                  </div>
-                </>
-              );
-
-              return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
-                <button
-                  aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-                  className="report-comparison-item interactive"
-                  key={entry.key}
-                  onClick={() => onOpenDay(entry.key)}
-                  type="button"
-                >
-                  {content}
-                </button>
-              ) : (
-                <article
-                  aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-                  className="report-comparison-item"
-                  key={entry.key}
-                >
-                  {content}
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CompactList({
-  title,
-  items,
-  emptyText,
-}: {
-  title: string;
-  items: Array<{ id: string; title: string; detail: string }>;
-  emptyText: string;
-}) {
-  return (
-    <section className="panel report-card">
-      <div className="section-header">
-        <div>
-          <h2>{title}</h2>
-        </div>
-      </div>
-      {items.length === 0 ? (
-        <p className="empty-copy">{emptyText}</p>
-      ) : (
-        <div className="report-compact-list">
-          {items.slice(0, 6).map((item) => (
-            <article className="report-compact-item" key={item.id}>
-              <strong>{item.title}</strong>
-              <span>{item.detail}</span>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-export function ReportView(props: ReportViewProps) {
-  const [scope, setScope] = useState<ReportScope>('week');
-  const selectedDate = props.selectedDate;
-  const subjects = props.studySubjects ?? [];
-  const materials = props.studyMaterials ?? [];
-  const scopeRange = getReportScopeRange(scope, selectedDate);
-  const summary = useMemo(
+export function ReportView({
+  selectedDate,
+  plans,
+  actuals,
+  studySubjects = [],
+  studyMaterials = [],
+  onBack,
+}: ReportViewProps) {
+  const [scope, setScope] = useState<LearningReportScope>('week');
+  const [anchorDate, setAnchorDate] = useState(selectedDate);
+  const [materialFilter, setMaterialFilter] = useState(ALL_MATERIALS_FILTER);
+  const referenceDate = todayIsoDate();
+  const overview = useMemo(
     () =>
-      buildReportSummary({
-        ...scopeRange,
-        plans: props.plans,
-        actuals: props.actuals,
-        subjects,
-        materials,
+      buildLearningReportOverview({
+        referenceDate,
+        plans,
+        actuals,
+        subjects: studySubjects,
+        materials: studyMaterials,
+      }),
+    [actuals, plans, referenceDate, studyMaterials, studySubjects],
+  );
+  const report = useMemo(
+    () =>
+      buildLearningReportModel({
+        scope,
+        anchorDate,
+        materialFilter,
+        plans,
+        actuals,
+        subjects: studySubjects,
+        materials: studyMaterials,
       }),
     [
-      materials,
-      props.actuals,
-      props.plans,
-      scopeRange.endDate,
-      scopeRange.startDate,
-      subjects,
-    ],
-  );
-  const dailyComparisons = useMemo(
-    () => {
-      if (scope !== 'week') {
-        return [];
-      }
-
-      return buildRangeDailyComparisons({
-        ...scopeRange,
-        plans: props.plans,
-        actuals: props.actuals,
-        subjects,
-        materials,
-      });
-    },
-    [
-      materials,
-      props.actuals,
-      props.plans,
+      actuals,
+      anchorDate,
+      materialFilter,
+      plans,
       scope,
-      scopeRange.endDate,
-      scopeRange.startDate,
-      subjects,
+      studyMaterials,
+      studySubjects,
     ],
   );
-  const monthWeekComparisons = useMemo(
-    () => {
-      if (scope !== 'month') {
-        return [];
-      }
-
-      return buildMonthWeekComparisons({
-        selectedDate,
-        plans: props.plans,
-        actuals: props.actuals,
-        subjects,
-        materials,
-      });
-    },
-    [materials, props.actuals, props.plans, scope, selectedDate, subjects],
+  const materialOptions = useMemo(
+    () => buildLearningReportMaterialOptions(studyMaterials),
+    [studyMaterials],
   );
-  const yearMonthComparisons = useMemo(
-    () => {
-      if (scope !== 'year') {
-        return [];
-      }
-
-      return buildYearMonthComparisons({
-        selectedDate,
-        plans: props.plans,
-        actuals: props.actuals,
-        subjects,
-        materials,
-      });
-    },
-    [materials, props.actuals, props.plans, scope, selectedDate, subjects],
+  const rangeLabel = formatLearningReportRangeLabel(scope, anchorDate);
+  const maxBucketMinutes = Math.max(
+    60,
+    ...report.buckets.map((bucket) => bucket.actualMinutes),
   );
-  const rangeLabel =
-    scope === 'day'
-      ? formatDateLabel(selectedDate)
-      : scope === 'month'
-        ? formatMonthLabel(selectedDate)
-        : scope === 'year'
-          ? `${selectedDate.slice(0, 4)}年`
-          : `${formatCompactDate(scopeRange.startDate)} - ${formatCompactDate(scopeRange.endDate)}`;
-  const topMaterial = summary.materialTotals.find((entry) => entry.minutes > 0);
-  const diffMinutes = summary.differenceMinutes;
-  const diffLabel = diffMinutes === 0
-    ? '差分なし'
-    : `${diffMinutes > 0 ? '+' : '-'}${formatMinutes(Math.abs(diffMinutes))}`;
-  const activityMetricLabel = scope === 'month' || scope === 'year' ? '学習日数' : '予定なし記録';
-  const activityMetricValue =
-    scope === 'month' || scope === 'year'
-      ? `${summary.learningDays}日`
-      : `${summary.standaloneActuals.length}件`;
-  const unrecordedItems = summary.unrecordedPlans.map((plan) => ({
-    id: `${plan.id}-${plan.date}`,
-    title: plan.title,
-    detail: `${formatCompactDate(plan.date)} ${plan.startTime}-${plan.endTime} / ${plan.subject || UNSET_SUBJECT_LABEL}`,
-  }));
-  const standaloneItems = summary.standaloneActuals.map((actual) => ({
-    id: actual.id,
-    title: actual.title?.trim() || '記録',
-    detail: `${formatCompactDate(actual.occurrenceDate)} ${actual.actualStartTime}-${actual.actualEndTime} / ${actual.subject || UNSET_SUBJECT_LABEL}`,
-  }));
-  const insightItems = [
-    ...summary.underPlannedSubjects.map((entry) => ({
-      id: `under-${entry.key}`,
-      title: `予定より少なかった教科: ${entry.label}`,
-      detail: `${formatMinutes(entry.minutes)} 少なめ`,
-    })),
-    ...summary.extraStudiedSubjects.map((entry) => ({
-      id: `extra-${entry.key}`,
-      title: `予定外に多く学習: ${entry.label}`,
-      detail: `${formatMinutes(entry.minutes)} 多め`,
-    })),
-    {
-      id: 'unset-material',
-      title: '教材未設定の記録',
-      detail: `${summary.materialUnsetCount}件`,
-    },
-  ].filter((item) => item.id !== 'unset-material' || summary.materialUnsetCount > 0);
 
   return (
-    <section className="section-stack report-view">
-      <div className="panel">
-        <div className="section-header">
-          <div>
-            <h2>レポート</h2>
-            <p>{rangeLabel} の学習状況を、予定・記録・教材で確認できます。</p>
-          </div>
-          <div className="segmented-control report-scope-tabs" role="tablist">
-            {REPORT_SCOPES.map((option) => (
-              <button
-                className={scope === option.value ? 'segment active' : 'segment'}
-                key={option.value}
-                onClick={() => setScope(option.value)}
-                type="button"
-                role="tab"
-                aria-selected={scope === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+    <section className="learning-report-view" aria-labelledby="learning-report-title">
+      <header className="learning-report-header">
+        <button
+          className="learning-report-icon-button"
+          type="button"
+          aria-label="ホームに戻る"
+          onClick={onBack}
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <h1 id="learning-report-title">学習レポート</h1>
+        <span className="learning-report-header-spacer" aria-hidden="true" />
+      </header>
 
-        <div className="report-metrics-panel">
-          <div className="report-metrics-primary">
-            <MetricCard
-              label="予定時間"
-              value={formatMinutes(summary.plannedMinutes)}
-              variant="primary"
-            />
-            <MetricCard
-              label="記録時間"
-              value={formatMinutes(summary.actualMinutes)}
-              variant="primary"
-            />
-          </div>
-          <div className="report-metric-chips">
-            <MetricCard label="達成率" value={formatRate(summary.achievementRate)} />
-            <MetricCard
-              label="未記録予定"
-              value={`${summary.unrecordedPlans.length}件`}
-            />
-            <MetricCard label={activityMetricLabel} value={activityMetricValue} />
-            <MetricCard label="差分" value={diffLabel} />
-          </div>
-        </div>
+      <div className="learning-report-summary-grid" aria-label="学習時間サマリー">
+        <SummaryCard
+          label="今日"
+          minutes={overview.todayMinutes}
+          plannedMinutes={overview.todayPlannedMinutes}
+          Icon={Clock3}
+        />
+        <SummaryCard
+          label="今週"
+          minutes={overview.weekMinutes}
+          plannedMinutes={overview.weekPlannedMinutes}
+          Icon={CalendarDays}
+        />
+        <SummaryCard
+          label="今月"
+          minutes={overview.monthMinutes}
+          plannedMinutes={overview.monthPlannedMinutes}
+          Icon={CalendarRange}
+        />
+        <SummaryCard
+          label="累計"
+          minutes={overview.lifetimeMinutes}
+          Icon={Flag}
+          lifetime
+        />
       </div>
 
-      {scope === 'day' ? (
-        <>
-          <div className="report-grid">
-            <MaterialPieChart
-              title="教材別学習比率"
-              entries={summary.materialTotals}
-              emptyText="この日の記録時間はまだありません。"
-            />
-            <CompactList
-              title="未記録の予定"
-              items={unrecordedItems}
-              emptyText="未記録の学習予定はありません。"
-            />
+      <div
+        className="learning-report-scope-tabs"
+        role="tablist"
+        aria-label="集計期間"
+      >
+        {REPORT_SCOPES.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={scope === option.value}
+            className={scope === option.value ? 'active' : undefined}
+            onClick={() => setScope(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="learning-report-period-navigation">
+        <button
+          className="learning-report-icon-button"
+          type="button"
+          aria-label="前の期間を表示"
+          onClick={() =>
+            setAnchorDate((current) =>
+              shiftLearningReportAnchor(scope, current, -1),
+            )
+          }
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <strong>{rangeLabel}</strong>
+        <button
+          className="learning-report-icon-button"
+          type="button"
+          aria-label="次の期間を表示"
+          onClick={() =>
+            setAnchorDate((current) =>
+              shiftLearningReportAnchor(scope, current, 1),
+            )
+          }
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
+      </div>
+
+      <label className="learning-report-material-filter">
+        <BookOpen aria-hidden="true" />
+        <span className="sr-only">表示する教材</span>
+        <select
+          value={materialFilter}
+          onChange={(event) => setMaterialFilter(event.target.value)}
+        >
+          {materialOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {report.actualMinutes === 0 ? (
+        <section className="learning-report-empty" aria-live="polite">
+          <div className="learning-report-empty-icon" aria-hidden="true">
+            <BookOpen />
           </div>
-          <div className="report-grid">
-            <CompactList
-              title="予定なし記録"
-              items={standaloneItems}
-              emptyText="予定なし記録はありません。"
-            />
-            <section className="panel report-card">
-              <div className="section-header">
-                <div>
-                  <h2>教材メモ</h2>
-                </div>
+          <div>
+            <h2>この期間にはまだ学習記録がありません</h2>
+            <p>期間や教材を切り替えると、別の学習記録を確認できます。</p>
+          </div>
+        </section>
+      ) : (
+        <>
+          <section className="learning-report-card learning-report-trend-card">
+            <div className="learning-report-card-heading">
+              <div>
+                <h2>学習時間の推移</h2>
+                <p>実績ベース</p>
               </div>
-              <div className="report-summary-line">
-                <span>
-                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
-                </span>
-                <span>教材未設定: {summary.materialUnsetCount}件</span>
+              <div className="learning-report-period-total">
+                <strong>合計 {formatMinutes(report.actualMinutes)}</strong>
+                {report.plannedMinutes > 0 ? (
+                  <span>予定 {formatMinutes(report.plannedMinutes)}</span>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              className={`learning-report-chart scope-${scope}`}
+              role="img"
+              aria-label={`${rangeLabel}の学習時間 合計 ${formatMinutes(report.actualMinutes)}`}
+              style={
+                {
+                  '--learning-report-bucket-count': Math.max(
+                    1,
+                    report.buckets.length,
+                  ),
+                } as CSSProperties
+              }
+            >
+              {report.buckets.map((bucket, index) => {
+                const height =
+                  bucket.actualMinutes <= 0
+                    ? 0
+                    : Math.max(
+                        4,
+                        (bucket.actualMinutes / maxBucketMinutes) * 100,
+                      );
+                const showLabel =
+                  scope !== 'month' ||
+                  shouldShowMonthLabel(index, report.buckets.length);
+
+                return (
+                  <div
+                    className="learning-report-chart-item"
+                    key={bucket.key}
+                    aria-label={`${bucket.label} ${bucket.sublabel ?? ''} ${formatMinutes(bucket.actualMinutes)}`}
+                  >
+                    <div className="learning-report-chart-bar-area">
+                      {scope !== 'month' && bucket.actualMinutes > 0 ? (
+                        <span className="learning-report-chart-value">
+                          {formatMinutes(bucket.actualMinutes)}
+                        </span>
+                      ) : null}
+                      <span
+                        className="learning-report-chart-bar"
+                        style={{ height: `${height}%` }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div
+                      className={
+                        showLabel
+                          ? 'learning-report-chart-label'
+                          : 'learning-report-chart-label hidden-label'
+                      }
+                      aria-hidden="true"
+                    >
+                      <strong>{showLabel ? bucket.label : ''}</strong>
+                      <span>{showLabel ? bucket.sublabel : ''}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="learning-report-card learning-report-breakdown-card">
+            <div className="learning-report-card-heading">
+              <div>
+                <h2>教材・科目別の学習時間</h2>
+                <p>この期間の実績内訳</p>
+              </div>
+              <strong className="learning-report-heading-total">
+                {formatMinutes(report.actualMinutes)}
+              </strong>
+            </div>
+
+            <div className="learning-report-breakdown-list">
+              {report.breakdown.map((entry) => (
+                <article
+                  className="learning-report-breakdown-item"
+                  key={entry.key}
+                  style={
+                    {
+                      '--learning-report-entry-color': entry.color,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="learning-report-breakdown-icon" aria-hidden="true">
+                    <BookOpen />
+                  </div>
+                  <div className="learning-report-breakdown-body">
+                    <div className="learning-report-breakdown-copy">
+                      <strong title={entry.label}>{entry.label}</strong>
+                      <span>{entry.subject}</span>
+                    </div>
+                    <div className="learning-report-breakdown-progress" aria-hidden="true">
+                      <span style={{ width: `${entry.ratio * 100}%` }} />
+                    </div>
+                  </div>
+                  <div className="learning-report-breakdown-value">
+                    <strong>{formatMinutes(entry.minutes)}</strong>
+                    <span>{Math.round(entry.ratio * 100)}%</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          {report.insight ? (
+            <section className="learning-report-insight">
+              <div className="learning-report-insight-icon" aria-hidden="true">
+                <Sparkles />
+              </div>
+              <div>
+                <strong>インサイト</strong>
+                <p>{report.insight}</p>
               </div>
             </section>
-          </div>
+          ) : null}
         </>
-      ) : null}
-
-      {scope === 'week' ? (
-        <>
-          <ComparisonBars
-            title="曜日別の予定 / 記録"
-            entries={getWeekDates(selectedDate).map((date) => {
-              const entry = dailyComparisons.find((item) => item.key === date);
-              return (
-                entry ?? {
-                  key: date,
-                  label: getWeekdayLabel(date),
-                  sublabel: formatCompactDate(date),
-                  plannedMinutes: 0,
-                  actualMinutes: 0,
-                }
-              );
-            })}
-            onOpenDay={props.onOpenDay}
-          />
-          <div className="report-grid">
-            <MaterialPieChart
-              title="教材別学習比率"
-              entries={summary.materialTotals}
-              emptyText="この週の記録時間はまだありません。"
-            />
-            <CompactList
-              title="週の気づき"
-              items={insightItems}
-              emptyText="大きな偏りはまだ見つかっていません。"
-            />
-          </div>
-          <div className="report-grid">
-            <CompactList
-              title="未記録の予定"
-              items={unrecordedItems}
-              emptyText="未記録の学習予定はありません。"
-            />
-            <CompactList
-              title="予定なし記録"
-              items={standaloneItems}
-              emptyText="予定なし記録はありません。"
-            />
-          </div>
-        </>
-      ) : null}
-
-      {scope === 'month' ? (
-        <>
-          <ComparisonBars title="週ごとの学習時間推移" entries={monthWeekComparisons} />
-          <div className="report-grid">
-            <MaterialPieChart
-              title="教材別学習比率"
-              entries={summary.materialTotals}
-              emptyText="この月の記録時間はまだありません。"
-            />
-            <section className="panel report-card">
-              <div className="section-header">
-                <div>
-                  <h2>月間サマリー</h2>
-                </div>
-              </div>
-              <div className="report-summary-line">
-                <span>学習日数: {summary.learningDays}日</span>
-                <span>
-                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
-                </span>
-              </div>
-            </section>
-          </div>
-        </>
-      ) : null}
-
-      {scope === 'year' ? (
-        <>
-          <ComparisonBars title="月ごとの予定 / 記録" entries={yearMonthComparisons} />
-          <div className="report-grid">
-            <MaterialPieChart
-              title="年間の教材別学習比率"
-              entries={summary.materialTotals}
-              emptyText="この年の記録時間はまだありません。"
-            />
-            <section className="panel report-card">
-              <div className="section-header">
-                <div>
-                  <h2>年間サマリー</h2>
-                </div>
-              </div>
-              <div className="report-summary-line">
-                <span>年間記録時間: {formatMinutes(summary.actualMinutes)}</span>
-                <span>学習日数: {summary.learningDays}日</span>
-                <span>
-                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
-                </span>
-              </div>
-            </section>
-          </div>
-        </>
-      ) : null}
+      )}
     </section>
   );
 }
