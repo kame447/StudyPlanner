@@ -21,6 +21,9 @@ import {
   projectWeeklyPlanningMemoryObservedPaceV5,
 } from '../semantic/weeklyPlanningMemoryObservedPaceProjectionV5';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from '../semantic/weeklyPlanningResolvedDateExpressionsV5';
+import {
   resolveWeeklyPlanningTemporalConstraintsV5,
 } from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 import {
@@ -123,10 +126,16 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: activeGraph,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+  });
   const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,
     weekStartsOn: requestContext.weekStartsOn,
+    resolvedDateExpressions,
   });
   const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
     graph: activeGraph,
@@ -179,6 +188,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     context: schedulerContext,
     externalSources,
     observedEstimateOverrides: observedPaceProjection.estimateOverrides,
+    resolvedDateExpressions,
     resolvedTemporalConstraints,
   });
   const learningStrategyProposals = semantic.normalization.document
@@ -207,6 +217,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         sessionMinutes: acceptedCalibration.selectedSessionMinutes,
         context: schedulerContext,
         externalSources,
+        resolvedDateExpressions,
         resolvedTemporalConstraints,
       })
     : null;
@@ -277,6 +288,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     schedulerContext,
     externalSources,
     activeGraph,
+    resolvedDateExpressions,
     resolvedTemporalConstraints,
     observedPaceProjection,
     baselineCompilation,
