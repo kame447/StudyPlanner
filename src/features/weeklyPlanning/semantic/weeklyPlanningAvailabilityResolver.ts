@@ -18,7 +18,6 @@ import {
 } from './weeklyPlanningRecurrenceCalendarV5';
 import {
   resolvedWeeklyPlanningDateExpressionForFactV5,
-  resolveWeeklyPlanningSingleDateExpressionV5,
   type WeeklyPlanningResolvedDateExpressionsV5,
 } from './weeklyPlanningResolvedDateExpressionsV5';
 
@@ -190,7 +189,7 @@ function resolveDeclarationDates(params: {
   declaration: AvailabilityDeclarationFact;
   context: AvailabilityResolutionContext;
   planningDates: string[];
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: AvailabilityResolutionIssue[];
 }): string[] {
   let dates: string[] | null = recurrenceDates({
@@ -200,17 +199,10 @@ function resolveDeclarationDates(params: {
   });
 
   if (params.declaration.dateExpression) {
-    const resolution = params.resolvedDateExpressions
-      ? resolvedWeeklyPlanningDateExpressionForFactV5({
-          resolved: params.resolvedDateExpressions,
-          factId: params.declaration.id,
-        })
-      : resolveWeeklyPlanningSingleDateExpressionV5({
-          factId: params.declaration.id,
-          expression: params.declaration.dateExpression,
-          currentDate: params.context.currentDate,
-          weekStartsOn: params.context.weekStartsOn,
-        });
+    const resolution = resolvedWeeklyPlanningDateExpressionForFactV5({
+      resolved: params.resolvedDateExpressions,
+      factId: params.declaration.id,
+    });
     if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
       params.issues.push({
         code: 'unsupported_date_expression',
@@ -218,7 +210,7 @@ function resolveDeclarationDates(params: {
         blocking: true,
         details: {
           expression: params.declaration.dateExpression,
-          resolutionStatus: resolution?.status ?? 'unsupported_expression',
+          resolutionStatus: resolution?.status ?? 'missing_resolved_snapshot',
         },
       });
       return [];
@@ -356,7 +348,7 @@ function resolveUserDeclarations(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   planningDates: string[];
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: AvailabilityResolutionIssue[];
 }): AvailabilityWindowFact[] {
   const windows: AvailabilityWindowFact[] = [];
@@ -572,7 +564,7 @@ export function resolveWeeklyPlanningAvailability(params: {
   graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
-  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): AvailabilityResolutionResult {
   const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
