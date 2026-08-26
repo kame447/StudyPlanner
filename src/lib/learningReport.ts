@@ -9,7 +9,6 @@ import {
 } from './date';
 import { expandPlansForDateRange } from './planRecurrence';
 import {
-  buildReportSummary,
   buildSubjectColorMap,
   endOfMonth,
   getMaterialColor,
@@ -168,6 +167,16 @@ function resolveBreakdownSeed(
   };
 }
 
+function isValidLearningRecord(
+  record: NormalizedStudyRecordForDisplay,
+): boolean {
+  return record.durationMinutes > 0;
+}
+
+function safePlannedMinutes(plan: Plan): number {
+  return Math.max(0, getPlannedMinutes(plan));
+}
+
 function filterRecordsByMaterial(
   records: NormalizedStudyRecordForDisplay[],
   materialFilter: string,
@@ -223,7 +232,9 @@ function getStudyRecordsInRange({
     materials,
     startDate,
     endDate,
-  }).filter(isStudyRecordForDisplay);
+  })
+    .filter(isStudyRecordForDisplay)
+    .filter(isValidLearningRecord);
 
   return filterRecordsByMaterial(
     records,
@@ -273,7 +284,8 @@ function sumLifetimeStudyMinutes({
         materials,
       }),
     )
-    .filter(isStudyRecordForDisplay);
+    .filter(isStudyRecordForDisplay)
+    .filter(isValidLearningRecord);
 
   return sumStudyRecordMinutes(records);
 }
@@ -358,7 +370,7 @@ function buildDailyBuckets({
   plans.forEach((plan) => {
     plannedByDate.set(
       plan.date,
-      (plannedByDate.get(plan.date) ?? 0) + getPlannedMinutes(plan),
+      (plannedByDate.get(plan.date) ?? 0) + safePlannedMinutes(plan),
     );
   });
 
@@ -444,6 +456,40 @@ function buildInsight({
   return `${scopeLabel}の学習時間は${formatMinutes(currentMinutes)}です。`;
 }
 
+function summarizeRange({
+  range,
+  plans,
+  actuals,
+  subjects,
+  materials,
+}: LearningReportDataInput & { range: LearningReportRange }): {
+  actualMinutes: number;
+  plannedMinutes: number;
+} {
+  const records = getStudyRecordsInRange({
+    ...range,
+    plans,
+    actuals,
+    subjects,
+    materials,
+    materialFilter: ALL_MATERIALS_FILTER,
+  });
+  const rangePlans = getStudyPlansInRange({
+    ...range,
+    plans,
+    materials,
+    materialFilter: ALL_MATERIALS_FILTER,
+  });
+
+  return {
+    actualMinutes: sumStudyRecordMinutes(records),
+    plannedMinutes: rangePlans.reduce(
+      (sum, plan) => sum + safePlannedMinutes(plan),
+      0,
+    ),
+  };
+}
+
 export function getLearningReportRange(
   scope: LearningReportScope,
   anchorDate: string,
@@ -519,25 +565,22 @@ export function buildLearningReportOverview({
   subjects,
   materials,
 }: BuildLearningReportOverviewInput): LearningReportOverview {
-  const today = buildReportSummary({
-    startDate: referenceDate,
-    endDate: referenceDate,
+  const today = summarizeRange({
+    range: { startDate: referenceDate, endDate: referenceDate },
     plans,
     actuals,
     subjects,
     materials,
   });
-  const weekRange = getLearningReportRange('week', referenceDate);
-  const week = buildReportSummary({
-    ...weekRange,
+  const week = summarizeRange({
+    range: getLearningReportRange('week', referenceDate),
     plans,
     actuals,
     subjects,
     materials,
   });
-  const monthRange = getLearningReportRange('month', referenceDate);
-  const month = buildReportSummary({
-    ...monthRange,
+  const month = summarizeRange({
+    range: getLearningReportRange('month', referenceDate),
     plans,
     actuals,
     subjects,
@@ -586,7 +629,7 @@ export function buildLearningReportModel({
   });
   const actualMinutes = sumStudyRecordMinutes(records);
   const plannedMinutes = rangePlans.reduce(
-    (sum, plan) => sum + getPlannedMinutes(plan),
+    (sum, plan) => sum + safePlannedMinutes(plan),
     0,
   );
   const breakdown = buildBreakdown({ records, subjects, materials });
