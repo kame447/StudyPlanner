@@ -36,8 +36,8 @@ async function seedHome(page) {
   });
 }
 
-async function seedMultiweekDraftPlan(page) {
-  await page.addInitScript(() => {
+async function seedMultiweekDraftPlan(page, dayCount = 12) {
+  await page.addInitScript(({ dayCount: requestedDayCount }) => {
     const now = new Date().toISOString();
     const today = new Date();
     const user = {
@@ -62,7 +62,7 @@ async function seedMultiweekDraftPlan(page) {
     const weekday = monday.getDay();
     monday.setDate(monday.getDate() + (weekday === 0 ? -6 : 1 - weekday));
     const weekStartDate = toIsoDate(monday);
-    const draftBlocks = Array.from({ length: 12 }, (_, index) => ({
+    const draftBlocks = Array.from({ length: requestedDayCount }, (_, index) => ({
       id: `gold-${index + 1}`,
       userId: user.id,
       date: toIsoDate(addDays(today, index + 1)),
@@ -127,7 +127,7 @@ async function seedMultiweekDraftPlan(page) {
         conversationId: null,
       }),
     );
-  });
+  }, { dayCount });
 }
 
 test('home AI planning entry opens the dedicated Stable V5 conversation surface', async ({ page }) => {
@@ -214,7 +214,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
       modal: zIndexOf(document.querySelector('.my-page-modal')?.parentElement),
     };
   });
-  expect(profileStacking.modal).toBeGreaterThan(profileStacking.ai);
+  expect(profileStacking.modal).toBeGreaterThan(stacking.ai);
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.primary-bottom-nav button').nth(2).click();
@@ -265,4 +265,41 @@ test('multiweek AI plan keeps full totals, pages the timeline, and promotes ever
     path: 'artifacts/ai-planning-multiweek-preview-mobile.png',
     fullPage: true,
   });
+});
+
+test('month-long AI plan stays intact across five seven-day preview pages', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page, 31);
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+
+  const planCard = page.locator('.ai-planning-plan-card');
+  await expect(planCard).toBeVisible();
+  await expect(planCard).toContainText('31件の予定を作成');
+  await expect(planCard).toContainText('合計 31時間');
+
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  const nextButton = preview.getByRole('button', { name: '次の期間を表示' });
+
+  await expect(preview.locator('.ai-planning-preview-header')).toContainText('31件');
+  await expect(preview.locator('.ai-planning-preview-period-nav')).toContainText('1 / 5');
+  await expect(preview.locator('.ai-planning-week-header > div')).toHaveCount(7);
+  await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(7);
+
+  for (let pageNumber = 2; pageNumber <= 5; pageNumber += 1) {
+    await nextButton.click();
+    await expect(preview.locator('.ai-planning-preview-period-nav'))
+      .toContainText(`${pageNumber} / 5`);
+    await expect(preview.locator('.ai-planning-draft-block'))
+      .toHaveCount(pageNumber === 5 ? 3 : 7);
+  }
+
+  await expect(nextButton).toBeDisabled();
+  await expect(preview.locator('.ai-planning-week-header > div')).toHaveCount(3);
+
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await expect(preview.locator('.ai-planning-preview-header')).toContainText('31件');
+  await expect(planCard).toContainText('31件の予定を作成');
+  await expect(preview.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
 });
