@@ -37,7 +37,7 @@ on:
       - '.github/workflows/ui-regression.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ui-regression-${{ github.ref }}
@@ -51,9 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/bookshelf-add-material-mobile
           fetch-depth: 1
-          persist-credentials: true
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -80,28 +79,8 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Refresh visual regression matrix
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs --update-snapshots
-
-      - name: Commit only approved Bookshelf baseline changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          snapshot_dir='tests/e2e/visual-regression.spec.mjs-snapshots'
-          tmp_dir="$(mktemp -d)"
-          cp "$snapshot_dir"/bookshelf-*-linux.png "$tmp_dir"/
-          git restore --worktree "$snapshot_dir"
-          cp "$tmp_dir"/bookshelf-*-linux.png "$snapshot_dir"/
-          git rm -f .github/workflows/update-bookshelf-snapshots.yml || true
-          git add "$snapshot_dir"/bookshelf-*-linux.png
-          if git diff --cached --quiet; then
-            echo 'No approved Bookshelf baseline changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test: approve bookshelf circular FAB visuals'
-          git push origin HEAD:fix/bookshelf-add-material-mobile
+      - name: Run visual regression matrix
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs
 
       - name: Upload visual regression artifacts
         if: always()
