@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 
@@ -132,7 +133,8 @@ describe('weekly planning placement graph view', () => {
       },
     );
 
-    const view = createWeeklyPlanningPlacementGraphViewV5(graph);
+    const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+    const view = createWeeklyPlanningPlacementGraphViewV5(activeGraph);
 
     expect(Object.keys(view).sort()).toEqual([
       'components',
