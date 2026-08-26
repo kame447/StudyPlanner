@@ -134,6 +134,24 @@ describe('weekly planning task date rule resolver', () => {
     });
   });
 
+  it('resolves a custom recurrence with canonical weekdays by the shared calendar rule', () => {
+    const result = resolveWeeklyPlanningTaskDateRules({
+      graph: graph({
+        recurrences: [recurrence('recurrence-custom', 'custom', ['wed', 'fri', 'sun'])],
+      }),
+      ...context,
+    });
+
+    expect(result.readiness).toBe('ready');
+    expect(result.issues).toEqual([]);
+    expect(result.eligibilities[0]).toEqual({
+      taskId: 'task-1',
+      allowedDates: ['2026-07-22', '2026-07-24', '2026-07-26'],
+      excludedDates: [],
+      sourceFactIds: ['recurrence-custom'],
+    });
+  });
+
   it('subtracts an exact excluded date from a weekday recurrence', () => {
     const result = resolveWeeklyPlanningTaskDateRules({
       graph: graph({
