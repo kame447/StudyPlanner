@@ -24,6 +24,46 @@ async function computedFontSize(locator) {
   return locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
 }
 
+async function addPreviewCardLayoutFixture(page) {
+  await page.locator('.ai-planning-conversation').evaluate((conversation) => {
+    if (conversation.querySelector('[data-testid="ai-preview-layout-fixture"]')) return;
+
+    const previewCard = document.createElement('div');
+    previewCard.className = 'ai-planning-plan-card';
+    previewCard.dataset.testid = 'ai-preview-layout-fixture';
+    previewCard.innerHTML = `
+      <div class="ai-planning-plan-card-head">
+        <div><span>計画案</span><strong>12件の予定を作成</strong></div>
+        <b>12件</b>
+      </div>
+      <div class="ai-planning-plan-summary"><span>対象 8/27 - 9/7</span><span>合計 12時間</span></div>
+      <button class="ai-planning-preview-button" type="button">計画プレビューを確認</button>
+    `;
+    conversation.appendChild(previewCard);
+  });
+}
+
+async function expectPreviewCardCenteredAndContained(page) {
+  const conversation = page.locator('.ai-planning-conversation');
+  const previewCard = page.locator('[data-testid="ai-preview-layout-fixture"]');
+  const [conversationBox, previewBox] = await Promise.all([
+    conversation.boundingBox(),
+    previewCard.boundingBox(),
+  ]);
+
+  expect(conversationBox).not.toBeNull();
+  expect(previewBox).not.toBeNull();
+
+  const conversationRight = conversationBox.x + conversationBox.width;
+  const previewRight = previewBox.x + previewBox.width;
+  const leftGap = previewBox.x - conversationBox.x;
+  const rightGap = conversationRight - previewRight;
+
+  expect(previewBox.x).toBeGreaterThanOrEqual(conversationBox.x - 1);
+  expect(previewRight).toBeLessThanOrEqual(conversationRight + 1);
+  expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(2);
+}
+
 async function expectComposerContained(page) {
   const card = page.locator('.ai-planning-card');
   const composer = page.locator('.ai-planning-composer');
@@ -59,7 +99,7 @@ async function expectComposerContained(page) {
   expect(mobileLayout.documentWidth).toBeLessThanOrEqual(mobileLayout.innerWidth + 1);
 }
 
-test('AI planning keeps mobile actions contained and text inputs iOS-safe before focus', async ({ page }) => {
+test('AI planning keeps preview and mobile actions contained and text inputs iOS-safe before focus', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 });
   await seedHome(page);
   await page.goto('/');
@@ -74,9 +114,11 @@ test('AI planning keeps mobile actions contained and text inputs iOS-safe before
 
   await expect(page.locator('.ai-planning-mic-button')).toBeVisible();
   await expect(page.locator('.ai-planning-send-button')).toBeVisible();
+  await addPreviewCardLayoutFixture(page);
 
   for (const width of [360, 390, 402]) {
     await page.setViewportSize({ width, height: 844 });
+    await expectPreviewCardCenteredAndContained(page);
     await expectComposerContained(page);
   }
 
@@ -88,6 +130,7 @@ test('AI planning keeps mobile actions contained and text inputs iOS-safe before
 
   await composerInput.fill('明日の数学を1時間にして');
   await expect(composerInput).toHaveValue('明日の数学を1時間にして');
+  await expectPreviewCardCenteredAndContained(page);
   await expectComposerContained(page);
 
   await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
