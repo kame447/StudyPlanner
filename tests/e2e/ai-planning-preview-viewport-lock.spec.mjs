@@ -179,7 +179,10 @@ test('AI planning preview isolates touch movement from the conversation and view
 
   const dragResult = await shortTouchDrag(preview);
   expect(dragResult.verticalMovePrevented).toBe(true);
-  await page.waitForTimeout(240);
+  // The shared gesture layer intentionally suppresses release-clicks for 480ms
+  // after a vertical touch drag. Wait beyond that window before testing the
+  // explicit Close control; the viewport/background lock must remain active.
+  await page.waitForTimeout(540);
 
   expect(await conversation.evaluate((element) => element.scrollTop)).toBe(lockedConversationScrollTop);
   const backgroundAfterDrag = await conversation.boundingBox();
