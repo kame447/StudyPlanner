@@ -4,10 +4,16 @@ import {
   resolveWeeklyPlanningPlanningHorizon,
 } from './weeklyPlanningTemporalContext';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  resolveWeeklyPlanningTemporalConstraintsV5,
+} from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 
 function source(id: string, sourceText: string) {
   return {
@@ -131,6 +137,25 @@ function graphWithRecurringBound(params: {
   };
 }
 
+type ResolveHorizonParams = Omit<
+  Parameters<typeof resolveWeeklyPlanningPlanningHorizon>[0],
+  'graph' | 'resolvedTemporalConstraints'
+> & { graph: WeeklyPlanningFactGraphV5 };
+
+function resolveHorizon(params: ResolveHorizonParams) {
+  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
+  const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
+    graph: activeGraph,
+    currentDate: params.requestContext.currentDate,
+    weekStartsOn: params.requestContext.weekStartsOn,
+  });
+  return resolveWeeklyPlanningPlanningHorizon({
+    ...params,
+    graph: activeGraph,
+    resolvedTemporalConstraints,
+  });
+}
+
 describe('weekly planning temporal context', () => {
   it('captures the user-local request date independently from the displayed calendar date', () => {
     const context = createWeeklyPlanningTurnRequestContext({
@@ -157,7 +182,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithWindow('next_week'),
       selectedDate: '2026-09-10',
       requestContext,
@@ -171,7 +196,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'sunday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithWindow('next_week'),
       selectedDate: '2026-09-10',
       requestContext,
@@ -185,7 +210,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithWindow('next_week'),
       selectedDate: '2026-09-10',
       requestContext: laterRequestContext,
@@ -210,7 +235,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: createEmptyWeeklyPlanningFactGraphV5(),
       selectedDate: '2026-09-10',
       requestContext,
@@ -224,7 +249,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithRecurringBound({
         kind: 'deadline',
         dateExpression: '2026-09-07',
@@ -241,7 +266,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithRecurringBound({
         kind: 'earliest_start',
         dateExpression: '2026-09-04',
@@ -258,7 +283,7 @@ describe('weekly planning temporal context', () => {
       weekStartsOn: 'monday',
     });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithRecurringBound({
         kind: 'deadline',
         dateExpression: '2026-09-07',
@@ -268,7 +293,7 @@ describe('weekly planning temporal context', () => {
       requestContext,
     })).toEqual({ startDate: '2026-08-26', endDate: '2026-09-01' });
 
-    expect(resolveWeeklyPlanningPlanningHorizon({
+    expect(resolveHorizon({
       graph: graphWithRecurringBound({
         kind: 'latest_end',
         dateExpression: '2026-09-07',
