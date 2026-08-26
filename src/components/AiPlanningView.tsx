@@ -10,6 +10,7 @@ import {
 import {
   BookOpen,
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   CircleUserRound,
   LoaderCircle,
@@ -44,7 +45,6 @@ import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { buildAiPlanningStarterPrompts } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
-  addDays,
   formatMinutes,
   minutesBetween,
   minutesFromTime,
@@ -55,6 +55,12 @@ import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import { plannerRepository } from '../repositories';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
+import {
+  buildAiPlanningPreviewDatePages,
+  clampAiPlanningPreviewPageIndex,
+  getAiPlanningPreviewDateRange,
+  normalizeAiPlanningPreviewBlocks,
+} from './aiPlanningPreviewPeriod';
 import './AiPlanningView.css';
 import './AiPlanningViewFixes.css';
 
@@ -167,21 +173,6 @@ function toneClass(block: WeeklyPlanDraftBlock): string {
   return `weekly-draft-tone-${index + 1}`;
 }
 
-function normalizeCurrentWeekBlocks(
-  blocks: WeeklyPlanDraftBlock[],
-  weekDates: readonly string[],
-): WeeklyPlanDraftBlock[] {
-  const weekDateSet = new Set(weekDates);
-  const uniqueById = new Map<string, WeeklyPlanDraftBlock>();
-
-  for (const block of blocks) {
-    if (!weekDateSet.has(block.date)) continue;
-    uniqueById.set(block.id, block);
-  }
-
-  return sortByDateTime(Array.from(uniqueById.values()));
-}
-
 function shouldKeepComposerFocusAfterSubmit(): boolean {
   if (typeof window === 'undefined') return false;
   return !window.matchMedia('(max-width: 500px), (pointer: coarse)').matches;
@@ -197,6 +188,7 @@ export function AiPlanningView({
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewPageIndex, setPreviewPageIndex] = useState(0);
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
   const [chatQuery, setChatQuery] = useState('');
   const [chatIndex, setChatIndex] = useState<AiPlanningChatIndex>(() =>
@@ -216,10 +208,6 @@ export function AiPlanningView({
   const speechBaseTextRef = useRef('');
   const speechFinalTextRef = useRef('');
   const previewCandidates = state.previewCandidates ?? [];
-  const weekDates = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(state.weekStartDate, index)),
-    [state.weekStartDate],
-  );
   const localPreviewBlocks = useMemo(
     () =>
       createWeeklyPlanningPreviewBlocks(previewCandidates).map((block) =>
@@ -228,34 +216,67 @@ export function AiPlanningView({
     [previewCandidates, userId],
   );
   const hasLocalPreview = localPreviewBlocks.length > 0;
-  const visibleBlocks = useMemo(() => {
-    const sourceBlocks = hasLocalPreview ? localPreviewBlocks : pendingDraftBlocks;
-    return normalizeCurrentWeekBlocks(sourceBlocks, weekDates);
-  }, [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks, weekDates]);
+  const allPreviewBlocks = useMemo(
+    () =>
+      normalizeAiPlanningPreviewBlocks(
+        hasLocalPreview ? localPreviewBlocks : pendingDraftBlocks,
+      ),
+    [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
+  );
+  const previewDateRange = useMemo(
+    () => getAiPlanningPreviewDateRange(allPreviewBlocks),
+    [allPreviewBlocks],
+  );
+  const previewDatePages = useMemo(
+    () => buildAiPlanningPreviewDatePages(allPreviewBlocks),
+    [allPreviewBlocks],
+  );
+  const activePreviewPageIndex = clampAiPlanningPreviewPageIndex(
+    previewPageIndex,
+    previewDatePages.length,
+  );
+  const previewPageDates = previewDatePages[activePreviewPageIndex] ?? [];
+  const previewPageDateSet = useMemo(
+    () => new Set(previewPageDates),
+    [previewPageDates],
+  );
+  const visibleBlocks = useMemo(
+    () => allPreviewBlocks.filter((block) => previewPageDateSet.has(block.date)),
+    [allPreviewBlocks, previewPageDateSet],
+  );
+  const previewPlanSignature = useMemo(
+    () => allPreviewBlocks.map((block) => `${block.id}:${block.date}`).join('|'),
+    [allPreviewBlocks],
+  );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
   const isComposerBusy = isBusy || isReadingAttachment;
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
   const totalMinutes = useMemo(
     () =>
-      visibleBlocks.reduce(
+      allPreviewBlocks.reduce(
         (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
         0,
       ),
-    [visibleBlocks],
+    [allPreviewBlocks],
   );
   const previewGroups = useMemo(
     () =>
-      weekDates.map((date) => ({
+      previewPageDates.map((date) => ({
         date,
         blocks: visibleBlocks.filter((block) => block.date === date),
         existingPlans: sortByDateTime(plans.filter((plan) => plan.date === date)),
       })),
-    [plans, visibleBlocks, weekDates],
+    [plans, previewPageDates, visibleBlocks],
   );
-  const displayedDraftCount = useMemo(
-    () => previewGroups.reduce((count, group) => count + group.blocks.length, 0),
-    [previewGroups],
-  );
+  const displayedDraftCount = allPreviewBlocks.length;
+  const activePreviewPageStart = previewPageDates[0] ?? previewDateRange?.startDate ?? '';
+  const activePreviewPageEnd =
+    previewPageDates[previewPageDates.length - 1] ?? previewDateRange?.endDate ?? '';
+  const previewGridColumns = `62px repeat(${Math.max(
+    previewGroups.length,
+    1,
+  )}, minmax(108px, 1fr))`;
+  const previewGridMinWidth = 62 + Math.max(previewGroups.length, 1) * 108;
   const visibleChats = useMemo(
     () => searchAiPlanningChats(userId, chatIndex.chats, chatQuery),
     [chatIndex.chats, chatQuery, userId],
@@ -360,9 +381,13 @@ export function AiPlanningView({
   }, [userId]);
 
   useEffect(() => {
+    setPreviewPageIndex(0);
+  }, [previewPlanSignature]);
+
+  useEffect(() => {
     const node = conversationRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [chatIndex.activeChatId, isBusy, state.messages.length, visibleBlocks.length]);
+  }, [chatIndex.activeChatId, displayedDraftCount, isBusy, state.messages.length]);
 
   useEffect(() => {
     return () => {
@@ -601,6 +626,7 @@ export function AiPlanningView({
     clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
+    setPreviewPageIndex(0);
     setIsChatDrawerOpen(false);
   }
 
@@ -616,6 +642,7 @@ export function AiPlanningView({
     clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
+    setPreviewPageIndex(0);
     setIsChatDrawerOpen(false);
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
@@ -641,6 +668,7 @@ export function AiPlanningView({
       clearImageAttachment();
       setError('');
       setIsPreviewOpen(false);
+      setPreviewPageIndex(0);
     }
 
     saveAiPlanningChatIndex(userId, nextIndex);
@@ -648,13 +676,13 @@ export function AiPlanningView({
   }
 
   function promotePreview() {
-    if (previewCandidates.length === 0 || visibleBlocks.length === 0) return;
-    const visibleIds = new Set(visibleBlocks.map((block) => block.id));
-    const visibleCandidates = previewCandidates.filter((candidate) =>
-      visibleIds.has(candidate.stableKey),
+    if (previewCandidates.length === 0 || allPreviewBlocks.length === 0) return;
+    const planBlockIds = new Set(allPreviewBlocks.map((block) => block.id));
+    const planCandidates = previewCandidates.filter((candidate) =>
+      planBlockIds.has(candidate.stableKey),
     );
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: visibleCandidates,
+      candidates: planCandidates,
       userId,
       createdAt: new Date().toISOString(),
     });
@@ -732,7 +760,7 @@ export function AiPlanningView({
 
         <div className="ai-planning-conversation" ref={conversationRef}>
           {state.messages.length === 0 &&
-          visibleBlocks.length === 0 &&
+          displayedDraftCount === 0 &&
           !state.pendingTurn ? (
             <div className="ai-planning-starters" aria-label="入力例">
               <p>
@@ -799,7 +827,7 @@ export function AiPlanningView({
             <div className="ai-planning-plan-card">
               <div className="ai-planning-plan-card-head">
                 <div>
-                  <span>今週の計画案</span>
+                  <span>計画案</span>
                   <strong>{displayedDraftCount}件の予定を作成</strong>
                 </div>
                 <b>{displayedDraftCount}件</b>
@@ -807,8 +835,11 @@ export function AiPlanningView({
               <div className="ai-planning-plan-summary">
                 <span>
                   <CalendarDays size={16} aria-hidden="true" />対象{' '}
-                  {formatDateLabel(weekDates[0] ?? state.weekStartDate)} -{' '}
-                  {formatDateLabel(weekDates[6] ?? state.weekStartDate)}
+                  {previewDateRange
+                    ? `${formatDateLabel(previewDateRange.startDate)} - ${formatDateLabel(
+                        previewDateRange.endDate,
+                      )}`
+                    : '-'}
                 </span>
                 <span>
                   <BookOpen size={16} aria-hidden="true" />合計{' '}
@@ -821,7 +852,7 @@ export function AiPlanningView({
                 onClick={() => setIsPreviewOpen(true)}
               >
                 <CalendarDays size={18} aria-hidden="true" />
-                週プレビューを確認
+                計画プレビューを確認
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
             </div>
@@ -939,7 +970,7 @@ export function AiPlanningView({
             className="ai-planning-preview-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="今週の計画プレビュー"
+            aria-label="計画プレビュー"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="ai-planning-preview-header">
@@ -947,18 +978,79 @@ export function AiPlanningView({
                 <X size={18} />閉じる
               </button>
               <div>
-                <h2>今週の計画プレビュー</h2>
+                <h2>計画プレビュー</h2>
                 <p>
-                  {formatDateLabel(weekDates[0] ?? state.weekStartDate)} -{' '}
-                  {formatDateLabel(weekDates[6] ?? state.weekStartDate)}
+                  {previewDateRange
+                    ? `${formatDateLabel(previewDateRange.startDate)} - ${formatDateLabel(
+                        previewDateRange.endDate,
+                      )}`
+                    : '-'}
                 </p>
               </div>
               <span>{displayedDraftCount}件</span>
             </header>
 
+            <div
+              className="ai-planning-preview-period-nav"
+              aria-label="計画期間の表示範囲"
+            >
+              <button
+                type="button"
+                aria-label="前の期間を表示"
+                disabled={activePreviewPageIndex <= 0}
+                onClick={() =>
+                  setPreviewPageIndex((current) =>
+                    clampAiPlanningPreviewPageIndex(
+                      current - 1,
+                      previewDatePages.length,
+                    ),
+                  )
+                }
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+                <span>前の7日</span>
+              </button>
+              <div>
+                <strong>
+                  {activePreviewPageStart && activePreviewPageEnd
+                    ? `${formatDateLabel(activePreviewPageStart)} - ${formatDateLabel(
+                        activePreviewPageEnd,
+                      )}`
+                    : '-'}
+                </strong>
+                <small>
+                  {previewDatePages.length > 0
+                    ? `${activePreviewPageIndex + 1} / ${previewDatePages.length}`
+                    : '0 / 0'}
+                </small>
+              </div>
+              <button
+                type="button"
+                aria-label="次の期間を表示"
+                disabled={activePreviewPageIndex >= previewDatePages.length - 1}
+                onClick={() =>
+                  setPreviewPageIndex((current) =>
+                    clampAiPlanningPreviewPageIndex(
+                      current + 1,
+                      previewDatePages.length,
+                    ),
+                  )
+                }
+              >
+                <span>次の7日</span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+
             <div className="ai-planning-preview-scroll">
-              <div className="ai-planning-week-grid">
-                <div className="ai-planning-week-header">
+              <div
+                className="ai-planning-week-grid"
+                style={{ minWidth: `${previewGridMinWidth}px` }}
+              >
+                <div
+                  className="ai-planning-week-header"
+                  style={{ gridTemplateColumns: previewGridColumns }}
+                >
                   <span>時間</span>
                   {previewGroups.map((group) => (
                     <div key={group.date}>
@@ -970,6 +1062,7 @@ export function AiPlanningView({
                 <div
                   className="ai-planning-week-body"
                   style={{
+                    gridTemplateColumns: previewGridColumns,
                     height: `${
                       (PREVIEW_END_HOUR - PREVIEW_START_HOUR) *
                       PREVIEW_HOUR_HEIGHT
