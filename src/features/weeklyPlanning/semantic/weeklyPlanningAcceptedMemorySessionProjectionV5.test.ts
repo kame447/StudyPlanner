@@ -66,7 +66,8 @@ function compilation(): GenericSchedulerInputCompilationResult {
         splitPolicy: 'unknown', periodExpression: null, sourceFactRefs: ['workload'],
       }],
       fixedTaskReservations: [], taskDateEligibilities: [], availabilityWindows: [],
-      sourceSelections: [], relations: [], sourceFactRefs: ['workload'],
+      sourceSelections: [], relations: [], hardDateBounds: [], preferredPlacements: [],
+      sourceFactRefs: ['workload'],
     },
   };
 }
