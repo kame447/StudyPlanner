@@ -72,7 +72,9 @@ async function expectAiPlanningContainment(page) {
     const contentLeft =
       conversationRect.left + Number.parseFloat(conversationStyle.paddingLeft);
     const contentRight =
-      conversationRect.right - Number.parseFloat(conversationStyle.paddingRight);
+      conversationRect.left +
+      conversation.clientWidth -
+      Number.parseFloat(conversationStyle.paddingRight);
     const planRect = plan.getBoundingClientRect();
 
     return {
