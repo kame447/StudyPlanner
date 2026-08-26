@@ -12,11 +12,12 @@
   animation: none;
 }
 
-/* Match the Schedule add FAB geometry exactly. */
+/* Match the Schedule add FAB geometry exactly. Schedule's persistent chrome
+ * is 74px tall on normal phones and compacts to 68px on short viewports. */
 .bookshelf-view .bookshelf-add-material-fab {
   position: fixed;
-  right: max(22px, calc((100vw - min(100vw, 900px)) / 2 + 22px));
-  bottom: calc(72px + 14px + env(safe-area-inset-bottom, 0px));
+  right: max(22px, calc((100vw - min(100vw, 508px)) / 2 + 22px));
+  bottom: calc(74px + 14px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
   width: 56px;
   height: 56px;
@@ -102,6 +103,18 @@
   margin: -1px -1px 0;
   padding: 1px 1px 10px;
   background: var(--surface);
+}
+
+@media (max-width: 520px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    right: 18px;
+  }
+}
+
+@media (max-height: 760px) {
+  .bookshelf-view .bookshelf-add-material-fab {
+    bottom: calc(68px + 14px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
