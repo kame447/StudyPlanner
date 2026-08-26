@@ -22,6 +22,23 @@ describe('weekly planning scheduler date-expression ownership', () => {
     }
   });
 
+  it('does not expose a single-expression reinterpretation escape hatch to leaf resolvers', () => {
+    const central = source('./weeklyPlanningResolvedDateExpressionsV5.ts');
+    const leafResolvers = [
+      './weeklyPlanningTaskDateRuleResolver.ts',
+      './weeklyPlanningTaskCommitmentResolver.ts',
+      './weeklyPlanningAvailabilityResolver.ts',
+    ].map(source);
+
+    expect(central).not.toContain('resolveWeeklyPlanningSingleDateExpressionV5');
+    for (const resolver of leafResolvers) {
+      expect(resolver).not.toContain('resolveWeeklyPlanningSingleDateExpressionV5');
+      expect(resolver).toContain(
+        'resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;',
+      );
+    }
+  });
+
   it('creates one active-graph snapshot and reuses it for baseline and calibration compilation', () => {
     const planningEvaluation = source('../application/weeklyPlanningStableV5PlanningEvaluation.ts');
 
