@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type TemporalConstraintFactV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
 function source(id: string) {
@@ -63,6 +69,12 @@ function graph(): WeeklyPlanningFactGraphV5 {
       createdRevision: 1,
     }],
   };
+}
+
+function placementGraph(value: WeeklyPlanningFactGraphV5) {
+  return createWeeklyPlanningPlacementGraphViewV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+  );
 }
 
 function addTemporalConstraint(
@@ -128,7 +140,7 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('ready');
@@ -314,7 +326,7 @@ describe('Stable V5 recurring per-occurrence scheduling', () => {
 
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: value,
+      graph: placementGraph(value),
     });
 
     expect(scheduled.status).toBe('insufficient_capacity');
