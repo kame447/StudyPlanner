@@ -1,4 +1,7 @@
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   filterActiveWeeklyPlanningFactsV5,
 } from './weeklyPlanningFactLifecycleV5';
 import type {
@@ -15,10 +18,11 @@ export interface WeeklyPlanningPlacementGraphViewV5 {
 export function createWeeklyPlanningPlacementGraphViewV5(
   graph: WeeklyPlanningFactGraphV5,
 ): WeeklyPlanningPlacementGraphViewV5 {
+  const activeSchedulerGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   return {
-    tasks: filterActiveWeeklyPlanningFactsV5(graph, graph.tasks),
+    tasks: activeSchedulerGraph.tasks,
     studyContexts: filterActiveWeeklyPlanningFactsV5(graph, graph.studyContexts),
-    components: filterActiveWeeklyPlanningFactsV5(graph, graph.components),
-    workloads: filterActiveWeeklyPlanningFactsV5(graph, graph.workloads),
+    components: activeSchedulerGraph.components,
+    workloads: activeSchedulerGraph.workloads,
   };
 }
