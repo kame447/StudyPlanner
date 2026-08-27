@@ -1,7 +1,7 @@
 # Weekly Planning Regression Scenarios
 
 Status: canonical scenario catalog
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 Parent: [test-philosophy.md](test-philosophy.md)
 Contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
@@ -9,7 +9,7 @@ Scheduling: [../policies/scheduling.md](../policies/scheduling.md)
 
 ## Purpose
 
-この文書は、historical V4 roleplay/task/auditに埋もれていた**version非依存の回帰条件**をcurrent contractへ移管する。
+この文書は、historical V4 roleplay/task/auditに埋もれていたversion非依存の回帰条件をcurrent contractへ移管する。
 
 古い型名、parser名、branch名、固定日本語は再利用しない。各scenarioはcurrent Stable V5のmachine state / typed contract / observable product behaviorとして検証する。
 
@@ -49,6 +49,26 @@ sleep endを自動的にstudy-available startとみなさない。
 ### SCHED-006: atomic work integrity
 
 `atomic` work itemをscheduler都合で分割しない。splittableとtypedに確定したworkのみmechanical chunkingを許可する。
+
+### SCHED-007: hard temporal bounds may extend the fallback horizon
+
+明示的なplanning windowがなくても、単純なper-occurrence recurrenceに適用されるactive hard `deadline` / `latest_end`等がdefault 7日より先にある場合、そのhard endまで計画可能期間を切り捨てない。
+
+future hard `earliest_start`がある場合も、開始日だけを見て利用可能なdefault spanを消失させない。soft、removed、superseded、無関係targetのconstraintを理由にhorizonを拡張しない。
+
+Representative evidence owner:
+- `src/features/weeklyPlanning/application/weeklyPlanningTemporalContext.test.ts`
+
+### SCHED-008: temporal bounds are target-scoped and compiled once
+
+accepted active temporal factsはscheduler-facing compilationでabsolute hard date bounds / preferred placementsへ解決し、ordinary movable workとrecurring workのeligible datesへ適用する。
+
+同一taskに属するcomponentはtask-level boundを継承できるが、component固有boundはsibling componentへ漏らさない。removed/superseded constraintやsoft preferenceをhard boundとして復活させない。downstream placementは同じdeadline / earliest-start / latest-end / preferred-window意味をraw Fact Graphから独立再解釈しない。
+
+Representative evidence owners:
+- `src/features/weeklyPlanning/application/weeklyPlanningTemporalContext.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningStableV5WorkItemPlacement.ts`
+- temporal-constraint compilation tests introduced with PR #204
 
 ## 2. Quantity / progress
 
@@ -129,7 +149,7 @@ preview生成後にaccepted semantic state / source revisionが変わった場�
 
 この能力はhistorical MVPで基本操作として実装済みだった。current application facadeにも`removePreviewCandidate` / `removeDraftBlock`が存在するが、2026-08-23監査時点のdedicated `AiPlanningView`週プレビューには個別削除UIが確認できない。
 
-したがってこれは**current UI regression candidate**としてIssue #52の専用画面分離完了条件で検証する。
+したがってこれはcurrent UI regression candidateとしてIssue #52の専用画面分離完了条件で検証する。
 
 ### PREVIEW-006: bulk discard / approval remain coherent
 
@@ -183,7 +203,7 @@ one utterance
 
 Ideally, an unrelated valid contribution should not be forgotten merely because another part needs clarification. However, current Stable V5 canonical commit is atomic at the document/commit boundary, and this audit has not yet proven a universal candidate-level partial-acceptance guarantee for every mixed turn.
 
-Therefore this item is **not declared as a blanket current invariant yet**.
+Therefore this item is not declared as a blanket current invariant yet.
 
 Required audit:
 
