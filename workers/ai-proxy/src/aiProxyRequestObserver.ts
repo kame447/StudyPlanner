@@ -59,6 +59,10 @@ function validRequestId(value: string | null): string | null {
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$/.test(normalized) ? normalized : null;
 }
 
+export function isObservableAiProxyPath(pathname: string): boolean {
+  return OBSERVABLE_PATHS.has(pathname);
+}
+
 async function resolveFirebaseUid(
   request: Request,
   env: AiProxyRequestObserverEnv,
@@ -183,7 +187,7 @@ export async function observeAiProxyRequest(params: {
 }): Promise<void> {
   if (params.request.method !== 'POST') return;
   const pathname = new URL(params.request.url).pathname;
-  if (!OBSERVABLE_PATHS.has(pathname)) return;
+  if (!isObservableAiProxyPath(pathname)) return;
 
   const requestText = await params.request.text();
   const requestPayload = await parseJsonOrNull(requestText);
