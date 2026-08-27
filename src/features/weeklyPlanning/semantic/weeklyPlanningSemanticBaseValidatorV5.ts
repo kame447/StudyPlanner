@@ -338,10 +338,14 @@ function validateTemporalConstraint(
       errors.push(`${path}.constraintLevel:date-rule-must-be-hard`);
     }
   } else {
-    if (constraint.kind === 'earliest_start' && !isNonEmptyString(constraint.startTime)) {
+    if (constraint.kind === 'earliest_start'
+      && !isNonEmptyString(constraint.dateExpression)
+      && !isNonEmptyString(constraint.startTime)) {
       errors.push(`${path}:missing-start`);
     }
-    if (constraint.kind === 'latest_end' && !isNonEmptyString(constraint.endTime)) {
+    if (constraint.kind === 'latest_end'
+      && !isNonEmptyString(constraint.dateExpression)
+      && !isNonEmptyString(constraint.endTime)) {
       errors.push(`${path}:missing-end`);
     }
     if (constraint.kind === 'fixed_interval'
