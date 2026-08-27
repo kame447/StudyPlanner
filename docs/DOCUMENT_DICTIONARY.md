@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-26
+Updated: 2026-08-28
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -14,6 +14,7 @@ Updated: 2026-08-26
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
+- `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
 - `work/`: repository横断のtask運用ルール・template
 - `archive/`: current decisionを所有しない履歴・監査証跡
 
@@ -86,6 +87,18 @@ client-first executionの正仕様は `spec/client-first-execution-requirements.
 入口: `docs/domains/reporting/README.md`
 
 学習レポートのuser-facing requirement、情報階層、集計不変条件、navigation contractの正仕様は `spec/learning-report.md` とする。集計の詳細実装はproduction code/testsを正とし、specへfield-level実装を重複させない。
+
+### Product observability
+
+入口: `docs/domains/product-observability/README.md`
+
+正本:
+
+- management / analytics console product requirement、information hierarchy、metric semantics: `spec/console-requirements.md`
+- telemetry、identity、aggregation、read model、privacy / retention、diagnostic drill-down architecture: `architecture/telemetry-and-read-model.md`
+- execution order: `roadmap/current.md`
+
+週間計画traceのruntime schema / lifecycleはこのdomainへ移さず、`domains/weekly-planning/`とIssue #45 / #89をownerとして維持する。product-observabilityはservice-wide projection / consumerとして扱う。
 
 ## 4. Work record rules
 

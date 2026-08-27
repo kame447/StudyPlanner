@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-26
+Updated: 2026-08-28
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -38,6 +38,15 @@ Reporting work:
 3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
 4. `src/components/ReportView.tsx`
 
+Product observability / admin analytics work:
+
+1. `docs/domains/product-observability/README.md`
+2. `docs/domains/product-observability/spec/console-requirements.md`
+3. `docs/domains/product-observability/architecture/telemetry-and-read-model.md`
+4. `docs/domains/product-observability/roadmap/current.md`
+5. Issue #213
+6. current admin / AI metrics / weekly trace code
+
 `docs/archive/` is evidence, not current instruction.
 
 ## 2. Application shell
@@ -57,9 +66,9 @@ UI components and interaction surfaces. Examples:
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
 - `QuickEntryModal.tsx`: generic quick/manual entry surface
 - `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
-- admin views
+- admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
-UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence or reporting aggregation decisions.
+UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.
 
 ### `src/hooks/`
 
@@ -83,6 +92,8 @@ External/service integration and the separate single-event natural-language subs
 
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
+Current admin data access and AI request metrics also live under services today. Issue #213 will move service-wide observability behavior behind a product-observability application/repository boundary rather than making UI depend on current physical locations.
+
 ### `src/lib/`
 
 Small reusable deterministic helpers and cross-cutting utility logic. Domain-changing policy should not be hidden here merely to avoid creating a feature module.
@@ -91,11 +102,34 @@ Small reusable deterministic helpers and cross-cutting utility logic. Domain-cha
 
 Legacy/general report helpers remain in `src/lib/reportAnalytics.ts`; new user-facing learning report behavior should not be reimplemented inside JSX.
 
+Current `src/lib/adminAnalytics.ts` is legacy/current admin aggregation evidence, not the future owner of service-wide telemetry semantics. Issue #213 defines the migration away from browser-side full-collection analytics.
+
 ### `src/types/`
 
 Shared application/domain types. Prefer feature-local types when one feature owns the contract.
 
-## 4. Weekly planning feature
+## 4. Product observability
+
+Canonical documentation root: `docs/domains/product-observability/`
+
+Current implementation is distributed across admin components, `src/services/adminDataService.ts`, `src/lib/adminAnalytics.ts`, AI client metrics, AI proxy, and weekly-planning trace adapters. Do not infer future ownership from those current physical locations.
+
+Issue #213 establishes the target boundary:
+
+- lightweight product activity telemetry
+- AI/API request metrics
+- weekly-planning typed outcome projection
+- opaque actor correlation
+- server-side aggregation / rollup
+- bounded admin read models
+- cross-page drill-down
+- restricted diagnostic adapters / Debug Bundle
+
+Product observability is observation only. It must not become planner data authority, weekly-planning lifecycle authority, authorization source or user-facing report authority.
+
+Detailed weekly-planning trace remains owned by the weekly-planning feature and is consumed through a restricted adapter.
+
+## 5. Weekly planning feature
 
 Canonical code root: `src/features/weeklyPlanning/`
 
@@ -145,7 +179,9 @@ Session/application orchestration, approval/save boundary and feature-level appl
 
 ### `trace/`
 
-Observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
+Weekly-planning diagnostic observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
+
+Service-wide product analytics does not move into this directory. Product-observability consumes trace through a diagnostic adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
 
 ### `evals/`
 
@@ -163,13 +199,13 @@ Legacy/mechanical parsing helpers still present in the codebase. Presence of thi
 
 Conversation-support and feature configuration helpers. Do not place independent domain ownership here merely because the caller is chat/UI.
 
-## 5. User planning context
+## 6. User planning context
 
 `src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
 
 Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
 
-## 6. Major safety boundaries
+## 7. Major safety boundaries
 
 ### AI
 
@@ -183,6 +219,10 @@ Preview is unsaved and revision-bound. Approval/save is an explicit deterministi
 
 Trace is best-effort diagnostic evidence, never authorization or planning truth.
 
+### Product observability
+
+Telemetry and analytics are best-effort observation, never product authority. Lightweight analytics must remain separable from raw diagnostic content. Management UI reads typed read models and does not make browser-side full scans the canonical analytics design.
+
 ### Persistence
 
 Client-first execution does not mean client-authoritative shared state. Storage/reconciliation changes must align with Issue #164.
@@ -191,10 +231,11 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 学習レポートは既存のPlan/Actual/教材情報を決定論的に集計するprojectionであり、LLMを数値・評価の正本にしない。ReportViewは保存・スケジューリング・意味解釈を所有しない。
 
-## 7. Tests
+## 8. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
 - reporting aggregation: `src/lib/learningReport.test.ts`
+- product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
 - CI: `.github/workflows/ci.yml`
@@ -202,7 +243,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 Do not use a green unrelated check to justify a changed responsibility boundary.
 
-## 8. Documentation ownership
+## 9. Documentation ownership
 
 Documentation placement is defined only by `docs/DOCUMENT_DICTIONARY.md`.
 
@@ -220,20 +261,21 @@ Active work belongs either in the owning GitHub Issue or in the owning domain's 
 
 Completed/superseded records move to `docs/archive/work/` and never re-enter the execution queue merely because they contain an old `Status: active`, branch name or PR number.
 
-## 9. Change-location rule
+## 10. Change-location rule
 
 Choose the directory by change reason, not by current caller:
 
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
+- service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - natural-language meaning → weekly `semantic/`
 - readiness/proposal/work decision → weekly `planning/`
 - placement/availability → weekly `scheduling/`
 - dialogue action/realization boundary → weekly `dialogue/`
 - unsaved candidate → weekly `preview/`
 - approval/session orchestration → weekly `application/`
-- observability → weekly `trace/`
+- weekly-planning diagnostic trace → weekly `trace/`
 - persistence → repository/feature-owned persistence boundary
 - documentation → `docs/domains/<responsibility>/<document-type>/` according to `DOCUMENT_DICTIONARY.md`
 
