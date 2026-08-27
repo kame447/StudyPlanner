@@ -5,6 +5,11 @@ import {
 } from '../../../shared/weeklyPlanningTraceContract';
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
+import {
+  handleProductObservabilityApi,
+  isProductObservabilityPath,
+  type ProductObservabilityApiEnv,
+} from './productObservabilityApi';
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
@@ -43,6 +48,13 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
 export default {
   async fetch(request: Request, env: Record<string, unknown>): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (isProductObservabilityPath(pathname)) {
+      return await handleProductObservabilityApi(
+        request,
+        env as unknown as ProductObservabilityApiEnv,
+      );
+    }
+
     const response = pathname === ADMIN_ENTRY_PAGE_PATH || pathname === ADMIN_ENTRIES_PATH
       ? await handleWeeklyPlanningTraceAdminEntriesPage(request, env)
       : pathname === ADMIN_ARCHIVE_PATH

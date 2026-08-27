@@ -28,9 +28,6 @@ import {
 import {
   normalizeWeeklyPlanningTemporalClockRawV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
-import {
-  normalizeWeeklyPlanningUserContextDateExpressionsV5,
-} from './weeklyPlanningUserContextDateExpressionNormalizationV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
@@ -43,7 +40,6 @@ export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'resolved_progress_workload',
   'recurrence_workload_target',
   'temporal_clock_raw',
-  'user_context_date_expression',
   'constraint_absence_metadata',
 ] as const;
 
@@ -105,10 +101,6 @@ Record<
   temporal_clock_raw: {
     category: 'canonicalization_bridge',
     owningInvariant: 'supported clock meaning has one schema-parseable canonical encoding',
-  },
-  user_context_date_expression: {
-    category: 'canonicalization_bridge',
-    owningInvariant: 'durable approximate event dates preserve interpreted precision without inventing one exact day',
   },
   constraint_absence_metadata: {
     category: 'semantic_invariant_derivation',
@@ -260,8 +252,6 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(value));
   applyStage('temporal_clock_raw', (value) =>
     normalizeWeeklyPlanningTemporalClockRawV5(value));
-  applyStage('user_context_date_expression', (value) =>
-    normalizeWeeklyPlanningUserContextDateExpressionsV5(value));
   applyStage('constraint_absence_metadata', (value) =>
     normalizeWeeklyPlanningConstraintAbsenceMetadataV5(value));
 
