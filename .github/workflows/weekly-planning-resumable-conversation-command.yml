@@ -56,6 +56,7 @@ jobs:
           npm run test -- --run
           src/features/userPlanningContext/userPlanningContextSpace.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDenseTurnBudgetV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningDateOnlyTemporalBoundValidationV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
 
@@ -91,7 +92,7 @@ jobs:
           WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: ${{ env.CONVERSATION_ID }}
           WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: ${{ env.WEEK_START_DATE }}
           WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: ${{ env.SELECTED_DATE }}
-          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
+          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '90000'
           VITE_AI_PROVIDER: openai
           VITE_AI_BASE_URL: https://api.openai.com/v1
           VITE_AI_MODEL: gpt-5.6-luna
