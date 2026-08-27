@@ -3,6 +3,12 @@ import {
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
+import {
+  isObservableAiProxyPath,
+  observeAiProxyRequest,
+  type AiProxyRequestObserverEnv,
+} from './aiProxyRequestObserver';
+import { scheduleAiRequestMetric } from './aiRequestObservability';
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
@@ -46,7 +52,11 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
 }
 
 export default {
-  async fetch(request: Request, env: Record<string, unknown>): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Record<string, unknown>,
+    executionContext?: ExecutionContext,
+  ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(
@@ -55,11 +65,33 @@ export default {
       );
     }
 
+    const shouldObserveAiRequest = isObservableAiProxyPath(pathname) && request.method === 'POST';
+    const observerRequest = shouldObserveAiRequest ? request.clone() : null;
+    const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
+    const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
+
     const response = pathname === ADMIN_ENTRY_PAGE_PATH || pathname === ADMIN_ENTRIES_PATH
       ? await handleWeeklyPlanningTraceAdminEntriesPage(request, env)
       : pathname === ADMIN_ARCHIVE_PATH
         ? await handleWeeklyPlanningTraceAdminArchive(request, env)
         : await worker.fetch(request, env as never);
+
+    if (observerRequest) {
+      scheduleAiRequestMetric(
+        executionContext,
+        observeAiProxyRequest({
+          request: observerRequest,
+          response: response.clone(),
+          env: env as unknown as AiProxyRequestObserverEnv,
+          startedAtMs,
+          occurredAt,
+          onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        }),
+      );
+    }
+
     if (!isWeeklyPlanningTracePath(pathname)) return response;
 
     const headers = new Headers(response.headers);
