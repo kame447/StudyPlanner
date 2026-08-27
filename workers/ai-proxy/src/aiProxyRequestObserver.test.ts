@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   classifyAiProxyMetricStatus,
   describeAiProxyOperation,
+  observeAiProxyRequest,
 } from './aiProxyRequestObserver';
 
 describe('AI proxy request observer', () => {
@@ -50,5 +51,35 @@ describe('AI proxy request observer', () => {
     expect(classifyAiProxyMetricStatus(500, {})).toBe('unknown_failure');
     expect(classifyAiProxyMetricStatus(400, {})).toBeNull();
     expect(classifyAiProxyMetricStatus(401, {})).toBeNull();
+  });
+
+  it('does not authenticate or persist anything when observability is unconfigured', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await observeAiProxyRequest({
+        request: new Request('https://proxy.example/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer test-token' },
+          body: JSON.stringify({
+            purpose: 'weekly_planning_renderer',
+            messages: [{ role: 'user', content: 'render' }],
+          }),
+        }),
+        response: new Response(JSON.stringify({ content: 'ok' }), { status: 200 }),
+        env: {
+          FIREBASE_PROJECT_ID: 'project',
+          FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
+          FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'private',
+          FIREBASE_WEB_API_KEY: 'firebase-key',
+          OBSERVABILITY_IDENTITY_SECRET: 'short',
+        },
+        startedAtMs: 0,
+        occurredAt: '2026-08-28T00:00:00.000Z',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
