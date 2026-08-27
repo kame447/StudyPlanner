@@ -1,7 +1,7 @@
 # Weekly Planning Product Intent
 
 Status: canonical product specification
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 Runtime contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Scheduling policy: [../policies/scheduling.md](../policies/scheduling.md)
@@ -10,7 +10,9 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 
 ## Purpose
 
-週間計画は、ユーザーが自然な言葉で伝えた「何を進めたいか」「いつまでか」「どの時間を使えるか」を、既存予定・時間割・進捗と組み合わせ、実行可能な一週間の学習案へ変換する機能である。
+週間計画は、ユーザーが自然な言葉で伝えた「何を進めたいか」「いつまでか」「どの時間を使えるか」を、既存予定・時間割・進捗と組み合わせ、実行可能な学習計画案へ変換する機能である。
+
+通常のplanning baselineは週単位だが、明示されたhard temporal constraintを守るためにschedulerのfallback horizonが7日を超える場合がある。機能名やUI上の「週間」を理由に、accepted deadline等を7日で切り捨てない。
 
 単に空き時間へ作業を詰めるのではなく、必要な不足情報だけを対話で確認し、ユーザーが内容と前提を理解した上で承認できる計画を作る。
 
@@ -92,15 +94,15 @@ review/approval段階では、ユーザーが「全体を承認する」以外�
 
 ## Scheduling intent
 
-週間計画は、空いている時間を最大限埋めることを目的にしない。**実行可能性と回復余地を両立させる**。
+週間計画は、空いている時間を最大限埋めることを目的にしない。実行可能性と回復余地を両立させる。
 
-current Stable V5の7日horizonでは、最初の6日をnormal placement days、7日目をreserve dayとして扱う。通常は6日側へ負荷を分散し、7日目を遅延・急な変更・見積もり誤差の吸収余地として残す。必要なhard constraintやcapacity不足がある場合はreserveも利用する。
+resulting planning horizonがちょうど7日間の場合、current Stable V5では最初の6日をnormal placement days、7日目をreserve dayとして扱う。通常は6日側へ負荷を分散し、7日目を遅延・急な変更・見積もり誤差の吸収余地として残す。必要なhard constraintやcapacity不足がある場合はreserveも利用する。
+
+一方、明示的なplanning windowがない場合でも、accepted hard deadline / latest-end / earliest-start等を守るためfallback horizonが7日を超えることがある。7日を超えたhorizonへ6+1をそのまま一般化したものがproduct invariantではない。具体的なhorizon導出、date clipping、reserve適用条件は [Scheduling Policy](../policies/scheduling.md) が所有する。
 
 また、新しい予定をrequest-timeの`notBefore`より前へ置かない。existing plans、timetable、accepted hard unavailable/life constraintを空き時間として扱わない。
 
-この6+1 baselineはcurrent production scheduling policyであり、単なるhistorical noteではない。一方、soft cap、session長、細かなscoring定数はtunable policyであり、永久不変のproduct lawとは区別する。
-
-詳細は [Scheduling Policy](../policies/scheduling.md) を参照する。
+6+1 baselineは「7日horizonになった場合」のcurrent production scheduling policyであり、単なるhistorical noteではない。一方、soft cap、session長、細かなscoring定数はtunable policyであり、永久不変のproduct lawとは区別する。
 
 ## Life / availability intent
 
@@ -134,7 +136,7 @@ legacy raw-text parserを意味理解のfallbackとして復活させない。
 - current progressと今回のtargetを混同しない
 - atomic workをscheduler都合で勝手に分割しない
 - existing plans・timetable・hard/life constraint・notBeforeを破らない
-- current 7-day baselineのreserve/slack behaviorを意図せず失わない
+- resulting horizonが7日間のとき6+1 reserve/slack behaviorを意図せず失わず、hard temporal boundがより長いhorizonを要求するときは7日で切り捨てない
 - 未了承proposalや内部heuristicをsilent applyしない
 - previewと保存済み予定を区別する
 - 承認前に仮予定を個別に除外でき、削除対象identityを取り違えない
