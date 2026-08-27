@@ -127,7 +127,8 @@ function isRecordValue(value: unknown, ownerId: string): value is UserPlanningCo
   ])) return false;
   return isNonEmptyBoundedString(value.id, 160)
     && value.ownerId === ownerId
-    && (value.kind === 'goal_event'
+    && (value.kind === 'study_goal'
+      || value.kind === 'goal_event'
       || value.kind === 'concern'
       || value.kind === 'learning_preference')
     && isNonEmptyBoundedString(value.label, MAX_LABEL_LENGTH)
@@ -227,13 +228,25 @@ function normalizeIdentityPart(value: string | null): string {
   return (value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
 }
 
+function durableIdentityValue(params: {
+  kind: UserPlanningContextRecordV1['kind'];
+  value: string | null;
+  dateExpression: string | null;
+}): string {
+  if (params.kind === 'study_goal') return '';
+  if (params.kind === 'goal_event') return normalizeIdentityPart(params.dateExpression);
+  return normalizeIdentityPart(params.value);
+}
+
 function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
   return [
     fact.kind,
     normalizeIdentityPart(fact.label),
-    fact.kind === 'goal_event'
-      ? normalizeIdentityPart(fact.dateExpression)
-      : normalizeIdentityPart(fact.value),
+    durableIdentityValue({
+      kind: fact.kind,
+      value: fact.value,
+      dateExpression: fact.dateExpression,
+    }),
   ].join('|');
 }
 
@@ -264,9 +277,11 @@ function mergeFacts(params: {
     const identity = [
       record.kind,
       normalizeIdentityPart(record.label),
-      record.kind === 'goal_event'
-        ? normalizeIdentityPart(record.dateExpression)
-        : normalizeIdentityPart(record.value),
+      durableIdentityValue({
+        kind: record.kind,
+        value: record.value,
+        dateExpression: record.dateExpression,
+      }),
     ].join('|');
     byIdentity.set(identity, record);
   }
