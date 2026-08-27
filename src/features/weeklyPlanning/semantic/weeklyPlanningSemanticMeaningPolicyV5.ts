@@ -60,7 +60,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'explicit_recurrence_sources',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether recurrence or an external source request was explicitly requested is an utterance-level semantic decision, not a schema default.',
-    instruction: 'Emit recurrence and external source requests only when explicit.',
+    instruction: 'Emit recurrence and external source requests only when explicit. A perOccurrence workload with an explicit period must have matching recurrence on that same task/component target, not only on an ancestor task.',
   },
   {
     id: 'durable_user_context',
