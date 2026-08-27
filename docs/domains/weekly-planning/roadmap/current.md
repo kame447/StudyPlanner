@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Human grounding policy: [../policies/human-grounding.md](../policies/human-grounding.md)
@@ -16,6 +16,10 @@ PR #109, #112, #113, #120, #127, #129, #130, #132, #140–#151, #154, #155 and #
 PR #162 merged the primary UI and dedicated AI-planning surface without changing semantic ownership.
 
 PR #166 merged cross-cutting browser, visual, accessibility, runtime and test-intelligence QA automation. It is infrastructure shared across the product rather than weekly-planning feature ownership.
+
+PR #199 hardened preview-sheet interactions and scheduler date-bound behavior, including multiweek fallback horizons and hard date clipping for recurring and ordinary movable work.
+
+PR #204 completed Issue #203 by centralizing accepted temporal-constraint resolution before scheduler placement. Active lifecycle, task/component applicability, resolved hard date bounds and preferred placements now have an explicit scheduler-facing compilation boundary instead of being independently re-derived by downstream placement paths.
 
 ## Current priority: Issue #152
 
