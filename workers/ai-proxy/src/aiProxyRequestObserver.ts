@@ -37,10 +37,12 @@ interface ObservedOperation {
 const AI_REQUEST_ID_HEADER = 'X-StudyPlanner-AI-Request-Id';
 const APP_VERSION_HEADER = 'X-StudyPlanner-App-Version';
 const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
+const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
 const OBSERVABLE_PATHS = new Set([
   '/',
   '/chat/completions',
   '/planning-attachment',
+  '/planning-transcription',
   '/timetable-ocr',
 ]);
 
@@ -121,7 +123,7 @@ function resolvedChatOperation(payload: Record<string, unknown>): ObservedOperat
 export function describeAiProxyOperation(
   pathname: string,
   payload: unknown,
-  env: Pick<AiProxyRequestObserverEnv, 'GEMINI_MODEL'>,
+  env: Pick<AiProxyRequestObserverEnv, 'GEMINI_MODEL' | 'OPENAI_TRANSCRIPTION_MODEL'>,
 ): ObservedOperation | null {
   if (pathname === '/' || pathname === '/chat/completions') {
     return isRecord(payload) ? resolvedChatOperation(payload) : null;
@@ -134,6 +136,15 @@ export function describeAiProxyOperation(
       purpose: 'weekly_planning_attachment',
       phase: 'single',
       model: resolution.model,
+    };
+  }
+  if (pathname === '/planning-transcription') {
+    return {
+      operationKind: 'planning_transcription',
+      provider: 'openai',
+      purpose: 'planning_transcription',
+      phase: 'single',
+      model: env.OPENAI_TRANSCRIPTION_MODEL?.trim() || DEFAULT_TRANSCRIPTION_MODEL,
     };
   }
   if (pathname === '/timetable-ocr') {
