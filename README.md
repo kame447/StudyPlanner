@@ -107,8 +107,11 @@ npm run deploy:firestore-rules
 ```bash
 npx wrangler login
 npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc
+npx wrangler secret put OBSERVABILITY_IDENTITY_SECRET --config workers/ai-proxy/wrangler.jsonc
 npm run deploy:worker
 ```
+
+`OBSERVABILITY_IDENTITY_SECRET` は telemetry 上の利用者識別子を Firebase UID から分離するための server-only secret です。十分に長いランダム値を設定し、フロントエンドへ公開しないでください。
 
 `workers/ai-proxy/wrangler.jsonc` の環境設定はデプロイ先に合わせて設定してください。
 
