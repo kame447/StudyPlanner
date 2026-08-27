@@ -66,18 +66,40 @@ async function readIconOffset(fab, icon) {
   }, icon);
 }
 
-async function dragSheetDown(page, sheet) {
-  const box = await sheet.boundingBox();
-  if (!box) {
-    throw new Error('bottom sheet has no bounding box');
-  }
+async function swipeDown(sheet) {
+  return sheet.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const identifier = 29;
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + 28;
 
-  const startX = box.x + box.width / 2;
-  const startY = box.y + 28;
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  await page.mouse.move(startX, startY + 180, { steps: 6 });
-  await page.mouse.up();
+    const makeTouch = (x, y) => ({ identifier, clientX: x, clientY: y });
+    const makeTouchList = (touch) => ({
+      0: touch ?? undefined,
+      length: touch ? 1 : 0,
+      item: (index) => (touch && index === 0 ? touch : null),
+    });
+    const dispatchTouch = (type, x, y, active) => {
+      const touch = makeTouch(x, y);
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', {
+        value: makeTouchList(active ? touch : null),
+      });
+      Object.defineProperty(event, 'changedTouches', {
+        value: makeTouchList(touch),
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    dispatchTouch('touchstart', startX, startY, true);
+    const movePrevented = dispatchTouch('touchmove', startX + 2, startY + 92, true);
+    const dragOffset = element.style.getPropertyValue('--planner-bottom-sheet-drag-y');
+    const dragging = element.classList.contains('is-bottom-sheet-dragging');
+    dispatchTouch('touchend', startX + 2, startY + 128, false);
+
+    return { movePrevented, dragOffset, dragging };
+  });
 }
 
 test.describe('bookshelf add-material interactions', () => {
@@ -110,20 +132,28 @@ test.describe('bookshelf add-material interactions', () => {
     await scheduleFab.click();
     await page.getByRole('menuitem', { name: '学習を追加' }).click();
 
+    const scheduleOverlay = page.locator('.quick-entry-overlay');
     const scheduleSheet = page.locator('.quick-entry-modal');
     await expect(scheduleSheet).toBeVisible();
-    await dragSheetDown(page, scheduleSheet);
-    await expect(scheduleSheet).toBeHidden({ timeout: 2_000 });
+    const scheduleDrag = await swipeDown(scheduleSheet);
+    expect(scheduleDrag.movePrevented).toBe(true);
+    expect(scheduleDrag.dragging).toBe(true);
+    expect(Number.parseFloat(scheduleDrag.dragOffset)).toBeGreaterThan(70);
+    await expect(scheduleOverlay).toHaveCount(0, { timeout: 1_500 });
 
     await openPrimaryTab(page, '教材', '.bookshelf-view');
     const bookshelfFab = page.locator('.bookshelf-add-material-fab');
     await bookshelfFab.click();
 
-    const bookshelfSheet = page.locator(
-      '.bookshelf-view > .modal-overlay > .bookshelf-modal:has(.bookshelf-material-edit-grid)',
+    const bookshelfOverlay = page.locator(
+      '.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid)',
     );
+    const bookshelfSheet = bookshelfOverlay.locator(':scope > .bookshelf-modal');
     await expect(bookshelfSheet).toBeVisible();
-    await dragSheetDown(page, bookshelfSheet);
-    await expect(bookshelfSheet).toBeHidden({ timeout: 2_000 });
+    const bookshelfDrag = await swipeDown(bookshelfSheet);
+    expect(bookshelfDrag.movePrevented).toBe(true);
+    expect(bookshelfDrag.dragging).toBe(true);
+    expect(Number.parseFloat(bookshelfDrag.dragOffset)).toBeGreaterThan(70);
+    await expect(bookshelfOverlay).toHaveCount(0, { timeout: 1_500 });
   });
 });
