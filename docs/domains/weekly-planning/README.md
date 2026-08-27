@@ -1,7 +1,7 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
 
@@ -43,7 +43,8 @@ These documents supplement the canonical owners above; they do not override them
 
 - Stable V5 owns weekly-planning production semantics.
 - AI interprets natural language and realizes typed dialogue; deterministic application code owns validation, lifecycle, repair/question/proposal decisions, scheduling, preview, approval and save.
-- Current 7-day Stable V5 scheduling baseline uses six normal placement days plus a seventh reserve day; details live in `policies/scheduling.md` rather than historical task records.
+- Accepted active movable-work date constraints are resolved into scheduler-facing hard date bounds / preferred placements before downstream distribution and placement; downstream code must not become a second owner of the same temporal meaning.
+- When the resulting planning horizon is exactly 7 days, Stable V5 uses six normal placement days plus a seventh reserve day. Applicable hard temporal bounds may require a longer fallback horizon; details live in `policies/scheduling.md` rather than historical task records.
 - Request-time `notBefore`, authoritative busy sources, typed life constraints and work atomicity are current scheduling safety boundaries.
 - Progress state (`scope_total` / `completed` / `remaining`) and the current planning `target` are distinct.
 - Low-impact uncertainty may be deferred through the repair agenda while blocking information is resolved first; deferred issues must reopen before the boundary they affect.
