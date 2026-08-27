@@ -88,6 +88,7 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
     try {
       const response = await this.client.createChatCompletion(request);
       this.responseLengths.push(response.length);
+      console.info('[WeeklyPlanning Real API semantic response]', attempt, response);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: this.input.traceRequestId,
         stage: 'semantic_provider_response',
