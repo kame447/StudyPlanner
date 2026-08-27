@@ -6,9 +6,11 @@ Owning Issue: #213
 
 ## Current phase
 
-現在はPhase 1「内部設計の確定」である。
+現在はPhase 2「Telemetry foundation」である。
 
-このphaseでは管理UIの見た目を作り込まない。既存admin UIのCSS調整やdashboard card追加より先に、telemetry、identity、aggregation、read model、privacy、Debug Bundleの契約を確定する。
+Phase 1のcanonical設計はPR #215でmainへ統合済みで、lightweight telemetry ingestion基盤はPR #216でmainへ統合済みである。
+
+このphaseでは管理UIの見た目を作り込まない。AI/API request metricとweekly-planning typed outcomeをdurable telemetryへ接続し、production operationからobservability failureを分離した状態を完成させる。
 
 ## Phase 1: Canonical design
 
@@ -21,6 +23,8 @@ Owning Issue: #213
 完了条件は、Issue #213の要求が上記文書へ一意に配置され、weekly-planning / reporting / client-runtimeとのowner境界が明確で、current documentation navigationから到達できることである。
 
 UI/runtime codeは変更しない。
+
+Status: completed by PR #215.
 
 ## Phase 2: Telemetry foundation
 
@@ -120,8 +124,14 @@ Phase 2以降のruntime implementationへ進む際は、Issue #213をparentと�
 
 ## Current checkpoint
 
-Phase 1のcanonical documentsとrepository navigationは`design/product-observability-console`へ追加済みで、PR #215をreview surfaceとして使用する。
+Phase 1設計はPR #215でmainへ統合済みである。
 
-exact diffではruntime/UI変更を含まず、product-observability documentationとnavigation更新だけである。PR #215のreview/mergeが完了するまではPhase 2のruntime implementationへ進まない。
+Phase 2の最初のrelease unitであるPR #216では、typed product activity contract、authenticated `/observability/events` ingestion、opaque actor identity、idempotent Firestore persistence、90日retention、telemetry failure isolationをmainへ統合した。
 
-次のconcrete actionはPR #215のdocumentation integrityとGitHub verificationを最終確認し、Phase 1をmerge可能な状態に保つことである。
+現在のactive branchは`feat/product-observability-ai-request-metrics`、active PRは#217である。#217はproduction AI proxy requestについて、chat completion、weekly-planning attachment、planning transcription、timetable OCRのrequest/outcome metricをbest-effortでdurable化する。request count、実際にroutingされたmodel、purpose、semantic initial/repair、proxy latency、request/response bytes、quota/provider/empty/invalid response等のstatusを記録する。
+
+provider token usageは、provider responseから実値が伝播されるまで`null`とし、0や推定tokenを事実として保存しない。pricingもversioned catalogが導入されるまで`estimatedCostMicros=null`とする。
+
+#217の完了条件は、最終HEADでTypeScript、全test、production build、diff check、Browser Regressionが成功し、mainからの差分がAI observability責務とcurrent checkpointに限定されていることである。
+
+#217 merge後の次のconcrete actionは、別のreviewable release unitでprovider `usage`の実値伝播とpricing boundaryを実装し、その後weekly-planning typed outcome projectionを接続することである。Phase 2が完了するまで管理UI実装へ進まない。
