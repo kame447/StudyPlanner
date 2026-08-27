@@ -131,6 +131,18 @@ service cloud.firestore {
         && hasAcceptedWeeklyPlanningPolicy();
     }
 
+    match /user_planning_contexts/{userId} {
+      allow read: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy();
+      allow create, update: if isOwner(userId)
+        && hasAcceptedWeeklyPlanningPolicy()
+        && request.resource.data.schemaVersion == 'studyplanner-user-planning-context-cloud-v1'
+        && request.resource.data.ownerId == userId
+        && request.resource.data.snapshot.ownerId == userId
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1;
+      allow delete: if false;
+    }
+
     match /weekly_planning_approval_operations/{operationId} {
       allow read: if canReadOwnedResource();
       allow create: if canCreateOwnedResource()
