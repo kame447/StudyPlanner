@@ -51,13 +51,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run focused semantic regressions
+      - name: Run TypeScript checks
+        run: npm run typecheck
+
+      - name: Run focused semantic and durable-memory regressions
         run: >-
           npm run test -- --run
           src/features/userPlanningContext/userPlanningContextSpace.test.ts
+          src/features/userPlanningContext/userPlanningContextRepository.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDenseTurnBudgetV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningDateOnlyTemporalBoundValidationV5.test.ts
-          src/features/weeklyPlanning/semantic/weeklyPlanningUserContextDateExpressionNormalizationV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
 
