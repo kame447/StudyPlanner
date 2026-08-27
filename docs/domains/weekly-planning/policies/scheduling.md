@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -26,6 +26,24 @@ References:
 - explicit user constraintを一般heuristicやpersonalization scoreで上書きしない
 
 過去の学習実績を記録することと、これからの予定を過去時刻へ配置することは別責務である。
+
+## Planning horizon and hard date bounds
+
+schedulerは、accepted temporal meaningそのものを再解釈せず、scheduler-input compilationで解決済みのhard date boundsとpreferred placementsを利用する。
+
+明示的なplanning windowがない場合も、default horizonを常に7日で打ち切るとは限らない。current production behaviorでは、適用可能なhard date constraintがある単純なper-occurrence recurrenceについて、deadline / latest-end等のhard endまでfallback horizonを延長できる。future `earliest_start` がある場合も、その開始日だけを見て利用可能な配置期間を消失させない。
+
+hard date boundsはrecurrence expansionだけでなくordinary movable workにも適用する。配置候補日は少なくとも次の境界でclipされる。
+
+- hard `earliest_start`
+- hard `deadline`
+- hard `latest_end`
+
+同じtaskに属するcomponent workはtask-level hard date boundを継承できる。一方、component固有boundはsibling componentへ漏らさない。soft constraintや無関係なtargetのconstraintをhard clippingへ昇格させない。
+
+複数hard boundsが矛盾する、またはhard bounds適用後にeligible dateが存在しない場合は、制約を弱めて予定を作るのではなくfail closedする。
+
+このhorizon導出・date clippingを変更するときは、scheduler input compilation、recurrence/ordinary placement、task/component scopeのregressionを同じ変更で確認する。
 
 ## Current seven-day distribution baseline
 
