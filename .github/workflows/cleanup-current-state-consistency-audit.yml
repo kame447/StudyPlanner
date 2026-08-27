@@ -1,0 +1,28 @@
+name: Cleanup current-state consistency audit branch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cleanup-current-state-consistency-audit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Delete authorized temporary branch
+        run: git push origin --delete -- docs/current-state-consistency-audit
+
+      - name: Verify branch deletion
+        run: |
+          if git ls-remote --exit-code --heads origin refs/heads/docs/current-state-consistency-audit >/dev/null 2>&1; then
+            echo "Branch still exists after deletion" >&2
+            exit 1
+          fi
