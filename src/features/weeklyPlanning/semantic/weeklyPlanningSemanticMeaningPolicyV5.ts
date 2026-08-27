@@ -18,7 +18,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets. When an existingPublicId task/component appears only as the minimal containing shell for a newly stated nested fact, do not create a new breakdown requirement from that wrapper. If the current utterance itself newly makes an existing task structure unclear, represent that ambiguity explicitly as a work_breakdown uncertainty.',
+    instruction: 'Treat requested learning work as study tasks. Preserve supported task/component structure; components must be meaningful subordinate entities. Attach workload, effort, constraints, and context to targets. Performance-only mentions such as exam scores do not create tasks/components. Every relation endpoint must reference an entity emitted in this delta or an explicitly bound existing entity; never invent an unattached endpoint. When an existingPublicId task/component appears only as the minimal containing shell for a newly stated nested fact, do not create a new breakdown requirement from that wrapper. If the current utterance newly makes an existing task structure unclear, emit work_breakdown uncertainty.',
   },
   {
     id: 'study_activity_kind',
@@ -35,25 +35,25 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Distinguishing fixed total scope, plan target, current progress, remaining work, a time-boxed plan amount, duration cost, and per-unit effort is meaning disambiguation, while validators only check a represented choice.',
-    instruction: 'Use scope_total only for explicit bounded total. target requires explicit plan amount; never derive it from total/completed. If all remaining work is intended without a separate amount, omit target; deterministic progress projection derives remaining. Numeric progress incl. % is workload state: completed custom "%" 0..100. Omission is absence; uncertainty only for ambiguous stated meaning. Distinguish scheduled time from effort cost. Time the user wants scheduled (30 min, 1 h each day) is target minute/hour workload; set perOccurrence/recurrence when explicit, and do not ask for content progress. A duration costing a separately stated workload is total_duration/duration_per_unit effort; session_duration means a session\'s cost unless that time is itself the requested work. If remaining work is expressed only as time to schedule, remaining minute/hour workload is valid. Completed time is effort evidence. Preserve completed/remaining direction. Per-unit effort only when stated.',
+    retentionReason: 'Distinguishing fixed total scope, plan target, current progress, performance metrics, time-boxed work, duration cost, and per-unit effort requires semantic interpretation.',
+    instruction: 'Use scope_total only for explicit bounded total. target requires explicit plan amount; never derive it from total/completed. If all remaining work is intended without a separate amount, omit target; deterministic progress projection derives remaining. completed/remaining describe progress through the referenced work. Exam/mock-test scores, grades, accuracy, rank, or other performance results are not workload progress unless the user explicitly says they are completion/progress of that material or task. Time the user wants scheduled is target minute/hour workload; set perOccurrence/recurrence when explicit. A duration costing separately stated work is total_duration/duration_per_unit effort; session_duration is a session cost unless that time itself is requested work. Preserve completed/remaining direction.',
   },
   {
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. A task-scoped completion-by date or time must be emitted as that task\'s temporalConstraint with kind=deadline and hard constraint level; for an existing task, use its minimal existingPublicId shell plus the new temporalConstraint. Do not treat such timing as a no-op merely because it does not answer a pending question. night is later night; evening early evening. Mandatory/unavailable/deadline are hard, preferences soft; Deadline means completion-by. Keep relative dates symbolic; deterministic calendar code resolves them.',
+    instruction: 'Named/current-task timing is task timing; availability is plan-wide and planningWindow is the whole-plan range. A task completion-by date/time is that task deadline with hard constraint level. Date-only earliest_start/latest_end is valid and must not invent a clock time. For recurring weekday availability, encode weekdays in days and keep dateExpression null unless a separate date scope was stated. Mandatory/unavailable/deadline are hard, preferences soft. Keep supported relative dates symbolic; deterministic calendar code resolves them.',
   },
   {
     id: 'availability_absence',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing explicit absence of constraints from omitted information or positive availability depends on what the user actually asserted.',
-    instruction: 'Use no_additional_constraint only when explicit; omission is not absence. available means positive available time/period.',
+    instruction: 'Use no_additional_constraint only when explicit; omission is not absence. available means positive available time/period. A daily total study capacity without a clock interval is not an all-day availability window; if no supported representation preserves it, emit uncertainty instead of widening it to full-day availability.',
   },
   {
     id: 'contextual_reference_binding',
     retentionBasis: 'contextual_reference_resolution',
-    retentionReason: 'Resolving omitted/pronominal referents against conversation and typed public state requires contextual language understanding; deterministic code must not guess from labels or raw text.',
+    retentionReason: 'Resolving omitted or pronominal referents against conversation and typed public state requires contextual language understanding; deterministic code must not guess from labels or raw text.',
     instruction: 'Resolve omitted or pronominal targets from recentConversation/publicStateSummary only when one supported referent is clear; otherwise emit uncertainty. If the referent itself is unresolved, target that uncertainty to document, never to its own localId. Keep unrelated activities separate. Emit relations only when stated.',
   },
   {
@@ -63,10 +63,10 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     instruction: 'Emit recurrence and external source requests only when explicit.',
   },
   {
-    id: 'durable_learning_preference',
-    retentionBasis: 'language_interpretation',
-    retentionReason: 'Separating a durable learning preference from a one-plan choice requires interpreting temporal scope and user intent before persistence rules apply.',
-    instruction: 'learning_preference is durable beyond the current plan, not a current-plan choice.',
+    id: 'durable_user_context',
+    retentionBasis: 'semantic_scope_boundary',
+    retentionReason: 'Separating owner-wide durable context from one-plan working facts requires interpreting persistence scope before deterministic storage can commit it.',
+    instruction: 'userContextFacts are owner-wide durable context, not a copy of the current plan. Use study_goal for enduring academic/admission goals such as a target school or qualification; goal_event for dated milestones such as entrance exams; concern for durable weaknesses/worries; learning_preference only for preferences intended beyond this plan. Current-plan workload, availability, temporary priority, review rule, or one-off scheduling condition stays in plan facts and must not be persisted as userContextFacts. Approximate goal-event dates may remain custom symbolic expressions; never invent an exact day.',
   },
   {
     id: 'independent_clause_decision_correction',
