@@ -10,6 +10,7 @@ import { installStudySessionSwipeNavigation } from './lib/studySessionSwipeNavig
 import './styles.css';
 import './styles/theme-surface-contract.css';
 import './styles/interaction-continuity.css';
+import './styles/appSettingsMemory.css';
 
 configureWeeklyPlanningTraceRepository();
 installStudyPlannerSpeechRecognition();
