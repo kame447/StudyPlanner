@@ -20,13 +20,22 @@ describe('AI proxy request observer', () => {
     });
   });
 
-  it('describes attachment and timetable routes without inspecting user content', () => {
+  it('describes attachment, transcription and timetable routes without user content', () => {
     expect(describeAiProxyOperation('/planning-attachment', null, {})).toEqual({
       operationKind: 'planning_attachment',
       provider: 'openai',
       purpose: 'weekly_planning_attachment',
       phase: 'single',
       model: 'gpt-5.6-luna',
+    });
+    expect(describeAiProxyOperation('/planning-transcription', null, {
+      OPENAI_TRANSCRIPTION_MODEL: 'gpt-test-transcribe',
+    })).toEqual({
+      operationKind: 'planning_transcription',
+      provider: 'openai',
+      purpose: 'planning_transcription',
+      phase: 'single',
+      model: 'gpt-test-transcribe',
     });
     expect(describeAiProxyOperation('/timetable-ocr', null, {
       GEMINI_MODEL: 'gemini-3.5-flash',
