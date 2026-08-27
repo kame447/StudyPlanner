@@ -118,6 +118,10 @@ Phase 2以降のruntime implementationへ進む際は、Issue #213をparentと�
 
 各implementation PRはIssue #213のcurrent phase/checkpointを更新し、完了したphaseと次のconcrete actionを明示する。
 
-## Current next action
+## Current checkpoint
 
-Phase 1文書をdocumentation navigationへ登録し、exact diffとlink integrityを確認してPRをreviewable状態にする。
+Phase 1のcanonical documentsとrepository navigationは`design/product-observability-console`へ追加済みで、PR #215をreview surfaceとして使用する。
+
+exact diffではruntime/UI変更を含まず、product-observability documentationとnavigation更新だけである。PR #215のreview/mergeが完了するまではPhase 2のruntime implementationへ進まない。
+
+次のconcrete actionはPR #215のdocumentation integrityとGitHub verificationを最終確認し、Phase 1をmerge可能な状態に保つことである。
