@@ -1,0 +1,106 @@
+name: Weekly Planning Resumable Conversation Command
+
+on:
+  push:
+    branches:
+      - agent/weekly-conversation-quality-luna-audit
+    paths:
+      - '.github/weekly-planning-resumable-turn-command.json'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: weekly-planning-resumable-command
+  cancel-in-progress: false
+
+jobs:
+  observe-one-turn:
+    if: ${{ github.actor == github.repository_owner }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+      OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+      ARTIFACT_NAME: weekly-planning-resumable-conversation
+      COMMAND_FILE: .github/weekly-planning-resumable-turn-command.json
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read turn command
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$COMMAND_FILE"
+          echo "USER_TEXT=$(jq -r '.user_text' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "PREVIOUS_RUN_ID=$(jq -r '.previous_run_id // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "CONVERSATION_ID=$(jq -r '.conversation_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "OWNER_ID=$(jq -r '.owner_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "WEEK_START_DATE=$(jq -r '.week_start_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "SELECTED_DATE=$(jq -r '.selected_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore previous checkpoint artifact
+        if: ${{ env.PREVIOUS_RUN_ID != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p previous-artifact
+          gh run download "$PREVIOUS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir previous-artifact
+          test -f previous-artifact/checkpoint.json
+
+      - name: Validate command
+        run: |
+          test -n "$USER_TEXT"
+          test -n "$CONVERSATION_ID"
+          test -n "$OWNER_ID"
+          echo "$WEEK_START_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          echo "$SELECTED_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+
+      - name: Verify API credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Observe exactly one human-supplied real API turn
+        env:
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ env.USER_TEXT }}
+          WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ${{ env.PREVIOUS_RUN_ID != '' && 'previous-artifact/checkpoint.json' || '' }}
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: ${{ env.OWNER_ID }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: ${{ env.CONVERSATION_ID }}
+          WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: ${{ env.WEEK_START_DATE }}
+          WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: ${{ env.SELECTED_DATE }}
+          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-5.6-luna
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: '4'
+          VITE_CLOUDFLARE_AI_PROXY_URL: ''
+        run: npm run observe:weekly-ai:conversation:turn
+
+      - name: Record observation completion
+        if: always()
+        run: echo "Observation details are available in the uploaded artifact."
+
+      - name: Upload observation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-resumable-conversation
+          path: artifacts/weekly-planning-resumable-conversation/
+          if-no-files-found: error
+          retention-days: 30
