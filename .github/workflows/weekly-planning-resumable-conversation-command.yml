@@ -57,6 +57,7 @@ jobs:
           src/features/userPlanningContext/userPlanningContextSpace.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDenseTurnBudgetV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningDateOnlyTemporalBoundValidationV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningUserContextDateExpressionNormalizationV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
 
