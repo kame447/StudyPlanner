@@ -1,8 +1,8 @@
 # Weekly Planning Stable V5 semantic ownership boundary
 
 Status: canonical semantic ownership contract
-Updated: 2026-08-23
-Integration base: the semantic rule contract inventory merged from PR #142.
+Updated: 2026-08-27
+Integration base: the semantic rule contract inventory merged from PR #142, with scheduler-facing temporal ownership refined by PR #204.
 
 This document narrows the ownership boundary already stated in `weekly-planning-dialogue-architecture-v5.md`. The goal is to prevent application-internal decisions from drifting into the LLM layer while also avoiding deterministic re-interpretation of raw user text.
 
@@ -25,6 +25,7 @@ The application must not re-read raw user text with regex/keywords to choose a d
 - Calendar arithmetic after a supported symbolic date meaning exists. For example, `next_week` plus the captured request date/week boundary becomes a concrete date range in `weeklyPlanningCalendarResolver`.
 - Canonical planning-window wire values after validated start/end dates exist.
 - Canonical weekday/time encodings that are mechanically derivable from already interpreted semantic values.
+- Scheduler-facing compilation of already accepted temporal facts into absolute hard date bounds and preferred placements.
 - Schema and evidence validation.
 - Public/internal fact IDs, graph revision, lifecycle, correction transactions, dependency safety, and stale-revision rejection.
 - Missing-information/readiness decisions, question target, proposal state, authorization, scheduler input, feasibility, preview, approval, and save.
@@ -42,6 +43,23 @@ Deterministic resolver: captured request date + weekStartsOn -> concrete start/e
 ```
 
 Composite expressions that the current schema cannot represent symbolically must remain an explicit schema limitation. Do not silently add raw-text deterministic parsing to compensate; either extend the semantic representation or keep the meaning unresolved.
+
+## Scheduler-facing temporal compilation boundary
+
+After temporal meaning has been accepted into typed state, placement code must not become a second semantic owner of the same constraint.
+
+For movable-work date constraints and preferences, the deterministic boundary resolves supported symbolic date expressions and compiles the applicable accepted facts into scheduler-facing values such as:
+
+```text
+hardDateBounds
+preferredPlacements
+```
+
+The compilation boundary owns the mechanical questions needed for those scheduler inputs: which active accepted constraint applies to the target, whether a task-level constraint is inherited by component work, which absolute date results from the already interpreted date expression, and which source fact IDs justify the compiled value.
+
+Downstream work distribution and placement consume the compiled values. They must not independently walk the raw temporal Fact Graph to reinterpret deadline / earliest-start / latest-end / preferred-window semantics or let a component-specific constraint leak to a sibling component.
+
+This does not mean every temporal operation is represented by `hardDateBounds`. Fixed commitments and other explicitly separate scheduler contracts may retain their own typed compilation path. The rule is that one semantic/application decision has one owner; a downstream path must not independently re-decide a meaning already compiled upstream.
 
 ## Test rule
 
