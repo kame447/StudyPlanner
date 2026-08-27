@@ -12,7 +12,7 @@ import {
   type WeeklyPlanningSemanticNormalizerResultV5,
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
-export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
+export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 6400;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 
