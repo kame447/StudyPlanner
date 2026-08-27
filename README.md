@@ -61,6 +61,8 @@ Save
 
 フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
 
+管理・分析consoleは、UIからplanner collectionを都度全件scanする構造を最終形にせず、lightweight telemetry、集計read model、restricted diagnostic traceを分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
+
 テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
 
 実装上の責務と主要ディレクトリは [`PROJECT_MAP.md`](./PROJECT_MAP.md) にまとめています。
@@ -143,6 +145,8 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。
 
 学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
+
+管理・分析console、AI/API usage、service-wide telemetry、diagnostic drill-downは [`docs/domains/product-observability/README.md`](./docs/domains/product-observability/README.md) を入口とし、要件は [`console-requirements.md`](./docs/domains/product-observability/spec/console-requirements.md)、内部architectureは [`telemetry-and-read-model.md`](./docs/domains/product-observability/architecture/telemetry-and-read-model.md) を正仕様として扱います。
 
 過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 
