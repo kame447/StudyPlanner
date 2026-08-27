@@ -8,7 +8,10 @@ import {
   observeAiProxyRequest,
   type AiProxyRequestObserverEnv,
 } from './aiProxyRequestObserver';
-import { scheduleAiRequestMetric } from './aiRequestObservability';
+import {
+  isAiRequestObservabilityConfigured,
+  scheduleAiRequestMetric,
+} from './aiRequestObservability';
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
@@ -65,7 +68,10 @@ export default {
       );
     }
 
-    const shouldObserveAiRequest = isObservableAiProxyPath(pathname) && request.method === 'POST';
+    const observerEnv = env as unknown as AiProxyRequestObserverEnv;
+    const shouldObserveAiRequest = request.method === 'POST'
+      && isObservableAiProxyPath(pathname)
+      && isAiRequestObservabilityConfigured(observerEnv);
     const observerRequest = shouldObserveAiRequest ? request.clone() : null;
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
@@ -82,7 +88,7 @@ export default {
         observeAiProxyRequest({
           request: observerRequest,
           response: response.clone(),
-          env: env as unknown as AiProxyRequestObserverEnv,
+          env: observerEnv,
           startedAtMs,
           occurredAt,
           onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
