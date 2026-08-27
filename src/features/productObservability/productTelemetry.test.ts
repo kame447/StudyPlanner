@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { ProductActivityTelemetryDraft } from '../../../shared/productObservabilityContract';
 import {
   createNoopProductTelemetryPort,
   createProductTelemetryPort,
@@ -7,8 +8,12 @@ import {
 
 describe('product telemetry port', () => {
   it('builds a bounded activity event without user identity or free-form metadata', async () => {
-    const write = vi.fn(async () => undefined);
-    const sink: ProductTelemetrySink = { write };
+    let writtenEvent: ProductActivityTelemetryDraft | null = null;
+    const sink: ProductTelemetrySink = {
+      async write(event) {
+        writtenEvent = event;
+      },
+    };
     const port = createProductTelemetryPort({
       appVersion: '1.2.3',
       sink,
@@ -24,7 +29,7 @@ describe('product telemetry port', () => {
     });
     await Promise.resolve();
 
-    expect(write).toHaveBeenCalledWith({
+    expect(writtenEvent).toEqual({
       schemaVersion: 1,
       eventId: 'activity-12345678',
       eventType: 'product_activity',
@@ -38,9 +43,10 @@ describe('product telemetry port', () => {
         action: 'plan_created',
       },
     });
-    expect(JSON.stringify(write.mock.calls[0]?.[0])).not.toContain('userId');
-    expect(JSON.stringify(write.mock.calls[0]?.[0])).not.toContain('email');
-    expect(JSON.stringify(write.mock.calls[0]?.[0])).not.toContain('metadata');
+    const serialized = JSON.stringify(writtenEvent);
+    expect(serialized).not.toContain('userId');
+    expect(serialized).not.toContain('email');
+    expect(serialized).not.toContain('metadata');
   });
 
   it('does not throw into product behavior when the telemetry sink fails', async () => {
