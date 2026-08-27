@@ -66,7 +66,11 @@ export type AiRequestMetricStatus =
   | 'unknown_failure';
 
 export interface AiRequestMetricPayload {
-  operationKind: 'chat_completion' | 'timetable_ocr' | 'planning_attachment';
+  operationKind:
+    | 'chat_completion'
+    | 'timetable_ocr'
+    | 'planning_attachment'
+    | 'planning_transcription';
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
   provider: 'openai' | 'gemini';
