@@ -1,11 +1,20 @@
 export const USER_PLANNING_CONTEXT_STORAGE_VERSION =
   'studyplanner-user-planning-context-v1' as const;
 
+export const USER_PLANNING_CONTEXT_CLOUD_SCHEMA_VERSION =
+  'studyplanner-user-planning-context-cloud-v1' as const;
+
 export const USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 = [
   'study_goal',
   'goal_event',
   'concern',
   'learning_preference',
+] as const;
+
+export const USER_PLANNING_CONTEXT_ORIGINS_V1 = [
+  'ai_inferred',
+  'user_confirmed',
+  'migration',
 ] as const;
 
 export const USER_LEARNING_PREFERENCE_LABELS_V1 = {
@@ -15,6 +24,9 @@ export const USER_LEARNING_PREFERENCE_LABELS_V1 = {
 
 export type UserPlanningContextSemanticKindV1 =
   (typeof USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1)[number];
+
+export type UserPlanningContextOriginV1 =
+  (typeof USER_PLANNING_CONTEXT_ORIGINS_V1)[number];
 
 export interface UserPlanningContextSemanticFactV1 {
   localId: string;
@@ -39,12 +51,21 @@ export interface UserPlanningContextRecordV1 {
   sourceTurnId: string;
   recordedAt: string;
   status: 'active' | 'historical';
+  origin: UserPlanningContextOriginV1;
 }
 
 export interface UserPlanningContextSnapshotV1 {
   version: typeof USER_PLANNING_CONTEXT_STORAGE_VERSION;
   ownerId: string;
   records: UserPlanningContextRecordV1[];
+  updatedAt: string;
+}
+
+export interface UserPlanningContextCloudDocumentV1 {
+  schemaVersion: typeof USER_PLANNING_CONTEXT_CLOUD_SCHEMA_VERSION;
+  ownerId: string;
+  revision: number;
+  snapshot: UserPlanningContextSnapshotV1;
   updatedAt: string;
 }
 
