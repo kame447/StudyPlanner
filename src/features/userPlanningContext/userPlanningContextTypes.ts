@@ -2,6 +2,7 @@ export const USER_PLANNING_CONTEXT_STORAGE_VERSION =
   'studyplanner-user-planning-context-v1' as const;
 
 export const USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 = [
+  'study_goal',
   'goal_event',
   'concern',
   'learning_preference',
