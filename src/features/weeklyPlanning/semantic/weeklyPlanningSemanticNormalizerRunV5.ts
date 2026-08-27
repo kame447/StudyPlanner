@@ -12,7 +12,7 @@ import {
   type WeeklyPlanningSemanticNormalizerResultV5,
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
-export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 6400;
+export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 
@@ -88,7 +88,6 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
     try {
       const response = await this.client.createChatCompletion(request);
       this.responseLengths.push(response.length);
-      console.info('[WeeklyPlanning Real API semantic response]', attempt, response);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: this.input.traceRequestId,
         stage: 'semantic_provider_response',
