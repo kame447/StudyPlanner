@@ -6,6 +6,7 @@ const SHEET_SURFACE_SELECTOR = [
   '.quick-entry-modal',
   '.month-event-modal',
   '.timetable-term-sheet',
+  '.bookshelf-modal:has(.bookshelf-material-edit-grid)',
 ].join(',');
 
 const SHEET_OVERLAY_SELECTOR = [
@@ -15,6 +16,7 @@ const SHEET_OVERLAY_SELECTOR = [
   '.quick-entry-overlay',
   '.month-event-modal-overlay',
   '.timetable-term-sheet-overlay',
+  '.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid)',
 ].join(',');
 
 const EXPLICIT_HANDLE_SELECTOR = [
