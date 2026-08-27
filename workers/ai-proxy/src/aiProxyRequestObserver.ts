@@ -6,6 +6,7 @@ import type {
 import { resolveChatModel } from './modelPolicy';
 import {
   createAiRequestId,
+  isAiRequestObservabilityConfigured,
   recordAiRequestMetricBestEffort,
   resolveAiRequestPhase,
   type AiRequestUsage,
@@ -185,6 +186,7 @@ export async function observeAiProxyRequest(params: {
   usage?: AiRequestUsage | null;
   onError?: (error: unknown) => void;
 }): Promise<void> {
+  if (!isAiRequestObservabilityConfigured(params.env)) return;
   if (params.request.method !== 'POST') return;
   const pathname = new URL(params.request.url).pathname;
   if (!isObservableAiProxyPath(pathname)) return;
