@@ -51,6 +51,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run focused semantic regressions
+        run: >-
+          npm run test -- --run
+          src/features/userPlanningContext/userPlanningContextSpace.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDenseTurnBudgetV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
+
       - name: Restore previous checkpoint artifact
         if: ${{ env.PREVIOUS_RUN_ID != '' }}
         env:
