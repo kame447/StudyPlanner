@@ -88,8 +88,8 @@ export function UserPlanningContextProvider({
 
   useEffect(() => {
     let active = true;
-    let unsubscribeRemote = () => undefined;
-    let unsubscribeCommitted = () => undefined;
+    let unsubscribeRemote: () => void = () => undefined;
+    let unsubscribeCommitted: () => void = () => undefined;
 
     const initialize = async () => {
       const localSnapshot = loadUserPlanningContextSnapshotV1({
