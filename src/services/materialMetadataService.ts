@@ -1,5 +1,6 @@
 import {
   isMaterialMetadataCandidate,
+  normalizeMaterialCatalogTitle,
   type MaterialMetadataCandidate,
   type MaterialMetadataDetailsResponse,
   type MaterialMetadataSearchResponse,
@@ -101,6 +102,24 @@ export async function resolveMaterialMetadataCandidate(
   }
 }
 
+export function isCompatibleAutomaticEnrichment(
+  source: MaterialMetadataCandidate,
+  resolved: MaterialMetadataCandidate,
+): boolean {
+  const sourceIsbn = source.isbn13 ?? source.isbn10;
+  const resolvedIsbn = resolved.isbn13 ?? resolved.isbn10;
+  if (sourceIsbn && resolvedIsbn) return sourceIsbn === resolvedIsbn;
+
+  const sourceTitle = normalizeMaterialCatalogTitle(source.title);
+  const resolvedTitle = normalizeMaterialCatalogTitle(resolved.title);
+  if (!sourceTitle || !resolvedTitle) return false;
+  if (sourceTitle === resolvedTitle) return true;
+
+  const shorterLength = Math.min(sourceTitle.length, resolvedTitle.length);
+  return shorterLength >= 8
+    && (sourceTitle.includes(resolvedTitle) || resolvedTitle.includes(sourceTitle));
+}
+
 export async function enrichBuiltInMaterialSearchResults(
   candidates: MaterialMetadataCandidate[],
   resolver: (
@@ -124,7 +143,12 @@ export async function enrichBuiltInMaterialSearchResults(
 
     automaticEnrichmentCount += 1;
     try {
-      enriched.push(await resolver(candidate));
+      const resolved = await resolver(candidate);
+      enriched.push(
+        isCompatibleAutomaticEnrichment(candidate, resolved)
+          ? resolved
+          : candidate,
+      );
     } catch {
       enriched.push(candidate);
     }
