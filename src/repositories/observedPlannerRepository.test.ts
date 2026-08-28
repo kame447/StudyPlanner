@@ -82,13 +82,15 @@ describe('createObservedPlannerRepository', () => {
     expect(actions).toEqual([]);
   });
 
-  it('uses typed Todo state to distinguish completion from ordinary updates', async () => {
+  it('counts Todo completion only for a known non-done to done transition', async () => {
     const actions: ProductActivityAction[] = [];
     const base = {
+      getTodos: vi.fn(async () => [todo()]),
       upsertTodo: vi.fn(async (value: TodoTask) => value),
     } as unknown as PlannerRepository;
     const repository = createObservedPlannerRepository(base, telemetry(actions));
 
+    await repository.getTodos('user-1');
     await repository.upsertTodo(todo());
     await repository.upsertTodo(todo({
       updatedAt: '2026-08-28T01:00:00.000Z',
@@ -98,7 +100,32 @@ describe('createObservedPlannerRepository', () => {
       updatedAt: '2026-08-28T02:00:00.000Z',
       status: 'done',
     }));
+    await repository.upsertTodo(todo({
+      updatedAt: '2026-08-28T03:00:00.000Z',
+      status: 'done',
+      title: 'Review again',
+    }));
 
-    expect(actions).toEqual(['todo_created', 'todo_updated', 'todo_completed']);
+    expect(actions).toEqual([
+      'todo_created',
+      'todo_updated',
+      'todo_completed',
+      'todo_updated',
+    ]);
+  });
+
+  it('does not infer completion from a done snapshot when prior status is unknown', async () => {
+    const actions: ProductActivityAction[] = [];
+    const base = {
+      upsertTodo: vi.fn(async (value: TodoTask) => value),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.upsertTodo(todo({
+      status: 'done',
+      updatedAt: '2026-08-28T02:00:00.000Z',
+    }));
+
+    expect(actions).toEqual(['todo_updated']);
   });
 });
