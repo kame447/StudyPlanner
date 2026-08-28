@@ -48,16 +48,17 @@ async function openAddMaterialSheet(page) {
   return sheet;
 }
 
-test('known material names are searchable from the built-in catalog without the provider', async ({ page }) => {
+test('known material names are searchable and selectable from the built-in catalog', async ({ page }) => {
   const sheet = await openAddMaterialSheet(page);
 
   await sheet.getByLabel('ISBN / 教材名').fill('青チャート');
   await sheet.getByRole('button', { name: '検索', exact: true }).click();
 
-  const candidate = sheet.getByRole('button', { name: '青チャート', exact: true });
+  const candidate = sheet.locator('.material-metadata-result').filter({ hasText: '青チャート' }).first();
   await expect(candidate).toBeVisible();
   await candidate.click();
   await expect(sheet.getByLabel('教材名', { exact: true })).toHaveValue('青チャート');
+  await expect(sheet.getByLabel('選択した教材の情報')).toContainText('青チャート');
   await expect(sheet.getByLabel('教科')).toHaveValue('material-search-subject');
 });
 
