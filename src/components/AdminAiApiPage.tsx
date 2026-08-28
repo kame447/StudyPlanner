@@ -265,6 +265,7 @@ export function AdminAiApiPage() {
           <DimensionTable title="Model別" description="実際にproviderへ送ったmodel単位の集計です。" rows={data.byModel} />
           <DimensionTable title="Purpose別" description="機能目的ごとのリクエスト量と品質を比較します。" rows={data.byPurpose} />
           <DimensionTable title="Phase別" description="initial / repair / singleを同じ期間条件で比較します。" rows={data.byPhase} />
+          <DimensionTable title="Operation別" description="chat completion、OCR、添付解析、文字起こしなどoperation種別で比較します。" rows={data.byOperationKind} />
         </>
       ) : null}
     </main>
