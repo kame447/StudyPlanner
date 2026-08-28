@@ -10,7 +10,7 @@ Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Ag
 
 Phase 4はPR #224で`/admin`のOverview入口、responsive console shell、bounded read modelを利用するregistered / active user・AI/API・planning quality・read-model freshness表示、desktop/mobile・light/darkのrender regressionをmainへ統合した。最終pre-merge head `5d11dd2a574909aac0cfe3317652f4348a870d45` ではCI、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderがすべてterminal successとなり、squash merge mainは`b053a677c00fea642a040831fd2161760567a382`である。
 
-現在の実装phaseはPhase 5「Users and AI / API」である。delivery candidateはPR #234 / `feat/product-observability-phase5-users-ai-api`。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、利用者分析・個別調査とAI/API利用分析を実装した。exact final headの検証を完了させ、greenであればPhase 5 completionを確定する。
+現在の実装phaseはPhase 5「Users and AI / API」である。delivery candidateはPR #234 / `feat/product-observability-phase5-users-ai-api`。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、利用者分析・個別調査とAI/API利用分析を実装した。以降はこのcheckpoint以後のPR headをexact final validation対象として固定し、検証で不具合が出た場合だけ変更する。
 
 ## Completed foundation
 
@@ -91,7 +91,6 @@ Active branch: `feat/product-observability-phase5-users-ai-api`
 Parent Issue: #213
 AI/API residual tracker: #160
 Base main at phase start: `b053a677c00fea642a040831fd2161760567a382`
-Final validation candidate: current PR #234 head after this roadmap checkpoint.
 
 Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止し、opaque `actorSubjectId`を基本とするbounded user summaryへ置換した。利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みの最大100件単位で扱い、継続読込はcursor paginationとする。
 
