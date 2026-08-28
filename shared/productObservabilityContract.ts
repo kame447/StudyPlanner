@@ -81,6 +81,8 @@ export interface AiRequestMetricPayload {
   completionTokens: number | null;
   totalTokens: number | null;
   cachedTokens: number | null;
+  // Added compatibly within schema v1. Older persisted events may not have this field.
+  cacheWriteTokens?: number | null;
   durationMs: number;
   requestBytes: number;
   responseBytes: number | null;
