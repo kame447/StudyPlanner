@@ -1,6 +1,11 @@
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import {
+  getWeeklyPlanningRegisteredMaterialSummariesV5,
+  registeredMaterialProgressQuestionV5,
+  type WeeklyPlanningRegisteredMaterialSummaryV5,
+} from '../semantic/weeklyPlanningRegisteredMaterialContextV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
@@ -93,15 +98,22 @@ function scopeTotalForTarget(params: {
 function progressQuestion(params: {
   label: string;
   scopeTotal: WorkloadFactV5 | null;
+  registeredMaterials: readonly WeeklyPlanningRegisteredMaterialSummaryV5[];
 }): string {
   if (params.scopeTotal) {
     return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
   }
-  return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
+  const registeredQuestion = registeredMaterialProgressQuestionV5({
+    label: params.label,
+    materials: params.registeredMaterials,
+  });
+  if (registeredQuestion) return registeredQuestion;
+  return `「${params.label}」は、大体何ページくらいありますか？ 問題集なら問題数でも大丈夫です。あわせて、今どこまで終わっているか教えてください。`;
 }
 
 export function stableV5MissingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
+  ownerId?: string,
 ): {
   message: string;
   questionCode: 'missing_schedulable_work';
@@ -110,6 +122,9 @@ export function stableV5MissingSchedulableWorkQuestion(
   intent: WeeklyPlanningStableV5MissingWorkIntent;
 } {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  const registeredMaterials = ownerId
+    ? getWeeklyPlanningRegisteredMaterialSummariesV5(ownerId)
+    : [];
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
   const lifecycleByFactId = new Map(
     graph.factLifecycles.map((entry) => [entry.factId, entry] as const),
@@ -186,6 +201,7 @@ export function stableV5MissingSchedulableWorkQuestion(
           targetFactId: componentWithNoWorkload.id,
           targetKind: 'component',
         }),
+        registeredMaterials,
       }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
@@ -211,6 +227,7 @@ export function stableV5MissingSchedulableWorkQuestion(
           targetFactId: taskWithNoWorkload.id,
           targetKind: 'task',
         }),
+        registeredMaterials,
       }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
@@ -269,14 +286,26 @@ function questionSourceExcerpt(value: string): string {
 function semanticUncertaintyQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
+  ownerId?: string,
 ): string {
   const uncertainty = question.factId
     ? graph.uncertainties.find((fact) => fact.id === question.factId)
     : null;
   if (uncertainty?.field === 'work_breakdown' && uncertainty.targetFactId) {
     const task = graph.tasks.find((fact) => fact.id === uncertainty.targetFactId);
-    const label = task?.title?.trim() || 'この予定';
-    return `「${label}」は、まず中身を分けて考えましょう。今残っているものをざっくり教えてもらえますか？`;
+    const materialComponents = graph.components.filter((component) =>
+      component.taskId === uncertainty.targetFactId && component.role === 'material');
+    const label = materialComponents.length === 1
+      ? materialComponents[0].label.trim()
+      : task?.title?.trim() || 'この教材';
+    const registeredQuestion = ownerId
+      ? registeredMaterialProgressQuestionV5({
+          label,
+          materials: getWeeklyPlanningRegisteredMaterialSummariesV5(ownerId),
+        })
+      : null;
+    if (registeredQuestion) return registeredQuestion;
+    return `「${label}」は、大体何ページくらいありますか？ 問題集なら問題数でも大丈夫です。あわせて、今どこまで終わっているか教えてください。`;
   }
   const sourceText = uncertainty
     ? questionSourceExcerpt(uncertainty.source.sourceText)
@@ -318,11 +347,12 @@ function missingEffortQuestion(
 export function renderStableV5RuntimeQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
+  ownerId?: string,
 ): string {
   const label = stableV5IssueTaskLabel(graph, question);
   switch (question.code) {
     case 'semantic_uncertainty':
-      return semanticUncertaintyQuestion(graph, question);
+      return semanticUncertaintyQuestion(graph, question, ownerId);
     case 'invalid_planning_horizon':
       return 'いつからいつまでの予定を作るか教えてください。例: 今日、今週、来週、7月25日から7月31日。';
     case 'ambiguous_planning_window':
