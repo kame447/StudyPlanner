@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
+import type { ObservabilityActiveUserDirtySource } from '../../../shared/productObservabilityReadModel';
 import {
   isObservableAiProxyPath,
   observeAiProxyRequest,
@@ -76,28 +77,28 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
 
 async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<{
   engine: ProductObservabilityRollupEngine;
-  dirtyDates: string[];
+  dirtySources: ObservabilityActiveUserDirtySource[];
 }> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
   );
-  let dirtyDates: string[] = [];
+  let dirtySources: ObservabilityActiveUserDirtySource[] = [];
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
-    dirtyDates = result.checkpoint.activeUserDirtyDates;
+    dirtySources = result.checkpoint.activeUserDirtySources;
     if (!result.hasMore) break;
   }
-  return { engine, dirtyDates };
+  return { engine, dirtySources };
 }
 
 async function runScheduledActiveUserSnapshots(
   env: Record<string, unknown>,
-  dirtyDates: readonly string[],
+  dirtySources: readonly ObservabilityActiveUserDirtySource[],
 ): Promise<void> {
   const snapshots = new ProductObservabilityActiveUserSnapshotService(
     env as unknown as ProductObservabilityActiveUserSnapshotEnv,
   );
-  await snapshots.refreshAffected(dirtyDates);
+  await snapshots.refreshAffected(dirtySources);
 }
 
 async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
@@ -122,8 +123,8 @@ async function runScheduledObservabilityMaintenance(env: Record<string, unknown>
 
   if (rollup) {
     try {
-      await runScheduledActiveUserSnapshots(env, rollup.dirtyDates);
-      await rollup.engine.clearActiveUserDirtyDates(rollup.dirtyDates);
+      await runScheduledActiveUserSnapshots(env, rollup.dirtySources);
+      await rollup.engine.clearActiveUserDirtySources(rollup.dirtySources);
     } catch (error) {
       console.error('[Product Observability] active-user snapshot refresh failed', {
         message: error instanceof Error ? error.message : String(error),
