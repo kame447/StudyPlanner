@@ -122,6 +122,80 @@ describe('Stable V5 entity-bound durable context signals', () => {
     ]);
   });
 
+  it('prefers an explicit owner concern over entity-local duplicates from the same evidence', () => {
+    const document: WeeklyPlanningSemanticDocumentV5 = {
+      ...baseDocument(),
+      userContextFacts: [{
+        localId: 'context-math',
+        kind: 'concern',
+        label: '数学の苦手意識',
+        value: '数学が特に苦手',
+        dateExpression: null,
+        sourceText: '数学と物理が特に苦手なので',
+      }],
+      tasks: [{
+        localId: 'task-math-book',
+        category: 'study',
+        title: '数学IA・IIBCの基礎問題精講',
+        study: null,
+        workloads: [],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        durableContextSignals: [{
+          localId: 'task-math-concern',
+          kind: 'concern',
+          value: '数学が特に苦手',
+          sourceText: '数学と物理が特に苦手なので',
+        }],
+        sourceText: '数学IA・IIBCの基礎問題精講を一周',
+      }],
+    };
+
+    expect(collectUserPlanningContextFactsV5(document)).toEqual([
+      expect.objectContaining({
+        localId: 'context-math',
+        kind: 'concern',
+        label: '数学の苦手意識',
+      }),
+    ]);
+  });
+
+  it('keeps an entity-local concern when its evidence or meaning is distinct', () => {
+    const document: WeeklyPlanningSemanticDocumentV5 = {
+      ...baseDocument(),
+      userContextFacts: [{
+        localId: 'context-math',
+        kind: 'concern',
+        label: '数学',
+        value: '数学が苦手',
+        dateExpression: null,
+        sourceText: '数学が苦手です',
+      }],
+      tasks: [{
+        localId: 'task-probability',
+        category: 'study',
+        title: '確率',
+        study: null,
+        workloads: [],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        durableContextSignals: [{
+          localId: 'concern-probability',
+          kind: 'concern',
+          value: '条件付き確率で迷う',
+          sourceText: '特に条件付き確率で迷います',
+        }],
+        sourceText: '確率を勉強します',
+      }],
+    };
+
+    const facts = collectUserPlanningContextFactsV5(document);
+    expect(facts).toHaveLength(2);
+    expect(facts.map((fact) => fact.label)).toEqual(expect.arrayContaining(['数学', '確率']));
+  });
+
   it('keeps old internal semantic fixtures compatible when signal arrays are omitted', () => {
     const legacyFixture = {
       ...baseDocument(),
