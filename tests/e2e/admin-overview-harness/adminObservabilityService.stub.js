@@ -1,3 +1,9 @@
+const harnessState = new URLSearchParams(window.location.search).get('state') ?? 'populated';
+
+function maybeFail() {
+  if (harnessState === 'error') throw new Error('Harness observability read failed.');
+}
+
 const latency = {
   version: 'latency-ms-v1',
   bucketCounts: [0, 0, 2, 12, 3, 1, 0, 0, 0, 0],
@@ -24,6 +30,33 @@ function aiAggregate(requestCount, costMicros, tokenCount, cachedTokens = Math.r
     estimatedCostMicros: costMicros,
     estimatedCostUnknownCount: requestCount > 3 ? 1 : 0,
     latency,
+  };
+}
+
+function emptyAiAggregate() {
+  return {
+    requestCount: 0,
+    successCount: 0,
+    failureCount: 0,
+    statusCounts: {},
+    promptTokens: 0,
+    promptTokensUnknownCount: 0,
+    completionTokens: 0,
+    completionTokensUnknownCount: 0,
+    totalTokens: 0,
+    totalTokensUnknownCount: 0,
+    cachedTokens: 0,
+    cachedTokensUnknownCount: 0,
+    estimatedCostMicros: 0,
+    estimatedCostUnknownCount: 0,
+    latency: {
+      version: 'latency-ms-v1',
+      bucketCounts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      sampleCount: 0,
+      sumMs: 0,
+      minMs: null,
+      maxMs: null,
+    },
   };
 }
 
@@ -123,18 +156,32 @@ const users = [
 ];
 
 export async function getAdminObservabilityOverview() {
+  maybeFail();
   return {
     schemaVersion: 1,
     fromDate: '2026-08-23',
     toDate: '2026-08-29',
     reportingTimeZone: 'Asia/Tokyo',
     registeredUsers: {
-      total: 1284,
-      newInPeriod: 48,
+      total: harnessState === 'empty' ? 0 : 1284,
+      newInPeriod: harnessState === 'empty' ? 0 : 48,
       registrationIndexReady: true,
       scope: 'firebase_project',
     },
-    period: {
+    period: harnessState === 'empty' ? {
+      processedEventCount: 0,
+      firstOccurredAt: null,
+      lastOccurredAt: null,
+      productActivity: { eventCount: 0, actionCounts: {} },
+      ai: emptyAiAggregate(),
+      planning: {
+        outcomeCounts: {},
+        previewCountSum: 0,
+        previewCountUnknownCount: 0,
+        unscheduledCountSum: 0,
+        unscheduledCountUnknownCount: 0,
+      },
+    } : {
       processedEventCount: 284,
       firstOccurredAt: '2026-08-23T00:30:00.000Z',
       lastOccurredAt: '2026-08-29T13:30:00.000Z',
@@ -163,8 +210,8 @@ export async function getAdminObservabilityOverview() {
         unscheduledCountUnknownCount: 0,
       },
     },
-    daily,
-    activeUsers: {
+    daily: harnessState === 'empty' ? [] : daily,
+    activeUsers: harnessState === 'empty' ? null : {
       schemaVersion: 1,
       environment: 'production',
       asOfDate: '2026-08-29',
@@ -175,12 +222,12 @@ export async function getAdminObservabilityOverview() {
       updatedAt: '2026-08-29T14:00:00.000Z',
       expireAt: '2027-10-01T00:00:00.000Z',
     },
-    aiLatencyP50Ms: 820,
-    aiLatencyP95Ms: 2780,
+    aiLatencyP50Ms: harnessState === 'empty' ? null : 820,
+    aiLatencyP95Ms: harnessState === 'empty' ? null : 2780,
     rollupCheckpoint: {
       schemaVersion: 1,
-      cursor: { observedAt: '2026-08-29T13:30:00.000Z', documentName: 'observability_events/latest' },
-      processedEventCount: 9384,
+      cursor: harnessState === 'empty' ? null : { observedAt: '2026-08-29T13:30:00.000Z', documentName: 'observability_events/latest' },
+      processedEventCount: harnessState === 'empty' ? 0 : 9384,
       activeUserDirtySources: [],
       lastRunStartedAt: '2026-08-29T14:00:00.000Z',
       lastSuccessfulRunAt: '2026-08-29T14:00:02.000Z',
@@ -192,11 +239,13 @@ export async function getAdminObservabilityOverview() {
 }
 
 export async function getAdminObservabilityUsers() {
-  return { users, nextCursor: null };
+  maybeFail();
+  return { users: harnessState === 'empty' ? [] : users, nextCursor: null };
 }
 
 export async function resolveAdminObservabilityUserIdentity() {
-  return [{
+  maybeFail();
+  return harnessState === 'empty' ? [] : [{
     firebaseUid: 'firebase-user-example',
     email: 'student@example.com',
     username: 'Sample Student',
@@ -206,6 +255,17 @@ export async function resolveAdminObservabilityUserIdentity() {
 }
 
 export async function getAdminObservabilityUserInvestigation() {
+  maybeFail();
+  if (harnessState === 'empty') {
+    return {
+      environment: 'production',
+      actorSubjectId: users[0].actorSubjectId,
+      summary: null,
+      activeDayCount: 0,
+      nextCursor: null,
+      timeline: [],
+    };
+  }
   return {
     environment: 'production',
     actorSubjectId: users[0].actorSubjectId,
@@ -266,6 +326,45 @@ export async function getAdminObservabilityUserInvestigation() {
 }
 
 export async function getAdminObservabilityAiAnalysis() {
+  maybeFail();
+  if (harnessState === 'empty') {
+    return {
+      fromDate: '2026-08-23',
+      toDate: '2026-08-29',
+      environment: 'production',
+      reportingTimeZone: 'Asia/Tokyo',
+      total: emptyAiAggregate(),
+      latencyP50Ms: null,
+      latencyP95Ms: null,
+      byModel: [],
+      byPurpose: [],
+      byPhase: [],
+      planningEfficiency: {
+        sessionCount: 0,
+        requestCount: 0,
+        repairRequestCount: 0,
+        repairRate: null,
+        requestsPerSession: null,
+        estimatedCostMicros: 0,
+        estimatedCostUnknownCount: 0,
+        estimatedCostPerSessionMicros: null,
+        cachedTokens: 0,
+        promptTokens: 0,
+        cacheHitTokenRatio: null,
+      },
+      rollupCheckpoint: {
+        schemaVersion: 1,
+        cursor: null,
+        processedEventCount: 0,
+        activeUserDirtySources: [],
+        lastRunStartedAt: null,
+        lastSuccessfulRunAt: null,
+        lastFailureAt: null,
+        lastFailureCategory: null,
+        updatedAt: '2026-08-29T14:00:02.000Z',
+      },
+    };
+  }
   const modelLuna = aiAggregate(28, 1920000, 31800, 9200);
   const modelMini = aiAggregate(16, 760000, 16400, 2800);
   return {
