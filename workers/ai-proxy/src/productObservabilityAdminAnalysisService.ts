@@ -10,6 +10,7 @@ import type {
   ObservabilityDimensionAggregate,
 } from '../../../shared/productObservabilityReadModel';
 import type {
+  ObservabilityAdminIdentityMatch,
   ObservabilityAiAnalysisReadModel,
   ObservabilityAiDimensionSummary,
   ObservabilityUserInvestigationReadModel,
@@ -28,12 +29,15 @@ import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
 } from './productObservabilityReadModelService';
+import { ProductObservabilityStore } from './productObservabilityStore';
 
 const EVENT_COLLECTION = 'observability_events';
 const ACTOR_DAY_COLLECTION = 'observability_actor_days';
+const PROFILE_COLLECTION = 'profiles';
 const ACTOR_SUBJECT_PATTERN = /^actor-[A-Za-z0-9-]{8,160}$/;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const MAX_IDENTITY_MATCHES = 5;
 const activityActions = new Set<string>(PRODUCT_ACTIVITY_ACTIONS);
 const planningOutcomes = new Set<string>(PLANNING_OUTCOME_TYPES);
 const aiStatuses = new Set<AiRequestMetricStatus>([
@@ -49,6 +53,7 @@ const aiStatuses = new Set<AiRequestMetricStatus>([
 ]);
 
 interface AnalysisFirestore {
+  getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
   countDocuments(
     collection: string,
     filters?: readonly Array<{
@@ -65,6 +70,10 @@ interface AnalysisFirestore {
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
   }): Promise<Array<Record<string, unknown> & { id: string; documentName: string }>>;
+}
+
+interface IdentityStore {
+  lookupActorSubjectId(firebaseUid: string): Promise<string | null>;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -176,6 +185,17 @@ function validateEventCursor(cursor: FirestoreOrderedCursor | null | undefined):
   }
 }
 
+function profileString(profile: Record<string, unknown>, key: string): string {
+  const value = profile[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function registeredAt(profile: Record<string, unknown>): string | null {
+  const canonical = profileString(profile, 'registeredAt');
+  if (canonical && Number.isFinite(new Date(canonical).getTime())) return canonical;
+  return null;
+}
+
 function timelineItem(value: Record<string, unknown>): ObservabilityUserTimelineItem | null {
   const eventType = value.eventType;
   const eventId = value.eventId;
@@ -249,13 +269,16 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
 
 export class ProductObservabilityAdminAnalysisService {
   private readonly readModel: ProductObservabilityReadModelService;
+  private readonly identityStore: IdentityStore;
 
   constructor(
     env: ProductObservabilityReadModelEnv,
     private readonly firestore: AnalysisFirestore = new FirestoreServiceAccountClient(env),
     readModel?: ProductObservabilityReadModelService,
+    identityStore?: IdentityStore,
   ) {
     this.readModel = readModel ?? new ProductObservabilityReadModelService(env);
+    this.identityStore = identityStore ?? new ProductObservabilityStore(env);
   }
 
   async getAiAnalysis(params: {
@@ -312,6 +335,46 @@ export class ProductObservabilityAdminAnalysisService {
       },
       rollupCheckpoint: overview.rollupCheckpoint,
     };
+  }
+
+  async resolveUserIdentity(searchValue: string): Promise<ObservabilityAdminIdentityMatch[]> {
+    const search = searchValue.trim();
+    if (search.length < 3 || search.length > 160) {
+      throw new Error('observability_identity_search_invalid');
+    }
+
+    const profiles = new Map<string, Record<string, unknown>>();
+    if (search.includes('@')) {
+      const rows = await this.firestore.queryDocumentsAfter({
+        collection: PROFILE_COLLECTION,
+        orderByField: 'email',
+        filters: [{ field: 'email', value: search.toLowerCase() }],
+        limit: MAX_IDENTITY_MATCHES,
+      });
+      rows.forEach((row) => profiles.set(row.id, row));
+    } else {
+      const [byId, byUsername] = await Promise.all([
+        this.firestore.getDocument(PROFILE_COLLECTION, search),
+        this.firestore.queryDocumentsAfter({
+          collection: PROFILE_COLLECTION,
+          orderByField: 'username',
+          filters: [{ field: 'username', value: search }],
+          limit: MAX_IDENTITY_MATCHES,
+        }),
+      ]);
+      if (byId) profiles.set(search, byId);
+      byUsername.forEach((row) => profiles.set(row.id, row));
+    }
+
+    return Promise.all([...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES).map(
+      async ([firebaseUid, profile]): Promise<ObservabilityAdminIdentityMatch> => ({
+        firebaseUid,
+        email: profileString(profile, 'email'),
+        username: profileString(profile, 'username') || profileString(profile, 'email') || firebaseUid,
+        registeredAt: registeredAt(profile),
+        actorSubjectId: await this.identityStore.lookupActorSubjectId(firebaseUid),
+      }),
+    ));
   }
 
   async getUserInvestigation(params: {
