@@ -18,14 +18,14 @@ export interface ObservabilityAiDimensionSummary {
 }
 
 export interface ObservabilityAiPlanningEfficiency {
-  sessionCount: number;
+  turnCount: number;
   requestCount: number;
   repairRequestCount: number;
   repairRate: number | null;
-  requestsPerSession: number | null;
+  requestsPerTurn: number | null;
   estimatedCostMicros: number;
   estimatedCostUnknownCount: number;
-  estimatedCostPerSessionMicros: number | null;
+  estimatedCostPerTurnMicros: number | null;
   cachedTokens: number;
   promptTokens: number;
   cacheHitTokenRatio: number | null;
