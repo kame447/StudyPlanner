@@ -4,9 +4,13 @@ import '../styles/week-plan-drag.css';
 
 interface TimelineDragOverlayProps {
   visual: TimelineDragVisualState | null;
+  placement?: 'schedule' | 'preview';
 }
 
-export function TimelineDragOverlay({ visual }: TimelineDragOverlayProps) {
+export function TimelineDragOverlay({
+  visual,
+  placement = 'schedule',
+}: TimelineDragOverlayProps) {
   if (!visual || typeof document === 'undefined') {
     return null;
   }
@@ -19,6 +23,7 @@ export function TimelineDragOverlay({ visual }: TimelineDragOverlayProps) {
         top: visual.overlayY,
         width: visual.width,
         height: visual.height,
+        zIndex: placement === 'preview' ? 970 : undefined,
         transform: `translate3d(0, 0, 0) rotate(${visual.tilt}deg) scale(1.04)`,
       }}
       aria-hidden="true"
