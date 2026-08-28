@@ -43,5 +43,5 @@ test('empty timetable cells remain operable with the keyboard while touch keeps 
   await page.keyboard.press('Enter');
 
   await expect(page.locator('.timetable-editor-modal')).toBeVisible();
-  await expect(page.getByPlaceholder('例: 英語演習 / 情報科学概論')).toBeVisible();
+  await expect(page.getByLabel('授業名')).toBeVisible();
 });
