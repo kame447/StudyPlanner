@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
   resolveActualAlignedToPlan,
@@ -11,6 +12,9 @@ import {
   getActualOccurrenceKey,
 } from "../lib/planRecurrence";
 import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
+import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
+import { useTimelineDragController } from "../hooks/useTimelineDragController";
+import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
 import type {
   Actual,
@@ -19,6 +23,8 @@ import type {
   PlanSourceType,
   PlanType,
 } from "../types/domain";
+import { DragUndoRedoControls } from "./DragUndoRedoControls";
+import { TimelineDragOverlay } from "./TimelineDragOverlay";
 
 interface DayTimelineProps {
   dateLabel: string;
@@ -27,6 +33,7 @@ interface DayTimelineProps {
   actuals: Actual[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
+  onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
@@ -56,6 +63,7 @@ interface TimelineEntry {
   laneCount: number;
   alignedToPlan?: boolean;
   standalone?: boolean;
+  plan?: Plan;
 }
 
 const HOUR_HEIGHT = 54;
@@ -122,6 +130,7 @@ export function DayTimeline({
   actuals,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
+  onMovePlan,
   selectedEntryId,
   onSelectEntry,
   onPreviousDay,
@@ -130,6 +139,22 @@ export function DayTimeline({
   onImportTimetable,
   timetableImportCount = 0,
 }: DayTimelineProps) {
+  const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const dragController = useTimelineDragController<Plan>({
+    onCommit: async (descriptor, before, after) => {
+      if (!onMovePlan) return;
+      const currentPlan = plans.find((plan) => plan.id === descriptor.item.id) ?? descriptor.item;
+      const isScopedRecurring = supportsScopedRecurringPlanEdits(currentPlan);
+      await onMovePlan(currentPlan, after);
+      if (!isScopedRecurring) {
+        moveHistory.record({
+          key: currentPlan.id,
+          before,
+          after,
+        });
+      }
+    },
+  });
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
   );
@@ -145,6 +170,7 @@ export function DayTimeline({
       sourceType: plan.sourceType,
       startTime: plan.startTime,
       endTime: plan.endTime,
+      plan,
     })),
     ...monthEvents.map((monthEvent) => ({
       id: monthEvent.id,
@@ -261,216 +287,371 @@ export function DayTimeline({
     </div>
   );
 
+  function applyHistoryTarget(planId: string, target: WeekPlanMoveTarget) {
+    const currentPlan = plans.find((plan) => plan.id === planId);
+    if (!currentPlan || !onMovePlan) {
+      return Promise.reject(new Error("移動対象の予定を確認できませんでした。"));
+    }
+    return onMovePlan(currentPlan, target);
+  }
+
+  function handleUndoMove() {
+    void moveHistory
+      .undo((entry, target) => applyHistoryTarget(entry.key, target))
+      .catch(() => undefined);
+  }
+
+  function handleRedoMove() {
+    void moveHistory
+      .redo((entry, target) => applyHistoryTarget(entry.key, target))
+      .catch(() => undefined);
+  }
+
   return (
-    <section className="panel section-stack">
-      <header className="section-header day-timeline-header">
-        <div className="day-timeline-header-main">
-          <div className="day-timeline-title-copy">
-            <h2>Daily</h2>
-          </div>
-          <div className="view-title-actions day-timeline-title-actions print-hide">
-            <div className="nav-actions view-title-nav">
-              <button
-                className="ghost-button nav-icon-button"
-                onClick={onPreviousDay}
-                type="button"
-                aria-label="前日"
-              >
-                <span aria-hidden="true">＜</span>
-              </button>
-              <span className="week-range-chip">{dateLabel}</span>
-              <button
-                className="ghost-button nav-icon-button"
-                onClick={onNextDay}
-                type="button"
-                aria-label="翌日"
-              >
-                <span aria-hidden="true">＞</span>
-              </button>
+    <>
+      <section className="panel section-stack">
+        <header className="section-header day-timeline-header">
+          <div className="day-timeline-header-main">
+            <div className="day-timeline-title-copy">
+              <h2>Daily</h2>
             </div>
-          </div>
-          {onImportTimetable ? (
-            <button
-              className="ghost-button view-print-button day-timetable-import-button print-hide"
-              onClick={onImportTimetable}
-              type="button"
-              title="今日の時間割を反映"
-            >
-              時間割反映
-              {timetableImportCount > 0 ? `（${timetableImportCount}）` : ''}
-            </button>
-          ) : null}
-          <button
-            className="ghost-button view-print-button day-timeline-print-button print-hide"
-            onClick={onPrint}
-            type="button"
-          >
-            印刷
-          </button>
-        </div>
-      </header>
-
-      {planEntries.length === 0 &&
-      draftEntries.length === 0 &&
-      actualEntries.length === 0 ? (
-        <>
-          <p className="empty-copy">
-            この日の予定はありません。追加すると時間軸に並びます。
-          </p>
-          {timelineLegend}
-        </>
-      ) : (
-        <>
-          <div className="timeline-shell split">
-            <div className="timeline-hours">
-              {DAY_HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="timeline-hour-label"
-                  style={{ height: "var(--timeline-hour-height)" }}
+            <div className="view-title-actions day-timeline-title-actions print-hide">
+              <div className="nav-actions view-title-nav">
+                <button
+                  className="ghost-button nav-icon-button"
+                  onClick={onPreviousDay}
+                  type="button"
+                  aria-label="前日"
                 >
-                  {hour.toString().padStart(2, "0")}:00
-                </div>
-              ))}
+                  <span aria-hidden="true">＜</span>
+                </button>
+                <span className="week-range-chip">{dateLabel}</span>
+                <button
+                  className="ghost-button nav-icon-button"
+                  onClick={onNextDay}
+                  type="button"
+                  aria-label="翌日"
+                >
+                  <span aria-hidden="true">＞</span>
+                </button>
+              </div>
             </div>
+            {onImportTimetable ? (
+              <button
+                className="ghost-button view-print-button day-timetable-import-button print-hide"
+                onClick={onImportTimetable}
+                type="button"
+                title="今日の時間割を反映"
+              >
+                時間割反映
+                {timetableImportCount > 0 ? `（${timetableImportCount}）` : ''}
+              </button>
+            ) : null}
+            <button
+              className="ghost-button view-print-button day-timeline-print-button print-hide"
+              onClick={onPrint}
+              type="button"
+            >
+              印刷
+            </button>
+          </div>
+        </header>
 
-            <div className="timeline-main">
-              <div className="timeline-columns-head">
-                <div className="timeline-column-label">予定</div>
-                <div className="timeline-column-label actual">記録</div>
+        {planEntries.length === 0 &&
+        draftEntries.length === 0 &&
+        actualEntries.length === 0 ? (
+          <>
+            <p className="empty-copy">
+              この日の予定はありません。追加すると時間軸に並びます。
+            </p>
+            {timelineLegend}
+          </>
+        ) : (
+          <>
+            <div className="timeline-shell split">
+              <div className="timeline-hours">
+                {DAY_HOURS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="timeline-hour-label"
+                    style={{ height: "var(--timeline-hour-height)" }}
+                  >
+                    {hour.toString().padStart(2, "0")}:00
+                  </div>
+                ))}
               </div>
 
-              <div
-                className="timeline-canvas split"
-                style={{ height: "calc(24 * var(--timeline-hour-height))" }}
-              >
-                {Array.from({ length: 24 }, (_, index) => (
-                  <div
-                    key={index}
-                    className="timeline-grid-line"
-                    style={{
-                      top: `calc(${index} * var(--timeline-hour-height))`,
-                    }}
-                  />
-                ))}
+              <div className="timeline-main">
+                <div className="timeline-columns-head">
+                  <div className="timeline-column-label">予定</div>
+                  <div className="timeline-column-label actual">記録</div>
+                </div>
 
-                <div className="timeline-divider" />
-
-                {planEntries.map((entry) => {
-                  const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
-                  const subjectLabel = getSubjectLabel(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
-                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
-
-                  return (
-                    <button
-                      key={entry.id}
-                      className={[
-                        "timeline-plan-block split",
-                        selectedEntryId === entry.selectionId ? "is-selected" : "",
-                        getTimelineDensityClass(
-                          entry.startTime,
-                          entry.endTime,
-                          entry.laneCount
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={buildColumnBlockStyle(
-                        minutesFromTime(entry.startTime),
-                        duration,
-                        entry.lane,
-                        entry.laneCount,
-                        "plan"
-                      )}
-                      onClick={() =>
-                        onSelectEntry(
-                          entry.entryKind === "plan"
-                            ? { kind: "plan", id: entry.targetId }
-                            : { kind: "month-event", id: entry.targetId }
-                        )
-                      }
-                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
-                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel}
-                      type="button"
-                    >
-                      <div className="timeline-entry-line">
-                        <strong
-                          className="timeline-entry-title"
-                          title={entry.title}
-                        >
-                          {entry.title}
-                        </strong>
-                        <span className="timeline-entry-time">
-                          {entry.startTime}-{entry.endTime}
-                        </span>
-                        {showSubjectLabel ? (
-                          <span
-                            className="timeline-entry-subject"
-                            style={{ color: theme.text }}
-                            title={subjectLabel}
-                          >
-                            {subjectLabel}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {draftEntries.map((entry) => {
-                  const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const subjectLabel = getSubjectLabel(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
-                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
-
-                  return (
+                <div
+                  className="timeline-canvas split"
+                  style={{ height: "calc(24 * var(--timeline-hour-height))" }}
+                >
+                  {Array.from({ length: 24 }, (_, index) => (
                     <div
-                      key={`draft-${entry.id}`}
-                      className={[
-                        "timeline-plan-block split timeline-draft-block",
-                        getTimelineDensityClass(
-                          entry.startTime,
-                          entry.endTime,
-                          entry.laneCount
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={buildColumnBlockStyle(
-                        minutesFromTime(entry.startTime),
-                        duration,
-                        entry.lane,
-                        entry.laneCount,
-                        "plan"
-                      )}
-                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel, "仮予定"].join(" / ")}
-                      role="group"
-                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + "、仮予定"}
-                    >
-                      <div className="timeline-entry-line">
-                        <strong
-                          className="timeline-entry-title"
-                          title={entry.title}
-                        >
-                          {entry.title}
-                        </strong>
-                        <span className="timeline-entry-meta-row">
+                      key={index}
+                      className="timeline-grid-line"
+                      style={{
+                        top: `calc(${index} * var(--timeline-hour-height))`,
+                      }}
+                    />
+                  ))}
+
+                  <div className="timeline-divider" />
+
+                  {planEntries.map((entry) => {
+                    const duration = minutesBetween(entry.startTime, entry.endTime);
+                    const theme = getSubjectTheme(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType
+                    );
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType
+                    );
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
+                    const draggablePlan = entry.plan && onMovePlan ? entry.plan : null;
+                    const dragDescriptor = draggablePlan
+                      ? {
+                          key: entry.id,
+                          item: draggablePlan,
+                          title: entry.title,
+                          original: {
+                            date: draggablePlan.occurrenceDate ?? draggablePlan.date,
+                            startTime: entry.startTime,
+                            endTime: entry.endTime,
+                          },
+                          dates: [draggablePlan.occurrenceDate ?? draggablePlan.date],
+                          allowDateChange: false,
+                          dayColumnSelector: ".timeline-canvas.split",
+                        }
+                      : null;
+
+                    return (
+                      <button
+                        key={entry.id}
+                        className={[
+                          "timeline-plan-block split",
+                          draggablePlan ? "schedule-week-plan-button" : "",
+                          dragController.isDragging(entry.id) ? "is-drag-source" : "",
+                          selectedEntryId === entry.selectionId ? "is-selected" : "",
+                          getTimelineDensityClass(
+                            entry.startTime,
+                            entry.endTime,
+                            entry.laneCount
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={buildColumnBlockStyle(
+                          minutesFromTime(entry.startTime),
+                          duration,
+                          entry.lane,
+                          entry.laneCount,
+                          "plan"
+                        )}
+                        onClick={(event) => {
+                          if (dragDescriptor && dragController.shouldSuppressClick()) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                          }
+                          onSelectEntry(
+                            entry.entryKind === "plan"
+                              ? { kind: "plan", id: entry.targetId }
+                              : { kind: "month-event", id: entry.targetId }
+                          );
+                        }}
+                        onPointerDown={
+                          dragDescriptor
+                            ? (event) => dragController.handlePointerDown(event, dragDescriptor)
+                            : undefined
+                        }
+                        onPointerMove={dragDescriptor ? dragController.handlePointerMove : undefined}
+                        onPointerUp={dragDescriptor ? dragController.handlePointerUp : undefined}
+                        onPointerCancel={dragDescriptor ? dragController.handlePointerCancel : undefined}
+                        onTouchStart={
+                          dragDescriptor
+                            ? (event) => dragController.handleTouchStart(event, dragDescriptor)
+                            : undefined
+                        }
+                        onTouchMove={dragDescriptor ? dragController.handleTouchMove : undefined}
+                        onTouchEnd={dragDescriptor ? dragController.handleTouchEnd : undefined}
+                        onTouchCancel={dragDescriptor ? dragController.handleTouchCancel : undefined}
+                        onContextMenu={
+                          dragDescriptor ? (event) => event.preventDefault() : undefined
+                        }
+                        title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
+                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + (draggablePlan ? "。長押しまたはドラッグで移動" : "")}
+                        type="button"
+                      >
+                        <div className="timeline-entry-line">
+                          <strong
+                            className="timeline-entry-title"
+                            title={entry.title}
+                          >
+                            {entry.title}
+                          </strong>
                           <span className="timeline-entry-time">
                             {entry.startTime}-{entry.endTime}
                           </span>
-                          <span className="weekly-draft-badge">仮予定</span>
+                          {showSubjectLabel ? (
+                            <span
+                              className="timeline-entry-subject"
+                              style={{ color: theme.text }}
+                              title={subjectLabel}
+                            >
+                              {subjectLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {draftEntries.map((entry) => {
+                    const duration = minutesBetween(entry.startTime, entry.endTime);
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType
+                    );
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
+
+                    return (
+                      <div
+                        key={`draft-${entry.id}`}
+                        className={[
+                          "timeline-plan-block split timeline-draft-block",
+                          getTimelineDensityClass(
+                            entry.startTime,
+                            entry.endTime,
+                            entry.laneCount
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={buildColumnBlockStyle(
+                          minutesFromTime(entry.startTime),
+                          duration,
+                          entry.lane,
+                          entry.laneCount,
+                          "plan"
+                        )}
+                        title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel, "仮予定"].join(" / ")}
+                        role="group"
+                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + "、仮予定"}
+                      >
+                        <div className="timeline-entry-line">
+                          <strong
+                            className="timeline-entry-title"
+                            title={entry.title}
+                          >
+                            {entry.title}
+                          </strong>
+                          <span className="timeline-entry-meta-row">
+                            <span className="timeline-entry-time">
+                              {entry.startTime}-{entry.endTime}
+                            </span>
+                            <span className="weekly-draft-badge">仮予定</span>
+                            {showSubjectLabel ? (
+                              <span
+                                className="timeline-entry-subject"
+                                title={subjectLabel}
+                              >
+                                {subjectLabel}
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                        {onRemoveWeeklyDraftBlock ? (
+                          <button
+                            className="weekly-draft-remove-button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onRemoveWeeklyDraftBlock(entry.id);
+                            }}
+                            type="button"
+                            aria-label={`${entry.title}を削除`}
+                            title="仮予定を削除"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+
+                  {actualEntries.map((entry) => {
+                    const duration = minutesBetween(entry.startTime, entry.endTime);
+                    const theme = getSubjectTheme(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType
+                    );
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType
+                    );
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
+
+                    return (
+                      <button
+                        key={entry.id}
+                        className={[
+                          "timeline-actual-block split",
+                          selectedEntryId === entry.selectionId ? "is-selected" : "",
+                          getTimelineDensityClass(
+                            entry.startTime,
+                            entry.endTime,
+                            entry.laneCount
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={{
+                          ...buildColumnBlockStyle(
+                            minutesFromTime(entry.startTime),
+                            duration,
+                            entry.lane,
+                            entry.laneCount,
+                            "actual"
+                          ),
+                          backgroundColor: theme.soft,
+                          borderColor: theme.border,
+                          color: theme.text,
+                          boxShadow: `inset 5px 0 0 ${theme.fill}`,
+                        }}
+                        onClick={() =>
+                          onSelectEntry(
+                            entry.entryKind === "plan"
+                              ? { kind: "plan", id: entry.targetId }
+                              : entry.entryKind === "month-event"
+                                ? { kind: "month-event", id: entry.targetId }
+                                : { kind: "standalone-actual", id: entry.targetId }
+                          )
+                        }
+                        title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
+                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel}
+                        type="button"
+                      >
+                        <div className="timeline-entry-line">
+                          <strong
+                            className="timeline-entry-title"
+                            title={entry.title}
+                          >
+                            {entry.title}
+                          </strong>
+                          <span className="timeline-entry-time">
+                            {entry.startTime}-{entry.endTime}
+                          </span>
                           {showSubjectLabel ? (
                             <span
                               className="timeline-entry-subject"
@@ -479,108 +660,26 @@ export function DayTimeline({
                               {subjectLabel}
                             </span>
                           ) : null}
-                        </span>
-                      </div>
-                      {onRemoveWeeklyDraftBlock ? (
-                        <button
-                          className="weekly-draft-remove-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onRemoveWeeklyDraftBlock(entry.id);
-                          }}
-                          type="button"
-                          aria-label={`${entry.title}を削除`}
-                          title="仮予定を削除"
-                        >
-                          ×
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-
-                {actualEntries.map((entry) => {
-                  const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
-                  const subjectLabel = getSubjectLabel(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
-                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
-
-                  return (
-                    <button
-                      key={entry.id}
-                      className={[
-                        "timeline-actual-block split",
-                        selectedEntryId === entry.selectionId ? "is-selected" : "",
-                        getTimelineDensityClass(
-                          entry.startTime,
-                          entry.endTime,
-                          entry.laneCount
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={{
-                        ...buildColumnBlockStyle(
-                          minutesFromTime(entry.startTime),
-                          duration,
-                          entry.lane,
-                          entry.laneCount,
-                          "actual"
-                        ),
-                        backgroundColor: theme.soft,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        boxShadow: `inset 5px 0 0 ${theme.fill}`,
-                      }}
-                      onClick={() =>
-                        onSelectEntry(
-                          entry.entryKind === "plan"
-                            ? { kind: "plan", id: entry.targetId }
-                            : entry.entryKind === "month-event"
-                              ? { kind: "month-event", id: entry.targetId }
-                              : { kind: "standalone-actual", id: entry.targetId }
-                        )
-                      }
-                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
-                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel}
-                      type="button"
-                    >
-                      <div className="timeline-entry-line">
-                        <strong
-                          className="timeline-entry-title"
-                          title={entry.title}
-                        >
-                          {entry.title}
-                        </strong>
-                        <span className="timeline-entry-time">
-                          {entry.startTime}-{entry.endTime}
-                        </span>
-                        {showSubjectLabel ? (
-                          <span
-                            className="timeline-entry-subject"
-                            title={subjectLabel}
-                          >
-                            {subjectLabel}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-          {timelineLegend}
-        </>
-      )}
-    </section>
+            {timelineLegend}
+          </>
+        )}
+      </section>
+      <TimelineDragOverlay visual={dragController.dragVisual} />
+      <DragUndoRedoControls
+        visible={moveHistory.hasHistory}
+        canUndo={moveHistory.canUndo}
+        canRedo={moveHistory.canRedo}
+        isBusy={moveHistory.isBusy}
+        onUndo={handleUndoMove}
+        onRedo={handleRedoMove}
+      />
+    </>
   );
 }
