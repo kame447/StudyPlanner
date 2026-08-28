@@ -74,6 +74,8 @@ async function inspectAi(page, options) {
   await expect(page.getByRole('heading', { name: 'Model別' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Purpose別' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Phase別' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Operation別' })).toBeVisible();
+  await expect(page.getByText('Token usage').first()).toBeVisible();
   await screenshot(page, `ai-${options.label}`);
 }
 
