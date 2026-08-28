@@ -69,7 +69,7 @@ async function inspectAi(page, options) {
   await expect(page.getByRole('heading', { name: 'AI・API' })).toBeVisible();
   await expect(page.getByText('総token')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI計画の効率' })).toBeVisible();
-  await expect(page.getByText('1セッションあたりrequest')).toBeVisible();
+  await expect(page.getByText('1 turnあたりrequest')).toBeVisible();
   await expect(page.getByText('repair request率')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Model別' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Purpose別' })).toBeVisible();
