@@ -15,6 +15,10 @@ import {
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
+  ProductObservabilityActiveUserSnapshotService,
+  type ProductObservabilityActiveUserSnapshotEnv,
+} from './productObservabilityActiveUserSnapshot';
+import {
   handleProductObservabilityAdminApi,
   isProductObservabilityAdminPath,
 } from './productObservabilityAdminApi';
@@ -70,14 +74,27 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
-async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<void> {
+async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<string[]> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
   );
+  const changedActorDates = new Set<string>();
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
-    if (!result.hasMore) return;
+    result.changedActorDates.forEach((localDate) => changedActorDates.add(localDate));
+    if (!result.hasMore) break;
   }
+  return [...changedActorDates].sort();
+}
+
+async function runScheduledActiveUserSnapshots(
+  env: Record<string, unknown>,
+  changedActorDates: readonly string[],
+): Promise<void> {
+  const snapshots = new ProductObservabilityActiveUserSnapshotService(
+    env as unknown as ProductObservabilityActiveUserSnapshotEnv,
+  );
+  await snapshots.refreshAffected(changedActorDates);
 }
 
 async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
@@ -91,13 +108,25 @@ async function runScheduledObservabilityRetention(env: Record<string, unknown>):
 }
 
 async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
+  let changedActorDates: string[] | null = null;
   try {
-    await runScheduledObservabilityRollup(env);
+    changedActorDates = await runScheduledObservabilityRollup(env);
   } catch (error) {
     console.error('[Product Observability] scheduled rollup failed', {
       message: error instanceof Error ? error.message : String(error),
     });
   }
+
+  if (changedActorDates) {
+    try {
+      await runScheduledActiveUserSnapshots(env, changedActorDates);
+    } catch (error) {
+      console.error('[Product Observability] active-user snapshot refresh failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   await runScheduledObservabilityRetention(env);
 }
 
