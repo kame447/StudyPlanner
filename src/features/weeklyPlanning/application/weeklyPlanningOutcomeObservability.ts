@@ -51,8 +51,19 @@ export function recordWeeklyPlanningTurnStarted(params: {
   port?: PlanningOutcomeTelemetryPort;
 }): void {
   const index = turnIndex(params.pending);
+  const port = portOrDefault(params.port);
+  recordBestEffort(port, {
+    outcomeType: 'turn_started',
+    featureSessionId: params.pending.conversationId,
+    dedupeKey: params.pending.requestId,
+    requestId: params.pending.requestId,
+    stateRevision: params.pending.baseRevision,
+    turnIndex: index,
+    occurredAt: params.pending.startedAt,
+  });
+
   if (index !== 1) return;
-  recordBestEffort(portOrDefault(params.port), {
+  recordBestEffort(port, {
     outcomeType: 'session_started',
     featureSessionId: params.pending.conversationId,
     dedupeKey: params.pending.conversationId,
