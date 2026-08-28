@@ -2,8 +2,11 @@ import {
   userPlanningContextPromptSummaryV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  getWeeklyPlanningRegisteredMaterialSummariesV5,
+} from '../semantic/weeklyPlanningRegisteredMaterialContextV5';
 import type { WeeklyPlanningMessage } from '../types';
 import {
   createWeeklyPlanningLegacyRequestContext,
@@ -168,6 +171,9 @@ export function createStableV5SemanticPublicStateSummary(params: {
       reason: uncertainty.reason,
       sourceText: uncertainty.source.sourceText,
     })),
+    registeredStudyMaterials: params.ownerId
+      ? getWeeklyPlanningRegisteredMaterialSummariesV5(params.ownerId)
+      : [],
     userPlanningContext: params.ownerId && params.currentDate
       ? userPlanningContextPromptSummaryV1({
           ownerId: params.ownerId,
