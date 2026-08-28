@@ -47,6 +47,13 @@ Product observability / admin analytics work:
 5. Issue #213
 6. current admin / AI metrics / weekly trace code
 
+External API / provider integration work:
+
+1. `docs/domains/external-integrations/README.md`
+2. current work record under `docs/domains/external-integrations/work/`
+3. Issue #187
+4. current product domain model and the integration adapter being changed
+
 `docs/archive/` is evidence, not current instruction.
 
 ## 2. Application shell
@@ -90,6 +97,8 @@ Components must not know storage implementation details, fallback ordering or tr
 
 External/service integration and the separate single-event natural-language subsystem.
 
+New external provider adapters may physically live under services or a future feature-owned integration module, but their provider selection, terms, normalization and fallback boundaries are governed by `docs/domains/external-integrations/`. A component or product domain must not branch on provider names or persist raw provider responses as its canonical model.
+
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
 Current admin data access and AI request metrics also live under services today. Issue #213 will move service-wide observability behavior behind a product-observability application/repository boundary rather than making UI depend on current physical locations.
@@ -129,7 +138,25 @@ Product observability is observation only. It must not become planner data autho
 
 Detailed weekly-planning trace remains owned by the weekly-planning feature and is consumed through a restricted adapter.
 
-## 5. Weekly planning feature
+## 5. External integrations
+
+Canonical documentation root: `docs/domains/external-integrations/`
+
+Issue #187 tracks the current external-API integration program. This responsibility owns provider/API adoption evidence, authentication and quota assumptions, provider-specific usage conditions, normalized adapter boundaries and graceful degradation when an external service is unavailable.
+
+It does not own the meaning or lifecycle of the product data that consumes imported metadata. For example, book APIs may suggest bibliographic metadata, but the `StudyMaterial` lifecycle and the user's learning structure remain StudyPlanner-owned.
+
+Current material API research is recorded in `docs/domains/external-integrations/work/20260828-material-metadata-api-research.md`.
+
+External integration code must preserve these boundaries:
+
+- raw provider responses are not canonical product models
+- provider names and fallback ordering do not leak into UI/domain callers
+- cache/persistence/image reuse follows provider-specific terms
+- an external outage does not disable the existing manual product path
+- external metadata does not become an authority for chapter structure, scheduling or progress semantics
+
+## 6. Weekly planning feature
 
 Canonical code root: `src/features/weeklyPlanning/`
 
@@ -199,13 +226,13 @@ Legacy/mechanical parsing helpers still present in the codebase. Presence of thi
 
 Conversation-support and feature configuration helpers. Do not place independent domain ownership here merely because the caller is chat/UI.
 
-## 6. User planning context
+## 7. User planning context
 
 `src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
 
 Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
 
-## 7. Major safety boundaries
+## 8. Major safety boundaries
 
 ### AI
 
@@ -223,6 +250,10 @@ Trace is best-effort diagnostic evidence, never authorization or planning truth.
 
 Telemetry and analytics are best-effort observation, never product authority. Lightweight analytics must remain separable from raw diagnostic content. Management UI reads typed read models and does not make browser-side full scans the canonical analytics design.
 
+### External integrations
+
+External data is evidence/suggestion, never an automatic replacement for StudyPlanner-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
+
 ### Persistence
 
 Client-first execution does not mean client-authoritative shared state. Storage/reconciliation changes must align with Issue #164.
@@ -231,7 +262,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 学習レポートは既存のPlan/Actual/教材情報を決定論的に集計するprojectionであり、LLMを数値・評価の正本にしない。ReportViewは保存・スケジューリング・意味解釈を所有しない。
 
-## 8. Tests
+## 9. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
 - reporting aggregation: `src/lib/learningReport.test.ts`
@@ -243,7 +274,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 Do not use a green unrelated check to justify a changed responsibility boundary.
 
-## 9. Documentation ownership
+## 10. Documentation ownership
 
 Documentation placement is defined only by `docs/DOCUMENT_DICTIONARY.md`.
 
@@ -261,7 +292,7 @@ Active work belongs either in the owning GitHub Issue or in the owning domain's 
 
 Completed/superseded records move to `docs/archive/work/` and never re-enter the execution queue merely because they contain an old `Status: active`, branch name or PR number.
 
-## 10. Change-location rule
+## 11. Change-location rule
 
 Choose the directory by change reason, not by current caller:
 
@@ -269,6 +300,7 @@ Choose the directory by change reason, not by current caller:
 - React lifecycle coordination → `hooks/`
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
+- external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
 - natural-language meaning → weekly `semantic/`
 - readiness/proposal/work decision → weekly `planning/`
 - placement/availability → weekly `scheduling/`
