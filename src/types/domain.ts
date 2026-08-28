@@ -416,6 +416,10 @@ export interface TodoTaskDraft {
   pinned?: boolean;
 }
 
+export type TimetableAlternatingWeek = 'a' | 'b';
+export type ScheduleTemplateAlternatingWeek = 'both' | TimetableAlternatingWeek;
+export type ScheduleTemplateWeekInterval = 1 | 2;
+
 export interface ScheduleTemplate {
   id: string;
   userId: string;
@@ -428,6 +432,9 @@ export interface ScheduleTemplate {
   termId?: string;
   periodNumber?: number;
   classroom?: string;
+  alternatingWeek?: ScheduleTemplateAlternatingWeek;
+  weekInterval?: ScheduleTemplateWeekInterval;
+  weekIntervalAnchorDate?: string | null;
   memo: string;
   active: boolean;
   createdAt: string;
@@ -445,6 +452,9 @@ export interface ScheduleTemplateDraft {
   termId?: string;
   periodNumber?: number;
   classroom?: string;
+  alternatingWeek?: ScheduleTemplateAlternatingWeek;
+  weekInterval?: ScheduleTemplateWeekInterval;
+  weekIntervalAnchorDate?: string | null;
   memo: string;
   active: boolean;
 }
@@ -465,16 +475,25 @@ export interface TimetableTerm {
   year: number;
   kind: TimetableTermKind;
   label: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  usesAlternatingWeeks?: boolean;
+  alternatingWeekAnchorDate?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface TimetableTermDraft {
+  id?: string;
   userId: string;
   year: number;
   kind: TimetableTermKind;
   label: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  usesAlternatingWeeks?: boolean;
+  alternatingWeekAnchorDate?: string | null;
   isActive?: boolean;
 }
 
