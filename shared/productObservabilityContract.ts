@@ -81,7 +81,6 @@ export interface AiRequestMetricPayload {
   completionTokens: number | null;
   totalTokens: number | null;
   cachedTokens: number | null;
-  // Added compatibly within schema v1. Older persisted events may not have this field.
   cacheWriteTokens?: number | null;
   durationMs: number;
   requestBytes: number;
@@ -90,34 +89,54 @@ export interface AiRequestMetricPayload {
   estimatedCostMicros: number | null;
 }
 
-export type PlanningOutcomeType =
-  | 'session_started'
-  | 'preview_generated'
-  | 'approval_started'
-  | 'approval_completed'
-  | 'save_completed'
-  | 'abandoned'
-  | 'failed'
-  | 'fallback_used'
-  | 'semantic_repair_used'
-  | 'stale_observed'
-  | 'unscheduled_observed'
-  | 'approval_failure_observed';
+export const PLANNING_OUTCOME_TYPES = [
+  'session_started',
+  'preview_generated',
+  'approval_started',
+  'approval_completed',
+  'save_completed',
+  'abandoned',
+  'failed',
+  'fallback_used',
+  'semantic_repair_used',
+  'stale_observed',
+  'unscheduled_observed',
+  'approval_failure_observed',
+] as const;
+
+export type PlanningOutcomeType = (typeof PLANNING_OUTCOME_TYPES)[number];
 
 export interface PlanningOutcomeMetricPayload {
   outcomeType: PlanningOutcomeType;
   turnIndex: number | null;
   stateRevision: number | null;
-  previewCount: number;
-  unscheduledCount: number;
-  fallbackUsed: boolean;
-  repairUsed: boolean;
-  staleObserved: boolean;
-  approvalFailureObserved: boolean;
+  previewCount: number | null;
+  unscheduledCount: number | null;
+  fallbackUsed: boolean | null;
+  repairUsed: boolean | null;
+  staleObserved: boolean | null;
+  approvalFailureObserved: boolean | null;
   schedulerVersion: string | null;
   promptVersion: string | null;
   model: string | null;
 }
+
+export interface PlanningOutcomeTelemetryDraft {
+  schemaVersion: typeof PRODUCT_OBSERVABILITY_SCHEMA_VERSION;
+  eventId: string;
+  eventType: 'planning_outcome';
+  occurredAt: string;
+  appVersion: string;
+  source: 'weekly_planning';
+  correlation: ObservabilityCorrelation & {
+    featureSessionId: string;
+  };
+  payload: PlanningOutcomeMetricPayload;
+}
+
+export type ProductObservabilityTelemetryDraft =
+  | ProductActivityTelemetryDraft
+  | PlanningOutcomeTelemetryDraft;
 
 export interface StoredObservabilityEvent<TPayload> {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_SCHEMA_VERSION;
@@ -137,7 +156,9 @@ export interface StoredObservabilityEvent<TPayload> {
 const EVENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$/;
 const MAX_VERSION_LENGTH = 96;
 const MAX_CORRELATION_ID_LENGTH = 180;
+const MAX_DIMENSION_LENGTH = 128;
 const activityActionSet = new Set<string>(PRODUCT_ACTIVITY_ACTIONS);
+const planningOutcomeTypeSet = new Set<string>(PLANNING_OUTCOME_TYPES);
 const sourceSet = new Set<string>(OBSERVABILITY_SOURCES);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -153,10 +174,54 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength;
 }
 
+function isNullableBoundedString(value: unknown, maxLength: number): boolean {
+  return value === null || isBoundedString(value, maxLength);
+}
+
+function isNullableNonNegativeInteger(value: unknown): boolean {
+  return value === null || (Number.isSafeInteger(value) && Number(value) >= 0);
+}
+
+function isNullableBoolean(value: unknown): boolean {
+  return value === null || typeof value === 'boolean';
+}
+
 function isValidIsoTimestamp(value: unknown): value is string {
   return typeof value === 'string'
     && value.length <= 40
     && Number.isFinite(new Date(value).getTime());
+}
+
+function isValidEventEnvelope(
+  value: Record<string, unknown>,
+  eventType: ProductObservabilityTelemetryDraft['eventType'],
+  source: ProductObservabilityTelemetryDraft['source'],
+): string | null {
+  if (!hasOnlyKeys(value, [
+    'schemaVersion',
+    'eventId',
+    'eventType',
+    'occurredAt',
+    'appVersion',
+    'source',
+    'correlation',
+    'payload',
+  ])) return 'Telemetry payload contains unknown fields.';
+  if (value.schemaVersion !== PRODUCT_OBSERVABILITY_SCHEMA_VERSION) {
+    return 'Unsupported telemetry schema version.';
+  }
+  if (typeof value.eventId !== 'string' || !EVENT_ID_PATTERN.test(value.eventId)) {
+    return 'Telemetry eventId is invalid.';
+  }
+  if (value.eventType !== eventType) return 'Telemetry eventType is invalid.';
+  if (!isValidIsoTimestamp(value.occurredAt)) return 'Telemetry occurredAt is invalid.';
+  if (!isBoundedString(value.appVersion, MAX_VERSION_LENGTH)) {
+    return 'Telemetry appVersion is invalid.';
+  }
+  if (value.source !== source || !sourceSet.has(value.source)) {
+    return 'Telemetry source is invalid.';
+  }
+  return null;
 }
 
 function isValidCorrelation(value: unknown): value is ObservabilityCorrelation {
@@ -184,57 +249,72 @@ function isValidCorrelation(value: unknown): value is ObservabilityCorrelation {
 export function validateProductActivityTelemetryDraft(
   value: unknown,
 ): { ok: true; value: ProductActivityTelemetryDraft } | { ok: false; error: string } {
-  if (!isRecord(value)) {
-    return { ok: false, error: 'Telemetry payload must be an object.' };
-  }
-
-  if (!hasOnlyKeys(value, [
-    'schemaVersion',
-    'eventId',
-    'eventType',
-    'occurredAt',
-    'appVersion',
-    'source',
-    'correlation',
-    'payload',
-  ])) {
-    return { ok: false, error: 'Telemetry payload contains unknown fields.' };
-  }
-
-  if (value.schemaVersion !== PRODUCT_OBSERVABILITY_SCHEMA_VERSION) {
-    return { ok: false, error: 'Unsupported telemetry schema version.' };
-  }
-
-  if (typeof value.eventId !== 'string' || !EVENT_ID_PATTERN.test(value.eventId)) {
-    return { ok: false, error: 'Telemetry eventId is invalid.' };
-  }
-
-  if (value.eventType !== 'product_activity') {
-    return { ok: false, error: 'Telemetry eventType is invalid.' };
-  }
-
-  if (!isValidIsoTimestamp(value.occurredAt)) {
-    return { ok: false, error: 'Telemetry occurredAt is invalid.' };
-  }
-
-  if (!isBoundedString(value.appVersion, MAX_VERSION_LENGTH)) {
-    return { ok: false, error: 'Telemetry appVersion is invalid.' };
-  }
-
-  if (value.source !== 'web_app' || !sourceSet.has(value.source)) {
-    return { ok: false, error: 'Telemetry source is invalid.' };
-  }
-
+  if (!isRecord(value)) return { ok: false, error: 'Telemetry payload must be an object.' };
+  const envelopeError = isValidEventEnvelope(value, 'product_activity', 'web_app');
+  if (envelopeError) return { ok: false, error: envelopeError };
   if (!isValidCorrelation(value.correlation)) {
     return { ok: false, error: 'Telemetry correlation is invalid.' };
   }
-
   if (!isRecord(value.payload)
     || !hasOnlyKeys(value.payload, ['action'])
     || typeof value.payload.action !== 'string'
     || !activityActionSet.has(value.payload.action)) {
     return { ok: false, error: 'Telemetry activity payload is invalid.' };
   }
-
   return { ok: true, value: value as unknown as ProductActivityTelemetryDraft };
+}
+
+export function validatePlanningOutcomeTelemetryDraft(
+  value: unknown,
+): { ok: true; value: PlanningOutcomeTelemetryDraft } | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: 'Telemetry payload must be an object.' };
+  const envelopeError = isValidEventEnvelope(value, 'planning_outcome', 'weekly_planning');
+  if (envelopeError) return { ok: false, error: envelopeError };
+  if (!isValidCorrelation(value.correlation)
+    || !isRecord(value.correlation)
+    || !isBoundedString(value.correlation.featureSessionId, MAX_CORRELATION_ID_LENGTH)) {
+    return { ok: false, error: 'Telemetry planning correlation is invalid.' };
+  }
+  if (!isRecord(value.payload)
+    || !hasOnlyKeys(value.payload, [
+      'outcomeType',
+      'turnIndex',
+      'stateRevision',
+      'previewCount',
+      'unscheduledCount',
+      'fallbackUsed',
+      'repairUsed',
+      'staleObserved',
+      'approvalFailureObserved',
+      'schedulerVersion',
+      'promptVersion',
+      'model',
+    ])
+    || typeof value.payload.outcomeType !== 'string'
+    || !planningOutcomeTypeSet.has(value.payload.outcomeType)
+    || !isNullableNonNegativeInteger(value.payload.turnIndex)
+    || !isNullableNonNegativeInteger(value.payload.stateRevision)
+    || !isNullableNonNegativeInteger(value.payload.previewCount)
+    || !isNullableNonNegativeInteger(value.payload.unscheduledCount)
+    || !isNullableBoolean(value.payload.fallbackUsed)
+    || !isNullableBoolean(value.payload.repairUsed)
+    || !isNullableBoolean(value.payload.staleObserved)
+    || !isNullableBoolean(value.payload.approvalFailureObserved)
+    || !isNullableBoundedString(value.payload.schedulerVersion, MAX_DIMENSION_LENGTH)
+    || !isNullableBoundedString(value.payload.promptVersion, MAX_DIMENSION_LENGTH)
+    || !isNullableBoundedString(value.payload.model, MAX_DIMENSION_LENGTH)) {
+    return { ok: false, error: 'Telemetry planning outcome payload is invalid.' };
+  }
+  return { ok: true, value: value as unknown as PlanningOutcomeTelemetryDraft };
+}
+
+export function validateProductObservabilityTelemetryDraft(
+  value: unknown,
+): { ok: true; value: ProductObservabilityTelemetryDraft } | { ok: false; error: string } {
+  if (!isRecord(value) || typeof value.eventType !== 'string') {
+    return { ok: false, error: 'Telemetry payload must be an object with an eventType.' };
+  }
+  if (value.eventType === 'product_activity') return validateProductActivityTelemetryDraft(value);
+  if (value.eventType === 'planning_outcome') return validatePlanningOutcomeTelemetryDraft(value);
+  return { ok: false, error: 'Telemetry eventType is invalid.' };
 }
