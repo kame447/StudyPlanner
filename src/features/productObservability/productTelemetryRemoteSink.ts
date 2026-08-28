@@ -38,11 +38,14 @@ export function createRemoteProductTelemetrySink(options: {
 
 export function createFirebaseProductTelemetrySink(): ProductTelemetrySink | null {
   const proxyUrl = getCloudflareAiProxyUrl();
-  const currentUser = getFirebaseAuth()?.currentUser;
-  if (!proxyUrl || !currentUser) return null;
+  if (!proxyUrl) return null;
 
   return createRemoteProductTelemetrySink({
     endpoint: buildProductObservabilityEventsEndpoint(proxyUrl),
-    getIdToken: () => currentUser.getIdToken(),
+    async getIdToken() {
+      const currentUser = getFirebaseAuth()?.currentUser;
+      if (!currentUser) throw new Error('Product telemetry authentication is unavailable.');
+      return await currentUser.getIdToken();
+    },
   });
 }

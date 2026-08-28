@@ -15,10 +15,22 @@ import {
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
+  handleProductObservabilityAdminApi,
+  isProductObservabilityAdminPath,
+} from './productObservabilityAdminApi';
+import {
   handleProductObservabilityApi,
   isProductObservabilityPath,
   type ProductObservabilityApiEnv,
 } from './productObservabilityApi';
+import {
+  ProductObservabilityRetentionService,
+  type ProductObservabilityRetentionEnv,
+} from './productObservabilityRetention';
+import {
+  ProductObservabilityRollupEngine,
+  type ProductObservabilityRollupEnv,
+} from './productObservabilityRollup';
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
@@ -28,6 +40,10 @@ export { AiQuotaDurableObject };
 const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
 const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
+const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
+const ROLLUP_BATCH_SIZE = 50;
+const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
+const RETENTION_BATCH_SIZE = 100;
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
   const correlationId = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
@@ -54,6 +70,37 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
+async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<void> {
+  const engine = new ProductObservabilityRollupEngine(
+    env as unknown as ProductObservabilityRollupEnv,
+  );
+  for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
+    const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
+    if (!result.hasMore) return;
+  }
+}
+
+async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
+  const retention = new ProductObservabilityRetentionService(
+    env as unknown as ProductObservabilityRetentionEnv,
+  );
+  for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
+    const result = await retention.runBatch(RETENTION_BATCH_SIZE);
+    if (!result.hasMore) return;
+  }
+}
+
+async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
+  try {
+    await runScheduledObservabilityRollup(env);
+  } catch (error) {
+    console.error('[Product Observability] scheduled rollup failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  await runScheduledObservabilityRetention(env);
+}
+
 export default {
   async fetch(
     request: Request,
@@ -61,6 +108,9 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (isProductObservabilityAdminPath(pathname)) {
+      return await handleProductObservabilityAdminApi(request, env);
+    }
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(
         request,
@@ -107,5 +157,18 @@ export default {
       statusText: response.statusText,
       headers,
     });
+  },
+  async scheduled(
+    _controller: unknown,
+    env: Record<string, unknown>,
+    executionContext: ExecutionContext,
+  ): Promise<void> {
+    executionContext.waitUntil(
+      runScheduledObservabilityMaintenance(env).catch((error) => {
+        console.error('[Product Observability] scheduled retention failed', {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }),
+    );
   },
 };
