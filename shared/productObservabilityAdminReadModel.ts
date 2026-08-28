@@ -46,6 +46,14 @@ export interface ObservabilityAiAnalysisReadModel {
   rollupCheckpoint: ObservabilityRollupCheckpoint;
 }
 
+export interface ObservabilityAdminIdentityMatch {
+  firebaseUid: string;
+  email: string;
+  username: string;
+  registeredAt: string | null;
+  actorSubjectId: string | null;
+}
+
 export interface ObservabilityUserTimelineAiDetail {
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
