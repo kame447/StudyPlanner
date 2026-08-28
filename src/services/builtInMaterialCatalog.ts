@@ -6,6 +6,7 @@ import {
 } from '../../shared/materialMetadataContract';
 import {
   MATERIAL_CATALOG_SEED_ENTRIES,
+  MATERIAL_CATALOG_SERIES_ALIASES,
   type BuiltInMaterialSeedEntry,
 } from '../data/material-catalog';
 import rawLegacyCatalog from '../data/naturalLanguageCatalog.json';
@@ -21,6 +22,9 @@ interface LegacyBuiltInMaterialCatalogSource {
 }
 
 const legacyBuiltInCatalog = rawLegacyCatalog as LegacyBuiltInMaterialCatalogSource;
+const seedEntryById = new Map(
+  MATERIAL_CATALOG_SEED_ENTRIES.map((entry) => [entry.id, entry] as const),
+);
 
 function seedEntryMatches(entry: BuiltInMaterialSeedEntry, normalizedQuery: string): boolean {
   return [entry.title, ...(entry.aliases ?? [])].some(
@@ -37,6 +41,20 @@ function seedCandidate(entry: BuiltInMaterialSeedEntry): MaterialMetadataCandida
     materialKind: entry.kind,
     aliases: entry.aliases ?? [],
   };
+}
+
+function searchCuratedSeries(normalizedQuery: string): MaterialMetadataCandidate[] {
+  const series = MATERIAL_CATALOG_SERIES_ALIASES.find(
+    ({ alias }) => normalizeMaterialCatalogTitle(alias) === normalizedQuery,
+  );
+  if (!series) return [];
+
+  return series.entryIds
+    .flatMap((entryId) => {
+      const entry = seedEntryById.get(entryId);
+      return entry ? [seedCandidate(entry)] : [];
+    })
+    .slice(0, MAX_BUILT_IN_RESULTS);
 }
 
 function searchCuratedSeed(normalizedQuery: string): MaterialMetadataCandidate[] {
@@ -84,6 +102,9 @@ export function searchBuiltInMaterialCatalog(query: string): MaterialMetadataCan
   if (!classified || classified.kind !== 'title') return [];
 
   const normalizedQuery = normalizeMaterialCatalogTitle(classified.value);
+  const series = searchCuratedSeries(normalizedQuery);
+  if (series.length > 0) return series;
+
   const curated = searchCuratedSeed(normalizedQuery);
   if (curated.length > 0) return curated;
 
