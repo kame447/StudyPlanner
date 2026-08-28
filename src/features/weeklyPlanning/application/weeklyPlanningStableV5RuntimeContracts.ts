@@ -1,4 +1,4 @@
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyPlanningMessage } from '../types';
@@ -13,6 +13,7 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
