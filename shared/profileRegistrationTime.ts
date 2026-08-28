@@ -1,4 +1,4 @@
-export const PROFILE_REGISTERED_AT_ISO_FIELD = 'registeredAtIso' as const;
+export const PROFILE_REGISTERED_AT_FIELD = 'registeredAt' as const;
 
 export function normalizeProfileRegistrationTimestamp(value: unknown): string | null {
   if (typeof value !== 'string') return null;
