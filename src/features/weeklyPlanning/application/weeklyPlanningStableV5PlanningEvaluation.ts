@@ -173,6 +173,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     plans: input.plans,
     templates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
+    timetableTerm: input.timetableTerm,
     horizon,
     timeZone: requestContext.timeZone,
   });
