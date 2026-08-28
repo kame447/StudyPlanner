@@ -24,6 +24,10 @@ import {
   type ProductObservabilityApiEnv,
 } from './productObservabilityApi';
 import {
+  ProductObservabilityRetentionService,
+  type ProductObservabilityRetentionEnv,
+} from './productObservabilityRetention';
+import {
   ProductObservabilityRollupEngine,
   type ProductObservabilityRollupEnv,
 } from './productObservabilityRollup';
@@ -38,6 +42,8 @@ const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
 const ROLLUP_BATCH_SIZE = 50;
+const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
+const RETENTION_BATCH_SIZE = 100;
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
   const correlationId = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
@@ -72,6 +78,27 @@ async function runScheduledObservabilityRollup(env: Record<string, unknown>): Pr
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
     if (!result.hasMore) return;
   }
+}
+
+async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
+  const retention = new ProductObservabilityRetentionService(
+    env as unknown as ProductObservabilityRetentionEnv,
+  );
+  for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
+    const result = await retention.runBatch(RETENTION_BATCH_SIZE);
+    if (!result.hasMore) return;
+  }
+}
+
+async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
+  try {
+    await runScheduledObservabilityRollup(env);
+  } catch (error) {
+    console.error('[Product Observability] scheduled rollup failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  await runScheduledObservabilityRetention(env);
 }
 
 export default {
@@ -137,8 +164,8 @@ export default {
     executionContext: ExecutionContext,
   ): Promise<void> {
     executionContext.waitUntil(
-      runScheduledObservabilityRollup(env).catch((error) => {
-        console.error('[Product Observability] scheduled rollup failed', {
+      runScheduledObservabilityMaintenance(env).catch((error) => {
+        console.error('[Product Observability] scheduled retention failed', {
           message: error instanceof Error ? error.message : String(error),
         });
       }),
