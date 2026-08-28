@@ -18,6 +18,9 @@ describe('AI request observability', () => {
           cached_tokens: 80,
           cache_write_tokens: 20,
         },
+        completion_tokens_details: {
+          reasoning_tokens: 12,
+        },
       },
     })).toEqual({
       promptTokens: 120,
@@ -25,6 +28,7 @@ describe('AI request observability', () => {
       totalTokens: 150,
       cachedTokens: 80,
       cacheWriteTokens: 20,
+      reasoningTokens: 12,
     });
 
     expect(parseOpenAiUsage({ usage: {} })).toEqual({
@@ -33,6 +37,7 @@ describe('AI request observability', () => {
       totalTokens: null,
       cachedTokens: null,
       cacheWriteTokens: null,
+      reasoningTokens: null,
     });
   });
 
@@ -46,6 +51,9 @@ describe('AI request observability', () => {
           cached_tokens: -2,
           cache_write_tokens: '5',
         },
+        completion_tokens_details: {
+          reasoning_tokens: -8,
+        },
       },
     })).toEqual({
       promptTokens: null,
@@ -53,6 +61,7 @@ describe('AI request observability', () => {
       totalTokens: null,
       cachedTokens: null,
       cacheWriteTokens: null,
+      reasoningTokens: null,
     });
   });
 
