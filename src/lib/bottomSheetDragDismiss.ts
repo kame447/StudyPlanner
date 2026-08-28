@@ -28,7 +28,13 @@ const EXPLICIT_HANDLE_SELECTOR = [
   '[data-bottom-sheet-drag-handle="true"]',
 ].join(',');
 
-const BLOCKED_START_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+const BLOCKED_START_SELECTOR = [
+  'input',
+  'textarea',
+  'select',
+  '[contenteditable="true"]',
+  '.schedule-week-plan-button',
+].join(',');
 const START_ZONE_PX = 72;
 const INTENT_LOCK_DISTANCE_PX = 8;
 const HORIZONTAL_ABORT_DISTANCE_PX = 12;
