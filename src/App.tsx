@@ -121,6 +121,7 @@ export default function App() {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
     deletePlan,
@@ -451,6 +452,8 @@ export default function App() {
                     ? weeklyPlanning.removeDraftBlock
                     : undefined
                 }
+                onOpenPlan={openEditPlan}
+                onMovePlan={movePlanOccurrence}
                 onOpenDay={openDay}
               />
             ) : null}
