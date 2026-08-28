@@ -61,6 +61,11 @@ const denseUserText = [
   '平日は18時から22時まで勉強できます。9月末までに終わらせたいです。',
 ].join('').repeat(12);
 
+const denseMixedDateUserText = [
+  '本命の二次試験は2027年2月下旬です。数学を進めたいです。',
+  '英語も毎日やりたいです。平日は18時から22時まで勉強できます。',
+].join('').repeat(12);
+
 describe('Stable V5 dense-turn completeness orchestration', () => {
   it('retries a schema-valid partial document when the AI coverage audit reports omissions', async () => {
     const partial = semanticDocument(['数学']);
@@ -117,5 +122,33 @@ describe('Stable V5 dense-turn completeness orchestration', () => {
     expect(result.diagnostics.attemptCount).toBe(1);
     expect(fake.calls).toHaveLength(2);
     expect(fake.calls[1]?.maxCompletionTokens).toBe(1200);
+  });
+
+  it('canonicalizes a mixed-format coarse goal date before validation and still runs the dense audit', async () => {
+    const initial = semanticDocument(['数学']);
+    initial.userContextFacts = [{
+      localId: 'context-main-exam',
+      kind: 'goal_event',
+      label: '本命の二次試験',
+      value: null,
+      dateExpression: '2027-02下旬',
+      sourceText: '本命の二次試験は2027年2月下旬です',
+    }];
+    const fake = fakeClient([
+      JSON.stringify(initial),
+      JSON.stringify({ decision: 'complete', missingFacts: [] }),
+    ]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText: denseMixedDateUserText,
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.userContextFacts?.[0]?.dateExpression)
+      .toBe('2027-02-21/2027-02-28');
+    expect(result.diagnostics.repairAttempted).toBe(false);
+    expect(fake.calls).toHaveLength(2);
+    const auditFormat = fake.calls[1]?.responseFormat as { json_schema?: { name?: string } } | undefined;
+    expect(auditFormat?.json_schema?.name).toBe('weekly_planning_dense_turn_completeness_audit_v5');
   });
 });
