@@ -22,8 +22,9 @@ async function inspectOverview(page, { theme, width, height, label }) {
   await expect(page.getByText('通常の応答時間')).toBeVisible();
   await expect(page.getByText('遅いケースの応答時間')).toBeVisible();
   await expect(page.getByText('Planningの状態')).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeVisible();
-  const aiApiNav = page.getByRole('button', { name: /AI・API/ });
+  const navigation = page.getByRole('navigation', { name: '管理者画面ナビゲーション' });
+  await expect(navigation).toBeVisible();
+  const aiApiNav = navigation.getByRole('button', { name: /^AI・API(?: 準備中)?$/ });
   await expect(aiApiNav).toBeVisible();
   await expect(aiApiNav).toBeDisabled();
   await assertNoHorizontalOverflow(page);
