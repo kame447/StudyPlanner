@@ -42,6 +42,7 @@ export interface ObservabilityAiAnalysisReadModel {
   byModel: ObservabilityAiDimensionSummary[];
   byPurpose: ObservabilityAiDimensionSummary[];
   byPhase: ObservabilityAiDimensionSummary[];
+  byOperationKind: ObservabilityAiDimensionSummary[];
   planningEfficiency: ObservabilityAiPlanningEfficiency;
   rollupCheckpoint: ObservabilityRollupCheckpoint;
 }
