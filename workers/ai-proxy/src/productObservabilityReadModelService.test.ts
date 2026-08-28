@@ -6,6 +6,7 @@ import type {
   ObservabilityDailyRollup,
   ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
+import type { FirestoreStringFilter } from './firestoreServiceAccountClient';
 import {
   createEmptyDailyRollup,
   recordLatency,
@@ -20,7 +21,9 @@ class MemoryReadFirestore {
     string,
     Array<ObservabilityUserSummary & { id: string; documentName: string }>
   >();
+  readonly profiles: StoredDocument[] = [];
   queryCallCount = 0;
+  countCallCount = 0;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -28,6 +31,10 @@ class MemoryReadFirestore {
 
   setDocument(collection: string, id: string, value: StoredDocument): void {
     this.documents.set(this.key(collection, id), { ...value });
+  }
+
+  addProfile(value: StoredDocument): void {
+    this.profiles.push({ ...value });
   }
 
   addUserSummary(
@@ -52,6 +59,23 @@ class MemoryReadFirestore {
   async getDocument(collection: string, id: string): Promise<StoredDocument | null> {
     const value = this.documents.get(this.key(collection, id));
     return value ? { ...value, id } : null;
+  }
+
+  async countDocuments(
+    collection: string,
+    filters: readonly FirestoreStringFilter[] = [],
+  ): Promise<number> {
+    this.countCallCount += 1;
+    if (collection !== 'profiles') return 0;
+    return this.profiles.filter((profile) => filters.every((filter) => {
+      const value = profile[filter.field];
+      if (typeof value !== 'string') return false;
+      if (filter.operator === 'EQUAL') return value === filter.value;
+      if (filter.operator === 'GREATER_THAN') return value > filter.value;
+      if (filter.operator === 'GREATER_THAN_OR_EQUAL') return value >= filter.value;
+      if (filter.operator === 'LESS_THAN') return value < filter.value;
+      return value <= filter.value;
+    })).length;
   }
 
   async queryDocumentsAfter(params: {
@@ -177,10 +201,58 @@ describe('ProductObservabilityReadModelService', () => {
 
     expect(overview.daily.map((entry) => entry.activeActorCount)).toEqual([2, 2]);
     expect(overview.activeUsers).toMatchObject({ today: 2, last7Days: 3, last30Days: 4 });
+    expect(overview.registeredUsers).toEqual({
+      total: 0,
+      newInPeriod: 0,
+      registrationIndexReady: true,
+      scope: 'firebase_project',
+    });
     expect(overview.aiLatencyP50Ms).toBe(100);
     expect(overview.aiLatencyP95Ms).toBe(10_000);
     expect(overview.daily[0]).not.toHaveProperty('id');
     expect(firestore.queryCallCount).toBe(0);
+  });
+
+  it('counts total and new registered users with Asia/Tokyo date boundaries', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.addProfile({ registeredAtIso: '2026-08-27T14:59:59.999Z' });
+    firestore.addProfile({ registeredAtIso: '2026-08-27T15:00:00.000Z' });
+    firestore.addProfile({ registeredAtIso: '2026-08-29T14:59:59.999Z' });
+    firestore.addProfile({ registeredAtIso: '2026-08-29T15:00:00.000Z' });
+
+    const overview = await service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-28',
+      toDate: '2026-08-29',
+    });
+
+    expect(overview.registeredUsers).toEqual({
+      total: 4,
+      newInPeriod: 2,
+      registrationIndexReady: true,
+      scope: 'firebase_project',
+    });
+    expect(firestore.countCallCount).toBe(3);
+  });
+
+  it('returns unknown new-registration count while any profile lacks normalized registration time', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.addProfile({ registeredAtIso: '2026-08-28T00:00:00.000Z' });
+    firestore.addProfile({ createdAt: 'Fri, 28 Aug 2026 01:00:00 GMT' });
+
+    const overview = await service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-28',
+      toDate: '2026-08-28',
+    });
+
+    expect(overview.registeredUsers).toEqual({
+      total: 2,
+      newInPeriod: null,
+      registrationIndexReady: false,
+      scope: 'firebase_project',
+    });
+    expect(firestore.countCallCount).toBe(2);
   });
 
   it('returns null instead of scanning raw membership when a window snapshot is unavailable', async () => {
@@ -386,5 +458,6 @@ describe('ProductObservabilityReadModelService', () => {
       fromDate: '2026-01-01',
       toDate: '2026-08-29',
     })).rejects.toThrow('observability_date_range_too_large');
+    expect(firestore.countCallCount).toBe(0);
   });
 });
