@@ -19,7 +19,7 @@ import {
   type WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import {
-  SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+  semanticNormalizerCompletionTokenBudgetV5,
   semanticNormalizerErrorMessage,
   WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
@@ -86,7 +86,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             messages: baseMessages,
             temperature: 0,
             responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
-            maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+            maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(input),
           },
         },
       });
