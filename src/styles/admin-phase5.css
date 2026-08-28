@@ -207,12 +207,13 @@
   }
 
   .admin-ai-table-wrap {
-    overflow: visible;
+    overflow: hidden;
     border: 0;
   }
 
   .admin-ai-table {
     min-width: 0;
+    max-width: 100%;
     display: block;
   }
 
