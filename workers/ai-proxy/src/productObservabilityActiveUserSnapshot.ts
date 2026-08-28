@@ -2,6 +2,7 @@ import type { ObservabilityEnvironment } from '../../../shared/productObservabil
 import {
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+  type ObservabilityActiveUserDirtySource,
   type ObservabilityActiveUserWindows,
   type ObservabilityActorDay,
 } from '../../../shared/productObservabilityReadModel';
@@ -68,18 +69,25 @@ function asActorDay(row: FirestoreOrderedDocument): ObservabilityActorDay {
   return value as unknown as ObservabilityActorDay;
 }
 
+function targetKey(environment: ObservabilityEnvironment, localDate: string): string {
+  return `${environment}:${localDate}`;
+}
+
 export class ProductObservabilityActiveUserSnapshotService {
-  private readonly environment: ObservabilityEnvironment;
+  private readonly defaultEnvironment: ObservabilityEnvironment;
 
   constructor(
     env: ProductObservabilityActiveUserSnapshotEnv,
     private readonly firestore: ActiveUserSnapshotFirestore = new FirestoreServiceAccountClient(env),
     private readonly now: () => Date = () => new Date(),
   ) {
-    this.environment = normalizedEnvironment(env.ENVIRONMENT);
+    this.defaultEnvironment = normalizedEnvironment(env.ENVIRONMENT);
   }
 
-  private async actorIdsForDate(localDate: string): Promise<Set<string>> {
+  private async actorIdsForDate(
+    environment: ObservabilityEnvironment,
+    localDate: string,
+  ): Promise<Set<string>> {
     const actors = new Set<string>();
     let cursor: FirestoreOrderedCursor | null = null;
     while (true) {
@@ -92,7 +100,7 @@ export class ProductObservabilityActiveUserSnapshotService {
       });
       for (const row of page) {
         const actorDay = asActorDay(row);
-        if (actorDay.environment === this.environment && actorDay.actorSubjectId) {
+        if (actorDay.environment === environment && actorDay.actorSubjectId) {
           actors.add(actorDay.actorSubjectId);
         }
       }
@@ -106,11 +114,14 @@ export class ProductObservabilityActiveUserSnapshotService {
     return actors;
   }
 
-  async refresh(asOfDate: string): Promise<ObservabilityActiveUserWindows> {
+  async refresh(
+    environment: ObservabilityEnvironment,
+    asOfDate: string,
+  ): Promise<ObservabilityActiveUserWindows> {
     const dates = datesEndingAt(asOfDate, 30);
     const byDate = new Map<string, Set<string>>();
     for (const localDate of dates) {
-      byDate.set(localDate, await this.actorIdsForDate(localDate));
+      byDate.set(localDate, await this.actorIdsForDate(environment, localDate));
     }
 
     const todayActors = byDate.get(asOfDate) ?? new Set<string>();
@@ -127,7 +138,7 @@ export class ProductObservabilityActiveUserSnapshotService {
     const updatedAt = this.now().toISOString();
     const snapshot: ObservabilityActiveUserWindows = {
       schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
-      environment: this.environment,
+      environment,
       asOfDate,
       reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
       today: todayActors.size,
@@ -138,32 +149,48 @@ export class ProductObservabilityActiveUserSnapshotService {
     };
     await this.firestore.setDocument(
       ACTIVE_USER_WINDOW_COLLECTION,
-      snapshotId(this.environment, asOfDate),
+      snapshotId(environment, asOfDate),
       snapshot as unknown as Record<string, unknown>,
     );
     return snapshot;
   }
 
-  async refreshAffected(sourceDates: readonly string[]): Promise<ObservabilityActiveUserWindows[]> {
+  async refreshAffected(
+    sources: readonly ObservabilityActiveUserDirtySource[],
+  ): Promise<ObservabilityActiveUserWindows[]> {
     const today = observabilityReportingDate(this.now().toISOString());
-    const targets = new Set<string>();
+    const targets = new Map<string, {
+      environment: ObservabilityEnvironment;
+      localDate: string;
+    }>();
     const current = await this.firestore.getDocument(
       ACTIVE_USER_WINDOW_COLLECTION,
-      snapshotId(this.environment, today),
+      snapshotId(this.defaultEnvironment, today),
     );
-    if (!current) targets.add(today);
+    if (!current) {
+      targets.set(targetKey(this.defaultEnvironment, today), {
+        environment: this.defaultEnvironment,
+        localDate: today,
+      });
+    }
 
-    for (const sourceDate of sourceDates) {
+    for (const source of sources) {
       for (let offset = 0; offset < 30; offset += 1) {
-        const target = addDays(sourceDate, offset);
-        if (target > today) break;
-        targets.add(target);
+        const targetDate = addDays(source.localDate, offset);
+        if (targetDate > today) break;
+        targets.set(targetKey(source.environment, targetDate), {
+          environment: source.environment,
+          localDate: targetDate,
+        });
       }
     }
 
     const snapshots: ObservabilityActiveUserWindows[] = [];
-    for (const target of [...targets].sort()) {
-      snapshots.push(await this.refresh(target));
+    const orderedTargets = [...targets.values()].sort((left, right) =>
+      targetKey(left.environment, left.localDate)
+        .localeCompare(targetKey(right.environment, right.localDate)));
+    for (const target of orderedTargets) {
+      snapshots.push(await this.refresh(target.environment, target.localDate));
     }
     return snapshots;
   }
