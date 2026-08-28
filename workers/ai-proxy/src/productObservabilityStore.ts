@@ -1,9 +1,11 @@
 import {
   PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
+  validatePlanningOutcomeTelemetryDraft,
   validateProductActivityTelemetryDraft,
   type AiRequestMetricPayload,
   type ObservabilityCorrelation,
   type ObservabilityEnvironment,
+  type PlanningOutcomeTelemetryDraft,
   type ProductActivityTelemetryDraft,
   type StoredObservabilityEvent,
 } from '../../../shared/productObservabilityContract';
@@ -159,9 +161,7 @@ export class ProductObservabilityStore {
   private validateClientTimestamp(occurredAt: string): void {
     const nowMs = this.now().getTime();
     const occurredAtMs = new Date(occurredAt).getTime();
-    if (!Number.isFinite(occurredAtMs)) {
-      throw new Error('Telemetry occurredAt is invalid');
-    }
+    if (!Number.isFinite(occurredAtMs)) throw new Error('Telemetry occurredAt is invalid');
     if (occurredAtMs < nowMs - MAX_CLIENT_EVENT_AGE_MS) {
       throw new Error('Telemetry occurredAt is too old');
     }
@@ -199,10 +199,7 @@ export class ProductObservabilityStore {
     }
   }
 
-  async storeProductActivity(
-    firebaseUid: string,
-    input: unknown,
-  ): Promise<void> {
+  async storeProductActivity(firebaseUid: string, input: unknown): Promise<void> {
     const validated = validateProductActivityTelemetryDraft(input);
     if (!validated.ok) throw new Error(validated.error);
     const draft: ProductActivityTelemetryDraft = validated.value;
@@ -224,7 +221,31 @@ export class ProductObservabilityStore {
       payload: draft.payload,
       expireAt: new Date(new Date(observedAt).getTime() + EVENT_RETENTION_MS).toISOString(),
     };
+    await this.persistEvent(actorSubjectId, draft.eventId, event as unknown as Record<string, unknown>);
+  }
 
+  async storePlanningOutcome(firebaseUid: string, input: unknown): Promise<void> {
+    const validated = validatePlanningOutcomeTelemetryDraft(input);
+    if (!validated.ok) throw new Error(validated.error);
+    const draft: PlanningOutcomeTelemetryDraft = validated.value;
+    this.validateClientTimestamp(draft.occurredAt);
+
+    const actorSubjectId = await this.resolveActorSubjectId(firebaseUid);
+    const observedAt = this.now().toISOString();
+    const event: StoredObservabilityEvent<PlanningOutcomeTelemetryDraft['payload']> = {
+      schemaVersion: PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
+      eventId: draft.eventId,
+      eventType: 'planning_outcome',
+      occurredAt: draft.occurredAt,
+      observedAt,
+      actorSubjectId,
+      environment: normalizedEnvironment(this.env.ENVIRONMENT),
+      appVersion: draft.appVersion,
+      source: 'weekly_planning',
+      correlation: draft.correlation,
+      payload: draft.payload,
+      expireAt: new Date(new Date(observedAt).getTime() + EVENT_RETENTION_MS).toISOString(),
+    };
     await this.persistEvent(actorSubjectId, draft.eventId, event as unknown as Record<string, unknown>);
   }
 
