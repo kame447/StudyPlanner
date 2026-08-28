@@ -128,6 +128,11 @@ export interface ObservabilityActiveUserWindows {
   expireAt: string;
 }
 
+export interface ObservabilityActiveUserDirtySource {
+  environment: ObservabilityEnvironment;
+  localDate: string;
+}
+
 export interface ObservabilityRollupCursor {
   observedAt: string;
   documentName: string;
@@ -137,7 +142,7 @@ export interface ObservabilityRollupCheckpoint {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
   cursor: ObservabilityRollupCursor | null;
   processedEventCount: number;
-  activeUserDirtyDates: string[];
+  activeUserDirtySources: ObservabilityActiveUserDirtySource[];
   lastRunStartedAt: string | null;
   lastSuccessfulRunAt: string | null;
   lastFailureAt: string | null;
