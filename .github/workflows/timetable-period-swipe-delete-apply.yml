@@ -1,0 +1,793 @@
+name: Apply timetable period swipe-delete
+
+on:
+  push:
+    branches:
+      - fix/timetable-period-swipe-delete
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {text.count(old)}')
+              file_path.write_text(text.replace(old, new, 1))
+
+          component = r'''import {
+            useRef,
+            useState,
+            type CSSProperties,
+            type PointerEvent,
+          } from 'react';
+          import type { TimetableTerm } from '../types/domain';
+
+          const ACTION_REVEAL_WIDTH_PX = 84;
+          const HORIZONTAL_SWIPE_START_PX = 6;
+          const OPEN_THRESHOLD_RATIO = 0.38;
+
+          interface TimetablePeriodSwipeItemProps {
+            term: TimetableTerm;
+            active: boolean;
+            disabled: boolean;
+            deleting: boolean;
+            isOpen: boolean;
+            onOpenChange: (open: boolean) => void;
+            onSelect: () => void;
+            onDelete: () => void;
+          }
+
+          interface SwipePointerState {
+            pointerId: number;
+            startX: number;
+            startY: number;
+            startOffset: number;
+            horizontal: boolean;
+          }
+
+          function clampSwipeOffset(value: number): number {
+            return Math.max(-ACTION_REVEAL_WIDTH_PX, Math.min(0, value));
+          }
+
+          export function TimetablePeriodSwipeItem({
+            term,
+            active,
+            disabled,
+            deleting,
+            isOpen,
+            onOpenChange,
+            onSelect,
+            onDelete,
+          }: TimetablePeriodSwipeItemProps) {
+            const pointerRef = useRef<SwipePointerState | null>(null);
+            const suppressClickRef = useRef(false);
+            const [dragOffset, setDragOffset] = useState<number | null>(null);
+            const [dragging, setDragging] = useState(false);
+            const restingOffset = isOpen ? -ACTION_REVEAL_WIDTH_PX : 0;
+            const offset = dragOffset ?? restingOffset;
+            const revealProgress = Math.min(1, Math.abs(offset) / ACTION_REVEAL_WIDTH_PX);
+            const actionStyle: CSSProperties = {
+              opacity: revealProgress,
+              transform: `translate3d(${18 * (1 - revealProgress)}px, 0, 0) scale(${0.96 + 0.04 * revealProgress})`,
+            };
+
+            function handlePointerDown(event: PointerEvent<HTMLButtonElement>) {
+              if (disabled) {
+                return;
+              }
+
+              pointerRef.current = {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                startOffset: restingOffset,
+                horizontal: false,
+              };
+              suppressClickRef.current = false;
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            }
+
+            function handlePointerMove(event: PointerEvent<HTMLButtonElement>) {
+              const pointer = pointerRef.current;
+              if (!pointer || pointer.pointerId !== event.pointerId) {
+                return;
+              }
+
+              const deltaX = event.clientX - pointer.startX;
+              const deltaY = event.clientY - pointer.startY;
+              const absX = Math.abs(deltaX);
+              const absY = Math.abs(deltaY);
+
+              if (!pointer.horizontal) {
+                if (Math.max(absX, absY) < HORIZONTAL_SWIPE_START_PX) {
+                  return;
+                }
+
+                if (absY > absX) {
+                  pointerRef.current = null;
+                  setDragOffset(null);
+                  setDragging(false);
+                  return;
+                }
+
+                pointer.horizontal = true;
+                suppressClickRef.current = true;
+                setDragging(true);
+              }
+
+              setDragOffset(clampSwipeOffset(pointer.startOffset + deltaX));
+            }
+
+            function finishPointer(event: PointerEvent<HTMLButtonElement>) {
+              const pointer = pointerRef.current;
+              if (!pointer || pointer.pointerId !== event.pointerId) {
+                return;
+              }
+
+              if (pointer.horizontal) {
+                const nextOffset = clampSwipeOffset(
+                  pointer.startOffset + event.clientX - pointer.startX,
+                );
+                const shouldOpen =
+                  nextOffset <= -ACTION_REVEAL_WIDTH_PX * OPEN_THRESHOLD_RATIO;
+                onOpenChange(shouldOpen);
+                suppressClickRef.current = true;
+              }
+
+              pointerRef.current = null;
+              setDragOffset(null);
+              setDragging(false);
+              event.currentTarget.releasePointerCapture?.(event.pointerId);
+            }
+
+            function cancelPointer(event: PointerEvent<HTMLButtonElement>) {
+              if (pointerRef.current?.pointerId === event.pointerId) {
+                pointerRef.current = null;
+              }
+              setDragOffset(null);
+              setDragging(false);
+            }
+
+            return (
+              <div
+                className={[
+                  'timetable-period-swipe-row',
+                  offset < -1 ? 'is-revealed' : '',
+                  dragging ? 'is-dragging' : '',
+                ].filter(Boolean).join(' ')}
+              >
+                <div className="timetable-period-swipe-actions">
+                  <button
+                    aria-label={`${term.label}を削除`}
+                    className="timetable-period-delete-action"
+                    disabled={disabled}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete();
+                    }}
+                    onFocus={() => {
+                      if (!disabled) {
+                        onOpenChange(true);
+                      }
+                    }}
+                    style={actionStyle}
+                    type="button"
+                  >
+                    {deleting ? '削除中…' : '削除'}
+                  </button>
+                </div>
+                <button
+                  aria-expanded={isOpen}
+                  aria-label={`${term.label}を選択`}
+                  className={
+                    active
+                      ? 'timetable-period-list-item active'
+                      : 'timetable-period-list-item'
+                  }
+                  disabled={disabled}
+                  onClick={(event) => {
+                    if (suppressClickRef.current) {
+                      suppressClickRef.current = false;
+                      event.preventDefault();
+                      return;
+                    }
+
+                    if (isOpen) {
+                      onOpenChange(false);
+                      return;
+                    }
+
+                    onSelect();
+                  }}
+                  onPointerCancel={cancelPointer}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={finishPointer}
+                  style={{ transform: `translate3d(${offset}px, 0, 0)` }}
+                  type="button"
+                >
+                  <strong>{term.label}</strong>
+                  <span>{formatTermRange(term)}</span>
+                </button>
+              </div>
+            );
+          }
+
+          function formatTermRange(term: TimetableTerm): string {
+            if (!term.startDate && !term.endDate) {
+              return '期間未設定';
+            }
+
+            return `${term.startDate ?? '開始日未設定'} 〜 ${term.endDate ?? '終了日未設定'}`;
+          }
+          '''
+          Path('src/components/TimetablePeriodSwipeItem.tsx').write_text(component)
+
+          test = r'''import { useState } from 'react';
+          import { act, create } from 'react-test-renderer';
+          import { describe, expect, it, vi } from 'vitest';
+          import type { TimetableTerm } from '../types/domain';
+          import { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';
+
+          const TERM: TimetableTerm = {
+            id: 'term-1',
+            userId: 'user-1',
+            year: 2026,
+            kind: 'custom',
+            label: '2026年前期',
+            startDate: '2026-04-01',
+            endDate: '2026-08-10',
+            isActive: true,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          };
+
+          function Harness({ onSelect, onDelete }: { onSelect: () => void; onDelete: () => void }) {
+            const [open, setOpen] = useState(false);
+            return (
+              <TimetablePeriodSwipeItem
+                active
+                deleting={false}
+                disabled={false}
+                isOpen={open}
+                onDelete={onDelete}
+                onOpenChange={setOpen}
+                onSelect={onSelect}
+                term={TERM}
+              />
+            );
+          }
+
+          function pointerEvent(x: number, y = 20) {
+            return {
+              pointerId: 1,
+              clientX: x,
+              clientY: y,
+              currentTarget: {
+                setPointerCapture: vi.fn(),
+                releasePointerCapture: vi.fn(),
+              },
+            };
+          }
+
+          describe('TimetablePeriodSwipeItem', () => {
+            it('opens the delete action after a deliberate left swipe and routes delete', () => {
+              const onSelect = vi.fn();
+              const onDelete = vi.fn();
+              const renderer = create(<Harness onSelect={onSelect} onDelete={onDelete} />);
+              let surface = renderer.root.findByProps({ 'aria-label': '2026年前期を選択' });
+
+              act(() => {
+                surface.props.onPointerDown(pointerEvent(180));
+                surface.props.onPointerMove(pointerEvent(110, 22));
+                surface.props.onPointerUp(pointerEvent(110, 22));
+              });
+
+              surface = renderer.root.findByProps({ 'aria-label': '2026年前期を選択' });
+              expect(surface.props['aria-expanded']).toBe(true);
+              expect(onSelect).not.toHaveBeenCalled();
+
+              const deleteAction = renderer.root.findByProps({ 'aria-label': '2026年前期を削除' });
+              act(() => {
+                deleteAction.props.onClick({ stopPropagation: vi.fn() });
+              });
+              expect(onDelete).toHaveBeenCalledTimes(1);
+            });
+
+            it('keeps an ordinary tap as the period selection action', () => {
+              const onSelect = vi.fn();
+              const renderer = create(<Harness onSelect={onSelect} onDelete={vi.fn()} />);
+              const surface = renderer.root.findByProps({ 'aria-label': '2026年前期を選択' });
+
+              act(() => {
+                surface.props.onClick({ preventDefault: vi.fn() });
+              });
+
+              expect(onSelect).toHaveBeenCalledTimes(1);
+            });
+          });
+          '''
+          Path('src/components/TimetablePeriodSwipeItem.test.tsx').write_text(test)
+
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "import { resolveTimetableAlternatingWeek } from '../lib/timetableCalendar';\nimport type {",
+              "import { resolveTimetableAlternatingWeek } from '../lib/timetableCalendar';\nimport { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';\nimport type {",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;\n  onClearTermData: (term: TimetableTerm) => Promise<void>;",
+              "  onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;\n  onDeleteTerm: (term: TimetableTerm) => Promise<void>;\n  onClearTermData: (term: TimetableTerm) => Promise<void>;",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  onActivateTerm,\n  onClearTermData,",
+              "  onActivateTerm,\n  onDeleteTerm,\n  onClearTermData,",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);\n  const [isSavingTerm, setIsSavingTerm] = useState(false);\n  const [isClearingTermData, setIsClearingTermData] = useState(false);\n  const [periodForm, setPeriodForm] = useState<PeriodFormState>(() => createPeriodForm(activeTerm));",
+              "  const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);\n  const [isSavingTerm, setIsSavingTerm] = useState(false);\n  const [isClearingTermData, setIsClearingTermData] = useState(false);\n  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);\n  const [openTermSwipeId, setOpenTermSwipeId] = useState<string | null>(null);\n  const [periodForm, setPeriodForm] = useState<PeriodFormState>(() => createPeriodForm(activeTerm));",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "    [timetableTerms],\n  );\n\n  function updateDraft<K extends keyof ScheduleTemplateDraft>(",
+              "    [timetableTerms],\n  );\n  const isTermActionBusy =\n    isSavingTerm || isClearingTermData || deletingTermId !== null;\n\n  function updateDraft<K extends keyof ScheduleTemplateDraft>(",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  function openPeriodSheet(term: TimetableTerm | null = activeTerm) {\n    setPeriodForm(createPeriodForm(term));\n    setPeriodActionError(null);\n    setIsTermSheetOpen(true);\n  }\n\n  function startNewPeriod() {\n    setPeriodForm(createPeriodForm(null));\n  }",
+              "  function openPeriodSheet(term: TimetableTerm | null = activeTerm) {\n    setOpenTermSwipeId(null);\n    setPeriodForm(createPeriodForm(term));\n    setPeriodActionError(null);\n    setIsTermSheetOpen(true);\n  }\n\n  function startNewPeriod() {\n    setOpenTermSwipeId(null);\n    setPeriodForm(createPeriodForm(null));\n  }",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "      setAlternatingWeekView('a');\n      setIsTermSheetOpen(false);",
+              "      setAlternatingWeekView('a');\n      setOpenTermSwipeId(null);\n      setIsTermSheetOpen(false);",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  async function selectExistingPeriod(term: TimetableTerm) {\n    if (term.id === activeTerm?.id) {",
+              "  async function selectExistingPeriod(term: TimetableTerm) {\n    setOpenTermSwipeId(null);\n    if (term.id === activeTerm?.id) {",
+          )
+          delete_handler = r'''  async function deleteExistingPeriod(term: TimetableTerm) {
+            if (isTermActionBusy) {
+              return;
+            }
+
+            if (availableTerms.length <= 1) {
+              setPeriodActionError(
+                '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+              );
+              setOpenTermSwipeId(null);
+              return;
+            }
+
+            const templateCount = scheduleTemplates.filter(
+              (template) => getTemplateTermId(template) === term.id,
+            ).length;
+            const periodCount = timetablePeriods.filter(
+              (period) => period.termId === term.id,
+            ).length;
+            const hasData = templateCount > 0 || periodCount > 0;
+            const confirmed = window.confirm(
+              hasData
+                ? `「${term.label}」を削除しますか？\nこの期間に登録されている授業と時限設定も一緒に削除されます。この操作は元に戻せません。`
+                : `「${term.label}」を削除しますか？この操作は元に戻せません。`,
+            );
+
+            if (!confirmed) {
+              setOpenTermSwipeId(null);
+              return;
+            }
+
+            const fallbackTerm = availableTerms.find((item) => item.id !== term.id) ?? null;
+            setDeletingTermId(term.id);
+            try {
+              setPeriodActionError(null);
+              await onDeleteTerm(term);
+              setOpenTermSwipeId(null);
+              if (periodForm.id === term.id) {
+                setPeriodForm(createPeriodForm(fallbackTerm));
+                setAlternatingWeekView(
+                  fallbackTerm
+                    ? resolveTimetableAlternatingWeek(getTodayIsoDate(), fallbackTerm) ?? 'a'
+                    : 'a',
+                );
+              }
+            } finally {
+              setDeletingTermId(null);
+            }
+          }
+
+          '''
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "  async function clearCurrentTermData() {",
+              delete_handler + "  async function clearCurrentTermData() {",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "    if (!activeTerm || isClearingTermData || isSavingTerm) {",
+              "    if (!activeTerm || isTermActionBusy) {",
+          )
+          replace_once(
+              'src/components/TimetableView.tsx',
+              "          onClick={() => {\n            if (!isSavingTerm && !isClearingTermData) {\n              setIsTermSheetOpen(false);\n            }\n          }}",
+              "          onClick={() => {\n            if (!isTermActionBusy) {\n              setOpenTermSwipeId(null);\n              setIsTermSheetOpen(false);\n            }\n          }}",
+          )
+          view_path = Path('src/components/TimetableView.tsx')
+          view_text = view_path.read_text()
+          view_text = view_text.replace(
+              'disabled={isSavingTerm || isClearingTermData}',
+              'disabled={isTermActionBusy}',
+          )
+          view_text = view_text.replace(
+              'onClick={() => setIsTermSheetOpen(false)}',
+              "onClick={() => {\n                  setOpenTermSwipeId(null);\n                  setIsTermSheetOpen(false);\n                }}",
+          )
+          old_list = r'''                  <div className="timetable-period-list">
+                    {availableTerms.map((term) => (
+                      <button
+                        className={
+                          term.id === activeTerm?.id
+                            ? 'timetable-period-list-item active'
+                            : 'timetable-period-list-item'
+                        }
+                        disabled={isSavingTerm || isClearingTermData}
+                        key={term.id}
+                        onClick={() => {
+                          void selectExistingPeriod(term);
+                        }}
+                        type="button"
+                      >
+                        <strong>{term.label}</strong>
+                        <span>{formatPeriodRange(term)}</span>
+                      </button>
+                    ))}
+                  </div>'''
+          new_list = r'''                  <div className="timetable-period-list">
+                    {availableTerms.map((term) => (
+                      <TimetablePeriodSwipeItem
+                        active={term.id === activeTerm?.id}
+                        deleting={deletingTermId === term.id}
+                        disabled={isTermActionBusy}
+                        isOpen={openTermSwipeId === term.id}
+                        key={term.id}
+                        onDelete={() => {
+                          void deleteExistingPeriod(term);
+                        }}
+                        onOpenChange={(open) => {
+                          setOpenTermSwipeId((current) =>
+                            open ? term.id : current === term.id ? null : current,
+                          );
+                        }}
+                        onSelect={() => {
+                          void selectExistingPeriod(term);
+                        }}
+                        term={term}
+                      />
+                    ))}
+                  </div>'''
+          if view_text.count(old_list) != 1:
+              raise SystemExit(f'TimetableView list: expected one match, found {view_text.count(old_list)}')
+          view_text = view_text.replace(old_list, new_list, 1)
+          error_anchor = r'''              ) : null}
+
+              <section className="timetable-period-form-card">'''
+          error_insert = r'''              ) : null}
+
+              {periodActionError ? (
+                <p className="timetable-period-error timetable-period-sheet-error">
+                  {periodActionError}
+                </p>
+              ) : null}
+
+              <section className="timetable-period-form-card">'''
+          if view_text.count(error_anchor) != 1:
+              raise SystemExit(f'TimetableView sheet error anchor: expected one match, found {view_text.count(error_anchor)}')
+          view_text = view_text.replace(error_anchor, error_insert, 1)
+          view_text = view_text.replace(
+              "                      isSavingTerm ||\n                      isClearingTermData ||\n                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)",
+              "                      isTermActionBusy ||\n                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)",
+          )
+          view_path.write_text(view_text)
+
+          replace_once(
+              'src/App.tsx',
+              "    activateTimetableTerm,\n    clearTimetableTermData,",
+              "    activateTimetableTerm,\n    deleteTimetableTerm,\n    clearTimetableTermData,",
+          )
+          replace_once(
+              'src/App.tsx',
+              "                onActivateTerm={activateTimetableTerm}\n                onClearTermData={clearTimetableTermData}",
+              "                onActivateTerm={activateTimetableTerm}\n                onDeleteTerm={deleteTimetableTerm}\n                onClearTermData={clearTimetableTermData}",
+          )
+
+          hook_path = Path('src/hooks/usePlannerDataState.ts')
+          hook_text = hook_path.read_text()
+          hook_start = hook_text.index('  async function deleteTimetableTerm(term: TimetableTerm) {')
+          hook_end = hook_text.index('\n  async function clearTimetableTermData(term: TimetableTerm) {', hook_start)
+          new_delete = r'''  async function deleteTimetableTerm(term: TimetableTerm) {
+            if (!userId) {
+              throw new Error('ログイン状態を確認できませんでした。');
+            }
+
+            const targetTerm = timetableTerms.find((item) => item.id === term.id) ?? term;
+            if (timetableTerms.length <= 1) {
+              showNotice(
+                '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+                'error',
+              );
+              throw new Error('最後の期間は削除できません。');
+            }
+
+            const targetTermId = targetTerm.id;
+            const targetTemplates = scheduleTemplates.filter(
+              (template) => (template.termId || 'default') === targetTermId,
+            );
+            const targetPeriods = timetablePeriods.filter(
+              (period) => period.termId === targetTermId,
+            );
+            const remainingTerms = timetableTerms.filter((item) => item.id !== targetTermId);
+            const fallbackTerm = targetTerm.isActive
+              ? sortTimetableTerms(remainingTerms)[0] ?? null
+              : null;
+            const nextFallbackTerm = fallbackTerm
+              ? {
+                  ...fallbackTerm,
+                  isActive: true,
+                  updatedAt: new Date().toISOString(),
+                }
+              : null;
+            const deletedTemplates: ScheduleTemplate[] = [];
+            const deletedPeriods: TimetablePeriod[] = [];
+            let fallbackActivated = false;
+
+            try {
+              await runSequentially(targetTemplates, async (template) => {
+                await plannerRepository.deleteScheduleTemplate(userId, template.id);
+                deletedTemplates.push(template);
+              });
+              await runSequentially(targetPeriods, async (period) => {
+                await plannerRepository.deleteTimetablePeriod(userId, period.id);
+                deletedPeriods.push(period);
+              });
+
+              if (nextFallbackTerm) {
+                await plannerRepository.upsertTimetableTerm(nextFallbackTerm);
+                fallbackActivated = true;
+              }
+
+              await plannerRepository.deleteTimetableTerm(userId, targetTermId);
+
+              setScheduleTemplates((current) =>
+                current.filter(
+                  (template) => (template.termId || 'default') !== targetTermId,
+                ),
+              );
+              setTimetablePeriods((current) =>
+                current.filter((period) => period.termId !== targetTermId),
+              );
+              setTimetableTerms((current) =>
+                sortTimetableTerms(
+                  current
+                    .filter((item) => item.id !== targetTermId)
+                    .map((item) =>
+                      nextFallbackTerm && item.id === nextFallbackTerm.id
+                        ? nextFallbackTerm
+                        : item,
+                    ),
+                ),
+              );
+              showNotice('期間を削除しました。', 'success');
+            } catch (error) {
+              try {
+                await runSequentially(deletedPeriods, async (period) => {
+                  await plannerRepository.upsertTimetablePeriod(period);
+                });
+                await runSequentially(deletedTemplates, async (template) => {
+                  await plannerRepository.upsertScheduleTemplate(template);
+                });
+                if (fallbackActivated && fallbackTerm) {
+                  await plannerRepository.upsertTimetableTerm(fallbackTerm);
+                }
+              } catch (rollbackError) {
+                console.error('[TimetableTermDelete] rollback failed', {
+                  termId: targetTermId,
+                  error: getErrorDiagnostics(rollbackError),
+                });
+              }
+
+              showNotice(
+                resolveErrorMessage(error, '期間を削除できませんでした。'),
+                'error',
+              );
+              throw error;
+            }
+          }
+          '''
+          hook_text = hook_text[:hook_start] + new_delete + hook_text[hook_end:]
+          hook_text = hook_text.replace(
+              "showNotice('この学期の授業をすべて削除しました。', 'success');",
+              "showNotice('この期間の授業をすべて削除しました。', 'success');",
+          ).replace(
+              "resolveErrorMessage(error, 'この学期の授業を削除できませんでした。')",
+              "resolveErrorMessage(error, 'この期間の授業を削除できませんでした。')",
+          )
+          hook_path.write_text(hook_text)
+
+          css_path = Path('src/styles/timetable-period-config.css')
+          css = css_path.read_text()
+          css_start = css.index('.timetable-period-list {\n')
+          css_end = css.index('\n.timetable-period-form-card {', css_start)
+          new_css = r'''.timetable-period-list {
+            display: grid;
+            gap: 7px;
+          }
+
+          .timetable-period-swipe-row {
+            position: relative;
+            min-width: 0;
+            overflow: hidden;
+            border-radius: 14px;
+            isolation: isolate;
+            touch-action: pan-y;
+          }
+
+          .timetable-period-swipe-actions {
+            position: absolute;
+            inset: 0 0 0 auto;
+            z-index: 0;
+            display: flex;
+            align-items: stretch;
+            width: 84px;
+            padding-left: 8px;
+          }
+
+          .timetable-period-delete-action {
+            flex: 1;
+            min-width: 0;
+            border: 0;
+            border-radius: 18px;
+            background: #ff334f;
+            color: #fff;
+            font: inherit;
+            font-size: 0.78rem;
+            font-weight: 900;
+            cursor: pointer;
+            opacity: 0;
+            transform: translate3d(18px, 0, 0) scale(0.96);
+            transition:
+              opacity 180ms ease,
+              transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              filter 160ms ease;
+            pointer-events: none;
+          }
+
+          .timetable-period-swipe-row.is-revealed .timetable-period-delete-action {
+            pointer-events: auto;
+          }
+
+          .timetable-period-delete-action:hover {
+            filter: brightness(0.97);
+          }
+
+          .timetable-period-delete-action:active {
+            filter: brightness(0.91);
+          }
+
+          .timetable-period-delete-action:focus-visible {
+            outline: 3px solid var(--focus-outline);
+            outline-offset: -3px;
+          }
+
+          .timetable-period-delete-action:disabled {
+            cursor: default;
+            filter: saturate(0.55);
+          }
+
+          .timetable-period-list-item {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            gap: 2px;
+            width: 100%;
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            color: var(--text);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            touch-action: pan-y;
+            will-change: transform;
+            transition:
+              transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 220ms ease,
+              border-color 180ms ease,
+              background-color 180ms ease;
+          }
+
+          .timetable-period-swipe-row.is-revealed:not(.is-dragging) .timetable-period-list-item {
+            box-shadow: 0 8px 22px rgba(31, 43, 43, 0.08);
+          }
+
+          .timetable-period-swipe-row.is-dragging .timetable-period-list-item,
+          .timetable-period-swipe-row.is-dragging .timetable-period-delete-action {
+            transition: none;
+          }
+
+          .timetable-period-list-item.active {
+            border-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+            background: color-mix(in srgb, var(--accent) 9%, var(--surface) 91%);
+          }
+
+          .timetable-period-list-item > strong {
+            overflow: hidden;
+            font-size: 0.85rem;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .timetable-period-list-item > span {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+          }
+
+          .timetable-period-sheet-error {
+            margin: 0;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .timetable-period-list-item,
+            .timetable-period-delete-action {
+              transition: none;
+            }
+          }
+          '''
+          css_path.write_text(css[:css_start] + new_css + css[css_end:])
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused swipe test
+        run: node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/components/TimetablePeriodSwipeItem.test.tsx --reporter=verbose
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build typecheck
+        run: npm run typecheck:build
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit verified implementation and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/timetable-period-swipe-delete-apply.yml
+          git add src/App.tsx src/components/TimetableView.tsx src/components/TimetablePeriodSwipeItem.tsx src/components/TimetablePeriodSwipeItem.test.tsx src/hooks/usePlannerDataState.ts src/styles/timetable-period-config.css
+          git diff --cached --check
+          git commit -m "feat: add swipe deletion for timetable periods"
+          git push origin HEAD:"$GITHUB_REF_NAME"
