@@ -3,6 +3,7 @@ import {
   createFirebaseProductTelemetryPort,
   type ProductTelemetryPort,
 } from '../features/productObservability/productTelemetry';
+import type { TodoStatus } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 
 function recordBestEffort(port: ProductTelemetryPort, action: ProductActivityAction): void {
@@ -21,8 +22,15 @@ export function createObservedPlannerRepository(
   repository: PlannerRepository,
   telemetry: ProductTelemetryPort = createFirebaseProductTelemetryPort(),
 ): PlannerRepository {
+  const todoStatusById = new Map<string, TodoStatus>();
+
   return {
     ...repository,
+    async getTodos(userId) {
+      const todos = await repository.getTodos(userId);
+      todos.forEach((todo) => todoStatusById.set(todo.id, todo.status));
+      return todos;
+    },
     async upsertPlan(plan) {
       const saved = await repository.upsertPlan(plan);
       recordBestEffort(
@@ -48,14 +56,22 @@ export function createObservedPlannerRepository(
       recordBestEffort(telemetry, 'actual_deleted');
     },
     async upsertTodo(todo) {
+      const previousStatus = todoStatusById.get(todo.id);
       const saved = await repository.upsertTodo(todo);
-      const action: ProductActivityAction = saved.status === 'done'
+      const action: ProductActivityAction = previousStatus !== undefined
+        && previousStatus !== 'done'
+        && saved.status === 'done'
         ? 'todo_completed'
         : isNewTimestampedRecord(saved)
           ? 'todo_created'
           : 'todo_updated';
+      todoStatusById.set(saved.id, saved.status);
       recordBestEffort(telemetry, action);
       return saved;
+    },
+    async deleteTodo(userId, todoId) {
+      await repository.deleteTodo(userId, todoId);
+      todoStatusById.delete(todoId);
     },
     async upsertStudyMaterial(item) {
       const saved = await repository.upsertStudyMaterial(item);
