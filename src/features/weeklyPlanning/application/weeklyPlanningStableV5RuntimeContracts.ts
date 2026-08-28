@@ -14,6 +14,7 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
