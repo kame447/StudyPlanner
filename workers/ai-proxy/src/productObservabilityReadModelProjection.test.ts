@@ -149,6 +149,8 @@ describe('product observability read model projection', () => {
     expect(second.ai.estimatedCostUnknownCount).toBe(1);
     expect(second.aiByModel[0]?.key).toBe('gpt-5.6-luna');
     expect(second.aiByPurpose[0]?.aggregate.requestCount).toBe(2);
+    expect(second.aiByOperationKind?.[0]?.key).toBe('chat_completion');
+    expect(second.aiByOperationKind?.[0]?.aggregate.requestCount).toBe(2);
   });
 
   it('derives percentiles from mergeable latency buckets instead of averaging daily p95', () => {
