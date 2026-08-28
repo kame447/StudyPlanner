@@ -90,7 +90,9 @@ describe('Stable V5 dense-turn completeness orchestration', () => {
     expect(auditFormat?.json_schema?.name).toBe('weekly_planning_dense_turn_completeness_audit_v5');
     expect(fake.calls[2]?.maxCompletionTokens).toBe(6400);
     const retryMessages = fake.calls[2]?.messages as Array<{ role: string; content: string }>;
-    expect(retryMessages.at(-1)?.content).toContain('one complete semantic document, not a patch');
+    expect(retryMessages[retryMessages.length - 1]?.content).toContain(
+      'one complete semantic document, not a patch',
+    );
   });
 
   it('keeps the initial dense document when the audit says coverage is complete', async () => {
