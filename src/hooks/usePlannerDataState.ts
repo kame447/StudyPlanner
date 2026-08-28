@@ -2148,7 +2148,7 @@ export function usePlannerDataState({
       showNotice('時限を削除しました。');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '時限設定を削除できませんでした。'),
+        resolveErrorMessage(error, '時限を削除できませんでした。'),
         'error',
       );
       throw error;
