@@ -173,11 +173,7 @@ describe('ProductObservabilityReadModelService', () => {
     });
 
     expect(overview.daily.map((entry) => entry.activeActorCount)).toEqual([2, 2]);
-    expect(overview.activeUsers).toMatchObject({
-      today: 2,
-      last7Days: 3,
-      last30Days: 4,
-    });
+    expect(overview.activeUsers).toMatchObject({ today: 2, last7Days: 3, last30Days: 4 });
     expect(overview.aiLatencyP50Ms).toBe(100);
     expect(overview.aiLatencyP95Ms).toBe(10_000);
     expect(overview.daily[0]).not.toHaveProperty('id');
@@ -205,11 +201,8 @@ describe('ProductObservabilityReadModelService', () => {
       'production:2026-08-29',
       activeUsers('2026-08-29') as unknown as StoredDocument,
     );
-    firestore.setDocument(
-      'observability_rollup_state',
-      'main',
-      checkpoint([{ environment: 'production', localDate: '2026-08-27' }]),
-    );
+    const dirty = [{ environment: 'production', localDate: '2026-08-27', revision: 2 }] as const;
+    firestore.setDocument('observability_rollup_state', 'main', checkpoint([...dirty]));
 
     const overview = await service(firestore).getOverview({
       environment: 'production',
@@ -218,9 +211,7 @@ describe('ProductObservabilityReadModelService', () => {
     });
 
     expect(overview.activeUsers).toBeNull();
-    expect(overview.rollupCheckpoint.activeUserDirtySources).toEqual([
-      { environment: 'production', localDate: '2026-08-27' },
-    ]);
+    expect(overview.rollupCheckpoint.activeUserDirtySources).toEqual(dirty);
     expect(firestore.queryCallCount).toBe(0);
   });
 
@@ -234,7 +225,7 @@ describe('ProductObservabilityReadModelService', () => {
     firestore.setDocument(
       'observability_rollup_state',
       'main',
-      checkpoint([{ environment: 'preview', localDate: '2026-08-27' }]),
+      checkpoint([{ environment: 'preview', localDate: '2026-08-27', revision: 1 }]),
     );
 
     const overview = await service(firestore).getOverview({
@@ -256,7 +247,7 @@ describe('ProductObservabilityReadModelService', () => {
     firestore.setDocument(
       'observability_rollup_state',
       'main',
-      checkpoint([{ environment: 'production', localDate: '2026-08-27' }]),
+      checkpoint([{ environment: 'production', localDate: '2026-08-27', revision: 1 }]),
     );
 
     const overview = await service(firestore).getOverview({
@@ -268,16 +259,50 @@ describe('ProductObservabilityReadModelService', () => {
     expect(overview.activeUsers?.asOfDate).toBe('2026-07-01');
   });
 
+  it('fails closed when dirty checkpoint state is malformed', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument(
+      'observability_active_user_windows',
+      'production:2026-08-29',
+      activeUsers('2026-08-29') as unknown as StoredDocument,
+    );
+    firestore.setDocument('observability_rollup_state', 'main', {
+      ...checkpoint(),
+      activeUserDirtySources: [{
+        environment: 'production',
+        localDate: '2026-08-27',
+        revision: 0,
+      }],
+    });
+
+    await expect(service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-29',
+      toDate: '2026-08-29',
+    })).rejects.toThrow('observability_checkpoint_invalid');
+  });
+
+  it('rejects incompatible checkpoint read-model versions', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument('observability_rollup_state', 'main', {
+      ...checkpoint(),
+      schemaVersion: 999,
+    });
+
+    await expect(service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-29',
+      toDate: '2026-08-29',
+    })).rejects.toThrow('observability_read_model_version_mismatch');
+  });
+
   it('returns environment-isolated opaque user summaries with a bounded cursor', async () => {
     const firestore = new MemoryReadFirestore();
     firestore.addUserSummary('production', 'actor-aaaaaaaa', userSummary('actor-aaaaaaaa'));
     firestore.addUserSummary('production', 'actor-bbbbbbbb', userSummary('actor-bbbbbbbb'));
     firestore.addUserSummary('preview', 'actor-preview1', userSummary('actor-preview1'));
 
-    const first = await service(firestore).listUserSummaries({
-      environment: 'production',
-      limit: 1,
-    });
+    const first = await service(firestore).listUserSummaries({ environment: 'production', limit: 1 });
     expect(first.users.map((user) => user.actorSubjectId)).toEqual(['actor-aaaaaaaa']);
     expect(first.nextCursor).not.toBeNull();
     expect(first.users[0]).not.toHaveProperty('id');
