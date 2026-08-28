@@ -8,7 +8,7 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { WeeklyPlanningTraceDebugPage } from '../features/weeklyPlanning/trace/WeeklyPlanningTraceDebugPage';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { getFirebaseAuth } from '../lib/firebaseClient';
@@ -17,7 +17,7 @@ import { AdminRoutes } from './AdminViews';
 
 const TRACE_PATH = '/admin/weekly-planning-traces';
 
-function FutureNavItem({ icon, label }: { icon: React.ReactNode; label: string }) {
+function FutureNavItem({ icon, label }: { icon: ReactNode; label: string }) {
   return (
     <button
       className="admin-console-nav-item is-disabled"
