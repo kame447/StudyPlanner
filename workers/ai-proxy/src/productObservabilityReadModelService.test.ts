@@ -103,7 +103,10 @@ function daily(localDate: string, latencyMs: number): ObservabilityDailyRollup {
   });
   return {
     ...rollup,
+    processedEventCount: 3,
     activeActorCount: 2,
+    firstOccurredAt: `${localDate}T00:00:00.000Z`,
+    lastOccurredAt: `${localDate}T00:00:02.000Z`,
     ai: {
       ...rollup.ai,
       requestCount: 1,
@@ -296,6 +299,45 @@ describe('ProductObservabilityReadModelService', () => {
     })).rejects.toThrow('observability_read_model_version_mismatch');
   });
 
+  it('rejects a daily rollup stored under the wrong environment or date', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument('observability_daily_rollups', 'production:2026-08-28', {
+      ...daily('2026-08-28', 100),
+      environment: 'preview',
+    } as unknown as StoredDocument);
+
+    await expect(service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-28',
+      toDate: '2026-08-28',
+    })).rejects.toThrow('observability_daily_rollup_invalid');
+  });
+
+  it('rejects a user summary whose event-family counts do not match its total', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.addUserSummary('production', 'actor-aaaaaaaa', {
+      ...userSummary('actor-aaaaaaaa'),
+      eventCount: 2,
+    });
+
+    await expect(service(firestore).listUserSummaries({
+      environment: 'production',
+    })).rejects.toThrow('observability_user_summary_invalid');
+  });
+
+  it('rejects a forged user-summary cursor before querying storage', async () => {
+    const firestore = new MemoryReadFirestore();
+
+    await expect(service(firestore).listUserSummaries({
+      environment: 'production',
+      cursor: {
+        orderedValue: 'actor-aaaaaaaa',
+        documentName: 'projects/test/databases/(default)/documents/other/actor-aaaaaaaa',
+      },
+    })).rejects.toThrow('observability_cursor_invalid');
+    expect(firestore.queryCallCount).toBe(0);
+  });
+
   it('returns environment-isolated opaque user summaries with a bounded cursor', async () => {
     const firestore = new MemoryReadFirestore();
     firestore.addUserSummary('production', 'actor-aaaaaaaa', userSummary('actor-aaaaaaaa'));
@@ -334,7 +376,7 @@ describe('ProductObservabilityReadModelService', () => {
       environment: 'production',
       fromDate: '2026-08-28',
       toDate: '2026-08-28',
-    })).rejects.toThrow('observability_latency_histogram_version_mismatch');
+    })).rejects.toThrow('observability_daily_rollup_invalid');
   });
 
   it('rejects overly broad overview ranges before storage work', async () => {
