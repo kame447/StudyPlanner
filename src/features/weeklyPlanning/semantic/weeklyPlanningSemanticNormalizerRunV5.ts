@@ -13,7 +13,7 @@ import {
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
 export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
-export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 4800;
+export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 6400;
 export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
