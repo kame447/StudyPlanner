@@ -57,10 +57,12 @@ export async function getAdminObservabilityOverview(params: {
 }
 
 export async function getAdminObservabilityUsers(params: {
+  environment?: ObservabilityEnvironment;
   cursor?: string | null;
   limit?: number;
 } = {}): Promise<AdminObservabilityUserPage> {
   const query = new URLSearchParams();
+  if (params.environment) query.set('environment', params.environment);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
   const payload = await adminGet<{
