@@ -65,6 +65,12 @@ jobs:
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
 
+      - name: Run complete unit and integration suite
+        run: npm run test:run
+
+      - name: Build production bundle
+        run: npm run build
+
       - name: Restore previous checkpoint artifact
         if: ${{ env.PREVIOUS_RUN_ID != '' }}
         env:
