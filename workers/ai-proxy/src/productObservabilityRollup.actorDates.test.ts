@@ -84,27 +84,48 @@ function event(overrides: Partial<StoredDocument> = {}): StoredDocument {
   };
 }
 
+function engine(firestore: MemoryRollupFirestore): ProductObservabilityRollupEngine {
+  return new ProductObservabilityRollupEngine(
+    {
+      FIREBASE_PROJECT_ID: 'test',
+      FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
+      FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
+    },
+    firestore as never,
+    () => new Date('2026-08-28T12:00:00.000Z'),
+  );
+}
+
 describe('ProductObservabilityRollupEngine actor-day change projection', () => {
-  it('returns a reporting date only when a new actor-day was committed', async () => {
+  it('persists a reporting date only when a new actor-day was committed', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('event-1', event());
     firestore.addEvent('event-2', event({
       eventId: 'activity-22222222',
       observedAt: '2026-08-28T11:01:00.000Z',
     }));
-    const engine = new ProductObservabilityRollupEngine(
-      {
-        FIREBASE_PROJECT_ID: 'test',
-        FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
-        FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
-      },
-      firestore as never,
-      () => new Date('2026-08-28T12:00:00.000Z'),
-    );
 
-    const result = await engine.runBatch(50);
+    const result = await engine(firestore).runBatch(50);
 
     expect(result.processed).toBe(2);
     expect(result.changedActorDates).toEqual(['2026-08-27']);
+    expect(result.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+  });
+
+  it('keeps dirty dates across an empty rollup until snapshot maintenance clears them', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('event-1', event());
+    const rollup = engine(firestore);
+
+    const first = await rollup.runBatch(50);
+    const second = await rollup.runBatch(50);
+
+    expect(first.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+    expect(second.processed).toBe(0);
+    expect(second.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+
+    await rollup.clearActiveUserDirtyDates(['2026-08-27']);
+    const third = await rollup.runBatch(50);
+    expect(third.checkpoint.activeUserDirtyDates).toEqual([]);
   });
 });
