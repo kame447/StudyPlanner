@@ -1766,6 +1766,10 @@ export function usePlannerDataState({
       color: draft.color ?? subject.color,
       coverImageUrl: draft.coverImageUrl || undefined,
       coverImageDataUrl: draft.coverImageDataUrl || undefined,
+      catalogEntryId: draft.catalogEntryId?.trim() || currentMaterial?.catalogEntryId,
+      catalogTitle: draft.catalogTitle?.trim() || currentMaterial?.catalogTitle,
+      catalogIsbn10: draft.catalogIsbn10?.trim() || currentMaterial?.catalogIsbn10,
+      catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
       paceEnabled,
@@ -2144,7 +2148,7 @@ export function usePlannerDataState({
       showNotice('時限を削除しました。');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '時限を削除できませんでした。'),
+        resolveErrorMessage(error, '時限設定を削除できませんでした。'),
         'error',
       );
       throw error;
