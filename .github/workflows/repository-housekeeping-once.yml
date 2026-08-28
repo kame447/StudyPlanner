@@ -1,0 +1,36 @@
+name: One-shot repository housekeeping
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/repository-housekeeping-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Archive completed audit and remove merged branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout -B repository-housekeeping origin/main
+
+          if [ -f docs/domains/product-observability/work/20260828-phase3-seven-view-audit.md ]; then
+            mkdir -p docs/archive/work/closed
+            git mv docs/domains/product-observability/work/20260828-phase3-seven-view-audit.md docs/archive/work/closed/20260828-product-observability-phase3-seven-view-audit.md
+            git commit -m "docs: archive completed product observability phase 3 audit"
+            git push origin HEAD:main
+          fi
+
+          git push origin --delete fix/product-observability-phase3-audit
