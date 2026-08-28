@@ -24,6 +24,7 @@ import type {
   ScheduleTemplate,
   StudyMaterial,
   StudySubject,
+  TimetableTerm,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -36,6 +37,7 @@ interface DayViewProps {
   studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId: string;
+  timetableTerm?: TimetableTerm | null;
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeDay: (date: string) => void;
@@ -102,6 +104,7 @@ export function DayView({
   studyMaterials,
   scheduleTemplates,
   timetableTermId,
+  timetableTerm,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onChangeDay,
@@ -182,8 +185,9 @@ export function DayView({
         date: selectedDate,
         weekday: selectedWeekday,
         termId: timetableTermId,
+        term: timetableTerm,
       }),
-    [scheduleTemplates, selectedDate, selectedWeekday, timetableTermId],
+    [scheduleTemplates, selectedDate, selectedWeekday, timetableTerm, timetableTermId],
   );
   const importedTimetableSourceIds = useMemo(
     () =>
