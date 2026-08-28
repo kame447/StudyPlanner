@@ -174,6 +174,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     templates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
     timetableTerm: input.timetableTerm,
+    timetableTerms: input.timetableTerms,
     horizon,
     timeZone: requestContext.timeZone,
   });
