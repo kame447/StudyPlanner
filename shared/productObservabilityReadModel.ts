@@ -60,6 +60,20 @@ export interface ObservabilityPlanningAggregate {
   unscheduledCountUnknownCount: number;
 }
 
+export interface ObservabilityProductActivityAggregate {
+  eventCount: number;
+  actionCounts: Partial<Record<ProductActivityAction, number>>;
+}
+
+export interface ObservabilityPeriodAggregate {
+  processedEventCount: number;
+  firstOccurredAt: string | null;
+  lastOccurredAt: string | null;
+  productActivity: ObservabilityProductActivityAggregate;
+  ai: ObservabilityAiAggregate;
+  planning: ObservabilityPlanningAggregate;
+}
+
 export interface ObservabilityDailyRollup {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
   environment: ObservabilityEnvironment;
@@ -69,10 +83,7 @@ export interface ObservabilityDailyRollup {
   activeActorCount: number;
   firstOccurredAt: string | null;
   lastOccurredAt: string | null;
-  productActivity: {
-    eventCount: number;
-    actionCounts: Partial<Record<ProductActivityAction, number>>;
-  };
+  productActivity: ObservabilityProductActivityAggregate;
   ai: ObservabilityAiAggregate;
   aiByModel: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   aiByPurpose: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
@@ -169,6 +180,7 @@ export interface ObservabilityOverviewReadModel {
   toDate: string;
   reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
   registeredUsers: ObservabilityRegisteredUserSummary;
+  period: ObservabilityPeriodAggregate;
   daily: ObservabilityDailyRollup[];
   activeUsers: ObservabilityActiveUserWindows | null;
   aiLatencyP50Ms: number | null;

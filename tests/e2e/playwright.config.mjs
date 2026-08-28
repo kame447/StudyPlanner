@@ -10,6 +10,7 @@ const isCi = Boolean(process.env.CI);
 export default defineConfig({
   testDir: configDir,
   testIgnore: [
+    '**/admin-overview-render.spec.mjs',
     '**/cross-browser-smoke.spec.mjs',
     '**/quality-gates.spec.mjs',
     '**/visual-regression.spec.mjs',

@@ -1,6 +1,14 @@
 import { onAuthStateChanged } from 'firebase/auth';
-import { ArrowLeft, ListTree, Users } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  Activity,
+  ArrowLeft,
+  Bot,
+  CalendarClock,
+  ListTree,
+  Settings,
+  Users,
+} from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { WeeklyPlanningTraceDebugPage } from '../features/weeklyPlanning/trace/WeeklyPlanningTraceDebugPage';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { getFirebaseAuth } from '../lib/firebaseClient';
@@ -8,6 +16,21 @@ import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
 
 const TRACE_PATH = '/admin/weekly-planning-traces';
+
+function FutureNavItem({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <button
+      className="admin-console-nav-item is-disabled"
+      type="button"
+      disabled
+      title={`${label}は次フェーズで実装します`}
+    >
+      {icon}
+      <span>{label}</span>
+      <small>準備中</small>
+    </button>
+  );
+}
 
 export function AdminApp() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -55,7 +78,7 @@ export function AdminApp() {
 
   if (!authResolved) {
     return (
-      <div className="app-shell admin-app-shell">
+      <div className="app-shell admin-app-shell admin-app-shell-state">
         <main className="admin-shell">
           <section className="admin-state-card panel" aria-live="polite">
             <strong>認証状態を確認しています</strong>
@@ -67,7 +90,7 @@ export function AdminApp() {
 
   if (!userId) {
     return (
-      <div className="app-shell admin-app-shell">
+      <div className="app-shell admin-app-shell admin-app-shell-state">
         <main className="admin-shell">
           <section className="admin-state-card panel" role="alert">
             <strong>ログインが必要です</strong>
@@ -79,42 +102,70 @@ export function AdminApp() {
     );
   }
 
+  const isOverviewPage = currentPath === '/admin';
+  const isUsersPage = currentPath === '/admin/users' || currentPath.startsWith('/admin/users/');
   const isTracePage = currentPath === TRACE_PATH;
-  const showGlobalReturn = currentPath !== '/admin' && currentPath !== '/admin/users';
 
   return (
     <div className="app-shell admin-app-shell">
       <AdminGuard status={status}>
-        <nav className="panel admin-global-nav" aria-label="管理者画面ナビゲーション">
-          <button
-            className={!isTracePage ? 'segment active' : 'segment'}
-            onClick={() => navigate('/admin/users')}
-            type="button"
-          >
-            <Users aria-hidden="true" size={17} strokeWidth={2} />
-            ユーザー
-          </button>
-          <button
-            className={isTracePage ? 'segment active' : 'segment'}
-            onClick={() => navigate(TRACE_PATH)}
-            type="button"
-          >
-            <ListTree aria-hidden="true" size={17} strokeWidth={2} />
-            週間計画ログ
-          </button>
-          {showGlobalReturn ? (
-            <a className="ghost-button admin-header-link" href="/">
-              <ArrowLeft aria-hidden="true" size={17} strokeWidth={2} />
-              通常画面へ戻る
-            </a>
-          ) : null}
-        </nav>
+        <div className="admin-console-layout">
+          <aside className="admin-console-sidebar">
+            <div className="admin-console-brand">
+              <span className="admin-console-brand-mark" aria-hidden="true">S</span>
+              <div>
+                <strong>StudyPlanner</strong>
+                <small>Admin Console</small>
+              </div>
+            </div>
 
-        {isTracePage ? (
-          <WeeklyPlanningTraceDebugPage onBack={() => navigate('/admin/users')} />
-        ) : (
-          <AdminRoutes path={currentPath} navigate={navigate} />
-        )}
+            <nav className="admin-console-nav" aria-label="管理者画面ナビゲーション">
+              <button
+                className={`admin-console-nav-item${isOverviewPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin')}
+                type="button"
+              >
+                <Activity aria-hidden="true" size={19} />
+                <span>Overview</span>
+              </button>
+              <button
+                className={`admin-console-nav-item${isUsersPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/users')}
+                type="button"
+              >
+                <Users aria-hidden="true" size={19} />
+                <span>Users</span>
+              </button>
+              <FutureNavItem icon={<Bot aria-hidden="true" size={19} />} label="AI・API" />
+              <FutureNavItem icon={<CalendarClock aria-hidden="true" size={19} />} label="Planning" />
+              <button
+                className={`admin-console-nav-item${isTracePage ? ' active' : ''}`}
+                onClick={() => navigate(TRACE_PATH)}
+                type="button"
+              >
+                <ListTree aria-hidden="true" size={19} />
+                <span>Logs</span>
+              </button>
+              <FutureNavItem icon={<Settings aria-hidden="true" size={19} />} label="System" />
+            </nav>
+
+            <div className="admin-console-sidebar-footer">
+              <a href="/" className="admin-console-return-link">
+                <ArrowLeft aria-hidden="true" size={18} />
+                通常画面へ戻る
+              </a>
+              <span>read-only console</span>
+            </div>
+          </aside>
+
+          <div className="admin-console-main">
+            {isTracePage ? (
+              <WeeklyPlanningTraceDebugPage onBack={() => navigate('/admin')} />
+            ) : (
+              <AdminRoutes path={currentPath} navigate={navigate} />
+            )}
+          </div>
+        </div>
       </AdminGuard>
     </div>
   );
