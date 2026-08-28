@@ -1,5 +1,5 @@
 import {
-  PROFILE_REGISTERED_AT_ISO_FIELD,
+  PROFILE_REGISTERED_AT_FIELD,
   normalizeProfileRegistrationTimestamp,
 } from '../../../shared/profileRegistrationTime';
 import {
@@ -157,7 +157,7 @@ export class ProductObservabilityProfileRegistrationBackfillService {
     let malformedProfiles = current.malformedProfiles;
     for (const row of rows) {
       const existingRegisteredAt = normalizeProfileRegistrationTimestamp(
-        row[PROFILE_REGISTERED_AT_ISO_FIELD],
+        row[PROFILE_REGISTERED_AT_FIELD],
       );
       if (existingRegisteredAt) continue;
 
@@ -169,8 +169,8 @@ export class ProductObservabilityProfileRegistrationBackfillService {
       await this.firestore.setDocument(
         PROFILE_COLLECTION,
         row.id,
-        { [PROFILE_REGISTERED_AT_ISO_FIELD]: normalized },
-        [PROFILE_REGISTERED_AT_ISO_FIELD],
+        { [PROFILE_REGISTERED_AT_FIELD]: normalized },
+        [PROFILE_REGISTERED_AT_FIELD],
       );
       normalizedProfiles += 1;
     }
