@@ -90,7 +90,7 @@ export function BookshelfMaterialSearch({
         <div>
           <strong>教材を検索</strong>
           <p className="detail-note">
-            有名教材はStudyPlanner内の初期カタログから即検索し、未登録教材はISBN・教材名から外部書誌も検索します。
+            1000件以上の初期検索インデックスから探し、版やISBNが必要な候補は選択後に外部書誌で確認します。
           </p>
         </div>
       </div>
@@ -107,7 +107,7 @@ export function BookshelfMaterialSearch({
                 void handleSearch();
               }
             }}
-            placeholder="例: 金フレ / 青チャート / 9784023315686"
+            placeholder="例: 金フレ / 青チャート / 東京大学 赤本"
             autoComplete="off"
           />
         </label>
@@ -128,6 +128,11 @@ export function BookshelfMaterialSearch({
         <div className="material-metadata-results" aria-label="教材検索結果">
           {results.map((candidate) => {
             const resolving = resolvingId === candidate.catalogEntryId;
+            const resultHint = resolving
+              ? '詳細を取得中...'
+              : candidate.resolutionRequired
+                ? '検索候補・選択後に実在する版とISBNを確認'
+                : '選択して詳しい情報を確認';
             return (
               <button
                 key={candidate.catalogEntryId}
@@ -146,7 +151,7 @@ export function BookshelfMaterialSearch({
                 <span className="material-metadata-result-copy">
                   <strong>{candidate.title}</strong>
                   {candidateMeta(candidate) ? <span>{candidateMeta(candidate)}</span> : null}
-                  <small>{resolving ? '詳細を取得中...' : '選択して詳しい情報を確認'}</small>
+                  <small>{resultHint}</small>
                 </span>
               </button>
             );
