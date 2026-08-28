@@ -87,7 +87,7 @@ describe('Stable V5 semantic repair prompt', () => {
     const system = messages[0]?.content ?? '';
 
     expect(system).toContain(
-      'Keep relative dates symbolic; deterministic calendar code resolves them.',
+      'Keep relative dates symbolic for deterministic calendar resolution.',
     );
     expect(payload.requiredChanges).toHaveLength(1);
     expect(payload.requiredChanges?.[0]).toContain(

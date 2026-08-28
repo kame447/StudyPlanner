@@ -43,13 +43,19 @@ interface ChatCompletionRequest {
 interface ChatCompletionChoice {
   message?: {
     content?: string | null;
+    refusal?: string | null;
   };
+  finish_reason?: string | null;
 }
 
 interface ChatCompletionUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+    text_tokens?: number;
+  };
 }
 
 interface ChatCompletionResponse {
@@ -107,6 +113,24 @@ function boundedProviderErrorField(
   return normalized.length <= maxChars
     ? normalized
     : `${normalized.slice(0, maxChars)}…`;
+}
+
+function diagnosticInteger(value: unknown): string {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? String(value)
+    : 'unknown';
+}
+
+function emptyDirectResponseMessage(data: ChatCompletionResponse): string {
+  const choice = data.choices?.[0];
+  const refusalPresent = Boolean(choice?.message?.refusal?.trim());
+  return [
+    'AI response was empty.',
+    `finish_reason=${boundedProviderErrorField(choice?.finish_reason, PROVIDER_ERROR_LABEL_MAX_CHARS) ?? 'unknown'}`,
+    `refusal=${refusalPresent ? 'present' : 'absent'}`,
+    `completion_tokens=${diagnosticInteger(data.usage?.completion_tokens)}`,
+    `reasoning_tokens=${diagnosticInteger(data.usage?.completion_tokens_details?.reasoning_tokens)}`,
+  ].join(' ');
 }
 
 async function directProviderErrorMessage(response: Response): Promise<string> {
@@ -414,7 +438,7 @@ export function createOpenAiCompatibleClient(
             const content = data.choices?.[0]?.message?.content?.trim();
 
             if (!content) {
-              throw new Error('AI response was empty.');
+              throw new Error(emptyDirectResponseMessage(data));
             }
 
             return { content, usage: data.usage ?? null };

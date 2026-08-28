@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Brain,
   CalendarDays,
   Palette,
+  Pencil,
+  Plus,
   RotateCcw,
   Sparkles,
   SunMoon,
+  Trash2,
 } from 'lucide-react';
+import {
+  useOptionalUserPlanningContextV1,
+  userPlanningContextDateTextV1,
+} from '../features/userPlanningContext/UserPlanningContextContext';
+import type {
+  UserPlanningContextRecordV1,
+  UserPlanningContextSemanticKindV1,
+} from '../features/userPlanningContext/userPlanningContextTypes';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import {
   THEME_PALETTE_OPTIONS,
@@ -14,7 +26,18 @@ import {
 } from '../lib/themePalette';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
 
-type AppSettingsTab = 'settings' | 'support';
+type AppSettingsTab = 'settings' | 'memory' | 'support';
+
+const MEMORY_KIND_OPTIONS: Array<{
+  kind: UserPlanningContextSemanticKindV1;
+  label: string;
+  description: string;
+}> = [
+  { kind: 'study_goal', label: '学習・進学目標', description: '第一志望、資格取得など' },
+  { kind: 'goal_event', label: '試験・期限', description: '受験日、試験時期など' },
+  { kind: 'concern', label: '苦手・不安', description: '継続的に考慮したい苦手分野など' },
+  { kind: 'learning_preference', label: '学習の好み', description: '長期的に使う学習方法の好み' },
+];
 
 interface AppSettingsDialogProps {
   open: boolean;
@@ -23,6 +46,18 @@ interface AppSettingsDialogProps {
   onChangeTheme: (nextThemeMode: ThemeMode) => void;
   onChangeThemePalette: (nextThemePalette: ThemePalette) => void;
   onClose: () => void;
+}
+
+function memoryKindLabel(kind: UserPlanningContextSemanticKindV1): string {
+  return MEMORY_KIND_OPTIONS.find((option) => option.kind === kind)?.label ?? kind;
+}
+
+function memoryValue(record: UserPlanningContextRecordV1): string {
+  if (record.kind === 'goal_event') {
+    const date = userPlanningContextDateTextV1(record);
+    return [record.value, date].filter(Boolean).join(' · ') || '時期未設定';
+  }
+  return record.value || '内容未設定';
 }
 
 export function AppSettingsDialog({
@@ -35,6 +70,14 @@ export function AppSettingsDialog({
 }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [editorKind, setEditorKind] = useState<UserPlanningContextSemanticKindV1>('study_goal');
+  const [editorLabel, setEditorLabel] = useState('');
+  const [editorValue, setEditorValue] = useState('');
+  const [editorDate, setEditorDate] = useState('');
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const memory = useOptionalUserPlanningContextV1();
   const {
     weekStartsOn,
     setWeekStartsOn,
@@ -44,10 +87,41 @@ export function AppSettingsDialog({
     THEME_PALETTE_OPTIONS.find((palette) => palette.id === themePalette) ??
     THEME_PALETTE_OPTIONS[0];
 
+  const memoryRecords = useMemo(
+    () => memory?.records.slice().sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)) ?? [],
+    [memory?.records],
+  );
+
+  const resetEditor = () => {
+    setEditorOpen(false);
+    setEditingRecordId(null);
+    setEditorKind('study_goal');
+    setEditorLabel('');
+    setEditorValue('');
+    setEditorDate('');
+    setEditorError(null);
+  };
+
+  const openNewMemory = () => {
+    resetEditor();
+    setEditorOpen(true);
+  };
+
+  const openExistingMemory = (record: UserPlanningContextRecordV1) => {
+    setEditorOpen(true);
+    setEditingRecordId(record.id);
+    setEditorKind(record.kind);
+    setEditorLabel(record.label);
+    setEditorValue(record.value ?? '');
+    setEditorDate(userPlanningContextDateTextV1(record));
+    setEditorError(null);
+  };
+
   useEffect(() => {
     if (!open) return;
     setActiveTab('settings');
     setIsThemePaletteSectionOpen(false);
+    resetEditor();
   }, [open]);
 
   if (!open) return null;
@@ -62,7 +136,7 @@ export function AppSettingsDialog({
           <div className="section-header">
             <div>
               <h2>アプリ設定</h2>
-              <p>表示の調整やサポート情報を確認できます。</p>
+              <p>表示、長期記憶、サポート情報を管理できます。</p>
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
@@ -78,6 +152,15 @@ export function AppSettingsDialog({
               type="button"
             >
               設定
+            </button>
+            <button
+              className={activeTab === 'memory' ? 'segment active' : 'segment'}
+              onClick={() => setActiveTab('memory')}
+              role="tab"
+              aria-selected={activeTab === 'memory'}
+              type="button"
+            >
+              長期記憶
             </button>
             <button
               className={activeTab === 'support' ? 'segment active' : 'segment'}
@@ -234,6 +317,168 @@ export function AppSettingsDialog({
                   通知やカレンダー連携など、今後の設定項目をここに追加できます。
                 </p>
               </section>
+            </div>
+          ) : activeTab === 'memory' ? (
+            <div className="section-stack memory-settings-panel" role="tabpanel">
+              <section className="assistant-settings-card memory-settings-intro">
+                <div>
+                  <span className="settings-field-label">
+                    <Brain aria-hidden="true" size={20} strokeWidth={1.9} />
+                    AIが今後も覚えておく情報
+                  </span>
+                  <p className="detail-note">
+                    第一志望、受験時期、継続的な苦手など、別の計画でも使う情報です。ここで直した内容はAIの推測より優先されます。
+                  </p>
+                </div>
+                <div className="memory-sync-row">
+                  <span className={memory?.shared ? 'confidence-badge' : 'confidence-badge muted'}>
+                    {memory?.shared ? '端末間で共有' : '共有未接続'}
+                  </span>
+                  {memory?.syncing ? <span className="detail-note">同期中…</span> : null}
+                </div>
+                {memory?.error ? <p className="settings-inline-error">{memory.error}</p> : null}
+              </section>
+
+              {memory ? (
+                <>
+                  <div className="memory-settings-toolbar">
+                    <strong>保存されている長期記憶</strong>
+                    <button className="ghost-button" onClick={openNewMemory} type="button" disabled={memory.syncing}>
+                      <Plus aria-hidden="true" size={18} strokeWidth={1.9} />
+                      追加
+                    </button>
+                  </div>
+
+                  {editorOpen ? (
+                    <section className="assistant-settings-card memory-editor-card">
+                      <label className="memory-editor-field">
+                        <span>種類</span>
+                        <select
+                          value={editorKind}
+                          onChange={(event) => setEditorKind(event.target.value as UserPlanningContextSemanticKindV1)}
+                          disabled={memory.syncing}
+                        >
+                          {MEMORY_KIND_OPTIONS.map((option) => (
+                            <option key={option.kind} value={option.kind}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="memory-editor-field">
+                        <span>項目名</span>
+                        <input
+                          value={editorLabel}
+                          onChange={(event) => setEditorLabel(event.target.value)}
+                          placeholder={editorKind === 'study_goal' ? '例：第一志望' : '例：数学'}
+                          disabled={memory.syncing}
+                        />
+                      </label>
+                      <label className="memory-editor-field">
+                        <span>内容</span>
+                        <input
+                          value={editorValue}
+                          onChange={(event) => setEditorValue(event.target.value)}
+                          placeholder={editorKind === 'study_goal' ? '例：静岡大学 情報学部' : '覚えておく内容'}
+                          disabled={memory.syncing}
+                        />
+                      </label>
+                      {editorKind === 'goal_event' ? (
+                        <label className="memory-editor-field">
+                          <span>時期</span>
+                          <input
+                            value={editorDate}
+                            onChange={(event) => setEditorDate(event.target.value)}
+                            placeholder="例：2027年1月 / 2027-01-16"
+                            disabled={memory.syncing}
+                          />
+                        </label>
+                      ) : null}
+                      {editorError ? <p className="settings-inline-error">{editorError}</p> : null}
+                      <div className="memory-editor-actions">
+                        <button className="ghost-button" onClick={resetEditor} type="button" disabled={memory.syncing}>
+                          キャンセル
+                        </button>
+                        <button
+                          className="primary-button"
+                          type="button"
+                          disabled={memory.syncing || !editorLabel.trim()}
+                          onClick={() => {
+                            setEditorError(null);
+                            void memory.saveRecord({
+                              existingRecordId: editingRecordId,
+                              kind: editorKind,
+                              label: editorLabel,
+                              value: editorValue,
+                              dateText: editorDate,
+                            }).then(resetEditor).catch((saveError: unknown) => {
+                              setEditorError(saveError instanceof Error ? saveError.message : '保存できませんでした。');
+                            });
+                          }}
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {memoryRecords.length === 0 ? (
+                    <section className="assistant-settings-card memory-empty-state">
+                      <Brain aria-hidden="true" size={24} strokeWidth={1.7} />
+                      <strong>まだ長期記憶はありません</strong>
+                      <p className="detail-note">AI計画の会話から重要な情報を覚えるか、ここから追加できます。</p>
+                    </section>
+                  ) : (
+                    <div className="memory-record-list">
+                      {memoryRecords.map((record) => (
+                        <article className="assistant-settings-card memory-record-card" key={record.id}>
+                          <div className="memory-record-main">
+                            <div className="memory-record-meta">
+                              <span>{memoryKindLabel(record.kind)}</span>
+                              <span className="confidence-badge muted">
+                                {record.origin === 'user_confirmed'
+                                  ? 'ユーザー確認済み'
+                                  : record.origin === 'migration'
+                                    ? '既存データ'
+                                    : 'AIが会話から記憶'}
+                              </span>
+                              {record.status === 'historical' ? <span className="confidence-badge muted">過去</span> : null}
+                            </div>
+                            <strong>{record.label}</strong>
+                            <p>{memoryValue(record)}</p>
+                          </div>
+                          <div className="memory-record-actions">
+                            <button
+                              className="icon-button"
+                              aria-label={`${record.label}を編集`}
+                              onClick={() => openExistingMemory(record)}
+                              type="button"
+                              disabled={memory.syncing}
+                            >
+                              <Pencil aria-hidden="true" size={17} strokeWidth={1.9} />
+                            </button>
+                            <button
+                              className="icon-button danger"
+                              aria-label={`${record.label}を削除`}
+                              onClick={() => {
+                                if (!window.confirm(`「${record.label}」を長期記憶から削除しますか？`)) return;
+                                void memory.removeRecord(record.id).catch(() => undefined);
+                              }}
+                              type="button"
+                              disabled={memory.syncing}
+                            >
+                              <Trash2 aria-hidden="true" size={17} strokeWidth={1.9} />
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <section className="assistant-settings-card memory-empty-state">
+                  <strong>共有長期記憶を利用できません</strong>
+                  <p className="detail-note">ログイン済みの通常画面から設定を開いてください。</p>
+                </section>
+              )}
             </div>
           ) : (
             <AppSettingsSupportPanel />
