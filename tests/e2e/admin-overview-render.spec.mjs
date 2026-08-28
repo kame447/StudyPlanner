@@ -13,27 +13,8 @@ async function assertNoHorizontalOverflow(page) {
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
-async function inspectOverview(page, { theme, width, height, label }) {
-  await page.setViewportSize({ width, height });
-  await page.goto(`/admin-overview.html?theme=${theme}`);
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-  await expect(page.getByText('登録ユーザー数')).toBeVisible();
-  await expect(page.getByText('過去7日間の利用ユーザー')).toBeVisible();
-  await expect(page.getByText('通常の応答時間')).toBeVisible();
-  await expect(page.getByText('遅いケースの応答時間')).toBeVisible();
-  await expect(page.getByText('Planningの状態')).toBeVisible();
-  const navigation = page.getByRole('navigation', { name: '管理者画面ナビゲーション' });
-  await expect(navigation).toBeVisible();
-  const aiApiNav = navigation.getByRole('button', { name: /^AI・API(?: 準備中)?$/ });
-  await expect(aiApiNav).toBeVisible();
-  await expect(aiApiNav).toBeDisabled();
+async function screenshot(page, label) {
   await assertNoHorizontalOverflow(page);
-
-  const sidebar = page.locator('.admin-console-sidebar');
-  const sidebarBox = await sidebar.boundingBox();
-  expect(sidebarBox).not.toBeNull();
-  expect(sidebarBox.width).toBeGreaterThan(0);
-
   await page.screenshot({
     path: path.join(artifactsDir, `${label}.png`),
     fullPage: true,
@@ -41,40 +22,80 @@ async function inspectOverview(page, { theme, width, height, label }) {
   });
 }
 
-test.describe('Admin Overview rendered UI', () => {
-  test('desktop light remains readable and contained', async ({ page }) => {
-    await inspectOverview(page, {
-      theme: 'light',
-      width: 1440,
-      height: 1000,
-      label: 'desktop-light',
-    });
-  });
+async function openSurface(page, { view, theme, width, height }) {
+  await page.setViewportSize({ width, height });
+  await page.goto(`/admin-overview.html?view=${view}&theme=${theme}`);
+  await expect(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeVisible();
+}
 
-  test('desktop dark remains readable and contained', async ({ page }) => {
-    await inspectOverview(page, {
-      theme: 'dark',
-      width: 1440,
-      height: 1000,
-      label: 'desktop-dark',
-    });
-  });
+async function inspectOverview(page, options) {
+  await openSurface(page, { ...options, view: 'overview' });
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByText('登録ユーザー数')).toBeVisible();
+  await expect(page.getByText('過去7日間の利用ユーザー')).toBeVisible();
+  await expect(page.getByText('通常の応答時間')).toBeVisible();
+  await expect(page.getByText('遅いケースの応答時間')).toBeVisible();
+  await expect(page.getByText('Planningの状態')).toBeVisible();
+  const navigation = page.getByRole('navigation', { name: '管理者画面ナビゲーション' });
+  const aiApiNav = navigation.getByRole('button', { name: 'AI・API' });
+  await expect(aiApiNav).toBeVisible();
+  await expect(aiApiNav).toBeEnabled();
+  await screenshot(page, `overview-${options.label}`);
+}
 
-  test('mobile light remains readable and contained', async ({ page }) => {
-    await inspectOverview(page, {
-      theme: 'light',
-      width: 390,
-      height: 844,
-      label: 'mobile-light',
-    });
-  });
+async function inspectUsers(page, options) {
+  await openSurface(page, { ...options, view: 'users' });
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
+  await expect(page.getByText('プロフィールから調査を開始')).toBeVisible();
+  await expect(page.getByPlaceholder('actor IDで絞り込み')).toBeVisible();
+  await expect(page.getByText('イベント')).toBeVisible();
+  await expect(page.getByText('AI', { exact: true }).first()).toBeVisible();
+  await screenshot(page, `users-${options.label}`);
+}
 
-  test('mobile dark remains readable and contained', async ({ page }) => {
-    await inspectOverview(page, {
-      theme: 'dark',
-      width: 390,
-      height: 844,
-      label: 'mobile-dark',
+async function inspectUserDetail(page, options) {
+  await openSurface(page, { ...options, view: 'user-detail' });
+  await expect(page.getByRole('heading', { name: 'ユーザー調査' })).toBeVisible();
+  await expect(page.getByText('利用日数')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible();
+  await expect(page.getByText('gpt-5.6-luna · success')).toBeVisible();
+  await expect(page.getByText(/weekly_planning_semantic_normalizer/)).toBeVisible();
+  await screenshot(page, `user-detail-${options.label}`);
+}
+
+async function inspectAi(page, options) {
+  await openSurface(page, { ...options, view: 'ai' });
+  await expect(page.getByRole('heading', { name: 'AI・API' })).toBeVisible();
+  await expect(page.getByText('総token')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI計画の効率' })).toBeVisible();
+  await expect(page.getByText('1セッションあたりrequest')).toBeVisible();
+  await expect(page.getByText('repair request率')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Model別' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Purpose別' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Phase別' })).toBeVisible();
+  await screenshot(page, `ai-${options.label}`);
+}
+
+const viewports = [
+  { theme: 'light', width: 1440, height: 1000, label: 'desktop-light' },
+  { theme: 'dark', width: 1440, height: 1000, label: 'desktop-dark' },
+  { theme: 'light', width: 390, height: 844, label: 'mobile-light' },
+  { theme: 'dark', width: 390, height: 844, label: 'mobile-dark' },
+];
+
+test.describe('Admin console rendered UI', () => {
+  for (const viewport of viewports) {
+    test(`Overview ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectOverview(page, viewport);
     });
-  });
+    test(`Users ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectUsers(page, viewport);
+    });
+    test(`User detail ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectUserDetail(page, viewport);
+    });
+    test(`AI API ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectAi(page, viewport);
+    });
+  }
 });
