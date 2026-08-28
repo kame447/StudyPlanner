@@ -72,6 +72,12 @@ function dailyId(environment: ObservabilityEnvironment, localDate: string): stri
   return `${environment}:${localDate}`;
 }
 
+function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
+  if (!value) return null;
+  const { id: _id, ...document } = value;
+  return document as unknown as T;
+}
+
 function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRollupCheckpoint {
   const nowIso = new Date().toISOString();
   const cursorRecord = value?.cursor && typeof value.cursor === 'object'
@@ -100,10 +106,6 @@ function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRol
       : null,
     updatedAt: typeof value?.updatedAt === 'string' ? value.updatedAt : nowIso,
   };
-}
-
-function asDaily(value: Record<string, unknown> | null): ObservabilityDailyRollup | null {
-  return value as unknown as ObservabilityDailyRollup | null;
 }
 
 function asActorDay(value: FirestoreOrderedDocument): ObservabilityActorDay {
@@ -160,7 +162,7 @@ export class ProductObservabilityReadModelService {
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
     const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const daily = (await Promise.all(dates.map(async (localDate) => asDaily(
+    const daily = (await Promise.all(dates.map(async (localDate) => withoutStorageId<ObservabilityDailyRollup>(
       await this.firestore.getDocument(
         DAILY_ROLLUP_COLLECTION,
         dailyId(params.environment, localDate),
@@ -191,8 +193,9 @@ export class ProductObservabilityReadModelService {
     if (!/^actor-[A-Za-z0-9-]{8,160}$/.test(normalized)) {
       throw new Error('observability_actor_subject_invalid');
     }
-    return await this.firestore.getDocument(USER_SUMMARY_COLLECTION, normalized)
-      as unknown as ObservabilityUserSummary | null;
+    return withoutStorageId<ObservabilityUserSummary>(
+      await this.firestore.getDocument(USER_SUMMARY_COLLECTION, normalized),
+    );
   }
 
   async listUserSummaries(params: {
