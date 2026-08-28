@@ -122,7 +122,7 @@ describe('Stable V5 entity-bound durable context signals', () => {
     ]);
   });
 
-  it('prefers an explicit owner concern over entity-local duplicates from the same evidence', () => {
+  it('prefers an explicit owner concern over a contained entity-local restatement from the same evidence', () => {
     const document: WeeklyPlanningSemanticDocumentV5 = {
       ...baseDocument(),
       userContextFacts: [{
@@ -145,7 +145,7 @@ describe('Stable V5 entity-bound durable context signals', () => {
         durableContextSignals: [{
           localId: 'task-math-concern',
           kind: 'concern',
-          value: '数学が特に苦手',
+          value: '特に苦手',
           sourceText: '数学と物理が特に苦手なので',
         }],
         sourceText: '数学IA・IIBCの基礎問題精講を一周',
