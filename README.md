@@ -19,7 +19,7 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。外部APIを使った書誌・教材メタデータ取得は、provider固有responseを教材modelへ直接流さず、利用条件とfallbackを分離する方針で [`docs/domains/external-integrations/`](./docs/domains/external-integrations/README.md) に整理しています。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加ではISBNまたは教材名から共有catalog / NDL Searchを使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量はStudyPlanner側が所有します。
 
 ### ホーム・時間割
 
@@ -62,6 +62,8 @@ Save
 フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
 
 管理・分析consoleは、UIからplanner collectionを都度全件scanする構造を最終形にせず、lightweight telemetry、集計read model、restricted diagnostic traceを分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
+
+外部APIはprovider固有responseをproduct domainへ直接流さず、Cloudflare Worker上のintegration boundaryで正規化します。書籍教材の初期実装では共有catalogを先に参照し、miss時だけNDL Searchへ問い合わせることで外部依存と不要なrequestを抑えます。
 
 テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
 
@@ -151,7 +153,7 @@ client-first execution と local/server authority の境界は [`docs/domains/cl
 
 管理・分析console、AI/API usage、service-wide telemetry、diagnostic drill-downは [`docs/domains/product-observability/README.md`](./docs/domains/product-observability/README.md) を入口とし、要件は [`console-requirements.md`](./docs/domains/product-observability/spec/console-requirements.md)、内部architectureは [`telemetry-and-read-model.md`](./docs/domains/product-observability/architecture/telemetry-and-read-model.md) を正仕様として扱います。
 
-外部API/providerの採否、利用条件、normalization、fallbackは [`docs/domains/external-integrations/README.md`](./docs/domains/external-integrations/README.md) を入口とし、教材メタデータAPIの現行調査は [`20260828-material-metadata-api-research.md`](./docs/domains/external-integrations/work/20260828-material-metadata-api-research.md) を参照してください。
+外部API/providerの採否、利用条件、normalization、fallbackは [`docs/domains/external-integrations/README.md`](./docs/domains/external-integrations/README.md) を入口とし、書籍教材検索の正仕様は [`material-metadata.md`](./docs/domains/external-integrations/spec/material-metadata.md) を参照してください。
 
 過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 
