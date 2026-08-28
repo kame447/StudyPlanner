@@ -6,11 +6,36 @@ const artifactsDir = path.resolve('artifacts/admin-overview');
 fs.mkdirSync(artifactsDir, { recursive: true });
 
 async function assertNoHorizontalOverflow(page) {
-  const overflow = await page.evaluate(() => {
+  const diagnostic = await page.evaluate(() => {
     const root = document.documentElement;
-    return Math.max(0, root.scrollWidth - root.clientWidth);
+    const viewportWidth = root.clientWidth;
+    const overflow = Math.max(0, root.scrollWidth - viewportWidth);
+    const offenders = [...document.querySelectorAll('body *')]
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === 'string' ? element.className : '',
+          width: Math.round(rect.width),
+          right: Math.round(rect.right),
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+          text: (element.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 80),
+        };
+      })
+      .filter((item) => item.right > viewportWidth + 1 || item.scrollWidth > item.clientWidth + 1)
+      .sort((left, right) => {
+        const leftOverflow = Math.max(left.right - viewportWidth, left.scrollWidth - left.clientWidth);
+        const rightOverflow = Math.max(right.right - viewportWidth, right.scrollWidth - right.clientWidth);
+        return rightOverflow - leftOverflow;
+      })
+      .slice(0, 8);
+    return { overflow, viewportWidth, rootScrollWidth: root.scrollWidth, offenders };
   });
-  expect(overflow).toBeLessThanOrEqual(1);
+  if (diagnostic.overflow > 1) {
+    console.log(`ADMIN_HORIZONTAL_OVERFLOW ${JSON.stringify(diagnostic)}`);
+  }
+  expect(diagnostic.overflow).toBeLessThanOrEqual(1);
 }
 
 async function screenshot(page, label) {
