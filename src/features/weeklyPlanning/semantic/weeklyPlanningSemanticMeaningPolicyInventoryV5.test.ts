@@ -48,10 +48,10 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     );
 
     expect(workloadRule?.instruction).toContain(
-      'qualitative scope boundary without a stated count belongs in task/component structure',
+      'Uncounted qualitative scope belongs in task/component structure',
     );
     expect(workloadRule?.instruction).toContain(
-      'emit work_breakdown uncertainty instead of inventing quantity or total duration',
+      'emit work_breakdown uncertainty, never invent quantity or total duration',
     );
   });
 
