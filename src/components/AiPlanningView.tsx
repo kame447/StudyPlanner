@@ -14,6 +14,7 @@ import {
   saveAiPlanningChatSnapshot,
   updateAiPlanningChatRecord,
 } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+import { applyEditedPreviewPositions } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewEdits';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
@@ -34,38 +35,6 @@ interface AiPlanningViewProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
-}
-
-function applyEditedPreviewPositions(
-  baseBlocks: readonly WeeklyPlanDraftBlock[],
-  editedBlocks: readonly WeeklyPlanDraftBlock[],
-): { blocks: WeeklyPlanDraftBlock[]; changed: boolean } {
-  const editedById = new Map(editedBlocks.map((block) => [block.id, block]));
-  const updatedAt = new Date().toISOString();
-  let changed = false;
-
-  const blocks = baseBlocks.map((block) => {
-    const edited = editedById.get(block.id);
-    if (!edited) return block;
-
-    const positionChanged =
-      block.date !== edited.date ||
-      block.startTime !== edited.startTime ||
-      block.endTime !== edited.endTime;
-    if (!positionChanged) return block;
-
-    changed = true;
-    return {
-      ...block,
-      date: edited.date,
-      startTime: edited.startTime,
-      endTime: edited.endTime,
-      userEdited: true,
-      updatedAt,
-    };
-  });
-
-  return { blocks, changed };
 }
 
 export function AiPlanningView(props: AiPlanningViewProps) {
