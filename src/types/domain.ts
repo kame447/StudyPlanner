@@ -305,6 +305,7 @@ export interface StudyMaterialDraft {
   subjectId: string;
   subjectName: string;
   color?: string;
+  coverImageUrl?: string;
   coverImageDataUrl?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
