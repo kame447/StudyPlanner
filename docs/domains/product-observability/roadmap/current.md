@@ -98,7 +98,7 @@ Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrow
 
 プロフィールから調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。登録日時はこのrestricted profile authorityから表示する。
 
-AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase`をserver-sideで期間統合し、request、success / failure、token、latency p50 / p95、推定費用を表示する。planning用途についてはsession_startedを基準にrequest/session、repair request率、完全に算出可能な場合だけcost/session、cached token比率をserver-sideで導出する。
+AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase`をserver-sideで期間統合し、request、success / failure、token、latency p50 / p95、推定費用を表示する。planning用途の効率指標はsession数で代用せず、weekly-planning domainが各turn開始時に一度だけ出すcanonical `turn_started`を分母とする。これによりrequest/turn、repair request率、完全に算出可能な場合だけcost/turn、cached token比率をserver-sideで導出する。`turn_started`導入前の履歴には正確なturn分母が存在しないため、分母0の期間は未計測として扱い、過去値を推測で補完しない。
 
 #160のusage semanticsとして、OpenAIが返す`completion_tokens_details.reasoning_tokens`をraw usageとして保持する。cached input / cache-write / reasoningをproviderが返さない場合は0へ補完せずunknown/nullとする。pricing未定義時もraw usageは保持し、costだけを算出不能として分離する。
 
@@ -117,7 +117,7 @@ Final completion gate:
 5. PR #234の未解決review threadがないことを確認する。
 6. gate通過後にPR #234をreadyにし、squash mergeする。
 
-Phase 5 merge後の次のconcrete actionはPhase 6「Planning Analytics」である。weekly-planning typed outcomeだけをauthorityとしてsession funnelと品質比較を実装し、Phase 5で作ったAI request / session correlationを利用する。
+Phase 5 merge後の次のconcrete actionはPhase 6「Planning Analytics」である。weekly-planning typed outcomeだけをauthorityとしてsession funnelと品質比較を実装し、Phase 5で作ったAI request / feature-session / turn correlationを利用する。
 
 ## Phase 6: Planning Analytics
 
