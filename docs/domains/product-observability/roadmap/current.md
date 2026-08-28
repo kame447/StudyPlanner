@@ -10,7 +10,7 @@ Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Ag
 
 Phase 4はPR #224で`/admin`のOverview入口、responsive console shell、bounded read modelを利用するregistered / active user・AI/API・planning quality・read-model freshness表示、desktop/mobile・light/darkのrender regressionをmainへ統合した。最終pre-merge head `5d11dd2a574909aac0cfe3317652f4348a870d45` ではCI、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderがすべてterminal successとなり、squash merge mainは`b053a677c00fea642a040831fd2161760567a382`である。
 
-現在の実装phaseはPhase 5「Users and AI / API」である。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、利用者分析・個別調査とAI/API利用分析を実装する。read modelに必要なprojectionが不足する場合はUI側集計で補わず、server-side bounded contractを先に拡張する。
+現在の実装phaseはPhase 5「Users and AI / API」である。delivery candidateはPR #234 / `feat/product-observability-phase5-users-ai-api`。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、利用者分析・個別調査とAI/API利用分析を実装した。残作業はexact final headの検証と、検証で見つかった不具合の修正に限定する。
 
 ## Completed foundation
 
@@ -85,29 +85,39 @@ Merged main commit: `b053a677c00fea642a040831fd2161760567a382`
 
 ## Phase 5: Users and AI / API
 
-Status: active implementation.
+Status: delivery candidate in draft PR #234; exact-head final validation in progress.
 
 Active branch: `feat/product-observability-phase5-users-ai-api`
 Parent Issue: #213
 AI/API residual tracker: #160
 Base main at phase start: `b053a677c00fea642a040831fd2161760567a382`
 
-Usersでは全体trend、検索、filter、個別timeline、user → session → request / trace drill-downを実装する。既存`AdminUsersPage`の通常read pathはprofiles / plans / actuals / todos / day_notesをbrowserから全件scanしており、canonical architecture invariantに反するため、bounded observability/admin queryへ置換する。
+Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止し、opaque `actorSubjectId`を基本とするbounded user summaryへ置換した。利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みの最大100件単位で扱い、継続読込はcursor paginationとする。
 
-個人のanalytics join keyはraw UID / emailではなくopaque `actorSubjectId`を基本とする。プロフィールからの調査開始が必要な場合はrestricted resolverを境界に置き、analytics eventへemail等を複製しない。個別調査は現在値のraw collection表示ではなく、登録・app利用・主要product action・AI request・planning outcome等のbounded timelineを中心に構成する。
+個別調査はactor summary、canonical `observability_actor_day`へのCOUNT、保持中lightweight telemetryの最大50件cursor paginationを使う。timelineはproduct action、AI request、planning outcome、request / trace / feature session等のallowlistだけを返し、raw prompt / responseや任意payloadを返さない。
 
-AI / APIではmodel / purpose / phase別request、token、failure、latency、推定費用を表示する。daily rollupには既に`aiByModel` / `aiByPurpose` / `aiByPhase`が存在するが、期間集計をbrowserで再計算しないため、必要なperiod dimension aggregateはserver-side read modelで返す。
+プロフィールから調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。登録日時はこのrestricted profile authorityから表示する。
 
-#160の残件として、providerがreasoning token等の追加usageを返す場合はraw factとして保持する。欠落値を0へ補完せず、pricing未定義時もraw usageは保持してcostだけを算出不能として分離する。direct AI pathがproduction contractとして残るかも実装経路を監査し、残る場合だけproxyと同じusage semanticsへ正規化する。
+AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase`をserver-sideで期間統合し、request、success / failure、token、latency p50 / p95、推定費用を表示する。planning用途についてはsession_startedを基準にrequest/session、repair request率、完全に算出可能な場合だけcost/session、cached token比率をserver-sideで導出する。
 
-Current concrete actions:
+#160のusage semanticsとして、OpenAIが返す`completion_tokens_details.reasoning_tokens`をraw usageとして保持する。cached input / cache-write / reasoningをproviderが返さない場合は0へ補完せずunknown/nullとする。pricing未定義時もraw usageは保持し、costだけを算出不能として分離する。
 
-1. Phase 3 read model / admin API / legacy Users read pathを監査し、Phase 5に必要なbounded query差分を確定する。
-2. Users用のbounded list / detail timeline / restricted identity resolution contractをserver-sideで実装する。
-3. AI/API用のperiod dimension aggregateと追加usage contractを実装する。
-4. Users / AI APIのconsole UIを実装し、URLで期間・filter・actor等の調査文脈を保持する。
-5. desktop/mobile、light/dark、empty/unknown/error状態をrender regressionで検証する。
-6. exact final headでTypeScript、full Vitest、Firestore Rules regression、production build、Browser Regression、UI Quality Automation、UI Regression Matrix、Phase 5専用render inspectionを通す。
+production AI transportはCloudflare AI proxyを正規経路とする。browser-direct OpenAI transportはdevelopment / evaluation互換に限定し、production contractから除外する。production buildでproxyが無い場合はdirect endpointへfallbackせずrules pipelineへfail closedする。
+
+Usersのactor/filter/sort、AI/APIのfrom/to/environmentはURLへ保持し、調査文脈を再現可能にする。
+
+専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。最初の拡張runでUsersの曖昧なtest locatorのみが失敗したため、user card内へscopeして修正した。実装監査中に個別利用日数COUNTのcollection名がPhase 3 canonical `observability_actor_day`と不一致だった問題も検出し修正した。
+
+Final completion gate:
+
+1. exact final headでTypeScript checksとfull Vitestを通す。
+2. Firestore Rules regressionとproduction buildを通す。
+3. Browser Regression、UI Quality Automation、UI Regression Matrixを通す。
+4. expanded Admin Renderでdesktop/mobile、light/dark、empty/unknown/errorを通す。
+5. PR #234の未解決review threadがないことを確認する。
+6. gate通過後にPR #234をreadyにし、squash mergeする。
+
+Phase 5 merge後の次のconcrete actionはPhase 6「Planning Analytics」である。weekly-planning typed outcomeだけをauthorityとしてsession funnelと品質比較を実装し、Phase 5で作ったAI request / session correlationを利用する。
 
 ## Phase 6: Planning Analytics
 
