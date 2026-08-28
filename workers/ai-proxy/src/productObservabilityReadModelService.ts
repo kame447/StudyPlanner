@@ -106,14 +106,28 @@ function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
 }
 
 function checkpointDirtySources(value: unknown): ObservabilityActiveUserDirtySource[] {
-  if (!Array.isArray(value)) return [];
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('observability_checkpoint_invalid');
   const byKey = new Map<string, ObservabilityActiveUserDirtySource>();
   for (const item of value) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object') throw new Error('observability_checkpoint_invalid');
     const record = item as Record<string, unknown>;
-    if (!isEnvironment(record.environment) || !isIsoDate(record.localDate)) continue;
-    const source = { environment: record.environment, localDate: record.localDate };
-    byKey.set(`${source.environment}:${source.localDate}`, source);
+    if (
+      !isEnvironment(record.environment)
+      || !isIsoDate(record.localDate)
+      || !Number.isSafeInteger(record.revision)
+      || Number(record.revision) < 1
+    ) {
+      throw new Error('observability_checkpoint_invalid');
+    }
+    const source: ObservabilityActiveUserDirtySource = {
+      environment: record.environment,
+      localDate: record.localDate,
+      revision: Number(record.revision),
+    };
+    const key = `${source.environment}:${source.localDate}`;
+    const existing = byKey.get(key);
+    if (!existing || source.revision > existing.revision) byKey.set(key, source);
   }
   return [...byKey.values()].sort((left, right) =>
     `${left.environment}:${left.localDate}`.localeCompare(`${right.environment}:${right.localDate}`));
@@ -121,6 +135,10 @@ function checkpointDirtySources(value: unknown): ObservabilityActiveUserDirtySou
 
 function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRollupCheckpoint {
   const nowIso = new Date().toISOString();
+  if (value?.schemaVersion !== undefined
+    && value.schemaVersion !== PRODUCT_OBSERVABILITY_READ_MODEL_VERSION) {
+    throw new Error('observability_read_model_version_mismatch');
+  }
   const cursorRecord = value?.cursor && typeof value.cursor === 'object'
     ? value.cursor as Record<string, unknown>
     : null;
