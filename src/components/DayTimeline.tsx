@@ -139,7 +139,7 @@ export function DayTimeline({
   onImportTimetable,
   timetableImportCount = 0,
 }: DayTimelineProps) {
-  const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const moveHistory = useUndoRedoHistory<Plan, WeekPlanMoveTarget>();
   const dragController = useTimelineDragController<Plan>({
     onCommit: async (descriptor, before, after) => {
       if (!onMovePlan) return;
@@ -148,7 +148,7 @@ export function DayTimeline({
       await onMovePlan(currentPlan, after);
       if (!isScopedRecurring) {
         moveHistory.record({
-          key: currentPlan.id,
+          key: currentPlan,
           before,
           after,
         });
@@ -287,9 +287,9 @@ export function DayTimeline({
     </div>
   );
 
-  function applyHistoryTarget(planId: string, target: WeekPlanMoveTarget) {
-    const currentPlan = plans.find((plan) => plan.id === planId);
-    if (!currentPlan || !onMovePlan) {
+  function applyHistoryTarget(historyPlan: Plan, target: WeekPlanMoveTarget) {
+    const currentPlan = plans.find((plan) => plan.id === historyPlan.id) ?? historyPlan;
+    if (!onMovePlan) {
       return Promise.reject(new Error("移動対象の予定を確認できませんでした。"));
     }
     return onMovePlan(currentPlan, target);
