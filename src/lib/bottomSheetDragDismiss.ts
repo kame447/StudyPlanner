@@ -1,3 +1,5 @@
+import { isTimelineDragInteractionLocked } from './timelineDragInteractionLock';
+
 const SHEET_SURFACE_SELECTOR = [
   '.ai-planning-preview-dialog-v2',
   '.month-day-sheet',
@@ -434,6 +436,12 @@ export function installBottomSheetDragDismiss() {
   }
 
   function handleTouchMove(event: TouchEvent) {
+    if (isTimelineDragInteractionLocked()) {
+      cancelActiveDrag();
+      detachTouchTracking();
+      return;
+    }
+
     const drag = activeDrag;
     if (!drag || drag.source !== 'touch' || drag.touchIdentifier === null) return;
     const touch = getTouchByIdentifier(event.touches, drag.touchIdentifier);
