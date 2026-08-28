@@ -18,6 +18,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
