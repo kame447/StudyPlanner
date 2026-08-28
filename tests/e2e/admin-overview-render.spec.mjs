@@ -48,8 +48,9 @@ async function inspectUsers(page, options) {
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
   await expect(page.getByText('プロフィールから調査を開始')).toBeVisible();
   await expect(page.getByPlaceholder('actor IDで絞り込み')).toBeVisible();
-  await expect(page.getByText('イベント')).toBeVisible();
-  await expect(page.getByText('AI', { exact: true }).first()).toBeVisible();
+  const firstStats = page.locator('.admin-user-stats').first();
+  await expect(firstStats.getByText('イベント', { exact: true })).toBeVisible();
+  await expect(firstStats.getByText('AI', { exact: true })).toBeVisible();
   await screenshot(page, `users-${options.label}`);
 }
 
