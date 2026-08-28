@@ -1,7 +1,7 @@
 # 教材メタデータ取得 要件
 
 Status: canonical product/integration requirement
-Updated: 2026-08-28
+Updated: 2026-08-29
 Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 
 ## 1. 目的
@@ -222,6 +222,23 @@ Amazonランキングは書誌providerとして利用しない。人気教材の
 
 目次が取得できた場合は教材内構造の初期項目として使えるが、ユーザーは後から編集・非表示にできる。
 
+### 9.1 ユーザー教材と教材カタログの永続リンク
+
+検索候補から教材を登録した場合、ユーザーの `StudyMaterial` は検索時の教材identityを保持する。教材表示名を後からユーザーが変更しても、元の教材候補へ再解決できることを目的とする。
+
+`StudyMaterial` に保存するリンク情報:
+
+- `catalogEntryId`: 選択したStudyPlanner教材identity。curated seedでは `seed:<id>`、外部書誌候補ではISBN由来identityを保持できる
+- `catalogTitle`: 選択時のカタログ上のタイトル
+- `catalogIsbn10` / `catalogIsbn13`: 解決済みの場合のISBNスナップショット
+- `aliases`: curated candidateが持つ既知alias
+
+built-in候補をNDLで補完した場合も、`catalogEntryId` はStudyPlanner側のstable seed identityを維持し、ISBNを別フィールドに保存する。これによりseedの内部identityと外部書誌の再解決キーを混同しない。
+
+手入力だけで作成した教材、または既存の旧教材にはこれらのフィールドがなくてもよい。migrationで架空のリンクを付与しない。
+
+カタログリンクは書誌・検索identityへの参照であり、ユーザー固有の教科、現在位置、目標日、学習速度、進捗単位などを共有catalogへ逆流させない。
+
 ## 10. Security / failure isolation
 
 - curated/discovery seedはrepository同梱read-onlyデータとする
@@ -251,6 +268,8 @@ Amazonランキングは書誌providerとして利用しない。人気教材の
 
 シリーズaliasが複数冊へ対応する場合は複数カードを表示し、ユーザーに選択させる。
 
+既にcatalog linkを持つユーザー教材を編集するときは「教材DBに紐付け済み」と表示し、保存時に既存リンクを保持する。
+
 ## 12. Acceptance criteria
 
 - 初期検索インデックスが1000件以上ある
@@ -266,6 +285,10 @@ Amazonランキングは書誌providerとして利用しない。人気教材の
 - `東京大学 赤本`、`英検準1級 過去6回全問題集` 等の広域候補が `resolutionRequired` として検索できる
 - `微分` や `関正生` を教材として即確定しない
 - ISBNと未知タイトルは共有catalog/providerへフォールスルーする
+- 検索候補から登録した `StudyMaterial` がcatalog identity・元タイトル・取得済みISBNを保持する
+- catalog candidateのaliasがユーザー教材へ引き継がれる
+- 教材名を後から編集してもcatalog linkを保持する
+- 旧教材・手入力教材に架空のcatalog linkを付けない
 - provider障害でも手入力登録できる
 - TypeScript / unit / browser regression / UI quality / UI regression / production buildを通す
 
@@ -273,7 +296,6 @@ Amazonランキングは書誌providerとして利用しない。人気教材の
 
 - Amazonランキングの定期自動監査（規約に沿う正式API/許諾経路を確保した場合のみ）
 - カメラISBNバーコード読み取り
-- `StudyMaterial.catalogEntryId` のクラウド永続リンク
 - 共有aliasの利用実績ベース学習
 - 登録者数ランキング
 - 共有章構造のクラウド正本化
