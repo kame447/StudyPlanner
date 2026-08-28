@@ -164,6 +164,10 @@ function mergeDimensions(
     );
 }
 
+function isPlanningPurpose(key: string): boolean {
+  return key.startsWith('weekly_planning') || key.startsWith('planning_');
+}
+
 function validateEventCursor(cursor: FirestoreOrderedCursor | null | undefined): void {
   if (!cursor) return;
   if (!Number.isFinite(new Date(cursor.orderedValue).getTime())
@@ -218,6 +222,9 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
       model: payload.model,
       status: payload.status as AiRequestMetricStatus,
       totalTokens: finiteNonNegativeInteger(payload.totalTokens),
+      cachedTokens: finiteNonNegativeInteger(payload.cachedTokens),
+      cacheWriteTokens: finiteNonNegativeInteger(payload.cacheWriteTokens),
+      reasoningTokens: finiteNonNegativeInteger(payload.reasoningTokens),
       estimatedCostMicros: finiteNonNegativeInteger(payload.estimatedCostMicros),
       durationMs: finiteNonNegativeNumber(payload.durationMs) ?? 0,
     };
@@ -257,6 +264,22 @@ export class ProductObservabilityAdminAnalysisService {
     toDate: string;
   }): Promise<ObservabilityAiAnalysisReadModel> {
     const overview = await this.readModel.getOverview(params);
+    const byModel = mergeDimensions(overview.daily, (entry) => entry.aiByModel);
+    const byPurpose = mergeDimensions(overview.daily, (entry) => entry.aiByPurpose);
+    const byPhase = mergeDimensions(overview.daily, (entry) => entry.aiByPhase);
+    const planningAggregate = byPurpose
+      .filter((entry) => isPlanningPurpose(entry.key))
+      .reduce(
+        (aggregate, entry) => mergeAiAggregate(aggregate, entry.aggregate),
+        emptyAiAggregate(),
+      );
+    const initialRequestCount = byPhase.find((entry) => entry.key === 'initial')?.aggregate.requestCount ?? 0;
+    const repairRequestCount = byPhase.find((entry) => entry.key === 'repair')?.aggregate.requestCount ?? 0;
+    const repairEligibleCount = initialRequestCount + repairRequestCount;
+    const sessionCount = overview.period.planning.outcomeCounts.session_started ?? 0;
+    const cacheKnown = planningAggregate.promptTokensUnknownCount === 0
+      && planningAggregate.cachedTokensUnknownCount === 0;
+
     return {
       fromDate: overview.fromDate,
       toDate: overview.toDate,
@@ -265,9 +288,28 @@ export class ProductObservabilityAdminAnalysisService {
       total: overview.period.ai,
       latencyP50Ms: overview.aiLatencyP50Ms,
       latencyP95Ms: overview.aiLatencyP95Ms,
-      byModel: mergeDimensions(overview.daily, (entry) => entry.aiByModel),
-      byPurpose: mergeDimensions(overview.daily, (entry) => entry.aiByPurpose),
-      byPhase: mergeDimensions(overview.daily, (entry) => entry.aiByPhase),
+      byModel,
+      byPurpose,
+      byPhase,
+      planningEfficiency: {
+        sessionCount,
+        requestCount: planningAggregate.requestCount,
+        repairRequestCount,
+        repairRate: repairEligibleCount > 0 ? repairRequestCount / repairEligibleCount : null,
+        requestsPerSession: sessionCount > 0 ? planningAggregate.requestCount / sessionCount : null,
+        estimatedCostMicros: planningAggregate.estimatedCostMicros,
+        estimatedCostUnknownCount: planningAggregate.estimatedCostUnknownCount,
+        estimatedCostPerSessionMicros:
+          sessionCount > 0 && planningAggregate.estimatedCostUnknownCount === 0
+            ? planningAggregate.estimatedCostMicros / sessionCount
+            : null,
+        cachedTokens: planningAggregate.cachedTokens,
+        promptTokens: planningAggregate.promptTokens,
+        cacheHitTokenRatio:
+          cacheKnown && planningAggregate.promptTokens > 0
+            ? planningAggregate.cachedTokens / planningAggregate.promptTokens
+            : null,
+      },
       rollupCheckpoint: overview.rollupCheckpoint,
     };
   }
