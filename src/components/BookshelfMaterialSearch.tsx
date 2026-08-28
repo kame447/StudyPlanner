@@ -113,11 +113,10 @@ export function BookshelfMaterialSearch({
       ) : null}
 
       <p className="detail-note material-metadata-attribution">
-        書誌情報の一部は
         <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">
-          国立国会図書館サーチ
+          国立国会図書館全国書誌情報
         </a>
-        の全国書誌情報（CC BY 4.0）を利用しています。
+        （CC BY 4.0）を利用しています。
       </p>
     </section>
   );
