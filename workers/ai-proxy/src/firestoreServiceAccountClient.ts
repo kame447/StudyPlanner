@@ -179,6 +179,20 @@ function boundedQueryLimit(limit: number): number {
   return Math.max(1, Math.min(QUERY_BATCH_SIZE, Math.floor(limit)));
 }
 
+function equalityWhere(filters: Array<{ field: string; value: string }>): object | undefined {
+  const fieldFilters = filters.map((filter) => ({
+    fieldFilter: {
+      field: { fieldPath: filter.field },
+      op: 'EQUAL',
+      value: { stringValue: filter.value },
+    },
+  }));
+  if (fieldFilters.length === 0) return undefined;
+  return fieldFilters.length === 1
+    ? fieldFilters[0]
+    : { compositeFilter: { op: 'AND', filters: fieldFilters } };
+}
+
 export class FirestoreServiceAccountClient {
   private accessToken = '';
   private accessTokenExpiresAt = 0;
@@ -245,7 +259,7 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth2:grant-type:jwt-bearer',
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
       }),
     });
@@ -447,18 +461,7 @@ export class FirestoreServiceAccountClient {
     filters: Array<{ field: string; value: string }>,
     limit = QUERY_BATCH_SIZE,
   ): Promise<Record<string, unknown>[]> {
-    const fieldFilters = filters.map((filter) => ({
-      fieldFilter: {
-        field: { fieldPath: filter.field },
-        op: 'EQUAL',
-        value: { stringValue: filter.value },
-      },
-    }));
-    const where = fieldFilters.length === 0
-      ? undefined
-      : fieldFilters.length === 1
-        ? fieldFilters[0]
-        : { compositeFilter: { op: 'AND', filters: fieldFilters } };
+    const where = equalityWhere(filters);
     const response = await this.request(`${this.documentsBase()}:runQuery`, {
       method: 'POST',
       body: JSON.stringify({
@@ -482,14 +485,17 @@ export class FirestoreServiceAccountClient {
   async queryDocumentsAfter(params: {
     collection: string;
     orderByField: string;
+    filters?: Array<{ field: string; value: string }>;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
   }): Promise<FirestoreOrderedDocument[]> {
+    const where = equalityWhere(params.filters ?? []);
     const response = await this.request(`${this.documentsBase()}:runQuery`, {
       method: 'POST',
       body: JSON.stringify({
         structuredQuery: {
           from: [{ collectionId: params.collection }],
+          ...(where ? { where } : {}),
           orderBy: [
             { field: { fieldPath: params.orderByField }, direction: 'ASCENDING' },
             { field: { fieldPath: '__name__' }, direction: 'ASCENDING' },
