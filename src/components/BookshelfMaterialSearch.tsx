@@ -13,6 +13,8 @@ interface BookshelfMaterialSearchProps {
 
 function candidateMeta(candidate: MaterialMetadataCandidate): string {
   return [
+    candidate.subjectHint,
+    candidate.materialKind,
     candidate.authors.join(' / '),
     candidate.publisher,
     candidate.edition,
@@ -88,7 +90,7 @@ export function BookshelfMaterialSearch({
         <div>
           <strong>教材を検索</strong>
           <p className="detail-note">
-            教材名やISBNで探し、表紙・版・ページ数・目次が取得できれば登録前に確認できます。
+            有名教材はStudyPlanner内の初期カタログから即検索し、未登録教材はISBN・教材名から外部書誌も検索します。
           </p>
         </div>
       </div>
@@ -105,7 +107,7 @@ export function BookshelfMaterialSearch({
                 void handleSearch();
               }
             }}
-            placeholder="例: 9784023315686 / 金のフレーズ"
+            placeholder="例: 金フレ / 青チャート / 9784023315686"
             autoComplete="off"
           />
         </label>

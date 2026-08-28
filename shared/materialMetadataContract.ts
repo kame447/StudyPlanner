@@ -12,6 +12,9 @@ export interface MaterialMetadataCandidate {
   coverImageUrl?: string;
   pageCount?: number;
   tableOfContents?: string[];
+  subjectHint?: string;
+  materialKind?: string;
+  aliases?: string[];
 }
 
 export interface MaterialMetadataSearchResponse {
@@ -96,5 +99,8 @@ export function isMaterialMetadataCandidate(value: unknown): value is MaterialMe
     && (candidate.coverImageUrl === undefined || typeof candidate.coverImageUrl === 'string')
     && (candidate.pageCount === undefined
       || (Number.isInteger(candidate.pageCount) && candidate.pageCount >= 0))
-    && (candidate.tableOfContents === undefined || isStringArray(candidate.tableOfContents));
+    && (candidate.tableOfContents === undefined || isStringArray(candidate.tableOfContents))
+    && (candidate.subjectHint === undefined || typeof candidate.subjectHint === 'string')
+    && (candidate.materialKind === undefined || typeof candidate.materialKind === 'string')
+    && (candidate.aliases === undefined || isStringArray(candidate.aliases));
 }

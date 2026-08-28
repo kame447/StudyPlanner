@@ -106,7 +106,14 @@ export async function resolveMaterialMetadataCandidate(
   try {
     const payload = await workerRequest(buildMaterialMetadataDetailsEndpoint(proxyUrl), query);
     const normalized = normalizeDetailsResponse(payload);
-    return normalized?.candidate ?? candidate;
+    if (!normalized?.candidate) return candidate;
+
+    return {
+      ...normalized.candidate,
+      ...(candidate.subjectHint ? { subjectHint: candidate.subjectHint } : {}),
+      ...(candidate.materialKind ? { materialKind: candidate.materialKind } : {}),
+      ...(candidate.aliases?.length ? { aliases: candidate.aliases } : {}),
+    };
   } catch {
     return candidate;
   }

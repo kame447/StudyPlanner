@@ -6,141 +6,127 @@ Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 
 ## 1. 目的
 
-教材登録時にユーザーへ「本の情報を一から入力させる」状態を減らし、教材を選んだ時点で表紙、正式名称、著者、出版社、版、総ページ数、取得可能な目次を確認できる状態を目指す。
+教材登録時の手入力を減らし、StudyPlannerが主要教材を初回から検索できる状態を作る。同時に、外部APIの障害・料金・利用条件へ教材登録導線を依存させない。
 
-外部APIをStudyPlannerの正本にはしない。StudyPlannerは内部の教材候補と共有書誌カタログを優先し、外部providerは不足情報を補完するために使用する。
+教材検索は次の3層で構成する。
 
-初期対象はISBNを持つ一般書籍・参考書・問題集等とする。論文、動画、Web教材、Drive file等は別providerとして後続する。
+1. StudyPlanner同梱の curated material seed
+2. StudyPlanner共有書誌カタログ
+3. NDL Search / NDL SRU を使った外部書誌検索
 
-## 2. ユーザー体験
+どの層でも見つからない場合、または外部連携が失敗した場合でも手入力登録を維持する。
 
-教材追加画面は次の流れを基本とする。
+## 2. 初期教材カタログ
+
+正式な初期教材候補は `src/data/material-catalog/` に置く。
+
+2026-08-28時点のseedは253エントリを持ち、次を含む。
+
+- 数学: チャート系、Focus Gold、1対1対応、問題精講、プラチカ、大学への数学、マセマ等
+- 英語: ターゲット、システム英単語、LEAP、鉄壁、DUO、速単、金/銀/黒フレ、英文法・英文解釈・長文教材等
+- 国語: 現代文、古文単語、古典文法、漢文の主要教材
+- 理科: 物理、化学、生物、地学の主要参考書・問題集
+- 地歴公民: 日本史、世界史、地理、政治経済、倫理
+- 共通テスト/過去問: 情報I、赤本/青本、共通テスト実戦系
+- 中学: 自由自在、最高水準問題集等
+- 英語資格: TOEIC、英検、IELTS、TOEFL
+- 情報処理資格: ITパスポート、基本情報、応用情報、情報処理安全確保支援士、NW/DB等
+- その他資格: 簿記、FP、宅建、行政書士、社労士、漢検、数検
+- 大学/専門: プログラミング、ネットワーク、統計、経済、法学等の代表教材
+
+seed entryは少なくとも次を持つ。
+
+- stable internal seed id
+- canonical search title
+- subject hint
+- material kind
+- aliases
+
+ISBN、版、ページ数、目次、表紙を不確かな状態でseedへ固定しない。それらは候補選択後に書誌providerから解決する。
+
+## 3. alias とシリーズ
+
+ユーザーが実際に使う呼び方をaliasとして保持する。
+
+例:
+
+- 金フレ → `TOEIC L&R TEST 出る単特急 金のフレーズ`
+- シス単 → `システム英単語`
+- ネクステ → `Next Stage 英文法・語法問題`
+- 鉄壁 → `鉄緑会東大英単語熟語 鉄壁`
+
+同じaliasが複数の実教材へ対応する場合、1件へ勝手に決めない。
+
+例: `青チャート` は 数学I+A / 数学II+B+C / 数学III+C の複数候補を返す。
+
+初期seed検索は正規化完全一致を基本とする。部分一致だけで教材identityを確定しない。
+
+## 4. 旧 naturalLanguageCatalog の扱い
+
+`src/data/naturalLanguageCatalog.json` は自然言語理解用の既存資産であり、正式教材DBではない。一般語・著者名・学習行為も混在するため、教材検索の第一正本にしない。
+
+curated seedにない既存候補を失わないため、長い完全一致語だけlegacy fallbackとして利用できる。ただし短い一般語・人名を教材として即確定しない。
+
+例:
+
+- `微分` → built-in教材hitにしない
+- `関正生` → built-in教材hitにしない
+- curated seedに存在する `英文法ポラリス` → built-in教材hit
+
+旧Firestore `app_catalogs/natural_language_v1` を教材DBとして復活させない。過去にbrowserからseed/updateできた期間があるため、教材identityのsource of truthとして扱わない。
+
+## 5. 検索フロー
 
 ```text
-教材を追加
-  ↓
-ISBN / 教材名で検索
-  ↓
-候補カード
-  ├─ 表紙（取得できる場合）
-  ├─ 正式名称
-  ├─ 著者
-  ├─ 出版社
-  ├─ 版
-  └─ ISBN
-  ↓ 候補を選択
-詳細補完
-  ├─ 総ページ数
-  ├─ 目次 / 教材構成
-  └─ 表紙
-  ↓
-登録内容を確認
-  ├─ 教科
-  ├─ ペース管理
-  ├─ 現在位置
-  └─ 目標日
-  ↓
-保存
-```
-
-検索を使わず、従来どおり手入力だけでも登録できる。検索結果なし、共有カタログ障害、NDL障害、表紙provider障害のいずれでも手入力導線を失わない。
-
-## 3. 検索アーキテクチャ
-
-```text
-ISBN / 教材名
-  ↓
-StudyPlanner内蔵教材候補
-  ├─ 正規化完全一致 → 即時候補
-  └─ miss / 曖昧入力
-       ↓
-MaterialMetadata Worker
-  ↓
-共有書誌カタログ
-  ├─ hit
+教材追加画面
+  ↓ ISBN / 教材名 / alias
+curated material seed
+  ├─ exact hit → 1件または複数候補を即表示
   └─ miss
        ↓
-NDL OpenSearch
-  ↓
+legacy long exact candidate
+  ├─ hit → 候補表示
+  └─ miss
+       ↓
+MaterialMetadata API
+       ↓
+共有書誌カタログ
+  ├─ ISBN / exact normalized title hit → 候補表示
+  └─ miss
+       ↓
+NDL Search 全国書誌情報
+       ↓
 normalized candidate
-  ↓
-ISBNを持つNDL書誌を共有カタログへcache
+       ↓
+ISBNを持つNDL由来書誌を共有catalogへcache
 ```
 
-内蔵教材候補には `src/data/naturalLanguageCatalog.json` をread-only snapshotとして再利用する。これは過去の `app_catalogs/natural_language_v1` をseedする元データでもあったが、旧Firestore documentそのものは教材検索の正本として使用しない。
+候補を選択した後は、ISBNまたは候補タイトルでdetails endpointを呼び、取得可能なら次を補完する。
 
-既存カタログには「青チャート」「Focus Gold」「ターゲット1900」等の教材名だけでなく一般的な学習語も含まれるため、初期版では正規化完全一致だけをlocal hitとして扱う。部分一致や曖昧入力で外部書誌検索を短絡しない。
+- 著者
+- 出版社
+- 出版年
+- 版
+- ISBN
+- ページ数
+- 目次
+- 表紙（openBDで取得できる場合のみ）
 
-## 4. 候補選択後の詳細補完
+## 6. Provider 方針
 
-候補を選択した時点で、検索とは別の `/material-metadata/details` 経路から詳細を補完する。
+日本語書籍の書誌正本は国立国会図書館サーチを第一providerとする。
 
-```text
-選択候補
-  ↓ ISBNがある
-NDL SRU
-  recordSchema=dcndl_v3
-  dpid=iss-ndl-opac-national
-  ↓
-版 / extent / tableOfContents
-  ↓
-StudyPlanner candidateへ正規化
+検索対象は初期実装では `iss-ndl-opac-national`（国立国会図書館全国書誌情報）へ限定する。
 
-並行して
-ISBN
-  ↓
-openBD
-  ↓
-書影URL（取得できる場合だけ）
-```
+検索候補はNDL OpenSearch、詳細情報はNDL SRU / DC-NDL v3を利用する。provider固有XMLはintegration layerで正規化し、UI/domainへ直接漏らさない。
 
-内蔵候補のように初期候補がISBNを持たない場合は、選択時だけ候補タイトルをWorkerへ渡して共有カタログ / NDLで正式書誌を再解決する。これにより、内蔵検索の即応性と登録時の詳細情報を両立する。
+NDL由来情報を表示するUIでは全国書誌情報利用のクレジットを表示する。
 
-## 5. NDLの責務
-
-初期の書誌正本providerは国立国会図書館サーチとする。
-
-検索対象は `dpid=iss-ndl-opac-national`、すなわち国立国会図書館全国書誌情報に限定する。
-
-OpenSearchから取得する主な項目:
-
-- title
-- authors / creators
-- publisher
-- published year
-- ISBN-10 / ISBN-13
-
-候補選択後のSRU / DC-NDL v3から取得する主な項目:
-
-- edition
-- extentから判定できる総ページ数
-- dcterms:tableOfContentsから取得できる目次
-
-NDL由来のnormalized metadataは共有書誌カタログへ保存できる。raw XMLは保存しない。
-
-NDL由来候補を表示するUIでは、国立国会図書館全国書誌情報を利用していることを利用者が確認できるようにする。
-
-## 6. 表紙providerの責務
-
-NDLの旧書影APIへ依存しない。
-
-初期実装ではopenBDを表紙のbest-effort providerとしてのみ利用する。openBD由来情報を共有書誌カタログの正本へ昇格させない。
-
-理由:
-
-- openBDは書影を取得できる一方、利用目的が本の販促・紹介目的に限定される。
-- データの変更・削除があり得る。
-- キャッシュ時には変更反映・削除対応が必要になる。
-
-したがって初期実装ではopenBDの画像データそのものを共有Firestoreへcacheしない。検索・詳細取得時に利用できる書影URLだけを候補へ一時的に付与する。
-
-表紙取得に失敗しても教材登録は失敗させない。ユーザー自身の画像アップロードを常に利用可能にする。
+表紙はNDL書影APIへ依存しない。取得できるISBNについてopenBDの書影をbest-effortで利用するが、openBD由来表紙をStudyPlanner共有Firestoreの永続書誌正本へ保存しない。
 
 ## 7. 共有書誌カタログ
 
-共有書誌カタログは「同じ本を毎回外部APIへ問い合わせない」ためのStudyPlanner内部基盤である。
-
-初期共有カタログはISBNを安定IDとして扱う。
+共有書誌カタログは「同じ本を毎回外部providerへ問い合わせない」ためのcacheであり、ユーザー教材そのものではない。
 
 保存対象:
 
@@ -151,119 +137,97 @@ NDLの旧書影APIへ依存しない。
 - published year
 - edition
 - ISBN-10 / ISBN-13
+- page count（NDL由来で取得できた場合）
+- table of contents（NDL由来で取得できた場合）
 - normalized title
-- page count（NDLから取得できた場合）
-- table of contents（NDLから取得できた場合）
-- integration内部のprovenance / cache timestamp
+- provider provenance / cache timestamp
 
 保存しないもの:
 
-- provider raw response / XML
-- openBDの画像バイナリ
+- raw provider response / XML全文
+- openBD由来表紙の永続copy
 - ユーザーの教科
-- 学習進捗
+- 現在進捗
 - 目標日
 - 学習速度
 - ユーザー独自教材
 
-ユーザー独自教材を共有書誌カタログへ自動投稿しない。共有書誌カタログへのwriteはserver-side integrationのみが担当する。
+共有catalog writeはserver-side integrationだけが行う。
 
-## 8. 書誌ページ数と学習総量を分離する
+## 8. StudyPlanner側の責務
 
-書誌上のページ数が取得できても、それを自動的にStudyPlannerの学習総量へ決定しない。
+外部書誌が提供するページ数や目次は「本の事実」であり、「どう学習するか」の決定ではない。
+
+そのためページ数を取得しても、自動で `総量 = ページ数` にしない。ユーザーが「ページ数をペース管理に使う」を選んだ場合のみ反映する。
 
 例:
 
-- 一般参考書では `381ページ` をそのままページ単位の総量に使える場合がある。
-- 金のフレーズのような単語帳では、書誌上のページ数より `1000語` の方が学習管理単位として自然な場合がある。
-- 問題集では問題数・例題数を単位にした方が自然な場合がある。
+- 一般参考書 → ページ管理が適切な場合がある
+- 金のフレーズ → ページより単語数での管理が自然
+- 問題集 → ページより問題数が自然な場合がある
 
-初期UIでは書誌上のページ数を表示し、「ページ数をペース管理に使う」をユーザーが1タップで選択できる。勝手に進捗単位を変更しない。
+目次が取得できた場合は教材内構造の初期項目として使えるが、ユーザーは後から編集・非表示にできる。
 
-将来、StudyPlanner独自の教材知識として推奨進捗単位・総問題数等を共有教材identityへ追加する。
+StudyPlannerが最終的に所有するもの:
 
-## 9. 目次と教材内構造
+- 教材を登録するか
+- 教科
+- aliases
+- 進捗単位
+- 総量
+- 現在位置
+- 教材内構造の利用有無
+- 目標日
+- 学習速度
+- スケジューリング
 
-NDLから目次を取得できた場合、教材登録時に内容をプレビューする。
+## 9. Security / failure isolation
 
-ユーザーが保存すると、取得した目次を既存の「教材内構造」の初期項目として利用する。ユーザーは後から非表示・編集でき、構造を使わず教材全体だけで管理することもできる。
+- curated seedはrepository同梱read-onlyデータとする
+- browserから共有catalogへwriteさせない
+- external metadata endpointはFirebase認証済みユーザーのみ利用可能
+- request body/query lengthを制限する
+- provider障害は教材検索だけを失敗させ、手入力登録を壊さない
+- curated seed hitではWorker / NDLを呼ばない
+- ISBN / shared exact-title cache hitではNDL OpenSearchを再度呼ばない
 
-2026-08-28時点の初期実装では、既存の教材内構造機能がlocal preferenceとして実装されているため、自動投入された構造もまず同じ保存経路へ入る。共有教材identityとの永続リンクおよびcloud-synced構造への昇格は次段階とする。
+## 10. UI要件
 
-教材本文のページ画像・本文そのものは共有書誌メタデータとして取得・保存しない。必要な場合は将来、ユーザーが所有する教材の目次撮影 / OCRを別機能として扱う。
+検索結果カードは取得済み範囲で次を表示する。
 
-## 10. 現在の登録UI
+- 表紙またはplaceholder
+- 教材名
+- curated seedの場合は教科hint / 教材種別
+- 著者
+- 出版社
+- 版
+- 出版年
+- ページ数
+- ISBN
 
-初期実装では既存の教材追加sheetを拡張する。
+シリーズaliasが複数冊へ対応する場合は複数カードを表示し、ユーザーに選択させる。
 
-1. ISBN / 教材名検索
-2. 表紙付き候補カード（取得できる場合）
-3. 候補選択時に詳細取得
-4. 選択した教材情報カードを表示
-5. ページ数・目次を確認
-6. ページ数を必要ならペース管理へ1タップ反映
-7. 教科・現在位置・目標日等を確認
-8. 保存
+候補選択後は詳細カードを表示し、ページ数・目次等を確認してから登録できる。
 
-完全な独自教材は検索を使わず手入力できる。
+## 11. Acceptance criteria
 
-カメラによるISBNバーコード読み取りは次段階とする。
+- curated seedが250件以上ある
+- seed idが重複しない
+- 12以上のsubject/category領域を初期カバーする
+- `金フレ` が外部APIなしで正式候補へ解決する
+- `ターゲット 1900` の空白差を吸収する
+- `青チャート` がI+A / II+B+C / III+Cの複数候補を返す
+- `微分` や `関正生` を教材として即確定しない
+- ISBNと未知タイトルは共有catalog/providerへフォールスルーする
+- built-in検索が失敗しても手入力登録できる
+- provider障害でも手入力登録できる
+- TypeScript / unit / browser regression / production buildを通す
 
-## 11. Security / failure isolation
+## 12. Deferred
 
-- 内蔵教材候補はbundled snapshotをread-onlyで扱う。
-- 旧 `app_catalogs/natural_language_v1` は教材検索のsource of truthにしない。
-- 外部検索APIはFirebase認証済みユーザーのみ利用可能とする。
-- browserからNDLへ直接依存しない。
-- 共有書誌カタログはbrowserから直接writeさせない。
-- Workerのservice account経由でcacheする。
-- request body / query lengthを制限する。
-- NDL検索対象providerは全国書誌情報へ固定する。
-- openBD failureは表紙なしへdegradeし、検索自体を失敗させない。
-- NDL詳細取得failureは基本書誌候補へdegradeし、教材登録を失敗させない。
-- 外部検索全体が失敗しても手入力保存は継続できる。
-
-## 12. 今回の実装範囲
-
-実装する:
-
-- bundled教材候補の完全一致検索
-- authenticated material metadata Worker
-- NDL OpenSearch検索
-- NDL SRU / DC-NDL v3詳細補完
-- ISBN / normalized-title shared cache
-- edition / page count / table of contents normalization
-- openBD書影のbest-effort補完
-- 表紙付き検索候補UI
-- 選択後の詳細情報プレビュー
-- ページ数の任意ペース反映
-- 目次の既存教材内構造への初期投入
-- manual registration fallback
-- unit / browser regression tests
-
-今回まだ実装しない:
-
-- camera ISBN barcode scanning
-- `StudyMaterial.catalogEntryId` の正式な永続リンク
-- cloud-synced shared chapter / section model
-- StudyPlanner独自の教材別推奨進捗単位DB
-- shared aliases / registration counts / ranking
-- 目次撮影OCR
-- cover providerの多段fallback
-- paper / YouTube / web / Drive providers
-
-## 13. Acceptance criteria
-
-- ISBNまたは2文字以上の教材名で検索できる。
-- `青チャート` 等の既知教材名はbundled候補として即時検索できる。
-- 部分一致・曖昧な内蔵候補で外部検索を誤って短絡しない。
-- 候補選択時にISBNが判明すればNDL SRU / DC-NDL v3で詳細補完できる。
-- NDL詳細からedition、page count、table of contentsを取得できるデータではnormalized candidateへ反映する。
-- 表紙providerが利用できる場合は候補 / 登録画面で表紙を確認できる。
-- openBDの書影情報を共有書誌カタログへcacheしない。
-- 書誌上のページ数を自動的な学習総量として強制しない。
-- ユーザー操作でページ数をページ単位総量へ反映できる。
-- 取得した目次は教材内構造の初期値として利用でき、後から非表示・編集できる。
-- NDL由来情報のUIに全国書誌情報利用のクレジットがある。
-- provider failureでも手入力登録を継続できる。
-- runtime code / tests / production build / browser regressionがgreenである。
+- カメラISBNバーコード読み取り
+- `StudyMaterial.catalogEntryId` のクラウド永続リンク
+- 共有aliasの利用実績ベース学習
+- 登録者数ランキング
+- 共有章構造のクラウド正本化
+- 論文 / YouTube / Web / Drive provider

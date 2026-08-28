@@ -48,17 +48,19 @@ async function openAddMaterialSheet(page) {
   return sheet;
 }
 
-test('known material names are searchable and selectable from the built-in catalog', async ({ page }) => {
+test('common material aliases resolve from the curated seed without the provider', async ({ page }) => {
   const sheet = await openAddMaterialSheet(page);
 
-  await sheet.getByLabel('ISBN / 教材名').fill('青チャート');
+  await sheet.getByLabel('ISBN / 教材名').fill('金フレ');
   await sheet.getByRole('button', { name: '検索', exact: true }).click();
 
-  const candidate = sheet.locator('.material-metadata-result').filter({ hasText: '青チャート' }).first();
+  const candidate = sheet.locator('.material-metadata-result').filter({
+    hasText: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+  });
   await expect(candidate).toBeVisible();
   await candidate.click();
-  await expect(sheet.getByLabel('教材名', { exact: true })).toHaveValue('青チャート');
-  await expect(sheet.getByLabel('選択した教材の情報')).toContainText('青チャート');
+  await expect(sheet.getByLabel('教材名', { exact: true }))
+    .toHaveValue('TOEIC L&R TEST 出る単特急 金のフレーズ');
   await expect(sheet.getByLabel('教科')).toHaveValue('material-search-subject');
 });
 
