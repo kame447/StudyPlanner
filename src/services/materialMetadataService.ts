@@ -5,6 +5,7 @@ import {
 } from '../../shared/materialMetadataContract';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
 import { getFirebaseAuth } from '../lib/firebaseClient';
+import { searchBuiltInMaterialCatalog } from './builtInMaterialCatalog';
 
 interface WorkerResponse {
   results?: unknown;
@@ -35,6 +36,14 @@ function normalizeWorkerResponse(value: WorkerResponse): MaterialMetadataSearchR
 export async function searchMaterialMetadata(
   query: string,
 ): Promise<MaterialMetadataSearchResponse> {
+  const builtInResults = searchBuiltInMaterialCatalog(query);
+  if (builtInResults.length > 0) {
+    return {
+      results: builtInResults,
+      cacheHit: true,
+    };
+  }
+
   const proxyUrl = getCloudflareAiProxyUrl();
   if (!proxyUrl) {
     throw new Error('教材検索の接続先が設定されていません。手入力で登録できます。');
