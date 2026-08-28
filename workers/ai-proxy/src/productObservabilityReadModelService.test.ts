@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import type {
   ObservabilityActorDay,
   ObservabilityDailyRollup,
@@ -15,7 +16,10 @@ type StoredDocument = Record<string, unknown>;
 class MemoryReadFirestore {
   readonly documents = new Map<string, StoredDocument>();
   readonly actorDays: Array<ObservabilityActorDay & { id: string; documentName: string }> = [];
-  readonly userSummaries: Array<ObservabilityUserSummary & { id: string; documentName: string }> = [];
+  readonly userSummaries = new Map<
+    string,
+    Array<ObservabilityUserSummary & { id: string; documentName: string }>
+  >();
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -34,15 +38,23 @@ class MemoryReadFirestore {
     this.actorDays.sort((left, right) => left.documentName.localeCompare(right.documentName));
   }
 
-  addUserSummary(id: string, value: ObservabilityUserSummary): void {
-    this.userSummaries.push({
+  addUserSummary(
+    environment: ObservabilityEnvironment,
+    id: string,
+    value: ObservabilityUserSummary,
+  ): void {
+    const collection = `observability_user_summary_${environment}`;
+    const current = this.userSummaries.get(collection) ?? [];
+    current.push({
       ...value,
       id,
-      documentName: `projects/test/databases/(default)/documents/observability_user_summary/${id}`,
+      documentName: `projects/test/databases/(default)/documents/${collection}/${id}`,
     });
-    this.userSummaries.sort((left, right) =>
+    current.sort((left, right) =>
       left.actorSubjectId.localeCompare(right.actorSubjectId)
       || left.documentName.localeCompare(right.documentName));
+    this.userSummaries.set(collection, current);
+    this.setDocument(collection, id, value as unknown as StoredDocument);
   }
 
   async getDocument(collection: string, id: string): Promise<StoredDocument | null> {
@@ -59,7 +71,7 @@ class MemoryReadFirestore {
   }): Promise<Array<StoredDocument & { id: string; documentName: string }>> {
     const source = params.collection === 'observability_actor_day'
       ? this.actorDays
-      : this.userSummaries;
+      : this.userSummaries.get(params.collection) ?? [];
     const filtered = source.filter((row) => {
       if (params.filters?.some((filter) => String(row[filter.field as keyof typeof row]) !== filter.value)) {
         return false;
@@ -171,21 +183,48 @@ describe('ProductObservabilityReadModelService', () => {
     expect(overview.daily[0]).not.toHaveProperty('id');
   });
 
-  it('returns opaque user summaries with a bounded continuation cursor', async () => {
+  it('returns environment-isolated opaque user summaries with a bounded cursor', async () => {
     const firestore = new MemoryReadFirestore();
-    firestore.addUserSummary('actor-aaaaaaaa', userSummary('actor-aaaaaaaa'));
-    firestore.addUserSummary('actor-bbbbbbbb', userSummary('actor-bbbbbbbb'));
+    firestore.addUserSummary('production', 'actor-aaaaaaaa', userSummary('actor-aaaaaaaa'));
+    firestore.addUserSummary('production', 'actor-bbbbbbbb', userSummary('actor-bbbbbbbb'));
+    firestore.addUserSummary('preview', 'actor-preview1', userSummary('actor-preview1'));
 
-    const first = await service(firestore).listUserSummaries({ limit: 1 });
+    const first = await service(firestore).listUserSummaries({
+      environment: 'production',
+      limit: 1,
+    });
     expect(first.users.map((user) => user.actorSubjectId)).toEqual(['actor-aaaaaaaa']);
     expect(first.nextCursor).not.toBeNull();
     expect(first.users[0]).not.toHaveProperty('id');
 
     const second = await service(firestore).listUserSummaries({
+      environment: 'production',
       limit: 1,
       cursor: first.nextCursor,
     });
     expect(second.users.map((user) => user.actorSubjectId)).toEqual(['actor-bbbbbbbb']);
+    expect(await service(firestore).getUserSummary('actor-preview1', 'production')).toBeNull();
+    expect((await service(firestore).getUserSummary('actor-preview1', 'preview'))?.actorSubjectId)
+      .toBe('actor-preview1');
+  });
+
+  it('rejects incompatible latency histogram versions instead of silently merging them', async () => {
+    const firestore = new MemoryReadFirestore();
+    const incompatible = daily('2026-08-28', 100) as unknown as {
+      ai: { latency: { version: string } };
+    } & ObservabilityDailyRollup;
+    incompatible.ai.latency.version = 'latency-ms-v0';
+    firestore.setDocument(
+      'observability_daily_rollups',
+      'production:2026-08-28',
+      incompatible as unknown as StoredDocument,
+    );
+
+    await expect(service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-28',
+      toDate: '2026-08-28',
+    })).rejects.toThrow('observability_latency_histogram_version_mismatch');
   });
 
   it('rejects overly broad overview ranges before storage work', async () => {
