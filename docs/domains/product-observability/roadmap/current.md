@@ -98,7 +98,9 @@ Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrow
 
 プロフィールから調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。登録日時はこのrestricted profile authorityから表示する。
 
-AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase`をserver-sideで期間統合し、request、success / failure、token、latency p50 / p95、推定費用を表示する。planning用途の効率指標はsession数で代用せず、weekly-planning domainが各turn開始時に一度だけ出すcanonical `turn_started`を分母とする。これによりrequest/turn、repair request率、完全に算出可能な場合だけcost/turn、cached token比率をserver-sideで導出する。`turn_started`導入前の履歴には正確なturn分母が存在しないため、分母0の期間は未計測として扱い、過去値を推測で補完しない。
+AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase` / `aiByOperationKind`をserver-sideで期間統合し、model・機能purpose・initial/repair/single・chat completion/OCR/添付解析/文字起こし等のoperation単位で比較する。各分類ではrequest、success/failure、prompt/completion/total/cached token、主要failure category、latency p50/p95、推定費用を表示する。UI component自身は期間再集計を行わない。
+
+planning用途の効率指標はsession数で代用せず、weekly-planning domainが各turn開始時に一度だけ出すcanonical `turn_started`を分母とする。これによりrequest/turn、repair request率、完全に算出可能な場合だけcost/turn、cached token比率をserver-sideで導出する。`turn_started`導入前の履歴には正確なturn分母が存在しないため、分母0の期間は未計測として扱い、過去値を推測で補完しない。
 
 #160のusage semanticsとして、OpenAIが返す`completion_tokens_details.reasoning_tokens`をraw usageとして保持する。cached input / cache-write / reasoningをproviderが返さない場合は0へ補完せずunknown/nullとする。pricing未定義時もraw usageは保持し、costだけを算出不能として分離する。
 
@@ -106,7 +108,7 @@ production AI transportはCloudflare AI proxyを正規経路とする。browser-
 
 Usersのactor/filter/sort、AI/APIのfrom/to/environmentはURLへ保持し、調査文脈を再現可能にする。
 
-専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。最初の拡張runでUsersの曖昧なtest locatorのみが失敗したため、user card内へscopeして修正した。実装監査中に個別利用日数COUNTのcollection名がPhase 3 canonical `observability_actor_day`と不一致だった問題も検出し修正した。
+専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。AI/APIの分類表はdesktop tableをそのままmobileで横スクロールさせるのではなく、mobileではlabel付きcard表現へ変換する。最初の拡張runでUsersの曖昧なtest locatorのみが失敗したため、user card内へscopeして修正した。実装監査中に個別利用日数COUNTのcollection名がPhase 3 canonical `observability_actor_day`と不一致だった問題も検出し修正した。
 
 Final completion gate:
 
