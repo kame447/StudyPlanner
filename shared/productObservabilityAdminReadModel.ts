@@ -17,6 +17,20 @@ export interface ObservabilityAiDimensionSummary {
   latencyP95Ms: number | null;
 }
 
+export interface ObservabilityAiPlanningEfficiency {
+  sessionCount: number;
+  requestCount: number;
+  repairRequestCount: number;
+  repairRate: number | null;
+  requestsPerSession: number | null;
+  estimatedCostMicros: number;
+  estimatedCostUnknownCount: number;
+  estimatedCostPerSessionMicros: number | null;
+  cachedTokens: number;
+  promptTokens: number;
+  cacheHitTokenRatio: number | null;
+}
+
 export interface ObservabilityAiAnalysisReadModel {
   fromDate: string;
   toDate: string;
@@ -28,6 +42,7 @@ export interface ObservabilityAiAnalysisReadModel {
   byModel: ObservabilityAiDimensionSummary[];
   byPurpose: ObservabilityAiDimensionSummary[];
   byPhase: ObservabilityAiDimensionSummary[];
+  planningEfficiency: ObservabilityAiPlanningEfficiency;
   rollupCheckpoint: ObservabilityRollupCheckpoint;
 }
 
@@ -38,6 +53,9 @@ export interface ObservabilityUserTimelineAiDetail {
   model: string;
   status: AiRequestMetricStatus;
   totalTokens: number | null;
+  cachedTokens: number | null;
+  cacheWriteTokens: number | null;
+  reasoningTokens: number | null;
   estimatedCostMicros: number | null;
   durationMs: number;
 }
