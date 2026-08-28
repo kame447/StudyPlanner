@@ -1,0 +1,70 @@
+name: One-shot refresh dark schedule baselines
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-refresh-dark-schedule-baselines.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact triggering revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download failed visual-regression artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 33184008124 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name ui-visual-regression-34e6850100326b3a95ac1b664a2535732c56adcc \
+            --dir /tmp/ui-visual
+
+      - name: Replace only the stale dark Schedule baselines
+        run: |
+          set -euo pipefail
+          desktop_source='/tmp/ui-visual/playwright-visual-results/visual-regression-primary--a1761-he-approved-visual-baseline-desktop-dark/schedule-actual.png'
+          mobile_source='/tmp/ui-visual/playwright-visual-results/visual-regression-primary--a1761-he-approved-visual-baseline-mobile-dark/schedule-actual.png'
+          desktop_target='tests/e2e/visual-regression.spec.mjs-snapshots/schedule-desktop-dark-linux.png'
+          mobile_target='tests/e2e/visual-regression.spec.mjs-snapshots/schedule-mobile-dark-linux.png'
+
+          test -s "$desktop_source"
+          test -s "$mobile_source"
+          test -f "$desktop_target"
+          test -f "$mobile_target"
+
+          cp "$desktop_source" "$desktop_target"
+          cp "$mobile_source" "$mobile_target"
+          file "$desktop_target" "$mobile_target"
+          sha256sum "$desktop_target" "$mobile_target"
+
+      - name: Commit baselines and remove this one-shot workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/one-shot-refresh-dark-schedule-baselines.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            tests/e2e/visual-regression.spec.mjs-snapshots/schedule-desktop-dark-linux.png \
+            tests/e2e/visual-regression.spec.mjs-snapshots/schedule-mobile-dark-linux.png \
+            .github/workflows/one-shot-refresh-dark-schedule-baselines.yml
+          git diff --cached --quiet && { echo 'Expected baseline changes are missing.' >&2; exit 1; }
+          git commit -m 'test: refresh dark mode schedule visual baselines'
+          git push origin HEAD:main
+
+      - name: Dispatch dark visual regression on the new main head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run ui-regression.yml --repo "$GITHUB_REPOSITORY" --ref main -f suite=visual
