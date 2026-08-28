@@ -1,0 +1,71 @@
+name: Deploy Firestore Rules
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - firestore.rules
+      - firebase.json
+      - scripts/ci/firestore-profile-registration-rules.mjs
+      - scripts/ci/verify-deployed-firestore-rules.mjs
+      - scripts/ci/verify-deployed-firestore-rules.test.mjs
+      - .github/workflows/deploy-firestore-rules.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-firestore-rules-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'kame447/StudyPlanner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GCP_PROJECT_ID: study-planner-d1bc8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Firestore rules regression
+        run: npm run test:firestore-rules
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: study-planner-d1bc8
+          workload_identity_provider: projects/980145543174/locations/global/workloadIdentityPools/github-actions/providers/studyplanner-main
+          service_account: firestore-rules-deployer@study-planner-d1bc8.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Deploy Firestore rules
+        run: >-
+          npx --yes firebase-tools@15.28.2 deploy
+          --only firestore:rules
+          --project "$GCP_PROJECT_ID"
+          --non-interactive
+
+      - name: Verify deployed ruleset
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/ci/verify-deployed-firestore-rules.mjs
