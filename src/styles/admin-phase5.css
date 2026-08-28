@@ -14,6 +14,46 @@
   font: inherit;
 }
 
+.admin-users-trend {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-users-trend-bars {
+  height: 150px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(2px, 1fr);
+  align-items: end;
+  gap: 3px;
+  padding: 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--surface-soft) 55%, transparent));
+}
+
+.admin-users-trend-bars span {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 4px 4px 1px 1px;
+  background: color-mix(in srgb, var(--accent) 76%, var(--surface-strong));
+}
+
+.admin-users-trend-axis {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.admin-users-trend-axis span:nth-child(2) {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-identity-search {
   display: grid;
   gap: 14px;
@@ -238,6 +278,11 @@
 @media (max-width: 760px) {
   .admin-user-copy code {
     max-width: 68vw;
+  }
+
+  .admin-users-trend-bars {
+    height: 118px;
+    gap: 2px;
   }
 
   .admin-identity-search-row,
