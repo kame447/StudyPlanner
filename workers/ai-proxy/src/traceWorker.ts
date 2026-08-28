@@ -15,6 +15,11 @@ import {
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
+  handleMaterialMetadataApi,
+  isMaterialMetadataPath,
+  type MaterialMetadataApiEnv,
+} from './materialMetadataApi';
+import {
   handleProductObservabilityAdminApi,
   isProductObservabilityAdminPath,
 } from './productObservabilityAdminApi';
@@ -115,6 +120,12 @@ export default {
       return await handleProductObservabilityApi(
         request,
         env as unknown as ProductObservabilityApiEnv,
+      );
+    }
+    if (isMaterialMetadataPath(pathname)) {
+      return await handleMaterialMetadataApi(
+        request,
+        env as unknown as MaterialMetadataApiEnv,
       );
     }
 
