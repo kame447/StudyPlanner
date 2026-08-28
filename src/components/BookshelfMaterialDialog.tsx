@@ -142,7 +142,11 @@ export function BookshelfMaterialDialog({
           color: selectedSubject.color,
           coverImageUrl: catalogCoverUrl || undefined,
           coverImageDataUrl: coverImageDataUrl || undefined,
-          aliases: material?.aliases ?? [],
+          catalogEntryId: catalogCandidate?.catalogEntryId ?? material?.catalogEntryId,
+          catalogTitle: catalogCandidate?.title ?? material?.catalogTitle,
+          catalogIsbn10: catalogCandidate?.isbn10 ?? material?.catalogIsbn10,
+          catalogIsbn13: catalogCandidate?.isbn13 ?? material?.catalogIsbn13,
+          aliases: catalogCandidate?.aliases ?? material?.aliases ?? [],
           status: material?.status ?? 'active',
           paceEnabled,
           progressUnit,
@@ -248,6 +252,18 @@ export function BookshelfMaterialDialog({
                 setStatusTone('info');
               }}
             />
+          ) : null}
+
+          {material?.catalogEntryId ? (
+            <p className="detail-note">
+              教材DBに紐付け済み
+              {material.catalogTitle ? ` ・ ${material.catalogTitle}` : ''}
+              {material.catalogIsbn13
+                ? ` ・ ISBN ${material.catalogIsbn13}`
+                : material.catalogIsbn10
+                  ? ` ・ ISBN ${material.catalogIsbn10}`
+                  : ''}
+            </p>
           ) : null}
 
           {catalogCandidate ? (
