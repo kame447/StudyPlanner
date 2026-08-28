@@ -20,6 +20,7 @@ Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 - 外部API障害、共有カタログ障害、検索結果なしでも手入力導線を失わない。
 - 検索候補を選んでも、教科、進捗単位、総量、現在位置、目標日等は自動決定しない。
 - 表紙画像は当面ユーザーが自分で設定する。書誌APIの画像利用条件と混ぜない。
+- NDL由来候補を表示する箇所では、国立国会図書館全国書誌情報を利用していることを利用者が確認できる。
 
 ## 3. 初期アーキテクチャ
 
@@ -53,6 +54,12 @@ MaterialMetadata API
 - API keyを要求しない。
 - 国立国会図書館由来の書誌メタデータは利用条件が比較的明確である。
 - Google Books等の有料化・利用規約をStudyPlannerの必須依存へ持ち込まなくてよい。
+
+NDL Searchは複数機関のデータを横断して提供するため、初期実装では検索対象を `dpid=iss-ndl-opac-national`、すなわち「国立国会図書館全国書誌情報」に限定する。2026-08-28時点の公式provider一覧では、このデータは検索API利用可・営利利用可・CC BYとして案内されている。
+
+他providerのデータを同じ条件だとみなしてcacheしてはならない。将来検索対象を拡張する場合は、providerごとに利用条件、保存可否、表示上のクレジット要件を再確認する。
+
+NDL由来の候補を利用者へ表示する場合は「国立国会図書館全国書誌情報を利用」のクレジットを表示する。ライセンス要件が変更された場合は、実装より先にこの正仕様とprovider adapterを更新する。
 
 provider名、query形式、XML形式はintegration layerの外へ漏らさない。
 
@@ -128,6 +135,7 @@ StudyPlannerが所有するもの:
 - 共有カタログはbrowserから直接writeさせない。
 - workerのservice account経由でcacheする。
 - request bodyとquery lengthを制限する。
+- NDL OpenSearchの検索対象providerは初期実装では全国書誌情報へ固定する。
 - provider障害時は502等で検索だけを失敗させ、教材保存導線を壊さない。
 
 ## 9. 初期実装範囲
@@ -137,9 +145,11 @@ StudyPlannerが所有するもの:
 - normalized material metadata contract
 - authenticated worker endpoint
 - NDL OpenSearch adapter
+- 全国書誌情報に限定したNDL検索
 - ISBN / exact normalized title shared cache
 - 教材追加画面の任意検索UI
 - 候補タイトルの教材名への反映
+- NDL書誌利用のクレジット表示
 - unit tests
 
 今回実装しない:
@@ -158,10 +168,12 @@ StudyPlannerが所有するもの:
 ## 10. Acceptance criteria
 
 - ISBNまたは2文字以上の教材名で検索できる。
+- NDL検索は `iss-ndl-opac-national` に限定される。
 - ISBNの共有catalog hitでは外部providerを呼ばない設計になっている。
 - exact titleの共有catalog hitでは外部providerを呼ばない設計になっている。
 - provider responseはnormalized candidateへ変換される。
 - ISBNを持たない結果は初期書籍catalogへ保存しない。
 - UIは検索失敗時にも手入力可能である。
 - 検索候補選択は教材名のみへ反映し、進捗設定を自動変更しない。
+- NDL由来候補を表示するUIに全国書誌情報利用のクレジットがある。
 - runtime code/tests/buildがgreenである。
