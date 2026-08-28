@@ -1,6 +1,6 @@
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
 import type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 import { listCalendarDatesInclusive } from '../semantic/weeklyPlanningCalendarResolver';
 
@@ -36,6 +36,7 @@ function timetableSource(params: {
   ownerId: string;
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
   horizon: { startDate: string; endDate: string } | null;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot {
@@ -58,6 +59,7 @@ function timetableSource(params: {
         date,
         weekday: getRecurrenceWeekday(date),
         termId,
+        term: params.timetableTerm,
       }).map((candidate) => ({
         eventId: candidate.sourceId,
         ownerId: params.ownerId,
@@ -74,6 +76,7 @@ export function createStableV5ExternalConstraintSources(params: {
   plans: readonly Plan[];
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
   horizon: { startDate: string; endDate: string } | null;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot[] {
@@ -88,6 +91,7 @@ export function createStableV5ExternalConstraintSources(params: {
       ownerId: params.ownerId,
       templates: params.templates,
       timetableTermId: params.timetableTermId,
+      timetableTerm: params.timetableTerm,
       horizon: params.horizon,
       timeZone: params.timeZone,
     }),
