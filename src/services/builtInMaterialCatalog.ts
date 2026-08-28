@@ -40,7 +40,18 @@ function seedCandidate(entry: BuiltInMaterialSeedEntry): MaterialMetadataCandida
     subjectHint: entry.subject,
     materialKind: entry.kind,
     aliases: entry.aliases ?? [],
+    resolutionRequired: entry.resolutionRequired === true,
   };
+}
+
+function dedupeCandidates(candidates: MaterialMetadataCandidate[]): MaterialMetadataCandidate[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = normalizeMaterialCatalogTitle(candidate.title);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function searchCuratedSeries(normalizedQuery: string): MaterialMetadataCandidate[] {
@@ -49,24 +60,28 @@ function searchCuratedSeries(normalizedQuery: string): MaterialMetadataCandidate
   );
   if (!series) return [];
 
-  return series.entryIds
-    .flatMap((entryId) => {
+  return dedupeCandidates(
+    series.entryIds.flatMap((entryId) => {
       const entry = seedEntryById.get(entryId);
       return entry ? [seedCandidate(entry)] : [];
-    })
-    .slice(0, MAX_BUILT_IN_RESULTS);
+    }),
+  ).slice(0, MAX_BUILT_IN_RESULTS);
 }
 
 function searchCuratedSeed(normalizedQuery: string): MaterialMetadataCandidate[] {
-  return MATERIAL_CATALOG_SEED_ENTRIES
+  const matches = MATERIAL_CATALOG_SEED_ENTRIES
     .filter((entry) => seedEntryMatches(entry, normalizedQuery))
     .sort((left, right) => {
+      const leftDiscovery = left.resolutionRequired === true ? 1 : 0;
+      const rightDiscovery = right.resolutionRequired === true ? 1 : 0;
+      if (leftDiscovery !== rightDiscovery) return leftDiscovery - rightDiscovery;
       const leftExact = normalizeMaterialCatalogTitle(left.title) === normalizedQuery ? 0 : 1;
       const rightExact = normalizeMaterialCatalogTitle(right.title) === normalizedQuery ? 0 : 1;
       return leftExact - rightExact || left.title.localeCompare(right.title, 'ja');
     })
-    .slice(0, MAX_BUILT_IN_RESULTS)
     .map(seedCandidate);
+
+  return dedupeCandidates(matches).slice(0, MAX_BUILT_IN_RESULTS);
 }
 
 function searchLegacyFallback(normalizedQuery: string): MaterialMetadataCandidate[] {
@@ -90,6 +105,7 @@ function searchLegacyFallback(normalizedQuery: string): MaterialMetadataCandidat
         authors: [],
         subjectHint: subject.label,
         materialKind: '既存候補',
+        resolutionRequired: true,
       });
     });
   });
