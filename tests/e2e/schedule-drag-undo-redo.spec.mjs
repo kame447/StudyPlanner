@@ -138,6 +138,14 @@ async function dragBy(locator, page, deltaX, deltaY) {
   await page.mouse.up();
 }
 
+async function readSeededPlanTime(page) {
+  return page.evaluate(() => {
+    const plans = JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]');
+    const plan = plans.find((candidate) => candidate.id === 'day-drag-plan');
+    return plan ? `${plan.startTime}-${plan.endTime}` : null;
+  });
+}
+
 async function openSchedule(page) {
   await page.goto('/');
   await expect(page.locator('.primary-bottom-nav')).toBeVisible();
@@ -179,6 +187,13 @@ test('day drag exposes icon history controls and undo/redo reapply the saved mov
 
   await redo.click();
   await expect(plan.locator('.timeline-entry-time')).toHaveText('10:00-11:00');
+
+  await page.locator('.schedule-day-strip button:not(.active)').first().click();
+  await expect(undo).toBeVisible();
+  await undo.click();
+  await expect.poll(() => readSeededPlanTime(page)).toBe('09:00-10:00');
+  await redo.click();
+  await expect.poll(() => readSeededPlanTime(page)).toBe('10:00-11:00');
 
   await page.getByRole('tab', { name: '月', exact: true }).click();
   await expect(page.getByRole('button', { name: '変更を元に戻す' })).toHaveCount(0);
