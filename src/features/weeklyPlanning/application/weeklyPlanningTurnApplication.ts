@@ -79,7 +79,7 @@ export function submitWeeklyPlanningApplicationTurn(
       });
     },
     onStartedTurn({ pending }) {
-      services.outcomeLifecycle.started({
+      services.outcomeLifecycle.started?.({
         ownerId: params.ownerId,
         pending,
       });
