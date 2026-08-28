@@ -6,6 +6,7 @@ import math from './math.json';
 import science from './science.json';
 import social from './social.json';
 import university from './university.json';
+import verifiedSeries from './verified-series.json';
 
 export interface BuiltInMaterialSeedEntry {
   id: string;
@@ -26,4 +27,5 @@ export const MATERIAL_CATALOG_SEED_ENTRIES: BuiltInMaterialSeedEntry[] = [
   ...exams,
   ...certifications,
   ...university,
+  ...verifiedSeries,
 ] as BuiltInMaterialSeedEntry[];

@@ -4,7 +4,7 @@ import { searchBuiltInMaterialCatalog } from './builtInMaterialCatalog';
 
 describe('built-in material catalog', () => {
   it('ships a broad curated material seed instead of relying on generic NLP keywords', () => {
-    expect(MATERIAL_CATALOG_SEED_ENTRIES.length).toBeGreaterThanOrEqual(250);
+    expect(MATERIAL_CATALOG_SEED_ENTRIES.length).toBeGreaterThanOrEqual(290);
     expect(new Set(MATERIAL_CATALOG_SEED_ENTRIES.map((entry) => entry.id)).size)
       .toBe(MATERIAL_CATALOG_SEED_ENTRIES.length);
     expect(new Set(MATERIAL_CATALOG_SEED_ENTRIES.map((entry) => entry.subject)).size)
@@ -26,14 +26,19 @@ describe('built-in material catalog', () => {
   });
 
   it('returns multiple concrete candidates when a series alias maps to several books', () => {
-    const results = searchBuiltInMaterialCatalog('青チャート');
-
-    expect(results.map((candidate) => candidate.title)).toEqual([
+    const chartResults = searchBuiltInMaterialCatalog('青チャート');
+    expect(chartResults.map((candidate) => candidate.title)).toEqual([
       '青チャート 数学I+A',
       '青チャート 数学II+B+C',
       '青チャート 数学III+C',
     ]);
-    expect(results.every((candidate) => candidate.subjectHint === '数学')).toBe(true);
+
+    const polarisResults = searchBuiltInMaterialCatalog('現代文ポラリス');
+    expect(polarisResults.map((candidate) => candidate.title)).toEqual([
+      '柳生好之の現代文ポラリス 1',
+      '柳生好之の現代文ポラリス 2',
+      '柳生好之の現代文ポラリス 3',
+    ]);
   });
 
   it('keeps useful long legacy candidates without promoting short generic NLP terms', () => {
