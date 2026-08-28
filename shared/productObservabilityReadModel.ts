@@ -102,7 +102,6 @@ export interface ObservabilityActorDay {
 
 export interface ObservabilityUserSummary {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
-  environment: ObservabilityEnvironment;
   actorSubjectId: string;
   firstActivityAt: string;
   lastActivityAt: string;
