@@ -157,7 +157,70 @@
   gap: 7px;
 }
 
+.timetable-period-swipe-row {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+
+.timetable-period-swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 0;
+  display: flex;
+  align-items: stretch;
+  width: 84px;
+  padding-left: 8px;
+}
+
+.timetable-period-delete-action {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 18px;
+  background: #ff334f;
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+  opacity: 0;
+  transform: translate3d(18px, 0, 0) scale(0.96);
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease;
+  pointer-events: none;
+}
+
+.timetable-period-swipe-row.is-revealed .timetable-period-delete-action {
+  pointer-events: auto;
+}
+
+.timetable-period-delete-action:hover {
+  filter: brightness(0.97);
+}
+
+.timetable-period-delete-action:active {
+  filter: brightness(0.91);
+}
+
+.timetable-period-delete-action:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: -3px;
+}
+
+.timetable-period-delete-action:disabled {
+  cursor: default;
+  filter: saturate(0.55);
+}
+
 .timetable-period-list-item {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 2px;
   width: 100%;
@@ -170,6 +233,22 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  touch-action: pan-y;
+  will-change: transform;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.timetable-period-swipe-row.is-revealed:not(.is-dragging) .timetable-period-list-item {
+  box-shadow: 0 8px 22px rgba(31, 43, 43, 0.08);
+}
+
+.timetable-period-swipe-row.is-dragging .timetable-period-list-item,
+.timetable-period-swipe-row.is-dragging .timetable-period-delete-action {
+  transition: none;
 }
 
 .timetable-period-list-item.active {
@@ -187,6 +266,17 @@
 .timetable-period-list-item > span {
   color: var(--text-muted);
   font-size: 0.7rem;
+}
+
+.timetable-period-sheet-error {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timetable-period-list-item,
+  .timetable-period-delete-action {
+    transition: none;
+  }
 }
 
 .timetable-period-form-card {
