@@ -29,6 +29,7 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const DEFAULT_BATCH_SIZE = 50;
 const MAX_TRANSACTION_ATTEMPTS = 3;
+const MAX_ACTIVE_USER_DIRTY_DATES = 64;
 const ROLLUP_SETTLE_LAG_MS = 5 * 60 * 1000;
 
 interface ObservabilityRollupFirestore {
@@ -61,11 +62,38 @@ export interface ProductObservabilityRollupResult {
   changedActorDates: string[];
 }
 
+function isIsoDate(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(new Date(`${value}T00:00:00.000Z`).getTime());
+}
+
+function readDirtyDates(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => !isIsoDate(item))) {
+    throw new Error('invalid_observability_checkpoint');
+  }
+  const dates = [...new Set(value)].sort();
+  if (dates.length > MAX_ACTIVE_USER_DIRTY_DATES) {
+    throw new Error('active_user_dirty_dates_overflow');
+  }
+  return dates;
+}
+
+function mergeDirtyDates(current: readonly string[], added: readonly string[]): string[] {
+  const dates = [...new Set([...current, ...added])].sort();
+  if (dates.length > MAX_ACTIVE_USER_DIRTY_DATES) {
+    throw new Error('active_user_dirty_dates_overflow');
+  }
+  return dates;
+}
+
 function emptyCheckpoint(nowIso: string): ObservabilityRollupCheckpoint {
   return {
     schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
     cursor: null,
     processedEventCount: 0,
+    activeUserDirtyDates: [],
     lastRunStartedAt: null,
     lastSuccessfulRunAt: null,
     lastFailureAt: null,
@@ -93,6 +121,7 @@ function readCheckpoint(
     processedEventCount: Number.isSafeInteger(value.processedEventCount)
       ? Math.max(0, Number(value.processedEventCount))
       : 0,
+    activeUserDirtyDates: readDirtyDates(value.activeUserDirtyDates),
     lastRunStartedAt: typeof value.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value.lastSuccessfulRunAt === 'string'
       ? value.lastSuccessfulRunAt
@@ -158,6 +187,12 @@ function failureCategory(error: unknown): string {
   if (error instanceof FirestoreTransactionConflictError) return 'transaction_conflict';
   if (error instanceof Error && error.message === 'invalid_observability_event') {
     return 'invalid_event';
+  }
+  if (error instanceof Error && error.message === 'active_user_dirty_dates_overflow') {
+    return 'active_user_dirty_dates_overflow';
+  }
+  if (error instanceof Error && error.message === 'invalid_observability_checkpoint') {
+    return 'invalid_checkpoint';
   }
   return 'rollup_failure';
 }
@@ -230,6 +265,51 @@ export class ProductObservabilityRollupEngine {
         return;
       }
     }
+  }
+
+  async clearActiveUserDirtyDates(processedDates: readonly string[]): Promise<void> {
+    const processed = new Set(processedDates.filter(isIsoDate));
+    if (processed.size === 0) return;
+
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const nowIso = this.now().toISOString();
+      const transaction = await this.firestore.beginTransaction();
+      try {
+        const latest = readCheckpoint(
+          await this.firestore.getDocumentInTransaction(
+            ROLLUP_STATE_COLLECTION,
+            ROLLUP_STATE_ID,
+            transaction,
+          ),
+          nowIso,
+        );
+        const remaining = latest.activeUserDirtyDates.filter((date) => !processed.has(date));
+        if (remaining.length === latest.activeUserDirtyDates.length) {
+          await this.firestore.rollbackTransaction(transaction);
+          return;
+        }
+        const next: ObservabilityRollupCheckpoint = {
+          ...latest,
+          activeUserDirtyDates: remaining,
+          updatedAt: nowIso,
+        };
+        await this.firestore.commitTransaction(transaction, [{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+          value: next as unknown as Record<string, unknown>,
+        }]);
+        return;
+      } catch (error) {
+        try {
+          await this.firestore.rollbackTransaction(transaction);
+        } catch {
+          // A failed/committed transaction may no longer be rollbackable.
+        }
+        if (error instanceof FirestoreTransactionConflictError) continue;
+        throw error;
+      }
+    }
+    throw new Error('Observability dirty-date checkpoint retry limit exceeded.');
   }
 
   async runBatch(limit = DEFAULT_BATCH_SIZE): Promise<ProductObservabilityRollupResult> {
@@ -367,6 +447,10 @@ export class ProductObservabilityRollupEngine {
             documentName: last.document.documentName,
           },
           processedEventCount: transactionalCheckpoint.processedEventCount + eventRows.length,
+          activeUserDirtyDates: mergeDirtyDates(
+            transactionalCheckpoint.activeUserDirtyDates,
+            [...changedActorDates],
+          ),
           lastRunStartedAt: runStartedAt,
           lastSuccessfulRunAt: runStartedAt,
           lastFailureAt: null,
