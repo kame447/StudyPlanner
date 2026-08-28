@@ -51,6 +51,19 @@ function weekDistance(
   return Math.round((dateWeek - anchorWeek) / WEEK_MS);
 }
 
+function hasExplicitTimetableRange(term: TimetableTerm): boolean {
+  return isIsoCalendarDate(term.startDate) || isIsoCalendarDate(term.endDate);
+}
+
+function compareTimetableTermPriority(left: TimetableTerm, right: TimetableTerm): number {
+  return (
+    Number(right.isActive) - Number(left.isActive) ||
+    (right.startDate ?? '').localeCompare(left.startDate ?? '') ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
 export function isIsoCalendarDate(value: string | null | undefined): value is string {
   return parseIsoDateUtc(value) !== null;
 }
@@ -76,6 +89,50 @@ export function isDateWithinTimetableTerm(
   }
 
   return true;
+}
+
+export function resolveTimetableTermForDate(
+  date: string,
+  terms: readonly TimetableTerm[],
+  preferredTermId?: string | null,
+): TimetableTerm | null {
+  if (!isIsoCalendarDate(date)) {
+    return null;
+  }
+
+  const preferredTerm = preferredTermId
+    ? terms.find((term) => term.id === preferredTermId) ?? null
+    : null;
+
+  if (
+    preferredTerm &&
+    hasExplicitTimetableRange(preferredTerm) &&
+    isDateWithinTimetableTerm(date, preferredTerm)
+  ) {
+    return preferredTerm;
+  }
+
+  const boundedMatch = terms
+    .filter(
+      (term) => hasExplicitTimetableRange(term) && isDateWithinTimetableTerm(date, term),
+    )
+    .slice()
+    .sort(compareTimetableTermPriority)[0];
+
+  if (boundedMatch) {
+    return boundedMatch;
+  }
+
+  if (preferredTerm && !hasExplicitTimetableRange(preferredTerm)) {
+    return preferredTerm;
+  }
+
+  return terms
+    .filter(
+      (term) => !hasExplicitTimetableRange(term) && isDateWithinTimetableTerm(date, term),
+    )
+    .slice()
+    .sort(compareTimetableTermPriority)[0] ?? null;
 }
 
 export function resolveTimetableAlternatingWeek(
