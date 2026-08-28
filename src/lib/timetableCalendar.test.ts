@@ -4,6 +4,7 @@ import {
   isDateWithinTimetableTerm,
   isScheduleTemplateActiveOnDate,
   resolveTimetableAlternatingWeek,
+  resolveTimetableTermForDate,
 } from './timetableCalendar';
 import type { ScheduleTemplate, TimetableTerm } from '../types/domain';
 
@@ -51,6 +52,39 @@ describe('timetable calendar recurrence', () => {
     expect(isDateWithinTimetableTerm('2026-07-31', TERM)).toBe(true);
     expect(isDateWithinTimetableTerm('2026-03-31', TERM)).toBe(false);
     expect(isDateWithinTimetableTerm('2026-08-01', TERM)).toBe(false);
+  });
+
+  it('resolves the timetable period from the viewed date instead of only the active selection', () => {
+    const autumn: TimetableTerm = {
+      ...TERM,
+      id: 'term-autumn',
+      label: '2026年後期',
+      startDate: '2026-09-20',
+      endDate: '2027-02-10',
+      usesAlternatingWeeks: false,
+      alternatingWeekAnchorDate: null,
+      isActive: false,
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    };
+
+    expect(resolveTimetableTermForDate('2026-06-01', [TERM, autumn], TERM.id)?.id).toBe(TERM.id);
+    expect(resolveTimetableTermForDate('2026-10-01', [TERM, autumn], TERM.id)?.id).toBe(autumn.id);
+    expect(resolveTimetableTermForDate('2026-08-20', [TERM, autumn], TERM.id)).toBeNull();
+  });
+
+  it('keeps an unbounded legacy timetable as a fallback when no dated period exists', () => {
+    const legacy: TimetableTerm = {
+      ...TERM,
+      id: 'legacy',
+      label: '既存時間割',
+      startDate: null,
+      endDate: null,
+      usesAlternatingWeeks: false,
+      alternatingWeekAnchorDate: null,
+      isActive: true,
+    };
+
+    expect(resolveTimetableTermForDate('2026-08-20', [legacy], legacy.id)?.id).toBe('legacy');
   });
 
   it('alternates A and B by calendar week from the configured A-week anchor', () => {
