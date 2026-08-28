@@ -19,6 +19,10 @@ import {
   isProductObservabilityPath,
   type ProductObservabilityApiEnv,
 } from './productObservabilityApi';
+import {
+  ProductObservabilityRollupEngine,
+  type ProductObservabilityRollupEnv,
+} from './productObservabilityRollup';
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
@@ -28,6 +32,8 @@ export { AiQuotaDurableObject };
 const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
 const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
+const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
+const ROLLUP_BATCH_SIZE = 50;
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
   const correlationId = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
@@ -52,6 +58,16 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
       'X-StudyPlanner-Proxy-Version',
     ].join(', '),
   };
+}
+
+async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<void> {
+  const engine = new ProductObservabilityRollupEngine(
+    env as unknown as ProductObservabilityRollupEnv,
+  );
+  for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
+    const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
+    if (!result.hasMore) return;
+  }
 }
 
 export default {
@@ -107,5 +123,18 @@ export default {
       statusText: response.statusText,
       headers,
     });
+  },
+  async scheduled(
+    _controller: ScheduledController,
+    env: Record<string, unknown>,
+    executionContext: ExecutionContext,
+  ): Promise<void> {
+    executionContext.waitUntil(
+      runScheduledObservabilityRollup(env).catch((error) => {
+        console.error('[Product Observability] scheduled rollup failed', {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }),
+    );
   },
 };
