@@ -237,18 +237,18 @@ export function AdminAiApiPage() {
             <div className="admin-section-heading">
               <div>
                 <h2>AI計画の効率</h2>
-                <p>planning sessionとAI requestをserver-side集計し、repairやcacheの効き方を確認します。</p>
+                <p>planning turnとAI requestをserver-side集計し、repairやcacheの効き方を確認します。</p>
               </div>
             </div>
             <div className="admin-ai-efficiency-grid">
-              <div><span>計画セッション</span><strong>{formatNumber(data.planningEfficiency.sessionCount)}件</strong></div>
-              <div><span>1セッションあたりrequest</span><strong>{data.planningEfficiency.requestsPerSession === null ? '未計測' : data.planningEfficiency.requestsPerSession.toFixed(2)}</strong></div>
+              <div><span>計画turn</span><strong>{formatNumber(data.planningEfficiency.turnCount)}件</strong></div>
+              <div><span>1 turnあたりrequest</span><strong>{data.planningEfficiency.requestsPerTurn === null ? '未計測' : data.planningEfficiency.requestsPerTurn.toFixed(2)}</strong></div>
               <div><span>repair request率</span><strong>{percentage(data.planningEfficiency.repairRate)}</strong></div>
-              <div><span>1セッション推定原価</span><strong>{formatCostMicros(data.planningEfficiency.estimatedCostPerSessionMicros)}</strong></div>
+              <div><span>1 turn推定原価</span><strong>{formatCostMicros(data.planningEfficiency.estimatedCostPerTurnMicros)}</strong></div>
               <div><span>cached token比率</span><strong>{percentage(data.planningEfficiency.cacheHitTokenRatio)}</strong></div>
             </div>
             {data.planningEfficiency.estimatedCostUnknownCount > 0 ? (
-              <p className="admin-overview-empty">費用未算出のplanning requestが {formatNumber(data.planningEfficiency.estimatedCostUnknownCount)}件あるため、セッション単価は未確定です。</p>
+              <p className="admin-overview-empty">費用未算出のplanning requestが {formatNumber(data.planningEfficiency.estimatedCostUnknownCount)}件あるため、turn単価は未確定です。</p>
             ) : null}
           </section>
 
