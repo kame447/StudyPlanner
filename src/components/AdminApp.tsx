@@ -104,6 +104,7 @@ export function AdminApp() {
 
   const isOverviewPage = currentPath === '/admin';
   const isUsersPage = currentPath === '/admin/users' || currentPath.startsWith('/admin/users/');
+  const isAiPage = currentPath === '/admin/ai';
   const isTracePage = currentPath === TRACE_PATH;
 
   return (
@@ -136,7 +137,14 @@ export function AdminApp() {
                 <Users aria-hidden="true" size={19} />
                 <span>Users</span>
               </button>
-              <FutureNavItem icon={<Bot aria-hidden="true" size={19} />} label="AI・API" />
+              <button
+                className={`admin-console-nav-item${isAiPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/ai')}
+                type="button"
+              >
+                <Bot aria-hidden="true" size={19} />
+                <span>AI・API</span>
+              </button>
               <FutureNavItem icon={<CalendarClock aria-hidden="true" size={19} />} label="Planning" />
               <button
                 className={`admin-console-nav-item${isTracePage ? ' active' : ''}`}
