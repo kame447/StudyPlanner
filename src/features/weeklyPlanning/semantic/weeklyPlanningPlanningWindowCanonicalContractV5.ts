@@ -23,6 +23,15 @@ export interface PlanningWindowCanonicalNormalizationV5 {
   repairs: string[];
 }
 
+export interface PlanningWindowCanonicalRawNormalizationV5 {
+  rawResponse: string;
+  repairs: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function normalizePlanningWindowCanonicalV5(
   window: SemanticPlanningWindowV5 | null,
 ): PlanningWindowCanonicalNormalizationV5 {
@@ -45,6 +54,43 @@ export function normalizePlanningWindowCanonicalV5(
 
   return {
     window: { ...window, value: canonicalValue },
+    repairs: ['planning-window-value-canonicalized-from-validated-range'],
+  };
+}
+
+export function normalizePlanningWindowCanonicalRawV5(
+  rawResponse: string,
+): PlanningWindowCanonicalRawNormalizationV5 {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { rawResponse, repairs: [] };
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.planningWindow)) {
+    return { rawResponse, repairs: [] };
+  }
+  const window = parsed.planningWindow;
+  if (
+    window.kind !== 'absolute'
+    || typeof window.start !== 'string'
+    || typeof window.end !== 'string'
+    || !isValidCalendarDate(window.start)
+    || !isValidCalendarDate(window.end)
+    || window.start > window.end
+  ) {
+    return { rawResponse, repairs: [] };
+  }
+
+  const canonicalValue = `${window.start}/${window.end}`;
+  if (window.value === canonicalValue) {
+    return { rawResponse, repairs: [] };
+  }
+  return {
+    rawResponse: JSON.stringify({
+      ...parsed,
+      planningWindow: { ...window, value: canonicalValue },
+    }),
     repairs: ['planning-window-value-canonicalized-from-validated-range'],
   };
 }

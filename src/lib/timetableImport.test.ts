@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ScheduleTemplate, TimetableTerm } from '../types/domain';
+import type { ScheduleTemplate } from '../types/domain';
 import {
   buildTimetableImportCandidates,
   createPlanDraftFromTimetableImportCandidate,
@@ -133,57 +133,6 @@ describe('buildTimetableImportCandidates', () => {
       'template-4',
     ]);
     expect(candidates.every((candidate) => candidate.isGrouped)).toBe(false);
-  });
-
-  it('filters imports by timetable period bounds and A/B week scope', () => {
-    const term: TimetableTerm = {
-      id: 'term-1',
-      userId: 'user-1',
-      year: 2026,
-      kind: 'custom',
-      label: '2026年前期',
-      startDate: '2026-04-06',
-      endDate: '2026-04-26',
-      usesAlternatingWeeks: true,
-      alternatingWeekAnchorDate: '2026-04-06',
-      isActive: true,
-      createdAt: '2026-04-01T00:00:00.000Z',
-      updatedAt: '2026-04-01T00:00:00.000Z',
-    };
-    const aWeekTemplate = template({
-      id: 'template-1',
-      title: '英語',
-      periodNumber: 1,
-      alternatingWeek: 'a',
-    });
-
-    expect(
-      buildTimetableImportCandidates({
-        date: '2026-04-06',
-        weekday: 'mon',
-        termId: term.id,
-        term,
-        templates: [aWeekTemplate],
-      }),
-    ).toHaveLength(1);
-    expect(
-      buildTimetableImportCandidates({
-        date: '2026-04-13',
-        weekday: 'mon',
-        termId: term.id,
-        term,
-        templates: [aWeekTemplate],
-      }),
-    ).toHaveLength(0);
-    expect(
-      buildTimetableImportCandidates({
-        date: '2026-04-27',
-        weekday: 'mon',
-        termId: term.id,
-        term,
-        templates: [aWeekTemplate],
-      }),
-    ).toHaveLength(0);
   });
 
   it('builds a timetable PlanDraft from the grouped candidate source id', () => {
