@@ -1,0 +1,84 @@
+name: Finalize timetable period swipe-delete
+
+on:
+  push:
+    branches:
+      - fix/timetable-period-swipe-delete
+
+permissions:
+  contents: write
+
+jobs:
+  sync-format-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Sync current main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+      - name: Normalize added function indentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def indent_function_body(path: str, signature: str, next_signature: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text()
+              start = text.index(signature)
+              end = text.index(next_signature, start)
+              block = text[start:end]
+              lines = block.splitlines()
+              if len(lines) < 2:
+                  raise SystemExit(f'{path}: function block unexpectedly short')
+              normalized = [lines[0], *[(f'  {line}' if line else line) for line in lines[1:]]]
+              replacement = '\n'.join(normalized)
+              if block.endswith('\n'):
+                  replacement += '\n'
+              file_path.write_text(text[:start] + replacement + text[end:])
+
+          indent_function_body(
+              'src/components/TimetableView.tsx',
+              '  async function deleteExistingPeriod(term: TimetableTerm) {',
+              '  async function clearCurrentTermData()',
+          )
+          indent_function_body(
+              'src/hooks/usePlannerDataState.ts',
+              '  async function deleteTimetableTerm(term: TimetableTerm) {',
+              '  async function clearTimetableTermData(term: TimetableTerm) {',
+          )
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused swipe test
+        run: node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/components/TimetablePeriodSwipeItem.test.tsx --reporter=verbose
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build typecheck
+        run: npm run typecheck:build
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit cleanup and remove one-shot workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/timetable-period-finalize.yml
+          git add src/components/TimetableView.tsx src/hooks/usePlannerDataState.ts
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "style: normalize timetable period deletion code"
+          fi
+          git push origin HEAD:"$GITHUB_REF_NAME"
