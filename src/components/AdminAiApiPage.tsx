@@ -89,6 +89,22 @@ function successRate(success: number, total: number): string {
   return total > 0 ? `${((success / total) * 100).toFixed(1)}%` : '—';
 }
 
+function failureBreakdown(row: ObservabilityAiDimensionSummary): string {
+  const statuses = row.aggregate.statusCounts;
+  const quota = statuses.quota_rejected ?? 0;
+  const timeout = statuses.timeout ?? 0;
+  const provider = statuses.provider_error ?? 0;
+  const known = quota + timeout + provider;
+  const other = Math.max(0, row.aggregate.failureCount - known);
+  const parts = [
+    quota > 0 ? `quota ${formatNumber(quota)}` : null,
+    timeout > 0 ? `timeout ${formatNumber(timeout)}` : null,
+    provider > 0 ? `provider ${formatNumber(provider)}` : null,
+    other > 0 ? `その他 ${formatNumber(other)}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join(' / ') : '—';
+}
+
 function Metric({ icon, label, value, note }: {
   icon: ReactNode;
   label: string;
@@ -104,6 +120,17 @@ function Metric({ icon, label, value, note }: {
         <small>{note}</small>
       </div>
     </article>
+  );
+}
+
+function TokenUsage({ row }: { row: ObservabilityAiDimensionSummary }) {
+  return (
+    <div className="admin-ai-token-breakdown">
+      <span>prompt {formatTokens(row.aggregate.promptTokens, row.aggregate.promptTokensUnknownCount)}</span>
+      <span>completion {formatTokens(row.aggregate.completionTokens, row.aggregate.completionTokensUnknownCount)}</span>
+      <span>total {formatTokens(row.aggregate.totalTokens, row.aggregate.totalTokensUnknownCount)}</span>
+      <span>cached {formatTokens(row.aggregate.cachedTokens, row.aggregate.cachedTokensUnknownCount)}</span>
+    </div>
   );
 }
 
@@ -130,7 +157,8 @@ function DimensionTable({ title, description, rows }: {
                 <th>分類</th>
                 <th>Request</th>
                 <th>成功率</th>
-                <th>Token</th>
+                <th>Token usage</th>
+                <th>失敗内訳</th>
                 <th>p50</th>
                 <th>p95</th>
                 <th>推定費用</th>
@@ -139,13 +167,14 @@ function DimensionTable({ title, description, rows }: {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.key}>
-                  <td><code>{row.key}</code></td>
-                  <td>{formatNumber(row.aggregate.requestCount)}</td>
-                  <td>{successRate(row.aggregate.successCount, row.aggregate.requestCount)}</td>
-                  <td>{formatTokens(row.aggregate.totalTokens, row.aggregate.totalTokensUnknownCount)}</td>
-                  <td>{formatLatency(row.latencyP50Ms)}</td>
-                  <td>{formatLatency(row.latencyP95Ms)}</td>
-                  <td>{formatCost(row.aggregate.estimatedCostMicros, row.aggregate.estimatedCostUnknownCount)}</td>
+                  <td data-label="分類"><code>{row.key}</code></td>
+                  <td data-label="Request">{formatNumber(row.aggregate.requestCount)}</td>
+                  <td data-label="成功率">{successRate(row.aggregate.successCount, row.aggregate.requestCount)}</td>
+                  <td data-label="Token usage"><TokenUsage row={row} /></td>
+                  <td data-label="失敗内訳">{failureBreakdown(row)}</td>
+                  <td data-label="p50">{formatLatency(row.latencyP50Ms)}</td>
+                  <td data-label="p95">{formatLatency(row.latencyP95Ms)}</td>
+                  <td data-label="推定費用">{formatCost(row.aggregate.estimatedCostMicros, row.aggregate.estimatedCostUnknownCount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -263,9 +292,9 @@ export function AdminAiApiPage() {
           ) : null}
 
           <DimensionTable title="Model別" description="実際にproviderへ送ったmodel単位の集計です。" rows={data.byModel} />
-          <DimensionTable title="Purpose別" description="機能目的ごとのリクエスト量と品質を比較します。" rows={data.byPurpose} />
+          <DimensionTable title="Purpose別" description="StudyPlanner内の機能目的ごとの利用量と品質を比較します。" rows={data.byPurpose} />
           <DimensionTable title="Phase別" description="initial / repair / singleを同じ期間条件で比較します。" rows={data.byPhase} />
-          <DimensionTable title="Operation別" description="chat completion、OCR、添付解析、文字起こしなどoperation種別で比較します。" rows={data.byOperationKind} />
+          <DimensionTable title="Operation別" description="chat completion、OCR、添付解析、文字起こし等のoperation種別で比較します。" rows={data.byOperationKind} />
         </>
       ) : null}
     </main>
