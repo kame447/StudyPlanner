@@ -131,6 +131,7 @@ export interface ObservabilityActiveUserWindows {
 export interface ObservabilityActiveUserDirtySource {
   environment: ObservabilityEnvironment;
   localDate: string;
+  revision: number;
 }
 
 export interface ObservabilityRollupCursor {
