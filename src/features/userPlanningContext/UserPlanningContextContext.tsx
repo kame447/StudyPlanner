@@ -8,6 +8,10 @@ import {
   type PropsWithChildren,
 } from 'react';
 import {
+  normalizeUserPlanningContextDateInputV1,
+  userPlanningContextDateEditorTextV1,
+} from './userPlanningContextDateExpression';
+import {
   createUserConfirmedPlanningContextRecordV1,
   hydrateUserPlanningContextSnapshotV1,
   loadUserPlanningContextSnapshotV1,
@@ -51,17 +55,11 @@ function currentDateInJapan(): string {
 }
 
 export function userPlanningContextDateTextV1(record: UserPlanningContextRecordV1): string {
-  if (!record.dateExpression) return '';
-  return record.dateExpression.startsWith('custom:')
-    ? record.dateExpression.slice('custom:'.length)
-    : record.dateExpression;
+  return userPlanningContextDateEditorTextV1(record.dateExpression);
 }
 
 export function normalizeUserPlanningContextDateTextV1(value: string): string | null {
-  const normalized = value.normalize('NFKC').trim();
-  if (!normalized) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
-  return normalized.startsWith('custom:') ? normalized : `custom:${normalized}`;
+  return normalizeUserPlanningContextDateInputV1(value);
 }
 
 export function UserPlanningContextProvider({
@@ -81,7 +79,10 @@ export function UserPlanningContextProvider({
     shared: boolean;
   }) => {
     hydrateUserPlanningContextSnapshotV1(next.snapshot);
-    setSnapshot(next.snapshot);
+    setSnapshot(loadUserPlanningContextSnapshotV1({
+      ownerId: next.snapshot.ownerId,
+      currentDate: currentDateInJapan(),
+    }));
     setShared(next.shared);
     setError(null);
   }, []);
