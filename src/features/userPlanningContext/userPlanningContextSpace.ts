@@ -412,14 +412,6 @@ export function createUserConfirmedPlanningContextRecordV1(params: {
   if (sourceText.length > MAX_SOURCE_TEXT_LENGTH) {
     throw new Error('覚えておく内容が長すぎます。');
   }
-  const fact: UserPlanningContextSemanticFactV1 = {
-    localId: 'settings',
-    kind: params.kind,
-    label,
-    value: params.value,
-    dateExpression: params.dateExpression,
-    sourceText,
-  };
   const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
     params.dateExpression,
     params.currentDate,
