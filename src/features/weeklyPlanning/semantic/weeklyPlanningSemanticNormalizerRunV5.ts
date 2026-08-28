@@ -13,11 +13,26 @@ import {
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
 export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
+export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 6400;
+export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
+type GenericSemanticAttempt = 'initial' | 'repair' | 'dense_completeness_retry';
 
 export function semanticNormalizerByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+function textByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+export function semanticNormalizerCompletionTokenBudgetV5(
+  input: Pick<WeeklyPlanningSemanticNormalizerInputV5, 'userText'>,
+): number {
+  return textByteLength(input.userText) >= SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES
+    ? SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS
+    : SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS;
 }
 
 export function semanticNormalizerErrorMessage(error: unknown): string {
@@ -63,14 +78,14 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
 
   async callGeneric(
     messages: ChatMessage[],
-    attempt: 'initial' | 'repair',
+    attempt: GenericSemanticAttempt,
   ): Promise<string> {
     return this.callTracked({
       messages,
       temperature: 0,
       responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
       purpose: 'weekly_planning_semantic_normalizer',
-      maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+      maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(this.input),
     }, attempt);
   }
 

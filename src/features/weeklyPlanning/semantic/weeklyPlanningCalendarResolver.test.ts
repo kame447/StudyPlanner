@@ -3,6 +3,7 @@ import {
   addCalendarDays,
   calendarWeekday,
   intersectCalendarDates,
+  isCanonicalDateExpressionSyntax,
   isValidCalendarDate,
   listCalendarDatesInclusive,
   mondayOfCalendarWeek,
@@ -60,6 +61,30 @@ describe('weekly planning calendar resolver', () => {
       status: 'resolved',
       range: { start: '2026-07-27', end: '2026-08-02' },
     });
+  });
+
+  it('resolves a canonical absolute date range as one date expression', () => {
+    expect(isCanonicalDateExpressionSyntax('2026-09-10/2026-09-12')).toBe(true);
+    expect(resolveCanonicalDateExpression({
+      expression: '2026-09-10/2026-09-12',
+      currentDate: '2026-08-28',
+    })).toEqual({
+      status: 'resolved',
+      range: { start: '2026-09-10', end: '2026-09-12' },
+    });
+  });
+
+  it('rejects impossible or reversed absolute date ranges', () => {
+    expect(isCanonicalDateExpressionSyntax('2026-09-12/2026-09-10')).toBe(false);
+    expect(isCanonicalDateExpressionSyntax('2026-02-30/2026-03-02')).toBe(false);
+    expect(resolveCanonicalDateExpression({
+      expression: '2026-09-12/2026-09-10',
+      currentDate: '2026-08-28',
+    })).toEqual({ status: 'invalid_absolute_date', range: null });
+    expect(resolveCanonicalDateExpression({
+      expression: '2026-02-30/2026-03-02',
+      currentDate: '2026-08-28',
+    })).toEqual({ status: 'invalid_absolute_date', range: null });
   });
 
   it('uses the configured week boundary for relative week expressions', () => {
