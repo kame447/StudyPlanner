@@ -4,15 +4,24 @@ import {
   normalizeMaterialSearchText,
   type MaterialMetadataCandidate,
 } from '../../shared/materialMetadataContract';
-import { getNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
+import rawCatalog from '../data/naturalLanguageCatalog.json';
 
 const MAX_BUILT_IN_RESULTS = 8;
+
+interface BuiltInMaterialCatalogSource {
+  subjects: Array<{
+    label: string;
+    keywords: string[];
+  }>;
+}
 
 interface RankedBuiltInCandidate {
   candidate: MaterialMetadataCandidate;
   normalizedTitle: string;
   rank: number;
 }
+
+const builtInCatalog = rawCatalog as BuiltInMaterialCatalogSource;
 
 function matchRank(normalizedTitle: string, normalizedQuery: string): number | null {
   if (normalizedTitle === normalizedQuery) return 0;
@@ -25,14 +34,13 @@ export function searchBuiltInMaterialCatalog(query: string): MaterialMetadataCan
   const classified = classifyMaterialMetadataQuery(query);
   if (!classified || classified.kind !== 'title') return [];
 
-  const catalog = getNaturalLanguageCatalog();
   const normalizedQuery = normalizeMaterialCatalogTitle(classified.value);
   const subjectLabels = new Set(
-    catalog.subjects.map((subject) => normalizeMaterialCatalogTitle(subject.label)),
+    builtInCatalog.subjects.map((subject) => normalizeMaterialCatalogTitle(subject.label)),
   );
   const matches = new Map<string, RankedBuiltInCandidate>();
 
-  catalog.subjects.forEach((subject) => {
+  builtInCatalog.subjects.forEach((subject) => {
     subject.keywords.forEach((keyword) => {
       const title = normalizeMaterialSearchText(keyword);
       const normalizedTitle = normalizeMaterialCatalogTitle(title);
