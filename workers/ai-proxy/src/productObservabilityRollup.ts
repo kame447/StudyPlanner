@@ -32,7 +32,6 @@ const MAX_TRANSACTION_ATTEMPTS = 3;
 
 interface ObservabilityRollupFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
-  setDocument(collection: string, id: string, value: Record<string, unknown>): Promise<void>;
   queryDocumentsAfter(params: {
     collection: string;
     orderByField: string;
@@ -143,16 +142,10 @@ function cacheKey(collection: string, id: string): string {
   return `${collection}/${id}`;
 }
 
-function asActorDay(value: Record<string, unknown> | null): ObservabilityActorDay | null {
-  return value as unknown as ObservabilityActorDay | null;
-}
-
-function asDailyRollup(value: Record<string, unknown> | null): ObservabilityDailyRollup | null {
-  return value as unknown as ObservabilityDailyRollup | null;
-}
-
-function asUserSummary(value: Record<string, unknown> | null): ObservabilityUserSummary | null {
-  return value as unknown as ObservabilityUserSummary | null;
+function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
+  if (!value) return null;
+  const { id: _id, ...document } = value;
+  return document as unknown as T;
 }
 
 function failureCategory(error: unknown): string {
@@ -178,17 +171,46 @@ export class ProductObservabilityRollupEngine {
     );
   }
 
-  private async recordFailure(
-    base: ObservabilityRollupCheckpoint,
-    error: unknown,
-  ): Promise<void> {
-    const nowIso = this.now().toISOString();
-    await this.firestore.setDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID, {
-      ...base,
-      lastFailureAt: nowIso,
-      lastFailureCategory: failureCategory(error),
-      updatedAt: nowIso,
-    } as unknown as Record<string, unknown>);
+  private async recordFailure(error: unknown): Promise<void> {
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const nowIso = this.now().toISOString();
+      const transaction = await this.firestore.beginTransaction();
+      try {
+        const latest = readCheckpoint(
+          await this.firestore.getDocumentInTransaction(
+            ROLLUP_STATE_COLLECTION,
+            ROLLUP_STATE_ID,
+            transaction,
+          ),
+          nowIso,
+        );
+        const failed: ObservabilityRollupCheckpoint = {
+          ...latest,
+          lastFailureAt: nowIso,
+          lastFailureCategory: failureCategory(error),
+          updatedAt: nowIso,
+        };
+        await this.firestore.commitTransaction(transaction, [{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+          value: failed as unknown as Record<string, unknown>,
+        }]);
+        return;
+      } catch (failureWriteError) {
+        try {
+          await this.firestore.rollbackTransaction(transaction);
+        } catch {
+          // A failed/committed transaction may no longer be rollbackable.
+        }
+        if (failureWriteError instanceof FirestoreTransactionConflictError) continue;
+        console.error('[Product Observability] could not persist rollup failure checkpoint', {
+          message: failureWriteError instanceof Error
+            ? failureWriteError.message
+            : String(failureWriteError),
+        });
+        return;
+      }
+    }
   }
 
   async runBatch(limit = DEFAULT_BATCH_SIZE): Promise<ProductObservabilityRollupResult> {
@@ -264,7 +286,9 @@ export class ProductObservabilityRollupEngine {
 
         for (const { event } of eventRows) {
           const dayId = actorDayId(event);
-          const actorDayBefore = asActorDay(await read(ACTOR_DAY_COLLECTION, dayId));
+          const actorDayBefore = withoutStorageId<ObservabilityActorDay>(
+            await read(ACTOR_DAY_COLLECTION, dayId),
+          );
           const nextActorDay = projectActorDay({
             current: actorDayBefore,
             event,
@@ -277,7 +301,9 @@ export class ProductObservabilityRollupEngine {
           );
 
           const rollupId = dailyRollupId(event);
-          const dailyBefore = asDailyRollup(await read(DAILY_ROLLUP_COLLECTION, rollupId));
+          const dailyBefore = withoutStorageId<ObservabilityDailyRollup>(
+            await read(DAILY_ROLLUP_COLLECTION, rollupId),
+          );
           const nextDaily = projectDailyRollup({
             current: dailyBefore,
             event,
@@ -290,7 +316,7 @@ export class ProductObservabilityRollupEngine {
             nextDaily as unknown as Record<string, unknown>,
           );
 
-          const userBefore = asUserSummary(await read(
+          const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
             USER_SUMMARY_COLLECTION,
             event.actorSubjectId,
           ));
@@ -339,13 +365,12 @@ export class ProductObservabilityRollupEngine {
           // A failed/committed transaction may no longer be rollbackable.
         }
         if (error instanceof FirestoreTransactionConflictError) continue;
-        await this.recordFailure(before, error);
+        await this.recordFailure(error);
         throw error;
       }
     }
 
-    const checkpoint = await this.checkpoint();
-    await this.recordFailure(checkpoint, lastError);
+    await this.recordFailure(lastError);
     throw lastError instanceof Error
       ? lastError
       : new Error('Observability rollup transaction retry limit exceeded.');
