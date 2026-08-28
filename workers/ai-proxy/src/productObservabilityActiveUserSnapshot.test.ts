@@ -111,7 +111,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
       environment: 'preview',
     }));
 
-    const snapshot = await service(firestore).refresh('2026-08-28');
+    const snapshot = await service(firestore).refresh('production', '2026-08-28');
 
     expect(snapshot.today).toBe(1);
     expect(snapshot.last7Days).toBe(2);
@@ -127,7 +127,10 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
       actorSubjectId: 'actor-aaaaaaaa',
     }));
 
-    const snapshots = await service(firestore).refreshAffected(['2026-08-27']);
+    const snapshots = await service(firestore).refreshAffected([{
+      environment: 'production',
+      localDate: '2026-08-27',
+    }]);
 
     expect(snapshots.map((snapshot) => snapshot.asOfDate)).toEqual([
       '2026-08-27',
@@ -136,6 +139,39 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     expect(firestore.writes).toEqual([
       'observability_active_user_windows/production:2026-08-27',
       'observability_active_user_windows/production:2026-08-28',
+    ]);
+  });
+
+  it('repairs preview windows without mixing preview actors into production', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    firestore.documents.set('observability_active_user_windows/production:2026-08-28', {
+      schemaVersion: 1,
+      environment: 'production',
+      asOfDate: '2026-08-28',
+    });
+    firestore.addActorDay('prod-a', actorDay({
+      localDate: '2026-08-28',
+      actorSubjectId: 'actor-aaaaaaaa',
+    }));
+    firestore.addActorDay('preview-b', actorDay({
+      localDate: '2026-08-28',
+      actorSubjectId: 'actor-bbbbbbbb',
+      environment: 'preview',
+    }));
+
+    const snapshots = await service(firestore).refreshAffected([{
+      environment: 'preview',
+      localDate: '2026-08-28',
+    }]);
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({
+      environment: 'preview',
+      asOfDate: '2026-08-28',
+      today: 1,
+    });
+    expect(firestore.writes).toEqual([
+      'observability_active_user_windows/preview:2026-08-28',
     ]);
   });
 
