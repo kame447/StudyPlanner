@@ -11,9 +11,8 @@ import {
   signOut as firebaseSignOut,
   updateProfile,
 } from 'firebase/auth';
-import type { Firestore } from 'firebase/firestore';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { normalizeProfileRegistrationTimestamp } from '../../shared/profileRegistrationTime';
+import type { FieldValue, Firestore } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { createGoogleProvider } from '../lib/firebaseClient';
 import type { User } from '../types/domain';
 import type { AuthRepository } from './repositoryContracts';
@@ -24,8 +23,11 @@ interface ProfileDoc {
   username: string;
   avatar: string;
   createdAt: string;
-  registeredAtIso?: string;
 }
+
+type ProfileWriteDoc = ProfileDoc & {
+  registeredAt?: FieldValue;
+};
 
 let localPersistencePromise: Promise<void> | null = null;
 
@@ -57,17 +59,6 @@ function normalizeErrorMessage(
 ): string {
   const message = error?.message?.trim();
   return message || fallbackMessage;
-}
-
-function registrationTimestampForProfile(
-  existingProfile: ProfileDoc | null,
-  authUser: FirebaseAuthUser,
-  createdAt: string,
-): string {
-  return normalizeProfileRegistrationTimestamp(existingProfile?.registeredAtIso)
-    ?? normalizeProfileRegistrationTimestamp(createdAt)
-    ?? normalizeProfileRegistrationTimestamp(authUser.metadata.creationTime)
-    ?? new Date().toISOString();
 }
 
 function mapProfileDocToUser(profile: ProfileDoc): User {
@@ -108,7 +99,7 @@ async function getProfileById(
 
 async function upsertProfile(
   firestoreDb: Firestore,
-  profile: ProfileDoc,
+  profile: ProfileWriteDoc,
 ): Promise<ProfileDoc> {
   await setDoc(doc(firestoreDb, 'profiles', profile.id), profile, {
     merge: true,
@@ -140,7 +131,7 @@ async function ensureProfile(
       normalizeUsername(fallbackUsername, email),
     avatar: existingProfile?.avatar ?? '',
     createdAt,
-    registeredAtIso: registrationTimestampForProfile(existingProfile, authUser, createdAt),
+    ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
   });
 
   return mapProfileDocToUser(nextProfile);
@@ -311,7 +302,7 @@ export function createFirebaseAuthRepository(
         username: nextUsername,
         avatar: draft.avatar.trim(),
         createdAt,
-        registeredAtIso: registrationTimestampForProfile(currentProfile, authUser, createdAt),
+        ...(!currentProfile ? { registeredAt: serverTimestamp() } : {}),
       });
 
       return mapProfileDocToUser(nextProfile);
