@@ -29,7 +29,7 @@ function seedBookshelfState(page) {
   });
 }
 
-test('material search failure never blocks manual material registration', async ({ page }) => {
+async function openAddMaterialSheet(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedBookshelfState(page);
   await page.goto('/');
@@ -45,6 +45,24 @@ test('material search failure never blocks manual material registration', async 
     '.bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid)',
   );
   await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+test('known material names are searchable from the built-in catalog without the provider', async ({ page }) => {
+  const sheet = await openAddMaterialSheet(page);
+
+  await sheet.getByLabel('ISBN / 教材名').fill('青チャート');
+  await sheet.getByRole('button', { name: '検索', exact: true }).click();
+
+  const candidate = sheet.getByRole('button', { name: '青チャート', exact: true });
+  await expect(candidate).toBeVisible();
+  await candidate.click();
+  await expect(sheet.getByLabel('教材名', { exact: true })).toHaveValue('青チャート');
+  await expect(sheet.getByLabel('教科')).toHaveValue('material-search-subject');
+});
+
+test('material search failure never blocks manual material registration', async ({ page }) => {
+  const sheet = await openAddMaterialSheet(page);
 
   await sheet.getByLabel('ISBN / 教材名').fill('9784023315686');
   await sheet.getByRole('button', { name: '検索', exact: true }).click();
