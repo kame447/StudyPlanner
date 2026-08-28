@@ -290,6 +290,10 @@ export class ProductObservabilityAdminAnalysisService {
     const byModel = mergeDimensions(overview.daily, (entry) => entry.aiByModel);
     const byPurpose = mergeDimensions(overview.daily, (entry) => entry.aiByPurpose);
     const byPhase = mergeDimensions(overview.daily, (entry) => entry.aiByPhase);
+    const byOperationKind = mergeDimensions(
+      overview.daily,
+      (entry) => entry.aiByOperationKind ?? [],
+    );
     const planningAggregate = byPurpose
       .filter((entry) => isPlanningPurpose(entry.key))
       .reduce(
@@ -314,6 +318,7 @@ export class ProductObservabilityAdminAnalysisService {
       byModel,
       byPurpose,
       byPhase,
+      byOperationKind,
       planningEfficiency: {
         turnCount,
         requestCount: planningAggregate.requestCount,
