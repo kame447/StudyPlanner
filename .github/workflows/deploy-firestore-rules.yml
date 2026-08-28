@@ -27,25 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_PROJECT_ID: study-planner-d1bc8
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Validate deployment configuration
-        env:
-          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
-          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
-        run: |
-          missing=0
-          for name in GCP_PROJECT_ID WIF_PROVIDER WIF_SERVICE_ACCOUNT; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Repository variable ${name} is not configured."
-              missing=1
-            fi
-          done
-          exit "$missing"
 
       - uses: actions/setup-node@v4
         with:
@@ -67,9 +53,9 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          project_id: study-planner-d1bc8
+          workload_identity_provider: projects/980145543174/locations/global/workloadIdentityPools/github-actions/providers/studyplanner-main
+          service_account: firestore-rules-deployer@study-planner-d1bc8.iam.gserviceaccount.com
           token_format: access_token
 
       - name: Deploy Firestore rules
