@@ -218,7 +218,7 @@ function isValidEventEnvelope(
   if (!isBoundedString(value.appVersion, MAX_VERSION_LENGTH)) {
     return 'Telemetry appVersion is invalid.';
   }
-  if (value.source !== source || !sourceSet.has(value.source)) {
+  if (typeof value.source !== 'string' || value.source !== source || !sourceSet.has(value.source)) {
     return 'Telemetry source is invalid.';
   }
   return null;
