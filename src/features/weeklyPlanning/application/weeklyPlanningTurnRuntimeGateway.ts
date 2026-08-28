@@ -1,4 +1,4 @@
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
 import {
@@ -35,6 +35,8 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
 }
@@ -69,6 +71,8 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         plans: params.plans,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
+        timetableTerm: params.timetableTerm,
+        timetableTerms: params.timetableTerms,
         conversationId: params.pending.conversationId,
         traceRequestId: params.pending.requestId,
         weekStartsOn: requestContext.weekStartsOn,

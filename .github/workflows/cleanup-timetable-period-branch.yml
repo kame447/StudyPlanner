@@ -1,0 +1,27 @@
+name: Cleanup merged timetable period branch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cleanup-timetable-period-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  delete-merged-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Delete allowlisted merged branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='feat/timetable-period-alternating-weeks'
+          test "$target" != 'main'
+          git ls-remote --exit-code --heads origin "refs/heads/$target"
+          git push origin --delete -- "$target"

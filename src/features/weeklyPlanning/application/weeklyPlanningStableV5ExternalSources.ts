@@ -1,6 +1,7 @@
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
+import { resolveTimetableTermForDate } from '../../../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
 import type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 import { listCalendarDatesInclusive } from '../semantic/weeklyPlanningCalendarResolver';
 
@@ -36,28 +37,43 @@ function timetableSource(params: {
   ownerId: string;
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: readonly TimetableTerm[];
   horizon: { startDate: string; endDate: string } | null;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot {
-  const termId = params.timetableTermId ?? 'default';
   const dates = params.horizon
     ? listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? []
     : [];
-  const templates = params.templates.filter(
-    (template) => (template.termId || 'default') === termId,
-  );
+  const terms = params.timetableTerms ?? (params.timetableTerm ? [params.timetableTerm] : []);
+  const sourceTermId = params.timetableTermId ?? params.timetableTerm?.id ?? 'auto';
+
   return {
     kind: 'timetable',
     status: 'success',
     ownerId: params.ownerId,
-    activeSourceId: `studyplanner-timetable:${termId}`,
+    activeSourceId: `studyplanner-timetable:${sourceTermId}`,
     attemptCount: 1,
-    events: dates.flatMap((date) =>
-      buildTimetableImportCandidates({
+    events: dates.flatMap((date) => {
+      const term = terms.length > 0
+        ? resolveTimetableTermForDate(date, terms, params.timetableTermId)
+        : params.timetableTerm ?? null;
+      const termId = term?.id ?? (terms.length === 0 ? params.timetableTermId ?? 'default' : null);
+
+      if (!termId) {
+        return [];
+      }
+
+      const templates = params.templates.filter(
+        (template) => (template.termId || 'default') === termId,
+      );
+
+      return buildTimetableImportCandidates({
         templates,
         date,
         weekday: getRecurrenceWeekday(date),
         termId,
+        term,
       }).map((candidate) => ({
         eventId: candidate.sourceId,
         ownerId: params.ownerId,
@@ -65,7 +81,8 @@ function timetableSource(params: {
         end: { date, time: candidate.endTime },
         timeZone: params.timeZone,
         constraintLevel: 'hard' as const,
-      }))),
+      }));
+    }),
   };
 }
 
@@ -74,6 +91,8 @@ export function createStableV5ExternalConstraintSources(params: {
   plans: readonly Plan[];
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: readonly TimetableTerm[];
   horizon: { startDate: string; endDate: string } | null;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot[] {
@@ -88,6 +107,8 @@ export function createStableV5ExternalConstraintSources(params: {
       ownerId: params.ownerId,
       templates: params.templates,
       timetableTermId: params.timetableTermId,
+      timetableTerm: params.timetableTerm,
+      timetableTerms: params.timetableTerms,
       horizon: params.horizon,
       timeZone: params.timeZone,
     }),

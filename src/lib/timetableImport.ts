@@ -1,8 +1,10 @@
 import { minutesBetween } from './date';
+import { isScheduleTemplateActiveOnDate } from './timetableCalendar';
 import type {
   PlanDraft,
   RecurrenceWeekday,
   ScheduleTemplate,
+  TimetableTerm,
 } from '../types/domain';
 
 export interface TimetableImportCandidate {
@@ -27,6 +29,7 @@ interface TimetableImportCandidateInput {
   date: string;
   weekday: RecurrenceWeekday;
   termId: string;
+  term?: TimetableTerm | null;
 }
 
 function getTemplateTermId(template: ScheduleTemplate): string {
@@ -212,6 +215,7 @@ export function buildTimetableImportCandidates({
   date,
   weekday,
   termId,
+  term,
 }: TimetableImportCandidateInput): TimetableImportCandidate[] {
   const sortedTemplates = templates
     .filter(
@@ -219,6 +223,7 @@ export function buildTimetableImportCandidates({
         template.weekday === weekday &&
         template.active !== false &&
         getTemplateTermId(template) === termId &&
+        isScheduleTemplateActiveOnDate(template, date, term) &&
         getNormalizedTitle(template).length > 0 &&
         minutesBetween(template.startTime, template.endTime) > 0,
     )
