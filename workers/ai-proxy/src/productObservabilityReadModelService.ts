@@ -12,13 +12,13 @@ import {
   type ObservabilityRollupCheckpoint,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
-import { PROFILE_REGISTERED_AT_ISO_FIELD } from '../../../shared/profileRegistrationTime';
+import { PROFILE_REGISTERED_AT_FIELD } from '../../../shared/profileRegistrationTime';
 import {
   FirestoreServiceAccountClient,
+  type FirestoreAggregationFilter,
   type FirestoreOrderedCursor,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
-  type FirestoreStringFilter,
 } from './firestoreServiceAccountClient';
 import {
   createEmptyLatencyHistogram,
@@ -34,7 +34,7 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const USER_SUMMARY_PAGE_SIZE = 100;
 const MAX_OVERVIEW_DAYS = 93;
-const MIN_CANONICAL_REGISTRATION_ISO = '0000-01-01T00:00:00.000Z';
+const MIN_CANONICAL_REGISTRATION_TIMESTAMP = '0001-01-01T00:00:00.000Z';
 const ACTOR_SUBJECT_PATTERN = /^actor-[A-Za-z0-9-]{8,160}$/;
 const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
   'production',
@@ -45,7 +45,10 @@ const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
 
 interface ObservabilityReadFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
-  countDocuments(collection: string, filters?: readonly FirestoreStringFilter[]): Promise<number>;
+  countDocuments(
+    collection: string,
+    filters?: readonly FirestoreAggregationFilter[],
+  ): Promise<number>;
   queryDocumentsAfter(params: {
     collection: string;
     orderByField: string;
@@ -321,10 +324,11 @@ async function registeredUsersForPeriod(
   fromDate: string,
   toDate: string,
 ): Promise<ObservabilityRegisteredUserSummary> {
-  const indexedFilter: FirestoreStringFilter = {
-    field: PROFILE_REGISTERED_AT_ISO_FIELD,
+  const indexedFilter: FirestoreAggregationFilter = {
+    field: PROFILE_REGISTERED_AT_FIELD,
     operator: 'GREATER_THAN_OR_EQUAL',
-    value: MIN_CANONICAL_REGISTRATION_ISO,
+    value: MIN_CANONICAL_REGISTRATION_TIMESTAMP,
+    valueType: 'timestamp',
   };
   const [total, indexed] = await Promise.all([
     firestore.countDocuments(PROFILE_COLLECTION),
@@ -334,14 +338,16 @@ async function registeredUsersForPeriod(
   const newInPeriod = registrationIndexReady
     ? await firestore.countDocuments(PROFILE_COLLECTION, [
         {
-          field: PROFILE_REGISTERED_AT_ISO_FIELD,
+          field: PROFILE_REGISTERED_AT_FIELD,
           operator: 'GREATER_THAN_OR_EQUAL',
           value: reportingDateStartIso(fromDate),
+          valueType: 'timestamp',
         },
         {
-          field: PROFILE_REGISTERED_AT_ISO_FIELD,
+          field: PROFILE_REGISTERED_AT_FIELD,
           operator: 'LESS_THAN',
           value: reportingDateStartIso(addDays(toDate, 1)),
+          valueType: 'timestamp',
         },
       ])
     : null;
