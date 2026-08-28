@@ -13,6 +13,7 @@ import {
   parseOptionalNumber,
   PROGRESS_UNIT_OPTIONS,
 } from './BookshelfDialogFields';
+import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
 import type {
   StudyMaterial,
   StudyMaterialDraft,
@@ -192,6 +193,16 @@ export function BookshelfMaterialDialog({
             <p className="inline-error">
               教材を追加する前に教科を1つ作成してください。
             </p>
+          ) : null}
+
+          {!material ? (
+            <BookshelfMaterialSearch
+              onSelect={(candidate) => {
+                setName(candidate.title);
+                setStatus('検索候補の教材名を反映しました。');
+                setStatusTone('info');
+              }}
+            />
           ) : null}
 
           <div className="bookshelf-material-edit-grid">
