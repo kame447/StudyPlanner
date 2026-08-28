@@ -15,6 +15,10 @@ import {
 import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
+  handleProductObservabilityAdminApi,
+  isProductObservabilityAdminPath,
+} from './productObservabilityAdminApi';
+import {
   handleProductObservabilityApi,
   isProductObservabilityPath,
   type ProductObservabilityApiEnv,
@@ -77,6 +81,9 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (isProductObservabilityAdminPath(pathname)) {
+      return await handleProductObservabilityAdminApi(request, env);
+    }
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(
         request,
@@ -125,7 +132,7 @@ export default {
     });
   },
   async scheduled(
-    _controller: ScheduledController,
+    _controller: unknown,
     env: Record<string, unknown>,
     executionContext: ExecutionContext,
   ): Promise<void> {
