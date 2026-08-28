@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import {
   searchMaterialMetadata,
@@ -29,8 +29,7 @@ export function BookshelfMaterialSearch({
   const [status, setStatus] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  async function handleSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSearch() {
     const trimmed = query.trim();
     if (!trimmed || isSearching) return;
 
@@ -65,12 +64,18 @@ export function BookshelfMaterialSearch({
         </div>
       </div>
 
-      <form className="material-metadata-search-form" onSubmit={handleSearch}>
+      <div className="material-metadata-search-form">
         <label className="field material-metadata-search-field">
           <span>ISBN / 教材名</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void handleSearch();
+              }
+            }}
             placeholder="例: 9784023315686 / 金のフレーズ"
             autoComplete="off"
           />
@@ -78,12 +83,13 @@ export function BookshelfMaterialSearch({
         <button
           className="ghost-button material-metadata-search-button"
           disabled={isSearching || !query.trim()}
-          type="submit"
+          onClick={() => void handleSearch()}
+          type="button"
         >
           <Search aria-hidden="true" size={17} strokeWidth={1.9} />
           {isSearching ? '検索中' : '検索'}
         </button>
-      </form>
+      </div>
 
       {status ? <p className="detail-note material-metadata-search-status">{status}</p> : null}
 
