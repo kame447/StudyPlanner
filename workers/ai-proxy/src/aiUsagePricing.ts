@@ -27,6 +27,8 @@ const GPT_4O_MINI_TRANSCRIBE_AUDIO: TokenPricing = {
   outputMicrosPerMillion: 5_000_000,
 };
 
+const GPT_5_6_LONG_CONTEXT_THRESHOLD = 272_000;
+
 function costMicros(tokens: number, rateMicrosPerMillion: number): number {
   return Math.round((tokens * rateMicrosPerMillion) / 1_000_000);
 }
@@ -40,6 +42,7 @@ function hasCoreUsage(usage: AiRequestUsage): usage is AiRequestUsage & {
 
 function estimateLunaTextUsage(usage: AiRequestUsage): number | null {
   if (!hasCoreUsage(usage)) return null;
+  if (usage.promptTokens > GPT_5_6_LONG_CONTEXT_THRESHOLD) return null;
   if (usage.cachedTokens === null || usage.cacheWriteTokens === null) return null;
 
   const uncachedTokens = usage.promptTokens - usage.cachedTokens - usage.cacheWriteTokens;
