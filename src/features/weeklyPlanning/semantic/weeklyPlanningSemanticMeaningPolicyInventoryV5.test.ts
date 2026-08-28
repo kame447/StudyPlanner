@@ -41,4 +41,17 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
       expect(prompt).not.toContain(rule.id);
     }
   });
+
+  it('reserves fixed_interval for clock intervals and uses date-bound kinds for date-only periods', () => {
+    const temporalRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'temporal_scope_and_deadline',
+    );
+
+    expect(temporalRule?.instruction).toContain(
+      'fixed_interval is only for a fixed clock interval with both startTime and endTime',
+    );
+    expect(temporalRule?.instruction).toContain(
+      'use earliest_start for from/after and latest_end or deadline for until/by',
+    );
+  });
 });
