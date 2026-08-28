@@ -17,6 +17,7 @@ export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 6400;
 export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
+type GenericSemanticAttempt = 'initial' | 'repair' | 'dense_completeness_retry';
 
 export function semanticNormalizerByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -77,7 +78,7 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
 
   async callGeneric(
     messages: ChatMessage[],
-    attempt: 'initial' | 'repair',
+    attempt: GenericSemanticAttempt,
   ): Promise<string> {
     return this.callTracked({
       messages,
