@@ -1,0 +1,85 @@
+name: Deploy Firestore Rules
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - firestore.rules
+      - firebase.json
+      - scripts/ci/firestore-profile-registration-rules.mjs
+      - scripts/ci/verify-deployed-firestore-rules.mjs
+      - scripts/ci/verify-deployed-firestore-rules.test.mjs
+      - .github/workflows/deploy-firestore-rules.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-firestore-rules-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'kame447/StudyPlanner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate deployment configuration
+        env:
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          for name in GCP_PROJECT_ID WIF_PROVIDER WIF_SERVICE_ACCOUNT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository variable ${name} is not configured."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Firestore rules regression
+        run: npm run test:firestore-rules
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Deploy Firestore rules
+        run: >-
+          npx --yes firebase-tools@15.28.2 deploy
+          --only firestore:rules
+          --project "$GCP_PROJECT_ID"
+          --non-interactive
+
+      - name: Verify deployed ruleset
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/ci/verify-deployed-firestore-rules.mjs
