@@ -10,11 +10,14 @@ Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 
 初期対象はISBNを持つ一般書籍・参考書・問題集等とする。論文、動画、Web教材、Drive fileは別providerとして後続する。
 
+加えて、StudyPlannerが以前から自然言語入力補助のために保持している教材名・略称を初期検索資産として再利用し、既知教材を外部APIなしで検索できるようにする。
+
 ## 2. ユーザー要件
 
 教材追加画面では次を満たす。
 
-- ISBNまたは教材名から既存の本を検索できる。
+- ISBNまたは教材名から既存の本・教材候補を検索できる。
+- StudyPlannerが既に知っている教材名・略称は、外部APIが使えない状態でも検索できる。
 - 検索候補から選択すると教材名へ反映できる。
 - 検索を使わず、従来どおり手入力だけでも保存できる。
 - 外部API障害、共有カタログ障害、検索結果なしでも手入力導線を失わない。
@@ -27,6 +30,11 @@ Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 ```text
 教材追加画面
   ↓ ISBN / 教材名
+StudyPlanner内蔵教材候補
+  ├─ hit → candidate → UI
+  │          （Worker / NDLを呼ばない）
+  └─ miss
+       ↓
 MaterialMetadata API
   ↓
 共有教材カタログ
@@ -41,6 +49,10 @@ MaterialMetadata API
        ↓
        UI
 ```
+
+内蔵教材候補は、既存の `naturalLanguageCatalog` を再利用する。現在の実装ではFirestore上の `app_catalogs/natural_language_v1` をread-onlyで読み、取得できない場合はrepository同梱の `src/data/naturalLanguageCatalog.json` をfallbackとして使う。
+
+この既存カタログには「青チャート」「Focus Gold」「ターゲット1900」等の教材名だけでなく、略称、著者名、一般的な学習語も含まれる。そのため、これは書誌情報の正本ではなく「StudyPlannerが既に知っている入力候補辞書」として扱う。教科名そのものは直接の教材候補から除外する。
 
 共有教材カタログはStudyplus型の「同じ本を毎回外部APIへ問い合わせない」ための基盤として使う。ただし初期段階では外部書誌のcacheであり、StudyPlannerの教材そのものの正本ではない。
 
@@ -63,7 +75,25 @@ NDL由来の候補を利用者へ表示する場合は「国立国会図書館�
 
 provider名、query形式、XML形式はintegration layerの外へ漏らさない。
 
-## 5. 共有カタログ
+## 5. 2種類のStudyPlanner側カタログ
+
+### 5.1 内蔵教材候補
+
+既存 `naturalLanguageCatalog` の教材名・略称を検索候補として再利用する。
+
+性質:
+
+- repository同梱fallbackを持つため初回から利用可能。
+- Firestore版が存在する場合は既存のread-only取得経路を利用できる。
+- ブラウザからFirestoreへseed / updateしない。
+- ISBN、著者、出版社等を持つ正式な書誌DBとはみなさない。
+- 候補選択は教材名の入力補助だけに使う。
+- 同じ正規化タイトルは重複表示しない。
+- 教科名そのものは教材候補から除外する。
+
+### 5.2 共有書誌カタログ
+
+外部providerから取得した正規化書誌をcacheする。
 
 初期共有カタログはISBNを安定IDとして扱う。
 
@@ -89,29 +119,36 @@ provider名、query形式、XML形式はintegration layerの外へ漏らさな�
 - 学習速度
 - ユーザー独自教材
 
-ユーザー独自教材を共有カタログへ自動投稿しない。共有カタログの書き込みはserver-side integrationからのみ行う。
+ユーザー独自教材を共有書誌カタログへ自動投稿しない。共有書誌カタログの書き込みはserver-side integrationからのみ行う。
 
 ## 6. Cache / lookup
 
 ISBN検索:
 
-1. 共有カタログをISBNで確認する。
-2. hitなら外部APIを呼ばない。
-3. missならNDL Searchへ問い合わせる。
-4. ISBNを持つnormalized candidateを共有カタログへcacheする。
+1. ISBNは内蔵教材候補では解決しない。
+2. 共有書誌カタログをISBNで確認する。
+3. hitなら外部APIを呼ばない。
+4. missならNDL Searchへ問い合わせる。
+5. ISBNを持つnormalized candidateを共有書誌カタログへcacheする。
 
 タイトル検索:
 
-1. normalized titleの完全一致を共有カタログから確認する。
-2. hitなら外部APIを呼ばない。
-3. missならNDL Searchへ問い合わせる。
-4. ISBNを持つ結果のみcacheする。
+1. 既存 `naturalLanguageCatalog` の教材候補を正規化して検索する。
+2. 内蔵候補が1件以上あれば、その候補を返しWorker / 外部providerを呼ばない。
+3. 内蔵候補がなければ、normalized titleの完全一致を共有書誌カタログから確認する。
+4. shared catalog hitなら外部APIを呼ばない。
+5. missならNDL Searchへ問い合わせる。
+6. ISBNを持つ結果のみ共有書誌カタログへcacheする。
 
-部分一致・別名・人気順ランキング等の独自検索は初期対象外とする。
+内蔵候補検索は完全一致を優先し、前方一致、部分一致の順に最大8件を返す。同じ正規化タイトルは1件にまとめる。
+
+人気順・登録者数ランキング、共有alias学習等は初期対象外とする。
 
 ## 7. 責務境界
 
 外部書誌が所有するのは「その本が何か」という候補情報までとする。
+
+内蔵教材候補が所有するのは「StudyPlannerが以前から知っている教材名・略称の入力候補」までであり、書誌の正確性、ISBN、著者、出版社を保証しない。
 
 StudyPlannerが所有するもの:
 
@@ -130,19 +167,22 @@ StudyPlannerが所有するもの:
 
 ## 8. Security / abuse
 
-- 検索APIはFirebase認証済みユーザーのみ利用可能とする。
+- 内蔵教材候補はread-onlyで扱い、ブラウザから `app_catalogs` へseed / updateする過去の実装は復活させない。
+- 外部検索APIはFirebase認証済みユーザーのみ利用可能とする。
 - browserからNDLへ直接依存せず、StudyPlanner workerでprovider boundaryを持つ。
-- 共有カタログはbrowserから直接writeさせない。
+- 共有書誌カタログはbrowserから直接writeさせない。
 - workerのservice account経由でcacheする。
 - request bodyとquery lengthを制限する。
 - NDL OpenSearchの検索対象providerは初期実装では全国書誌情報へ固定する。
-- provider障害時は502等で検索だけを失敗させ、教材保存導線を壊さない。
+- provider障害時は502等で外部検索だけを失敗させ、教材保存導線と内蔵候補検索を壊さない。
 
 ## 9. 初期実装範囲
 
 今回実装する:
 
 - normalized material metadata contract
+- 既存 `naturalLanguageCatalog` を使った内蔵教材候補検索
+- 内蔵候補hit時の外部検索回避
 - authenticated worker endpoint
 - NDL OpenSearch adapter
 - 全国書誌情報に限定したNDL検索
@@ -150,10 +190,11 @@ StudyPlannerが所有するもの:
 - 教材追加画面の任意検索UI
 - 候補タイトルの教材名への反映
 - NDL書誌利用のクレジット表示
-- unit tests
+- unit tests / browser regression
 
 今回実装しない:
 
+- 内蔵教材候補を別Firestore collectionへ一括コピーするmigration
 - カメラによるISBNバーコード読み取り
 - remote cover image取得
 - StudyMaterialへのcatalogEntryId永続リンク
@@ -168,12 +209,14 @@ StudyPlannerが所有するもの:
 ## 10. Acceptance criteria
 
 - ISBNまたは2文字以上の教材名で検索できる。
+- `青チャート` 等、既存 `naturalLanguageCatalog` にある教材名はWorker / NDLなしで検索できる。
+- 内蔵候補の検索結果から教材名を反映しても教科・進捗設定を自動変更しない。
 - NDL検索は `iss-ndl-opac-national` に限定される。
-- ISBNの共有catalog hitでは外部providerを呼ばない設計になっている。
-- exact titleの共有catalog hitでは外部providerを呼ばない設計になっている。
+- ISBNの共有書誌catalog hitでは外部providerを呼ばない設計になっている。
+- exact titleの共有書誌catalog hitでは外部providerを呼ばない設計になっている。
 - provider responseはnormalized candidateへ変換される。
-- ISBNを持たない結果は初期書籍catalogへ保存しない。
-- UIは検索失敗時にも手入力可能である。
+- ISBNを持たない外部provider結果は初期書籍catalogへ保存しない。
+- UIは外部検索失敗時にも手入力可能である。
 - 検索候補選択は教材名のみへ反映し、進捗設定を自動変更しない。
 - NDL由来候補を表示するUIに全国書誌情報利用のクレジットがある。
 - runtime code/tests/buildがgreenである。
