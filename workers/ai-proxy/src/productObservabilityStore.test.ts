@@ -44,6 +44,27 @@ function validActivityDraft() {
   };
 }
 
+function validAiMetricPayload() {
+  return {
+    operationKind: 'chat_completion' as const,
+    purpose: 'weekly_planning_semantic_normalizer',
+    phase: 'initial' as const,
+    provider: 'openai' as const,
+    model: 'gpt-5.6-luna',
+    status: 'success' as const,
+    errorCategory: null,
+    promptTokens: null,
+    completionTokens: null,
+    totalTokens: null,
+    cachedTokens: null,
+    durationMs: 420,
+    requestBytes: 1200,
+    responseBytes: 300,
+    pricingVersion: null,
+    estimatedCostMicros: null,
+  };
+}
+
 function createStore(firestore: MemoryFirestore) {
   return new ProductObservabilityStore(
     {
@@ -86,6 +107,31 @@ describe('ProductObservabilityStore', () => {
 
     expect(firstSize).toBe(2);
     expect(firestore.documents.size).toBe(2);
+  });
+
+  it('stores AI request metrics pseudonymously and preserves unknown usage as null', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const params = {
+      firebaseUid: 'raw-firebase-uid-123',
+      requestId: 'ai-request-12345678',
+      occurredAt: '2026-08-28T00:00:00.000Z',
+      appVersion: '1.2.3',
+      payload: validAiMetricPayload(),
+    };
+
+    await store.storeAiRequestMetric(params);
+    const firstSize = firestore.documents.size;
+    await store.storeAiRequestMetric(params);
+
+    expect(firstSize).toBe(2);
+    expect(firestore.documents.size).toBe(2);
+    const serialized = JSON.stringify([...firestore.documents.entries()]);
+    expect(serialized).not.toContain('raw-firebase-uid-123');
+    expect(serialized).not.toContain('prompt text');
+    expect(serialized).toContain('ai_request_metric');
+    expect(serialized).toContain('"promptTokens":null');
+    expect(serialized).toContain('"estimatedCostMicros":null');
   });
 
   it('rejects unknown fields before writing actor or event data', async () => {
