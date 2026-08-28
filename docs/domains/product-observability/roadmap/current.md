@@ -91,7 +91,7 @@ Active branch: `feat/product-observability-phase5-users-ai-api`
 Parent Issue: #213
 AI/API residual tracker: #160
 Base main at phase start: `b053a677c00fea642a040831fd2161760567a382`
-Final validation candidate: `19f36ad809f8dc7e461b5edcd201c8fe3594c85a` plus this documentation checkpoint.
+Final validation candidate: current PR #234 head after this roadmap checkpoint.
 
 Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止し、opaque `actorSubjectId`を基本とするbounded user summaryへ置換した。利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みの最大100件単位で扱い、継続読込はcursor paginationとする。
 
