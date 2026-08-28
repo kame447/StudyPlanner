@@ -48,10 +48,10 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     );
 
     expect(temporalRule?.instruction).toContain(
-      'fixed_interval is only for a fixed clock interval with both startTime and endTime',
+      'fixed_interval requires both clock startTime/endTime',
     );
     expect(temporalRule?.instruction).toContain(
-      'use earliest_start for from/after and latest_end or deadline for until/by',
+      'Date-only from/after -> earliest_start; until/by -> latest_end or deadline',
     );
   });
 });
