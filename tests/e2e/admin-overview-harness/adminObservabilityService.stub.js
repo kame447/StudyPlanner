@@ -90,6 +90,7 @@ const daily = dates.map((localDate, index) => ({
   planning: {
     outcomeCounts: {
       session_started: 2 + index,
+      turn_started: 4 + index * 2,
       preview_generated: 2 + Math.max(0, index - 1),
       save_completed: 1 + Math.max(0, index - 2),
       unscheduled_observed: index % 3 === 0 ? 1 : 0,
@@ -199,6 +200,7 @@ export async function getAdminObservabilityOverview() {
       planning: {
         outcomeCounts: {
           session_started: 39,
+          turn_started: 82,
           preview_generated: 32,
           save_completed: 27,
           unscheduled_observed: 4,
@@ -340,14 +342,14 @@ export async function getAdminObservabilityAiAnalysis() {
       byPurpose: [],
       byPhase: [],
       planningEfficiency: {
-        sessionCount: 0,
+        turnCount: 0,
         requestCount: 0,
         repairRequestCount: 0,
         repairRate: null,
-        requestsPerSession: null,
+        requestsPerTurn: null,
         estimatedCostMicros: 0,
         estimatedCostUnknownCount: 0,
-        estimatedCostPerSessionMicros: null,
+        estimatedCostPerTurnMicros: null,
         cachedTokens: 0,
         promptTokens: 0,
         cacheHitTokenRatio: null,
@@ -389,14 +391,14 @@ export async function getAdminObservabilityAiAnalysis() {
       { key: 'single', aggregate: aiAggregate(16, 760000, 16400, 2800), latencyP50Ms: 620, latencyP95Ms: 1900 },
     ],
     planningEfficiency: {
-      sessionCount: 18,
+      turnCount: 18,
       requestCount: 44,
       repairRequestCount: 7,
       repairRate: 0.25,
-      requestsPerSession: 2.44,
+      requestsPerTurn: 2.44,
       estimatedCostMicros: 2680000,
       estimatedCostUnknownCount: 1,
-      estimatedCostPerSessionMicros: null,
+      estimatedCostPerTurnMicros: null,
       cachedTokens: 12000,
       promptTokens: 31300,
       cacheHitTokenRatio: 0.3834,
