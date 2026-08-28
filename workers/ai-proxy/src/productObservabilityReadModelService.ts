@@ -3,6 +3,7 @@ import {
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+  type ObservabilityActiveUserDirtySource,
   type ObservabilityActiveUserWindows,
   type ObservabilityDailyRollup,
   type ObservabilityOverviewReadModel,
@@ -28,6 +29,12 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const USER_SUMMARY_PAGE_SIZE = 100;
 const MAX_OVERVIEW_DAYS = 93;
+const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
+  'production',
+  'preview',
+  'development',
+  'test',
+]);
 
 interface ObservabilityReadFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
@@ -51,6 +58,11 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string'
     && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(new Date(`${value}T00:00:00.000Z`).getTime());
+}
+
+function isEnvironment(value: unknown): value is ObservabilityEnvironment {
+  return typeof value === 'string'
+    && OBSERVABILITY_ENVIRONMENTS.has(value as ObservabilityEnvironment);
 }
 
 function listDatesInclusive(fromDate: string, toDate: string): string[] {
@@ -93,9 +105,18 @@ function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   return document as unknown as T;
 }
 
-function checkpointDirtyDates(value: unknown): string[] {
+function checkpointDirtySources(value: unknown): ObservabilityActiveUserDirtySource[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter(isIsoDate))].sort();
+  const byKey = new Map<string, ObservabilityActiveUserDirtySource>();
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    if (!isEnvironment(record.environment) || !isIsoDate(record.localDate)) continue;
+    const source = { environment: record.environment, localDate: record.localDate };
+    byKey.set(`${source.environment}:${source.localDate}`, source);
+  }
+  return [...byKey.values()].sort((left, right) =>
+    `${left.environment}:${left.localDate}`.localeCompare(`${right.environment}:${right.localDate}`));
 }
 
 function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRollupCheckpoint {
@@ -116,7 +137,7 @@ function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRol
     processedEventCount: Number.isSafeInteger(value?.processedEventCount)
       ? Math.max(0, Number(value?.processedEventCount))
       : 0,
-    activeUserDirtyDates: checkpointDirtyDates(value?.activeUserDirtyDates),
+    activeUserDirtySources: checkpointDirtySources(value?.activeUserDirtySources),
     lastRunStartedAt: typeof value?.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value?.lastSuccessfulRunAt === 'string'
       ? value.lastSuccessfulRunAt
@@ -142,21 +163,25 @@ function assertCompatibleLatency(daily: readonly ObservabilityDailyRollup[]): vo
 }
 
 function activeUserSnapshotIsDirty(
-  dirtyDates: readonly string[],
+  dirtySources: readonly ObservabilityActiveUserDirtySource[],
+  environment: ObservabilityEnvironment,
   asOfDate: string,
 ): boolean {
   const firstIncludedDate = addDays(asOfDate, -29);
-  return dirtyDates.some((date) => date >= firstIncludedDate && date <= asOfDate);
+  return dirtySources.some((source) =>
+    source.environment === environment
+    && source.localDate >= firstIncludedDate
+    && source.localDate <= asOfDate);
 }
 
 function readActiveUsers(
   value: Record<string, unknown> | null,
   environment: ObservabilityEnvironment,
   asOfDate: string,
-  dirtyDates: readonly string[],
+  dirtySources: readonly ObservabilityActiveUserDirtySource[],
 ): ObservabilityActiveUserWindows | null {
   const snapshot = withoutStorageId<ObservabilityActiveUserWindows>(value);
-  if (!snapshot || activeUserSnapshotIsDirty(dirtyDates, asOfDate)) return null;
+  if (!snapshot || activeUserSnapshotIsDirty(dirtySources, environment, asOfDate)) return null;
   if (
     snapshot.schemaVersion !== PRODUCT_OBSERVABILITY_READ_MODEL_VERSION
     || snapshot.environment !== environment
@@ -215,7 +240,7 @@ export class ProductObservabilityReadModelService {
         activeUsersValue,
         params.environment,
         params.toDate,
-        checkpoint.activeUserDirtyDates,
+        checkpoint.activeUserDirtySources,
       ),
       aiLatencyP50Ms: latencyPercentileMs(latency, 0.5),
       aiLatencyP95Ms: latencyPercentileMs(latency, 0.95),
