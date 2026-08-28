@@ -1,9 +1,9 @@
+import type { ObservabilityActiveUserDirtySource } from '../../../shared/productObservabilityReadModel';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
-import type { ObservabilityActiveUserDirtySource } from '../../../shared/productObservabilityReadModel';
 import {
   isObservableAiProxyPath,
   observeAiProxyRequest,
@@ -13,7 +13,6 @@ import {
   isAiRequestObservabilityConfigured,
   scheduleAiRequestMetric,
 } from './aiRequestObservability';
-import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
   ProductObservabilityActiveUserSnapshotService,
@@ -29,6 +28,10 @@ import {
   type ProductObservabilityApiEnv,
 } from './productObservabilityApi';
 import {
+  ProductObservabilityProfileRegistrationBackfillService,
+  type ProductObservabilityProfileRegistrationBackfillEnv,
+} from './productObservabilityProfileRegistrationBackfill';
+import {
   ProductObservabilityRetentionService,
   type ProductObservabilityRetentionEnv,
 } from './productObservabilityRetention';
@@ -39,6 +42,7 @@ import {
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
+import worker from './worker';
 
 export { AiQuotaDurableObject };
 
@@ -47,6 +51,8 @@ const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
 const ROLLUP_BATCH_SIZE = 50;
+const MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE = 2;
+const PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
 const RETENTION_BATCH_SIZE = 100;
 
@@ -101,6 +107,22 @@ async function runScheduledActiveUserSnapshots(
   await snapshots.refreshAffected(dirtySources);
 }
 
+async function runScheduledProfileRegistrationBackfill(
+  env: Record<string, unknown>,
+): Promise<void> {
+  const backfill = new ProductObservabilityProfileRegistrationBackfillService(
+    env as unknown as ProductObservabilityProfileRegistrationBackfillEnv,
+  );
+  for (
+    let index = 0;
+    index < MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE;
+    index += 1
+  ) {
+    const checkpoint = await backfill.runBatch(PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE);
+    if (checkpoint.completed) return;
+  }
+}
+
 async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
   const retention = new ProductObservabilityRetentionService(
     env as unknown as ProductObservabilityRetentionEnv,
@@ -130,6 +152,14 @@ async function runScheduledObservabilityMaintenance(env: Record<string, unknown>
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  try {
+    await runScheduledProfileRegistrationBackfill(env);
+  } catch (error) {
+    console.error('[Product Observability] profile registration backfill failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 
   await runScheduledObservabilityRetention(env);
