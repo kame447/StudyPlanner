@@ -22,6 +22,15 @@ interface FirebaseLookupResponse {
   }>;
 }
 
+const CLIENT_VALIDATION_ERRORS = new Set([
+  'observability_date_range_invalid',
+  'observability_date_range_too_large',
+  'observability_actor_subject_invalid',
+  'observability_cursor_invalid',
+  'observability_limit_invalid',
+  'observability_environment_invalid',
+]);
+
 function allowedOrigins(env: ProductObservabilityAdminApiEnv): Set<string> {
   return new Set((env.ALLOWED_ORIGIN ?? '')
     .split(',')
@@ -92,12 +101,20 @@ async function authenticatedAdminUid(
   return admin?.enabled === true ? user.localId : null;
 }
 
-function environmentFrom(value: string | null, env: ProductObservabilityAdminApiEnv): ObservabilityEnvironment {
-  const normalized = (value?.trim() || env.ENVIRONMENT?.trim() || 'production').toLowerCase();
+function parseEnvironment(value: string | undefined): ObservabilityEnvironment {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === 'production') return 'production';
   if (normalized === 'preview' || normalized === 'development' || normalized === 'test') {
     return normalized;
   }
-  return 'production';
+  throw new Error('observability_environment_invalid');
+}
+
+function environmentFrom(
+  value: string | null,
+  env: ProductObservabilityAdminApiEnv,
+): ObservabilityEnvironment {
+  return parseEnvironment(value?.trim() || env.ENVIRONMENT);
 }
 
 function encodeCursor(cursor: FirestoreOrderedCursor | null): string | null {
@@ -184,9 +201,9 @@ export async function handleProductObservabilityAdminApi(
     return jsonResponse(request, env, 404, { error: 'Not found.' });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'observability_read_failed';
-    const validationFailure = message.startsWith('observability_');
+    const validationFailure = CLIENT_VALIDATION_ERRORS.has(message);
     if (!validationFailure) {
-      console.error('[Product Observability] admin read failed', { message, adminUid });
+      console.error('[Product Observability] admin read failed', { message });
     }
     return jsonResponse(request, env, validationFailure ? 400 : 503, {
       error: validationFailure ? message : 'Observability read model is temporarily unavailable.',
