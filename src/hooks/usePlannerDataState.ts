@@ -205,6 +205,23 @@ function createTimetableTermId(year: number, kind: TimetableTermKind): string {
   return `${normalizedYear}-${getTimetableTermKindKey(kind)}`;
 }
 
+function normalizeTimetableDate(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? '';
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+
+  const [year, month, day] = normalized.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+    ? normalized
+    : null;
+}
+
 function createDefaultTimetableTerm(userId: string): TimetableTerm {
   const now = new Date().toISOString();
   const year = new Date().getFullYear();
@@ -235,6 +252,12 @@ function sortTimetableTerms(terms: TimetableTerm[]): TimetableTerm[] {
 
     if (right.isActive) {
       return 1;
+    }
+
+    const dateComparison = (right.startDate ?? '').localeCompare(left.startDate ?? '');
+
+    if (dateComparison !== 0) {
+      return dateComparison;
     }
 
     return (
@@ -279,7 +302,8 @@ function normalizeTimetableTermsByYearAndKind(
   const termIdMap = new Map<string, string>();
 
   sourceTerms.forEach((term) => {
-    const stableId = createTimetableTermId(term.year, term.kind);
+    const stableId =
+      term.kind === 'custom' ? term.id : createTimetableTermId(term.year, term.kind);
     const group = groupedTerms.get(stableId) ?? [];
 
     group.push(term);
@@ -291,9 +315,10 @@ function normalizeTimetableTermsByYearAndKind(
     sourceTerms.find((term) => term.isActive) ??
     sourceTerms.find((term) => term.id === 'default') ??
     pickLatestTimetableTerm(sourceTerms);
-  const activeStableId = termIdMap.get(activeSourceTerm.id) ?? createTimetableTermId(
-    activeSourceTerm.year,
-    activeSourceTerm.kind,
+  const activeStableId = termIdMap.get(activeSourceTerm.id) ?? (
+    activeSourceTerm.kind === 'custom'
+      ? activeSourceTerm.id
+      : createTimetableTermId(activeSourceTerm.year, activeSourceTerm.kind)
   );
 
   if (!termIdMap.has('default')) {
@@ -587,6 +612,10 @@ export function usePlannerDataState({
           previousTerm.year === term.year &&
           previousTerm.kind === term.kind &&
           previousTerm.label === term.label &&
+          previousTerm.startDate === term.startDate &&
+          previousTerm.endDate === term.endDate &&
+          previousTerm.usesAlternatingWeeks === term.usesAlternatingWeeks &&
+          previousTerm.alternatingWeekAnchorDate === term.alternatingWeekAnchorDate &&
           previousTerm.isActive === term.isActive
         ) {
           return;
@@ -1018,7 +1047,7 @@ export function usePlannerDataState({
           setActuals((current) => upsertActualsById(current, linkedActuals));
         }
         if (linkedTodo) {
-          setTodos((current) => upsertByKey(current, linkedTodo, (todo) => todo.id));
+          setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
         }
       });
     } catch (error) {
@@ -1752,6 +1781,11 @@ export function usePlannerDataState({
       throw new Error('時間割のタイトルを入れてください。');
     }
 
+    if (draft.weekInterval === 2 && !normalizeTimetableDate(draft.weekIntervalAnchorDate)) {
+      showNotice('隔週の授業は基準日を設定してください。', 'error');
+      throw new Error('隔週の授業は基準日を設定してください。');
+    }
+
     const currentTemplate = scheduleTemplates.find(
       (template) => template.id === targetTemplateId,
     );
@@ -1767,6 +1801,15 @@ export function usePlannerDataState({
           ? Math.max(1, Math.round(draft.periodNumber))
           : undefined,
       classroom: draft.classroom?.trim() ?? '',
+      alternatingWeek:
+        draft.alternatingWeek === 'a' || draft.alternatingWeek === 'b'
+          ? draft.alternatingWeek
+          : 'both',
+      weekInterval: draft.weekInterval === 2 ? 2 : 1,
+      weekIntervalAnchorDate:
+        draft.weekInterval === 2
+          ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
+          : null,
       memo: draft.memo.trim(),
       createdAt: currentTemplate?.createdAt ?? now,
       updatedAt: now,
@@ -1809,16 +1852,39 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const year = Number.isFinite(draft.year)
-      ? Math.round(draft.year)
-      : new Date().getFullYear();
-    const stableTermId = createTimetableTermId(year, draft.kind);
+    const startDate = normalizeTimetableDate(draft.startDate);
+    const endDate = normalizeTimetableDate(draft.endDate);
+
+    if (startDate && endDate && endDate < startDate) {
+      showNotice('時間割の終了日は開始日以降にしてください。', 'error');
+      throw new Error('時間割の終了日は開始日以降にしてください。');
+    }
+
+    const usesAlternatingWeeks = draft.usesAlternatingWeeks === true;
+    const alternatingWeekAnchorDate = usesAlternatingWeeks
+      ? normalizeTimetableDate(draft.alternatingWeekAnchorDate) ?? startDate
+      : null;
+
+    if (usesAlternatingWeeks && !alternatingWeekAnchorDate) {
+      showNotice('交互週を使う場合はA週の基準日を設定してください。', 'error');
+      throw new Error('交互週を使う場合はA週の基準日を設定してください。');
+    }
+
+    const yearFromStartDate = startDate ? Number(startDate.slice(0, 4)) : null;
+    const year = Number.isFinite(yearFromStartDate)
+      ? Number(yearFromStartDate)
+      : Number.isFinite(draft.year)
+        ? Math.round(draft.year)
+        : new Date().getFullYear();
+    const isCustomPeriod = draft.kind === 'custom';
+    const stableTermId = isCustomPeriod
+      ? draft.id?.trim() || createId('timetable-term')
+      : createTimetableTermId(year, draft.kind);
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
-    const existingTerm = timetableTerms.find(
-      (term) =>
-        term.id === stableTermId ||
-        (term.year === year && term.kind === draft.kind),
-    );
+    const existingTerm = timetableTerms.find((term) => term.id === stableTermId) ??
+      (!isCustomPeriod
+        ? timetableTerms.find((term) => term.year === year && term.kind === draft.kind)
+        : undefined);
     const now = new Date().toISOString();
     const nextActiveTerm: TimetableTerm = {
       id: stableTermId,
@@ -1826,6 +1892,10 @@ export function usePlannerDataState({
       year,
       kind: draft.kind,
       label,
+      startDate,
+      endDate,
+      usesAlternatingWeeks,
+      alternatingWeekAnchorDate,
       isActive: true,
       createdAt: existingTerm?.createdAt ?? now,
       updatedAt: now,
@@ -1849,11 +1919,11 @@ export function usePlannerDataState({
           .map((term) => ({ ...term, isActive: false, updatedAt: now }));
         return sortTimetableTerms([...withInactive, nextActiveTerm]);
       });
-      showNotice('学期を切り替えました。', 'success');
+      showNotice('時間割の期間を保存しました。', 'success');
       return nextActiveTerm;
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '学期を切り替えられませんでした。'),
+        resolveErrorMessage(error, '時間割の期間を保存できませんでした。'),
         'error',
       );
       throw error;
