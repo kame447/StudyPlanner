@@ -1,4 +1,7 @@
 import {
+  resolveUserPlanningContextLifecycleDateV1,
+} from './userPlanningContextDateExpression';
+import {
   USER_PLANNING_CONTEXT_ORIGINS_V1,
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
   USER_PLANNING_CONTEXT_STORAGE_VERSION,
@@ -207,30 +210,6 @@ export function validateUserPlanningContextSnapshotV1(
   return normalizeUserPlanningContextSnapshotV1(value, ownerId) !== null;
 }
 
-function addDays(date: string, amount: number): string | null {
-  if (!isDate(date) || !Number.isInteger(amount)) return null;
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  parsed.setUTCDate(parsed.getUTCDate() + amount);
-  return parsed.toISOString().slice(0, 10);
-}
-
-function resolveContextDateExpression(
-  expression: string | null,
-  observedDate: string,
-): string | null {
-  if (!expression) return null;
-  if (isDate(expression)) return expression;
-  if (expression === 'today') return observedDate;
-  if (expression === 'tomorrow' || expression === 'next_day') return addDays(observedDate, 1);
-  if (expression === 'day_after_tomorrow') return addDays(observedDate, 2);
-  const dayOffset = /^custom:(\d+)日後$/.exec(expression);
-  if (dayOffset) return addDays(observedDate, Number(dayOffset[1]));
-  const weekOffset = /^custom:(\d+)週間後$/.exec(expression)
-    ?? /^custom:(\d+)週後$/.exec(expression);
-  if (weekOffset) return addDays(observedDate, Number(weekOffset[1]) * 7);
-  return null;
-}
-
 function statusForRecord(
   resolvedDate: string | null,
   currentDate: string,
@@ -267,10 +246,17 @@ export function loadUserPlanningContextSnapshotV1(params: {
   const snapshot = parseSnapshot(readRaw(params.ownerId), params.ownerId);
   return {
     ...snapshot,
-    records: snapshot.records.map((record) => ({
-      ...record,
-      status: statusForRecord(record.resolvedDate, params.currentDate),
-    })),
+    records: snapshot.records.map((record) => {
+      const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+        record.dateExpression,
+        record.observedDate,
+      ) ?? record.resolvedDate;
+      return {
+        ...record,
+        resolvedDate,
+        status: statusForRecord(resolvedDate, params.currentDate),
+      };
+    }),
   };
 }
 
@@ -347,7 +333,10 @@ function mergeFacts(params: {
     if (confirmedDurableKeys.has(durableKey)) continue;
     const identity = recordIdentity(fact);
     const previous = byIdentity.get(identity);
-    const resolvedDate = resolveContextDateExpression(fact.dateExpression, params.observedDate);
+    const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+      fact.dateExpression,
+      params.observedDate,
+    );
     byIdentity.set(identity, {
       id: previous?.id ?? recordId(params.ownerId, fact),
       ownerId: params.ownerId,
@@ -406,7 +395,10 @@ export function createUserConfirmedPlanningContextRecordV1(params: {
     dateExpression: params.dateExpression,
     sourceText: 'ユーザー設定で確認・編集',
   };
-  const resolvedDate = resolveContextDateExpression(params.dateExpression, params.currentDate);
+  const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+    params.dateExpression,
+    params.currentDate,
+  );
   return {
     id: params.existingId ?? recordId(params.ownerId, fact),
     ownerId: params.ownerId,
