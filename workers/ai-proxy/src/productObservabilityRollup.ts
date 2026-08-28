@@ -23,7 +23,7 @@ import {
 
 const EVENT_COLLECTION = 'observability_events';
 const ACTOR_DAY_COLLECTION = 'observability_actor_day';
-const USER_SUMMARY_COLLECTION = 'observability_user_summary';
+const USER_SUMMARY_COLLECTION_PREFIX = 'observability_user_summary';
 const DAILY_ROLLUP_COLLECTION = 'observability_daily_rollups';
 const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
@@ -139,8 +139,8 @@ function dailyRollupId(event: StoredProductObservabilityEvent): string {
   return `${event.environment}:${observabilityReportingDate(event.occurredAt)}`;
 }
 
-function userSummaryId(event: StoredProductObservabilityEvent): string {
-  return `${event.environment}:${event.actorSubjectId}`;
+function userSummaryCollection(event: StoredProductObservabilityEvent): string {
+  return `${USER_SUMMARY_COLLECTION_PREFIX}_${event.environment}`;
 }
 
 function cacheKey(collection: string, id: string): string {
@@ -149,7 +149,7 @@ function cacheKey(collection: string, id: string): string {
 
 function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   if (!value) return null;
-  const { id: _id, environment: _environment, ...document } = value;
+  const { id: _id, ...document } = value;
   return document as unknown as T;
 }
 
@@ -337,10 +337,10 @@ export class ProductObservabilityRollupEngine {
             nextDaily as unknown as Record<string, unknown>,
           );
 
-          const summaryId = userSummaryId(event);
+          const summaryCollection = userSummaryCollection(event);
           const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
-            USER_SUMMARY_COLLECTION,
-            summaryId,
+            summaryCollection,
+            event.actorSubjectId,
           ));
           const nextUser = projectUserSummary({
             current: userBefore,
@@ -348,12 +348,9 @@ export class ProductObservabilityRollupEngine {
             nowIso: runStartedAt,
           });
           stage(
-            USER_SUMMARY_COLLECTION,
-            summaryId,
-            {
-              ...nextUser as unknown as Record<string, unknown>,
-              environment: event.environment,
-            },
+            summaryCollection,
+            event.actorSubjectId,
+            nextUser as unknown as Record<string, unknown>,
           );
         }
 
