@@ -98,7 +98,7 @@ describe('Stable V5 dense-turn completeness orchestration', () => {
     expect(fake.calls).toHaveLength(3);
     const auditFormat = fake.calls[1]?.responseFormat as { json_schema?: { name?: string } } | undefined;
     expect(auditFormat?.json_schema?.name).toBe('weekly_planning_dense_turn_completeness_audit_v5');
-    expect(fake.calls[1]?.maxCompletionTokens).toBe(1200);
+    expect(fake.calls[1]?.maxCompletionTokens).toBe(3200);
     expect(fake.calls[2]?.maxCompletionTokens).toBe(6400);
     const retryMessages = fake.calls[2]?.messages as Array<{ role: string; content: string }>;
     expect(retryMessages[retryMessages.length - 1]?.content).toContain(
@@ -121,7 +121,7 @@ describe('Stable V5 dense-turn completeness orchestration', () => {
     expect(result.document).toEqual(complete);
     expect(result.diagnostics.attemptCount).toBe(1);
     expect(fake.calls).toHaveLength(2);
-    expect(fake.calls[1]?.maxCompletionTokens).toBe(1200);
+    expect(fake.calls[1]?.maxCompletionTokens).toBe(3200);
   });
 
   it('canonicalizes a mixed-format coarse goal date before validation and still runs the dense audit', async () => {
