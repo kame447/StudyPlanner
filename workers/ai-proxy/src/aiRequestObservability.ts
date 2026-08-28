@@ -2,6 +2,7 @@ import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
 } from '../../../shared/productObservabilityContract';
+import { estimateAiRequestCost } from './aiUsagePricing';
 import {
   ProductObservabilityStore,
   type ProductObservabilityEnv,
@@ -12,6 +13,7 @@ export interface AiRequestUsage {
   completionTokens: number | null;
   totalTokens: number | null;
   cachedTokens: number | null;
+  cacheWriteTokens: number | null;
 }
 
 interface MetricMessage {
@@ -55,6 +57,16 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export function emptyAiRequestUsage(): AiRequestUsage {
+  return {
+    promptTokens: null,
+    completionTokens: null,
+    totalTokens: null,
+    cachedTokens: null,
+    cacheWriteTokens: null,
+  };
+}
+
 export function parseOpenAiUsage(value: unknown): AiRequestUsage {
   const root = record(value);
   const usage = record(root?.usage);
@@ -64,6 +76,7 @@ export function parseOpenAiUsage(value: unknown): AiRequestUsage {
     completionTokens: nonNegativeInteger(usage?.completion_tokens),
     totalTokens: nonNegativeInteger(usage?.total_tokens),
     cachedTokens: nonNegativeInteger(promptDetails?.cached_tokens),
+    cacheWriteTokens: nonNegativeInteger(promptDetails?.cache_write_tokens),
   };
 }
 
@@ -99,13 +112,14 @@ export async function recordAiRequestMetricBestEffort(
   if (!isAiRequestObservabilityConfigured(params.env)) return;
 
   const nowMs = params.nowMs ?? Date.now();
-  const usage = params.usage ?? {
-    promptTokens: null,
-    completionTokens: null,
-    totalTokens: null,
-    cachedTokens: null,
-  };
+  const usage = params.usage ?? emptyAiRequestUsage();
   const errorCategory = params.status === 'success' ? null : params.status;
+  const pricing = estimateAiRequestCost({
+    provider: params.provider,
+    model: params.model,
+    operationKind: params.operationKind,
+    usage,
+  });
   const payload: AiRequestMetricPayload = {
     operationKind: params.operationKind,
     purpose: params.purpose,
@@ -118,13 +132,14 @@ export async function recordAiRequestMetricBestEffort(
     completionTokens: usage.completionTokens,
     totalTokens: usage.totalTokens,
     cachedTokens: usage.cachedTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
     durationMs: Math.max(0, nowMs - params.startedAtMs),
     requestBytes: Math.max(0, Math.floor(params.requestBytes)),
     responseBytes: params.responseBytes === null
       ? null
       : Math.max(0, Math.floor(params.responseBytes)),
-    pricingVersion: null,
-    estimatedCostMicros: null,
+    pricingVersion: pricing.pricingVersion,
+    estimatedCostMicros: pricing.estimatedCostMicros,
   };
 
   try {
