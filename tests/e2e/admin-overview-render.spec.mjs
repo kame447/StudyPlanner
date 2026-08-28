@@ -22,9 +22,9 @@ async function screenshot(page, label) {
   });
 }
 
-async function openSurface(page, { view, theme, width, height }) {
+async function openSurface(page, { view, theme, width, height, state = 'populated' }) {
   await page.setViewportSize({ width, height });
-  await page.goto(`/admin-overview.html?view=${view}&theme=${theme}`);
+  await page.goto(`/admin-overview.html?view=${view}&theme=${theme}&state=${state}`);
   await expect(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeVisible();
 }
 
@@ -99,4 +99,54 @@ test.describe('Admin console rendered UI', () => {
       await inspectAi(page, viewport);
     });
   }
+
+  test('Users empty state remains explicit on mobile', async ({ page }) => {
+    await openSurface(page, {
+      view: 'users',
+      theme: 'light',
+      width: 390,
+      height: 844,
+      state: 'empty',
+    });
+    await expect(page.getByText('該当するactorがいません')).toBeVisible();
+    await screenshot(page, 'users-empty-mobile-light');
+  });
+
+  test('User detail empty state does not invent history', async ({ page }) => {
+    await openSurface(page, {
+      view: 'user-detail',
+      theme: 'dark',
+      width: 390,
+      height: 844,
+      state: 'empty',
+    });
+    await expect(page.getByText('actorが見つかりません')).toBeVisible();
+    await screenshot(page, 'user-detail-empty-mobile-dark');
+  });
+
+  test('AI API empty state reports no requests instead of fabricating usage', async ({ page }) => {
+    await openSurface(page, {
+      view: 'ai',
+      theme: 'light',
+      width: 1440,
+      height: 1000,
+      state: 'empty',
+    });
+    await expect(page.getByRole('heading', { name: 'AI・API' })).toBeVisible();
+    await expect(page.getByText('この期間のAIリクエストはありません。').first()).toBeVisible();
+    await expect(page.getByText('未計測', { exact: true }).first()).toBeVisible();
+    await screenshot(page, 'ai-empty-desktop-light');
+  });
+
+  test('Overview error state remains readable and contained', async ({ page }) => {
+    await openSurface(page, {
+      view: 'overview',
+      theme: 'dark',
+      width: 1440,
+      height: 1000,
+      state: 'error',
+    });
+    await expect(page.getByText('Overviewを取得できませんでした')).toBeVisible();
+    await screenshot(page, 'overview-error-desktop-dark');
+  });
 });
