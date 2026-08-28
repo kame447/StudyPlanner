@@ -92,7 +92,7 @@ describe('ProductObservabilityProfileRegistrationBackfillService', () => {
     });
     firestore.addProfile('b', {
       createdAt: '2026-08-28T11:00:00.000Z',
-      registeredAtIso: '2026-08-28T11:00:00.000Z',
+      registeredAt: '2026-08-28T11:00:00.000Z',
     });
 
     const checkpoint = await service(firestore).runBatch(10);
@@ -106,8 +106,8 @@ describe('ProductObservabilityProfileRegistrationBackfillService', () => {
     expect(profileRegistrationBackfillReady(checkpoint)).toBe(true);
     expect(firestore.profileWrites).toEqual([{
       id: 'a',
-      value: { registeredAtIso: '2026-08-28T10:00:00.000Z' },
-      mask: ['registeredAtIso'],
+      value: { registeredAt: '2026-08-28T10:00:00.000Z' },
+      mask: ['registeredAt'],
     }]);
     expect(firestore.documents.get(
       `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
