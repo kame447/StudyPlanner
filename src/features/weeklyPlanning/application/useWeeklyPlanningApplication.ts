@@ -70,6 +70,7 @@ export interface UseWeeklyPlanningApplicationInput {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
@@ -110,6 +111,7 @@ export function useWeeklyPlanningApplication({
   scheduleTemplates,
   timetableTermId,
   timetableTerm,
+  timetableTerms = [],
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
@@ -217,6 +219,7 @@ export function useWeeklyPlanningApplication({
       scheduleTemplates,
       timetableTermId,
       timetableTerm,
+      timetableTerms,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
