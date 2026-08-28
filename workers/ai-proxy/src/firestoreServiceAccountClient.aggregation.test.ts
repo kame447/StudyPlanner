@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
 
 function clientWithFetcher(fetcher: typeof fetch): FirestoreServiceAccountClient {
@@ -17,40 +17,45 @@ function clientWithFetcher(fetcher: typeof fetch): FirestoreServiceAccountClient
   return client;
 }
 
-describe('FirestoreServiceAccountClient countDocuments', () => {
-  it('sends a COUNT aggregation with bounded string range filters', async () => {
-    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify([{
+describe('FirestoreServiceAccountClient aggregation support', () => {
+  it('sends a COUNT aggregation with timestamp range filters', async () => {
+    let capturedInput: Parameters<typeof fetch>[0] | null = null;
+    let capturedInit: Parameters<typeof fetch>[1] | undefined;
+    const fetcher: typeof fetch = async (input, init) => {
+      capturedInput = input;
+      capturedInit = init;
+      return new Response(JSON.stringify([{
         result: {
           aggregateFields: {
             count: { integerValue: '17' },
           },
         },
-      }]), { status: 200 }));
-    const client = clientWithFetcher(fetcher as typeof fetch);
+      }]), { status: 200 });
+    };
+    const client = clientWithFetcher(fetcher);
 
     const count = await client.countDocuments('profiles', [
       {
-        field: 'registeredAtIso',
+        field: 'registeredAt',
         operator: 'GREATER_THAN_OR_EQUAL',
         value: '2026-08-01T15:00:00.000Z',
+        valueType: 'timestamp',
       },
       {
-        field: 'registeredAtIso',
+        field: 'registeredAt',
         operator: 'LESS_THAN',
         value: '2026-08-29T15:00:00.000Z',
+        valueType: 'timestamp',
       },
     ]);
 
     expect(count).toBe(17);
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    const [url, init] = fetcher.mock.calls[0];
-    expect(String(url)).toBe(
+    expect(String(capturedInput)).toBe(
       'https://firestore.googleapis.com/v1/projects/test-project/databases/(default)/documents:runAggregationQuery',
     );
-    expect(init?.method).toBe('POST');
-    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer cached-token');
-    const body = JSON.parse(String(init?.body));
+    expect(capturedInit?.method).toBe('POST');
+    expect(new Headers(capturedInit?.headers).get('Authorization')).toBe('Bearer cached-token');
+    const body = JSON.parse(String(capturedInit?.body));
     expect(body).toEqual({
       structuredAggregationQuery: {
         structuredQuery: {
@@ -61,16 +66,16 @@ describe('FirestoreServiceAccountClient countDocuments', () => {
               filters: [
                 {
                   fieldFilter: {
-                    field: { fieldPath: 'registeredAtIso' },
+                    field: { fieldPath: 'registeredAt' },
                     op: 'GREATER_THAN_OR_EQUAL',
-                    value: { stringValue: '2026-08-01T15:00:00.000Z' },
+                    value: { timestampValue: '2026-08-01T15:00:00.000Z' },
                   },
                 },
                 {
                   fieldFilter: {
-                    field: { fieldPath: 'registeredAtIso' },
+                    field: { fieldPath: 'registeredAt' },
                     op: 'LESS_THAN',
-                    value: { stringValue: '2026-08-29T15:00:00.000Z' },
+                    value: { timestampValue: '2026-08-29T15:00:00.000Z' },
                   },
                 },
               ],
@@ -82,11 +87,33 @@ describe('FirestoreServiceAccountClient countDocuments', () => {
     });
   });
 
+  it('encodes server-maintained registration timestamps as Firestore timestamps', async () => {
+    let capturedInit: Parameters<typeof fetch>[1] | undefined;
+    const fetcher: typeof fetch = async (_input, init) => {
+      capturedInit = init;
+      return new Response('{}', { status: 200 });
+    };
+    const client = clientWithFetcher(fetcher);
+
+    await client.setDocument(
+      'profiles',
+      'user-1',
+      { registeredAt: '2026-08-28T12:00:00.000Z' },
+      ['registeredAt'],
+    );
+
+    expect(JSON.parse(String(capturedInit?.body))).toEqual({
+      fields: {
+        registeredAt: { timestampValue: '2026-08-28T12:00:00.000Z' },
+      },
+    });
+  });
+
   it('rejects missing or invalid aggregate count values', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify([{
+    const fetcher: typeof fetch = async () => new Response(JSON.stringify([{
       result: { aggregateFields: {} },
-    }]), { status: 200 }));
-    const client = clientWithFetcher(fetcher as typeof fetch);
+    }]), { status: 200 });
+    const client = clientWithFetcher(fetcher);
 
     await expect(client.countDocuments('profiles')).rejects.toThrow(
       'Firestore aggregation count was invalid',
