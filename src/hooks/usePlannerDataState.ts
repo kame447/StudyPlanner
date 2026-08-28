@@ -1764,6 +1764,7 @@ export function usePlannerDataState({
       subjectId: subject.id,
       subjectName: subject.name,
       color: draft.color ?? subject.color,
+      coverImageUrl: draft.coverImageUrl || undefined,
       coverImageDataUrl: draft.coverImageDataUrl || undefined,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
