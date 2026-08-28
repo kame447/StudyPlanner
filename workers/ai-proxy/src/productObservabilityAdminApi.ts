@@ -171,6 +171,7 @@ export async function handleProductObservabilityAdminApi(
 
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH) {
       const page = await service.listUserSummaries({
+        environment: environmentFrom(url.searchParams.get('environment'), env),
         cursor: decodeCursor(url.searchParams.get('cursor')),
         limit: requestedLimit(url.searchParams.get('limit')),
       });
