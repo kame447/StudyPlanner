@@ -65,12 +65,14 @@ export type AiRequestMetricStatus =
   | 'cancelled'
   | 'unknown_failure';
 
+export type AiRequestOperationKind =
+  | 'chat_completion'
+  | 'timetable_ocr'
+  | 'planning_attachment'
+  | 'planning_transcription';
+
 export interface AiRequestMetricPayload {
-  operationKind:
-    | 'chat_completion'
-    | 'timetable_ocr'
-    | 'planning_attachment'
-    | 'planning_transcription';
+  operationKind: AiRequestOperationKind;
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
   provider: 'openai' | 'gemini';
@@ -82,6 +84,7 @@ export interface AiRequestMetricPayload {
   totalTokens: number | null;
   cachedTokens: number | null;
   cacheWriteTokens?: number | null;
+  reasoningTokens?: number | null;
   durationMs: number;
   requestBytes: number;
   responseBytes: number | null;
@@ -91,6 +94,7 @@ export interface AiRequestMetricPayload {
 
 export const PLANNING_OUTCOME_TYPES = [
   'session_started',
+  'turn_started',
   'preview_generated',
   'approval_started',
   'approval_completed',
