@@ -19,11 +19,12 @@ import {
   createWeeklyPlanningPreviewBlocks,
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
-import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
+import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { useExitMotion } from '../hooks/useExitMotion';
 import type { Plan } from '../types/domain';
-import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
+import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
+import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
 import './AiPlanningPreviewBottomSheet.css';
@@ -33,6 +34,38 @@ interface AiPlanningViewProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
+}
+
+function applyEditedPreviewPositions(
+  baseBlocks: readonly WeeklyPlanDraftBlock[],
+  editedBlocks: readonly WeeklyPlanDraftBlock[],
+): { blocks: WeeklyPlanDraftBlock[]; changed: boolean } {
+  const editedById = new Map(editedBlocks.map((block) => [block.id, block]));
+  const updatedAt = new Date().toISOString();
+  let changed = false;
+
+  const blocks = baseBlocks.map((block) => {
+    const edited = editedById.get(block.id);
+    if (!edited) return block;
+
+    const positionChanged =
+      block.date !== edited.date ||
+      block.startTime !== edited.startTime ||
+      block.endTime !== edited.endTime;
+    if (!positionChanged) return block;
+
+    changed = true;
+    return {
+      ...block,
+      date: edited.date,
+      startTime: edited.startTime,
+      endTime: edited.endTime,
+      userEdited: true,
+      updatedAt,
+    };
+  });
+
+  return { blocks, changed };
 }
 
 export function AiPlanningView(props: AiPlanningViewProps) {
@@ -156,19 +189,23 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     setIsPreviewOpen(true);
   }
 
-  function promotePreview() {
-    if (previewCandidates.length === 0 || allPreviewBlocks.length === 0) return;
-    const blockIds = new Set(allPreviewBlocks.map((block) => block.id));
+  function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
+    if (previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
+    const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
     const candidates = previewCandidates.filter((candidate) =>
       blockIds.has(candidate.stableKey),
     );
-    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
+    const generatedBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
       candidates,
       userId,
       createdAt: new Date().toISOString(),
     });
-    if (blocks.length === 0) return;
+    if (generatedBlocks.length === 0) return;
 
+    const { blocks } = applyEditedPreviewPositions(
+      generatedBlocks,
+      editedPreviewBlocks,
+    );
     if (pendingDraftBlocks.length > 0) {
       application.clearDraftBlocks();
     }
@@ -176,7 +213,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     window.requestAnimationFrame(persistActiveChatSnapshot);
   }
 
-  async function saveDrafts() {
+  async function saveDrafts(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
     if (
       pendingDraftBlocks.length === 0 ||
       approvalAvailability.kind !== 'eligible'
@@ -186,6 +223,14 @@ export function AiPlanningView(props: AiPlanningViewProps) {
 
     setPreviewError('');
     try {
+      const edited = applyEditedPreviewPositions(
+        pendingDraftBlocks,
+        editedPreviewBlocks,
+      );
+      if (edited.changed) {
+        application.clearDraftBlocks();
+        application.createDraftBlocks(edited.blocks);
+      }
       await application.approveDraftBlocks();
       persistActiveChatSnapshot();
       requestClosePreview();
@@ -223,7 +268,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
             onClose={() => requestClosePreview()}
             onAdjust={closePreviewForAdjustment}
             onPromote={promotePreview}
-            onSave={() => void saveDrafts()}
+            onSave={(blocks) => void saveDrafts(blocks)}
           />
         </div>
       ) : null}
