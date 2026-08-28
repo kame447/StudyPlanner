@@ -2,6 +2,7 @@ import { getAiConfig, getAiConfigValidationMessage } from '../../lib/aiConfig';
 import {
   createOpenAiCompatibleClient,
   type JsonSchemaResponseFormat,
+  type OpenAiCompatibleClient,
 } from '../../services/ai/openAiCompatibleClient';
 import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
@@ -101,7 +102,9 @@ function nullableString(value: unknown): string | null | undefined {
   return trimmed || null;
 }
 
-function parseResult(value: unknown): UserPlanningContextNaturalLanguageResultV2 {
+export function parseUserPlanningContextNaturalLanguageResultV2(
+  value: unknown,
+): UserPlanningContextNaturalLanguageResultV2 {
   if (!isRecord(value)) throw new Error('AIが覚える内容を整理できませんでした。');
   const targetDomain = typeof value.targetDomain === 'string'
     && (USER_CONTEXT_TARGET_DOMAINS_V2 as readonly string[]).includes(value.targetDomain)
@@ -172,21 +175,25 @@ function existingRecordPayload(record: UserPlanningContextRecordV1 | null | unde
   };
 }
 
-export async function interpretUserPlanningContextNaturalLanguageV2(params: {
-  text: string;
-  existingRecord?: UserPlanningContextRecordV1 | null;
-}): Promise<UserPlanningContextNaturalLanguageResultV2> {
-  const text = params.text.trim();
-  if (!text) throw new Error('覚えておいてほしいことを入力してください。');
-  if (text.length > 2000) throw new Error('覚えておく内容が長すぎます。');
-
+function defaultClient(): OpenAiCompatibleClient {
   const aiConfig = getAiConfig();
   const configError = getAiConfigValidationMessage(aiConfig);
   if (aiConfig.provider === 'rules' || configError) {
     throw new Error(configError ?? 'AIによる内容整理を利用できません。');
   }
+  return createOpenAiCompatibleClient(aiConfig);
+}
 
-  const raw = await createOpenAiCompatibleClient(aiConfig).createChatCompletion({
+export async function interpretUserPlanningContextNaturalLanguageV2(params: {
+  text: string;
+  existingRecord?: UserPlanningContextRecordV1 | null;
+  client?: OpenAiCompatibleClient;
+}): Promise<UserPlanningContextNaturalLanguageResultV2> {
+  const text = params.text.trim();
+  if (!text) throw new Error('覚えておいてほしいことを入力してください。');
+  if (text.length > 2000) throw new Error('覚えておく内容が長すぎます。');
+
+  const raw = await (params.client ?? defaultClient()).createChatCompletion({
     purpose: 'user_context_interpreter',
     temperature: 0,
     maxCompletionTokens: 700,
@@ -209,7 +216,7 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
   } catch {
     throw new Error('AIが覚える内容を整理できませんでした。');
   }
-  return parseResult(parsed);
+  return parseUserPlanningContextNaturalLanguageResultV2(parsed);
 }
 
 export function userPlanningContextExternalOwnerMessageV2(
