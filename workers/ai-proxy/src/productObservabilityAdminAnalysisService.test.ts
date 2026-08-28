@@ -41,6 +41,7 @@ function overview(): ObservabilityOverviewReadModel {
   day1.aiByModel = [{ key: 'gpt-test', aggregate: modelAggregate }];
   day1.aiByPurpose = [{ key: 'weekly_planning_semantic_normalizer', aggregate: modelAggregate }];
   day1.aiByPhase = [{ key: 'initial', aggregate: modelAggregate }];
+  day1.aiByOperationKind = [{ key: 'chat_completion', aggregate: modelAggregate }];
 
   const secondAggregate = {
     ...day2.ai,
@@ -58,6 +59,7 @@ function overview(): ObservabilityOverviewReadModel {
   day2.aiByModel = [{ key: 'gpt-test', aggregate: secondAggregate }];
   day2.aiByPurpose = [{ key: 'weekly_planning_semantic_normalizer', aggregate: secondAggregate }];
   day2.aiByPhase = [{ key: 'repair', aggregate: secondAggregate }];
+  day2.aiByOperationKind = [{ key: 'chat_completion', aggregate: secondAggregate }];
 
   return {
     schemaVersion: 1,
@@ -242,6 +244,12 @@ describe('ProductObservabilityAdminAnalysisService', () => {
       },
     });
     expect(analysis.byPhase.map((entry) => entry.key)).toEqual(['initial', 'repair']);
+    expect(analysis.byOperationKind).toEqual([
+      expect.objectContaining({
+        key: 'chat_completion',
+        aggregate: expect.objectContaining({ requestCount: 3 }),
+      }),
+    ]);
     expect(analysis.latencyP50Ms).toBe(500);
     expect(analysis.latencyP95Ms).toBe(2_000);
     expect(analysis.planningEfficiency).toMatchObject({
