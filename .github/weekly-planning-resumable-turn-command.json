@@ -1,11 +1,11 @@
 {
   "scenario": "exam-student-heavy-input-20260828-shared-memory",
   "turn": 1,
-  "attempt": 30,
+  "attempt": 31,
   "user_text": "高校3年生で、国公立大学の理系を志望しています。共通テストは2027年1月、本命の二次試験は2月下旬です。今の共通テスト模試は英語68%、数学55%、国語62%、物理48%、化学52%、地理58%くらいです。平日は学校があるので、月火木金は18時30分から22時30分まで、水曜は塾があるので21時から23時まで勉強できます。土日は基本的に1日8時間勉強できますが、土曜の14時から17時は塾があります。9月末までに数学IA・IIBCの基礎問題精講を一周、物理の良問の風を力学と電磁気まで、化学の重要問題集を理論化学まで終わらせたいです。英語は毎日ターゲット1900を100語ずつ確認して、英文解釈を30分、長文を最低1題やりたいです。ただし数学と物理が特に苦手なので、時間が足りなければ英語より数学と物理を優先してください。日曜日にはその週に間違えた問題の復習時間を2時間確保したいです。9月13日に共通テスト模試があるので、その3日前からは新しい範囲を進めるより模試対策を優先してください。無理のない範囲で、今日から9月30日までの学習計画を作ってください。",
   "previous_run_id": null,
-  "conversation_id": "exam-student-heavy-shared-memory-20260828-30",
-  "owner_id": "real-api-exam-student-heavy-shared-memory-user-30",
+  "conversation_id": "exam-student-heavy-shared-memory-20260828-31",
+  "owner_id": "real-api-exam-student-heavy-shared-memory-user-31",
   "week_start_date": "2026-08-24",
   "selected_date": "2026-08-28"
 }
