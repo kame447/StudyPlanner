@@ -3,7 +3,7 @@ import {
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
-  type ObservabilityActorDay,
+  type ObservabilityActiveUserWindows,
   type ObservabilityDailyRollup,
   type ObservabilityOverviewReadModel,
   type ObservabilityRollupCheckpoint,
@@ -21,12 +21,11 @@ import {
   mergeLatencyHistograms,
 } from './productObservabilityReadModelProjection';
 
-const ACTOR_DAY_COLLECTION = 'observability_actor_day';
 const USER_SUMMARY_COLLECTION_PREFIX = 'observability_user_summary';
 const DAILY_ROLLUP_COLLECTION = 'observability_daily_rollups';
+const ACTIVE_USER_WINDOW_COLLECTION = 'observability_active_user_windows';
 const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
-const ACTOR_DAY_PAGE_SIZE = 500;
 const USER_SUMMARY_PAGE_SIZE = 100;
 const MAX_OVERVIEW_DAYS = 93;
 
@@ -73,6 +72,10 @@ function dailyId(environment: ObservabilityEnvironment, localDate: string): stri
   return `${environment}:${localDate}`;
 }
 
+function activeUserWindowId(environment: ObservabilityEnvironment, asOfDate: string): string {
+  return `${environment}:${asOfDate}`;
+}
+
 function userSummaryCollection(environment: ObservabilityEnvironment): string {
   return `${USER_SUMMARY_COLLECTION_PREFIX}_${environment}`;
 }
@@ -113,11 +116,6 @@ function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRol
   };
 }
 
-function asActorDay(value: FirestoreOrderedDocument): ObservabilityActorDay {
-  const { documentName: _documentName, id: _id, ...document } = value;
-  return document as unknown as ObservabilityActorDay;
-}
-
 function asUserSummary(value: FirestoreOrderedDocument): ObservabilityUserSummary {
   const { documentName: _documentName, id: _id, ...document } = value;
   return document as unknown as ObservabilityUserSummary;
@@ -130,43 +128,32 @@ function assertCompatibleLatency(daily: readonly ObservabilityDailyRollup[]): vo
   if (incompatible) throw new Error('observability_latency_histogram_version_mismatch');
 }
 
+function readActiveUsers(
+  value: Record<string, unknown> | null,
+  environment: ObservabilityEnvironment,
+  asOfDate: string,
+): ObservabilityActiveUserWindows | null {
+  const snapshot = withoutStorageId<ObservabilityActiveUserWindows>(value);
+  if (!snapshot) return null;
+  if (
+    snapshot.schemaVersion !== PRODUCT_OBSERVABILITY_READ_MODEL_VERSION
+    || snapshot.environment !== environment
+    || snapshot.asOfDate !== asOfDate
+    || snapshot.reportingTimeZone !== PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE
+    || !Number.isSafeInteger(snapshot.today)
+    || !Number.isSafeInteger(snapshot.last7Days)
+    || !Number.isSafeInteger(snapshot.last30Days)
+  ) {
+    throw new Error('observability_active_user_snapshot_invalid');
+  }
+  return snapshot;
+}
+
 export class ProductObservabilityReadModelService {
   constructor(
     env: ProductObservabilityReadModelEnv,
     private readonly firestore: ObservabilityReadFirestore = new FirestoreServiceAccountClient(env),
   ) {}
-
-  private async distinctActorsForDates(
-    dates: readonly string[],
-    environment: ObservabilityEnvironment,
-  ): Promise<Set<string>> {
-    const actors = new Set<string>();
-    for (const localDate of dates) {
-      let cursor: FirestoreOrderedCursor | null = null;
-      while (true) {
-        const page = await this.firestore.queryDocumentsAfter({
-          collection: ACTOR_DAY_COLLECTION,
-          orderByField: 'localDate',
-          filters: [{ field: 'localDate', value: localDate }],
-          cursor,
-          limit: ACTOR_DAY_PAGE_SIZE,
-        });
-        for (const row of page) {
-          const actorDay = asActorDay(row);
-          if (actorDay.environment === environment && actorDay.actorSubjectId) {
-            actors.add(actorDay.actorSubjectId);
-          }
-        }
-        if (page.length < ACTOR_DAY_PAGE_SIZE) break;
-        const last = page[page.length - 1];
-        cursor = {
-          orderedValue: localDate,
-          documentName: last.documentName,
-        };
-      }
-    }
-    return actors;
-  }
 
   async getOverview(params: {
     environment: ObservabilityEnvironment;
@@ -174,30 +161,34 @@ export class ProductObservabilityReadModelService {
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
     const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const daily = (await Promise.all(dates.map(async (localDate) => withoutStorageId<ObservabilityDailyRollup>(
-      await this.firestore.getDocument(
-        DAILY_ROLLUP_COLLECTION,
-        dailyId(params.environment, localDate),
+    const [daily, activeUsers, checkpointValue] = await Promise.all([
+      Promise.all(dates.map(async (localDate) => withoutStorageId<ObservabilityDailyRollup>(
+        await this.firestore.getDocument(
+          DAILY_ROLLUP_COLLECTION,
+          dailyId(params.environment, localDate),
+        ),
+      ))),
+      this.firestore.getDocument(
+        ACTIVE_USER_WINDOW_COLLECTION,
+        activeUserWindowId(params.environment, params.toDate),
       ),
-    )))).filter((value): value is ObservabilityDailyRollup => Boolean(value));
-    assertCompatibleLatency(daily);
-    const actors = await this.distinctActorsForDates(dates, params.environment);
-    const latency = daily.length > 0
-      ? mergeLatencyHistograms(daily.map((entry) => entry.ai.latency))
+      this.firestore.getDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID),
+    ]);
+    const presentDaily = daily.filter((value): value is ObservabilityDailyRollup => Boolean(value));
+    assertCompatibleLatency(presentDaily);
+    const latency = presentDaily.length > 0
+      ? mergeLatencyHistograms(presentDaily.map((entry) => entry.ai.latency))
       : createEmptyLatencyHistogram();
-    const checkpoint = readCheckpoint(
-      await this.firestore.getDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID),
-    );
     return {
       schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
       fromDate: params.fromDate,
       toDate: params.toDate,
       reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
-      daily,
-      distinctActiveActors: actors.size,
+      daily: presentDaily,
+      activeUsers: readActiveUsers(activeUsers, params.environment, params.toDate),
       aiLatencyP50Ms: latencyPercentileMs(latency, 0.5),
       aiLatencyP95Ms: latencyPercentileMs(latency, 0.95),
-      rollupCheckpoint: checkpoint,
+      rollupCheckpoint: readCheckpoint(checkpointValue),
     };
   }
 
