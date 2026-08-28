@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ProductActivityTelemetryDraft } from '../../../shared/productObservabilityContract';
+import type {
+  ObservabilityEnvironment,
+  ProductActivityTelemetryDraft,
+} from '../../../shared/productObservabilityContract';
 import { FirestoreTransactionConflictError } from './firestoreServiceAccountClient';
 import { ProductObservabilityRollupEngine } from './productObservabilityRollup';
 
@@ -78,6 +81,7 @@ function activityEvent(params: {
   eventId: string;
   actorSubjectId?: string;
   action?: ProductActivityTelemetryDraft['payload']['action'];
+  environment?: ObservabilityEnvironment;
   occurredAt: string;
   observedAt: string;
 }): StoredDocument {
@@ -88,7 +92,7 @@ function activityEvent(params: {
     occurredAt: params.occurredAt,
     observedAt: params.observedAt,
     actorSubjectId: params.actorSubjectId ?? 'actor-12345678',
-    environment: 'production',
+    environment: params.environment ?? 'production',
     appVersion: '1.0.0',
     source: 'web_app',
     correlation: {},
@@ -97,7 +101,10 @@ function activityEvent(params: {
   };
 }
 
-function engine(firestore: MemoryRollupFirestore): ProductObservabilityRollupEngine {
+function engine(
+  firestore: MemoryRollupFirestore,
+  now: () => Date = () => new Date('2026-08-28T12:00:00.000Z'),
+): ProductObservabilityRollupEngine {
   return new ProductObservabilityRollupEngine(
     {
       FIREBASE_PROJECT_ID: 'test',
@@ -105,7 +112,7 @@ function engine(firestore: MemoryRollupFirestore): ProductObservabilityRollupEng
       FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
     },
     firestore as never,
-    () => new Date('2026-08-28T12:00:00.000Z'),
+    now,
   );
 }
 
@@ -185,6 +192,55 @@ describe('ProductObservabilityRollupEngine', () => {
       firestore.documents.get('observability_daily_rollups/production:2026-08-27')
         ?.processedEventCount,
     ).toBe(1);
+  });
+
+  it('keeps production and preview user summaries physically isolated', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('prod', activityEvent({
+      eventId: 'activity-prod-1111',
+      actorSubjectId: 'actor-12345678',
+      occurredAt: '2026-08-28T00:00:00.000Z',
+      observedAt: '2026-08-28T00:00:01.000Z',
+      environment: 'production',
+    }));
+    firestore.addEvent('preview', activityEvent({
+      eventId: 'activity-preview-1',
+      actorSubjectId: 'actor-12345678',
+      occurredAt: '2026-08-28T01:00:00.000Z',
+      observedAt: '2026-08-28T01:00:01.000Z',
+      environment: 'preview',
+    }));
+
+    await engine(firestore).runBatch(50);
+
+    expect(
+      firestore.documents.get('observability_user_summary_production/actor-12345678')
+        ?.eventCount,
+    ).toBe(1);
+    expect(
+      firestore.documents.get('observability_user_summary_preview/actor-12345678')
+        ?.eventCount,
+    ).toBe(1);
+  });
+
+  it('does not advance past a fresh event until the settle window has elapsed', async () => {
+    const firestore = new MemoryRollupFirestore();
+    let now = new Date('2026-08-28T12:00:00.000Z');
+    firestore.addEvent('fresh-event', activityEvent({
+      eventId: 'activity-fresh-1',
+      occurredAt: '2026-08-28T11:59:30.000Z',
+      observedAt: '2026-08-28T11:59:40.000Z',
+    }));
+    const rollup = engine(firestore, () => now);
+
+    const first = await rollup.runBatch(50);
+    expect(first.processed).toBe(0);
+    expect(first.checkpoint.cursor).toBeNull();
+
+    now = new Date('2026-08-28T12:06:00.000Z');
+    const second = await rollup.runBatch(50);
+    expect(second.processed).toBe(1);
+    expect(second.checkpoint.cursor?.observedAt).toBe('2026-08-28T11:59:40.000Z');
   });
 
   it('does not advance the cursor when a malformed event cannot be projected', async () => {
