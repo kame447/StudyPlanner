@@ -43,6 +43,14 @@ export function createWeeklyPlanningEffortQuestionPlanV5(
     };
   }
 
+  if (workload.unitCode === 'custom') {
+    return {
+      kind: 'session_duration',
+      unitCode: workload.unitCode,
+      sessionQuantities: [],
+    };
+  }
+
   return {
     kind: 'total_duration',
     unitCode: null,
