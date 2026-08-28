@@ -1,6 +1,6 @@
 import { getCloudflareAiProxyUrl } from '../../lib/aiConfig';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
-import type { ProductActivityTelemetryDraft } from '../../../shared/productObservabilityContract';
+import type { ProductObservabilityTelemetryDraft } from '../../../shared/productObservabilityContract';
 import type { ProductTelemetrySink } from './productTelemetry';
 
 export function buildProductObservabilityEventsEndpoint(proxyUrl: string): string {
@@ -19,7 +19,7 @@ export function createRemoteProductTelemetrySink(options: {
 }): ProductTelemetrySink {
   const fetcher = options.fetcher ?? fetch;
   return {
-    async write(event: ProductActivityTelemetryDraft): Promise<void> {
+    async write(event: ProductObservabilityTelemetryDraft): Promise<void> {
       const idToken = await options.getIdToken();
       const response = await fetcher(options.endpoint, {
         method: 'POST',
