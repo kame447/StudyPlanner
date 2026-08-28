@@ -679,58 +679,58 @@ export function TimetableView({
   }
 
   async function deleteExistingPeriod(term: TimetableTerm) {
-  if (isTermActionBusy) {
-    return;
-  }
-
-  if (availableTerms.length <= 1) {
-    setPeriodActionError(
-      '最後の期間は削除できません。新しい期間を追加してから削除してください。',
-    );
-    setOpenTermSwipeId(null);
-    return;
-  }
-
-  const templateCount = scheduleTemplates.filter(
-    (template) => getTemplateTermId(template) === term.id,
-  ).length;
-  const periodCount = timetablePeriods.filter(
-    (period) => period.termId === term.id,
-  ).length;
-  const hasData = templateCount > 0 || periodCount > 0;
-  const confirmed = window.confirm(
-    hasData
-      ? `「${term.label}」を削除しますか？\nこの期間に登録されている授業と時限設定も一緒に削除されます。この操作は元に戻せません。`
-      : `「${term.label}」を削除しますか？この操作は元に戻せません。`,
-  );
-
-  if (!confirmed) {
-    setOpenTermSwipeId(null);
-    return;
-  }
-
-  const fallbackTerm = availableTerms.find((item) => item.id !== term.id) ?? null;
-  setDeletingTermId(term.id);
-  try {
-    setPeriodActionError(null);
-    await onDeleteTerm(term);
-    setOpenTermSwipeId(null);
-    if (periodForm.id === term.id) {
-      setPeriodForm(createPeriodForm(fallbackTerm));
-      setAlternatingWeekView(
-        fallbackTerm
-          ? resolveTimetableAlternatingWeek(getTodayIsoDate(), fallbackTerm) ?? 'a'
-          : 'a',
-      );
+    if (isTermActionBusy) {
+      return;
     }
-  } catch (error) {
-    setPeriodActionError(
-      error instanceof Error ? error.message : '期間を削除できませんでした。',
+
+    if (availableTerms.length <= 1) {
+      setPeriodActionError(
+        '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+      );
+      setOpenTermSwipeId(null);
+      return;
+    }
+
+    const templateCount = scheduleTemplates.filter(
+      (template) => getTemplateTermId(template) === term.id,
+    ).length;
+    const periodCount = timetablePeriods.filter(
+      (period) => period.termId === term.id,
+    ).length;
+    const hasData = templateCount > 0 || periodCount > 0;
+    const confirmed = window.confirm(
+      hasData
+        ? `「${term.label}」を削除しますか？\nこの期間に登録されている授業と時限設定も一緒に削除されます。この操作は元に戻せません。`
+        : `「${term.label}」を削除しますか？この操作は元に戻せません。`,
     );
-  } finally {
-    setDeletingTermId(null);
+
+    if (!confirmed) {
+      setOpenTermSwipeId(null);
+      return;
+    }
+
+    const fallbackTerm = availableTerms.find((item) => item.id !== term.id) ?? null;
+    setDeletingTermId(term.id);
+    try {
+      setPeriodActionError(null);
+      await onDeleteTerm(term);
+      setOpenTermSwipeId(null);
+      if (periodForm.id === term.id) {
+        setPeriodForm(createPeriodForm(fallbackTerm));
+        setAlternatingWeekView(
+          fallbackTerm
+            ? resolveTimetableAlternatingWeek(getTodayIsoDate(), fallbackTerm) ?? 'a'
+            : 'a',
+        );
+      }
+    } catch (error) {
+      setPeriodActionError(
+        error instanceof Error ? error.message : '期間を削除できませんでした。',
+      );
+    } finally {
+      setDeletingTermId(null);
+    }
   }
-}
 
   async function clearCurrentTermData() {
     if (!activeTerm || isTermActionBusy) {
