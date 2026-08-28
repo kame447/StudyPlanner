@@ -1,5 +1,8 @@
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
+  tryWeeklyPlanningDenseTurnCompletenessRetryV5,
+} from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
 import {
   tryFocusedAuthorizationRouteV5,
@@ -117,6 +120,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       recordInitialValidation({ input, validation: initialValidation });
 
       if (initialValidation.document) {
+        const denseCompletenessRetry = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({
+          run,
+          baseMessages,
+          initialResponse,
+          initialDocument: initialValidation.document,
+        });
+        if (denseCompletenessRetry) return denseCompletenessRetry;
+
         const completenessRetry = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({
           run,
           baseMessages,
