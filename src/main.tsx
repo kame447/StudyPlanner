@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { AdminApp } from './components/AdminApp';
 import { StudyPlannerAppRoot } from './components/StudyPlannerAppRoot';
 import { configureWeeklyPlanningTraceRepository } from './features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository';
 import { installBottomSheetDragDismiss } from './lib/bottomSheetDragDismiss';
@@ -10,6 +9,11 @@ import { installStudySessionSwipeNavigation } from './lib/studySessionSwipeNavig
 import './styles.css';
 import './styles/interaction-continuity.css';
 import './styles/appSettingsMemory.css';
+
+const LazyAdminApp = React.lazy(async () => {
+  const module = await import('./components/AdminApp');
+  return { default: module.AdminApp };
+});
 
 configureWeeklyPlanningTraceRepository();
 installStudyPlannerSpeechRecognition();
@@ -24,7 +28,13 @@ if (!isAdminRoute) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isAdminRoute ? <AdminApp /> : <StudyPlannerAppRoot />}
+    {isAdminRoute ? (
+      <React.Suspense fallback={null}>
+        <LazyAdminApp />
+      </React.Suspense>
+    ) : (
+      <StudyPlannerAppRoot />
+    )}
   </React.StrictMode>,
 );
 
