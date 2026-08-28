@@ -6,6 +6,7 @@ import {
   type PlanningOutcomeType,
 } from '../../../shared/productObservabilityContract';
 import type { ProductTelemetrySink } from './productTelemetry';
+import { createFirebaseProductTelemetrySink } from './productTelemetryRemoteSink';
 
 export interface PlanningOutcomeTelemetryInput {
   outcomeType: PlanningOutcomeType;
@@ -109,4 +110,20 @@ export function createPlanningOutcomeTelemetryPort(
 
 export function createNoopPlanningOutcomeTelemetryPort(): PlanningOutcomeTelemetryPort {
   return { recordOutcome() {} };
+}
+
+function runtimeAppVersion(): string {
+  const configured = import.meta.env.VITE_APP_VERSION;
+  return typeof configured === 'string' && configured.trim()
+    ? configured.trim()
+    : 'unknown';
+}
+
+export function createFirebasePlanningOutcomeTelemetryPort(): PlanningOutcomeTelemetryPort {
+  const sink = createFirebaseProductTelemetrySink();
+  if (!sink) return createNoopPlanningOutcomeTelemetryPort();
+  return createPlanningOutcomeTelemetryPort({
+    appVersion: runtimeAppVersion(),
+    sink,
+  });
 }
