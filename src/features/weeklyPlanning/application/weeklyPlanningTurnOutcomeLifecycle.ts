@@ -40,7 +40,7 @@ const defaultServices: WeeklyPlanningTurnOutcomeLifecycleServices = {
 };
 
 export interface WeeklyPlanningTurnOutcomeLifecycle {
-  started(params: {
+  started?(params: {
     ownerId: string;
     pending: WeeklyPlanningPendingTurn;
   }): void;
