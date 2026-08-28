@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
   ChevronRight,
@@ -7,9 +7,13 @@ import {
   Search,
   Users,
 } from 'lucide-react';
+import type { ObservabilityAdminIdentityMatch } from '../../shared/productObservabilityAdminReadModel';
 import type { ObservabilityUserSummary } from '../../shared/productObservabilityReadModel';
 import { useAdminDataLoader } from '../hooks/useAdminData';
-import { getAdminObservabilityUsers } from '../services/adminObservabilityService';
+import {
+  getAdminObservabilityUsers,
+  resolveAdminObservabilityUserIdentity,
+} from '../services/adminObservabilityService';
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) return '未観測';
@@ -33,6 +37,16 @@ function formatActorId(actorSubjectId: string): string {
 type UserFilter = 'all' | 'product' | 'ai' | 'planning';
 type UserSort = 'recent' | 'events' | 'actor';
 
+function initialFilter(): UserFilter {
+  const value = new URLSearchParams(window.location.search).get('filter');
+  return value === 'product' || value === 'ai' || value === 'planning' ? value : 'all';
+}
+
+function initialSort(): UserSort {
+  const value = new URLSearchParams(window.location.search).get('sort');
+  return value === 'events' || value === 'actor' ? value : 'recent';
+}
+
 export function AdminUsersPage({ navigate }: { navigate: (path: string) => void }) {
   const loadUsers = useCallback(
     () => getAdminObservabilityUsers({ environment: 'production', limit: 100 }),
@@ -43,13 +57,29 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
     { users: [] as ObservabilityUserSummary[], nextCursor: null as string | null },
     'ユーザー分析を取得できませんでした。',
   );
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState<UserFilter>('all');
-  const [sort, setSort] = useState<UserSort>('recent');
+  const [searchQuery, setSearchQuery] = useState(
+    () => new URLSearchParams(window.location.search).get('actor') ?? '',
+  );
+  const [filter, setFilter] = useState<UserFilter>(initialFilter);
+  const [sort, setSort] = useState<UserSort>(initialSort);
+  const [identityQuery, setIdentityQuery] = useState('');
+  const [identityMatches, setIdentityMatches] = useState<ObservabilityAdminIdentityMatch[]>([]);
+  const [identityState, setIdentityState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [identityError, setIdentityError] = useState('');
   const [extraUsers, setExtraUsers] = useState<ObservabilityUserSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) params.set('actor', searchQuery.trim());
+    if (filter !== 'all') params.set('filter', filter);
+    if (sort !== 'recent') params.set('sort', sort);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+    window.history.replaceState({}, '', nextUrl);
+  }, [filter, searchQuery, sort]);
 
   const resolvedCursor = nextCursor === undefined ? data.nextCursor : nextCursor;
   const users = useMemo(() => [...data.users, ...extraUsers], [data.users, extraUsers]);
@@ -72,6 +102,22 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
         || left.actorSubjectId.localeCompare(right.actorSubjectId);
     });
   }, [filter, searchQuery, sort, users]);
+
+  async function searchIdentity() {
+    const query = identityQuery.trim();
+    if (!query) return;
+    setIdentityState('loading');
+    setIdentityError('');
+    try {
+      const matches = await resolveAdminObservabilityUserIdentity(query);
+      setIdentityMatches(matches);
+      setIdentityState('ready');
+    } catch (error) {
+      setIdentityMatches([]);
+      setIdentityError(error instanceof Error ? error.message : 'プロフィールを検索できませんでした。');
+      setIdentityState('error');
+    }
+  }
 
   async function loadMore() {
     if (!resolvedCursor || loadingMore) return;
@@ -98,9 +144,62 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
         <div>
           <p className="admin-overview-eyebrow">Product Observability</p>
           <h1>Users</h1>
-          <p>個人情報を複製せず、匿名化されたactor単位で利用状況を調査します。</p>
+          <p>通常分析は匿名actorだけを使い、必要なときだけプロフィールからactorを制限付きで照合します。</p>
         </div>
       </header>
+
+      <section className="admin-identity-search panel">
+        <div>
+          <strong>プロフィールから調査を開始</strong>
+          <p>メールアドレス、Firebase UID、またはユーザー名の完全一致で検索します。個人情報はanalyticsへ保存しません。</p>
+        </div>
+        <div className="admin-identity-search-row">
+          <label className="admin-search-field">
+            <Search aria-hidden="true" size={18} strokeWidth={2} />
+            <input
+              value={identityQuery}
+              onChange={(event) => setIdentityQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void searchIdentity();
+              }}
+              placeholder="email / UID / ユーザー名"
+              type="search"
+            />
+          </label>
+          <button className="ghost-button" type="button" disabled={identityState === 'loading'} onClick={() => void searchIdentity()}>
+            {identityState === 'loading' ? '検索中…' : '照合'}
+          </button>
+        </div>
+        {identityState === 'error' ? <p role="alert">{identityError}</p> : null}
+        {identityState === 'ready' && identityMatches.length === 0 ? (
+          <p>一致するプロフィールはありません。</p>
+        ) : null}
+        {identityMatches.length > 0 ? (
+          <div className="admin-identity-results">
+            {identityMatches.map((match) => (
+              <article className="admin-identity-result" key={match.firebaseUid}>
+                <div>
+                  <strong>{match.username}</strong>
+                  <span>{match.email || 'メール未設定'}</span>
+                  <small>登録 {formatTimestamp(match.registeredAt)}</small>
+                  <code>{match.firebaseUid}</code>
+                </div>
+                {match.actorSubjectId ? (
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => navigate(`/admin/users/${encodeURIComponent(match.actorSubjectId ?? '')}`)}
+                  >
+                    観測履歴を開く
+                  </button>
+                ) : (
+                  <span className="admin-readonly-badge">まだ観測なし</span>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <section className="admin-search-card panel">
         <label className="admin-search-field">
@@ -108,7 +207,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="actor IDで検索"
+            placeholder="actor IDで絞り込み"
             type="search"
           />
         </label>
