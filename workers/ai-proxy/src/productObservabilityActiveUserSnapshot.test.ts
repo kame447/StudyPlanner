@@ -134,6 +134,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     const snapshots = await service(firestore).refreshAffected([{
       environment: 'production',
       localDate: '2026-08-27',
+      revision: 1,
     }]);
 
     expect(snapshots.map((snapshot) => snapshot.asOfDate)).toEqual([
@@ -168,6 +169,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     const snapshots = await service(firestore).refreshAffected([{
       environment: 'preview',
       localDate: '2026-08-28',
+      revision: 1,
     }]);
 
     expect(snapshots).toHaveLength(1);
