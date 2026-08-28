@@ -14,8 +14,13 @@ import {
 import {
   createUserConfirmedPlanningContextRecordV1,
   hydrateUserPlanningContextSnapshotV1,
+  isUserPlanningContextVisibleV1,
   loadUserPlanningContextSnapshotV1,
 } from './userPlanningContextSpace';
+import {
+  interpretUserPlanningContextNaturalLanguageV2,
+  userPlanningContextExternalOwnerMessageV2,
+} from './userPlanningContextNaturalLanguageV2';
 import { getUserPlanningContextRepositoryV1 } from './userPlanningContextRepository';
 import { subscribeUserPlanningContextCommittedV1 } from './userPlanningContextSyncEvents';
 import type {
@@ -32,6 +37,11 @@ export interface UserPlanningContextEditorInputV1 {
   dateText?: string | null;
 }
 
+export interface UserPlanningContextNaturalLanguageInputV2 {
+  existingRecordId?: string | null;
+  text: string;
+}
+
 export interface UserPlanningContextContextValueV1 {
   snapshot: UserPlanningContextSnapshotV1;
   records: UserPlanningContextRecordV1[];
@@ -40,6 +50,7 @@ export interface UserPlanningContextContextValueV1 {
   shared: boolean;
   error: string | null;
   saveRecord(input: UserPlanningContextEditorInputV1): Promise<void>;
+  saveNaturalLanguage(input: UserPlanningContextNaturalLanguageInputV2): Promise<void>;
   removeRecord(recordId: string): Promise<void>;
 }
 
@@ -52,6 +63,11 @@ function currentDateInJapan(): string {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
+}
+
+function reportSyncFailure(error: unknown, action: string): string {
+  console.error(`[UserPlanningContext] ${action}`, error);
+  return 'AIが覚えている情報を同期できませんでした。';
 }
 
 export function userPlanningContextDateTextV1(record: UserPlanningContextRecordV1): string {
@@ -111,7 +127,7 @@ export function UserPlanningContextProvider({
           },
           (subscriptionError) => {
             if (!active) return;
-            setError(subscriptionError.message);
+            setError(reportSyncFailure(subscriptionError, 'subscription failed'));
           },
         );
         unsubscribeCommitted = subscribeUserPlanningContextCommittedV1((event) => {
@@ -122,9 +138,7 @@ export function UserPlanningContextProvider({
               if (active) applyRepositoryState(next);
             })
             .catch((syncError: unknown) => {
-              if (active) {
-                setError(syncError instanceof Error ? syncError.message : '長期記憶の同期に失敗しました。');
-              }
+              if (active) setError(reportSyncFailure(syncError, 'semantic context sync failed'));
             })
             .finally(() => {
               if (active) setSyncing(false);
@@ -133,11 +147,7 @@ export function UserPlanningContextProvider({
       } catch (initializeError) {
         if (!active) return;
         setShared(false);
-        setError(
-          initializeError instanceof Error
-            ? initializeError.message
-            : '長期記憶の同期を開始できませんでした。',
-        );
+        setError(reportSyncFailure(initializeError, 'initialization failed'));
       } finally {
         if (active) setLoading(false);
       }
@@ -173,9 +183,49 @@ export function UserPlanningContextProvider({
       const next = await repository.saveUserConfirmedRecord(ownerId, record, existing?.id ?? null);
       applyRepositoryState(next);
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : '長期記憶を保存できませんでした。';
+      const message = reportSyncFailure(saveError, 'legacy settings save failed');
       setError(message);
       throw new Error(message);
+    } finally {
+      setSyncing(false);
+    }
+  }, [applyRepositoryState, ownerId, repository, snapshot.records]);
+
+  const saveNaturalLanguage = useCallback(async (input: UserPlanningContextNaturalLanguageInputV2) => {
+    const existing = input.existingRecordId
+      ? snapshot.records.find((record) => record.id === input.existingRecordId) ?? null
+      : null;
+    setSyncing(true);
+    setError(null);
+    try {
+      const interpreted = await interpretUserPlanningContextNaturalLanguageV2({
+        text: input.text,
+        existingRecord: existing,
+      });
+      if (interpreted.targetDomain !== 'user_context') {
+        throw new Error(userPlanningContextExternalOwnerMessageV2(interpreted.targetDomain));
+      }
+      if (!interpreted.kind || !interpreted.label) {
+        throw new Error('AIが覚える内容を整理できませんでした。');
+      }
+      const record = createUserConfirmedPlanningContextRecordV1({
+        ownerId,
+        kind: interpreted.kind,
+        label: interpreted.label,
+        value: interpreted.value,
+        dateExpression: interpreted.dateExpression,
+        currentDate: currentDateInJapan(),
+        sourceText: interpreted.displayText,
+        existingId: existing?.id,
+      });
+      try {
+        const next = await repository.saveUserConfirmedRecord(ownerId, record, existing?.id ?? null);
+        applyRepositoryState(next);
+      } catch (saveError) {
+        const message = reportSyncFailure(saveError, 'natural-language settings save failed');
+        setError(message);
+        throw new Error(message);
+      }
     } finally {
       setSyncing(false);
     }
@@ -188,7 +238,7 @@ export function UserPlanningContextProvider({
       const next = await repository.removeRecord(ownerId, recordId);
       applyRepositoryState(next);
     } catch (removeError) {
-      const message = removeError instanceof Error ? removeError.message : '長期記憶を削除できませんでした。';
+      const message = reportSyncFailure(removeError, 'forget failed');
       setError(message);
       throw new Error(message);
     } finally {
@@ -196,16 +246,22 @@ export function UserPlanningContextProvider({
     }
   }, [applyRepositoryState, ownerId, repository]);
 
+  const visibleRecords = useMemo(
+    () => snapshot.records.filter(isUserPlanningContextVisibleV1),
+    [snapshot.records],
+  );
+
   const value = useMemo<UserPlanningContextContextValueV1>(() => ({
     snapshot,
-    records: snapshot.records,
+    records: visibleRecords,
     loading,
     syncing,
     shared,
     error,
     saveRecord,
+    saveNaturalLanguage,
     removeRecord,
-  }), [error, loading, removeRecord, saveRecord, shared, snapshot, syncing]);
+  }), [error, loading, removeRecord, saveNaturalLanguage, saveRecord, shared, snapshot, syncing, visibleRecords]);
 
   if (loading) return null;
 

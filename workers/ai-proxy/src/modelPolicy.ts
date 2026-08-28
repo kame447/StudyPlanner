@@ -13,6 +13,7 @@ export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_semantic_normalizer: INTERNAL_OPENAI_MODEL,
   weekly_planning_renderer: INTERNAL_OPENAI_MODEL,
   weekly_planning_attachment: INTERNAL_OPENAI_MODEL,
+  user_context_interpreter: INTERNAL_OPENAI_MODEL,
 };
 
 // 時間割OCRだけは無料枠を利用するため Gemini 経路で別管理する。

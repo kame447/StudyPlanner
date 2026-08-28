@@ -17,6 +17,11 @@ describe('ai-proxy chat model policy', () => {
     }
   });
 
+  it('routes user-context interpretation through the same internal Luna policy', () => {
+    expect(resolveChatModel({ purpose: 'user_context_interpreter' }))
+      .toEqual({ model: 'gpt-5.6-luna' });
+  });
+
   it('keeps semantic repair on the same Luna purpose route', () => {
     expect(
       resolveChatModel({

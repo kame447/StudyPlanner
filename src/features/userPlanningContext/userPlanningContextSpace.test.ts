@@ -75,12 +75,14 @@ describe('UserPlanningContextSpace', () => {
         observedDate: '2026-08-07',
         resolvedDate: '2026-08-21',
         status: 'active',
+        origin: 'user_stated',
       }),
       expect.objectContaining({
         kind: 'concern',
         label: '数学',
         value: '学習上の不安・優先度が高い',
         resolvedDate: null,
+        origin: 'user_stated',
       }),
     ]));
   });
@@ -138,6 +140,7 @@ describe('UserPlanningContextSpace', () => {
         label: '第一志望',
         value: '静岡大学情報学部',
         status: 'active',
+        origin: 'user_stated',
       }),
     ]);
   });
@@ -194,7 +197,7 @@ describe('UserPlanningContextSpace', () => {
     })).toEqual([]);
   });
 
-  it('marks resolved past events historical while retaining them in history', () => {
+  it('moves expired goal events to needs-review instead of treating the goal outcome as known history', () => {
     stageUserPlanningContextFactsV1({
       ownerId: OWNER_A,
       conversationId: 'conversation-a',
@@ -221,7 +224,7 @@ describe('UserPlanningContextSpace', () => {
     });
     expect(snapshot.records[0]).toMatchObject({
       label: '模試',
-      status: 'historical',
+      status: 'needs_review',
     });
     expect(userPlanningContextPromptSummaryV1({
       ownerId: OWNER_A,
