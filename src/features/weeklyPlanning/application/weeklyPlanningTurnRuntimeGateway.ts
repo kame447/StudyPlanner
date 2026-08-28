@@ -36,6 +36,7 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
 }
@@ -71,6 +72,7 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
         timetableTerm: params.timetableTerm,
+        timetableTerms: params.timetableTerms,
         conversationId: params.pending.conversationId,
         traceRequestId: params.pending.requestId,
         weekStartsOn: requestContext.weekStartsOn,
