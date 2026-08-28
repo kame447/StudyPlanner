@@ -16,6 +16,8 @@ PR: #221
 - openBD書影が壊れている場合はplaceholderへ戻し、教材登録を壊さない
 - provider障害時も手入力登録可能
 - 検索で得た外部表紙URLとユーザーアップロード画像を別フィールドで永続化する
+- 検索候補から登録した `StudyMaterial` が教材catalog identity・元タイトル・取得済みISBNを保持する
+- catalog linkは教材表示名を編集しても維持する
 - 最新mainからbehind 0
 - CI / Browser Regression / UI Regression Matrix / UI Quality Automation が最新実装HEADでterminal success
 
@@ -36,6 +38,12 @@ PR: #221
 - UI unit testで取得済み表紙の表示とbroken-image fallbackを固定
 - 検索で得た外部表紙は `StudyMaterial.coverImageUrl`、ユーザーが選んだ画像は `coverImageDataUrl` として分離して保存
 - 外部表紙URLをData URL欄へ混在させない回帰テストを追加
+- `StudyMaterial` / `StudyMaterialDraft` に `catalogEntryId`、`catalogTitle`、`catalogIsbn10`、`catalogIsbn13` を追加
+- 検索候補から登録するとstable catalog identity、選択時タイトル、取得済みISBN、curated aliasをユーザー教材へ保存
+- built-in候補は `seed:<id>` をstable identityとして維持し、NDLで得たISBNは別フィールドに保持
+- 既存教材編集ではcatalog linkを保持し、編集画面に「教材DBに紐付け済み」を表示
+- E2Eで `金フレ` を検索→保存→再度編集し、catalog linkが残る経路を追加
+- 旧教材・手入力教材にはmigrationで架空のcatalog linkを付与しない
 
 ## Cover provider boundary
 
@@ -45,40 +53,40 @@ PR: #221
 - JPRO: 固定IP・事業者申請等を前提とするため、即時の無料公開fallbackとして追加しない
 - 将来、より高い書影収録率が必要なら契約型providerを別integrationとして検討する
 
-## Verified implementation checkpoint
+## Previous verified checkpoint
 
-実装HEAD `5c5972f25842657d445b860376db5be54e08ce15` で次を確認済み。
+HEAD `fbb60f628f72c2fafbe7122057d0e42441cefc79` ではcatalog link追加前の教材検索・表紙実装について次がterminal successだった。
 
-- CI run `33195696047`: success
-  - TypeScript checks
-  - unit tests
-  - Firestore rules regression
-  - production build
-  - PR diff check
-- Browser Regression run `33195696107`: success
-- UI Regression Matrix run `33195695931`: success
-- UI Quality Automation run `33195695967`: success
-- Admin Overview Render run `33195695933`: success
+- CI run `33196273394`: success
+- Browser Regression run `33196273395`: success
+- UI Regression Matrix run `33196273392`: success
+- UI Quality Automation run `33196273398`: success
+- Admin Overview Render run `33196273425`: success
 - latest main at verification: `b053a677c00fea642a040831fd2161760567a382`
 - branch: behind 0
 - unresolved review threads: 0
 
-このcheckpoint更新自体はdocumentation-only commitなので、更新後HEADでもrepository policyに従って必要workflowのterminal stateを確認する。
+## Current checkpoint / next action
+
+catalog link永続化の実装・unit・E2E・canonical spec更新まで同じbranch / PRに追加済み。
+
+前回green HEADとの差分監査では、catalog link関連の6ファイルだけが変更対象であることを確認した。途中で混入した時限削除エラーメッセージの無関係な文言差分は除去済み。
+
+次に、最新HEADで CI / Browser Regression / UI Regression Matrix / UI Quality Automation / Admin Overview Render をterminal successまで確認する。失敗時はproduction defect / contract / harnessを分類し、テストを弱めず修正する。全green後にPR本文とIssue #187の既存checkpoint commentをexact HEADへ同期する。
 
 ## Remaining production-rollout work
 
-PR #221 のコード・回帰検証は完了。production rollout前の実環境確認として次だけ残す。
+PR #221 のコード検証後も、production rollout前の実環境確認として次を残す。
 
 - deployed Worker経由の認証済みISBN検索smoke
 - deployed Worker経由の認証済みタイトル検索smoke
 - Workerから共有Firestoreへ書き込むservice-account権限の実環境確認
 
-上記はdeployment credential / 実環境認証境界の検証であり、ローカルunitやbrowser harnessでは代替しない。
+上記はdeployment credential / 実環境認証境界の検証であり、ローカルunitやbrowser harnessでは代替しない。現在利用できるGitHub操作ツールには新規 `workflow_dispatch` 実行機能がないため、既存Live Account workflowをこの会話から開始できない。
 
 ## Deferred product scope
 
 - camera ISBN barcode scanning
-- `StudyMaterial.catalogEntryId` のcloud-persistent link
 - shared alias learning / registration count / ranking
 - shared chapter/section cloud source of truth
 - JPRO等の契約型書影provider導入判断
