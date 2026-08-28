@@ -40,14 +40,15 @@ export function BookshelfMaterialSearch({
     if (!trimmed || isSearching) return;
 
     setIsSearching(true);
-    setStatus('教材を検索しています...');
+    setStatus('教材と表紙を検索しています...');
     setResults([]);
     try {
       const response = await searchMaterialMetadata(trimmed);
       setResults(response.results);
+      const coverCount = response.results.filter((candidate) => Boolean(candidate.coverImageUrl)).length;
       setStatus(
         response.results.length > 0
-          ? `${response.results.length}件見つかりました。教材を選ぶとページ数や目次なども確認します。`
+          ? `${response.results.length}件見つかりました。${coverCount > 0 ? `${coverCount}件は表紙も取得しました。` : ''}教材を選ぶとページ数や目次なども確認します。`
           : '候補が見つかりませんでした。下の教材名から手入力できます。',
       );
     } catch (error) {
@@ -64,7 +65,7 @@ export function BookshelfMaterialSearch({
   async function handleSelect(candidate: MaterialMetadataCandidate) {
     if (resolvingId) return;
     setResolvingId(candidate.catalogEntryId);
-    setStatus('教材のページ数・版・目次を確認しています...');
+    setStatus('教材の表紙・ページ数・版・目次を確認しています...');
     try {
       const resolved = await resolveMaterialMetadataCandidate(candidate);
       onSelect(resolved);
@@ -84,13 +85,25 @@ export function BookshelfMaterialSearch({
     }
   }
 
+  function handleCoverError(candidate: MaterialMetadataCandidate) {
+    if (!candidate.coverImageUrl) return;
+    setResults((current) =>
+      current.map((item) =>
+        item.catalogEntryId === candidate.catalogEntryId
+          && item.coverImageUrl === candidate.coverImageUrl
+          ? { ...item, coverImageUrl: undefined }
+          : item,
+      ),
+    );
+  }
+
   return (
     <section className="material-metadata-search" aria-label="教材検索">
       <div className="material-metadata-search-heading">
         <div>
           <strong>教材を検索</strong>
           <p className="detail-note">
-            1000件以上の初期検索インデックスから探し、版やISBNが必要な候補は選択後に外部書誌で確認します。
+            1000件以上の初期検索インデックスから探し、主要教材は表紙も確認します。版やISBNが必要な候補は選択後に外部書誌で確認します。
           </p>
         </div>
       </div>
@@ -143,7 +156,12 @@ export function BookshelfMaterialSearch({
               >
                 <span className="material-metadata-result-cover" aria-hidden="true">
                   {candidate.coverImageUrl ? (
-                    <img src={candidate.coverImageUrl} alt="" loading="lazy" />
+                    <img
+                      src={candidate.coverImageUrl}
+                      alt=""
+                      loading="lazy"
+                      onError={() => handleCoverError(candidate)}
+                    />
                   ) : (
                     <BookOpen size={22} strokeWidth={1.7} />
                   )}
