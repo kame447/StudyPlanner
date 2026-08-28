@@ -52,6 +52,7 @@ import type {
   TodoTaskDraft,
   ViewMode,
 } from '../types/domain';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type { ShowNotice } from './useNoticeState';
 
 interface UsePlannerDataStateOptions {
@@ -421,6 +422,7 @@ interface UsePlannerDataStateResult {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -921,6 +923,61 @@ export function usePlannerDataState({
         ),
         'error',
       );
+    }
+  }
+
+  async function movePlanOccurrence(plan: Plan, target: WeekPlanMoveTarget) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(target.startTime, target.endTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+
+    const sourcePlan = resolveStoredPlan(plan);
+    const occurrenceDate = plan.occurrenceDate ?? plan.date;
+    const draft: PlanDraft = {
+      ...createPlanDraftFromPlan(plan),
+      date: target.date,
+      startTime: target.startTime,
+      endTime: target.endTime,
+    };
+
+    if (isScopedRecurringEditCandidate(sourcePlan)) {
+      if (target.date !== occurrenceDate) {
+        showNotice(
+          '繰り返し予定は週表示のドラッグでは曜日を変更できません。時刻は変更できます。',
+          'info',
+        );
+        return;
+      }
+
+      setPendingRecurringPlanAction({
+        kind: 'edit',
+        plan,
+        draft,
+      });
+      return;
+    }
+
+    const nextPlan = createPlanFromDraft(draft, sourcePlan);
+    const previousPlans = plans;
+
+    try {
+      setPlans((current) =>
+        sortByDateTime(upsertByKey(current, nextPlan, (item) => item.id)),
+      );
+      await plannerRepository.upsertPlan(nextPlan);
+      showNotice('予定を移動しました。', 'success');
+    } catch (error) {
+      setPlans(previousPlans);
+      showNotice(
+        resolveErrorMessage(error, '予定を移動できませんでした。'),
+        'error',
+      );
+      throw error;
     }
   }
 
@@ -2152,6 +2209,7 @@ export function usePlannerDataState({
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
