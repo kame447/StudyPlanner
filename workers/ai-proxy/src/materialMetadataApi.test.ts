@@ -6,7 +6,7 @@ import {
 } from './materialMetadataApi';
 
 describe('material metadata NDL adapter', () => {
-  it('builds ISBN and title queries without leaking raw query syntax', () => {
+  it('builds licensed national-bibliography ISBN and title queries', () => {
     const isbn = classifyMaterialMetadataQuery('978-4-02-331568-6');
     const title = classifyMaterialMetadataQuery(' 金のフレーズ ');
 
@@ -15,8 +15,10 @@ describe('material metadata NDL adapter', () => {
 
     const isbnUrl = new URL(buildNdlOpenSearchUrl(isbn!));
     const titleUrl = new URL(buildNdlOpenSearchUrl(title!));
+    expect(isbnUrl.searchParams.get('dpid')).toBe('iss-ndl-opac-national');
     expect(isbnUrl.searchParams.get('isbn')).toBe('9784023315686');
     expect(isbnUrl.searchParams.get('cnt')).toBe('8');
+    expect(titleUrl.searchParams.get('dpid')).toBe('iss-ndl-opac-national');
     expect(titleUrl.searchParams.get('title')).toBe('金のフレーズ');
   });
 
