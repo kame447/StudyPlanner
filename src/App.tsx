@@ -166,6 +166,7 @@ export default function App() {
     actuals,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
+    timetableTerm: activeTimetableTerm,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });
@@ -466,6 +467,7 @@ export default function App() {
                 studyMaterials={studyMaterials}
                 scheduleTemplates={scheduleTemplates}
                 timetableTermId={activeTimetableTermId}
+                timetableTerm={activeTimetableTerm}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
                 onRemoveWeeklyDraftBlock={
                   weeklyPlanning.canEditDraftBlocks
