@@ -14,7 +14,12 @@ function semanticDocument(taskTitles: string[]): WeeklyPlanningSemanticDocumentV
       decompositionStatus: 'atomic',
       category: 'study',
       title,
-      study: null,
+      study: {
+        purpose: 'self_study',
+        activityKind: 'unknown',
+        contextLabel: title,
+        components: [],
+      },
       workloads: [],
       effortEstimates: [],
       temporalConstraints: [],
