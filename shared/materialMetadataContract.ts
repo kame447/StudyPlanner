@@ -15,6 +15,7 @@ export interface MaterialMetadataCandidate {
   subjectHint?: string;
   materialKind?: string;
   aliases?: string[];
+  resolutionRequired?: boolean;
 }
 
 export interface MaterialMetadataSearchResponse {
@@ -102,5 +103,6 @@ export function isMaterialMetadataCandidate(value: unknown): value is MaterialMe
     && (candidate.tableOfContents === undefined || isStringArray(candidate.tableOfContents))
     && (candidate.subjectHint === undefined || typeof candidate.subjectHint === 'string')
     && (candidate.materialKind === undefined || typeof candidate.materialKind === 'string')
-    && (candidate.aliases === undefined || isStringArray(candidate.aliases));
+    && (candidate.aliases === undefined || isStringArray(candidate.aliases))
+    && (candidate.resolutionRequired === undefined || typeof candidate.resolutionRequired === 'boolean');
 }
