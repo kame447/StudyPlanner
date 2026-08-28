@@ -14,7 +14,7 @@ Status: current domain entry point
 
 ## Supporting research
 
-- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査した証拠。本文中の「調査段階」「次の実装PR」等の実装前記述はhistorical contextであり、現在のruntime要件を上書きしない。
+- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査した証拠。本文中の実装前記述はhistorical contextであり、現在のruntime要件を上書きしない。
 
 ## Boundary
 
