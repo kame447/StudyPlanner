@@ -4,7 +4,6 @@ import { filterAdminUserSummaries } from '../lib/adminAnalytics';
 import { formatMinutes } from '../lib/date';
 import { getAdminUserSummaries } from '../services/adminDataService';
 import { useAdminDataLoader } from '../hooks/useAdminData';
-import { AdminAppReturnButton } from './AdminAppReturnButton';
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -44,15 +43,13 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
 
   return (
     <main className="admin-shell">
-      <AdminAppReturnButton onReturn={() => navigate('/')} />
-
       <section className="admin-hero panel">
         <div className="admin-title-row">
           <span className="admin-icon-badge">
             <Users aria-hidden="true" size={22} strokeWidth={1.9} />
           </span>
           <div>
-            <h1>管理者画面</h1>
+            <h1>Users</h1>
             <p>ユーザーの学習状況を read-only で確認します。</p>
           </div>
         </div>
