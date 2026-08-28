@@ -59,8 +59,10 @@ export function BookshelfMaterialSearch({
     <section className="material-metadata-search" aria-label="教材検索">
       <div className="material-metadata-search-heading">
         <div>
-          <strong>登録済みの本を検索</strong>
-          <p className="detail-note">ISBNまたは教材名で検索できます。検索を使わず手入力しても構いません。</p>
+          <strong>教材を検索</strong>
+          <p className="detail-note">
+            StudyPlanner内の教材候補を先に検索し、見つからない場合はISBN・教材名から外部書誌を検索します。
+          </p>
         </div>
       </div>
 
@@ -113,6 +115,7 @@ export function BookshelfMaterialSearch({
       ) : null}
 
       <p className="detail-note material-metadata-attribution">
+        外部書誌検索には
         <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">
           国立国会図書館全国書誌情報
         </a>
