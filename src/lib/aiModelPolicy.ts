@@ -12,4 +12,5 @@
 export type AiChatPurpose =
   | 'weekly_planning_interpreter'
   | 'weekly_planning_semantic_normalizer'
-  | 'weekly_planning_renderer';
+  | 'weekly_planning_renderer'
+  | 'user_context_interpreter';

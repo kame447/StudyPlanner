@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe('durable goal-event range lifecycle', () => {
-  it('keeps a month-level event active through the represented period and historical afterwards', () => {
+  it('keeps a month-level event active through the represented period and marks it for review afterwards', () => {
     stageUserPlanningContextFactsV1({
       ownerId: OWNER,
       conversationId: 'conversation-1',
@@ -52,7 +52,7 @@ describe('durable goal-event range lifecycle', () => {
       currentDate: '2027-02-01',
     }).records[0]).toMatchObject({
       resolvedDate: '2027-01-31',
-      status: 'historical',
+      status: 'needs_review',
     });
     expect(userPlanningContextPromptSummaryV1({
       ownerId: OWNER,
