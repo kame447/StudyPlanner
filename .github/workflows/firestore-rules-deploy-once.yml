@@ -1,0 +1,155 @@
+name: Firestore Rules Deploy Once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/firestore-rules-deploy-once.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-firestore-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: live-account-verification
+    env:
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      GOOGLE_CLOUD_CREDENTIALS: ${{ secrets.GOOGLE_CLOUD_CREDENTIALS }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GOOGLE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Report available authentication modes without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          present() { if [ -n "${!1:-}" ]; then echo "$1=PRESENT"; else echo "$1=ABSENT"; fi; }
+          for name in \
+            FIREBASE_TOKEN \
+            FIREBASE_SERVICE_ACCOUNT \
+            FIREBASE_SERVICE_ACCOUNT_JSON \
+            FIREBASE_SERVICE_ACCOUNT_KEY \
+            GOOGLE_APPLICATION_CREDENTIALS_JSON \
+            GCP_SERVICE_ACCOUNT_KEY \
+            GOOGLE_CREDENTIALS \
+            GOOGLE_CLOUD_CREDENTIALS \
+            GCP_SA_KEY \
+            SERVICE_ACCOUNT_JSON \
+            GCP_WORKLOAD_IDENTITY_PROVIDER \
+            GOOGLE_WORKLOAD_IDENTITY_PROVIDER \
+            GCP_SERVICE_ACCOUNT \
+            GOOGLE_SERVICE_ACCOUNT; do
+            present "$name"
+          done
+
+      - name: Authenticate with Workload Identity when configured
+        id: google-auth
+        if: >-
+          (env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' || env.GOOGLE_WORKLOAD_IDENTITY_PROVIDER != '') &&
+          (env.GCP_SERVICE_ACCOUNT != '' || env.GOOGLE_SERVICE_ACCOUNT != '')
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_WORKLOAD_IDENTITY_PROVIDER || env.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT != '' && env.GCP_SERVICE_ACCOUNT || env.GOOGLE_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Deploy Firestore rules using every configured auth path
+        shell: bash
+        run: |
+          set -uo pipefail
+          project='study-planner-d1bc8'
+
+          deploy_with_current_auth() {
+            npx --yes firebase-tools@latest deploy \
+              --only firestore:rules \
+              --project "$project" \
+              --non-interactive
+          }
+
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo 'Trying FIREBASE_TOKEN authentication.'
+            if npx --yes firebase-tools@latest deploy \
+              --only firestore:rules \
+              --project "$project" \
+              --token "$FIREBASE_TOKEN" \
+              --non-interactive; then
+              echo 'DEPLOYMENT_SUCCEEDED=FIREBASE_TOKEN'
+              exit 0
+            fi
+            echo 'FIREBASE_TOKEN deployment failed; trying other configured modes.'
+          fi
+
+          for name in \
+            FIREBASE_SERVICE_ACCOUNT \
+            FIREBASE_SERVICE_ACCOUNT_JSON \
+            FIREBASE_SERVICE_ACCOUNT_KEY \
+            GOOGLE_APPLICATION_CREDENTIALS_JSON \
+            GCP_SERVICE_ACCOUNT_KEY \
+            GOOGLE_CREDENTIALS \
+            GOOGLE_CLOUD_CREDENTIALS \
+            GCP_SA_KEY \
+            SERVICE_ACCOUNT_JSON; do
+            value="${!name:-}"
+            [ -z "$value" ] && continue
+            echo "Trying service-account authentication from $name."
+            credential_file="$RUNNER_TEMP/firebase-service-account.json"
+            umask 077
+            if printf '%s' "$value" | grep -q '^[[:space:]]*{'; then
+              printf '%s' "$value" > "$credential_file"
+            elif printf '%s' "$value" | base64 --decode > "$credential_file" 2>/dev/null; then
+              :
+            else
+              echo "$name is present but is neither raw JSON nor decodable base64."
+              rm -f "$credential_file"
+              continue
+            fi
+            export GOOGLE_APPLICATION_CREDENTIALS="$credential_file"
+            if deploy_with_current_auth; then
+              echo "DEPLOYMENT_SUCCEEDED=$name"
+              rm -f "$credential_file"
+              exit 0
+            fi
+            rm -f "$credential_file"
+            unset GOOGLE_APPLICATION_CREDENTIALS
+            echo "$name deployment failed; trying other configured modes."
+          done
+
+          if [ -n "${GOOGLE_GHA_CREDS_PATH:-}" ] || [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
+            echo 'Trying Workload Identity / exported Google credentials.'
+            if deploy_with_current_auth; then
+              echo 'DEPLOYMENT_SUCCEEDED=WORKLOAD_IDENTITY'
+              exit 0
+            fi
+          fi
+
+          echo 'Trying ambient runner credentials as the final non-interactive path.'
+          if deploy_with_current_auth; then
+            echo 'DEPLOYMENT_SUCCEEDED=AMBIENT_CREDENTIALS'
+            exit 0
+          fi
+
+          echo '::error::No usable Firebase/GCP deployment credential was available to this workflow.'
+          exit 2
