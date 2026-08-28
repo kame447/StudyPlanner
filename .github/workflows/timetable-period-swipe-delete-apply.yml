@@ -410,6 +410,10 @@ jobs:
                     : 'a',
                 );
               }
+            } catch (error) {
+              setPeriodActionError(
+                error instanceof Error ? error.message : '期間を削除できませんでした。',
+              );
             } finally {
               setDeletingTermId(null);
             }
@@ -429,26 +433,10 @@ jobs:
 
           view_path = Path('src/components/TimetableView.tsx')
           view_text = view_path.read_text()
-          old_list = r'''                  <div className="timetable-period-list">
-                    {availableTerms.map((term) => (
-                      <button
-                        className={
-                          term.id === activeTerm?.id
-                            ? 'timetable-period-list-item active'
-                            : 'timetable-period-list-item'
-                        }
-                        disabled={isSavingTerm || isClearingTermData}
-                        key={term.id}
-                        onClick={() => {
-                          void selectExistingPeriod(term);
-                        }}
-                        type="button"
-                      >
-                        <strong>{term.label}</strong>
-                        <span>{formatPeriodRange(term)}</span>
-                      </button>
-                    ))}
-                  </div>'''
+          list_start_marker = '                  <div className="timetable-period-list">'
+          list_end_marker = '\n                </section>\n              ) : null}'
+          list_start = view_text.index(list_start_marker)
+          list_end = view_text.index(list_end_marker, list_start)
           new_list = r'''                  <div className="timetable-period-list">
                     {availableTerms.map((term) => (
                       <TimetablePeriodSwipeItem
@@ -473,40 +461,34 @@ jobs:
                       />
                     ))}
                   </div>'''
-          count = view_text.count(old_list)
-          if count != 1:
-              raise SystemExit(f'TimetableView list: expected one match, found {count}')
-          view_text = view_text.replace(old_list, new_list, 1)
+          view_text = view_text[:list_start] + new_list + view_text[list_end:]
 
-          error_anchor = r'''              ) : null}
-
-              <section className="timetable-period-form-card">'''
-          error_insert = r'''              ) : null}
+          form_marker = '\n              <section className="timetable-period-form-card">'
+          form_index = view_text.index(form_marker, list_start)
+          sheet_error = r'''
 
               {periodActionError ? (
                 <p className="timetable-period-error timetable-period-sheet-error">
                   {periodActionError}
                 </p>
-              ) : null}
+              ) : null}'''
+          view_text = view_text[:form_index] + sheet_error + view_text[form_index:]
 
-              <section className="timetable-period-form-card">'''
-          count = view_text.count(error_anchor)
-          if count != 1:
-              raise SystemExit(f'TimetableView sheet error anchor: expected one match, found {count}')
-          view_text = view_text.replace(error_anchor, error_insert, 1)
+          overlay_old = '''          onClick={() => {\n            if (!isSavingTerm && !isClearingTermData) {\n              setIsTermSheetOpen(false);\n            }\n          }}'''
+          overlay_new = '''          onClick={() => {\n            if (!isTermActionBusy) {\n              setOpenTermSwipeId(null);\n              setIsTermSheetOpen(false);\n            }\n          }}'''
+          if view_text.count(overlay_old) != 1:
+              raise SystemExit(f'TimetableView overlay close: expected one match, found {view_text.count(overlay_old)}')
+          view_text = view_text.replace(overlay_old, overlay_new, 1)
+
+          close_button_old = '                onClick={() => setIsTermSheetOpen(false)}'
+          close_button_new = '''                onClick={() => {\n                  setOpenTermSwipeId(null);\n                  setIsTermSheetOpen(false);\n                }}'''
+          if view_text.count(close_button_old) != 1:
+              raise SystemExit(f'TimetableView close button: expected one match, found {view_text.count(close_button_old)}')
+          view_text = view_text.replace(close_button_old, close_button_new, 1)
 
           view_text = view_text.replace(
               'disabled={isSavingTerm || isClearingTermData}',
               'disabled={isTermActionBusy}',
-          )
-          view_text = view_text.replace(
-              "          onClick={() => {\n            if (!isSavingTerm && !isClearingTermData) {\n              setIsTermSheetOpen(false);\n            }\n          }}",
-              "          onClick={() => {\n            if (!isTermActionBusy) {\n              setOpenTermSwipeId(null);\n              setIsTermSheetOpen(false);\n            }\n          }}",
-              1,
-          )
-          view_text = view_text.replace(
-              'onClick={() => setIsTermSheetOpen(false)}',
-              "onClick={() => {\n                  setOpenTermSwipeId(null);\n                  setIsTermSheetOpen(false);\n                }}",
           )
           view_text = view_text.replace(
               "                      isSavingTerm ||\n                      isClearingTermData ||\n                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)",
