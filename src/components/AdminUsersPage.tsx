@@ -8,11 +8,17 @@ import {
   Users,
 } from 'lucide-react';
 import type { ObservabilityAdminIdentityMatch } from '../../shared/productObservabilityAdminReadModel';
-import type { ObservabilityUserSummary } from '../../shared/productObservabilityReadModel';
+import type {
+  ObservabilityDailyRollup,
+  ObservabilityOverviewReadModel,
+  ObservabilityUserSummary,
+} from '../../shared/productObservabilityReadModel';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import {
+  getAdminObservabilityOverview,
   getAdminObservabilityUsers,
   resolveAdminObservabilityUserIdentity,
+  type AdminObservabilityUserPage,
 } from '../services/adminObservabilityService';
 
 function formatTimestamp(value: string | null | undefined): string {
@@ -34,8 +40,38 @@ function formatActorId(actorSubjectId: string): string {
     : actorSubjectId;
 }
 
+function todayInTokyo(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function shiftDate(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function shortDate(localDate: string): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${localDate}T00:00:00.000Z`));
+}
+
 type UserFilter = 'all' | 'product' | 'ai' | 'planning';
 type UserSort = 'recent' | 'events' | 'actor';
+
+interface UsersPageData {
+  page: AdminObservabilityUserPage;
+  trend: ObservabilityOverviewReadModel;
+}
 
 function initialFilter(): UserFilter {
   const value = new URLSearchParams(window.location.search).get('filter');
@@ -47,14 +83,113 @@ function initialSort(): UserSort {
   return value === 'events' || value === 'actor' ? value : 'recent';
 }
 
-export function AdminUsersPage({ navigate }: { navigate: (path: string) => void }) {
-  const loadUsers = useCallback(
-    () => getAdminObservabilityUsers({ environment: 'production', limit: 100 }),
-    [],
+function UserTrend({ daily }: { daily: ObservabilityDailyRollup[] }) {
+  const max = Math.max(1, ...daily.map((entry) => entry.activeActorCount));
+  if (daily.length === 0) {
+    return <p className="admin-overview-empty">直近30日の利用データはまだありません。</p>;
+  }
+  return (
+    <div className="admin-users-trend" aria-label="直近30日の利用ユーザー推移">
+      <div className="admin-users-trend-bars">
+        {daily.map((entry) => (
+          <span
+            key={entry.localDate}
+            style={{ height: `${Math.max(4, (entry.activeActorCount / max) * 100)}%` }}
+            title={`${shortDate(entry.localDate)}: ${entry.activeActorCount}人`}
+          />
+        ))}
+      </div>
+      <div className="admin-users-trend-axis">
+        <span>{shortDate(daily[0].localDate)}</span>
+        <span>1日ごとの利用ユーザー数</span>
+        <span>{shortDate(daily[daily.length - 1].localDate)}</span>
+      </div>
+    </div>
   );
-  const { loadState, data, errorMessage } = useAdminDataLoader(
+}
+
+export function AdminUsersPage({ navigate }: { navigate: (path: string) => void }) {
+  const loadUsers = useCallback(async (): Promise<UsersPageData> => {
+    const toDate = todayInTokyo();
+    const [page, trend] = await Promise.all([
+      getAdminObservabilityUsers({ environment: 'production', limit: 100 }),
+      getAdminObservabilityOverview({
+        environment: 'production',
+        fromDate: shiftDate(toDate, -29),
+        toDate,
+      }),
+    ]);
+    return { page, trend };
+  }, []);
+  const { loadState, data, errorMessage } = useAdminDataLoader<UsersPageData>(
     loadUsers,
-    { users: [] as ObservabilityUserSummary[], nextCursor: null as string | null },
+    {
+      page: { users: [], nextCursor: null },
+      trend: {
+        schemaVersion: 1,
+        fromDate: '',
+        toDate: '',
+        reportingTimeZone: 'Asia/Tokyo',
+        registeredUsers: {
+          total: 0,
+          newInPeriod: null,
+          registrationIndexReady: false,
+          scope: 'firebase_project',
+        },
+        period: {
+          processedEventCount: 0,
+          firstOccurredAt: null,
+          lastOccurredAt: null,
+          productActivity: { eventCount: 0, actionCounts: {} },
+          ai: {
+            requestCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            statusCounts: {},
+            promptTokens: 0,
+            promptTokensUnknownCount: 0,
+            completionTokens: 0,
+            completionTokensUnknownCount: 0,
+            totalTokens: 0,
+            totalTokensUnknownCount: 0,
+            cachedTokens: 0,
+            cachedTokensUnknownCount: 0,
+            estimatedCostMicros: 0,
+            estimatedCostUnknownCount: 0,
+            latency: {
+              version: 'latency-ms-v1',
+              bucketCounts: Array(10).fill(0),
+              sampleCount: 0,
+              sumMs: 0,
+              minMs: null,
+              maxMs: null,
+            },
+          },
+          planning: {
+            outcomeCounts: {},
+            previewCountSum: 0,
+            previewCountUnknownCount: 0,
+            unscheduledCountSum: 0,
+            unscheduledCountUnknownCount: 0,
+          },
+        },
+        daily: [],
+        activeUsers: null,
+        aiLatencyP50Ms: null,
+        aiLatencyP95Ms: null,
+        rollupCheckpoint: {
+          schemaVersion: 1,
+          cursor: null,
+          processedEventCount: 0,
+          activeUserDirtySources: [],
+          lastRunStartedAt: null,
+          lastSuccessfulRunAt: null,
+          lastFailureAt: null,
+          lastFailureCategory: null,
+          updatedAt: new Date(0).toISOString(),
+        },
+      },
+    },
     'ユーザー分析を取得できませんでした。',
   );
   const [searchQuery, setSearchQuery] = useState(
@@ -81,8 +216,8 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
     window.history.replaceState({}, '', nextUrl);
   }, [filter, searchQuery, sort]);
 
-  const resolvedCursor = nextCursor === undefined ? data.nextCursor : nextCursor;
-  const users = useMemo(() => [...data.users, ...extraUsers], [data.users, extraUsers]);
+  const resolvedCursor = nextCursor === undefined ? data.page.nextCursor : nextCursor;
+  const users = useMemo(() => [...data.page.users, ...extraUsers], [data.page.users, extraUsers]);
   const visibleUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const filtered = users.filter((user) => {
@@ -147,6 +282,19 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
           <p>通常分析は匿名actorだけを使い、必要なときだけプロフィールからactorを制限付きで照合します。</p>
         </div>
       </header>
+
+      {loadState === 'ready' ? (
+        <section className="admin-section-card panel">
+          <div className="admin-section-heading">
+            <div>
+              <h2>利用ユーザーの30日推移</h2>
+              <p>日ごとのdistinct actor数を表示します。30日利用者数の単純分解ではありません。</p>
+            </div>
+            <span>{data.trend.activeUsers?.last30Days ?? '未集計'}人 / 直近30日</span>
+          </div>
+          <UserTrend daily={data.trend.daily} />
+        </section>
+      ) : null}
 
       <section className="admin-identity-search panel">
         <div>
