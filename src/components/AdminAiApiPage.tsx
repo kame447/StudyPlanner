@@ -1,0 +1,219 @@
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import {
+  AlertTriangle,
+  Bot,
+  CircleDollarSign,
+  Clock3,
+  Cpu,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react';
+import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
+import type {
+  ObservabilityAiAnalysisReadModel,
+  ObservabilityAiDimensionSummary,
+} from '../../shared/productObservabilityAdminReadModel';
+import { useAdminDataLoader } from '../hooks/useAdminData';
+import { getAdminObservabilityAiAnalysis } from '../services/adminObservabilityService';
+
+const environmentLabels: Record<ObservabilityEnvironment, string> = {
+  production: '本番環境',
+  preview: 'プレビュー',
+  development: '開発環境',
+  test: 'テスト',
+};
+
+function tokyoDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function shiftDate(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('ja-JP').format(value);
+}
+
+function formatTokens(value: number, unknownCount: number): string {
+  if (unknownCount > 0) return `${formatNumber(value)} + 未計測${formatNumber(unknownCount)}件`;
+  return formatNumber(value);
+}
+
+function formatCost(value: number, unknownCount: number): string {
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4,
+  }).format(value / 1_000_000);
+  return unknownCount > 0 ? `${formatted} + 未算出${formatNumber(unknownCount)}件` : formatted;
+}
+
+function formatLatency(value: number | null): string {
+  if (value === null) return '未計測';
+  return value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}秒` : `${value}ms`;
+}
+
+function successRate(success: number, total: number): string {
+  return total > 0 ? `${((success / total) * 100).toFixed(1)}%` : '—';
+}
+
+function Metric({ icon, label, value, note }: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  note: string;
+}) {
+  return (
+    <article className="admin-overview-metric panel">
+      <span className="admin-overview-metric-icon is-purple">{icon}</span>
+      <div className="admin-overview-metric-copy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{note}</small>
+      </div>
+    </article>
+  );
+}
+
+function DimensionTable({ title, description, rows }: {
+  title: string;
+  description: string;
+  rows: ObservabilityAiDimensionSummary[];
+}) {
+  return (
+    <section className="admin-section-card panel">
+      <div className="admin-section-heading">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="admin-overview-empty">この期間のAIリクエストはありません。</p>
+      ) : (
+        <div className="admin-ai-table-wrap">
+          <table className="admin-ai-table">
+            <thead>
+              <tr>
+                <th>分類</th>
+                <th>Request</th>
+                <th>成功率</th>
+                <th>Token</th>
+                <th>p50</th>
+                <th>p95</th>
+                <th>推定費用</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td><code>{row.key}</code></td>
+                  <td>{formatNumber(row.aggregate.requestCount)}</td>
+                  <td>{successRate(row.aggregate.successCount, row.aggregate.requestCount)}</td>
+                  <td>{formatTokens(row.aggregate.totalTokens, row.aggregate.totalTokensUnknownCount)}</td>
+                  <td>{formatLatency(row.latencyP50Ms)}</td>
+                  <td>{formatLatency(row.latencyP95Ms)}</td>
+                  <td>{formatCost(row.aggregate.estimatedCostMicros, row.aggregate.estimatedCostUnknownCount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function AdminAiApiPage() {
+  const today = useMemo(() => tokyoDate(new Date()), []);
+  const [fromDate, setFromDate] = useState(() => shiftDate(today, -6));
+  const [toDate, setToDate] = useState(today);
+  const [environment, setEnvironment] = useState<ObservabilityEnvironment>('production');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const loadAnalysis = useCallback(
+    () => getAdminObservabilityAiAnalysis({ fromDate, toDate, environment }),
+    [environment, fromDate, refreshKey, toDate],
+  );
+  const { loadState, data, errorMessage } = useAdminDataLoader<ObservabilityAiAnalysisReadModel | null>(
+    loadAnalysis,
+    null,
+    'AI・API分析を取得できませんでした。',
+  );
+
+  return (
+    <main className="admin-shell admin-ai-shell">
+      <header className="admin-overview-header">
+        <div>
+          <p className="admin-overview-eyebrow">Product Observability</p>
+          <h1>AI・API</h1>
+          <p>providerの実測usageとserver-side read modelだけを使って、利用量・失敗・遅延・推定費用を確認します。</p>
+        </div>
+        <div className="admin-overview-controls" aria-label="AI・API表示条件">
+          <label>
+            <span>環境</span>
+            <select value={environment} onChange={(event) => setEnvironment(event.target.value as ObservabilityEnvironment)}>
+              {(Object.keys(environmentLabels) as ObservabilityEnvironment[]).map((key) => (
+                <option key={key} value={key}>{environmentLabels[key]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>開始日</span>
+            <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
+          </label>
+          <label>
+            <span>終了日</span>
+            <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+          </label>
+          <button className="ghost-button" type="button" onClick={() => setRefreshKey((value) => value + 1)}>
+            <RefreshCw aria-hidden="true" size={17} />
+            更新
+          </button>
+        </div>
+      </header>
+
+      {loadState === 'loading' ? (
+        <section className="admin-state-card panel"><strong>読み込み中</strong><p>AI/API read modelを取得しています。</p></section>
+      ) : null}
+      {loadState === 'error' ? (
+        <section className="admin-state-card panel" role="alert"><strong>取得できませんでした</strong><p>{errorMessage}</p></section>
+      ) : null}
+
+      {data ? (
+        <>
+          <section className="admin-overview-metric-grid" aria-label="AI・API主要指標">
+            <Metric icon={<Bot size={19} />} label="リクエスト" value={formatNumber(data.total.requestCount)} note={`${formatNumber(data.total.failureCount)}件失敗`} />
+            <Metric icon={<Sparkles size={19} />} label="成功率" value={successRate(data.total.successCount, data.total.requestCount)} note={`${formatNumber(data.total.successCount)}件成功`} />
+            <Metric icon={<Cpu size={19} />} label="総token" value={formatTokens(data.total.totalTokens, data.total.totalTokensUnknownCount)} note="providerが返したusageのみ" />
+            <Metric icon={<Clock3 size={19} />} label="p95 latency" value={formatLatency(data.latencyP95Ms)} note={`p50 ${formatLatency(data.latencyP50Ms)}`} />
+            <Metric icon={<CircleDollarSign size={19} />} label="推定費用" value={formatCost(data.total.estimatedCostMicros, data.total.estimatedCostUnknownCount)} note="pricing未定義は未算出のまま" />
+          </section>
+
+          {data.total.failureCount > 0 || data.total.totalTokensUnknownCount > 0 || data.total.estimatedCostUnknownCount > 0 ? (
+            <section className="admin-overview-alert panel">
+              <AlertTriangle aria-hidden="true" size={20} />
+              <div>
+                <strong>要確認の観測があります</strong>
+                <p>失敗 {formatNumber(data.total.failureCount)}件、token未計測 {formatNumber(data.total.totalTokensUnknownCount)}件、費用未算出 {formatNumber(data.total.estimatedCostUnknownCount)}件です。未知値は0として扱っていません。</p>
+              </div>
+            </section>
+          ) : null}
+
+          <DimensionTable title="Model別" description="実際にproviderへ送ったmodel単位の集計です。" rows={data.byModel} />
+          <DimensionTable title="Purpose別" description="機能目的ごとのリクエスト量と品質を比較します。" rows={data.byPurpose} />
+          <DimensionTable title="Phase別" description="initial / repair / singleを同じ期間条件で比較します。" rows={data.byPhase} />
+        </>
+      ) : null}
+    </main>
+  );
+}
