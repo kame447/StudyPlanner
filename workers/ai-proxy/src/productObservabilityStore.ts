@@ -121,17 +121,25 @@ export class ProductObservabilityStore {
     return `actor-${random}`;
   }
 
+  async lookupActorSubjectId(firebaseUid: string): Promise<string | null> {
+    const uid = firebaseUid.trim();
+    if (!uid) throw new Error('Authenticated Firebase UID is required');
+    const directoryId = await this.keyedId('actor-directory', uid);
+    const existing = await this.firestore.getDocument(ACTOR_DIRECTORY_COLLECTION, directoryId);
+    const existingActor = existing?.actorSubjectId;
+    return typeof existingActor === 'string' && existingActor.trim()
+      ? existingActor
+      : null;
+  }
+
   async resolveActorSubjectId(firebaseUid: string): Promise<string> {
     const uid = firebaseUid.trim();
     if (!uid) throw new Error('Authenticated Firebase UID is required');
 
-    const directoryId = await this.keyedId('actor-directory', uid);
-    const existing = await this.firestore.getDocument(ACTOR_DIRECTORY_COLLECTION, directoryId);
-    const existingActor = existing?.actorSubjectId;
-    if (typeof existingActor === 'string' && existingActor.trim()) {
-      return existingActor;
-    }
+    const existingActor = await this.lookupActorSubjectId(uid);
+    if (existingActor) return existingActor;
 
+    const directoryId = await this.keyedId('actor-directory', uid);
     const observedAt = this.now().toISOString();
     const actorSubjectId = this.randomActorSubjectId();
     const directoryValue = {
