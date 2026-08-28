@@ -148,13 +148,15 @@ const profile = {
 class FakeFirestore {
   queryCallCount = 0;
   getCallCount = 0;
+  countCollections: string[] = [];
 
   async getDocument(collection: string, id: string) {
     this.getCallCount += 1;
     return collection === 'profiles' && id === profile.id ? { ...profile } : null;
   }
 
-  async countDocuments() {
+  async countDocuments(collection: string) {
+    this.countCollections.push(collection);
     return 2;
   }
 
@@ -258,9 +260,10 @@ describe('ProductObservabilityAdminAnalysisService', () => {
   });
 
   it('returns only allowlisted timeline fields and exact actor-day count', async () => {
+    const firestore = new FakeFirestore();
     const service = new ProductObservabilityAdminAnalysisService(
       env,
-      new FakeFirestore() as never,
+      firestore as never,
       new FakeReadModel() as never,
     );
     const result = await service.getUserInvestigation({
@@ -270,6 +273,7 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     });
 
     expect(result.activeDayCount).toBe(2);
+    expect(firestore.countCollections).toEqual(['observability_actor_day']);
     expect(result.summary?.actorSubjectId).toBe('actor-aaaaaaaa');
     expect(result.timeline).toEqual([
       expect.objectContaining({
