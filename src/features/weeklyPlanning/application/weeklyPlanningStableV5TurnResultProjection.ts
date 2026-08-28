@@ -75,6 +75,12 @@ function projectFailedTurn(params: {
     },
     responseSource: 'system',
     dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(params.result.message),
+    observability: {
+      repairUsed: params.recordedFailure.repairAttempted,
+      schedulerVersion: params.result.observability?.schedulerVersion ?? null,
+      previewCount: params.result.observability?.previewCount ?? null,
+      unscheduledCount: params.result.observability?.unscheduledCount ?? null,
+    },
   };
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
