@@ -4,9 +4,10 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
-import { Image as ImageIcon, Trash2 } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { getMaterialUnitLabel } from '../lib/materialPace';
 import { createMaterialCoverDataUrl } from '../lib/materialImage';
+import { saveMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
 import {
   getSubjectColor,
   getSubjectStyle,
@@ -14,6 +15,7 @@ import {
   PROGRESS_UNIT_OPTIONS,
 } from './BookshelfDialogFields';
 import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
+import type { MaterialMetadataCandidate } from '../services/materialMetadataService';
 import type {
   StudyMaterial,
   StudyMaterialDraft,
@@ -33,6 +35,18 @@ interface BookshelfMaterialDialogProps {
   onDelete: (material: StudyMaterial) => Promise<void>;
 }
 
+function catalogMeta(candidate: MaterialMetadataCandidate): string {
+  return [
+    candidate.authors.join(' / '),
+    candidate.publisher,
+    candidate.edition,
+    candidate.publishedYear ? `${candidate.publishedYear}年` : '',
+    candidate.isbn13 ? `ISBN ${candidate.isbn13}` : candidate.isbn10 ? `ISBN ${candidate.isbn10}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ・ ');
+}
+
 export function BookshelfMaterialDialog({
   userId,
   material,
@@ -47,6 +61,8 @@ export function BookshelfMaterialDialog({
   const [coverImageDataUrl, setCoverImageDataUrl] = useState(
     material?.coverImageDataUrl ?? '',
   );
+  const [catalogCoverUrl, setCatalogCoverUrl] = useState(material?.coverImageUrl ?? '');
+  const [catalogCandidate, setCatalogCandidate] = useState<MaterialMetadataCandidate | null>(null);
   const [paceEnabled, setPaceEnabled] = useState(material?.paceEnabled === true);
   const [progressUnit, setProgressUnit] = useState<StudyMaterialProgressUnit>(
     material?.progressUnit ?? 'page',
@@ -80,6 +96,7 @@ export function BookshelfMaterialDialog({
       ? progressUnitLabel.trim() || '単位'
       : getMaterialUnitLabel({ progressUnit });
   const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting;
+  const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -94,6 +111,7 @@ export function BookshelfMaterialDialog({
     try {
       const nextDataUrl = await createMaterialCoverDataUrl(file);
       setCoverImageDataUrl(nextDataUrl);
+      setCatalogCoverUrl('');
       setStatus('写真を読み込みました。保存すると反映されます。');
       setStatusTone('info');
     } catch (error) {
@@ -115,14 +133,14 @@ export function BookshelfMaterialDialog({
     try {
       const nextTotalUnits = parseOptionalNumber(totalUnits);
       const nextCurrentUnit = parseOptionalNumber(currentUnit);
-      await onSave(
+      const savedMaterial = await onSave(
         {
           userId,
           name,
           subjectId: selectedSubject.id,
           subjectName: selectedSubject.name,
           color: selectedSubject.color,
-          coverImageDataUrl: coverImageDataUrl || undefined,
+          coverImageDataUrl: coverPreviewSource || undefined,
           aliases: material?.aliases ?? [],
           status: material?.status ?? 'active',
           paceEnabled,
@@ -140,6 +158,19 @@ export function BookshelfMaterialDialog({
         },
         material?.id,
       );
+
+      if (!material && catalogCandidate?.tableOfContents?.length) {
+        saveMaterialDetailPreferences(userId, savedMaterial.id, {
+          structureEnabled: true,
+          structureVisible: true,
+          favorite: false,
+          structureItems: catalogCandidate.tableOfContents.map((title, index) => ({
+            id: `catalog-toc-${index + 1}`,
+            title,
+          })),
+        });
+      }
+
       onClose();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '教材を保存できませんでした。');
@@ -171,6 +202,16 @@ export function BookshelfMaterialDialog({
     }
   }
 
+  function applyCatalogPageCount() {
+    if (!catalogCandidate?.pageCount) return;
+    setPaceEnabled(true);
+    setProgressUnit('page');
+    setProgressUnitLabel('');
+    setTotalUnits(String(catalogCandidate.pageCount));
+    setStatus(`${catalogCandidate.pageCount}ページを教材の総量へ反映しました。`);
+    setStatusTone('info');
+  }
+
   return (
     <div className="overlay modal-overlay" onClick={onClose}>
       <form
@@ -182,7 +223,7 @@ export function BookshelfMaterialDialog({
           <div className="section-header">
             <div>
               <h2>{material ? '教材を編集' : '教材を追加'}</h2>
-              <p>教材名、教科、写真を登録します。</p>
+              <p>{material ? '教材情報を編集します。' : 'まず教材を探し、見つからなければ手入力できます。'}</p>
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
@@ -198,11 +239,58 @@ export function BookshelfMaterialDialog({
           {!material ? (
             <BookshelfMaterialSearch
               onSelect={(candidate) => {
+                setCatalogCandidate(candidate);
                 setName(candidate.title);
-                setStatus('検索候補の教材名を反映しました。');
+                setCatalogCoverUrl(candidate.coverImageUrl ?? '');
+                setCoverImageDataUrl('');
+                setStatus('検索候補の教材情報を反映しました。');
                 setStatusTone('info');
               }}
             />
+          ) : null}
+
+          {catalogCandidate ? (
+            <section className="material-metadata-selected" aria-label="選択した教材の情報">
+              <div className="material-metadata-selected-cover" aria-hidden="true">
+                {catalogCandidate.coverImageUrl ? (
+                  <img src={catalogCandidate.coverImageUrl} alt="" />
+                ) : (
+                  <BookOpen size={30} strokeWidth={1.7} />
+                )}
+              </div>
+              <div className="material-metadata-selected-copy">
+                <strong>{catalogCandidate.title}</strong>
+                {catalogMeta(catalogCandidate) ? <small>{catalogMeta(catalogCandidate)}</small> : null}
+                {catalogCandidate.pageCount ? (
+                  <p>{catalogCandidate.pageCount}ページ</p>
+                ) : (
+                  <p className="detail-note">総ページ数は取得できませんでした。</p>
+                )}
+                <div className="material-metadata-selected-actions">
+                  {catalogCandidate.pageCount ? (
+                    <button className="ghost-button" onClick={applyCatalogPageCount} type="button">
+                      ページ数をペース管理に使う
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {catalogCandidate.tableOfContents?.length ? (
+                <div className="material-metadata-toc">
+                  <strong>取得できた教材構成</strong>
+                  <ul>
+                    {catalogCandidate.tableOfContents.slice(0, 10).map((title, index) => (
+                      <li key={`${title}-${index}`}>{title}</li>
+                    ))}
+                  </ul>
+                  {catalogCandidate.tableOfContents.length > 10 ? (
+                    <small>ほか {catalogCandidate.tableOfContents.length - 10} 項目</small>
+                  ) : null}
+                  <p className="detail-note">
+                    保存すると教材内構造の初期項目として使います。あとから非表示・編集できます。
+                  </p>
+                </div>
+              ) : null}
+            </section>
           ) : null}
 
           <div className="bookshelf-material-edit-grid">
@@ -210,8 +298,8 @@ export function BookshelfMaterialDialog({
               className="bookshelf-cover-preview"
               style={getSubjectStyle(getSubjectColor(selectedSubject))}
             >
-              {coverImageDataUrl ? (
-                <img src={coverImageDataUrl} alt={name.trim() || '教材写真'} />
+              {coverPreviewSource ? (
+                <img src={coverPreviewSource} alt={name.trim() || '教材写真'} />
               ) : (
                 <ImageIcon aria-hidden="true" size={34} strokeWidth={1.7} />
               )}
@@ -249,10 +337,13 @@ export function BookshelfMaterialDialog({
                 >
                   写真を選ぶ
                 </button>
-                {coverImageDataUrl ? (
+                {coverPreviewSource ? (
                   <button
                     className="ghost-button"
-                    onClick={() => setCoverImageDataUrl('')}
+                    onClick={() => {
+                      setCoverImageDataUrl('');
+                      setCatalogCoverUrl('');
+                    }}
                     type="button"
                   >
                     写真を外す
@@ -267,7 +358,7 @@ export function BookshelfMaterialDialog({
                 />
               </div>
               <p className="detail-note">
-                jpeg / png / webp のみ。保存前に小さく変換します。
+                検索で表紙が見つからない場合は jpeg / png / webp を自分で設定できます。
               </p>
             </div>
           </div>
