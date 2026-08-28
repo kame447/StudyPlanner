@@ -31,6 +31,7 @@ interface FirebaseLookupResponse {
 const SEARCH_PATH = '/material-metadata/search';
 const CATALOG_COLLECTION = 'material_metadata_catalog';
 const NDL_OPENSEARCH_URL = 'https://ndlsearch.ndl.go.jp/api/opensearch';
+const NDL_DATA_PROVIDER_ID = 'iss-ndl-opac-national';
 const MAX_QUERY_BODY_BYTES = 2048;
 const MAX_RESULTS = 8;
 
@@ -275,6 +276,7 @@ export function buildNdlOpenSearchUrl(
   query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
 ): string {
   const url = new URL(NDL_OPENSEARCH_URL);
+  url.searchParams.set('dpid', NDL_DATA_PROVIDER_ID);
   url.searchParams.set('cnt', String(MAX_RESULTS));
   url.searchParams.set(query.kind === 'isbn' ? 'isbn' : 'title', query.value);
   return url.toString();
