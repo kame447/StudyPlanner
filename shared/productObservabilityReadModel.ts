@@ -137,6 +137,7 @@ export interface ObservabilityRollupCheckpoint {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
   cursor: ObservabilityRollupCursor | null;
   processedEventCount: number;
+  activeUserDirtyDates: string[];
   lastRunStartedAt: string | null;
   lastSuccessfulRunAt: string | null;
   lastFailureAt: string | null;
