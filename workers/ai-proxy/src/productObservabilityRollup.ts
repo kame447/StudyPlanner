@@ -29,6 +29,7 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const DEFAULT_BATCH_SIZE = 50;
 const MAX_TRANSACTION_ATTEMPTS = 3;
+const ROLLUP_SETTLE_LAG_MS = 5 * 60 * 1000;
 
 interface ObservabilityRollupFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
@@ -138,13 +139,17 @@ function dailyRollupId(event: StoredProductObservabilityEvent): string {
   return `${event.environment}:${observabilityReportingDate(event.occurredAt)}`;
 }
 
+function userSummaryId(event: StoredProductObservabilityEvent): string {
+  return `${event.environment}:${event.actorSubjectId}`;
+}
+
 function cacheKey(collection: string, id: string): string {
   return `${collection}/${id}`;
 }
 
 function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   if (!value) return null;
-  const { id: _id, ...document } = value;
+  const { id: _id, environment: _environment, ...document } = value;
   return document as unknown as T;
 }
 
@@ -154,6 +159,19 @@ function failureCategory(error: unknown): string {
     return 'invalid_event';
   }
   return 'rollup_failure';
+}
+
+function eligibleDocuments(
+  documents: readonly FirestoreOrderedDocument[],
+  cutoffIso: string,
+): FirestoreOrderedDocument[] {
+  const eligible: FirestoreOrderedDocument[] = [];
+  for (const document of documents) {
+    const observedAt = document.observedAt;
+    if (typeof observedAt === 'string' && observedAt > cutoffIso) break;
+    eligible.push(document);
+  }
+  return eligible;
 }
 
 export class ProductObservabilityRollupEngine {
@@ -217,6 +235,9 @@ export class ProductObservabilityRollupEngine {
     let lastError: unknown = null;
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
       const before = await this.checkpoint();
+      const runStarted = this.now();
+      const runStartedAt = runStarted.toISOString();
+      const settleCutoff = new Date(runStarted.getTime() - ROLLUP_SETTLE_LAG_MS).toISOString();
       const orderedEvents = await this.firestore.queryDocumentsAfter({
         collection: EVENT_COLLECTION,
         orderByField: 'observedAt',
@@ -228,7 +249,7 @@ export class ProductObservabilityRollupEngine {
           : null,
         limit,
       });
-      const runStartedAt = this.now().toISOString();
+      const settledEvents = eligibleDocuments(orderedEvents, settleCutoff);
       const transaction = await this.firestore.beginTransaction();
       try {
         const transactionalCheckpoint = readCheckpoint(
@@ -244,7 +265,7 @@ export class ProductObservabilityRollupEngine {
           continue;
         }
 
-        if (orderedEvents.length === 0) {
+        if (settledEvents.length === 0) {
           const checkpoint: ObservabilityRollupCheckpoint = {
             ...transactionalCheckpoint,
             lastRunStartedAt: runStartedAt,
@@ -261,7 +282,7 @@ export class ProductObservabilityRollupEngine {
           return { processed: 0, hasMore: false, checkpoint };
         }
 
-        const eventRows = orderedEvents.map((document) => ({
+        const eventRows = settledEvents.map((document) => ({
           document,
           event: storedEventFromOrderedDocument(document),
         }));
@@ -316,9 +337,10 @@ export class ProductObservabilityRollupEngine {
             nextDaily as unknown as Record<string, unknown>,
           );
 
+          const summaryId = userSummaryId(event);
           const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
             USER_SUMMARY_COLLECTION,
-            event.actorSubjectId,
+            summaryId,
           ));
           const nextUser = projectUserSummary({
             current: userBefore,
@@ -327,8 +349,11 @@ export class ProductObservabilityRollupEngine {
           });
           stage(
             USER_SUMMARY_COLLECTION,
-            event.actorSubjectId,
-            nextUser as unknown as Record<string, unknown>,
+            summaryId,
+            {
+              ...nextUser as unknown as Record<string, unknown>,
+              environment: event.environment,
+            },
           );
         }
 
@@ -352,9 +377,10 @@ export class ProductObservabilityRollupEngine {
           value: checkpoint as unknown as Record<string, unknown>,
         });
         await this.firestore.commitTransaction(transaction, [...writes.values()]);
+        const hasFreshTail = settledEvents.length < orderedEvents.length;
         return {
           processed: eventRows.length,
-          hasMore: orderedEvents.length >= Math.max(1, Math.floor(limit)),
+          hasMore: !hasFreshTail && orderedEvents.length >= Math.max(1, Math.floor(limit)),
           checkpoint,
         };
       } catch (error) {
