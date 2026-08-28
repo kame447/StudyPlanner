@@ -25,8 +25,10 @@ import {
   resolveWeekPlanDragTarget,
   type WeekPlanMoveTarget,
 } from '../lib/weekPlanDrag';
+import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type { Actual, Plan, PlanSourceType } from '../types/domain';
+import { DragUndoRedoControls } from './DragUndoRedoControls';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -235,6 +237,7 @@ export function WeekView({
   const [dragVisual, setDragVisual] = useState<DragVisualState | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const suppressClickUntilRef = useRef(0);
+  const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const weekDates = getWeekDates(selectedDate);
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const actualByOccurrenceKey = new Map(
@@ -419,11 +422,52 @@ export function WeekView({
       );
     const plan = session.plan;
     const target = session.target;
+    const before = {
+      date: session.originalDate,
+      startTime: session.originalStartTime,
+      endTime: session.originalEndTime,
+    };
+    const storedPlan = planById.get(plan.id) ?? plan;
     clearDragSession();
 
-    if (shouldSave && onMovePlan) {
-      void onMovePlan(plan, target).catch(() => undefined);
+    if (!shouldSave || !onMovePlan) {
+      return;
     }
+
+    if (supportsScopedRecurringPlanEdits(storedPlan)) {
+      void onMovePlan(plan, target).catch(() => undefined);
+      return;
+    }
+
+    void onMovePlan(plan, target)
+      .then(() => {
+        moveHistory.record({
+          key: plan.id,
+          before,
+          after: target,
+        });
+      })
+      .catch(() => undefined);
+  }
+
+  function applyHistoryTarget(planId: string, target: WeekPlanMoveTarget) {
+    const currentPlan = plans.find((plan) => plan.id === planId);
+    if (!currentPlan || !onMovePlan) {
+      return Promise.reject(new Error('移動対象の予定を確認できませんでした。'));
+    }
+    return onMovePlan(currentPlan, target);
+  }
+
+  function handleUndoMove() {
+    void moveHistory
+      .undo((entry, target) => applyHistoryTarget(entry.key, target))
+      .catch(() => undefined);
+  }
+
+  function handleRedoMove() {
+    void moveHistory
+      .redo((entry, target) => applyHistoryTarget(entry.key, target))
+      .catch(() => undefined);
   }
 
   function handlePlanPointerDown(
@@ -842,6 +886,14 @@ export function WeekView({
         </div>
       </section>
       {dragOverlay}
+      <DragUndoRedoControls
+        visible={moveHistory.hasHistory}
+        canUndo={moveHistory.canUndo}
+        canRedo={moveHistory.canRedo}
+        isBusy={moveHistory.isBusy}
+        onUndo={handleUndoMove}
+        onRedo={handleRedoMove}
+      />
     </>
   );
 }

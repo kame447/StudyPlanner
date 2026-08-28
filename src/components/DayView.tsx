@@ -6,6 +6,7 @@ import {
   getActualOccurrenceKey,
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
@@ -44,6 +45,7 @@ interface DayViewProps {
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
+  onMovePlan: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -112,6 +114,7 @@ export function DayView({
   onRemoveWeeklyDraftBlock,
   onChangeDay,
   onEditPlan,
+  onMovePlan,
   onDeletePlan,
   onSavePlan,
   onSaveActual,
@@ -331,6 +334,7 @@ export function DayView({
           (block) => block.date === selectedDate && block.status === 'draft',
         )}
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+        onMovePlan={onMovePlan}
         selectedEntryId={
           selectedPlan
             ? `plan:${selectedPlan.id}`

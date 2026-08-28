@@ -482,6 +482,7 @@ export default function App() {
                 }
                 onChangeDay={openDay}
                 onEditPlan={openEditPlan}
+                onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
                 onSavePlan={savePlanDraft}
                 onSaveActual={saveActual}
