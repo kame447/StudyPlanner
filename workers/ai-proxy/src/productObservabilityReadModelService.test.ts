@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import type {
+  ObservabilityActiveUserDirtySource,
   ObservabilityActiveUserWindows,
   ObservabilityDailyRollup,
   ObservabilityUserSummary,
@@ -126,12 +127,14 @@ function activeUsers(asOfDate: string): ObservabilityActiveUserWindows {
   };
 }
 
-function checkpoint(activeUserDirtyDates: string[] = []): StoredDocument {
+function checkpoint(
+  activeUserDirtySources: ObservabilityActiveUserDirtySource[] = [],
+): StoredDocument {
   return {
     schemaVersion: 1,
     cursor: null,
     processedEventCount: 4,
-    activeUserDirtyDates,
+    activeUserDirtySources,
     lastRunStartedAt: '2026-08-29T01:00:00.000Z',
     lastSuccessfulRunAt: '2026-08-29T01:00:00.000Z',
     lastFailureAt: null,
@@ -205,7 +208,7 @@ describe('ProductObservabilityReadModelService', () => {
     firestore.setDocument(
       'observability_rollup_state',
       'main',
-      checkpoint(['2026-08-27']),
+      checkpoint([{ environment: 'production', localDate: '2026-08-27' }]),
     );
 
     const overview = await service(firestore).getOverview({
@@ -215,8 +218,32 @@ describe('ProductObservabilityReadModelService', () => {
     });
 
     expect(overview.activeUsers).toBeNull();
-    expect(overview.rollupCheckpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+    expect(overview.rollupCheckpoint.activeUserDirtySources).toEqual([
+      { environment: 'production', localDate: '2026-08-27' },
+    ]);
     expect(firestore.queryCallCount).toBe(0);
+  });
+
+  it('does not invalidate production snapshot for a preview-only pending repair', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument(
+      'observability_active_user_windows',
+      'production:2026-08-29',
+      activeUsers('2026-08-29') as unknown as StoredDocument,
+    );
+    firestore.setDocument(
+      'observability_rollup_state',
+      'main',
+      checkpoint([{ environment: 'preview', localDate: '2026-08-27' }]),
+    );
+
+    const overview = await service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-29',
+      toDate: '2026-08-29',
+    });
+
+    expect(overview.activeUsers?.last30Days).toBe(4);
   });
 
   it('keeps a historical snapshot visible when pending repairs cannot affect its window', async () => {
@@ -229,7 +256,7 @@ describe('ProductObservabilityReadModelService', () => {
     firestore.setDocument(
       'observability_rollup_state',
       'main',
-      checkpoint(['2026-08-27']),
+      checkpoint([{ environment: 'production', localDate: '2026-08-27' }]),
     );
 
     const overview = await service(firestore).getOverview({
