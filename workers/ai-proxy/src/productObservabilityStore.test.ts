@@ -44,6 +44,36 @@ function validActivityDraft() {
   };
 }
 
+function validPlanningOutcomeDraft() {
+  return {
+    schemaVersion: 1,
+    eventId: 'planning-preview_generated-request-12345678',
+    eventType: 'planning_outcome',
+    occurredAt: '2026-08-28T00:00:00.000Z',
+    appVersion: '1.2.3',
+    source: 'weekly_planning',
+    correlation: {
+      featureSessionId: 'weekly-conversation-1',
+      requestId: 'weekly-request-12345678',
+      stateRevision: 4,
+    },
+    payload: {
+      outcomeType: 'preview_generated',
+      turnIndex: 2,
+      stateRevision: 4,
+      previewCount: 5,
+      unscheduledCount: 0,
+      fallbackUsed: null,
+      repairUsed: false,
+      staleObserved: null,
+      approvalFailureObserved: null,
+      schedulerVersion: 'weekly-planning-stable-v5-preview-scheduler-v1',
+      promptVersion: null,
+      model: null,
+    },
+  };
+}
+
 function validAiMetricPayload() {
   return {
     operationKind: 'chat_completion' as const,
@@ -107,6 +137,25 @@ describe('ProductObservabilityStore', () => {
 
     expect(firstSize).toBe(2);
     expect(firestore.documents.size).toBe(2);
+  });
+
+  it('stores planning outcomes pseudonymously and deduplicates retry delivery', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const draft = validPlanningOutcomeDraft();
+
+    await store.storePlanningOutcome('raw-firebase-uid-123', draft);
+    const firstSize = firestore.documents.size;
+    await store.storePlanningOutcome('raw-firebase-uid-123', draft);
+
+    expect(firstSize).toBe(2);
+    expect(firestore.documents.size).toBe(2);
+    const serialized = JSON.stringify([...firestore.documents.entries()]);
+    expect(serialized).not.toContain('raw-firebase-uid-123');
+    expect(serialized).not.toContain('userText');
+    expect(serialized).toContain('planning_outcome');
+    expect(serialized).toContain('preview_generated');
+    expect(serialized).toContain('weekly-conversation-1');
   });
 
   it('stores AI request metrics pseudonymously and preserves unknown usage as null', async () => {

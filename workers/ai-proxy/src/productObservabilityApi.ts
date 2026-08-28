@@ -1,3 +1,6 @@
+import {
+  validateProductObservabilityTelemetryDraft,
+} from '../../../shared/productObservabilityContract';
 import { ProductObservabilityStore, type ProductObservabilityEnv } from './productObservabilityStore';
 
 export const PRODUCT_OBSERVABILITY_EVENTS_PATH = '/observability/events';
@@ -31,10 +34,7 @@ function allowedOrigin(request: Request, env: ProductObservabilityApiEnv): strin
   return allowedOrigins(env).has(origin) ? origin : '';
 }
 
-function responseHeaders(
-  request: Request,
-  env: ProductObservabilityApiEnv,
-): Headers {
+function responseHeaders(request: Request, env: ProductObservabilityApiEnv): Headers {
   const headers = new Headers({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -77,9 +77,7 @@ async function authenticatedUid(
     return jsonResponse(request, env, 503, { error: 'Telemetry authentication is unavailable.' });
   }
   const token = bearerToken(request);
-  if (!token) {
-    return jsonResponse(request, env, 401, { error: 'Authentication is required.' });
-  }
+  if (!token) return jsonResponse(request, env, 401, { error: 'Authentication is required.' });
 
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
@@ -122,14 +120,9 @@ export async function handleProductObservabilityApi(
   env: ProductObservabilityApiEnv,
 ): Promise<Response> {
   const origin = allowedOrigin(request, env);
-  if (origin === '') {
-    return jsonResponse(request, env, 403, { error: 'Origin is not allowed.' });
-  }
+  if (origin === '') return jsonResponse(request, env, 403, { error: 'Origin is not allowed.' });
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: responseHeaders(request, env),
-    });
+    return new Response(null, { status: 204, headers: responseHeaders(request, env) });
   }
   if (request.method !== 'POST') {
     return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
@@ -158,18 +151,21 @@ export async function handleProductObservabilityApi(
     return jsonResponse(request, env, 400, { error: 'Telemetry payload was not valid JSON.' });
   }
 
+  const validated = validateProductObservabilityTelemetryDraft(payload);
+  if (!validated.ok) return jsonResponse(request, env, 400, { error: validated.error });
+
   try {
-    await new ProductObservabilityStore(env).storeProductActivity(uid, payload);
+    const store = new ProductObservabilityStore(env);
+    if (validated.value.eventType === 'planning_outcome') {
+      await store.storePlanningOutcome(uid, validated.value);
+    } else {
+      await store.storeProductActivity(uid, validated.value);
+    }
     return jsonResponse(request, env, 202, { accepted: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Telemetry payload was rejected.';
-    const validationFailure = message.startsWith('Telemetry ');
-    if (validationFailure) {
-      return jsonResponse(request, env, 400, { error: message });
-    }
-    console.warn('[Product Observability] telemetry persistence failed', {
-      error: message,
-    });
+    if (message.startsWith('Telemetry ')) return jsonResponse(request, env, 400, { error: message });
+    console.warn('[Product Observability] telemetry persistence failed', { error: message });
     return jsonResponse(request, env, 503, { error: 'Telemetry storage is temporarily unavailable.' });
   }
 }

@@ -332,6 +332,7 @@ export function useWeeklyPlanningApplication({
     clearDraftBlocks: () => dispatchAndPersist({ type: 'clear_draft_blocks' }),
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({
       userId,
+      featureSessionId: controllerSessionRef.current?.conversationId,
       plans,
       approvalOperations,
       saveWeeklyApprovedPlan,

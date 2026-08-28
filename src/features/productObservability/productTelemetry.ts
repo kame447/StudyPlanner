@@ -3,10 +3,11 @@ import {
   type ObservabilityCorrelation,
   type ProductActivityAction,
   type ProductActivityTelemetryDraft,
+  type ProductObservabilityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
 
 export interface ProductTelemetrySink {
-  write(event: ProductActivityTelemetryDraft): Promise<void>;
+  write(event: ProductObservabilityTelemetryDraft): Promise<void>;
 }
 
 export interface ProductTelemetryPort {

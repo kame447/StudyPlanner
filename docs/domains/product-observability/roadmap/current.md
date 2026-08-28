@@ -6,11 +6,11 @@ Owning Issue: #213
 
 ## Current phase
 
-現在はPhase 2「Telemetry foundation」である。
+現在はPhase 2「Telemetry foundation」の最終release unitであるPR #219を検証中である。
 
-Phase 1のcanonical設計はPR #215でmainへ統合済みで、lightweight telemetry ingestion基盤はPR #216、AI proxy request outcome metric基盤はPR #217でmainへ統合済みである。
+Phase 1のcanonical設計はPR #215、lightweight telemetry ingestion基盤はPR #216、AI proxy request outcome metric基盤はPR #217、provider usage / versioned pricing boundaryはPR #218でmainへ統合済みである。
 
-このphaseでは管理UIの見た目を作り込まない。AI/API request metricとweekly-planning typed outcomeをdurable telemetryへ接続し、production operationからobservability failureを分離した状態を完成させる。
+PR #219がmainへ統合された時点でPhase 2を完了し、Phase 3「Aggregation and read models」へ移る。管理UI実装はPhase 3完了まで開始しない。
 
 ## Phase 1: Canonical design
 
@@ -45,6 +45,8 @@ Status: completed by PR #215.
 このphaseのexit criteriaは、production product operationを壊さずlightweight telemetryがdurableに保存され、duplicate deliveryとsecret/PII混入を防げることである。
 
 管理画面はまだlegacy data pathを利用してよい。
+
+Status: PR #219 mergeでcompleted予定。
 
 ## Phase 3: Aggregation and read models
 
@@ -96,6 +98,8 @@ preview / approval / save / failed / abandoned / fallback / repair / stale / uns
 
 このphaseでtrace本文をanalytics sourceへ昇格させない。
 
+`abandoned`はcatalog上予約するが、Stable V5のcancel / clear / resetのどれをanalytics上の離脱とするかcanonical semanticsが確定するまで発火させない。未定義の離脱をtraceやUI挙動から推測しない。
+
 ## Phase 7: Log Explorer and Debug Bundle
 
 feature-owned diagnostic adapterを共通Log Explorerへ接続する。
@@ -130,10 +134,14 @@ Phase 2のPR #216ではtyped product activity contract、authenticated `/observa
 
 PR #217ではproduction AI proxy requestについて、chat completion、weekly-planning attachment、planning transcription、timetable OCRのrequest/outcome metricをbest-effortでdurable化した。request count、実際にroutingされたmodel、purpose、semantic initial/repair、proxy latency、request/response bytes、quota/provider/empty/invalid response等のstatusがmainで観測可能になった。
 
-現在のactive branchは`feat/product-observability-provider-usage`、active PRは#218である。#218ではOpenAI-compatible provider responseが実際に返したusageだけをproxy responseからobservabilityへ伝播し、prompt / completion / total / cached / cache-write tokenを保持する。欠損値を0へ補完したり、request本文からtokenを推定したりしない。
+PR #218ではOpenAI-compatible provider responseが実際に返したusageだけをobservabilityへ伝播し、prompt / completion / total / cached / cache-write tokenを保持するversioned pricing boundaryをmainへ統合した。欠損値を0へ補完せず、現在安全に価格評価できないlong-context / attachment / unsupported provider・modelは`estimatedCostMicros=null`のまま保持する。
 
-costはraw usageとは別のversioned pricing boundaryで算出する。現在のcatalogで安全に評価できる`gpt-5.6-luna`の短context text chatだけ推定し、cache accounting不足、272k超のlong-context tier、planning attachment、未対応provider/modelは`estimatedCostMicros=null`とする。providerがper-request token usageを返さないplanning transcriptionも推定しない。
+現在のactive branchは`feat/product-observability-planning-outcomes`、active PRは#219である。#219はweekly-planning application layerが既に決定したtyped lifecycle/outcomeだけをproduct-observabilityへprojectionする。session start、preview、semantic repair、unscheduled、fallback、stale、failure、approval start/completion、save completion、approval failureをtyped authorityから記録し、trace本文やUI表示からplanning truthを再推論しない。
 
-#218の完了条件は、最終HEADでTypeScript、全test、production build、diff check、Browser Regressionが成功し、mainからの差分がprovider usage / pricing / checkpoint責務に限定されていることである。
+#219では未知の観測値を0/falseへ変換せず`null`として保持し、raw Firebase UID、user text、prompt、assistant text、自由形式metadataをlightweight telemetryへ追加しない。telemetry sink / persistence failureはweekly-planning product operationを失敗させない。
 
-#218 merge後の次のconcrete actionはweekly-planning application layerが既に決定したtyped lifecycle/outcomeをproduct-observabilityへprojectionすることである。trace本文からplanning truthを再推論しない。Phase 2が完了するまで管理UI実装へ進まない。
+`abandoned`は将来のplanning analytics用catalogに残すが、現在のStable V5にはanalytics abandonmentの一意なauthorityがないため発火させない。
+
+#219の完了条件は、最終HEADでTypeScript、全test、production build、diff check、Browser Regressionが成功し、mainからの差分がtyped planning outcome projection / ingestion / tests / checkpoint責務に限定されていることである。
+
+#219 merge後の次のconcrete actionはPhase 3である。actor-day presence、user summary、daily service / AI usage / planning quality rollup、latency distribution、rollup freshness/checkpoint、typed admin query serviceを、raw collection full scanを通常read pathにしない形で実装する。Phase 3完了まで管理UI実装へ進まない。

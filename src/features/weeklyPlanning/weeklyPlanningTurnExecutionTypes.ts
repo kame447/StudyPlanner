@@ -42,6 +42,13 @@ export interface WeeklyPlanningTurnFailure {
   diagnostics: WeeklyPlanningTurnFailureDiagnostics;
 }
 
+export interface WeeklyPlanningTurnObservability {
+  repairUsed: boolean | null;
+  schedulerVersion: string | null;
+  previewCount: number | null;
+  unscheduledCount: number | null;
+}
+
 export interface WeeklyPlanningTurnExecutionResult {
   state: PlanningIntakeState;
   message: string;
@@ -51,6 +58,7 @@ export interface WeeklyPlanningTurnExecutionResult {
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;
   dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
+  observability?: WeeklyPlanningTurnObservability;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

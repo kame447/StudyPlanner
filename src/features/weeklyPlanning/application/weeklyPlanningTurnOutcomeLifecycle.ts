@@ -6,6 +6,12 @@ import type {
 } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
+  recordWeeklyPlanningTurnCommitted,
+  recordWeeklyPlanningTurnDiscarded,
+  recordWeeklyPlanningTurnFailed,
+  recordWeeklyPlanningTurnStarted,
+} from './weeklyPlanningOutcomeObservability';
+import {
   recordCommittedWeeklyPlanningApplicationTurn,
   recordDiscardedWeeklyPlanningApplicationTurn,
   recordFailedWeeklyPlanningApplicationTurn,
@@ -16,6 +22,10 @@ export interface WeeklyPlanningTurnOutcomeLifecycleServices {
   recordCommittedTurn: typeof recordCommittedWeeklyPlanningApplicationTurn;
   recordDiscardedTurn: typeof recordDiscardedWeeklyPlanningApplicationTurn;
   recordFailedTurn: typeof recordFailedWeeklyPlanningApplicationTurn;
+  recordStartedOutcome: typeof recordWeeklyPlanningTurnStarted;
+  recordCommittedOutcome: typeof recordWeeklyPlanningTurnCommitted;
+  recordDiscardedOutcome: typeof recordWeeklyPlanningTurnDiscarded;
+  recordFailedOutcome: typeof recordWeeklyPlanningTurnFailed;
 }
 
 const defaultServices: WeeklyPlanningTurnOutcomeLifecycleServices = {
@@ -23,9 +33,17 @@ const defaultServices: WeeklyPlanningTurnOutcomeLifecycleServices = {
   recordCommittedTurn: recordCommittedWeeklyPlanningApplicationTurn,
   recordDiscardedTurn: recordDiscardedWeeklyPlanningApplicationTurn,
   recordFailedTurn: recordFailedWeeklyPlanningApplicationTurn,
+  recordStartedOutcome: recordWeeklyPlanningTurnStarted,
+  recordCommittedOutcome: recordWeeklyPlanningTurnCommitted,
+  recordDiscardedOutcome: recordWeeklyPlanningTurnDiscarded,
+  recordFailedOutcome: recordWeeklyPlanningTurnFailed,
 };
 
 export interface WeeklyPlanningTurnOutcomeLifecycle {
+  started?(params: {
+    ownerId: string;
+    pending: WeeklyPlanningPendingTurn;
+  }): void;
   committed(params: {
     ownerId: string;
     pending: WeeklyPlanningPendingTurn;
@@ -44,6 +62,7 @@ export interface WeeklyPlanningTurnOutcomeLifecycle {
     ownerId: string;
     pending: WeeklyPlanningPendingTurn;
     userText: string;
+    result?: WeeklyPlanningTurnExecutionResult;
     error: unknown;
     failedState: PlanningState;
     assistantMessage: WeeklyPlanningMessage;
@@ -54,8 +73,16 @@ export function createWeeklyPlanningTurnOutcomeLifecycle(
   services: WeeklyPlanningTurnOutcomeLifecycleServices = defaultServices,
 ): WeeklyPlanningTurnOutcomeLifecycle {
   return {
+    started(params) {
+      services.recordStartedOutcome({ pending: params.pending });
+    },
     committed(params) {
       services.saveOwnedState(params.ownerId, params.committed);
+      services.recordCommittedOutcome({
+        pending: params.pending,
+        result: params.result,
+        committed: params.committed,
+      });
       const traceWrite = services.recordCommittedTurn({
         ownerId: params.ownerId,
         pending: params.pending,
@@ -66,6 +93,11 @@ export function createWeeklyPlanningTurnOutcomeLifecycle(
     },
     discarded(params) {
       if (params.reason === 'failed') return;
+      services.recordDiscardedOutcome({
+        pending: params.pending,
+        result: params.result,
+        reason: params.reason,
+      });
       const traceWrite = services.recordDiscardedTurn({
         ownerId: params.ownerId,
         pending: params.pending,
@@ -77,6 +109,11 @@ export function createWeeklyPlanningTurnOutcomeLifecycle(
     },
     failed(params) {
       services.saveOwnedState(params.ownerId, params.failedState);
+      services.recordFailedOutcome({
+        pending: params.pending,
+        result: params.result,
+        failedState: params.failedState,
+      });
       const traceWrite = services.recordFailedTurn({
         ownerId: params.ownerId,
         pending: params.pending,
