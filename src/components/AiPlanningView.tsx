@@ -14,16 +14,18 @@ import {
   saveAiPlanningChatSnapshot,
   updateAiPlanningChatRecord,
 } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+import { applyEditedPreviewPositions } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewEdits';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
-import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
+import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { useExitMotion } from '../hooks/useExitMotion';
 import type { Plan } from '../types/domain';
-import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
+import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
+import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
 import './AiPlanningPreviewBottomSheet.css';
@@ -156,19 +158,23 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     setIsPreviewOpen(true);
   }
 
-  function promotePreview() {
-    if (previewCandidates.length === 0 || allPreviewBlocks.length === 0) return;
-    const blockIds = new Set(allPreviewBlocks.map((block) => block.id));
+  function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
+    if (previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
+    const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
     const candidates = previewCandidates.filter((candidate) =>
       blockIds.has(candidate.stableKey),
     );
-    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
+    const generatedBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
       candidates,
       userId,
       createdAt: new Date().toISOString(),
     });
-    if (blocks.length === 0) return;
+    if (generatedBlocks.length === 0) return;
 
+    const { blocks } = applyEditedPreviewPositions(
+      generatedBlocks,
+      editedPreviewBlocks,
+    );
     if (pendingDraftBlocks.length > 0) {
       application.clearDraftBlocks();
     }
@@ -176,7 +182,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     window.requestAnimationFrame(persistActiveChatSnapshot);
   }
 
-  async function saveDrafts() {
+  async function saveDrafts(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
     if (
       pendingDraftBlocks.length === 0 ||
       approvalAvailability.kind !== 'eligible'
@@ -186,6 +192,14 @@ export function AiPlanningView(props: AiPlanningViewProps) {
 
     setPreviewError('');
     try {
+      const edited = applyEditedPreviewPositions(
+        pendingDraftBlocks,
+        editedPreviewBlocks,
+      );
+      if (edited.changed) {
+        application.clearDraftBlocks();
+        application.createDraftBlocks(edited.blocks);
+      }
       await application.approveDraftBlocks();
       persistActiveChatSnapshot();
       requestClosePreview();
@@ -223,7 +237,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
             onClose={() => requestClosePreview()}
             onAdjust={closePreviewForAdjustment}
             onPromote={promotePreview}
-            onSave={() => void saveDrafts()}
+            onSave={(blocks) => void saveDrafts(blocks)}
           />
         </div>
       ) : null}
