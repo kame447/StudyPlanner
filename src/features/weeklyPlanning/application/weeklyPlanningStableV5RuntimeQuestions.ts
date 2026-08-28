@@ -97,11 +97,15 @@ function concreteMaterialProgressQuestion(label: string): string {
 function progressQuestion(params: {
   label: string;
   scopeTotal: WorkloadFactV5 | null;
+  material?: boolean;
 }): string {
   if (params.scopeTotal) {
     return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
   }
-  return concreteMaterialProgressQuestion(params.label);
+  if (params.material) {
+    return concreteMaterialProgressQuestion(params.label);
+  }
+  return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
 }
 
 export function stableV5MissingSchedulableWorkQuestion(
@@ -190,6 +194,7 @@ export function stableV5MissingSchedulableWorkQuestion(
           targetFactId: componentWithNoWorkload.id,
           targetKind: 'component',
         }),
+        material: componentWithNoWorkload.role === 'material',
       }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
@@ -281,10 +286,11 @@ function semanticUncertaintyQuestion(
     const task = graph.tasks.find((fact) => fact.id === uncertainty.targetFactId);
     const materialComponents = graph.components.filter((component) =>
       component.taskId === uncertainty.targetFactId && component.role === 'material');
-    const label = materialComponents.length === 1
-      ? materialComponents[0].label.trim()
-      : task?.title?.trim() || 'この教材';
-    return concreteMaterialProgressQuestion(label);
+    if (materialComponents.length === 1) {
+      return concreteMaterialProgressQuestion(materialComponents[0].label.trim());
+    }
+    const label = task?.title?.trim() || 'この作業';
+    return progressQuestion({ label, scopeTotal: null });
   }
   const sourceText = uncertainty
     ? questionSourceExcerpt(uncertainty.source.sourceText)
