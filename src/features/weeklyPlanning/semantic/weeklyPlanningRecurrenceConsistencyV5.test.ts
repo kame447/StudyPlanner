@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
-import { validateWeeklyPlanningRecurrenceConsistencyV5 } from './weeklyPlanningRecurrenceConsistencyV5';
+import {
+  normalizeWeeklyPlanningRecurrenceConsistencyV5,
+  validateWeeklyPlanningRecurrenceConsistencyV5,
+} from './weeklyPlanningRecurrenceConsistencyV5';
 
 function document(params: {
   periodExpression: string | null;
@@ -121,6 +124,15 @@ function componentDocument(params: {
   };
 }
 
+function withoutTaskRecurrence(
+  value: WeeklyPlanningSemanticDocumentV5,
+): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    ...value,
+    tasks: value.tasks.map((task) => ({ ...task, recurrence: [] })),
+  };
+}
+
 describe('Stable V5 recurrence consistency generalization', () => {
   it('requires weekly recurrence when periodExpression is canonical weekly', () => {
     expect(validateWeeklyPlanningRecurrenceConsistencyV5(document({
@@ -161,6 +173,52 @@ describe('Stable V5 recurrence consistency generalization', () => {
       recurrenceTargetLocalId: 'component-a',
     }))).toEqual([
       'document.tasks[0].study.components[1].workloads[0]:explicit-recurrence-missing:expected=daily:target=component-b',
+    ]);
+  });
+
+  it('materializes daily recurrence for each component from explicit per-occurrence workload semantics', () => {
+    const input = withoutTaskRecurrence(componentDocument({
+      recurrenceTargetLocalId: 'task-1',
+    }));
+    const normalized = normalizeWeeklyPlanningRecurrenceConsistencyV5(input);
+
+    expect(normalized.document.tasks[0].recurrence).toEqual([
+      expect.objectContaining({
+        targetLocalId: 'component-a',
+        kind: 'daily',
+        count: null,
+        days: [],
+        sourceText: '長文を毎日1題',
+      }),
+      expect.objectContaining({
+        targetLocalId: 'component-b',
+        kind: 'daily',
+        count: null,
+        days: [],
+        sourceText: '英文解釈を毎日1題',
+      }),
+    ]);
+    expect(normalized.repairs).toHaveLength(2);
+    expect(validateWeeklyPlanningRecurrenceConsistencyV5(normalized.document)).toEqual([]);
+  });
+
+  it('does not duplicate a matching task-level recurrence that already covers child workloads', () => {
+    const input = componentDocument({ recurrenceTargetLocalId: 'task-1' });
+    const normalized = normalizeWeeklyPlanningRecurrenceConsistencyV5(input);
+
+    expect(normalized.document).toBe(input);
+    expect(normalized.repairs).toEqual([]);
+    expect(normalized.document.tasks[0].recurrence).toHaveLength(1);
+  });
+
+  it('does not invent times_per_week count when the workload lacks it', () => {
+    const input = document({ periodExpression: 'times_per_week' });
+    const normalized = normalizeWeeklyPlanningRecurrenceConsistencyV5(input);
+
+    expect(normalized.document).toBe(input);
+    expect(normalized.repairs).toEqual([]);
+    expect(validateWeeklyPlanningRecurrenceConsistencyV5(normalized.document)).toEqual([
+      'document.tasks[0].workloads[0]:explicit-recurrence-missing:expected=times_per_week:target=task-1',
     ]);
   });
 });
