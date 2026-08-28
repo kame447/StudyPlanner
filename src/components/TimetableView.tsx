@@ -14,6 +14,7 @@ import {
   type TimetableOcrResult,
 } from '../lib/timetableOcrImport';
 import { resolveTimetableAlternatingWeek } from '../lib/timetableCalendar';
+import { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';
 import type {
   RecurrenceWeekday,
   ScheduleTemplate,
@@ -41,6 +42,7 @@ interface TimetableViewProps {
   timetablePeriods: TimetablePeriod[];
   scheduleTemplates: ScheduleTemplate[];
   onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  onDeleteTerm: (term: TimetableTerm) => Promise<void>;
   onClearTermData: (term: TimetableTerm) => Promise<void>;
   onSaveTimetablePeriod: (
     draft: TimetablePeriodDraft,
@@ -296,6 +298,7 @@ export function TimetableView({
   timetablePeriods,
   scheduleTemplates,
   onActivateTerm,
+  onDeleteTerm,
   onClearTermData,
   onSaveTimetablePeriod,
   onDeleteTimetablePeriod,
@@ -323,6 +326,8 @@ export function TimetableView({
   const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
   const [isClearingTermData, setIsClearingTermData] = useState(false);
+  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
+  const [openTermSwipeId, setOpenTermSwipeId] = useState<string | null>(null);
   const [periodForm, setPeriodForm] = useState<PeriodFormState>(() => createPeriodForm(activeTerm));
   const todayAlternatingWeek = resolveTimetableAlternatingWeek(getTodayIsoDate(), activeTerm);
   const [alternatingWeekView, setAlternatingWeekView] = useState<TimetableAlternatingWeek>(
@@ -415,6 +420,8 @@ export function TimetableView({
         ),
     [timetableTerms],
   );
+  const isTermActionBusy =
+    isSavingTerm || isClearingTermData || deletingTermId !== null;
 
   function updateDraft<K extends keyof ScheduleTemplateDraft>(
     key: K,
@@ -499,12 +506,14 @@ export function TimetableView({
   }
 
   function openPeriodSheet(term: TimetableTerm | null = activeTerm) {
+    setOpenTermSwipeId(null);
     setPeriodForm(createPeriodForm(term));
     setPeriodActionError(null);
     setIsTermSheetOpen(true);
   }
 
   function startNewPeriod() {
+    setOpenTermSwipeId(null);
     setPeriodForm(createPeriodForm(null));
   }
 
@@ -632,6 +641,7 @@ export function TimetableView({
         isActive: true,
       });
       setAlternatingWeekView('a');
+      setOpenTermSwipeId(null);
       setIsTermSheetOpen(false);
     } finally {
       setIsSavingTerm(false);
@@ -639,6 +649,7 @@ export function TimetableView({
   }
 
   async function selectExistingPeriod(term: TimetableTerm) {
+    setOpenTermSwipeId(null);
     if (term.id === activeTerm?.id) {
       setPeriodForm(createPeriodForm(term));
       return;
@@ -667,8 +678,62 @@ export function TimetableView({
     }
   }
 
+  async function deleteExistingPeriod(term: TimetableTerm) {
+  if (isTermActionBusy) {
+    return;
+  }
+
+  if (availableTerms.length <= 1) {
+    setPeriodActionError(
+      '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+    );
+    setOpenTermSwipeId(null);
+    return;
+  }
+
+  const templateCount = scheduleTemplates.filter(
+    (template) => getTemplateTermId(template) === term.id,
+  ).length;
+  const periodCount = timetablePeriods.filter(
+    (period) => period.termId === term.id,
+  ).length;
+  const hasData = templateCount > 0 || periodCount > 0;
+  const confirmed = window.confirm(
+    hasData
+      ? `「${term.label}」を削除しますか？\nこの期間に登録されている授業と時限設定も一緒に削除されます。この操作は元に戻せません。`
+      : `「${term.label}」を削除しますか？この操作は元に戻せません。`,
+  );
+
+  if (!confirmed) {
+    setOpenTermSwipeId(null);
+    return;
+  }
+
+  const fallbackTerm = availableTerms.find((item) => item.id !== term.id) ?? null;
+  setDeletingTermId(term.id);
+  try {
+    setPeriodActionError(null);
+    await onDeleteTerm(term);
+    setOpenTermSwipeId(null);
+    if (periodForm.id === term.id) {
+      setPeriodForm(createPeriodForm(fallbackTerm));
+      setAlternatingWeekView(
+        fallbackTerm
+          ? resolveTimetableAlternatingWeek(getTodayIsoDate(), fallbackTerm) ?? 'a'
+          : 'a',
+      );
+    }
+  } catch (error) {
+    setPeriodActionError(
+      error instanceof Error ? error.message : '期間を削除できませんでした。',
+    );
+  } finally {
+    setDeletingTermId(null);
+  }
+}
+
   async function clearCurrentTermData() {
-    if (!activeTerm || isClearingTermData || isSavingTerm) {
+    if (!activeTerm || isTermActionBusy) {
       return;
     }
 
@@ -1000,7 +1065,8 @@ export function TimetableView({
         <div
           className="overlay timetable-term-sheet-overlay timetable-period-sheet-overlay"
           onClick={() => {
-            if (!isSavingTerm && !isClearingTermData) {
+            if (!isTermActionBusy) {
+              setOpenTermSwipeId(null);
               setIsTermSheetOpen(false);
             }
           }}
@@ -1017,8 +1083,11 @@ export function TimetableView({
               </div>
               <button
                 className="ghost-button"
-                disabled={isSavingTerm || isClearingTermData}
-                onClick={() => setIsTermSheetOpen(false)}
+                disabled={isTermActionBusy}
+                onClick={() => {
+                  setOpenTermSwipeId(null);
+                  setIsTermSheetOpen(false);
+                }}
                 type="button"
               >
                 閉じる
@@ -1032,7 +1101,7 @@ export function TimetableView({
                     <span>登録済みの期間</span>
                     <button
                       className="ghost-button"
-                      disabled={isSavingTerm || isClearingTermData}
+                      disabled={isTermActionBusy}
                       onClick={startNewPeriod}
                       type="button"
                     >
@@ -1040,28 +1109,38 @@ export function TimetableView({
                     </button>
                   </div>
                   <div className="timetable-period-list">
-                    {availableTerms.map((term) => (
-                      <button
-                        className={
-                          term.id === activeTerm?.id
-                            ? 'timetable-period-list-item active'
-                            : 'timetable-period-list-item'
-                        }
-                        disabled={isSavingTerm || isClearingTermData}
-                        key={term.id}
-                        onClick={() => {
-                          void selectExistingPeriod(term);
-                        }}
-                        type="button"
-                      >
-                        <strong>{term.label}</strong>
-                        <span>{formatPeriodRange(term)}</span>
-                      </button>
-                    ))}
-                  </div>
+          {availableTerms.map((term) => (
+            <TimetablePeriodSwipeItem
+              active={term.id === activeTerm?.id}
+              deleting={deletingTermId === term.id}
+              disabled={isTermActionBusy}
+              isOpen={openTermSwipeId === term.id}
+              key={term.id}
+              onDelete={() => {
+                void deleteExistingPeriod(term);
+              }}
+              onOpenChange={(open) => {
+                setOpenTermSwipeId((current) =>
+                  open ? term.id : current === term.id ? null : current,
+                );
+              }}
+              onSelect={() => {
+                void selectExistingPeriod(term);
+              }}
+              rangeLabel={formatPeriodRange(term)}
+              term={term}
+            />
+          ))}
+        </div>
                 </section>
               ) : null}
 
+
+    {periodActionError ? (
+      <p className="timetable-period-error timetable-period-sheet-error">
+        {periodActionError}
+      </p>
+    ) : null}
               <section className="timetable-period-form-card">
                 <label className="field">
                   <span>時間割名</span>
@@ -1148,8 +1227,7 @@ export function TimetableView({
                   <button
                     className="ghost-button timetable-clear-term-button"
                     disabled={
-                      isSavingTerm ||
-                      isClearingTermData ||
+                      isTermActionBusy ||
                       (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)
                     }
                     onClick={() => {
@@ -1166,15 +1244,18 @@ export function TimetableView({
             <div className="row-actions timetable-period-sheet-actions">
               <button
                 className="ghost-button"
-                disabled={isSavingTerm || isClearingTermData}
-                onClick={() => setIsTermSheetOpen(false)}
+                disabled={isTermActionBusy}
+                onClick={() => {
+                  setOpenTermSwipeId(null);
+                  setIsTermSheetOpen(false);
+                }}
                 type="button"
               >
                 キャンセル
               </button>
               <button
                 className="primary-button"
-                disabled={isSavingTerm || isClearingTermData}
+                disabled={isTermActionBusy}
                 onClick={() => {
                   void applyPeriodForm();
                 }}
