@@ -9,6 +9,7 @@ import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/pl
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type {
   Actual,
   ActualDraft,
@@ -74,6 +75,7 @@ interface PlannerAppState {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
@@ -161,6 +163,7 @@ export function usePlannerAppState(): PlannerAppState {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -339,6 +342,7 @@ export function usePlannerAppState(): PlannerAppState {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
     deletePlan,

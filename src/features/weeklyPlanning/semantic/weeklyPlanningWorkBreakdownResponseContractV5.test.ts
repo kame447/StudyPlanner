@@ -73,40 +73,48 @@ describe('Stable V5 work breakdown response contract', () => {
     expect(validate(document([task()]))).toEqual([]);
   });
 
-  it('rejects every extra top-level task and stale plan-wide state', () => {
+  it('keeps the pending target while allowing other explicit current-turn contributions', () => {
     const value = document([
       task(),
-      task({ localId: 'other', existingPublicId: null, title: '新しい別タスク' }),
+      task({
+        localId: 'other',
+        existingPublicId: 'task-other',
+        title: '同じ発話で回答した別タスク',
+        sourceText: '物理もほぼ全部残っています',
+      }),
     ]);
     value.planningWindow = {
       localId: 'window-local',
-      kind: 'relative_week',
-      value: 'next_week',
-      start: null,
-      end: null,
-      sourceText: '前のターン',
+      kind: 'absolute',
+      value: '2026-09-01/2026-09-30',
+      start: '2026-09-01',
+      end: '2026-09-30',
+      sourceText: '9月中に進めたい',
     };
     value.userContextFacts = [{
       localId: 'context-1',
-      kind: 'goal_event',
-      label: 'イベント',
-      value: null,
-      dateExpression: 'custom:後日',
-      sourceText: '前のターン',
+      kind: 'concern',
+      label: '物理',
+      value: '苦手',
+      dateExpression: null,
+      sourceText: '物理が苦手です',
     }];
     value.relations = [{
       localId: 'relation-1',
       kind: 'priority_over',
       fromLocalId: 'task-local',
       toLocalId: 'other',
-      sourceText: '内訳Aが残っている',
+      sourceText: '数学を物理より優先したい',
     }];
 
-    expect(validate(value)).toEqual([
-      'document.tasks:work-breakdown-exact-target-only:count=2',
-      'document.planningWindow:work-breakdown-current-delta-only',
-      'document.userContextFacts:work-breakdown-current-delta-only',
-      'document.relations:work-breakdown-current-delta-only',
+    expect(validate(value)).toEqual([]);
+  });
+
+  it('requires the pending work-breakdown target to remain represented', () => {
+    expect(validate(document([
+      task({ localId: 'other', existingPublicId: 'task-other' }),
+    ]))).toEqual([
+      'document:work-breakdown-target-task-required:target=task-target',
     ]);
   });
 

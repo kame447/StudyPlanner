@@ -27,8 +27,15 @@ import type {
 export function shouldApplyWeeklyPlanningExistingEntityBindingsV5(params: {
   contextualAnswer: boolean;
   questionCode: string | null;
+  localReferenceCount: number;
 }): boolean {
-  return !params.contextualAnswer || params.questionCode === 'semantic_uncertainty';
+  if (!params.contextualAnswer) return true;
+  if (params.questionCode !== 'semantic_uncertainty') return false;
+
+  // A semantic-uncertainty answer can either canonicalize a real document
+  // delta or intentionally keep the uncertainty unresolved. The latter is a
+  // contextual no-op and has no temporary semantic entities to rebase.
+  return params.localReferenceCount > 0;
 }
 
 function uniqueDiffEntries(
@@ -128,6 +135,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   const entityBindingApplication = shouldApplyWeeklyPlanningExistingEntityBindingsV5({
     contextualAnswer: params.contextualAnswer,
     questionCode: params.questionCode,
+    localReferenceCount: Object.keys(params.baseCanonicalization.localToFactId).length,
   })
     ? applyWeeklyPlanningExistingEntityBindingsV5({
         originalGraph: params.originalGraph,

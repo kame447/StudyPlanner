@@ -17,6 +17,12 @@ import {
   normalizePendingQuestionEntityBindingsV5,
 } from './weeklyPlanningPendingEntityBindingNormalizationV5';
 import {
+  normalizePlanningWindowCanonicalRawV5,
+} from './weeklyPlanningPlanningWindowCanonicalContractV5';
+import {
+  normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5,
+} from './weeklyPlanningPreferredWindowConstraintLevelNormalizationV5';
+import {
   normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5,
 } from './weeklyPlanningRecurrenceTargetNormalizationV5';
 import {
@@ -28,17 +34,23 @@ import {
 import {
   normalizeWeeklyPlanningTemporalClockRawV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
+import {
+  normalizeWeeklyPlanningUserContextPartialDatesV5,
+} from './weeklyPlanningUserContextPartialDateNormalizationV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
+  'planning_window_wire',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
+  'user_context_partial_date',
   'existing_task_shell',
   'pending_question_entity_binding',
   'component_parent',
   'duplicate_workload_placement',
   'resolved_progress_workload',
   'recurrence_workload_target',
+  'preferred_window_constraint_level',
   'temporal_clock_raw',
   'constraint_absence_metadata',
 ] as const;
@@ -66,6 +78,10 @@ Record<
     category: 'representation_repair',
     owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
   },
+  planning_window_wire: {
+    category: 'canonicalization_bridge',
+    owningInvariant: 'valid interpreted absolute planning-window bounds have one derived canonical wire value',
+  },
   task_decomposition_uncertainty: {
     category: 'semantic_invariant_derivation',
     owningInvariant: 'needs_breakdown tasks must expose one work_breakdown uncertainty',
@@ -73,6 +89,10 @@ Record<
   copied_user_context_delta: {
     category: 'context_binding_repair',
     owningInvariant: 'provider output is a current-turn delta and must not echo stored durable context',
+  },
+  user_context_partial_date: {
+    category: 'canonicalization_bridge',
+    owningInvariant: 'a provider-interpreted durable goal-event month or month-part has one equivalent ISO date-range representation',
   },
   existing_task_shell: {
     category: 'context_binding_repair',
@@ -97,6 +117,10 @@ Record<
   recurrence_workload_target: {
     category: 'representation_repair',
     owningInvariant: 'recurrence targets schedulable task/component owners rather than nested workload IDs',
+  },
+  preferred_window_constraint_level: {
+    category: 'representation_repair',
+    owningInvariant: 'preferred_window meaning has soft constraint level and cannot carry the contradictory hard wire value',
   },
   temporal_clock_raw: {
     category: 'canonicalization_bridge',
@@ -225,6 +249,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
 
   applyStage('empty_semantic_delta_envelope', (value) =>
     normalizeEmptySemanticDeltaEnvelopeV5(value));
+  applyStage('planning_window_wire', (value) =>
+    normalizePlanningWindowCanonicalRawV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
@@ -232,6 +258,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
       rawResponse: value,
       publicStateSummary: params.publicStateSummary,
     }));
+  applyStage('user_context_partial_date', (value) =>
+    normalizeWeeklyPlanningUserContextPartialDatesV5(value));
   applyStage('existing_task_shell', (value) =>
     normalizeWeeklyPlanningExistingTaskShellV5({
       rawResponse: value,
@@ -250,6 +278,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     normalizeResolvedProgressWorkloadsV5(value));
   applyStage('recurrence_workload_target', (value) =>
     normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(value));
+  applyStage('preferred_window_constraint_level', (value) =>
+    normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(value));
   applyStage('temporal_clock_raw', (value) =>
     normalizeWeeklyPlanningTemporalClockRawV5(value));
   applyStage('constraint_absence_metadata', (value) =>
