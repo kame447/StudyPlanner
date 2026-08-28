@@ -1,12 +1,12 @@
 export type AdminRoute =
-  | { type: 'redirect-to-users' }
+  | { type: 'overview' }
   | { type: 'users' }
   | { type: 'user-detail'; userId: string }
   | { type: 'not-found' };
 
 export function resolveAdminRoute(path: string): AdminRoute {
   if (path === '/admin') {
-    return { type: 'redirect-to-users' };
+    return { type: 'overview' };
   }
 
   if (path === '/admin/users') {

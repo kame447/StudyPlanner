@@ -20,10 +20,9 @@ import {
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
+import { aggregateOverviewPeriod } from './productObservabilityOverviewAggregation';
 import {
-  createEmptyLatencyHistogram,
   latencyPercentileMs,
-  mergeLatencyHistograms,
 } from './productObservabilityReadModelProjection';
 
 const PROFILE_COLLECTION = 'profiles';
@@ -389,9 +388,7 @@ export class ProductObservabilityReadModelService {
     const daily = dailyValues
       .map(({ localDate, value }) => readDailyRollup(value, params.environment, localDate))
       .filter((value): value is ObservabilityDailyRollup => Boolean(value));
-    const latency = daily.length > 0
-      ? mergeLatencyHistograms(daily.map((entry) => entry.ai.latency))
-      : createEmptyLatencyHistogram();
+    const period = aggregateOverviewPeriod(daily);
     const checkpoint = readCheckpoint(checkpointValue);
     return {
       schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
@@ -399,6 +396,7 @@ export class ProductObservabilityReadModelService {
       toDate: params.toDate,
       reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
       registeredUsers,
+      period,
       daily,
       activeUsers: readActiveUsers(
         activeUsersValue,
@@ -406,8 +404,8 @@ export class ProductObservabilityReadModelService {
         params.toDate,
         checkpoint.activeUserDirtySources,
       ),
-      aiLatencyP50Ms: latencyPercentileMs(latency, 0.5),
-      aiLatencyP95Ms: latencyPercentileMs(latency, 0.95),
+      aiLatencyP50Ms: latencyPercentileMs(period.ai.latency, 0.5),
+      aiLatencyP95Ms: latencyPercentileMs(period.ai.latency, 0.95),
       rollupCheckpoint: checkpoint,
     };
   }
