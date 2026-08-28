@@ -33,15 +33,15 @@ class MemoryRollupFirestore {
     limit?: number;
   }): Promise<Array<StoredDocument & { id: string; documentName: string }>> {
     return this.events
-      .filter((event) => {
+      .filter((item) => {
         if (!params.cursor) return true;
-        const observedAt = String(event.observedAt);
+        const observedAt = String(item.observedAt);
         return observedAt > params.cursor.orderedValue
           || (observedAt === params.cursor.orderedValue
-            && event.documentName > params.cursor.documentName);
+            && item.documentName > params.cursor.documentName);
       })
       .slice(0, params.limit ?? 50)
-      .map((event) => ({ ...event }));
+      .map((item) => ({ ...item }));
   }
 
   async beginTransaction(): Promise<string> {
@@ -99,8 +99,8 @@ function engine(firestore: MemoryRollupFirestore): ProductObservabilityRollupEng
   );
 }
 
-describe('ProductObservabilityRollupEngine actor-day change projection', () => {
-  it('persists one dirty source per new actor-day and environment', async () => {
+describe('ProductObservabilityRollupEngine actor-day dirty projection', () => {
+  it('persists one revisioned dirty source per changed day and environment', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('event-1', event());
     firestore.addEvent('event-2', event({
@@ -116,11 +116,10 @@ describe('ProductObservabilityRollupEngine actor-day change projection', () => {
     const result = await engine(firestore).runBatch(50);
 
     expect(result.processed).toBe(3);
-    expect(result.changedActorSources).toEqual([
-      { environment: 'preview', localDate: '2026-08-27' },
-      { environment: 'production', localDate: '2026-08-27' },
+    expect(result.checkpoint.activeUserDirtySources).toEqual([
+      { environment: 'preview', localDate: '2026-08-27', revision: 1 },
+      { environment: 'production', localDate: '2026-08-27', revision: 1 },
     ]);
-    expect(result.checkpoint.activeUserDirtySources).toEqual(result.changedActorSources);
   });
 
   it('keeps dirty sources across an empty rollup until snapshot maintenance clears them', async () => {
@@ -132,18 +131,47 @@ describe('ProductObservabilityRollupEngine actor-day change projection', () => {
     const second = await rollup.runBatch(50);
 
     expect(first.checkpoint.activeUserDirtySources).toEqual([
-      { environment: 'production', localDate: '2026-08-27' },
+      { environment: 'production', localDate: '2026-08-27', revision: 1 },
     ]);
     expect(second.processed).toBe(0);
     expect(second.checkpoint.activeUserDirtySources).toEqual(
       first.checkpoint.activeUserDirtySources,
     );
 
-    await rollup.clearActiveUserDirtySources([
-      { environment: 'production', localDate: '2026-08-27' },
-    ]);
+    await rollup.clearActiveUserDirtySources(first.checkpoint.activeUserDirtySources);
     const third = await rollup.runBatch(50);
     expect(third.checkpoint.activeUserDirtySources).toEqual([]);
+  });
+
+  it('does not let an older snapshot repair clear a newer change for the same actor-day key', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('event-1', event());
+    const rollup = engine(firestore);
+
+    const first = await rollup.runBatch(50);
+    const staleRepairInput = first.checkpoint.activeUserDirtySources;
+
+    firestore.addEvent('event-2', event({
+      eventId: 'activity-22222222',
+      actorSubjectId: 'actor-87654321',
+      observedAt: '2026-08-28T11:01:00.000Z',
+    }));
+    const second = await rollup.runBatch(50);
+    expect(second.checkpoint.activeUserDirtySources).toEqual([
+      { environment: 'production', localDate: '2026-08-27', revision: 2 },
+    ]);
+
+    await rollup.clearActiveUserDirtySources(staleRepairInput);
+    const afterStaleClear = await rollup.runBatch(50);
+    expect(afterStaleClear.checkpoint.activeUserDirtySources).toEqual([
+      { environment: 'production', localDate: '2026-08-27', revision: 2 },
+    ]);
+
+    await rollup.clearActiveUserDirtySources(
+      afterStaleClear.checkpoint.activeUserDirtySources,
+    );
+    const afterCurrentClear = await rollup.runBatch(50);
+    expect(afterCurrentClear.checkpoint.activeUserDirtySources).toEqual([]);
   });
 
   it('rejects an unrecognized environment before creating arbitrary read-model collections', async () => {
