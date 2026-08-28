@@ -58,6 +58,7 @@ export interface ProductObservabilityRollupResult {
   processed: number;
   hasMore: boolean;
   checkpoint: ObservabilityRollupCheckpoint;
+  changedActorDates: string[];
 }
 
 function emptyCheckpoint(nowIso: string): ObservabilityRollupCheckpoint {
@@ -279,7 +280,7 @@ export class ProductObservabilityRollupEngine {
             id: ROLLUP_STATE_ID,
             value: checkpoint as unknown as Record<string, unknown>,
           }]);
-          return { processed: 0, hasMore: false, checkpoint };
+          return { processed: 0, hasMore: false, checkpoint, changedActorDates: [] };
         }
 
         const eventRows = settledEvents.map((document) => ({
@@ -288,6 +289,7 @@ export class ProductObservabilityRollupEngine {
         }));
         const cache = new Map<string, Record<string, unknown> | null>();
         const writes = new Map<string, FirestoreTransactionDocumentWrite>();
+        const changedActorDates = new Set<string>();
         const read = async (collection: string, id: string) => {
           const key = cacheKey(collection, id);
           if (cache.has(key)) return cache.get(key) ?? null;
@@ -310,6 +312,9 @@ export class ProductObservabilityRollupEngine {
           const actorDayBefore = withoutStorageId<ObservabilityActorDay>(
             await read(ACTOR_DAY_COLLECTION, dayId),
           );
+          if (actorDayBefore === null) {
+            changedActorDates.add(observabilityReportingDate(event.occurredAt));
+          }
           const nextActorDay = projectActorDay({
             current: actorDayBefore,
             event,
@@ -379,6 +384,7 @@ export class ProductObservabilityRollupEngine {
           processed: eventRows.length,
           hasMore: !hasFreshTail && orderedEvents.length >= Math.max(1, Math.floor(limit)),
           checkpoint,
+          changedActorDates: [...changedActorDates].sort(),
         };
       } catch (error) {
         lastError = error;
