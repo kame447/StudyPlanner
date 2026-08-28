@@ -88,7 +88,7 @@ function overview(): ObservabilityOverviewReadModel {
         latency: recordLatency(secondAggregate.latency, 2_000),
       },
       planning: {
-        outcomeCounts: { session_started: 2 },
+        outcomeCounts: { session_started: 1, turn_started: 2 },
         previewCountSum: 0,
         previewCountUnknownCount: 0,
         unscheduledCountSum: 0,
@@ -216,7 +216,7 @@ class FakeIdentityStore {
 }
 
 describe('ProductObservabilityAdminAnalysisService', () => {
-  it('merges daily AI dimensions and derives planning efficiency server-side', async () => {
+  it('merges daily AI dimensions and derives planning efficiency per turn server-side', async () => {
     const service = new ProductObservabilityAdminAnalysisService(
       env,
       new FakeFirestore() as never,
@@ -245,13 +245,13 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(analysis.latencyP50Ms).toBe(500);
     expect(analysis.latencyP95Ms).toBe(2_000);
     expect(analysis.planningEfficiency).toMatchObject({
-      sessionCount: 2,
+      turnCount: 2,
       requestCount: 3,
       repairRequestCount: 1,
-      requestsPerSession: 1.5,
+      requestsPerTurn: 1.5,
       estimatedCostMicros: 3_000,
       estimatedCostUnknownCount: 0,
-      estimatedCostPerSessionMicros: 1_500,
+      estimatedCostPerTurnMicros: 1_500,
       cachedTokens: 40,
       promptTokens: 100,
     });
