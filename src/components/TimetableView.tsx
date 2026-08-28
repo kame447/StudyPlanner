@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type PointerEvent,
 } from 'react';
 import {
   createTimetableOcrFilePayload,
@@ -85,6 +86,8 @@ const DEFAULT_PERIODS: DisplayPeriod[] = [
 ];
 
 const TIMETABLE_IMPORT_FILE_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg,.pdf,application/pdf';
+const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
+const EMPTY_CELL_TAP_MOVE_THRESHOLD_PX = 10;
 
 function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
@@ -301,6 +304,13 @@ export function TimetableView({
 }: TimetableViewProps) {
   const activeTermId = activeTerm?.id ?? 'default';
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const emptyCellPointerRef = useRef<{
+    cellKey: string;
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const lastEmptyCellTapRef = useRef<{ cellKey: string; at: number } | null>(null);
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
@@ -431,6 +441,61 @@ export function TimetableView({
   function openEditEditor(template: ScheduleTemplate) {
     setEditingTemplate(template);
     setDraft(createTemplateDraftFromTemplate(template));
+  }
+
+  function handleEmptyCellPointerDown(
+    event: PointerEvent<HTMLButtonElement>,
+    cellKey: string,
+  ) {
+    emptyCellPointerRef.current = {
+      cellKey,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+
+  function handleEmptyCellPointerUp(
+    event: PointerEvent<HTMLButtonElement>,
+    cellKey: string,
+    weekday: RecurrenceWeekday,
+    period: DisplayPeriod,
+  ) {
+    const pointerStart = emptyCellPointerRef.current;
+    emptyCellPointerRef.current = null;
+
+    if (
+      !pointerStart ||
+      pointerStart.cellKey !== cellKey ||
+      pointerStart.pointerId !== event.pointerId
+    ) {
+      lastEmptyCellTapRef.current = null;
+      return;
+    }
+
+    const moveX = Math.abs(event.clientX - pointerStart.x);
+    const moveY = Math.abs(event.clientY - pointerStart.y);
+
+    if (
+      moveX > EMPTY_CELL_TAP_MOVE_THRESHOLD_PX ||
+      moveY > EMPTY_CELL_TAP_MOVE_THRESHOLD_PX
+    ) {
+      lastEmptyCellTapRef.current = null;
+      return;
+    }
+
+    const now = window.performance.now();
+    const previousTap = lastEmptyCellTapRef.current;
+    const isDoubleTap =
+      previousTap?.cellKey === cellKey &&
+      now - previousTap.at <= EMPTY_CELL_DOUBLE_TAP_DELAY_MS;
+
+    lastEmptyCellTapRef.current = { cellKey, at: now };
+
+    if (isDoubleTap) {
+      lastEmptyCellTapRef.current = null;
+      openCreateEditor(weekday, period);
+    }
   }
 
   function openPeriodSheet(term: TimetableTerm | null = activeTerm) {
@@ -839,13 +904,42 @@ export function TimetableView({
                       hasValidPeriodTime(period) ? '' : 'needs-time',
                     ].filter(Boolean).join(' ')}
                     key={cellKey}
-                    onClick={() => {
+                    onClick={(event) => {
                       if (primaryTemplate) {
                         openEditEditor(primaryTemplate);
-                      } else {
+                        return;
+                      }
+
+                      // Pointer users keep the deliberate double-tap gesture.
+                      // Keyboard-generated clicks have detail=0 and remain immediately operable.
+                      if (event.detail === 0) {
                         openCreateEditor(weekday.value, period);
                       }
                     }}
+                    onPointerDown={
+                      primaryTemplate
+                        ? undefined
+                        : (event) => handleEmptyCellPointerDown(event, cellKey)
+                    }
+                    onPointerUp={
+                      primaryTemplate
+                        ? undefined
+                        : (event) =>
+                            handleEmptyCellPointerUp(
+                              event,
+                              cellKey,
+                              weekday.value,
+                              period,
+                            )
+                    }
+                    onPointerCancel={
+                      primaryTemplate
+                        ? undefined
+                        : () => {
+                            emptyCellPointerRef.current = null;
+                            lastEmptyCellTapRef.current = null;
+                          }
+                    }
                     type="button"
                   >
                     {templates.length > 0 ? (
