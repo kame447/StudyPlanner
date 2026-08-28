@@ -34,8 +34,10 @@ export function validateWeeklyPlanningRecurrenceConsistencyV5(
         const expected = expectedRecurrence(workload.periodExpression);
         if (!expected) return;
         const matching = task.recurrence.some(
-          (recurrence) => recurrence.targetLocalId === targetLocalId
-            && recurrence.kind === expected,
+          (recurrence) => (
+            recurrence.targetLocalId === targetLocalId
+            || recurrence.targetLocalId === task.localId
+          ) && recurrence.kind === expected,
         );
         if (!matching) {
           errors.push(
