@@ -46,6 +46,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
@@ -76,6 +77,7 @@ export function submitWeeklyPlanningApplicationTurn(
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
         timetableTerm: params.timetableTerm,
+        timetableTerms: params.timetableTerms,
         weekStartsOn: params.weekStartsOn,
         timeZone: params.timeZone,
       });
