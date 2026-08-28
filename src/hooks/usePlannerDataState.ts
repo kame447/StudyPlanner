@@ -1992,28 +1992,94 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (term.isActive || term.id === 'default') {
-      showNotice('現在選択中の学期は削除できません。', 'error');
-      throw new Error('現在選択中の学期は削除できません。');
+    const targetTerm = timetableTerms.find((item) => item.id === term.id) ?? term;
+    if (timetableTerms.length <= 1) {
+      showNotice(
+        '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+        'error',
+      );
+      throw new Error('最後の期間は削除できません。');
     }
 
-    const hasTemplates = scheduleTemplates.some(
-      (template) => (template.termId || 'default') === term.id,
+    const targetTermId = targetTerm.id;
+    const targetTemplates = scheduleTemplates.filter(
+      (template) => (template.termId || 'default') === targetTermId,
     );
-    const hasPeriods = timetablePeriods.some((period) => period.termId === term.id);
-
-    if (hasTemplates || hasPeriods) {
-      showNotice('時間割データが入っている学期は削除できません。', 'error');
-      throw new Error('時間割データが入っている学期は削除できません。');
-    }
+    const targetPeriods = timetablePeriods.filter(
+      (period) => period.termId === targetTermId,
+    );
+    const remainingTerms = timetableTerms.filter((item) => item.id !== targetTermId);
+    const fallbackTerm = targetTerm.isActive
+      ? sortTimetableTerms(remainingTerms)[0] ?? null
+      : null;
+    const nextFallbackTerm = fallbackTerm
+      ? {
+          ...fallbackTerm,
+          isActive: true,
+          updatedAt: new Date().toISOString(),
+        }
+      : null;
+    const deletedTemplates: ScheduleTemplate[] = [];
+    const deletedPeriods: TimetablePeriod[] = [];
+    let fallbackActivated = false;
 
     try {
-      await plannerRepository.deleteTimetableTerm(userId, term.id);
-      setTimetableTerms((current) => current.filter((item) => item.id !== term.id));
-      showNotice('学期を削除しました。');
+      await runSequentially(targetTemplates, async (template) => {
+        await plannerRepository.deleteScheduleTemplate(userId, template.id);
+        deletedTemplates.push(template);
+      });
+      await runSequentially(targetPeriods, async (period) => {
+        await plannerRepository.deleteTimetablePeriod(userId, period.id);
+        deletedPeriods.push(period);
+      });
+
+      if (nextFallbackTerm) {
+        await plannerRepository.upsertTimetableTerm(nextFallbackTerm);
+        fallbackActivated = true;
+      }
+
+      await plannerRepository.deleteTimetableTerm(userId, targetTermId);
+
+      setScheduleTemplates((current) =>
+        current.filter(
+          (template) => (template.termId || 'default') !== targetTermId,
+        ),
+      );
+      setTimetablePeriods((current) =>
+        current.filter((period) => period.termId !== targetTermId),
+      );
+      setTimetableTerms((current) =>
+        sortTimetableTerms(
+          current
+            .filter((item) => item.id !== targetTermId)
+            .map((item) =>
+              nextFallbackTerm && item.id === nextFallbackTerm.id
+                ? nextFallbackTerm
+                : item,
+            ),
+        ),
+      );
+      showNotice('期間を削除しました。', 'success');
     } catch (error) {
+      try {
+        await runSequentially(deletedPeriods, async (period) => {
+          await plannerRepository.upsertTimetablePeriod(period);
+        });
+        await runSequentially(deletedTemplates, async (template) => {
+          await plannerRepository.upsertScheduleTemplate(template);
+        });
+        if (fallbackActivated && fallbackTerm) {
+          await plannerRepository.upsertTimetableTerm(fallbackTerm);
+        }
+      } catch (rollbackError) {
+        console.error('[TimetableTermDelete] rollback failed', {
+          termId: targetTermId,
+          error: getErrorDiagnostics(rollbackError),
+        });
+      }
+
       showNotice(
-        resolveErrorMessage(error, '学期を削除できませんでした。'),
+        resolveErrorMessage(error, '期間を削除できませんでした。'),
         'error',
       );
       throw error;
@@ -2058,10 +2124,10 @@ export function usePlannerDataState({
           current.map((item) => (item.id === targetTermId ? nextTerm : item)),
         ),
       );
-      showNotice('この学期の授業をすべて削除しました。', 'success');
+      showNotice('この期間の授業をすべて削除しました。', 'success');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, 'この学期の授業を削除できませんでした。'),
+        resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'),
         'error',
       );
       throw error;
