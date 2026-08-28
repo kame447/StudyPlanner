@@ -94,7 +94,7 @@ export function BookshelfMaterialSearch({
       {status ? <p className="detail-note material-metadata-search-status">{status}</p> : null}
 
       {results.length > 0 ? (
-        <div className="material-metadata-results" role="list" aria-label="教材検索結果">
+        <div className="material-metadata-results" aria-label="教材検索結果">
           {results.map((candidate) => (
             <button
               key={candidate.catalogEntryId}
@@ -103,7 +103,6 @@ export function BookshelfMaterialSearch({
                 onSelect(candidate);
                 setStatus('候補を教材名へ反映しました。教科や進捗設定を確認して保存してください。');
               }}
-              role="listitem"
               type="button"
             >
               <strong>{candidate.title}</strong>
@@ -112,6 +111,14 @@ export function BookshelfMaterialSearch({
           ))}
         </div>
       ) : null}
+
+      <p className="detail-note material-metadata-attribution">
+        書誌情報の一部は
+        <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">
+          国立国会図書館サーチ
+        </a>
+        の全国書誌情報（CC BY 4.0）を利用しています。
+      </p>
     </section>
   );
 }
