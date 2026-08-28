@@ -8,7 +8,6 @@ import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
-import { refreshWeeklyPlanningRegisteredMaterialsV5 } from './weeklyPlanningRegisteredMaterialLookupV5';
 import {
   weeklyPlanningTurnOutcomeLifecycle,
   type WeeklyPlanningTurnOutcomeLifecycle,
@@ -27,7 +26,6 @@ export interface WeeklyPlanningTurnApplicationServices {
   runtimeGateway: WeeklyPlanningTurnRuntimeGateway;
   stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
   outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle;
-  refreshRegisteredMaterials?: (ownerId: string) => Promise<unknown>;
 }
 
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
@@ -35,7 +33,6 @@ const defaultServices: WeeklyPlanningTurnApplicationServices = {
   runtimeGateway: weeklyPlanningTurnRuntimeGateway,
   stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
   outcomeLifecycle: weeklyPlanningTurnOutcomeLifecycle,
-  refreshRegisteredMaterials: refreshWeeklyPlanningRegisteredMaterialsV5,
 };
 
 export interface SubmitWeeklyPlanningApplicationTurnParams {
@@ -55,12 +52,10 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
 
-export async function submitWeeklyPlanningApplicationTurn(
+export function submitWeeklyPlanningApplicationTurn(
   params: SubmitWeeklyPlanningApplicationTurnParams,
   services: WeeklyPlanningTurnApplicationServices = defaultServices,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
-  await services.refreshRegisteredMaterials?.(params.userId);
-
   return services.submitControlledTurn({
     session: params.session,
     ownerId: params.userId,

@@ -1,7 +1,7 @@
 {
   "scenario": "exam-student-heavy-input-20260828-shared-memory",
   "turn": 2,
-  "attempt": 36,
+  "attempt": 35,
   "user_text": "数学IA・IIBCはほぼ全部残っています。最初から一周したいです。物理も力学と電磁気はほぼ全部、化学も理論化学の範囲を最初からやるつもりです。具体的な問題数や章ごとの量、全部で何時間かかるかは今は分かりません。",
   "previous_run_id": "33163062955",
   "conversation_id": "exam-student-heavy-shared-memory-20260828-33",
