@@ -1,0 +1,27 @@
+name: One-shot stale branch cleanup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cleanup-stale-branches-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete merged stale branches
+        run: |
+          git push origin --delete -- design/product-observability-console
+          git push origin --delete -- feat/product-observability-ai-request-metrics
+          git push origin --delete -- feat/product-observability-planning-outcomes
+          git push origin --delete -- feat/product-observability-provider-usage
+          git push origin --delete -- feat/product-observability-read-models
+          git push origin --delete -- feat/product-observability-telemetry-foundation
+          git push origin --delete -- fix/bookshelf-add-material-mobile
+          git push origin --delete -- fix/issue209-input-autofocus-zoom
