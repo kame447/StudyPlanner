@@ -9,11 +9,15 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
+import { AdminUserDetailPage } from '../../../src/components/AdminUserDetailPage';
+import { AdminUsersPage } from '../../../src/components/AdminUsersPage';
 import '../../../src/styles.css';
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+const view = params.get('view') ?? 'overview';
 document.documentElement.dataset.theme = theme;
 
 function navItem(icon, label, active = false, disabled = false) {
@@ -30,7 +34,23 @@ function navItem(icon, label, active = false, disabled = false) {
   );
 }
 
-function AdminOverviewHarness() {
+function content() {
+  if (view === 'users') {
+    return <AdminUsersPage navigate={(path) => { window.__adminHarnessNavigation = path; }} />;
+  }
+  if (view === 'user-detail') {
+    return (
+      <AdminUserDetailPage
+        userId="actor-aaaaaaaa-1111-2222-3333-444444444444"
+        navigate={(path) => { window.__adminHarnessNavigation = path; }}
+      />
+    );
+  }
+  if (view === 'ai') return <AdminAiApiPage />;
+  return <AdminOverviewPage navigate={(path) => { window.__adminHarnessNavigation = path; }} />;
+}
+
+function AdminConsoleHarness() {
   return (
     <div className="app-shell admin-app-shell">
       <div className="admin-console-layout">
@@ -43,9 +63,9 @@ function AdminOverviewHarness() {
             </div>
           </div>
           <nav className="admin-console-nav" aria-label="管理者画面ナビゲーション">
-            {navItem(<Activity aria-hidden="true" size={19} />, 'Overview', true)}
-            {navItem(<Users aria-hidden="true" size={19} />, 'Users')}
-            {navItem(<Bot aria-hidden="true" size={19} />, 'AI・API', false, true)}
+            {navItem(<Activity aria-hidden="true" size={19} />, 'Overview', view === 'overview')}
+            {navItem(<Users aria-hidden="true" size={19} />, 'Users', view === 'users' || view === 'user-detail')}
+            {navItem(<Bot aria-hidden="true" size={19} />, 'AI・API', view === 'ai')}
             {navItem(<CalendarClock aria-hidden="true" size={19} />, 'Planning', false, true)}
             {navItem(<ListTree aria-hidden="true" size={19} />, 'Logs')}
             {navItem(<Settings aria-hidden="true" size={19} />, 'System', false, true)}
@@ -58,12 +78,10 @@ function AdminOverviewHarness() {
             <span>read-only console</span>
           </div>
         </aside>
-        <div className="admin-console-main">
-          <AdminOverviewPage navigate={(path) => { window.__adminHarnessNavigation = path; }} />
-        </div>
+        <div className="admin-console-main">{content()}</div>
       </div>
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<AdminOverviewHarness />);
+ReactDOM.createRoot(document.getElementById('root')).render(<AdminConsoleHarness />);
