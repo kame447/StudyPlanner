@@ -60,14 +60,20 @@ describe('ProductObservabilityRetentionService', () => {
     firestore.add('observability_events', 'future-event', '2026-08-29T11:00:00.000Z');
     firestore.add('observability_actor_day', 'expired-actor', '2026-08-27T11:00:00.000Z');
     firestore.add('observability_daily_rollups', 'future-rollup', '2026-08-30T11:00:00.000Z');
+    firestore.add(
+      'observability_active_user_windows',
+      'expired-window',
+      '2026-08-28T10:00:00.000Z',
+    );
 
     const result = await service(firestore).runBatch(100);
 
-    expect(result.deleted).toBe(2);
+    expect(result.deleted).toBe(3);
     expect(result.hasMore).toBe(false);
     expect(firestore.deleted).toEqual([
       'observability_events/expired-event',
       'observability_actor_day/expired-actor',
+      'observability_active_user_windows/expired-window',
     ]);
   });
 

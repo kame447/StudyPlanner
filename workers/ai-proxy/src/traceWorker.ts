@@ -1,3 +1,4 @@
+import type { ObservabilityActiveUserDirtySource } from '../../../shared/productObservabilityReadModel';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
@@ -12,8 +13,11 @@ import {
   isAiRequestObservabilityConfigured,
   scheduleAiRequestMetric,
 } from './aiRequestObservability';
-import worker from './worker';
 import { AiQuotaDurableObject } from './aiQuotaDurableObject';
+import {
+  ProductObservabilityActiveUserSnapshotService,
+  type ProductObservabilityActiveUserSnapshotEnv,
+} from './productObservabilityActiveUserSnapshot';
 import {
   handleProductObservabilityAdminApi,
   isProductObservabilityAdminPath,
@@ -23,6 +27,10 @@ import {
   isProductObservabilityPath,
   type ProductObservabilityApiEnv,
 } from './productObservabilityApi';
+import {
+  ProductObservabilityProfileRegistrationBackfillService,
+  type ProductObservabilityProfileRegistrationBackfillEnv,
+} from './productObservabilityProfileRegistrationBackfill';
 import {
   ProductObservabilityRetentionService,
   type ProductObservabilityRetentionEnv,
@@ -34,6 +42,7 @@ import {
 import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
+import worker from './worker';
 
 export { AiQuotaDurableObject };
 
@@ -42,6 +51,8 @@ const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
 const ROLLUP_BATCH_SIZE = 50;
+const MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE = 2;
+const PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
 const RETENTION_BATCH_SIZE = 100;
 
@@ -70,13 +81,45 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
-async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<void> {
+async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<{
+  engine: ProductObservabilityRollupEngine;
+  dirtySources: ObservabilityActiveUserDirtySource[];
+}> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
   );
+  let dirtySources: ObservabilityActiveUserDirtySource[] = [];
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
-    if (!result.hasMore) return;
+    dirtySources = result.checkpoint.activeUserDirtySources;
+    if (!result.hasMore) break;
+  }
+  return { engine, dirtySources };
+}
+
+async function runScheduledActiveUserSnapshots(
+  env: Record<string, unknown>,
+  dirtySources: readonly ObservabilityActiveUserDirtySource[],
+): Promise<void> {
+  const snapshots = new ProductObservabilityActiveUserSnapshotService(
+    env as unknown as ProductObservabilityActiveUserSnapshotEnv,
+  );
+  await snapshots.refreshAffected(dirtySources);
+}
+
+async function runScheduledProfileRegistrationBackfill(
+  env: Record<string, unknown>,
+): Promise<void> {
+  const backfill = new ProductObservabilityProfileRegistrationBackfillService(
+    env as unknown as ProductObservabilityProfileRegistrationBackfillEnv,
+  );
+  for (
+    let index = 0;
+    index < MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE;
+    index += 1
+  ) {
+    const checkpoint = await backfill.runBatch(PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE);
+    if (checkpoint.completed) return;
   }
 }
 
@@ -91,13 +134,34 @@ async function runScheduledObservabilityRetention(env: Record<string, unknown>):
 }
 
 async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
+  let rollup: Awaited<ReturnType<typeof runScheduledObservabilityRollup>> | null = null;
   try {
-    await runScheduledObservabilityRollup(env);
+    rollup = await runScheduledObservabilityRollup(env);
   } catch (error) {
     console.error('[Product Observability] scheduled rollup failed', {
       message: error instanceof Error ? error.message : String(error),
     });
   }
+
+  if (rollup) {
+    try {
+      await runScheduledActiveUserSnapshots(env, rollup.dirtySources);
+      await rollup.engine.clearActiveUserDirtySources(rollup.dirtySources);
+    } catch (error) {
+      console.error('[Product Observability] active-user snapshot refresh failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  try {
+    await runScheduledProfileRegistrationBackfill(env);
+  } catch (error) {
+    console.error('[Product Observability] profile registration backfill failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   await runScheduledObservabilityRetention(env);
 }
 

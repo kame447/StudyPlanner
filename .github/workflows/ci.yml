@@ -34,12 +34,18 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Install dependencies
         run: npm ci
       - name: Run TypeScript checks
         run: npm run typecheck
       - name: Run tests
         run: npm run test:run
+      - name: Run Firestore rules regression
+        run: npm run test:firestore-rules
       - name: Build production bundle
         run: npm run build
       - name: Check pull request diff
