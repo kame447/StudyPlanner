@@ -49,7 +49,8 @@ describe('weeklyPlanningTurnOutcomeLifecycle', () => {
     const effects = services();
     const lifecycle = createWeeklyPlanningTurnOutcomeLifecycle(effects);
 
-    lifecycle.started({ ownerId: 'owner-1', pending: pending() });
+    expect(lifecycle.started).toBeTypeOf('function');
+    lifecycle.started?.({ ownerId: 'owner-1', pending: pending() });
 
     expect(effects.recordStartedOutcome).toHaveBeenCalledWith({ pending: pending() });
   });
