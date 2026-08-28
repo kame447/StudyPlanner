@@ -188,6 +188,11 @@
 }
 
 @media (max-width: 760px) {
+  .admin-ai-shell .admin-overview-header > div:first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
   .admin-user-copy code {
     max-width: 68vw;
   }
