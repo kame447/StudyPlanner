@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { normalizeMaterialCatalogTitle } from '../../shared/materialMetadataContract';
 import {
   MATERIAL_CATALOG_CURATED_ENTRIES,
   MATERIAL_CATALOG_SEED_ENTRIES,
@@ -6,8 +7,12 @@ import {
 import { searchBuiltInMaterialCatalog } from './builtInMaterialCatalog';
 
 describe('built-in material catalog', () => {
-  it('ships at least one thousand initial search entries with a substantial curated core', () => {
-    expect(MATERIAL_CATALOG_SEED_ENTRIES.length).toBeGreaterThanOrEqual(1000);
+  it('ships at least one thousand unique initial search identities with a substantial curated core', () => {
+    const uniqueSearchIdentities = new Set(
+      MATERIAL_CATALOG_SEED_ENTRIES.map((entry) => normalizeMaterialCatalogTitle(entry.title)),
+    );
+
+    expect(uniqueSearchIdentities.size).toBeGreaterThanOrEqual(1000);
     expect(MATERIAL_CATALOG_CURATED_ENTRIES.length).toBeGreaterThanOrEqual(300);
     expect(new Set(MATERIAL_CATALOG_SEED_ENTRIES.map((entry) => entry.id)).size)
       .toBe(MATERIAL_CATALOG_SEED_ENTRIES.length);
@@ -36,9 +41,18 @@ describe('built-in material catalog', () => {
       title: 'Distinction 2000',
       resolutionRequired: false,
     });
+  });
+
+  it('prefers an existing high-confidence curated identity over duplicate popularity or discovery seeds', () => {
     expect(searchBuiltInMaterialCatalog('キタミ式 ITパスポート')[0]).toMatchObject({
-      catalogEntryId: 'seed:amazon-itpass-kitami',
-      subjectHint: '情報',
+      catalogEntryId: 'seed:it-ip-kitaro',
+      subjectHint: '情報・IT',
+      resolutionRequired: false,
+    });
+
+    expect(searchBuiltInMaterialCatalog('英検準1級 過去6回全問題集')[0]).toMatchObject({
+      subjectHint: '英語資格',
+      resolutionRequired: false,
     });
   });
 
@@ -64,8 +78,8 @@ describe('built-in material catalog', () => {
       subjectHint: '大学受験',
       resolutionRequired: true,
     });
-    expect(searchBuiltInMaterialCatalog('英検準1級 過去6回全問題集')[0]).toMatchObject({
-      subjectHint: '英語',
+    expect(searchBuiltInMaterialCatalog('東京都 公立高校入試 予想問題')[0]).toMatchObject({
+      subjectHint: '高校受験',
       resolutionRequired: true,
     });
   });
