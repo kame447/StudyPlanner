@@ -4,6 +4,7 @@ import {
   normalizeIsbn,
   normalizeMaterialCatalogTitle,
   type MaterialMetadataCandidate,
+  type MaterialMetadataDetailsResponse,
   type MaterialMetadataSearchResponse,
 } from '../../../shared/materialMetadataContract';
 import {
@@ -17,7 +18,7 @@ export interface MaterialMetadataApiEnv extends FirestoreServiceAccountEnv {
 }
 
 interface CatalogRecord extends MaterialMetadataCandidate {
-  schemaVersion: 1;
+  schemaVersion: 2;
   normalizedTitle: string;
   sourceProvider: 'ndl-search';
   sourceRecordId?: string;
@@ -28,15 +29,26 @@ interface FirebaseLookupResponse {
   users?: Array<{ localId?: string; emailVerified?: boolean }>;
 }
 
+interface OpenBdRecord {
+  summary?: {
+    isbn?: string;
+    cover?: string;
+  };
+}
+
 const SEARCH_PATH = '/material-metadata/search';
+const DETAILS_PATH = '/material-metadata/details';
 const CATALOG_COLLECTION = 'material_metadata_catalog';
 const NDL_OPENSEARCH_URL = 'https://ndlsearch.ndl.go.jp/api/opensearch';
+const NDL_SRU_URL = 'https://ndlsearch.ndl.go.jp/api/sru';
 const NDL_DATA_PROVIDER_ID = 'iss-ndl-opac-national';
+const OPENBD_GET_URL = 'https://api.openbd.jp/v1/get';
 const MAX_QUERY_BODY_BYTES = 2048;
 const MAX_RESULTS = 8;
+const MAX_TOC_ITEMS = 80;
 
 export function isMaterialMetadataPath(pathname: string): boolean {
-  return pathname === SEARCH_PATH;
+  return pathname === SEARCH_PATH || pathname === DETAILS_PATH;
 }
 
 function allowedOrigins(env: MaterialMetadataApiEnv): Set<string> {
@@ -146,8 +158,13 @@ function asCatalogCandidate(value: Record<string, unknown> | null): MaterialMeta
     authors: value.authors,
     ...(typeof value.publisher === 'string' ? { publisher: value.publisher } : {}),
     ...(Number.isInteger(value.publishedYear) ? { publishedYear: value.publishedYear as number } : {}),
+    ...(typeof value.edition === 'string' ? { edition: value.edition } : {}),
     ...(typeof value.isbn10 === 'string' ? { isbn10: value.isbn10 } : {}),
     ...(typeof value.isbn13 === 'string' ? { isbn13: value.isbn13 } : {}),
+    ...(Number.isInteger(value.pageCount) ? { pageCount: value.pageCount as number } : {}),
+    ...(Array.isArray(value.tableOfContents)
+      ? { tableOfContents: value.tableOfContents.filter((item): item is string => typeof item === 'string') }
+      : {}),
   };
 }
 
@@ -210,13 +227,17 @@ function stripTags(value: string): string {
     .trim();
 }
 
-function extractTagValues(fragment: string, localName: string): string[] {
+function extractTagFragments(fragment: string, localName: string): string[] {
   const pattern = new RegExp(
     `<(?:[A-Za-z0-9_.-]+:)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:[A-Za-z0-9_.-]+:)?${localName}>`,
     'gi',
   );
-  return Array.from(fragment.matchAll(pattern))
-    .map((match) => stripTags(match[1] ?? ''))
+  return Array.from(fragment.matchAll(pattern)).map((match) => match[1] ?? '');
+}
+
+function extractTagValues(fragment: string, localName: string): string[] {
+  return extractTagFragments(fragment, localName)
+    .map(stripTags)
     .filter(Boolean);
 }
 
@@ -243,6 +264,26 @@ function publishedYearFromValues(values: string[]): number | undefined {
     if (Number.isInteger(year)) return year;
   }
   return undefined;
+}
+
+function pageCountFromExtent(values: string[]): number | undefined {
+  for (const value of values) {
+    const pageMatch = value.match(/(?:^|\D)(\d{1,5})\s*(?:p\b|pages?\b|ページ)/i);
+    if (!pageMatch) continue;
+    const pages = Number(pageMatch[1]);
+    if (Number.isInteger(pages) && pages > 0) return pages;
+  }
+  return undefined;
+}
+
+function tableOfContentsFromXml(xml: string): string[] {
+  const values = extractTagFragments(xml, 'tableOfContents').flatMap((fragment) => {
+    const titles = extractTagValues(fragment, 'title');
+    if (titles.length > 0) return titles;
+    const text = stripTags(fragment);
+    return text ? [text] : [];
+  });
+  return unique(values).slice(0, MAX_TOC_ITEMS);
 }
 
 export function parseNdlOpenSearchXml(xml: string): MaterialMetadataCandidate[] {
@@ -285,6 +326,38 @@ export function buildNdlOpenSearchUrl(
   return url.toString();
 }
 
+export function buildNdlSruDetailsUrl(isbn: string): string {
+  const normalized = normalizeIsbn(isbn);
+  if (!normalized) throw new Error('A valid ISBN is required for NDL details lookup.');
+  const url = new URL(NDL_SRU_URL);
+  url.searchParams.set('operation', 'searchRetrieve');
+  url.searchParams.set('version', '1.2');
+  url.searchParams.set('recordSchema', 'dcndl_v3');
+  url.searchParams.set('recordPacking', 'xml');
+  url.searchParams.set('onlyBib', 'true');
+  url.searchParams.set('maximumRecords', '1');
+  url.searchParams.set(
+    'query',
+    `dpid="${NDL_DATA_PROVIDER_ID}" AND isbn="${normalized}"`,
+  );
+  return url.toString();
+}
+
+export function parseNdlSruDetailsXml(
+  xml: string,
+  candidate: MaterialMetadataCandidate,
+): MaterialMetadataCandidate {
+  const pageCount = pageCountFromExtent(extractTagValues(xml, 'extent'));
+  const edition = extractTagValues(xml, 'edition')[0];
+  const tableOfContents = tableOfContentsFromXml(xml);
+  return {
+    ...candidate,
+    ...(edition ? { edition } : {}),
+    ...(pageCount ? { pageCount } : {}),
+    ...(tableOfContents.length > 0 ? { tableOfContents } : {}),
+  };
+}
+
 async function searchNdl(
   query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
 ): Promise<MaterialMetadataCandidate[]> {
@@ -300,15 +373,85 @@ async function searchNdl(
   return parseNdlOpenSearchXml(await response.text());
 }
 
+async function enrichNdlDetails(
+  candidate: MaterialMetadataCandidate,
+): Promise<MaterialMetadataCandidate> {
+  const isbn = candidate.isbn13 ?? candidate.isbn10;
+  if (!isbn) return candidate;
+  if (candidate.pageCount && candidate.tableOfContents?.length) return candidate;
+  const response = await fetch(buildNdlSruDetailsUrl(isbn), {
+    headers: {
+      Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+      'User-Agent': 'StudyPlanner material metadata details',
+    },
+  });
+  if (!response.ok) return candidate;
+  return parseNdlSruDetailsXml(await response.text(), candidate);
+}
+
+function parseOpenBdCoverMap(payload: unknown): Map<string, string> {
+  const covers = new Map<string, string>();
+  if (!Array.isArray(payload)) return covers;
+  payload.forEach((value) => {
+    if (!value || typeof value !== 'object') return;
+    const summary = (value as OpenBdRecord).summary;
+    const isbn = typeof summary?.isbn === 'string' ? normalizeIsbn(summary.isbn) : null;
+    const cover = typeof summary?.cover === 'string' ? summary.cover.trim() : '';
+    if (isbn && cover && /^https?:\/\//i.test(cover)) covers.set(isbn, cover);
+  });
+  return covers;
+}
+
+async function enrichCoverUrls(
+  candidates: MaterialMetadataCandidate[],
+): Promise<MaterialMetadataCandidate[]> {
+  const isbns = unique(
+    candidates.flatMap((candidate) => {
+      const isbn = candidate.isbn13 ?? candidate.isbn10;
+      return isbn ? [isbn] : [];
+    }),
+  );
+  if (isbns.length === 0) return candidates;
+
+  try {
+    const url = new URL(OPENBD_GET_URL);
+    url.searchParams.set('isbn', isbns.join(','));
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'StudyPlanner material cover lookup',
+      },
+    });
+    if (!response.ok) return candidates;
+    const covers = parseOpenBdCoverMap(await response.json());
+    return candidates.map((candidate) => {
+      const isbn = candidate.isbn13 ?? candidate.isbn10;
+      const coverImageUrl = isbn ? covers.get(isbn) : undefined;
+      return coverImageUrl ? { ...candidate, coverImageUrl } : candidate;
+    });
+  } catch (error) {
+    console.warn('[Material Metadata] cover enrichment failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return candidates;
+  }
+}
+
+function cacheableCandidate(candidate: MaterialMetadataCandidate): MaterialMetadataCandidate {
+  const { coverImageUrl: _coverImageUrl, ...rest } = candidate;
+  return rest;
+}
+
 async function cacheCandidates(
   client: FirestoreServiceAccountClient | null,
   candidates: MaterialMetadataCandidate[],
 ): Promise<void> {
   if (!client || candidates.length === 0) return;
   const cachedAt = new Date().toISOString();
-  const writes = candidates.map(async (candidate) => {
+  const writes = candidates.map(async (sourceCandidate) => {
+    const candidate = cacheableCandidate(sourceCandidate);
     const value: CatalogRecord = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       ...candidate,
       normalizedTitle: normalizeMaterialCatalogTitle(candidate.title),
       sourceProvider: 'ndl-search',
@@ -324,6 +467,64 @@ async function cacheCandidates(
       });
     }
   });
+}
+
+function pickCandidateForDetails(
+  candidates: MaterialMetadataCandidate[],
+  query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
+): MaterialMetadataCandidate | null {
+  if (candidates.length === 0) return null;
+  if (query.kind === 'isbn') return candidates[0] ?? null;
+  const normalizedTitle = normalizeMaterialCatalogTitle(query.value);
+  return candidates.find(
+    (candidate) => normalizeMaterialCatalogTitle(candidate.title) === normalizedTitle,
+  ) ?? candidates[0] ?? null;
+}
+
+async function resolveCandidateForDetails(
+  client: FirestoreServiceAccountClient | null,
+  query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
+): Promise<MaterialMetadataCandidate | null> {
+  const cached = await lookupCatalog(client, query);
+  let candidate = pickCandidateForDetails(cached, query);
+  if (!candidate) {
+    const searched = await searchNdl(query);
+    await cacheCandidates(client, searched);
+    candidate = pickCandidateForDetails(searched, query);
+  }
+  if (!candidate) return null;
+  const enriched = await enrichNdlDetails(candidate);
+  await cacheCandidates(client, [enriched]);
+  return (await enrichCoverUrls([enriched]))[0] ?? enriched;
+}
+
+async function readQueryPayload(
+  request: Request,
+  env: MaterialMetadataApiEnv,
+): Promise<Response | NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>> {
+  const declaredLength = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_QUERY_BODY_BYTES) {
+    return jsonResponse(request, env, 413, { error: '検索条件が長すぎます。' });
+  }
+  const requestText = await request.text();
+  if (new TextEncoder().encode(requestText).byteLength > MAX_QUERY_BODY_BYTES) {
+    return jsonResponse(request, env, 413, { error: '検索条件が長すぎます。' });
+  }
+
+  let payload: { query?: unknown };
+  try {
+    payload = JSON.parse(requestText) as { query?: unknown };
+  } catch {
+    return jsonResponse(request, env, 400, { error: '検索条件を読み取れませんでした。' });
+  }
+  if (typeof payload.query !== 'string') {
+    return jsonResponse(request, env, 400, { error: 'ISBNまたは教材名を入力してください。' });
+  }
+  const query = classifyMaterialMetadataQuery(payload.query);
+  if (!query) {
+    return jsonResponse(request, env, 400, { error: 'ISBNまたは2文字以上の教材名を入力してください。' });
+  }
+  return query;
 }
 
 export async function handleMaterialMetadataApi(
@@ -347,39 +548,41 @@ export async function handleMaterialMetadataApi(
   const user = await requireFirebaseUser(request, env);
   if (user instanceof Response) return user;
 
-  const declaredLength = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_QUERY_BODY_BYTES) {
-    return jsonResponse(request, env, 413, { error: '検索条件が長すぎます。' });
-  }
-  const requestText = await request.text();
-  if (new TextEncoder().encode(requestText).byteLength > MAX_QUERY_BODY_BYTES) {
-    return jsonResponse(request, env, 413, { error: '検索条件が長すぎます。' });
-  }
-
-  let payload: { query?: unknown };
-  try {
-    payload = JSON.parse(requestText) as { query?: unknown };
-  } catch {
-    return jsonResponse(request, env, 400, { error: '検索条件を読み取れませんでした。' });
-  }
-  if (typeof payload.query !== 'string') {
-    return jsonResponse(request, env, 400, { error: 'ISBNまたは教材名を入力してください。' });
-  }
-  const query = classifyMaterialMetadataQuery(payload.query);
-  if (!query) {
-    return jsonResponse(request, env, 400, { error: 'ISBNまたは2文字以上の教材名を入力してください。' });
-  }
-
+  const query = await readQueryPayload(request, env);
+  if (query instanceof Response) return query;
   const client = catalogClient(env);
+
+  if (pathname === DETAILS_PATH) {
+    try {
+      const candidate = await resolveCandidateForDetails(client, query);
+      if (!candidate) {
+        return jsonResponse(request, env, 404, {
+          error: '詳しい教材情報が見つかりませんでした。基本情報のまま登録できます。',
+        });
+      }
+      const body: MaterialMetadataDetailsResponse = { candidate };
+      return jsonResponse(request, env, 200, body as unknown as Record<string, unknown>);
+    } catch (error) {
+      console.warn('[Material Metadata] details lookup failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return jsonResponse(request, env, 502, {
+        error: '詳しい教材情報を取得できませんでした。基本情報のまま登録できます。',
+      });
+    }
+  }
+
   const cached = await lookupCatalog(client, query);
   if (cached.length > 0) {
-    const body: MaterialMetadataSearchResponse = { results: cached, cacheHit: true };
+    const results = await enrichCoverUrls(cached);
+    const body: MaterialMetadataSearchResponse = { results, cacheHit: true };
     return jsonResponse(request, env, 200, body as unknown as Record<string, unknown>);
   }
 
   try {
-    const results = await searchNdl(query);
-    await cacheCandidates(client, results);
+    const providerResults = await searchNdl(query);
+    await cacheCandidates(client, providerResults);
+    const results = await enrichCoverUrls(providerResults);
     const body: MaterialMetadataSearchResponse = { results, cacheHit: false };
     return jsonResponse(request, env, 200, body as unknown as Record<string, unknown>);
   } catch (error) {
