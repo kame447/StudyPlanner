@@ -130,6 +130,20 @@ function normalizeAiConfig(
   };
 }
 
+function enforceProductionTransport(config: AiConfig): AiConfig {
+  if (
+    config.provider === 'openai'
+    && !usesCloudflareOpenAiProxy(config)
+    && !allowsDirectOpenAiTransport()
+  ) {
+    return {
+      provider: 'rules',
+      ...getProviderDefaults('rules'),
+    };
+  }
+  return config;
+}
+
 function writeStoredAiConfig(config: AiConfig): void {
   if (typeof window === 'undefined') {
     return;
@@ -139,11 +153,15 @@ function writeStoredAiConfig(config: AiConfig): void {
 }
 
 export function getAiConfig(): AiConfig {
-  return normalizeAiConfig(readStoredAiConfig(), getEnvConfig());
+  return enforceProductionTransport(
+    normalizeAiConfig(readStoredAiConfig(), getEnvConfig()),
+  );
 }
 
 export function saveAiConfig(config: AiConfig): AiConfig {
-  const normalized = normalizeAiConfig(config, getEnvConfig());
+  const normalized = enforceProductionTransport(
+    normalizeAiConfig(config, getEnvConfig()),
+  );
   writeStoredAiConfig(normalized);
   return normalized;
 }
@@ -153,7 +171,7 @@ export function resetAiConfig(): AiConfig {
     window.sessionStorage.removeItem(AI_RUNTIME_STORAGE_KEY);
   }
 
-  return getEnvConfig();
+  return enforceProductionTransport(getEnvConfig());
 }
 
 export function getAiConfigValidationMessage(
