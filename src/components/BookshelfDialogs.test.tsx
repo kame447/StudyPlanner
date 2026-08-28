@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
+import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import type { StudyMaterial, StudySubject } from '../types/domain';
 
@@ -137,6 +138,56 @@ describe('bookshelf dialogs', () => {
       undefined,
     );
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps catalog cover URLs separate from uploaded image data', async () => {
+    const catalogCoverUrl = 'https://cover.example/9784023315686.jpg';
+    const catalogCandidate = {
+      catalogEntryId: 'isbn13:9784023315686',
+      title: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+      authors: ['TEX加藤'],
+      isbn13: '9784023315686',
+      coverImageUrl: catalogCoverUrl,
+    };
+    const savedMaterial: StudyMaterial = {
+      ...material,
+      id: 'material-kintore',
+      name: catalogCandidate.title,
+      coverImageUrl: catalogCoverUrl,
+      coverImageDataUrl: undefined,
+    };
+    const onSave = vi.fn().mockResolvedValue(savedMaterial);
+    let renderer!: ReactTestRenderer;
+
+    act(() => {
+      renderer = create(
+        <BookshelfMaterialDialog
+          userId="user-1"
+          material={null}
+          subjects={[subject]}
+          onClose={vi.fn()}
+          onSave={onSave}
+          onDelete={vi.fn()}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByType(BookshelfMaterialSearch).props.onSelect(catalogCandidate);
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
+    });
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: catalogCandidate.title,
+        coverImageUrl: catalogCoverUrl,
+        coverImageDataUrl: undefined,
+      }),
+      undefined,
+    );
   });
 
   it('preserves the existing current-position clamp when editing paced material', async () => {
