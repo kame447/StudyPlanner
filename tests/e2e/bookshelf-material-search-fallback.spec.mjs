@@ -64,6 +64,21 @@ test('common material aliases resolve from the curated seed without the provider
   await expect(sheet.getByLabel('教科')).toHaveValue('material-search-subject');
 });
 
+test('broad discovery entries are clearly marked before bibliography resolution', async ({ page }) => {
+  const sheet = await openAddMaterialSheet(page);
+
+  await sheet.getByLabel('ISBN / 教材名').fill('東京大学 赤本');
+  await sheet.getByRole('button', { name: '検索', exact: true }).click();
+
+  const candidate = sheet.locator('.material-metadata-result').filter({
+    hasText: '東京大学 赤本',
+  });
+  await expect(candidate).toBeVisible();
+  await expect(candidate).toContainText('検索候補・選択後に実在する版とISBNを確認');
+  await candidate.click();
+  await expect(sheet.getByLabel('教材名', { exact: true })).toHaveValue('東京大学 赤本');
+});
+
 test('material search failure never blocks manual material registration', async ({ page }) => {
   const sheet = await openAddMaterialSheet(page);
 
