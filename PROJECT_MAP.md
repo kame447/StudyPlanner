@@ -50,9 +50,12 @@ Product observability / admin analytics work:
 External API / provider integration work:
 
 1. `docs/domains/external-integrations/README.md`
-2. current work record under `docs/domains/external-integrations/work/`
+2. `docs/domains/external-integrations/spec/material-metadata.md` for book material metadata
 3. Issue #187
-4. current product domain model and the integration adapter being changed
+4. `shared/materialMetadataContract.ts`
+5. `workers/ai-proxy/src/materialMetadataApi.ts`
+6. `src/services/materialMetadataService.ts`
+7. `src/components/BookshelfMaterialSearch.tsx`
 
 `docs/archive/` is evidence, not current instruction.
 
@@ -70,6 +73,7 @@ UI components and interaction surfaces. Examples:
 
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
 - calendar / home / bookshelf / timetable views
+- `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
 - `QuickEntryModal.tsx`: generic quick/manual entry surface
 - `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
@@ -97,7 +101,9 @@ Components must not know storage implementation details, fallback ordering or tr
 
 External/service integration and the separate single-event natural-language subsystem.
 
-New external provider adapters may physically live under services or a future feature-owned integration module, but their provider selection, terms, normalization and fallback boundaries are governed by `docs/domains/external-integrations/`. A component or product domain must not branch on provider names or persist raw provider responses as its canonical model.
+External provider adapters may physically live under services or a feature-owned integration module, but provider selection, terms, normalization and fallback boundaries are governed by `docs/domains/external-integrations/`. A component or product domain must not branch on provider names or persist raw provider responses as its canonical model.
+
+`src/services/materialMetadataService.ts` is the browser-facing client for normalized material metadata search. It authenticates to the Worker and validates the provider-neutral response; it does not call NDL directly.
 
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
@@ -116,6 +122,8 @@ Current `src/lib/adminAnalytics.ts` is legacy/current admin aggregation evidence
 ### `src/types/`
 
 Shared application/domain types. Prefer feature-local types when one feature owns the contract.
+
+`shared/materialMetadataContract.ts` is a transport/integration contract shared by browser and Worker. It is not the `StudyMaterial` persistence model.
 
 ## 4. Product observability
 
@@ -144,9 +152,21 @@ Canonical documentation root: `docs/domains/external-integrations/`
 
 Issue #187 tracks the current external-API integration program. This responsibility owns provider/API adoption evidence, authentication and quota assumptions, provider-specific usage conditions, normalized adapter boundaries and graceful degradation when an external service is unavailable.
 
-It does not own the meaning or lifecycle of the product data that consumes imported metadata. For example, book APIs may suggest bibliographic metadata, but the `StudyMaterial` lifecycle and the user's learning structure remain StudyPlanner-owned.
+For book material metadata, `docs/domains/external-integrations/spec/material-metadata.md` is the canonical requirement. The initial runtime path is:
 
-Current material API research is recorded in `docs/domains/external-integrations/work/20260828-material-metadata-api-research.md`.
+```text
+BookshelfMaterialSearch
+  ↓ authenticated request
+materialMetadataService
+  ↓
+Cloudflare Worker materialMetadataApi
+  ↓
+shared Firestore bibliographic catalog
+  ├─ hit → normalized result
+  └─ miss → NDL Search → normalize → cache
+```
+
+The shared catalog is an external bibliographic cache, not a shared user `StudyMaterial` collection. Manual/user-specific materials are not automatically published to it.
 
 External integration code must preserve these boundaries:
 
@@ -265,6 +285,8 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 ## 9. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
+- material metadata adapter/client: `workers/ai-proxy/src/materialMetadataApi.test.ts` / `src/services/materialMetadataService.test.ts`
+- material search manual fallback: `tests/e2e/bookshelf-material-search-fallback.spec.mjs`
 - reporting aggregation: `src/lib/learningReport.test.ts`
 - product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
