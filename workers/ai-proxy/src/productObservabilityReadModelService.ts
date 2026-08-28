@@ -1,5 +1,6 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import {
+  OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
   type ObservabilityActorDay,
@@ -21,7 +22,7 @@ import {
 } from './productObservabilityReadModelProjection';
 
 const ACTOR_DAY_COLLECTION = 'observability_actor_day';
-const USER_SUMMARY_COLLECTION = 'observability_user_summary';
+const USER_SUMMARY_COLLECTION_PREFIX = 'observability_user_summary';
 const DAILY_ROLLUP_COLLECTION = 'observability_daily_rollups';
 const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
@@ -72,6 +73,10 @@ function dailyId(environment: ObservabilityEnvironment, localDate: string): stri
   return `${environment}:${localDate}`;
 }
 
+function userSummaryCollection(environment: ObservabilityEnvironment): string {
+  return `${USER_SUMMARY_COLLECTION_PREFIX}_${environment}`;
+}
+
 function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   if (!value) return null;
   const { id: _id, ...document } = value;
@@ -116,6 +121,13 @@ function asActorDay(value: FirestoreOrderedDocument): ObservabilityActorDay {
 function asUserSummary(value: FirestoreOrderedDocument): ObservabilityUserSummary {
   const { documentName: _documentName, id: _id, ...document } = value;
   return document as unknown as ObservabilityUserSummary;
+}
+
+function assertCompatibleLatency(daily: readonly ObservabilityDailyRollup[]): void {
+  const incompatible = daily.find(
+    (entry) => entry.ai.latency.version !== OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
+  );
+  if (incompatible) throw new Error('observability_latency_histogram_version_mismatch');
 }
 
 export class ProductObservabilityReadModelService {
@@ -168,6 +180,7 @@ export class ProductObservabilityReadModelService {
         dailyId(params.environment, localDate),
       ),
     )))).filter((value): value is ObservabilityDailyRollup => Boolean(value));
+    assertCompatibleLatency(daily);
     const actors = await this.distinctActorsForDates(dates, params.environment);
     const latency = daily.length > 0
       ? mergeLatencyHistograms(daily.map((entry) => entry.ai.latency))
@@ -188,23 +201,27 @@ export class ProductObservabilityReadModelService {
     };
   }
 
-  async getUserSummary(actorSubjectId: string): Promise<ObservabilityUserSummary | null> {
+  async getUserSummary(
+    actorSubjectId: string,
+    environment: ObservabilityEnvironment = 'production',
+  ): Promise<ObservabilityUserSummary | null> {
     const normalized = actorSubjectId.trim();
     if (!/^actor-[A-Za-z0-9-]{8,160}$/.test(normalized)) {
       throw new Error('observability_actor_subject_invalid');
     }
     return withoutStorageId<ObservabilityUserSummary>(
-      await this.firestore.getDocument(USER_SUMMARY_COLLECTION, normalized),
+      await this.firestore.getDocument(userSummaryCollection(environment), normalized),
     );
   }
 
   async listUserSummaries(params: {
+    environment?: ObservabilityEnvironment;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
   } = {}): Promise<ObservabilityUserSummaryPage> {
     const limit = Math.max(1, Math.min(USER_SUMMARY_PAGE_SIZE, params.limit ?? 50));
     const rows = await this.firestore.queryDocumentsAfter({
-      collection: USER_SUMMARY_COLLECTION,
+      collection: userSummaryCollection(params.environment ?? 'production'),
       orderByField: 'actorSubjectId',
       cursor: params.cursor ?? null,
       limit,
