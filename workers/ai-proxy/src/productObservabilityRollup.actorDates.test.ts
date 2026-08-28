@@ -18,6 +18,9 @@ class MemoryRollupFirestore {
       id,
       documentName: `projects/test/databases/(default)/documents/observability_events/${id}`,
     });
+    this.events.sort((left, right) =>
+      String(left.observedAt).localeCompare(String(right.observedAt))
+      || left.documentName.localeCompare(right.documentName));
   }
 
   async getDocument(collection: string, id: string): Promise<StoredDocument | null> {
@@ -97,22 +100,30 @@ function engine(firestore: MemoryRollupFirestore): ProductObservabilityRollupEng
 }
 
 describe('ProductObservabilityRollupEngine actor-day change projection', () => {
-  it('persists a reporting date only when a new actor-day was committed', async () => {
+  it('persists one dirty source per new actor-day and environment', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('event-1', event());
     firestore.addEvent('event-2', event({
       eventId: 'activity-22222222',
       observedAt: '2026-08-28T11:01:00.000Z',
     }));
+    firestore.addEvent('event-preview', event({
+      eventId: 'activity-preview-1',
+      observedAt: '2026-08-28T11:02:00.000Z',
+      environment: 'preview',
+    }));
 
     const result = await engine(firestore).runBatch(50);
 
-    expect(result.processed).toBe(2);
-    expect(result.changedActorDates).toEqual(['2026-08-27']);
-    expect(result.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+    expect(result.processed).toBe(3);
+    expect(result.changedActorSources).toEqual([
+      { environment: 'preview', localDate: '2026-08-27' },
+      { environment: 'production', localDate: '2026-08-27' },
+    ]);
+    expect(result.checkpoint.activeUserDirtySources).toEqual(result.changedActorSources);
   });
 
-  it('keeps dirty dates across an empty rollup until snapshot maintenance clears them', async () => {
+  it('keeps dirty sources across an empty rollup until snapshot maintenance clears them', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('event-1', event());
     const rollup = engine(firestore);
@@ -120,12 +131,29 @@ describe('ProductObservabilityRollupEngine actor-day change projection', () => {
     const first = await rollup.runBatch(50);
     const second = await rollup.runBatch(50);
 
-    expect(first.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+    expect(first.checkpoint.activeUserDirtySources).toEqual([
+      { environment: 'production', localDate: '2026-08-27' },
+    ]);
     expect(second.processed).toBe(0);
-    expect(second.checkpoint.activeUserDirtyDates).toEqual(['2026-08-27']);
+    expect(second.checkpoint.activeUserDirtySources).toEqual(
+      first.checkpoint.activeUserDirtySources,
+    );
 
-    await rollup.clearActiveUserDirtyDates(['2026-08-27']);
+    await rollup.clearActiveUserDirtySources([
+      { environment: 'production', localDate: '2026-08-27' },
+    ]);
     const third = await rollup.runBatch(50);
-    expect(third.checkpoint.activeUserDirtyDates).toEqual([]);
+    expect(third.checkpoint.activeUserDirtySources).toEqual([]);
+  });
+
+  it('rejects an unrecognized environment before creating arbitrary read-model collections', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('poison', event({ environment: 'prod-typo' }));
+
+    await expect(engine(firestore).runBatch(50)).rejects.toThrow(
+      'invalid_observability_event',
+    );
+    expect(firestore.documents.has('observability_user_summary_prod-typo/actor-12345678'))
+      .toBe(false);
   });
 });
