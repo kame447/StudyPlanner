@@ -1,4 +1,6 @@
+import amazonPopular from './amazon-popular.json';
 import certifications from './certifications.json';
+import { MATERIAL_CATALOG_DISCOVERY_ENTRIES } from './coverage-discovery';
 import english from './english.json';
 import exams from './exams.json';
 import japanese from './japanese.json';
@@ -15,6 +17,7 @@ export interface BuiltInMaterialSeedEntry {
   subject: string;
   kind: string;
   aliases?: string[];
+  resolutionRequired?: boolean;
 }
 
 export interface BuiltInMaterialSeriesAlias {
@@ -22,9 +25,9 @@ export interface BuiltInMaterialSeriesAlias {
   entryIds: string[];
 }
 
-export const MATERIAL_CATALOG_SEED_VERSION = 1;
+export const MATERIAL_CATALOG_SEED_VERSION = 2;
 
-export const MATERIAL_CATALOG_SEED_ENTRIES: BuiltInMaterialSeedEntry[] = [
+export const MATERIAL_CATALOG_CURATED_ENTRIES: BuiltInMaterialSeedEntry[] = [
   ...math,
   ...english,
   ...japanese,
@@ -34,6 +37,12 @@ export const MATERIAL_CATALOG_SEED_ENTRIES: BuiltInMaterialSeedEntry[] = [
   ...certifications,
   ...university,
   ...verifiedSeries,
+  ...amazonPopular,
 ] as BuiltInMaterialSeedEntry[];
+
+export const MATERIAL_CATALOG_SEED_ENTRIES: BuiltInMaterialSeedEntry[] = [
+  ...MATERIAL_CATALOG_CURATED_ENTRIES,
+  ...MATERIAL_CATALOG_DISCOVERY_ENTRIES,
+];
 
 export const MATERIAL_CATALOG_SERIES_ALIASES = seriesAliases as BuiltInMaterialSeriesAlias[];
