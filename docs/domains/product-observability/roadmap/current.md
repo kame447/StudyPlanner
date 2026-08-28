@@ -6,9 +6,9 @@ Owning Issue: #213
 
 ## Current phase
 
-Phase 1 と Phase 2 は完了済みである。Phase 3「Aggregation and read models」の初回実装も PR #220 で main に統合済みだが、merge 後の監査で追加修正が必要になったため、現在は `fix/product-observability-phase3-audit` で Phase 3 の completion gate を再確認している。
+Phase 1 と Phase 2 は完了済みである。Phase 3「Aggregation and read models」の初回実装も PR #220 で main に統合済みだが、merge 後の監査で追加修正が必要になったため、現在は `fix/product-observability-phase3-audit` / PR #222 で Phase 3 の completion gate を再確認している。
 
-Phase 4「Console shell and Overview」は、この監査・修正が完了して main へ統合されるまで開始しない。
+Phase 4「Console shell and Overview」は、この監査・修正が完了して main へ統合され、merged mainの七視点再監査が通るまで開始しない。
 
 管理UIを先に作って read model の不足をUI側集計で埋めない。Phase 3 の source of truth と bounded query contract を確定してからUIへ進む。
 
@@ -44,7 +44,11 @@ PR #220 で初回実装をmainへ統合した。
 
 実装済みの主要責務は、actor-day presence、daily service / AI usage / planning quality rollup、pseudonymous user summary、mergeable latency histogram、rollup checkpoint、authenticated bounded admin read endpoint、typed browser query serviceである。
 
-現在のpost-merge auditでは、Phase 4へ進む前に次をcompletion gateとして確認する。
+post-merge adversarial auditで、rolling active-userのnormal read cost、snapshot recovery / environment isolation / revision race、runtime read validation、登録ユーザーread model、profile registration timestamp authority、Firestore Rules回帰検証を追加でhardeningした。
+
+登録ユーザー総数と期間内新規登録者はactivity telemetryから推測せず、profile registration authorityをserver-side COUNT aggregationで読む。新規profileのcanonical `registeredAt`はFirestore server timestampで作成し、作成後は利用者から変更できない。legacy profileはbounded service-account backfillを行い、移行が不完全な間の新規登録数は0ではなくunknownとする。
+
+現在のcompletion gateは次を確認する。
 
 - rolling active userが日次countの単純加算ではなくdistinct actor unionで定義される
 - user summaryとdaily rollupがraw Firebase UID / email / prompt / user textを保持しない
@@ -54,12 +58,17 @@ PR #220 で初回実装をmainへ統合した。
 - p50 / p95をdaily percentileの平均から作らない
 - observability failureがproduct operationのauthorityを変えない
 - retentionとread-model lifecycleがboundedな運用契約になっている
-- admin read pathがraw telemetry collectionを通常時に全件scanしない
-- final HEADでTypeScript、full test、production build、diff check、Browser Regression、UI Quality Automation、UI Regression Matrixを通す
+- admin read pathがraw telemetry / actor-day / profile本文を通常時に全件scanしない
+- 登録ユーザーをfirst activityで代用せず、profile authorityからbounded readする
+- registration timestampがclientから偽造・事後変更できず、legacy backfill不完全時に新規登録数を0へ補完しない
+- Firebase Emulator Suiteでprofile registrationのSecurity Rules契約を実動検証する
+- final HEADでTypeScript、full Vitest、Firestore Rules regression、production build、diff check、Browser Regression、UI Quality Automation、UI Regression Matrixを通す
+- 七視点監査でBLOCKER / MAJORを0件にする
 
 Current implementation branch: `fix/product-observability-phase3-audit`
+Current PR: #222
 
-このbranchのmergeをもってPhase 3 completionを確定する。
+このPRをmainへmergeし、exact merged mainの七視点再監査を通した時点でPhase 3 completionを確定する。
 
 ## Phase 4: Console shell and Overview
 
