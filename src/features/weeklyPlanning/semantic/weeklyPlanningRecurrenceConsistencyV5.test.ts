@@ -51,6 +51,76 @@ function document(params: {
   };
 }
 
+function componentDocument(params: {
+  recurrenceTargetLocalId: 'task-1' | 'component-a' | 'component-b';
+}): WeeklyPlanningSemanticDocumentV5 {
+  const workload = (localId: string, sourceText: string) => ({
+    localId,
+    quantityRole: 'target' as const,
+    amount: 1,
+    unitCode: 'problem' as const,
+    unitLabel: '題',
+    rangeStart: null,
+    rangeEnd: null,
+    perOccurrence: true,
+    periodExpression: 'daily',
+    sourceText,
+  });
+  return {
+    schemaVersion: 'weekly-planning-semantic-v5',
+    planningIntent: 'create_plan',
+    planningWindow: null,
+    tasks: [{
+      localId: 'task-1',
+      existingPublicId: null,
+      category: 'study',
+      title: '英語の毎日学習',
+      study: {
+        purpose: 'exam',
+        contextLabel: '受験対策',
+        components: [
+          {
+            localId: 'component-a',
+            parentLocalId: null,
+            role: 'material',
+            label: '長文',
+            workloads: [workload('workload-a', '長文を毎日1題')],
+            sourceText: '長文を毎日1題',
+          },
+          {
+            localId: 'component-b',
+            parentLocalId: null,
+            role: 'material',
+            label: '英文解釈',
+            workloads: [workload('workload-b', '英文解釈を毎日1題')],
+            sourceText: '英文解釈を毎日1題',
+          },
+        ],
+      },
+      workloads: [],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [{
+        localId: 'recurrence-1',
+        targetLocalId: params.recurrenceTargetLocalId,
+        kind: 'daily',
+        count: null,
+        days: [],
+        sourceText: '毎日',
+      }],
+      durableContextSignals: [],
+      sourceText: '英語を毎日学習する',
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
 describe('Stable V5 recurrence consistency generalization', () => {
   it('requires weekly recurrence when periodExpression is canonical weekly', () => {
     expect(validateWeeklyPlanningRecurrenceConsistencyV5(document({
@@ -78,5 +148,19 @@ describe('Stable V5 recurrence consistency generalization', () => {
     expect(validateWeeklyPlanningRecurrenceConsistencyV5(document({
       periodExpression: 'next_week',
     }))).toEqual([]);
+  });
+
+  it('lets one task-level recurrence cover per-occurrence workloads in all child components', () => {
+    expect(validateWeeklyPlanningRecurrenceConsistencyV5(componentDocument({
+      recurrenceTargetLocalId: 'task-1',
+    }))).toEqual([]);
+  });
+
+  it('does not let a component-level recurrence leak into a sibling component', () => {
+    expect(validateWeeklyPlanningRecurrenceConsistencyV5(componentDocument({
+      recurrenceTargetLocalId: 'component-a',
+    }))).toEqual([
+      'document.tasks[0].study.components[1].workloads[0]:explicit-recurrence-missing:expected=daily:target=component-b',
+    ]);
   });
 });
