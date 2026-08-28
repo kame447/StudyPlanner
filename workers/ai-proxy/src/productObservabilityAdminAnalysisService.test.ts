@@ -10,6 +10,7 @@ const env = {
   FIREBASE_PROJECT_ID: 'test',
   FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
   FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
+  OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
 };
 
 function overview(): ObservabilityOverviewReadModel {
@@ -29,12 +30,16 @@ function overview(): ObservabilityOverviewReadModel {
     successCount: 1,
     failureCount: 1,
     statusCounts: { success: 1, provider_error: 1 },
+    promptTokens: 80,
+    completionTokens: 20,
     totalTokens: 100,
+    cachedTokens: 40,
+    estimatedCostMicros: 2_000,
     latency: recordLatency(recordLatency(day1.ai.latency, 100), 2_000),
   };
   day1.ai = modelAggregate;
   day1.aiByModel = [{ key: 'gpt-test', aggregate: modelAggregate }];
-  day1.aiByPurpose = [{ key: 'weekly_planning', aggregate: modelAggregate }];
+  day1.aiByPurpose = [{ key: 'weekly_planning_semantic_normalizer', aggregate: modelAggregate }];
   day1.aiByPhase = [{ key: 'initial', aggregate: modelAggregate }];
 
   const secondAggregate = {
@@ -42,12 +47,16 @@ function overview(): ObservabilityOverviewReadModel {
     requestCount: 1,
     successCount: 1,
     statusCounts: { success: 1 },
+    promptTokens: 20,
+    completionTokens: 30,
     totalTokens: 50,
+    cachedTokens: 0,
+    estimatedCostMicros: 1_000,
     latency: recordLatency(day2.ai.latency, 500),
   };
   day2.ai = secondAggregate;
   day2.aiByModel = [{ key: 'gpt-test', aggregate: secondAggregate }];
-  day2.aiByPurpose = [{ key: 'weekly_planning', aggregate: secondAggregate }];
+  day2.aiByPurpose = [{ key: 'weekly_planning_semantic_normalizer', aggregate: secondAggregate }];
   day2.aiByPhase = [{ key: 'repair', aggregate: secondAggregate }];
 
   return {
@@ -71,11 +80,15 @@ function overview(): ObservabilityOverviewReadModel {
         requestCount: 3,
         successCount: 2,
         failureCount: 1,
+        promptTokens: 100,
+        completionTokens: 50,
         totalTokens: 150,
+        cachedTokens: 40,
+        estimatedCostMicros: 3_000,
         latency: recordLatency(secondAggregate.latency, 2_000),
       },
       planning: {
-        outcomeCounts: {},
+        outcomeCounts: { session_started: 2 },
         previewCountSum: 0,
         previewCountUnknownCount: 0,
         unscheduledCountSum: 0,
@@ -124,12 +137,36 @@ class FakeReadModel {
   }
 }
 
+const profile = {
+  id: 'firebase-user-1',
+  documentName: 'projects/test/databases/(default)/documents/profiles/firebase-user-1',
+  email: 'user@example.com',
+  username: 'Kame User',
+  registeredAt: '2026-08-20T00:00:00.000Z',
+};
+
 class FakeFirestore {
+  queryCallCount = 0;
+  getCallCount = 0;
+
+  async getDocument(collection: string, id: string) {
+    this.getCallCount += 1;
+    return collection === 'profiles' && id === profile.id ? { ...profile } : null;
+  }
+
   async countDocuments() {
     return 2;
   }
 
-  async queryDocumentsAfter() {
+  async queryDocumentsAfter(params: {
+    collection: string;
+    filters?: Array<{ field: string; value: string }>;
+  }) {
+    this.queryCallCount += 1;
+    if (params.collection === 'profiles') {
+      const matches = params.filters?.every((filter) => String(profile[filter.field as keyof typeof profile]) === filter.value) ?? true;
+      return matches ? [{ ...profile }] : [];
+    }
     return [
       {
         id: 'event-1',
@@ -149,12 +186,15 @@ class FakeFirestore {
         occurredAt: '2026-08-29T00:00:00.000Z',
         appVersion: '1.0.0',
         payload: {
-          purpose: 'weekly_planning',
+          purpose: 'weekly_planning_semantic_normalizer',
           phase: 'initial',
           provider: 'openai',
           model: 'gpt-test',
           status: 'success',
           totalTokens: 50,
+          cachedTokens: 20,
+          cacheWriteTokens: 5,
+          reasoningTokens: 12,
           estimatedCostMicros: null,
           durationMs: 800,
         },
@@ -164,8 +204,17 @@ class FakeFirestore {
   }
 }
 
+class FakeIdentityStore {
+  lookupCount = 0;
+
+  async lookupActorSubjectId(firebaseUid: string) {
+    this.lookupCount += 1;
+    return firebaseUid === profile.id ? 'actor-aaaaaaaa' : null;
+  }
+}
+
 describe('ProductObservabilityAdminAnalysisService', () => {
-  it('merges daily AI dimensions server-side and preserves percentile semantics', async () => {
+  it('merges daily AI dimensions and derives planning efficiency server-side', async () => {
     const service = new ProductObservabilityAdminAnalysisService(
       env,
       new FakeFirestore() as never,
@@ -180,11 +229,32 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(analysis.byModel).toHaveLength(1);
     expect(analysis.byModel[0]).toMatchObject({
       key: 'gpt-test',
-      aggregate: { requestCount: 3, successCount: 2, failureCount: 1, totalTokens: 150 },
+      aggregate: {
+        requestCount: 3,
+        successCount: 2,
+        failureCount: 1,
+        promptTokens: 100,
+        totalTokens: 150,
+        cachedTokens: 40,
+        estimatedCostMicros: 3_000,
+      },
     });
     expect(analysis.byPhase.map((entry) => entry.key)).toEqual(['initial', 'repair']);
     expect(analysis.latencyP50Ms).toBe(500);
     expect(analysis.latencyP95Ms).toBe(2_000);
+    expect(analysis.planningEfficiency).toMatchObject({
+      sessionCount: 2,
+      requestCount: 3,
+      repairRequestCount: 1,
+      requestsPerSession: 1.5,
+      estimatedCostMicros: 3_000,
+      estimatedCostUnknownCount: 0,
+      estimatedCostPerSessionMicros: 1_500,
+      cachedTokens: 40,
+      promptTokens: 100,
+    });
+    expect(analysis.planningEfficiency.repairRate).toBeCloseTo(1 / 3);
+    expect(analysis.planningEfficiency.cacheHitTokenRatio).toBeCloseTo(0.4);
   });
 
   it('returns only allowlisted timeline fields and exact actor-day count', async () => {
@@ -209,12 +279,49 @@ describe('ProductObservabilityAdminAnalysisService', () => {
       }),
       expect.objectContaining({
         eventType: 'ai_request_metric',
-        ai: expect.objectContaining({ model: 'gpt-test', status: 'success' }),
+        ai: expect.objectContaining({
+          model: 'gpt-test',
+          status: 'success',
+          cachedTokens: 20,
+          cacheWriteTokens: 5,
+          reasoningTokens: 12,
+        }),
         requestId: 'ai-request-1',
         traceSessionId: 'trace-1',
       }),
     ]);
     expect(result.timeline[1]).not.toHaveProperty('payload');
+  });
+
+  it('resolves profile identity only on an explicit bounded exact lookup', async () => {
+    const firestore = new FakeFirestore();
+    const identityStore = new FakeIdentityStore();
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      firestore as never,
+      new FakeReadModel() as never,
+      identityStore,
+    );
+
+    await expect(service.resolveUserIdentity('us')).rejects.toThrow(
+      'observability_identity_search_invalid',
+    );
+    expect(firestore.queryCallCount).toBe(0);
+    expect(firestore.getCallCount).toBe(0);
+
+    const byEmail = await service.resolveUserIdentity('user@example.com');
+    expect(byEmail).toEqual([{
+      firebaseUid: 'firebase-user-1',
+      email: 'user@example.com',
+      username: 'Kame User',
+      registeredAt: '2026-08-20T00:00:00.000Z',
+      actorSubjectId: 'actor-aaaaaaaa',
+    }]);
+    expect(identityStore.lookupCount).toBe(1);
+
+    const byUid = await service.resolveUserIdentity('firebase-user-1');
+    expect(byUid[0]?.actorSubjectId).toBe('actor-aaaaaaaa');
+    expect(firestore.getCallCount).toBe(1);
   });
 
   it('rejects forged event cursors before storage work', async () => {
