@@ -5,6 +5,7 @@ import {
   type ProductActivityTelemetryDraft,
   type ProductObservabilityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
+import { createFirebaseProductTelemetrySink } from './productTelemetryRemoteSink';
 
 export interface ProductTelemetrySink {
   write(event: ProductObservabilityTelemetryDraft): Promise<void>;
@@ -31,6 +32,13 @@ function defaultEventId(): string {
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
   return `activity-${value}`;
+}
+
+function runtimeAppVersion(): string {
+  const configured = import.meta.env.VITE_APP_VERSION;
+  return typeof configured === 'string' && configured.trim()
+    ? configured.trim()
+    : 'unknown';
 }
 
 export function createProductTelemetryPort(
@@ -64,4 +72,13 @@ export function createNoopProductTelemetryPort(): ProductTelemetryPort {
   return {
     recordActivity() {},
   };
+}
+
+export function createFirebaseProductTelemetryPort(): ProductTelemetryPort {
+  const sink = createFirebaseProductTelemetrySink();
+  if (!sink) return createNoopProductTelemetryPort();
+  return createProductTelemetryPort({
+    appVersion: runtimeAppVersion(),
+    sink,
+  });
 }
