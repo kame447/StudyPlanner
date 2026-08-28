@@ -299,7 +299,7 @@ export class ProductObservabilityAdminAnalysisService {
     const initialRequestCount = byPhase.find((entry) => entry.key === 'initial')?.aggregate.requestCount ?? 0;
     const repairRequestCount = byPhase.find((entry) => entry.key === 'repair')?.aggregate.requestCount ?? 0;
     const repairEligibleCount = initialRequestCount + repairRequestCount;
-    const sessionCount = overview.period.planning.outcomeCounts.session_started ?? 0;
+    const turnCount = overview.period.planning.outcomeCounts.turn_started ?? 0;
     const cacheKnown = planningAggregate.promptTokensUnknownCount === 0
       && planningAggregate.cachedTokensUnknownCount === 0;
 
@@ -315,16 +315,16 @@ export class ProductObservabilityAdminAnalysisService {
       byPurpose,
       byPhase,
       planningEfficiency: {
-        sessionCount,
+        turnCount,
         requestCount: planningAggregate.requestCount,
         repairRequestCount,
         repairRate: repairEligibleCount > 0 ? repairRequestCount / repairEligibleCount : null,
-        requestsPerSession: sessionCount > 0 ? planningAggregate.requestCount / sessionCount : null,
+        requestsPerTurn: turnCount > 0 ? planningAggregate.requestCount / turnCount : null,
         estimatedCostMicros: planningAggregate.estimatedCostMicros,
         estimatedCostUnknownCount: planningAggregate.estimatedCostUnknownCount,
-        estimatedCostPerSessionMicros:
-          sessionCount > 0 && planningAggregate.estimatedCostUnknownCount === 0
-            ? planningAggregate.estimatedCostMicros / sessionCount
+        estimatedCostPerTurnMicros:
+          turnCount > 0 && planningAggregate.estimatedCostUnknownCount === 0
+            ? planningAggregate.estimatedCostMicros / turnCount
             : null,
         cachedTokens: planningAggregate.cachedTokens,
         promptTokens: planningAggregate.promptTokens,
