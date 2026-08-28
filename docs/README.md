@@ -18,6 +18,7 @@ Repository work:
 - [Client runtime](domains/client-runtime/README.md)
 - [Reporting](domains/reporting/README.md)
 - [Product observability](domains/product-observability/README.md)
+- [External integrations](domains/external-integrations/README.md)
 
 ## Cross-cutting work
 
