@@ -1,6 +1,7 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import type { FirestoreOrderedCursor } from './firestoreServiceAccountClient';
 import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
+import { ProductObservabilityAdminAnalysisService } from './productObservabilityAdminAnalysisService';
 import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
@@ -8,6 +9,7 @@ import {
 
 export const PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH = '/observability/admin/overview';
 export const PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH = '/observability/admin/users';
+export const PRODUCT_OBSERVABILITY_ADMIN_AI_PATH = '/observability/admin/ai';
 
 export interface ProductObservabilityAdminApiEnv extends ProductObservabilityReadModelEnv {
   FIREBASE_WEB_API_KEY: string;
@@ -153,7 +155,8 @@ function requestedLimit(value: string | null): number {
 
 export function isProductObservabilityAdminPath(pathname: string): boolean {
   return pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH
-    || pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH;
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH;
 }
 
 export async function handleProductObservabilityAdminApi(
@@ -173,12 +176,24 @@ export async function handleProductObservabilityAdminApi(
   if (!adminUid) return jsonResponse(request, env, 403, { error: 'Admin access is required.' });
 
   const url = new URL(request.url);
-  const service = new ProductObservabilityReadModelService(env);
+  const readModel = new ProductObservabilityReadModelService(env);
+  const analysis = new ProductObservabilityAdminAnalysisService(env);
   try {
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH) {
       const fromDate = url.searchParams.get('from')?.trim() ?? '';
       const toDate = url.searchParams.get('to')?.trim() ?? '';
-      const result = await service.getOverview({
+      const result = await readModel.getOverview({
+        environment: environmentFrom(url.searchParams.get('environment'), env),
+        fromDate,
+        toDate,
+      });
+      return jsonResponse(request, env, 200, { ok: true, result });
+    }
+
+    if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH) {
+      const fromDate = url.searchParams.get('from')?.trim() ?? '';
+      const toDate = url.searchParams.get('to')?.trim() ?? '';
+      const result = await analysis.getAiAnalysis({
         environment: environmentFrom(url.searchParams.get('environment'), env),
         fromDate,
         toDate,
@@ -187,8 +202,26 @@ export async function handleProductObservabilityAdminApi(
     }
 
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH) {
-      const page = await service.listUserSummaries({
-        environment: environmentFrom(url.searchParams.get('environment'), env),
+      const environment = environmentFrom(url.searchParams.get('environment'), env);
+      const actorSubjectId = url.searchParams.get('actor')?.trim() ?? '';
+      if (actorSubjectId) {
+        const result = await analysis.getUserInvestigation({
+          actorSubjectId,
+          environment,
+          cursor: decodeCursor(url.searchParams.get('cursor')),
+          limit: requestedLimit(url.searchParams.get('limit')),
+        });
+        return jsonResponse(request, env, 200, {
+          ok: true,
+          result: {
+            ...result,
+            nextCursor: encodeCursor(result.nextCursor),
+          },
+        });
+      }
+
+      const page = await readModel.listUserSummaries({
+        environment,
         cursor: decodeCursor(url.searchParams.get('cursor')),
         limit: requestedLimit(url.searchParams.get('limit')),
       });
