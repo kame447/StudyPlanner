@@ -59,6 +59,7 @@ describe('Stable V5 timetable external constraints', () => {
       ],
       timetableTermId: TERM.id,
       timetableTerm: TERM,
+      timetableTerms: [TERM],
       horizon: { startDate: '2026-04-06', endDate: '2026-04-27' },
       timeZone: 'Asia/Tokyo',
     });
@@ -77,6 +78,51 @@ describe('Stable V5 timetable external constraints', () => {
       ['class-2', '2026-04-13'],
       ['class-1', '2026-04-20'],
       ['class-3', '2026-04-20'],
+    ]);
+  });
+
+  it('switches timetable periods automatically when the planning horizon crosses them', () => {
+    const autumn: TimetableTerm = {
+      ...TERM,
+      id: 'term-autumn',
+      label: '2026年後期',
+      startDate: '2026-04-27',
+      endDate: '2026-05-31',
+      usesAlternatingWeeks: false,
+      alternatingWeekAnchorDate: null,
+      isActive: false,
+      updatedAt: '2026-04-20T00:00:00.000Z',
+    };
+    const sources = createStableV5ExternalConstraintSources({
+      ownerId: 'user-1',
+      plans: [],
+      templates: [
+        template('class-1', '09:00', '10:00', { alternatingWeek: 'a' }),
+        template('class-4', '13:00', '14:00', {
+          termId: autumn.id,
+          alternatingWeek: 'both',
+          weekInterval: 1,
+        }),
+      ],
+      timetableTermId: TERM.id,
+      timetableTerm: TERM,
+      timetableTerms: [TERM, autumn],
+      horizon: { startDate: '2026-04-20', endDate: '2026-05-04' },
+      timeZone: 'Asia/Tokyo',
+    });
+    const timetable = sources.find((source) => source.kind === 'timetable');
+
+    expect(timetable?.status).toBe('success');
+    if (!timetable || timetable.status !== 'success') {
+      throw new Error('expected a successful timetable source');
+    }
+
+    expect(
+      timetable.events.map((event) => [event.eventId, event.start.date]),
+    ).toEqual([
+      ['class-1', '2026-04-20'],
+      ['class-4', '2026-04-27'],
+      ['class-4', '2026-05-04'],
     ]);
   });
 });
