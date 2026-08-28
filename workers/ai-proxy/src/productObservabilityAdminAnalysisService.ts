@@ -32,7 +32,7 @@ import {
 import { ProductObservabilityStore } from './productObservabilityStore';
 
 const EVENT_COLLECTION = 'observability_events';
-const ACTOR_DAY_COLLECTION = 'observability_actor_days';
+const ACTOR_DAY_COLLECTION = 'observability_actor_day';
 const PROFILE_COLLECTION = 'profiles';
 const ACTOR_SUBJECT_PATTERN = /^actor-[A-Za-z0-9-]{8,160}$/;
 const DEFAULT_PAGE_SIZE = 50;
