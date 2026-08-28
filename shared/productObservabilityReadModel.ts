@@ -128,6 +128,13 @@ export interface ObservabilityActiveUserWindows {
   expireAt: string;
 }
 
+export interface ObservabilityRegisteredUserSummary {
+  total: number;
+  newInPeriod: number | null;
+  registrationIndexReady: boolean;
+  scope: 'firebase_project';
+}
+
 export interface ObservabilityActiveUserDirtySource {
   environment: ObservabilityEnvironment;
   localDate: string;
@@ -161,6 +168,7 @@ export interface ObservabilityOverviewReadModel {
   fromDate: string;
   toDate: string;
   reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
+  registeredUsers: ObservabilityRegisteredUserSummary;
   daily: ObservabilityDailyRollup[];
   activeUsers: ObservabilityActiveUserWindows | null;
   aiLatencyP50Ms: number | null;
