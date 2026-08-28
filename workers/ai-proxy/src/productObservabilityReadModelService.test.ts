@@ -6,7 +6,7 @@ import type {
   ObservabilityDailyRollup,
   ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
-import type { FirestoreStringFilter } from './firestoreServiceAccountClient';
+import type { FirestoreAggregationFilter } from './firestoreServiceAccountClient';
 import {
   createEmptyDailyRollup,
   recordLatency,
@@ -63,7 +63,7 @@ class MemoryReadFirestore {
 
   async countDocuments(
     collection: string,
-    filters: readonly FirestoreStringFilter[] = [],
+    filters: readonly FirestoreAggregationFilter[] = [],
   ): Promise<number> {
     this.countCallCount += 1;
     if (collection !== 'profiles') return 0;
@@ -215,10 +215,10 @@ describe('ProductObservabilityReadModelService', () => {
 
   it('counts total and new registered users with Asia/Tokyo date boundaries', async () => {
     const firestore = new MemoryReadFirestore();
-    firestore.addProfile({ registeredAtIso: '2026-08-27T14:59:59.999Z' });
-    firestore.addProfile({ registeredAtIso: '2026-08-27T15:00:00.000Z' });
-    firestore.addProfile({ registeredAtIso: '2026-08-29T14:59:59.999Z' });
-    firestore.addProfile({ registeredAtIso: '2026-08-29T15:00:00.000Z' });
+    firestore.addProfile({ registeredAt: '2026-08-27T14:59:59.999Z' });
+    firestore.addProfile({ registeredAt: '2026-08-27T15:00:00.000Z' });
+    firestore.addProfile({ registeredAt: '2026-08-29T14:59:59.999Z' });
+    firestore.addProfile({ registeredAt: '2026-08-29T15:00:00.000Z' });
 
     const overview = await service(firestore).getOverview({
       environment: 'production',
@@ -235,9 +235,9 @@ describe('ProductObservabilityReadModelService', () => {
     expect(firestore.countCallCount).toBe(3);
   });
 
-  it('returns unknown new-registration count while any profile lacks normalized registration time', async () => {
+  it('returns unknown new-registration count while any profile lacks canonical registration time', async () => {
     const firestore = new MemoryReadFirestore();
-    firestore.addProfile({ registeredAtIso: '2026-08-28T00:00:00.000Z' });
+    firestore.addProfile({ registeredAt: '2026-08-28T00:00:00.000Z' });
     firestore.addProfile({ createdAt: 'Fri, 28 Aug 2026 01:00:00 GMT' });
 
     const overview = await service(firestore).getOverview({
