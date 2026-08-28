@@ -4,6 +4,7 @@ import {
   hasStagedUserPlanningContextV1,
   rollbackFinalizedUserPlanningContextV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
+import { publishUserPlanningContextCommittedV1 } from '../../userPlanningContext/userPlanningContextSyncEvents';
 import type {
   WeeklyPlanningPendingTurn,
 } from '../types';
@@ -57,6 +58,13 @@ function finalizeStaging(params: {
   } catch (error) {
     rollbackFinalizedUserPlanningContextV1(contextReceipt);
     throw error;
+  }
+
+  if (contextReceipt?.committedRecords.length) {
+    publishUserPlanningContextCommittedV1({
+      ownerId: contextReceipt.ownerId,
+      records: contextReceipt.committedRecords,
+    });
   }
 }
 

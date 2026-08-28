@@ -41,4 +41,29 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
       expect(prompt).not.toContain(rule.id);
     }
   });
+
+  it('keeps qualitative scope boundaries structural instead of inventing one custom workload', () => {
+    const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'workload_quantity_effort',
+    );
+
+    expect(workloadRule?.instruction).toContain(
+      'Uncounted qualitative scope belongs in task/component structure',
+    );
+    expect(workloadRule?.instruction).toContain('emit work_breakdown uncertainty');
+    expect(workloadRule?.instruction).toContain('never invent quantity or total duration');
+  });
+
+  it('reserves fixed_interval for clock intervals and uses date-bound kinds for date-only periods', () => {
+    const temporalRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'temporal_scope_and_deadline',
+    );
+
+    expect(temporalRule?.instruction).toContain(
+      'fixed_interval requires both clock startTime/endTime',
+    );
+    expect(temporalRule?.instruction).toContain(
+      'Date-only from/after -> earliest_start; until/by -> latest_end or deadline',
+    );
+  });
 });
