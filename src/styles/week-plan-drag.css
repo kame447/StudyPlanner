@@ -1,0 +1,122 @@
+.schedule-week-plan-button {
+  appearance: none;
+  -webkit-appearance: none;
+  color: inherit;
+  font: inherit;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+
+.schedule-week-plan-button:active {
+  cursor: grabbing;
+}
+
+.schedule-week-plan-button.is-drag-source {
+  opacity: 0.2;
+}
+
+.schedule-week-drop-ghost {
+  --weekly-draft-tone: var(--accent);
+  --weekly-draft-tone-bg: color-mix(in srgb, var(--accent) 11%, var(--surface-strong) 89%);
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  padding: 1px 2px;
+  border: 1px dashed color-mix(in srgb, var(--weekly-draft-tone) 72%, var(--border) 28%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--weekly-draft-tone-bg) 72%, transparent 28%);
+  pointer-events: none;
+  text-align: center;
+}
+
+.schedule-week-drop-ghost strong,
+.schedule-week-drop-ghost small {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-week-drop-ghost strong {
+  font-size: 0.47rem;
+  line-height: 1.02;
+}
+
+.schedule-week-drop-ghost small {
+  font-size: 0.41rem;
+  line-height: 1;
+}
+
+.schedule-week-drag-overlay {
+  --weekly-draft-tone: var(--accent);
+  --weekly-draft-tone-bg: color-mix(in srgb, var(--accent) 13%, var(--surface-strong) 87%);
+  position: fixed;
+  z-index: 240;
+  box-sizing: border-box;
+  min-width: 28px;
+  overflow: hidden;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 3px 5px;
+  border: 1px solid color-mix(in srgb, var(--weekly-draft-tone) 58%, var(--border) 42%);
+  border-radius: 7px;
+  background: var(--weekly-draft-tone-bg);
+  box-shadow:
+    0 18px 36px color-mix(in srgb, var(--shadow) 24%, transparent 76%),
+    0 5px 12px color-mix(in srgb, var(--weekly-draft-tone) 14%, transparent 86%);
+  pointer-events: none;
+  transform-origin: 50% 55%;
+  will-change: transform;
+  text-align: center;
+}
+
+.schedule-week-drag-overlay strong,
+.schedule-week-drag-overlay small {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-week-drag-overlay strong {
+  color: var(--text);
+  font-size: 0.58rem;
+  line-height: 1.08;
+}
+
+.schedule-week-drag-overlay small {
+  color: color-mix(in srgb, var(--text-muted) 82%, var(--weekly-draft-tone) 18%);
+  font-size: 0.5rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.schedule-week-drag-lock {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.48rem;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--text-muted) 76%, var(--weekly-draft-tone) 24%);
+}
+
+.schedule-week-plan-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--weekly-draft-tone) 72%, var(--accent) 28%);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-week-drag-overlay {
+    transition: none !important;
+  }
+}

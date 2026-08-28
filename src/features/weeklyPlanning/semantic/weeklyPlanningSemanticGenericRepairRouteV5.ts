@@ -17,7 +17,10 @@ export async function runGenericSemanticRepairRouteV5(params: {
   baseMessages: ChatMessage[];
   initialResponse: string;
   initialValidation: SemanticValidationResultV5;
+  attemptCountBeforeRepair?: number;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+  const attemptCountBeforeRepair = params.attemptCountBeforeRepair ?? 1;
+  const repairAttemptCount = attemptCountBeforeRepair + 1;
   const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
     baseMessages: params.baseMessages,
     invalidResponse: params.initialResponse,
@@ -31,6 +34,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
       invalidResponse: params.initialResponse,
       validationErrors: params.initialValidation.errors,
       repairMessages,
+      attemptCountBeforeRepair,
     },
   });
 
@@ -42,7 +46,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
       status: 'provider_failure',
       document: null,
       diagnostics: params.run.diagnostics({
-        attemptCount: 2,
+        attemptCount: repairAttemptCount,
         repairAttempted: true,
         validationErrors: params.initialValidation.errors,
         providerError: semanticNormalizerErrorMessage(error),
@@ -74,6 +78,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
       errors: [...repairedValidation.errors, ...preservationErrors],
       algorithmicRepairs: repairedValidation.algorithmicRepairs,
       parsedDocument: repairedValidation.parsedDocument,
+      semanticAttemptCount: repairAttemptCount,
     },
   });
 
@@ -82,7 +87,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
       status: 'rejected',
       document: null,
       diagnostics: params.run.diagnostics({
-        attemptCount: 2,
+        attemptCount: repairAttemptCount,
         repairAttempted: true,
         validationErrors: [
           ...params.initialValidation.errors.map((value) => `initial:${value}`),
@@ -101,7 +106,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
     baseMessages: params.baseMessages,
     initialResponse: repairedResponse,
     initialDocument: repairedValidation.document,
-    attemptCountBeforeRetry: 2,
+    attemptCountBeforeRetry: repairAttemptCount,
     repairAttempted: true,
     validationErrors: params.initialValidation.errors,
   });
@@ -111,7 +116,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
     status: 'accepted',
     document: repairedValidation.document,
     diagnostics: params.run.diagnostics({
-      attemptCount: 2,
+      attemptCount: repairAttemptCount,
       repairAttempted: true,
       validationErrors: params.initialValidation.errors,
       providerError: null,

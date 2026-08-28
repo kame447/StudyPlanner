@@ -39,16 +39,14 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   if (!targetPublicId) return [];
 
   const errors: string[] = [];
-  if (params.document.tasks.length !== 1) {
-    errors.push(
-      `document.tasks:work-breakdown-exact-target-only:count=${params.document.tasks.length}`,
-    );
-  }
-
   const targetEntries = params.document.tasks
     .map((task, index) => ({ task, index }))
     .filter(({ task }) => task.existingPublicId === targetPublicId);
 
+  // The pending target must stay represented, but a pending question must not
+  // suppress other explicit contributions from the same user turn. Deciding
+  // which additional facts belong to the utterance is semantic-layer work;
+  // this deterministic contract only protects the pending target's structure.
   if (targetEntries.length !== 1) {
     errors.push(`document:work-breakdown-target-task-required:target=${targetPublicId}`);
   }
@@ -60,16 +58,6 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
     && (target.study?.components.length ?? 0) === 0
   ) {
     errors.push('document:work-breakdown-decomposed-without-constituents');
-  }
-
-  if (params.document.planningWindow) {
-    errors.push('document.planningWindow:work-breakdown-current-delta-only');
-  }
-  if ((params.document.userContextFacts ?? []).length > 0) {
-    errors.push('document.userContextFacts:work-breakdown-current-delta-only');
-  }
-  if (params.document.relations.length > 0) {
-    errors.push('document.relations:work-breakdown-current-delta-only');
   }
 
   return errors;
