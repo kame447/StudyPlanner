@@ -18,7 +18,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat requested learning work as study tasks and preserve meaningful task/component structure. Attach work, effort, constraints and context to their targets. Performance-only mentions (for example exam scores) do not create tasks/components. Relation endpoints must be emitted here or explicitly bound existing entities; never invent endpoints. Minimal existingPublicId shells do not create breakdown needs; emit work_breakdown uncertainty only for genuine current-turn structural ambiguity.',
+    instruction: 'Treat requested learning work as study tasks with meaningful task/component structure. Attach work, effort, constraints and context to targets. Performance-only mentions such as exam scores do not create tasks/components. Relation endpoints must be emitted or explicitly bound existing entities; never invent them. Minimal existingPublicId shells need no breakdown; emit work_breakdown uncertainty only for genuine current-turn structural ambiguity.',
   },
   {
     id: 'study_activity_kind',
@@ -36,7 +36,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing fixed total scope, plan target, current progress, performance metrics, time-boxed work, duration cost, and per-unit effort requires semantic interpretation.',
-    instruction: 'scope_total needs an explicit bounded total; target needs an explicit plan amount and is never derived from total/completed. Uncounted qualitative scope belongs in task/component structure, not amount=1 custom workload; if breakdown is needed, emit work_breakdown uncertainty, never invent quantity or total duration. If all remaining work is intended, omit target and let deterministic progress derive remaining. completed/remaining are workload progress; scores/grades/accuracy/rank are not unless explicitly material/task completion. Requested study time is target minute/hour workload, not progress. Keep perOccurrence/recurrence aligned. Separate workload cost uses total_duration/duration_per_unit; session_duration only for one session.',
+    instruction: 'scope_total needs explicit bounded total; target needs explicit plan amount and is never derived from total/completed. Uncounted qualitative scope belongs in task/component structure, not amount=1 custom workload; if breakdown is needed, emit work_breakdown uncertainty; never invent quantity or total duration. For all remaining work, omit target; deterministic progress derives remaining. completed/remaining are workload progress; scores/grades/accuracy/rank are not progress unless explicitly task/material completion. Time the user wants scheduled is target minute/hour workload; do not ask for content progress. Keep perOccurrence/recurrence aligned. For a separately stated workload, cost uses total_duration/duration_per_unit effort; session_duration only for one session.',
   },
   {
     id: 'temporal_scope_and_deadline',
