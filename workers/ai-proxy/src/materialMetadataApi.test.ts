@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyMaterialMetadataQuery } from '../../../shared/materialMetadataContract';
 import {
   buildNdlOpenSearchUrl,
   buildNdlSruDetailsUrl,
+  handleMaterialMetadataApi,
   parseNdlOpenSearchXml,
   parseNdlSruDetailsXml,
 } from './materialMetadataApi';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('material metadata NDL adapter', () => {
   it('builds licensed national-bibliography ISBN and title queries', () => {
@@ -104,5 +109,76 @@ describe('material metadata NDL adapter', () => {
       pageCount: 381,
       tableOfContents: ['第1章 基礎', '第2章 実践'],
     });
+  });
+
+  it('adds an openBD cover URL to an NDL search result without persisting provider image data', async () => {
+    const ndlXml = `<?xml version="1.0" encoding="UTF-8"?>
+      <rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <channel>
+          <item>
+            <title>TOEIC L&amp;R TEST 出る単特急 金のフレーズ</title>
+            <dc:creator>TEX加藤</dc:creator>
+            <dc:publisher>朝日新聞出版</dc:publisher>
+            <dc:identifier xsi:type="dcndl:ISBN">978-4-02-331568-6</dc:identifier>
+          </item>
+        </channel>
+      </rss>`;
+    const coverUrl = 'https://cover.openbd.jp/9784023315686.jpg';
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return new Response(JSON.stringify({
+          users: [{ localId: 'user-1', emailVerified: true }],
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.startsWith('https://ndlsearch.ndl.go.jp/api/opensearch')) {
+        return new Response(ndlXml, { status: 200 });
+      }
+      if (url.startsWith('https://api.openbd.jp/v1/get')) {
+        return new Response(JSON.stringify([
+          { summary: { isbn: '9784023315686', cover: coverUrl } },
+        ]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleMaterialMetadataApi(
+      new Request('https://worker.example/material-metadata/search', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+          Origin: 'https://app.example',
+        },
+        body: JSON.stringify({ query: '9784023315686' }),
+      }),
+      {
+        FIREBASE_WEB_API_KEY: 'test-key',
+        ALLOWED_ORIGIN: 'https://app.example',
+        FIREBASE_PROJECT_ID: '',
+        FIREBASE_SERVICE_ACCOUNT_EMAIL: '',
+        FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: '',
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as {
+      results: Array<{ coverImageUrl?: string; isbn13?: string }>;
+    };
+    expect(payload.results[0]).toMatchObject({
+      isbn13: '9784023315686',
+      coverImageUrl: coverUrl,
+    });
+    expect(fetchMock.mock.calls.some(([input]) =>
+      String(input).startsWith('https://api.openbd.jp/v1/get?isbn=9784023315686')))
+      .toBe(true);
   });
 });
