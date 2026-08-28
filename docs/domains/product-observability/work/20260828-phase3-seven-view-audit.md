@@ -1,6 +1,6 @@
 # Phase 3 Seven-View Audit
 
-Status: active verification record
+Status: pre-merge PASS; merged-main re-audit required
 Date: 2026-08-28
 Owning Issue: #213
 Active PR: #222
@@ -10,13 +10,30 @@ Target: Phase 3 product-observability telemetry aggregation and bounded admin re
 
 ## Exit rule
 
-7視点すべてでBLOCKER / MAJORが0件となり、PR #222のexact final HEADでTypeScript、full Vitest、Firestore Rules regression、production build、PR diff check、Browser Regression、UI Quality Automation、UI Regression Matrixが必要な範囲でterminal successになった場合のみPASSとする。
+7視点すべてでBLOCKER / MAJORが0件となり、PR #222のexact final HEADでTypeScript、full Vitest、Firestore Rules regression、production build、PR diff check、Browser Regression、UI Quality Automation、UI Regression Matrixがterminal successになった場合のみpre-merge PASSとする。
 
 PASS後もPR #222をmainへmergeしたexact merged mainを再監査し、そこで新しいBLOCKER / MAJORが出た場合はPhase 4へ進まない。
 
+## Verified implementation candidate
+
+実装差分を最後に変更したcandidate HEAD `abc23292236fb2ceecb41948fff3ff3f157d54b5` では、次がすべてterminal successとなった。
+
+- TypeScript
+- full Vitest: 440 files passed / 1982 tests passed
+- Firebase Auth + Firestore EmulatorによるFirestore Rules regression
+- production build
+- PR diff check
+- Browser Regression
+- UI Quality Automation
+- UI Regression Matrix
+
+Rules regressionの初回失敗はAuth Emulator未設定によるharness configuration defectであり、production defectではなかった。Auth / Firestore emulatorを明示設定して再実行し、server timestamp付きprofile作成、通常owner update、偽timestamp拒否、registration timestamp事後変更拒否、cross-user update拒否を実Rules engineで確認した。
+
+本監査記録の確定commit以降にproduction codeは変更しない。merge前にはPRのcurrent exact HEADで上記workflowが再度すべてgreenであることを確認する。
+
 ## 1. Responsibility / architecture boundary
 
-Provisional status: PASS
+Status: PASS
 
 確認事項:
 
@@ -38,7 +55,7 @@ Provisional status: PASS
 
 ## 2. Existing contracts / types / callers
 
-Provisional status: PASS pending final TypeScript
+Status: PASS
 
 確認事項:
 
@@ -64,7 +81,7 @@ Provisional status: PASS pending final TypeScript
 
 ## 3. State / data invariants
 
-Provisional status: PASS pending final tests
+Status: PASS
 
 確認事項:
 
@@ -98,7 +115,7 @@ Provisional status: PASS pending final tests
 
 ## 4. UI / browser impact
 
-Provisional status: PASS pending browser workflows
+Status: PASS
 
 確認事項:
 
@@ -106,14 +123,11 @@ Provisional status: PASS pending browser workflows
 - UI Phase 4開始前のinternal hardeningとして限定する。
 - typed browser query serviceはserver read modelを受け取るだけで、actor-day / profileをscan・aggregateしない。
 - `registeredUsers.scope = firebase_project`により、observability environment filterとFirebase project全体の登録数を同一概念として誤解しないcontractにする。
-
-残条件:
-
-- Browser Regression / UI Quality Automation / UI Regression Matrixのexact final HEAD確認。
+- Browser Regression、UI Quality Automation、UI Regression Matrixがcandidate HEADでgreenである。
 
 ## 5. Tests / harness
 
-Provisional status: PASS pending exact final CI
+Status: PASS
 
 追加・強化した回帰:
 
@@ -135,16 +149,17 @@ Provisional status: PASS pending exact final CI
 
 CI harness finding:
 
-- Firestore Rules regression初回導入時、`firebase.json`にAuth Emulator設定がなくFirestoreだけ起動したため`auth/network-request-failed`となった。production defectではなくharness configuration defectと分類し、Auth / Firestore emulator portsを明示して再検証中。
+- Firestore Rules regression初回導入時、`firebase.json`にAuth Emulator設定がなくFirestoreだけ起動したため`auth/network-request-failed`となった。production defectではなくharness configuration defectと分類した。
+- Auth / Firestore emulator portsを明示し、再実行でRules regressionがsuccessになった。
 
 原則:
 
-- regression assertionをgreen化のために弱めない。
-- fixtureもproduction invariantを満たす形にする。
+- regression assertionをgreen化のために弱めていない。
+- fixtureもproduction invariantを満たす形にしている。
 
 ## 6. Security / dependencies / observability
 
-Provisional status: PASS pending Rules emulator terminal success, with deferred account-deletion condition
+Status: PASS with deferred account-deletion condition
 
 確認事項:
 
@@ -158,6 +173,7 @@ Provisional status: PASS pending Rules emulator terminal success, with deferred 
 - profile作成後はowner updateでも`registeredAt`を変更可能fieldに含めない。
 - legacy profile backfillはservice account boundaryだけから実行する。
 - application dependency追加なし。
+- `npm ci`時のapplication dependency auditは0 vulnerabilitiesだった。
 - telemetry / snapshot / registration backfill failureはproduct operation authorityを変更しない。
 
 発見済み問題:
@@ -174,16 +190,18 @@ Deferred condition:
 
 ## 7. Git / operations / documentation
 
-Provisional status: PASS pending final checkpoint
+Status: PASS for pre-merge state
 
 確認事項:
 
 - parent Issue #213を再利用した。
 - #220 merge後に実害のあるpost-merge findingが出たため、follow-up branch `fix/product-observability-phase3-audit` / PR #222を作成した。replacement Issue / retry PRは増殖させていない。
-- branchはcurrent mainへ追随済みであることをmerge前に再確認する。
-- canonical roadmapをPhase 3 audit状態へ同期する。
-- domain READMEのPhase 1時点の古いimplementation statusを現在状態へ同期する。
-- registered-user authority / migration / unknown semanticsをcanonical architectureへ同期する。
+- candidate HEAD確認時、branchはmainに対して0 behindだった。
+- canonical roadmapをPhase 3 audit状態へ同期した。
+- domain READMEのPhase 1時点の古いimplementation statusを現在状態へ同期した。
+- registered-user authority / migration / unknown semanticsをcanonical architectureへ同期した。
+- PR本文へclient/workerをFirestore Rulesより先にdeployするrollout constraintを記録した。
+- review thread / submitted reviewは0件で、未解決review指摘はない。
 - merge後にexact mainを七視点再監査する。
 
 ## Current audit result
@@ -206,6 +224,9 @@ MAJOR found and fixed during audit:
 12. registration backfill checkpoint / cursorのfail-open recovery
 13. Firestore Rules regressionがCIで未検証だったこと
 
-Current actionable failures: 0 in production code; Rules emulator harness fix is committed and exact final HEAD verification is pending.
+Current actionable production failures: 0.
+Current unresolved BLOCKER / MAJOR: 0.
 
-Final result: PENDING exact final HEAD CI and merged-main re-audit.
+Pre-merge audit result: PASS on the implementation candidate. The current audit-record commit must also retain all required workflow greens before merge.
+
+Phase 4 UI remains blocked until PR #222 is merged and the exact merged main passes the seven-view re-audit.
