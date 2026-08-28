@@ -9,6 +9,7 @@ import {
 
 export const PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH = '/observability/admin/overview';
 export const PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH = '/observability/admin/users';
+export const PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH = '/observability/admin/user-identity';
 export const PRODUCT_OBSERVABILITY_ADMIN_AI_PATH = '/observability/admin/ai';
 
 export interface ProductObservabilityAdminApiEnv extends ProductObservabilityReadModelEnv {
@@ -31,6 +32,7 @@ const CLIENT_VALIDATION_ERRORS = new Set([
   'observability_cursor_invalid',
   'observability_limit_invalid',
   'observability_environment_invalid',
+  'observability_identity_search_invalid',
 ]);
 
 function allowedOrigins(env: ProductObservabilityAdminApiEnv): Set<string> {
@@ -156,6 +158,7 @@ function requestedLimit(value: string | null): number {
 export function isProductObservabilityAdminPath(pathname: string): boolean {
   return pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH;
 }
 
@@ -199,6 +202,11 @@ export async function handleProductObservabilityAdminApi(
         toDate,
       });
       return jsonResponse(request, env, 200, { ok: true, result });
+    }
+
+    if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH) {
+      const matches = await analysis.resolveUserIdentity(url.searchParams.get('q') ?? '');
+      return jsonResponse(request, env, 200, { ok: true, matches });
     }
 
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH) {
