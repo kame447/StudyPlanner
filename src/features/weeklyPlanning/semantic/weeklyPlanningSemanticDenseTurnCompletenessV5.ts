@@ -13,7 +13,7 @@ import {
 } from './weeklyPlanningSemanticNormalizerRunV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
-export const DENSE_TURN_COMPLETENESS_AUDIT_MAX_COMPLETION_TOKENS = 1200;
+export const DENSE_TURN_COMPLETENESS_AUDIT_MAX_COMPLETION_TOKENS = 3200;
 
 export const DENSE_TURN_COMPLETENESS_AUDIT_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
