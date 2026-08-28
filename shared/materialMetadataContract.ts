@@ -6,13 +6,21 @@ export interface MaterialMetadataCandidate {
   authors: string[];
   publisher?: string;
   publishedYear?: number;
+  edition?: string;
   isbn10?: string;
   isbn13?: string;
+  coverImageUrl?: string;
+  pageCount?: number;
+  tableOfContents?: string[];
 }
 
 export interface MaterialMetadataSearchResponse {
   results: MaterialMetadataCandidate[];
   cacheHit: boolean;
+}
+
+export interface MaterialMetadataDetailsResponse {
+  candidate: MaterialMetadataCandidate;
 }
 
 const ISBN10_PATTERN = /^\d{9}[\dX]$/;
@@ -82,6 +90,11 @@ export function isMaterialMetadataCandidate(value: unknown): value is MaterialMe
     && isStringArray(candidate.authors)
     && (candidate.publisher === undefined || typeof candidate.publisher === 'string')
     && (candidate.publishedYear === undefined || Number.isInteger(candidate.publishedYear))
+    && (candidate.edition === undefined || typeof candidate.edition === 'string')
     && (candidate.isbn10 === undefined || typeof candidate.isbn10 === 'string')
-    && (candidate.isbn13 === undefined || typeof candidate.isbn13 === 'string');
+    && (candidate.isbn13 === undefined || typeof candidate.isbn13 === 'string')
+    && (candidate.coverImageUrl === undefined || typeof candidate.coverImageUrl === 'string')
+    && (candidate.pageCount === undefined
+      || (Number.isInteger(candidate.pageCount) && candidate.pageCount >= 0))
+    && (candidate.tableOfContents === undefined || isStringArray(candidate.tableOfContents));
 }
