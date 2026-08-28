@@ -514,6 +514,7 @@ export default function App() {
               <TimetableView
                 userId={user.id}
                 activeTerm={activeTimetableTerm}
+                timetableTerms={timetableTerms}
                 timetablePeriods={timetablePeriods}
                 scheduleTemplates={scheduleTemplates}
                 onActivateTerm={activateTimetableTerm}
