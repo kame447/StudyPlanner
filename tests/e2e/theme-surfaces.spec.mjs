@@ -6,7 +6,13 @@ const reviewDir = path.resolve(process.cwd(), 'artifacts', 'theme-visual-review'
 
 async function seedThemeUser(page, { mode = 'dark', palette = 'ocean' } = {}) {
   await page.addInitScript(({ mode, palette }) => {
-    const now = new Date().toISOString();
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
+    const today = [
+      nowDate.getFullYear(),
+      String(nowDate.getMonth() + 1).padStart(2, '0'),
+      String(nowDate.getDate()).padStart(2, '0'),
+    ].join('-');
     const user = {
       id: 'theme-surface-user',
       email: 'theme-surface@example.com',
@@ -36,10 +42,25 @@ async function seedThemeUser(page, { mode = 'dark', palette = 'ocean' } = {}) {
       createdAt: now,
       updatedAt: now,
     };
+    const plan = {
+      id: 'theme-surface-plan',
+      seriesId: 'theme-surface-plan',
+      userId: user.id,
+      title: 'テーマ確認予定',
+      subject: subject.name,
+      type: 'study',
+      date: today,
+      startTime: '09:00',
+      endTime: '10:00',
+      memo: '',
+      recurrence: null,
+      createdAt: now,
+      updatedAt: now,
+    };
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    localStorage.setItem('studyplanner.plans', '[]');
+    localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
@@ -74,9 +95,34 @@ async function computedColor(page, selector, property = 'color') {
   ), property);
 }
 
+function parseRgb(color) {
+  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  if (!channels || channels.length !== 3) {
+    throw new Error(`Unsupported color: ${color}`);
+  }
+  return channels;
+}
+
+function relativeLuminance(color) {
+  const channels = parseRgb(color).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045
+      ? value / 12.92
+      : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrastRatio(foreground, background) {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function expectDarkSurface(color) {
-  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
-  expect(channels).toHaveLength(3);
+  const channels = parseRgb(color);
   expect(Math.max(...channels)).toBeLessThan(100);
 }
 
@@ -104,6 +150,10 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
   expectDarkSurface(await computedColor(page, '.home-streak-card', 'backgroundColor'));
   expect(await computedColor(page, '.home-bottom-nav button.active')).toBe(accent);
+  expect(await computedColor(page, '.home-date-paper', 'backgroundImage')).toContain(
+    'repeating-linear-gradient',
+  );
+  expect(await computedColor(page, '.home-date-value')).toBe('rgb(255, 250, 240)');
   await capture(page, 'dark-ocean-home-390x844');
 
   await page.getByRole('button', { name: 'メニューを開く' }).click();
@@ -121,7 +171,27 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   await expect(page.locator('.schedule-workspace-shell')).toBeVisible();
   expectDarkSurface(await computedColor(page, '.schedule-view-tabs', 'backgroundColor'));
   expect(await computedColor(page, '.schedule-view-tabs button.active', 'backgroundColor')).toBe(accent);
-  await capture(page, 'dark-ocean-schedule-390x844');
+
+  await page.locator('.schedule-view-tabs button').filter({ hasText: '週' }).click();
+  await expect(page.locator('.schedule-week-view')).toBeVisible();
+  const scheduleBlock = page.locator('.schedule-week-block').first();
+  await expect(scheduleBlock).toBeVisible();
+  const scheduleBlockColors = await scheduleBlock.evaluate((element) => {
+    const title = element.querySelector('strong');
+    const time = element.querySelector('small');
+    if (!(title instanceof HTMLElement) || !(time instanceof HTMLElement)) {
+      throw new Error('Schedule block text is missing');
+    }
+    return {
+      background: getComputedStyle(element).backgroundColor,
+      title: getComputedStyle(title).color,
+      time: getComputedStyle(time).color,
+    };
+  });
+  expect(relativeLuminance(scheduleBlockColors.background)).toBeGreaterThan(0.75);
+  expect(contrastRatio(scheduleBlockColors.title, scheduleBlockColors.background)).toBeGreaterThanOrEqual(4.5);
+  expect(contrastRatio(scheduleBlockColors.time, scheduleBlockColors.background)).toBeGreaterThanOrEqual(4.5);
+  await capture(page, 'dark-ocean-schedule-week-390x844');
 
   await clickPrimaryNav(page, 'AI計画');
   await expect(page.locator('.ai-planning-card')).toBeVisible();

@@ -4,9 +4,56 @@
  * reintroduce the broken paint or interaction geometry.
  */
 
-/* Home date: the parent owns the continuous plaque surface in every theme. */
+/* Home date: the wooden plaque is a decorative surface, not a generic card.
+ * Preserve its own palette in dark mode instead of repainting it with the
+ * application surface tokens. */
+:root[data-theme='dark'] .home-date-paper {
+  border-color: rgba(104, 59, 27, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(89, 45, 19, 0.09)),
+    repeating-linear-gradient(
+      7deg,
+      #cf945d 0 7px,
+      #c88852 7px 13px,
+      #c2834e 13px 20px,
+      #d79c67 20px 27px
+    );
+  color: #fffaf0;
+}
+
+:root[data-theme='dark'] .home-date-display,
+:root[data-theme='dark'] .home-date-value {
+  color: #fffaf0;
+}
+
 :root[data-theme='dark'] .home-date-segment {
+  border-color: rgba(255, 244, 226, 0.18);
   background: transparent;
+}
+
+/* Weekly preview blocks intentionally keep their light pastel subject colors
+ * in every theme. Give only those fixed-light blocks a fixed dark foreground;
+ * theme-adaptive timeline surfaces continue to use the normal theme text. */
+:root[data-theme='dark'] .weekly-draft-tone-1,
+:root[data-theme='dark'] .weekly-draft-tone-2,
+:root[data-theme='dark'] .weekly-draft-tone-3,
+:root[data-theme='dark'] .weekly-draft-tone-4,
+:root[data-theme='dark'] .weekly-draft-tone-5,
+:root[data-theme='dark'] .weekly-draft-tone-6,
+:root[data-theme='dark'] .weekly-draft-tone-7,
+:root[data-theme='dark'] .weekly-draft-tone-8 {
+  --weekly-draft-readable-text: #263238;
+  --weekly-draft-readable-muted: #52606d;
+}
+
+.weekly-draft-preview-block--overview strong,
+.weekly-draft-preview-block-main strong {
+  color: var(--weekly-draft-readable-text, var(--text));
+}
+
+.weekly-draft-preview-block--overview small,
+.weekly-draft-preview-block-main small {
+  color: var(--weekly-draft-readable-muted, var(--text-muted));
 }
 
 /* WCAG AA contrast fixes reproduced by PR #166 browser-quality. */
