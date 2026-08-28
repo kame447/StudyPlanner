@@ -1,5 +1,6 @@
 import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
+  ObservabilityAdminIdentityMatch,
   ObservabilityAiAnalysisReadModel,
   ObservabilityUserInvestigationReadModel,
 } from '../../shared/productObservabilityAdminReadModel';
@@ -80,6 +81,16 @@ export async function getAdminObservabilityAiAnalysis(params: {
     query,
   );
   return payload.result;
+}
+
+export async function resolveAdminObservabilityUserIdentity(
+  search: string,
+): Promise<ObservabilityAdminIdentityMatch[]> {
+  const payload = await adminGet<{
+    ok: true;
+    matches: ObservabilityAdminIdentityMatch[];
+  }>('/observability/admin/user-identity', new URLSearchParams({ q: search }));
+  return payload.matches;
 }
 
 export async function getAdminObservabilityUsers(params: {
