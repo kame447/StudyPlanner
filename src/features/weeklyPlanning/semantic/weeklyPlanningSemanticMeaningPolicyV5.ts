@@ -36,13 +36,13 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing fixed total scope, plan target, current progress, performance metrics, time-boxed work, duration cost, and per-unit effort requires semantic interpretation.',
-    instruction: 'scope_total requires an explicit bounded total; target requires an explicit plan amount and is never derived from total/completed. If all remaining work is intended, omit target and let deterministic progress derive remaining. completed/remaining mean progress through that work. Scores, grades, accuracy and rank are not workload progress unless explicitly stated as material/task completion. Scheduled time is target minute/hour work; duration cost is effort. Preserve completed/remaining direction.',
+    instruction: 'scope_total requires an explicit bounded total; target requires an explicit plan amount and is never derived from total/completed. If all remaining work is intended, omit target and let deterministic progress derive remaining. completed/remaining mean progress through that work. Scores, grades, accuracy and rank are not workload progress unless explicitly stated as material/task completion. Preserve completed/remaining direction. Time the user wants scheduled is target minute/hour workload, not progress evidence; do not ask for content progress. Keep perOccurrence/recurrence aligned. When a separately stated workload exists, time cost is total_duration/duration_per_unit effort; use session_duration only for session-duration cost.',
   },
   {
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Task timing stays task-scoped; availability is plan-wide; planningWindow is the whole-plan range. Completion-by is a hard deadline. Date-only earliest_start/latest_end is valid; never invent a clock. Recurring weekdays belong in days with dateExpression null unless a separate date scope exists. Mandatory/unavailable/deadline are hard, preferences soft; keep supported relative dates symbolic.',
+    instruction: 'Task timing stays task-scoped; availability is plan-wide; planningWindow is the whole-plan range. Completion-by is a hard deadline. Date-only earliest_start/latest_end is valid; never invent a clock. Recurring weekdays belong in days with dateExpression null unless a separate date scope exists. Mandatory/unavailable/deadline are hard, preferences soft. Keep relative dates symbolic; deterministic calendar code resolves them.',
   },
   {
     id: 'availability_absence',
