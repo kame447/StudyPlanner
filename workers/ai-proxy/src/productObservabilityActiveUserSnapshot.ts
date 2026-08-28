@@ -18,6 +18,12 @@ const ACTOR_DAY_COLLECTION = 'observability_actor_day';
 const ACTIVE_USER_WINDOW_COLLECTION = 'observability_active_user_windows';
 const ACTOR_DAY_PAGE_SIZE = 500;
 const READ_MODEL_RETENTION_DAYS = 400;
+const OBSERVABILITY_ENVIRONMENTS: ObservabilityEnvironment[] = [
+  'production',
+  'preview',
+  'development',
+  'test',
+];
 
 interface ActiveUserSnapshotFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
@@ -73,6 +79,10 @@ function targetKey(environment: ObservabilityEnvironment, localDate: string): st
   return `${environment}:${localDate}`;
 }
 
+function emptyActorSets(): Map<ObservabilityEnvironment, Set<string>> {
+  return new Map(OBSERVABILITY_ENVIRONMENTS.map((environment) => [environment, new Set<string>()]));
+}
+
 export class ProductObservabilityActiveUserSnapshotService {
   private readonly defaultEnvironment: ObservabilityEnvironment;
 
@@ -84,11 +94,10 @@ export class ProductObservabilityActiveUserSnapshotService {
     this.defaultEnvironment = normalizedEnvironment(env.ENVIRONMENT);
   }
 
-  private async actorIdsForDate(
-    environment: ObservabilityEnvironment,
+  private async actorIdsByEnvironmentForDate(
     localDate: string,
-  ): Promise<Set<string>> {
-    const actors = new Set<string>();
+  ): Promise<Map<ObservabilityEnvironment, Set<string>>> {
+    const actors = emptyActorSets();
     let cursor: FirestoreOrderedCursor | null = null;
     while (true) {
       const page = await this.firestore.queryDocumentsAfter({
@@ -100,8 +109,8 @@ export class ProductObservabilityActiveUserSnapshotService {
       });
       for (const row of page) {
         const actorDay = asActorDay(row);
-        if (actorDay.environment === environment && actorDay.actorSubjectId) {
-          actors.add(actorDay.actorSubjectId);
+        if (actorDay.actorSubjectId && actors.has(actorDay.environment)) {
+          actors.get(actorDay.environment)?.add(actorDay.actorSubjectId);
         }
       }
       if (page.length < ACTOR_DAY_PAGE_SIZE) break;
@@ -114,21 +123,35 @@ export class ProductObservabilityActiveUserSnapshotService {
     return actors;
   }
 
-  async refresh(
+  private async loadActorIds(
+    dates: readonly string[],
+  ): Promise<Map<string, Set<string>>> {
+    const byEnvironmentDate = new Map<string, Set<string>>();
+    for (const localDate of [...new Set(dates)].sort()) {
+      const byEnvironment = await this.actorIdsByEnvironmentForDate(localDate);
+      for (const environment of OBSERVABILITY_ENVIRONMENTS) {
+        byEnvironmentDate.set(
+          targetKey(environment, localDate),
+          byEnvironment.get(environment) ?? new Set<string>(),
+        );
+      }
+    }
+    return byEnvironmentDate;
+  }
+
+  private async writeSnapshot(
     environment: ObservabilityEnvironment,
     asOfDate: string,
+    byEnvironmentDate: ReadonlyMap<string, Set<string>>,
   ): Promise<ObservabilityActiveUserWindows> {
-    const dates = datesEndingAt(asOfDate, 30);
-    const byDate = new Map<string, Set<string>>();
-    for (const localDate of dates) {
-      byDate.set(localDate, await this.actorIdsForDate(environment, localDate));
-    }
-
-    const todayActors = byDate.get(asOfDate) ?? new Set<string>();
+    const last30Dates = datesEndingAt(asOfDate, 30);
+    const last7Dates = new Set(datesEndingAt(asOfDate, 7));
+    const todayActors = byEnvironmentDate.get(targetKey(environment, asOfDate)) ?? new Set<string>();
     const last7Actors = new Set<string>();
     const last30Actors = new Set<string>();
-    const last7Dates = new Set(datesEndingAt(asOfDate, 7));
-    for (const [localDate, actors] of byDate.entries()) {
+
+    for (const localDate of last30Dates) {
+      const actors = byEnvironmentDate.get(targetKey(environment, localDate)) ?? new Set<string>();
       for (const actor of actors) {
         last30Actors.add(actor);
         if (last7Dates.has(localDate)) last7Actors.add(actor);
@@ -153,6 +176,14 @@ export class ProductObservabilityActiveUserSnapshotService {
       snapshot as unknown as Record<string, unknown>,
     );
     return snapshot;
+  }
+
+  async refresh(
+    environment: ObservabilityEnvironment,
+    asOfDate: string,
+  ): Promise<ObservabilityActiveUserWindows> {
+    const dates = datesEndingAt(asOfDate, 30);
+    return await this.writeSnapshot(environment, asOfDate, await this.loadActorIds(dates));
   }
 
   async refreshAffected(
@@ -185,12 +216,24 @@ export class ProductObservabilityActiveUserSnapshotService {
       }
     }
 
-    const snapshots: ObservabilityActiveUserWindows[] = [];
     const orderedTargets = [...targets.values()].sort((left, right) =>
       targetKey(left.environment, left.localDate)
         .localeCompare(targetKey(right.environment, right.localDate)));
+    if (orderedTargets.length === 0) return [];
+
+    const requiredDates = new Set<string>();
     for (const target of orderedTargets) {
-      snapshots.push(await this.refresh(target.environment, target.localDate));
+      datesEndingAt(target.localDate, 30).forEach((date) => requiredDates.add(date));
+    }
+    const byEnvironmentDate = await this.loadActorIds([...requiredDates]);
+
+    const snapshots: ObservabilityActiveUserWindows[] = [];
+    for (const target of orderedTargets) {
+      snapshots.push(await this.writeSnapshot(
+        target.environment,
+        target.localDate,
+        byEnvironmentDate,
+      ));
     }
     return snapshots;
   }
