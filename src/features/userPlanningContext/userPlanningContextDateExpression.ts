@@ -9,6 +9,7 @@ const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_RANGE_PATTERN = /^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/;
 const STRUCTURED_PARTIAL_PATTERN = /^year:(\d{4});month:(\d{1,2})(?:;part:(early|mid|late))?$/;
 const COMPACT_PARTIAL_PATTERN = /^(\d{4})-(\d{1,2})(?:-(early|mid|late))?$/;
+const MIXED_PARTIAL_PATTERN = /^(\d{4})-(\d{1,2})(上旬|中旬|下旬)$/;
 const JAPANESE_PARTIAL_PATTERN = /^(\d{4})年(\d{1,2})月(?:(上旬|中旬|下旬))?$/;
 
 function pad2(value: number): string {
@@ -65,14 +66,15 @@ export function canonicalizeUserPlanningContextPartialDateV1(expression: string)
 
   const structured = STRUCTURED_PARTIAL_PATTERN.exec(unwrapped);
   const compact = structured ? null : COMPACT_PARTIAL_PATTERN.exec(unwrapped);
-  const japanese = structured || compact ? null : JAPANESE_PARTIAL_PATTERN.exec(unwrapped);
-  const match = structured ?? compact ?? japanese;
+  const mixed = structured || compact ? null : MIXED_PARTIAL_PATTERN.exec(unwrapped);
+  const japanese = structured || compact || mixed ? null : JAPANESE_PARTIAL_PATTERN.exec(unwrapped);
+  const match = structured ?? compact ?? mixed ?? japanese;
   if (!match) return null;
 
   const range = partialRange(
     Number(match[1]),
     Number(match[2]),
-    japanese ? japanesePart(match[3]) : match[3] as MonthPartV1 | undefined,
+    mixed || japanese ? japanesePart(match[3]) : match[3] as MonthPartV1 | undefined,
   );
   return range ? `${range.start}/${range.end}` : null;
 }
