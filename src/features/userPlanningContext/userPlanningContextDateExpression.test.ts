@@ -13,6 +13,8 @@ describe('durable user planning context date expressions', () => {
       .toBe('2027-01-01/2027-01-31');
     expect(canonicalizeUserPlanningContextPartialDateV1('2027-02-late'))
       .toBe('2027-02-21/2027-02-28');
+    expect(canonicalizeUserPlanningContextPartialDateV1('2027-02下旬'))
+      .toBe('2027-02-21/2027-02-28');
     expect(canonicalizeUserPlanningContextPartialDateV1('year:2028;month:02;part:late'))
       .toBe('2028-02-21/2028-02-29');
   });
