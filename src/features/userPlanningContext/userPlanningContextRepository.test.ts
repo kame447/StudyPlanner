@@ -74,6 +74,52 @@ describe('userPlanningContextRepository merge policy', () => {
     });
   });
 
+  it('preserves distinct inferred concern history while deduplicating an exact repeated concern', () => {
+    const firstConcern = record({
+      id: 'concern-1',
+      kind: 'concern',
+      label: '数学',
+      value: '理解に不安がある',
+      sourceText: '数学は理解に不安があります',
+    });
+    const snapshot = {
+      ...createEmptyUserPlanningContextSnapshotV1(OWNER),
+      records: [firstConcern],
+    };
+    const secondConcern = record({
+      id: 'concern-2',
+      kind: 'concern',
+      label: '数学',
+      value: '演習で迷いやすい',
+      sourceText: '数学は演習で迷いやすいです',
+      sourceTurnId: 'turn-2',
+      recordedAt: '2026-08-29T00:00:00.000Z',
+    });
+    const repeatedFirstConcern = record({
+      id: 'concern-repeat',
+      kind: 'concern',
+      label: '数学',
+      value: '理解に不安がある',
+      sourceText: '今も数学は理解に不安があります',
+      sourceTurnId: 'turn-3',
+      recordedAt: '2026-08-30T00:00:00.000Z',
+    });
+
+    const merged = mergeInferredUserPlanningContextRecordsV1({
+      snapshot,
+      records: [secondConcern, repeatedFirstConcern],
+      now: '2026-08-30T00:00:01.000Z',
+    });
+
+    expect(merged.records).toHaveLength(2);
+    expect(merged.records.map((candidate) => candidate.value)).toEqual(expect.arrayContaining([
+      '理解に不安がある',
+      '演習で迷いやすい',
+    ]));
+    expect(merged.records.find((candidate) => candidate.value === '理解に不安がある'))
+      .toMatchObject({ id: 'concern-repeat', sourceTurnId: 'turn-3' });
+  });
+
   it('replaces an inferred record when the user edits the same durable key', () => {
     const snapshot = {
       ...createEmptyUserPlanningContextSnapshotV1(OWNER),
