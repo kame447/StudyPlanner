@@ -7,6 +7,7 @@ import { resolveChatModel } from './modelPolicy';
 import {
   createAiRequestId,
   isAiRequestObservabilityConfigured,
+  parseOpenAiUsage,
   recordAiRequestMetricBestEffort,
   resolveAiRequestPhase,
   type AiRequestUsage,
@@ -218,6 +219,8 @@ export async function observeAiProxyRequest(params: {
   const requestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER))
     ?? createAiRequestId();
   const appVersion = params.request.headers.get(APP_VERSION_HEADER)?.trim() || 'unknown';
+  const usage = params.usage
+    ?? (operation.provider === 'openai' ? parseOpenAiUsage(responsePayload) : null);
 
   await recordAiRequestMetricBestEffort({
     env: params.env,
@@ -233,7 +236,7 @@ export async function observeAiProxyRequest(params: {
     status,
     requestBytes: getUtf8ByteLength(requestText),
     responseBytes: getUtf8ByteLength(responseText),
-    usage: params.usage ?? null,
+    usage,
     startedAtMs: params.startedAtMs,
     onError: params.onError,
   });

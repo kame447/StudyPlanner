@@ -8,7 +8,7 @@ Owning Issue: #213
 
 現在はPhase 2「Telemetry foundation」である。
 
-Phase 1のcanonical設計はPR #215でmainへ統合済みで、lightweight telemetry ingestion基盤はPR #216でmainへ統合済みである。
+Phase 1のcanonical設計はPR #215でmainへ統合済みで、lightweight telemetry ingestion基盤はPR #216、AI proxy request outcome metric基盤はPR #217でmainへ統合済みである。
 
 このphaseでは管理UIの見た目を作り込まない。AI/API request metricとweekly-planning typed outcomeをdurable telemetryへ接続し、production operationからobservability failureを分離した状態を完成させる。
 
@@ -126,12 +126,14 @@ Phase 2以降のruntime implementationへ進む際は、Issue #213をparentと�
 
 Phase 1設計はPR #215でmainへ統合済みである。
 
-Phase 2の最初のrelease unitであるPR #216では、typed product activity contract、authenticated `/observability/events` ingestion、opaque actor identity、idempotent Firestore persistence、90日retention、telemetry failure isolationをmainへ統合した。
+Phase 2のPR #216ではtyped product activity contract、authenticated `/observability/events` ingestion、opaque actor identity、idempotent Firestore persistence、90日retention、telemetry failure isolationをmainへ統合した。
 
-現在のactive branchは`feat/product-observability-ai-request-metrics`、active PRは#217である。#217はproduction AI proxy requestについて、chat completion、weekly-planning attachment、planning transcription、timetable OCRのrequest/outcome metricをbest-effortでdurable化する。request count、実際にroutingされたmodel、purpose、semantic initial/repair、proxy latency、request/response bytes、quota/provider/empty/invalid response等のstatusを記録する。
+PR #217ではproduction AI proxy requestについて、chat completion、weekly-planning attachment、planning transcription、timetable OCRのrequest/outcome metricをbest-effortでdurable化した。request count、実際にroutingされたmodel、purpose、semantic initial/repair、proxy latency、request/response bytes、quota/provider/empty/invalid response等のstatusがmainで観測可能になった。
 
-provider token usageは、provider responseから実値が伝播されるまで`null`とし、0や推定tokenを事実として保存しない。pricingもversioned catalogが導入されるまで`estimatedCostMicros=null`とする。
+現在のactive branchは`feat/product-observability-provider-usage`、active PRは#218である。#218ではOpenAI-compatible provider responseが実際に返したusageだけをproxy responseからobservabilityへ伝播し、prompt / completion / total / cached / cache-write tokenを保持する。欠損値を0へ補完したり、request本文からtokenを推定したりしない。
 
-#217の完了条件は、最終HEADでTypeScript、全test、production build、diff check、Browser Regressionが成功し、mainからの差分がAI observability責務とcurrent checkpointに限定されていることである。
+costはraw usageとは別のversioned pricing boundaryで算出する。現在のcatalogで安全に評価できる`gpt-5.6-luna`の短context text chatだけ推定し、cache accounting不足、272k超のlong-context tier、planning attachment、未対応provider/modelは`estimatedCostMicros=null`とする。providerがper-request token usageを返さないplanning transcriptionも推定しない。
 
-#217 merge後の次のconcrete actionは、別のreviewable release unitでprovider `usage`の実値伝播とpricing boundaryを実装し、その後weekly-planning typed outcome projectionを接続することである。Phase 2が完了するまで管理UI実装へ進まない。
+#218の完了条件は、最終HEADでTypeScript、全test、production build、diff check、Browser Regressionが成功し、mainからの差分がprovider usage / pricing / checkpoint責務に限定されていることである。
+
+#218 merge後の次のconcrete actionはweekly-planning application layerが既に決定したtyped lifecycle/outcomeをproduct-observabilityへprojectionすることである。trace本文からplanning truthを再推論しない。Phase 2が完了するまで管理UI実装へ進まない。
