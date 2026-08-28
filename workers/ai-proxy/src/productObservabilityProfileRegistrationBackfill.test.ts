@@ -16,6 +16,7 @@ class MemoryBackfillFirestore {
   readonly documents = new Map<string, StoredDocument>();
   readonly profiles: FirestoreOrderedDocument[] = [];
   readonly profileWrites: Array<{ id: string; value: StoredDocument; mask?: string[] }> = [];
+  queryCallCount = 0;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -57,6 +58,7 @@ class MemoryBackfillFirestore {
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
   }): Promise<FirestoreOrderedDocument[]> {
+    this.queryCallCount += 1;
     const rows = this.profiles.filter((row) => {
       if (!params.cursor) return true;
       const createdAt = String(row.createdAt ?? '');
@@ -140,5 +142,39 @@ describe('ProductObservabilityProfileRegistrationBackfillService', () => {
     });
     expect(profileRegistrationBackfillReady(checkpoint)).toBe(false);
     expect(firestore.profileWrites).toEqual([]);
+  });
+
+  it('fails closed on a malformed persisted cursor instead of restarting from the beginning', async () => {
+    const firestore = new MemoryBackfillFirestore();
+    firestore.documents.set(
+      `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
+      {
+        schemaVersion: 1,
+        cursor: { orderedValue: 123, documentName: 'bad' },
+        processedProfiles: 10,
+        normalizedProfiles: 10,
+        malformedProfiles: 0,
+        completed: false,
+        updatedAt: '2026-08-28T11:00:00.000Z',
+      },
+    );
+
+    await expect(service(firestore).runBatch(10)).rejects.toThrow(
+      'profile_registration_backfill_checkpoint_invalid',
+    );
+    expect(firestore.queryCallCount).toBe(0);
+  });
+
+  it('fails before advancing the checkpoint when an ordered profile has non-string createdAt', async () => {
+    const firestore = new MemoryBackfillFirestore();
+    firestore.addProfile('bad-type', { createdAt: 12345 });
+
+    await expect(service(firestore).runBatch(10)).rejects.toThrow(
+      'profile_registration_backfill_profile_invalid',
+    );
+    expect(firestore.profileWrites).toEqual([]);
+    expect(firestore.documents.has(
+      `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
+    )).toBe(false);
   });
 });
