@@ -133,6 +133,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     previousState: input.previousState,
     ownerId: input.userId,
     currentDate: requestContext.currentDate,
+    userText: input.userText,
   });
   const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
