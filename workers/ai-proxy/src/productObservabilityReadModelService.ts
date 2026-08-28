@@ -8,14 +8,17 @@ import {
   type ObservabilityActiveUserWindows,
   type ObservabilityDailyRollup,
   type ObservabilityOverviewReadModel,
+  type ObservabilityRegisteredUserSummary,
   type ObservabilityRollupCheckpoint,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
+import { PROFILE_REGISTERED_AT_ISO_FIELD } from '../../../shared/profileRegistrationTime';
 import {
   FirestoreServiceAccountClient,
   type FirestoreOrderedCursor,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
+  type FirestoreStringFilter,
 } from './firestoreServiceAccountClient';
 import {
   createEmptyLatencyHistogram,
@@ -23,6 +26,7 @@ import {
   mergeLatencyHistograms,
 } from './productObservabilityReadModelProjection';
 
+const PROFILE_COLLECTION = 'profiles';
 const USER_SUMMARY_COLLECTION_PREFIX = 'observability_user_summary';
 const DAILY_ROLLUP_COLLECTION = 'observability_daily_rollups';
 const ACTIVE_USER_WINDOW_COLLECTION = 'observability_active_user_windows';
@@ -30,6 +34,7 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const USER_SUMMARY_PAGE_SIZE = 100;
 const MAX_OVERVIEW_DAYS = 93;
+const MIN_CANONICAL_REGISTRATION_ISO = '0000-01-01T00:00:00.000Z';
 const ACTOR_SUBJECT_PATTERN = /^actor-[A-Za-z0-9-]{8,160}$/;
 const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
   'production',
@@ -40,6 +45,7 @@ const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
 
 interface ObservabilityReadFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
+  countDocuments(collection: string, filters?: readonly FirestoreStringFilter[]): Promise<number>;
   queryDocumentsAfter(params: {
     collection: string;
     orderByField: string;
@@ -95,6 +101,12 @@ function addDays(localDate: string, offset: number): string {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return date.toISOString().slice(0, 10);
+}
+
+function reportingDateStartIso(localDate: string): string {
+  const instant = new Date(`${localDate}T00:00:00+09:00`);
+  if (!Number.isFinite(instant.getTime())) throw new Error('observability_date_range_invalid');
+  return instant.toISOString();
 }
 
 function dailyId(environment: ObservabilityEnvironment, localDate: string): string {
@@ -304,6 +316,43 @@ function validateUserCursor(
   }
 }
 
+async function registeredUsersForPeriod(
+  firestore: ObservabilityReadFirestore,
+  fromDate: string,
+  toDate: string,
+): Promise<ObservabilityRegisteredUserSummary> {
+  const indexedFilter: FirestoreStringFilter = {
+    field: PROFILE_REGISTERED_AT_ISO_FIELD,
+    operator: 'GREATER_THAN_OR_EQUAL',
+    value: MIN_CANONICAL_REGISTRATION_ISO,
+  };
+  const [total, indexed] = await Promise.all([
+    firestore.countDocuments(PROFILE_COLLECTION),
+    firestore.countDocuments(PROFILE_COLLECTION, [indexedFilter]),
+  ]);
+  const registrationIndexReady = total === indexed;
+  const newInPeriod = registrationIndexReady
+    ? await firestore.countDocuments(PROFILE_COLLECTION, [
+        {
+          field: PROFILE_REGISTERED_AT_ISO_FIELD,
+          operator: 'GREATER_THAN_OR_EQUAL',
+          value: reportingDateStartIso(fromDate),
+        },
+        {
+          field: PROFILE_REGISTERED_AT_ISO_FIELD,
+          operator: 'LESS_THAN',
+          value: reportingDateStartIso(addDays(toDate, 1)),
+        },
+      ])
+    : null;
+  return {
+    total,
+    newInPeriod,
+    registrationIndexReady,
+    scope: 'firebase_project',
+  };
+}
+
 export class ProductObservabilityReadModelService {
   constructor(
     env: ProductObservabilityReadModelEnv,
@@ -316,7 +365,7 @@ export class ProductObservabilityReadModelService {
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
     const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const [dailyValues, activeUsersValue, checkpointValue] = await Promise.all([
+    const [dailyValues, activeUsersValue, checkpointValue, registeredUsers] = await Promise.all([
       Promise.all(dates.map(async (localDate) => ({
         localDate,
         value: await this.firestore.getDocument(
@@ -329,6 +378,7 @@ export class ProductObservabilityReadModelService {
         activeUserWindowId(params.environment, params.toDate),
       ),
       this.firestore.getDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID),
+      registeredUsersForPeriod(this.firestore, params.fromDate, params.toDate),
     ]);
     const daily = dailyValues
       .map(({ localDate, value }) => readDailyRollup(value, params.environment, localDate))
@@ -342,6 +392,7 @@ export class ProductObservabilityReadModelService {
       fromDate: params.fromDate,
       toDate: params.toDate,
       reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+      registeredUsers,
       daily,
       activeUsers: readActiveUsers(
         activeUsersValue,
