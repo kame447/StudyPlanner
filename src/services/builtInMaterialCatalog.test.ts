@@ -25,6 +25,11 @@ describe('built-in material catalog', () => {
     expect(results.some((candidate) => candidate.title === '数学')).toBe(false);
   });
 
+  it('does not short-circuit external search for partial or ambiguous terms', () => {
+    expect(searchBuiltInMaterialCatalog('チャート')).toEqual([]);
+    expect(searchBuiltInMaterialCatalog('微')).toEqual([]);
+  });
+
   it('leaves ISBN and unknown titles to the shared catalog/provider path', () => {
     expect(searchBuiltInMaterialCatalog('9784023315686')).toEqual([]);
     expect(searchBuiltInMaterialCatalog('存在しない教材XYZ987')).toEqual([]);
