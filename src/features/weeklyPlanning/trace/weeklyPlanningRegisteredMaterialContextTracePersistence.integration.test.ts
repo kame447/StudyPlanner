@@ -61,7 +61,7 @@ function traceInput(requestId: string, debugTraceEvents: Array<{
   sequence: number;
   stage: string;
   occurredAt: string;
-  severity: 'info';
+  severity: 'debug' | 'info';
   data: unknown;
 }>) {
   return {
@@ -74,6 +74,21 @@ function traceInput(requestId: string, debugTraceEvents: Array<{
     outcome: 'needs_clarification',
     debugTraceEvents,
     previewCount: 0,
+  };
+}
+
+function semanticInputEvent(publicStateSummary: Record<string, unknown>, sequence = 0) {
+  return {
+    schemaVersion: 2 as const,
+    sequence,
+    stage: 'semantic_pipeline_input',
+    occurredAt: '2026-08-29T00:00:00.000Z',
+    severity: 'debug' as const,
+    data: {
+      userText: '明日から金フレを9月7日まで進めたい。',
+      recentConversation: [],
+      publicStateSummary,
+    },
   };
 }
 
@@ -101,37 +116,28 @@ afterEach(() => {
 });
 
 describe('registered material semantic context trace persistence gate', () => {
-  it('survives outbox retry, truncation, future fields, and Worker document bounds', async () => {
-    const event = {
-      schemaVersion: 2 as const,
-      sequence: 0,
-      stage: 'runtime_session_context_prepared',
-      occurredAt: '2026-08-29T00:00:00.000Z',
-      severity: 'info' as const,
-      data: {
-        publicStateSummary: {
-          registeredMaterials: [
-            {
-              materialId: 'gold-phrase',
-              name: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
-              aliases: ['金フレ'],
-              catalogEntryId: 'seed:gold-phrase',
-              progressUnit: 'word',
-              totalUnits: 1000,
-              currentUnit: 200,
-              remainingUnits: 800,
-              oversizedMaterialField: 'oversized-material-field-'.repeat(4_000),
-            },
-            {
-              materialId: 'target-1900',
-              name: '英単語ターゲット1900',
-              aliases: ['ターゲット1900'],
-              futureRegisteredMaterialField: FUTURE_FIELD_SENTINEL,
-            },
-          ],
+  it('survives outbox retry and Worker preparation without dropping future material fields', async () => {
+    const event = semanticInputEvent({
+      graphRevision: 3,
+      registeredMaterials: [
+        {
+          materialId: 'gold-phrase',
+          name: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+          aliases: ['金フレ'],
+          catalogEntryId: 'seed:gold-phrase',
+          progressUnit: 'word',
+          totalUnits: 1000,
+          currentUnit: 200,
+          remainingUnits: 800,
         },
-      },
-    };
+        {
+          materialId: 'target-1900',
+          name: '英単語ターゲット1900',
+          aliases: ['ターゲット1900'],
+          futureRegisteredMaterialField: FUTURE_FIELD_SENTINEL,
+        },
+      ],
+    });
 
     const harness = repositoryHarness();
     harness.failNext();
@@ -159,9 +165,6 @@ describe('registered material semantic context trace persistence gate', () => {
     expect(serialized).toContain('金のフレーズ');
     expect(serialized).toContain('seed:gold-phrase');
     expect(serialized).toContain(FUTURE_FIELD_SENTINEL);
-    expect(serialized).toContain('"traceTruncated":true');
-    expect(serialized).toContain('"truncation":{"applied":true');
-    expect(serialized).not.toContain('oversized-material-field-'.repeat(100));
     expect(measureWeeklyPlanningTraceJsonBytes(replayedEntry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
@@ -176,6 +179,43 @@ describe('registered material semantic context trace persistence gate', () => {
     }, subject, canonicalIds, '2026-08-29T00:00:00.000Z');
     expect(prepared.entries).toHaveLength(1);
     expect(JSON.stringify(prepared.entries[0])).toContain(FUTURE_FIELD_SENTINEL);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
+    );
+  });
+
+  it('bounds oversized registered material diagnostics before persistence', async () => {
+    const harness = repositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const oversized = 'oversized-material-field-'.repeat(4_000);
+
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput(
+      `${CONVERSATION_ID}:request:oversized`,
+      [semanticInputEvent({
+        graphRevision: 4,
+        registeredMaterials: [{
+          materialId: 'gold-phrase',
+          name: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+          aliases: ['金フレ'],
+          oversizedMaterialField: oversized,
+        }],
+      })],
+    ));
+
+    expect(harness.writes).toHaveLength(1);
+    const entry = harness.writes[0].entries[0];
+    const serialized = JSON.stringify(entry);
+    expect(serialized).toContain('"traceTruncated":true');
+    expect(serialized).toContain('"truncation":{"applied":true');
+    expect(serialized).not.toContain(oversized);
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
+    );
+
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: harness.writes[0].session as unknown as Record<string, unknown>,
+      entries: harness.writes[0].entries as unknown as Record<string, unknown>[],
+    }, subject, canonicalIds, '2026-08-29T00:00:00.000Z');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
