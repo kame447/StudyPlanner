@@ -9,6 +9,7 @@ import { getFirestoreDb } from '../../lib/firebaseClient';
 import {
   normalizeUserPlanningContextSnapshotV1,
   userPlanningContextDurableKeyV1,
+  userPlanningContextRecordIdentityV1,
 } from './userPlanningContextSpace';
 import {
   USER_PLANNING_CONTEXT_CLOUD_SCHEMA_VERSION,
@@ -120,19 +121,22 @@ export function mergeInferredUserPlanningContextRecordsV1(params: {
   records: readonly UserPlanningContextRecordV1[];
   now: string;
 }): UserPlanningContextSnapshotV1 {
-  const byKey = new Map<string, UserPlanningContextRecordV1>();
+  const byIdentity = new Map<string, UserPlanningContextRecordV1>();
+  const confirmedDurableKeys = new Set<string>();
   for (const record of params.snapshot.records) {
-    byKey.set(userPlanningContextDurableKeyV1(record), record);
+    byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
+    if (record.origin === 'user_confirmed') {
+      confirmedDurableKeys.add(userPlanningContextDurableKeyV1(record));
+    }
   }
   for (const record of params.records) {
     if (record.ownerId !== params.snapshot.ownerId || record.origin !== 'ai_inferred') continue;
-    const key = userPlanningContextDurableKeyV1(record);
-    if (byKey.get(key)?.origin === 'user_confirmed') continue;
-    byKey.set(key, { ...record });
+    if (confirmedDurableKeys.has(userPlanningContextDurableKeyV1(record))) continue;
+    byIdentity.set(userPlanningContextRecordIdentityV1(record), { ...record });
   }
   return snapshotFromRecords({
     ownerId: params.snapshot.ownerId,
-    records: byKey.values(),
+    records: byIdentity.values(),
     updatedAt: params.now,
   });
 }
