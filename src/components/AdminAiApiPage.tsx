@@ -269,7 +269,7 @@ export function AdminAiApiPage() {
                 <p>planning turnとAI requestをserver-side集計し、repairやcacheの効き方を確認します。</p>
               </div>
             </div>
-            <div className="admin-ai-efficiency-grid">
+            <div className="admin-overview-stat-grid">
               <div><span>計画turn</span><strong>{formatNumber(data.planningEfficiency.turnCount)}件</strong></div>
               <div><span>1 turnあたりrequest</span><strong>{data.planningEfficiency.requestsPerTurn === null ? '未計測' : data.planningEfficiency.requestsPerTurn.toFixed(2)}</strong></div>
               <div><span>repair request率</span><strong>{percentage(data.planningEfficiency.repairRate)}</strong></div>
