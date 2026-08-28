@@ -12,7 +12,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npm exec vite -- --config tests/e2e/admin-overview-harness/vite.config.mjs',
+    command: 'npm exec vite -- --config admin-overview-harness/vite.config.mjs',
     url: 'http://127.0.0.1:4175/admin-overview.html',
     reuseExistingServer: false,
     timeout: 120000,
