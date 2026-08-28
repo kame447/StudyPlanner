@@ -8,9 +8,13 @@ Status: current domain entry point
 
 このdomainは教材・予定・週間計画そのものの意味や保存モデルを所有しない。外部サービス固有のレスポンス、認証、quota、利用規約、fallbackをStudyPlanner内部へ漏らさないための統合境界を所有する。
 
+## Canonical requirements
+
+- [`spec/material-metadata.md`](spec/material-metadata.md): 書籍教材の検索、共有catalog、provider fallback、manual fallbackの正仕様
+
 ## Current work
 
-- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査するactive work record
+- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査したsupporting research record
 
 ## Boundary
 
@@ -32,4 +36,4 @@ StudyPlanner domain model
 - caching、保存、画像利用、商用利用はproviderごとの公式条件を確認する
 - external metadataと教材の章・節・進捗構造を同じ責務にしない
 
-現在は調査段階であり、runtime provider implementationの正仕様はまだ確定していない。採用APIと内部contractは、公式条件と実装検証を通した後にarchitecture documentへ昇格する。
+書籍教材については、初期providerをNDL Search、共有catalogをISBN中心のserver-side cacheとして実装する。runtime behaviorは `spec/material-metadata.md` を正本とする。
