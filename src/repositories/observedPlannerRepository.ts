@@ -23,9 +23,18 @@ export function createObservedPlannerRepository(
   telemetry: ProductTelemetryPort = createFirebaseProductTelemetryPort(),
 ): PlannerRepository {
   const todoStatusById = new Map<string, TodoStatus>();
+  const appActiveUsers = new Set<string>();
 
   return {
     ...repository,
+    async getPlans(userId) {
+      const plans = await repository.getPlans(userId);
+      if (!appActiveUsers.has(userId)) {
+        appActiveUsers.add(userId);
+        recordBestEffort(telemetry, 'app_active');
+      }
+      return plans;
+    },
     async getTodos(userId) {
       const todos = await repository.getTodos(userId);
       todos.forEach((todo) => todoStatusById.set(todo.id, todo.status));
