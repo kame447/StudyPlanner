@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import type {
-  ObservabilityActorDay,
+  ObservabilityActiveUserWindows,
   ObservabilityDailyRollup,
   ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
@@ -15,11 +15,11 @@ type StoredDocument = Record<string, unknown>;
 
 class MemoryReadFirestore {
   readonly documents = new Map<string, StoredDocument>();
-  readonly actorDays: Array<ObservabilityActorDay & { id: string; documentName: string }> = [];
   readonly userSummaries = new Map<
     string,
     Array<ObservabilityUserSummary & { id: string; documentName: string }>
   >();
+  queryCallCount = 0;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -27,15 +27,6 @@ class MemoryReadFirestore {
 
   setDocument(collection: string, id: string, value: StoredDocument): void {
     this.documents.set(this.key(collection, id), { ...value });
-  }
-
-  addActorDay(id: string, value: ObservabilityActorDay): void {
-    this.actorDays.push({
-      ...value,
-      id,
-      documentName: `projects/test/databases/(default)/documents/observability_actor_day/${id}`,
-    });
-    this.actorDays.sort((left, right) => left.documentName.localeCompare(right.documentName));
   }
 
   addUserSummary(
@@ -69,9 +60,8 @@ class MemoryReadFirestore {
     cursor?: { orderedValue: string; documentName: string } | null;
     limit?: number;
   }): Promise<Array<StoredDocument & { id: string; documentName: string }>> {
-    const source = params.collection === 'observability_actor_day'
-      ? this.actorDays
-      : this.userSummaries.get(params.collection) ?? [];
+    this.queryCallCount += 1;
+    const source = this.userSummaries.get(params.collection) ?? [];
     const filtered = source.filter((row) => {
       if (params.filters?.some((filter) => String(row[filter.field as keyof typeof row]) !== filter.value)) {
         return false;
@@ -84,23 +74,6 @@ class MemoryReadFirestore {
     });
     return filtered.slice(0, params.limit ?? 50).map((row) => ({ ...row }));
   }
-}
-
-function actorDay(localDate: string, actorSubjectId: string): ObservabilityActorDay {
-  return {
-    schemaVersion: 1,
-    environment: 'production',
-    localDate,
-    actorSubjectId,
-    firstOccurredAt: `${localDate}T00:00:00.000Z`,
-    lastOccurredAt: `${localDate}T00:00:00.000Z`,
-    eventCount: 1,
-    productActivityObserved: true,
-    aiRequestObserved: false,
-    planningObserved: false,
-    updatedAt: `${localDate}T00:00:01.000Z`,
-    expireAt: '2027-10-02T00:00:00.000Z',
-  };
 }
 
 function userSummary(actorSubjectId: string): ObservabilityUserSummary {
@@ -139,6 +112,20 @@ function daily(localDate: string, latencyMs: number): ObservabilityDailyRollup {
   };
 }
 
+function activeUsers(asOfDate: string): ObservabilityActiveUserWindows {
+  return {
+    schemaVersion: 1,
+    environment: 'production',
+    asOfDate,
+    reportingTimeZone: 'Asia/Tokyo',
+    today: 2,
+    last7Days: 3,
+    last30Days: 4,
+    updatedAt: `${asOfDate}T01:00:00.000Z`,
+    expireAt: '2027-10-02T00:00:00.000Z',
+  };
+}
+
 function service(firestore: MemoryReadFirestore): ProductObservabilityReadModelService {
   return new ProductObservabilityReadModelService(
     {
@@ -151,10 +138,15 @@ function service(firestore: MemoryReadFirestore): ProductObservabilityReadModelS
 }
 
 describe('ProductObservabilityReadModelService', () => {
-  it('calculates rolling distinct actors by set union, not by summing daily counts', async () => {
+  it('reads precomputed active-user windows without scanning actor-day rows', async () => {
     const firestore = new MemoryReadFirestore();
     firestore.setDocument('observability_daily_rollups', 'production:2026-08-28', daily('2026-08-28', 90) as unknown as StoredDocument);
     firestore.setDocument('observability_daily_rollups', 'production:2026-08-29', daily('2026-08-29', 8_000) as unknown as StoredDocument);
+    firestore.setDocument(
+      'observability_active_user_windows',
+      'production:2026-08-29',
+      activeUsers('2026-08-29') as unknown as StoredDocument,
+    );
     firestore.setDocument('observability_rollup_state', 'main', {
       schemaVersion: 1,
       cursor: null,
@@ -165,10 +157,6 @@ describe('ProductObservabilityReadModelService', () => {
       lastFailureCategory: null,
       updatedAt: '2026-08-29T01:00:00.000Z',
     });
-    firestore.addActorDay('d1-a', actorDay('2026-08-28', 'actor-aaaaaaaa'));
-    firestore.addActorDay('d1-b', actorDay('2026-08-28', 'actor-bbbbbbbb'));
-    firestore.addActorDay('d2-a', actorDay('2026-08-29', 'actor-aaaaaaaa'));
-    firestore.addActorDay('d2-c', actorDay('2026-08-29', 'actor-cccccccc'));
 
     const overview = await service(firestore).getOverview({
       environment: 'production',
@@ -177,10 +165,38 @@ describe('ProductObservabilityReadModelService', () => {
     });
 
     expect(overview.daily.map((entry) => entry.activeActorCount)).toEqual([2, 2]);
-    expect(overview.distinctActiveActors).toBe(3);
+    expect(overview.activeUsers).toMatchObject({
+      today: 2,
+      last7Days: 3,
+      last30Days: 4,
+    });
     expect(overview.aiLatencyP50Ms).toBe(100);
     expect(overview.aiLatencyP95Ms).toBe(10_000);
     expect(overview.daily[0]).not.toHaveProperty('id');
+    expect(firestore.queryCallCount).toBe(0);
+  });
+
+  it('returns null instead of scanning raw membership when a window snapshot is unavailable', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument('observability_rollup_state', 'main', {
+      schemaVersion: 1,
+      cursor: null,
+      processedEventCount: 0,
+      lastRunStartedAt: null,
+      lastSuccessfulRunAt: null,
+      lastFailureAt: null,
+      lastFailureCategory: null,
+      updatedAt: '2026-08-29T01:00:00.000Z',
+    });
+
+    const overview = await service(firestore).getOverview({
+      environment: 'production',
+      fromDate: '2026-08-29',
+      toDate: '2026-08-29',
+    });
+
+    expect(overview.activeUsers).toBeNull();
+    expect(firestore.queryCallCount).toBe(0);
   });
 
   it('returns environment-isolated opaque user summaries with a bounded cursor', async () => {
