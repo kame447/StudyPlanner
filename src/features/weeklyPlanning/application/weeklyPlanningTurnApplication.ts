@@ -78,6 +78,12 @@ export function submitWeeklyPlanningApplicationTurn(
         timeZone: params.timeZone,
       });
     },
+    onStartedTurn({ pending }) {
+      services.outcomeLifecycle.started({
+        ownerId: params.ownerId,
+        pending,
+      });
+    },
     commitExecutionResult({ pending }) {
       services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
     },
@@ -100,12 +106,13 @@ export function submitWeeklyPlanningApplicationTurn(
         committed,
       });
     },
-    onFailedTurn({ pending, userText, error, failedState, assistantMessage }) {
+    onFailedTurn({ pending, userText, result, error, failedState, assistantMessage }) {
       services.stagingLifecycle.discard(pending);
       services.outcomeLifecycle.failed({
         ownerId: params.ownerId,
         pending,
         userText,
+        result,
         error,
         failedState,
         assistantMessage,
