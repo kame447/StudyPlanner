@@ -116,6 +116,18 @@ export interface ObservabilityUserSummary {
   updatedAt: string;
 }
 
+export interface ObservabilityActiveUserWindows {
+  schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
+  environment: ObservabilityEnvironment;
+  asOfDate: string;
+  reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
+  today: number;
+  last7Days: number;
+  last30Days: number;
+  updatedAt: string;
+  expireAt: string;
+}
+
 export interface ObservabilityRollupCursor {
   observedAt: string;
   documentName: string;
@@ -143,7 +155,7 @@ export interface ObservabilityOverviewReadModel {
   toDate: string;
   reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
   daily: ObservabilityDailyRollup[];
-  distinctActiveActors: number;
+  activeUsers: ObservabilityActiveUserWindows | null;
   aiLatencyP50Ms: number | null;
   aiLatencyP95Ms: number | null;
   rollupCheckpoint: ObservabilityRollupCheckpoint;
