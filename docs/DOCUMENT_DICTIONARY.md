@@ -15,6 +15,7 @@ Updated: 2026-08-28
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
 - `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
+- `domains/external-integrations/`: 外部provider/APIとの接続、利用条件、adapter境界、fallback、外部dataと内部domain modelの分離
 - `work/`: repository横断のtask運用ルール・template
 - `archive/`: current decisionを所有しない履歴・監査証跡
 
@@ -99,6 +100,14 @@ client-first executionの正仕様は `spec/client-first-execution-requirements.
 - execution order: `roadmap/current.md`
 
 週間計画traceのruntime schema / lifecycleはこのdomainへ移さず、`domains/weekly-planning/`とIssue #45 / #89をownerとして維持する。product-observabilityはservice-wide projection / consumerとして扱う。
+
+### External integrations
+
+入口: `docs/domains/external-integrations/README.md`
+
+外部provider/APIの採否、adapter境界、利用条件、quota、fallbackなどのactive調査はこのdomainの`work/`へ置く。現在の全体追跡Issueは#187である。
+
+教材、予定、週間計画など各product domainの意味・lifecycle・永続modelそのものはexternal-integrationsへ移さない。外部サービス固有のresponseや運用条件を内部domainへ漏らさない接続境界だけを所有する。
 
 ## 4. Work record rules
 
