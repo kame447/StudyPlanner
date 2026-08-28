@@ -9,6 +9,7 @@ class MemorySnapshotFirestore {
   readonly documents = new Map<string, StoredDocument>();
   readonly actorDays: Row[] = [];
   readonly writes: string[] = [];
+  readonly queriedDates: string[] = [];
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -40,12 +41,14 @@ class MemorySnapshotFirestore {
     cursor?: { orderedValue: string; documentName: string } | null;
     limit?: number;
   }): Promise<Row[]> {
+    const localDate = params.filters?.find((filter) => filter.field === 'localDate')?.value;
+    if (localDate && !params.cursor) this.queriedDates.push(localDate);
     const rows = this.actorDays.filter((row) => {
       if (params.filters?.some((filter) => String(row[filter.field]) !== filter.value)) return false;
       if (!params.cursor) return true;
-      const localDate = String(row.localDate);
-      return localDate > params.cursor.orderedValue
-        || (localDate === params.cursor.orderedValue
+      const rowDate = String(row.localDate);
+      return rowDate > params.cursor.orderedValue
+        || (rowDate === params.cursor.orderedValue
           && row.documentName > params.cursor.documentName);
     });
     return rows.slice(0, params.limit ?? 500).map((row) => ({ ...row }));
@@ -118,9 +121,10 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     expect(snapshot.last30Days).toBe(3);
     expect(snapshot.environment).toBe('production');
     expect(snapshot.reportingTimeZone).toBe('Asia/Tokyo');
+    expect(new Set(firestore.queriedDates).size).toBe(30);
   });
 
-  it('refreshes only window end dates affected by a newly observed historical actor-day', async () => {
+  it('reuses each actor-day scan while repairing overlapping historical windows', async () => {
     const firestore = new MemorySnapshotFirestore();
     firestore.addActorDay('late-a', actorDay({
       localDate: '2026-08-27',
@@ -140,6 +144,8 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
       'observability_active_user_windows/production:2026-08-27',
       'observability_active_user_windows/production:2026-08-28',
     ]);
+    expect(firestore.queriedDates).toHaveLength(31);
+    expect(new Set(firestore.queriedDates).size).toBe(31);
   });
 
   it('repairs preview windows without mixing preview actors into production', async () => {
@@ -173,6 +179,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     expect(firestore.writes).toEqual([
       'observability_active_user_windows/preview:2026-08-28',
     ]);
+    expect(new Set(firestore.queriedDates).size).toBe(30);
   });
 
   it('does no actor scan when current snapshot exists and no actor-day changed', async () => {
@@ -187,5 +194,6 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
 
     expect(snapshots).toEqual([]);
     expect(firestore.writes).toEqual([]);
+    expect(firestore.queriedDates).toEqual([]);
   });
 });
