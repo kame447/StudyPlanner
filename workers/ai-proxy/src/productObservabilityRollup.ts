@@ -1,5 +1,7 @@
+import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
+  type ObservabilityActiveUserDirtySource,
   type ObservabilityActorDay,
   type ObservabilityDailyRollup,
   type ObservabilityRollupCheckpoint,
@@ -29,7 +31,19 @@ const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const DEFAULT_BATCH_SIZE = 50;
 const MAX_TRANSACTION_ATTEMPTS = 3;
+const MAX_ACTIVE_USER_DIRTY_SOURCES = 128;
 const ROLLUP_SETTLE_LAG_MS = 5 * 60 * 1000;
+const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
+  'production',
+  'preview',
+  'development',
+  'test',
+]);
+
+type ActiveUserDirtySourceKey = Pick<
+  ObservabilityActiveUserDirtySource,
+  'environment' | 'localDate'
+>;
 
 interface ObservabilityRollupFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
@@ -60,11 +74,79 @@ export interface ProductObservabilityRollupResult {
   checkpoint: ObservabilityRollupCheckpoint;
 }
 
+function isIsoDate(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(new Date(`${value}T00:00:00.000Z`).getTime());
+}
+
+function isEnvironment(value: unknown): value is ObservabilityEnvironment {
+  return typeof value === 'string'
+    && OBSERVABILITY_ENVIRONMENTS.has(value as ObservabilityEnvironment);
+}
+
+function dirtySourceKey(source: ActiveUserDirtySourceKey): string {
+  return `${source.environment}:${source.localDate}`;
+}
+
+function readDirtySources(value: unknown): ObservabilityActiveUserDirtySource[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('invalid_observability_checkpoint');
+  const byKey = new Map<string, ObservabilityActiveUserDirtySource>();
+  for (const item of value) {
+    if (!item || typeof item !== 'object') throw new Error('invalid_observability_checkpoint');
+    const record = item as Record<string, unknown>;
+    if (
+      !isEnvironment(record.environment)
+      || !isIsoDate(record.localDate)
+      || !Number.isSafeInteger(record.revision)
+      || Number(record.revision) < 1
+    ) {
+      throw new Error('invalid_observability_checkpoint');
+    }
+    const source: ObservabilityActiveUserDirtySource = {
+      environment: record.environment,
+      localDate: record.localDate,
+      revision: Number(record.revision),
+    };
+    byKey.set(dirtySourceKey(source), source);
+  }
+  const sources = [...byKey.values()].sort((left, right) =>
+    dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
+  if (sources.length > MAX_ACTIVE_USER_DIRTY_SOURCES) {
+    throw new Error('active_user_dirty_sources_overflow');
+  }
+  return sources;
+}
+
+function mergeDirtySources(
+  current: readonly ObservabilityActiveUserDirtySource[],
+  changed: readonly ActiveUserDirtySourceKey[],
+): ObservabilityActiveUserDirtySource[] {
+  const byKey = new Map<string, ObservabilityActiveUserDirtySource>();
+  current.forEach((source) => byKey.set(dirtySourceKey(source), source));
+  changed.forEach((source) => {
+    const key = dirtySourceKey(source);
+    const existing = byKey.get(key);
+    byKey.set(key, {
+      ...source,
+      revision: existing ? existing.revision + 1 : 1,
+    });
+  });
+  const sources = [...byKey.values()].sort((left, right) =>
+    dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
+  if (sources.length > MAX_ACTIVE_USER_DIRTY_SOURCES) {
+    throw new Error('active_user_dirty_sources_overflow');
+  }
+  return sources;
+}
+
 function emptyCheckpoint(nowIso: string): ObservabilityRollupCheckpoint {
   return {
     schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
     cursor: null,
     processedEventCount: 0,
+    activeUserDirtySources: [],
     lastRunStartedAt: null,
     lastSuccessfulRunAt: null,
     lastFailureAt: null,
@@ -92,6 +174,7 @@ function readCheckpoint(
     processedEventCount: Number.isSafeInteger(value.processedEventCount)
       ? Math.max(0, Number(value.processedEventCount))
       : 0,
+    activeUserDirtySources: readDirtySources(value.activeUserDirtySources),
     lastRunStartedAt: typeof value.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value.lastSuccessfulRunAt === 'string'
       ? value.lastSuccessfulRunAt
@@ -122,7 +205,7 @@ function storedEventFromOrderedDocument(
     || typeof value.observedAt !== 'string'
     || typeof value.occurredAt !== 'string'
     || typeof value.actorSubjectId !== 'string'
-    || typeof value.environment !== 'string'
+    || !isEnvironment(value.environment)
     || !value.payload
     || typeof value.payload !== 'object'
   ) {
@@ -157,6 +240,12 @@ function failureCategory(error: unknown): string {
   if (error instanceof FirestoreTransactionConflictError) return 'transaction_conflict';
   if (error instanceof Error && error.message === 'invalid_observability_event') {
     return 'invalid_event';
+  }
+  if (error instanceof Error && error.message === 'active_user_dirty_sources_overflow') {
+    return 'active_user_dirty_sources_overflow';
+  }
+  if (error instanceof Error && error.message === 'invalid_observability_checkpoint') {
+    return 'invalid_checkpoint';
   }
   return 'rollup_failure';
 }
@@ -231,6 +320,56 @@ export class ProductObservabilityRollupEngine {
     }
   }
 
+  async clearActiveUserDirtySources(
+    processedSources: readonly ObservabilityActiveUserDirtySource[],
+  ): Promise<void> {
+    const processed = new Map(processedSources.map((source) => [dirtySourceKey(source), source.revision]));
+    if (processed.size === 0) return;
+
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const nowIso = this.now().toISOString();
+      const transaction = await this.firestore.beginTransaction();
+      try {
+        const latest = readCheckpoint(
+          await this.firestore.getDocumentInTransaction(
+            ROLLUP_STATE_COLLECTION,
+            ROLLUP_STATE_ID,
+            transaction,
+          ),
+          nowIso,
+        );
+        const remaining = latest.activeUserDirtySources.filter((source) => {
+          const processedRevision = processed.get(dirtySourceKey(source));
+          return processedRevision === undefined || processedRevision !== source.revision;
+        });
+        if (remaining.length === latest.activeUserDirtySources.length) {
+          await this.firestore.rollbackTransaction(transaction);
+          return;
+        }
+        const next: ObservabilityRollupCheckpoint = {
+          ...latest,
+          activeUserDirtySources: remaining,
+          updatedAt: nowIso,
+        };
+        await this.firestore.commitTransaction(transaction, [{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+          value: next as unknown as Record<string, unknown>,
+        }]);
+        return;
+      } catch (error) {
+        try {
+          await this.firestore.rollbackTransaction(transaction);
+        } catch {
+          // A failed/committed transaction may no longer be rollbackable.
+        }
+        if (error instanceof FirestoreTransactionConflictError) continue;
+        throw error;
+      }
+    }
+    throw new Error('Observability dirty-source checkpoint retry limit exceeded.');
+  }
+
   async runBatch(limit = DEFAULT_BATCH_SIZE): Promise<ProductObservabilityRollupResult> {
     let lastError: unknown = null;
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
@@ -288,6 +427,7 @@ export class ProductObservabilityRollupEngine {
         }));
         const cache = new Map<string, Record<string, unknown> | null>();
         const writes = new Map<string, FirestoreTransactionDocumentWrite>();
+        const changedActorSources = new Map<string, ActiveUserDirtySourceKey>();
         const read = async (collection: string, id: string) => {
           const key = cacheKey(collection, id);
           if (cache.has(key)) return cache.get(key) ?? null;
@@ -310,6 +450,13 @@ export class ProductObservabilityRollupEngine {
           const actorDayBefore = withoutStorageId<ObservabilityActorDay>(
             await read(ACTOR_DAY_COLLECTION, dayId),
           );
+          if (actorDayBefore === null) {
+            const source: ActiveUserDirtySourceKey = {
+              environment: event.environment,
+              localDate: observabilityReportingDate(event.occurredAt),
+            };
+            changedActorSources.set(dirtySourceKey(source), source);
+          }
           const nextActorDay = projectActorDay({
             current: actorDayBefore,
             event,
@@ -354,6 +501,8 @@ export class ProductObservabilityRollupEngine {
           );
         }
 
+        const changedSources = [...changedActorSources.values()].sort((left, right) =>
+          dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
         const last = eventRows[eventRows.length - 1];
         const checkpoint: ObservabilityRollupCheckpoint = {
           ...transactionalCheckpoint,
@@ -362,6 +511,10 @@ export class ProductObservabilityRollupEngine {
             documentName: last.document.documentName,
           },
           processedEventCount: transactionalCheckpoint.processedEventCount + eventRows.length,
+          activeUserDirtySources: mergeDirtySources(
+            transactionalCheckpoint.activeUserDirtySources,
+            changedSources,
+          ),
           lastRunStartedAt: runStartedAt,
           lastSuccessfulRunAt: runStartedAt,
           lastFailureAt: null,

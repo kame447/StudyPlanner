@@ -69,10 +69,12 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 ## Current implementation status
 
-2026-08-28時点のcurrent admin UIにはユーザー一覧・個別レポート・週間計画trace viewerが存在するが、service-wide analyticsのread modelは存在しない。
+Phase 1のcanonical design、Phase 2のlightweight telemetry foundation、Phase 3のaggregation / bounded read model foundationはmainへ統合済みである。Phase 3ではactor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query serviceを実装した。
 
-現在のadmin user summaryは複数collectionをbrowser側で全件取得して集計しており、最終アーキテクチャとしては使用しない。
+PR #220の初回実装後に行ったpost-merge adversarial auditで、rolling active-userのnormal read path、snapshot failure recovery、environment isolation、revision race、read-model validation、登録ユーザーread authority、profile registration timestamp、Firestore Rules verificationをhardeningし、PR #222としてmainへ統合した。merged main `4d57ce510251005c636a707bd8ee4a058cf75a06` の七視点再監査と主要CI / browser gateも完了している。
 
-AI clientにはevaluation向けrequest metricsの計測コードが存在するが、durable production telemetryではない。
+管理画面の新UIはまだ未実装であり、現在の次phaseはPhase 4「Console shell and Overview」である。UI component自身では再集計せず、Phase 3のbounded admin query / typed read modelをsource of truthとしてOverviewから実装する。
 
-Issue #213の最初のPRではUIを変更せず、このdomainの正仕様と内部architectureだけを確定する。
+現行legacy admin user summaryは複数planner collectionをbrowser側で全件取得して集計するため、新consoleの最終read pathとしては使用しない。
+
+詳細な週間計画traceは引き続きrestricted diagnostic layerであり、長期analyticsの正本へ昇格させない。

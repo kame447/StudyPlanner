@@ -30,6 +30,8 @@ AI requestについても、clientにはevaluation向けmetrics計測が存在�
 - latency percentileをdaily p95の平均で算出しない
 - existing weekly-planning traceからplanning truthを再推論しない
 - observability read modelが遅延または欠損してもproduct runtimeを継続できる
+- 登録ユーザー数をactivity telemetryのfirst activityから推測しない
+- profile registration indexが不完全な期間内新規登録数を0へ補完しない
 
 ## 3. Considered architectures
 
@@ -143,6 +145,18 @@ weekly-planning application layerが既に決定したtyped lifecycle/outcomeを
 例としてsession start、preview generated、approval completed、save completed、failed、fallback、repair、stale、unscheduled等を扱う。
 
 planning eventの意味と発火条件はweekly-planning ownerが定義し、product-observabilityは集計方法だけを所有する。
+
+### Account registration
+
+登録ユーザー総数と期間内新規登録者はproduct activity telemetryから導出しない。登録済みだがまだ観測対象actionを行っていないユーザーを欠落させるためである。
+
+current Firebase implementationでは`profiles`を登録済みaccountのproject-local authorityとして維持する。新規profile作成時にFirestore server timestamp `registeredAt`を記録し、Security Rulesで`registeredAt == request.time`を要求する。作成後のowner updateでは`registeredAt`を変更可能fieldに含めない。
+
+legacy profileはservice-account boundaryのbounded backfillで既存`createdAt`をcanonical Firestore timestampへ移行する。解釈不能値を現在時刻やfirst activityで補完しない。
+
+Overviewの日常readではprofiles本文をbrowserへ全件転送せず、server-side COUNT aggregationを使用する。profile総数とcanonical `registeredAt`を持つprofile数が一致しない間、総登録数は返してよいが期間内新規登録数は`unknown`として扱う。
+
+登録数はFirebase project全体のaccount registrationであり、production / preview等のobservability event environmentとは別scopeである。read modelは`scope = firebase_project`を明示し、UIがenvironment別登録数と誤解しないようにする。
 
 ## 6. Common event envelope
 
@@ -365,6 +379,14 @@ current implementationはactor-day markersまたはuser summaryを用いたexact
 
 historical WAU / MAU trendは日次rollup生成時にrolling windowのdistinct actor数を保存する。
 
+### Registered users
+
+登録ユーザー総数はprofile authorityのserver-side COUNTで取得する。期間内新規登録数はcanonical Firestore timestamp `registeredAt`のrange COUNTで取得し、reporting timezoneのAsia/Tokyo日付境界をUTC instantへ変換する。
+
+`firstActivityAt`や`observability_user_summary`の件数を登録者数へ代用しない。登録はしたがまだ観測対象行動がない利用者を欠落させるためである。
+
+legacy backfill完了可否はcheckpointだけで決めず、profile総数とcanonical registration timestampを持つprofile数のCOUNT parityをread時に確認する。不一致なら期間内新規登録数は`null`とし、UIが0人と誤表示しないようにする。
+
 ### Latency percentile
 
 期間全体のp50 / p95をdaily percentileの平均から作らない。
@@ -493,6 +515,8 @@ admin readも既存AdminGuardだけに依存せず、backend/rules側でadmin権
 
 telemetry eventはsecurity audit logではない。client-origin eventはユーザー自身の行動観測として扱い、課金・権限・不正判定の唯一の根拠にしない。
 
+profile registration timestampは例外的にaccount registrationのauthorityへ関与するため、client-provided時刻を信用しない。新規作成はFirestore server timestamp、legacy補完はservice-account boundaryに限定する。
+
 ## 17. Failure model
 
 ### Ingestion failure
@@ -510,6 +534,12 @@ AI provider callが成功している場合、metric保存失敗を理由にprov
 raw lightweight eventを保持したままrollup checkpointを停止し、次回retryで再開できるようにする。
 
 UIは`dataThrough`を表示し、古いrollupを最新データのように扱わない。
+
+### Registration index migration failure
+
+legacy profileのregistration timestamp migrationはbounded scheduled maintenanceとして実行し、失敗をlogin、plan save、weekly planning、telemetry ingestionへ伝播させない。
+
+migration未完了または解釈不能profileが残る場合、Overviewは総登録数を返しても期間内新規登録数をunknownのまま維持する。migration failureを0人と解釈しない。
 
 ### Diagnostic source failure
 
@@ -532,6 +562,8 @@ no-op対応可能なtyped telemetry port、server ingestion、actor identity、A
 新read modelを構築し、既存collectionから計算した現在値と比較できる範囲だけparity auditを行う。
 
 比較可能なのは現在のplan/actual/todo等から再構成できる指標だけである。過去のapp open、過去AI token等、観測していなかった事実を後から捏造しない。
+
+profile registrationは元profileが明示的に保持するlegacy `createdAt`を限定的にcanonical timestampへbackfillしてよい。解釈不能な値は捏造せず、migration readinessをfalseにする。
 
 ### Step 4: cut over analytics reads
 
@@ -569,6 +601,9 @@ consoleは`計測開始日`を保持し、期間がtelemetry開始前を含む�
 - telemetry failure does not fail product operation
 - AI success survives metric persistence failure
 - rolling distinct user count is not daily sum
+- registered user count does not substitute first activity for registration
+- registration timestamp cannot be client-forged or changed after profile creation
+- incomplete registration backfill exposes unknown new-user count instead of zero
 - latency percentile aggregation uses mergeable distribution
 - unknown pricing is not treated as zero cost
 - rollup retry preserves exactly-once projection semantics at the read model level

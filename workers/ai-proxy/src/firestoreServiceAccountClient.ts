@@ -30,6 +30,12 @@ interface FirestoreRunQueryResult {
   document?: FirestoreDocument;
 }
 
+interface FirestoreRunAggregationQueryResult {
+  result?: {
+    aggregateFields?: Record<string, FirestoreValue>;
+  };
+}
+
 interface BeginTransactionResponse {
   transaction?: string;
 }
@@ -43,6 +49,29 @@ export interface FirestoreOrderedDocument extends Record<string, unknown> {
   id: string;
   documentName: string;
 }
+
+export type FirestoreFilterOperator =
+  | 'EQUAL'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL';
+
+export interface FirestoreStringFilter {
+  field: string;
+  operator: FirestoreFilterOperator;
+  value: string;
+  valueType?: 'string';
+}
+
+export interface FirestoreTimestampFilter {
+  field: string;
+  operator: FirestoreFilterOperator;
+  value: string;
+  valueType: 'timestamp';
+}
+
+export type FirestoreAggregationFilter = FirestoreStringFilter | FirestoreTimestampFilter;
 
 export interface FirestoreTransactionDocumentKey {
   collection: string;
@@ -64,6 +93,7 @@ const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
+const TIMESTAMP_FIELD_NAMES = new Set(['expireAt', 'registeredAt']);
 const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 function base64Url(value: Uint8Array | string): string {
@@ -103,7 +133,7 @@ function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
       : { doubleValue: value };
   }
   if (typeof value === 'string') {
-    if (key === 'expireAt' && Number.isFinite(new Date(value).getTime())) {
+    if (TIMESTAMP_FIELD_NAMES.has(key) && Number.isFinite(new Date(value).getTime())) {
       return { timestampValue: value };
     }
     return { stringValue: value };
@@ -179,18 +209,27 @@ function boundedQueryLimit(limit: number): number {
   return Math.max(1, Math.min(QUERY_BATCH_SIZE, Math.floor(limit)));
 }
 
-function equalityWhere(filters: Array<{ field: string; value: string }>): object | undefined {
+function aggregationWhere(filters: readonly FirestoreAggregationFilter[]): object | undefined {
   const fieldFilters = filters.map((filter) => ({
     fieldFilter: {
       field: { fieldPath: filter.field },
-      op: 'EQUAL',
-      value: { stringValue: filter.value },
+      op: filter.operator,
+      value: filter.valueType === 'timestamp'
+        ? { timestampValue: filter.value }
+        : { stringValue: filter.value },
     },
   }));
   if (fieldFilters.length === 0) return undefined;
   return fieldFilters.length === 1
     ? fieldFilters[0]
     : { compositeFilter: { op: 'AND', filters: fieldFilters } };
+}
+
+function equalityWhere(filters: Array<{ field: string; value: string }>): object | undefined {
+  return aggregationWhere(filters.map((filter) => ({
+    ...filter,
+    operator: 'EQUAL' as const,
+  })));
 }
 
 export class FirestoreServiceAccountClient {
@@ -480,6 +519,34 @@ export class FirestoreServiceAccountClient {
           id: documentId(result.document.name),
         }]
       : []);
+  }
+
+  async countDocuments(
+    collection: string,
+    filters: readonly FirestoreAggregationFilter[] = [],
+  ): Promise<number> {
+    const where = aggregationWhere(filters);
+    const response = await this.request(`${this.documentsBase()}:runAggregationQuery`, {
+      method: 'POST',
+      body: JSON.stringify({
+        structuredAggregationQuery: {
+          structuredQuery: {
+            from: [{ collectionId: collection }],
+            ...(where ? { where } : {}),
+          },
+          aggregations: [{ alias: 'count', count: {} }],
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`Firestore aggregation query failed: ${response.status}`);
+    const payload = await response.json() as FirestoreRunAggregationQueryResult[];
+    const rawCount = payload
+      .map((entry) => decodeFirestoreValue(entry.result?.aggregateFields?.count))
+      .find((value) => value !== null && value !== undefined);
+    if (typeof rawCount !== 'number' || !Number.isSafeInteger(rawCount) || rawCount < 0) {
+      throw new Error('Firestore aggregation count was invalid');
+    }
+    return rawCount;
   }
 
   async queryDocumentsAfter(params: {

@@ -116,6 +116,31 @@ export interface ObservabilityUserSummary {
   updatedAt: string;
 }
 
+export interface ObservabilityActiveUserWindows {
+  schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
+  environment: ObservabilityEnvironment;
+  asOfDate: string;
+  reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
+  today: number;
+  last7Days: number;
+  last30Days: number;
+  updatedAt: string;
+  expireAt: string;
+}
+
+export interface ObservabilityRegisteredUserSummary {
+  total: number;
+  newInPeriod: number | null;
+  registrationIndexReady: boolean;
+  scope: 'firebase_project';
+}
+
+export interface ObservabilityActiveUserDirtySource {
+  environment: ObservabilityEnvironment;
+  localDate: string;
+  revision: number;
+}
+
 export interface ObservabilityRollupCursor {
   observedAt: string;
   documentName: string;
@@ -125,6 +150,7 @@ export interface ObservabilityRollupCheckpoint {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
   cursor: ObservabilityRollupCursor | null;
   processedEventCount: number;
+  activeUserDirtySources: ObservabilityActiveUserDirtySource[];
   lastRunStartedAt: string | null;
   lastSuccessfulRunAt: string | null;
   lastFailureAt: string | null;
@@ -142,8 +168,9 @@ export interface ObservabilityOverviewReadModel {
   fromDate: string;
   toDate: string;
   reportingTimeZone: typeof PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE;
+  registeredUsers: ObservabilityRegisteredUserSummary;
   daily: ObservabilityDailyRollup[];
-  distinctActiveActors: number;
+  activeUsers: ObservabilityActiveUserWindows | null;
   aiLatencyP50Ms: number | null;
   aiLatencyP95Ms: number | null;
   rollupCheckpoint: ObservabilityRollupCheckpoint;
