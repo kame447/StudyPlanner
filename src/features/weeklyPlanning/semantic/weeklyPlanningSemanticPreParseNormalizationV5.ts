@@ -28,11 +28,15 @@ import {
 import {
   normalizeWeeklyPlanningTemporalClockRawV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
+import {
+  normalizeWeeklyPlanningUserContextPartialDatesV5,
+} from './weeklyPlanningUserContextPartialDateNormalizationV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
+  'user_context_partial_date',
   'existing_task_shell',
   'pending_question_entity_binding',
   'component_parent',
@@ -73,6 +77,10 @@ Record<
   copied_user_context_delta: {
     category: 'context_binding_repair',
     owningInvariant: 'provider output is a current-turn delta and must not echo stored durable context',
+  },
+  user_context_partial_date: {
+    category: 'canonicalization_bridge',
+    owningInvariant: 'a provider-interpreted durable goal-event month or month-part has one equivalent ISO date-range representation',
   },
   existing_task_shell: {
     category: 'context_binding_repair',
@@ -232,6 +240,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
       rawResponse: value,
       publicStateSummary: params.publicStateSummary,
     }));
+  applyStage('user_context_partial_date', (value) =>
+    normalizeWeeklyPlanningUserContextPartialDatesV5(value));
   applyStage('existing_task_shell', (value) =>
     normalizeWeeklyPlanningExistingTaskShellV5({
       rawResponse: value,
