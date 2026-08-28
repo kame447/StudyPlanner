@@ -17,6 +17,12 @@ import {
   normalizePendingQuestionEntityBindingsV5,
 } from './weeklyPlanningPendingEntityBindingNormalizationV5';
 import {
+  normalizePlanningWindowCanonicalRawV5,
+} from './weeklyPlanningPlanningWindowCanonicalContractV5';
+import {
+  normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5,
+} from './weeklyPlanningPreferredWindowConstraintLevelNormalizationV5';
+import {
   normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5,
 } from './weeklyPlanningRecurrenceTargetNormalizationV5';
 import {
@@ -34,6 +40,7 @@ import {
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
+  'planning_window_wire',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
   'user_context_partial_date',
@@ -43,6 +50,7 @@ export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'duplicate_workload_placement',
   'resolved_progress_workload',
   'recurrence_workload_target',
+  'preferred_window_constraint_level',
   'temporal_clock_raw',
   'constraint_absence_metadata',
 ] as const;
@@ -69,6 +77,10 @@ Record<
   empty_semantic_delta_envelope: {
     category: 'representation_repair',
     owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
+  },
+  planning_window_wire: {
+    category: 'canonicalization_bridge',
+    owningInvariant: 'valid interpreted absolute planning-window bounds have one derived canonical wire value',
   },
   task_decomposition_uncertainty: {
     category: 'semantic_invariant_derivation',
@@ -105,6 +117,10 @@ Record<
   recurrence_workload_target: {
     category: 'representation_repair',
     owningInvariant: 'recurrence targets schedulable task/component owners rather than nested workload IDs',
+  },
+  preferred_window_constraint_level: {
+    category: 'representation_repair',
+    owningInvariant: 'preferred_window meaning has soft constraint level and cannot carry the contradictory hard wire value',
   },
   temporal_clock_raw: {
     category: 'canonicalization_bridge',
@@ -233,6 +249,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
 
   applyStage('empty_semantic_delta_envelope', (value) =>
     normalizeEmptySemanticDeltaEnvelopeV5(value));
+  applyStage('planning_window_wire', (value) =>
+    normalizePlanningWindowCanonicalRawV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
@@ -260,6 +278,8 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     normalizeResolvedProgressWorkloadsV5(value));
   applyStage('recurrence_workload_target', (value) =>
     normalizeWeeklyPlanningRecurrenceWorkloadTargetsV5(value));
+  applyStage('preferred_window_constraint_level', (value) =>
+    normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(value));
   applyStage('temporal_clock_raw', (value) =>
     normalizeWeeklyPlanningTemporalClockRawV5(value));
   applyStage('constraint_absence_metadata', (value) =>
