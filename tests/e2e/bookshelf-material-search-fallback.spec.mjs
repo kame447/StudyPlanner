@@ -50,7 +50,7 @@ test('material search failure never blocks manual material registration', async 
   await sheet.getByRole('button', { name: '検索', exact: true }).click();
   await expect(sheet).toContainText('手入力で登録できます。');
 
-  await sheet.getByLabel('教材名').fill('手入力教材');
+  await sheet.getByLabel('教材名', { exact: true }).fill('手入力教材');
   await sheet.getByRole('button', { name: '保存', exact: true }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.locator('.bookshelf-view')).toContainText('手入力教材');
