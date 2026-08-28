@@ -30,6 +30,12 @@ interface FirestoreRunQueryResult {
   document?: FirestoreDocument;
 }
 
+interface FirestoreRunAggregationQueryResult {
+  result?: {
+    aggregateFields?: Record<string, FirestoreValue>;
+  };
+}
+
 interface BeginTransactionResponse {
   transaction?: string;
 }
@@ -42,6 +48,19 @@ export interface FirestoreOrderedCursor {
 export interface FirestoreOrderedDocument extends Record<string, unknown> {
   id: string;
   documentName: string;
+}
+
+export type FirestoreStringFilterOperator =
+  | 'EQUAL'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL';
+
+export interface FirestoreStringFilter {
+  field: string;
+  operator: FirestoreStringFilterOperator;
+  value: string;
 }
 
 export interface FirestoreTransactionDocumentKey {
@@ -179,11 +198,11 @@ function boundedQueryLimit(limit: number): number {
   return Math.max(1, Math.min(QUERY_BATCH_SIZE, Math.floor(limit)));
 }
 
-function equalityWhere(filters: Array<{ field: string; value: string }>): object | undefined {
+function stringWhere(filters: readonly FirestoreStringFilter[]): object | undefined {
   const fieldFilters = filters.map((filter) => ({
     fieldFilter: {
       field: { fieldPath: filter.field },
-      op: 'EQUAL',
+      op: filter.operator,
       value: { stringValue: filter.value },
     },
   }));
@@ -191,6 +210,13 @@ function equalityWhere(filters: Array<{ field: string; value: string }>): object
   return fieldFilters.length === 1
     ? fieldFilters[0]
     : { compositeFilter: { op: 'AND', filters: fieldFilters } };
+}
+
+function equalityWhere(filters: Array<{ field: string; value: string }>): object | undefined {
+  return stringWhere(filters.map((filter) => ({
+    ...filter,
+    operator: 'EQUAL' as const,
+  })));
 }
 
 export class FirestoreServiceAccountClient {
@@ -480,6 +506,34 @@ export class FirestoreServiceAccountClient {
           id: documentId(result.document.name),
         }]
       : []);
+  }
+
+  async countDocuments(
+    collection: string,
+    filters: readonly FirestoreStringFilter[] = [],
+  ): Promise<number> {
+    const where = stringWhere(filters);
+    const response = await this.request(`${this.documentsBase()}:runAggregationQuery`, {
+      method: 'POST',
+      body: JSON.stringify({
+        structuredAggregationQuery: {
+          structuredQuery: {
+            from: [{ collectionId: collection }],
+            ...(where ? { where } : {}),
+          },
+          aggregations: [{ alias: 'count', count: {} }],
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`Firestore aggregation query failed: ${response.status}`);
+    const payload = await response.json() as FirestoreRunAggregationQueryResult[];
+    const count = payload
+      .map((entry) => decodeFirestoreValue(entry.result?.aggregateFields?.count))
+      .find((value) => value !== null && value !== undefined);
+    if (!Number.isSafeInteger(count) || Number(count) < 0) {
+      throw new Error('Firestore aggregation count was invalid');
+    }
+    return Number(count);
   }
 
   async queryDocumentsAfter(params: {
