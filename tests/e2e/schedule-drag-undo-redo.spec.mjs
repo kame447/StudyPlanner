@@ -159,7 +159,10 @@ test('day drag exposes icon history controls and undo/redo reapply the saved mov
   await expect(plan).toBeVisible();
   await expect(plan.locator('.timeline-entry-time')).toHaveText('09:00-10:00');
 
-  await dragBy(plan, page, 0, 54);
+  const timelineBox = await page.locator('.timeline-canvas.split').boundingBox();
+  expect(timelineBox).not.toBeNull();
+  const oneHourPixels = timelineBox ? timelineBox.height / 24 : 0;
+  await dragBy(plan, page, 0, oneHourPixels);
   await expect(plan.locator('.timeline-entry-time')).toHaveText('10:00-11:00');
 
   const undo = page.getByRole('button', { name: '変更を元に戻す' });
