@@ -14,7 +14,7 @@ export interface AiRequestUsage {
   totalTokens: number | null;
   cachedTokens: number | null;
   cacheWriteTokens: number | null;
-  reasoningTokens: number | null;
+  reasoningTokens?: number | null;
 }
 
 type ExtendedAiRequestMetricPayload = AiRequestMetricPayload & {
@@ -141,7 +141,7 @@ export async function recordAiRequestMetricBestEffort(
     totalTokens: usage.totalTokens,
     cachedTokens: usage.cachedTokens,
     cacheWriteTokens: usage.cacheWriteTokens,
-    reasoningTokens: usage.reasoningTokens,
+    reasoningTokens: usage.reasoningTokens ?? null,
     durationMs: Math.max(0, nowMs - params.startedAtMs),
     requestBytes: Math.max(0, Math.floor(params.requestBytes)),
     responseBytes: params.responseBytes === null
