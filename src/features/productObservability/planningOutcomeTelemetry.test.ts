@@ -11,10 +11,10 @@ import type { ProductTelemetrySink } from './productTelemetry';
 
 describe('planning outcome telemetry', () => {
   it('builds a bounded typed event without raw identity or free-form text', async () => {
-    let writtenEvent: PlanningOutcomeTelemetryDraft | null = null;
+    const writtenEvents: PlanningOutcomeTelemetryDraft[] = [];
     const sink: ProductTelemetrySink = {
       async write(event) {
-        if (event.eventType === 'planning_outcome') writtenEvent = event;
+        if (event.eventType === 'planning_outcome') writtenEvents.push(event);
       },
     };
     const port = createPlanningOutcomeTelemetryPort({
@@ -37,7 +37,7 @@ describe('planning outcome telemetry', () => {
     });
     await Promise.resolve();
 
-    expect(writtenEvent).toEqual({
+    expect(writtenEvents).toEqual([{
       schemaVersion: 1,
       eventId: 'planning-preview_generated-weekly-request-1',
       eventType: 'planning_outcome',
@@ -63,21 +63,21 @@ describe('planning outcome telemetry', () => {
         promptVersion: null,
         model: null,
       },
-    });
-    expect(validatePlanningOutcomeTelemetryDraft(writtenEvent).ok).toBe(true);
-    const serialized = JSON.stringify(writtenEvent);
+    }]);
+    expect(validatePlanningOutcomeTelemetryDraft(writtenEvents[0]).ok).toBe(true);
+    const serialized = JSON.stringify(writtenEvents[0]);
     expect(serialized).not.toContain('userId');
     expect(serialized).not.toContain('email');
     expect(serialized).not.toContain('userText');
   });
 
   it('keeps unknown metrics null instead of fabricating zero or false', async () => {
-    let writtenEvent: PlanningOutcomeTelemetryDraft | null = null;
+    const writtenEvents: PlanningOutcomeTelemetryDraft[] = [];
     const port = createPlanningOutcomeTelemetryPort({
       appVersion: '1.2.3',
       sink: {
         async write(event) {
-          if (event.eventType === 'planning_outcome') writtenEvent = event;
+          if (event.eventType === 'planning_outcome') writtenEvents.push(event);
         },
       },
     });
@@ -89,7 +89,8 @@ describe('planning outcome telemetry', () => {
     });
     await Promise.resolve();
 
-    expect(writtenEvent?.payload).toMatchObject({
+    expect(writtenEvents).toHaveLength(1);
+    expect(writtenEvents[0].payload).toMatchObject({
       previewCount: null,
       unscheduledCount: null,
       fallbackUsed: null,
