@@ -56,7 +56,7 @@ describe('userPlanningContextRepository merge policy', () => {
     const inferred = record({
       id: 'inferred',
       value: '別の大学',
-      origin: 'ai_inferred',
+      origin: 'user_stated',
       recordedAt: '2026-08-29T00:00:00.000Z',
     });
 
@@ -145,18 +145,42 @@ describe('userPlanningContextRepository merge policy', () => {
     });
   });
 
-  it('removes a shared memory explicitly instead of leaving a second local truth', () => {
+  it('keeps an explicit forget tombstone and blocks later semantic revival', () => {
     const snapshot = {
       ...createEmptyUserPlanningContextSnapshotV1(OWNER),
       records: [record()],
     };
 
-    const next = removeUserPlanningContextRecordFromSnapshotV1({
+    const forgotten = removeUserPlanningContextRecordFromSnapshotV1({
       snapshot,
       recordId: 'record-1',
       now: '2026-08-29T00:00:00.000Z',
     });
 
-    expect(next.records).toEqual([]);
+    expect(forgotten.records).toHaveLength(1);
+    expect(forgotten.records[0]).toMatchObject({
+      id: 'record-1',
+      status: 'revoked',
+      origin: 'user_confirmed',
+    });
+
+    const revivedCandidate = record({
+      id: 'candidate',
+      value: '別の大学',
+      origin: 'user_stated',
+      recordedAt: '2026-08-30T00:00:00.000Z',
+    });
+    const merged = mergeInferredUserPlanningContextRecordsV1({
+      snapshot: forgotten,
+      records: [revivedCandidate],
+      now: '2026-08-30T00:00:01.000Z',
+    });
+
+    expect(merged.records).toHaveLength(1);
+    expect(merged.records[0]).toMatchObject({
+      id: 'record-1',
+      status: 'revoked',
+      origin: 'user_confirmed',
+    });
   });
 });

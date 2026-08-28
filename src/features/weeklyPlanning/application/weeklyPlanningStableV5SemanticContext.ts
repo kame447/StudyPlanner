@@ -1,6 +1,6 @@
 import {
-  userPlanningContextPromptSummaryV1,
-} from '../../userPlanningContext/userPlanningContextSpace';
+  userPlanningContextPromptSelectionV2,
+} from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
@@ -93,6 +93,16 @@ function learningStrategyProposalsFromState(
     }));
 }
 
+function userPlanningContextRelevantScopeKeys(
+  active: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>,
+): string[] {
+  return [
+    ...active.tasks.flatMap((task) => [task.title, task.category]),
+    ...active.components.flatMap((component) => [component.label, component.role]),
+    ...active.workloads.flatMap((workload) => [workload.unitCode, workload.unitLabel]),
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
 export function createStableV5SemanticPublicStateSummary(params: {
   graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[];
@@ -169,10 +179,11 @@ export function createStableV5SemanticPublicStateSummary(params: {
       sourceText: uncertainty.source.sourceText,
     })),
     userPlanningContext: params.ownerId && params.currentDate
-      ? userPlanningContextPromptSummaryV1({
+      ? userPlanningContextPromptSelectionV2({
           ownerId: params.ownerId,
           currentDate: params.currentDate,
-        })
+          relevantScopeKeys: userPlanningContextRelevantScopeKeys(active),
+        }).map(({ scope: _scope, relevanceTier: _relevanceTier, ...record }) => record)
       : [],
     lastAssistantMessage:
       [...params.messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,

@@ -116,22 +116,28 @@ export function migrateLocalUserPlanningContextSnapshotV1(
   };
 }
 
+function isPersistableSemanticOrigin(record: UserPlanningContextRecordV1): boolean {
+  return record.origin === 'ai_inferred'
+    || record.origin === 'user_stated'
+    || record.origin === 'system_inferred';
+}
+
 export function mergeInferredUserPlanningContextRecordsV1(params: {
   snapshot: UserPlanningContextSnapshotV1;
   records: readonly UserPlanningContextRecordV1[];
   now: string;
 }): UserPlanningContextSnapshotV1 {
   const byIdentity = new Map<string, UserPlanningContextRecordV1>();
-  const confirmedDurableKeys = new Set<string>();
+  const protectedDurableKeys = new Set<string>();
   for (const record of params.snapshot.records) {
     byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
     if (record.origin === 'user_confirmed') {
-      confirmedDurableKeys.add(userPlanningContextDurableKeyV1(record));
+      protectedDurableKeys.add(userPlanningContextDurableKeyV1(record));
     }
   }
   for (const record of params.records) {
-    if (record.ownerId !== params.snapshot.ownerId || record.origin !== 'ai_inferred') continue;
-    if (confirmedDurableKeys.has(userPlanningContextDurableKeyV1(record))) continue;
+    if (record.ownerId !== params.snapshot.ownerId || !isPersistableSemanticOrigin(record)) continue;
+    if (protectedDurableKeys.has(userPlanningContextDurableKeyV1(record))) continue;
     byIdentity.set(userPlanningContextRecordIdentityV1(record), { ...record });
   }
   return snapshotFromRecords({
@@ -163,14 +169,31 @@ export function replaceWithUserConfirmedContextRecordV1(params: {
   });
 }
 
+/**
+ * A forget action is a tombstone, not a physical delete. Keeping the stable
+ * record id and durable key prevents a later semantic extraction or an older
+ * client snapshot from silently reviving the same fact. Revoked records are
+ * excluded from UI and AI context by the application layer.
+ */
 export function removeUserPlanningContextRecordFromSnapshotV1(params: {
   snapshot: UserPlanningContextSnapshotV1;
   recordId: string;
   now: string;
 }): UserPlanningContextSnapshotV1 {
+  const records = params.snapshot.records.map((record) => {
+    if (record.id !== params.recordId) return record;
+    return {
+      ...record,
+      status: 'revoked' as const,
+      origin: 'user_confirmed' as const,
+      recordedAt: params.now,
+      sourceConversationId: 'user-settings',
+      sourceTurnId: `user-settings:forget:${params.now}`,
+    };
+  });
   return snapshotFromRecords({
     ownerId: params.snapshot.ownerId,
-    records: params.snapshot.records.filter((record) => record.id !== params.recordId),
+    records,
     updatedAt: params.now,
   });
 }
