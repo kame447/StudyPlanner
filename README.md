@@ -19,7 +19,7 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。
+教材や学習対象を登録し、現在の進捗を管理できます。外部APIを使った書誌・教材メタデータ取得は、provider固有responseを教材modelへ直接流さず、利用条件とfallbackを分離する方針で [`docs/domains/external-integrations/`](./docs/domains/external-integrations/README.md) に整理しています。
 
 ### ホーム・時間割
 
@@ -150,6 +150,8 @@ client-first execution と local/server authority の境界は [`docs/domains/cl
 学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
 
 管理・分析console、AI/API usage、service-wide telemetry、diagnostic drill-downは [`docs/domains/product-observability/README.md`](./docs/domains/product-observability/README.md) を入口とし、要件は [`console-requirements.md`](./docs/domains/product-observability/spec/console-requirements.md)、内部architectureは [`telemetry-and-read-model.md`](./docs/domains/product-observability/architecture/telemetry-and-read-model.md) を正仕様として扱います。
+
+外部API/providerの採否、利用条件、normalization、fallbackは [`docs/domains/external-integrations/README.md`](./docs/domains/external-integrations/README.md) を入口とし、教材メタデータAPIの現行調査は [`20260828-material-metadata-api-research.md`](./docs/domains/external-integrations/work/20260828-material-metadata-api-research.md) を参照してください。
 
 過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 
