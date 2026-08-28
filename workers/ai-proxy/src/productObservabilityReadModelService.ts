@@ -47,9 +47,10 @@ export interface ObservabilityUserSummaryPage {
   nextCursor: FirestoreOrderedCursor | null;
 }
 
-function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && Number.isFinite(new Date(`${value}T00:00:00Z`).getTime());
+function isIsoDate(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(new Date(`${value}T00:00:00.000Z`).getTime());
 }
 
 function listDatesInclusive(fromDate: string, toDate: string): string[] {
@@ -66,6 +67,12 @@ function listDatesInclusive(fromDate: string, toDate: string): string[] {
     }
   }
   return result;
+}
+
+function addDays(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
 }
 
 function dailyId(environment: ObservabilityEnvironment, localDate: string): string {
@@ -86,6 +93,11 @@ function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   return document as unknown as T;
 }
 
+function checkpointDirtyDates(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(isIsoDate))].sort();
+}
+
 function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRollupCheckpoint {
   const nowIso = new Date().toISOString();
   const cursorRecord = value?.cursor && typeof value.cursor === 'object'
@@ -104,6 +116,7 @@ function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRol
     processedEventCount: Number.isSafeInteger(value?.processedEventCount)
       ? Math.max(0, Number(value?.processedEventCount))
       : 0,
+    activeUserDirtyDates: checkpointDirtyDates(value?.activeUserDirtyDates),
     lastRunStartedAt: typeof value?.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value?.lastSuccessfulRunAt === 'string'
       ? value.lastSuccessfulRunAt
@@ -128,13 +141,22 @@ function assertCompatibleLatency(daily: readonly ObservabilityDailyRollup[]): vo
   if (incompatible) throw new Error('observability_latency_histogram_version_mismatch');
 }
 
+function activeUserSnapshotIsDirty(
+  dirtyDates: readonly string[],
+  asOfDate: string,
+): boolean {
+  const firstIncludedDate = addDays(asOfDate, -29);
+  return dirtyDates.some((date) => date >= firstIncludedDate && date <= asOfDate);
+}
+
 function readActiveUsers(
   value: Record<string, unknown> | null,
   environment: ObservabilityEnvironment,
   asOfDate: string,
+  dirtyDates: readonly string[],
 ): ObservabilityActiveUserWindows | null {
   const snapshot = withoutStorageId<ObservabilityActiveUserWindows>(value);
-  if (!snapshot) return null;
+  if (!snapshot || activeUserSnapshotIsDirty(dirtyDates, asOfDate)) return null;
   if (
     snapshot.schemaVersion !== PRODUCT_OBSERVABILITY_READ_MODEL_VERSION
     || snapshot.environment !== environment
@@ -143,6 +165,9 @@ function readActiveUsers(
     || !Number.isSafeInteger(snapshot.today)
     || !Number.isSafeInteger(snapshot.last7Days)
     || !Number.isSafeInteger(snapshot.last30Days)
+    || snapshot.today < 0
+    || snapshot.last7Days < snapshot.today
+    || snapshot.last30Days < snapshot.last7Days
   ) {
     throw new Error('observability_active_user_snapshot_invalid');
   }
@@ -161,7 +186,7 @@ export class ProductObservabilityReadModelService {
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
     const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const [daily, activeUsers, checkpointValue] = await Promise.all([
+    const [daily, activeUsersValue, checkpointValue] = await Promise.all([
       Promise.all(dates.map(async (localDate) => withoutStorageId<ObservabilityDailyRollup>(
         await this.firestore.getDocument(
           DAILY_ROLLUP_COLLECTION,
@@ -179,16 +204,22 @@ export class ProductObservabilityReadModelService {
     const latency = presentDaily.length > 0
       ? mergeLatencyHistograms(presentDaily.map((entry) => entry.ai.latency))
       : createEmptyLatencyHistogram();
+    const checkpoint = readCheckpoint(checkpointValue);
     return {
       schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
       fromDate: params.fromDate,
       toDate: params.toDate,
       reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
       daily: presentDaily,
-      activeUsers: readActiveUsers(activeUsers, params.environment, params.toDate),
+      activeUsers: readActiveUsers(
+        activeUsersValue,
+        params.environment,
+        params.toDate,
+        checkpoint.activeUserDirtyDates,
+      ),
       aiLatencyP50Ms: latencyPercentileMs(latency, 0.5),
       aiLatencyP95Ms: latencyPercentileMs(latency, 0.95),
-      rollupCheckpoint: readCheckpoint(checkpointValue),
+      rollupCheckpoint: checkpoint,
     };
   }
 
