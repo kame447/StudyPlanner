@@ -74,27 +74,30 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
-async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<string[]> {
+async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<{
+  engine: ProductObservabilityRollupEngine;
+  dirtyDates: string[];
+}> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
   );
-  const changedActorDates = new Set<string>();
+  let dirtyDates: string[] = [];
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
-    result.changedActorDates.forEach((localDate) => changedActorDates.add(localDate));
+    dirtyDates = result.checkpoint.activeUserDirtyDates;
     if (!result.hasMore) break;
   }
-  return [...changedActorDates].sort();
+  return { engine, dirtyDates };
 }
 
 async function runScheduledActiveUserSnapshots(
   env: Record<string, unknown>,
-  changedActorDates: readonly string[],
+  dirtyDates: readonly string[],
 ): Promise<void> {
   const snapshots = new ProductObservabilityActiveUserSnapshotService(
     env as unknown as ProductObservabilityActiveUserSnapshotEnv,
   );
-  await snapshots.refreshAffected(changedActorDates);
+  await snapshots.refreshAffected(dirtyDates);
 }
 
 async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
@@ -108,18 +111,19 @@ async function runScheduledObservabilityRetention(env: Record<string, unknown>):
 }
 
 async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
-  let changedActorDates: string[] | null = null;
+  let rollup: Awaited<ReturnType<typeof runScheduledObservabilityRollup>> | null = null;
   try {
-    changedActorDates = await runScheduledObservabilityRollup(env);
+    rollup = await runScheduledObservabilityRollup(env);
   } catch (error) {
     console.error('[Product Observability] scheduled rollup failed', {
       message: error instanceof Error ? error.message : String(error),
     });
   }
 
-  if (changedActorDates) {
+  if (rollup) {
     try {
-      await runScheduledActiveUserSnapshots(env, changedActorDates);
+      await runScheduledActiveUserSnapshots(env, rollup.dirtyDates);
+      await rollup.engine.clearActiveUserDirtyDates(rollup.dirtyDates);
     } catch (error) {
       console.error('[Product Observability] active-user snapshot refresh failed', {
         message: error instanceof Error ? error.message : String(error),
