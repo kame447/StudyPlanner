@@ -8,6 +8,7 @@ const RETENTION_COLLECTIONS = [
   'observability_events',
   'observability_actor_day',
   'observability_daily_rollups',
+  'observability_active_user_windows',
 ] as const;
 const DEFAULT_RETENTION_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCH_SIZE = 250;
