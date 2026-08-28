@@ -28,7 +28,7 @@ function documentWithDate(dateExpression: string, kind = 'goal_event'): string {
 }
 
 describe('Stable V5 durable goal-event partial date normalization', () => {
-  it('resolves structured, compact, and custom-wrapped month expressions', () => {
+  it('resolves structured, compact, mixed, and custom-wrapped month expressions', () => {
     expect(resolveWeeklyPlanningUserContextPartialDateV5('year:2027;month:01')).toEqual({
       start: '2027-01-01',
       end: '2027-01-31',
@@ -41,6 +41,10 @@ describe('Stable V5 durable goal-event partial date normalization', () => {
       start: '2027-02-21',
       end: '2027-02-28',
     });
+    expect(resolveWeeklyPlanningUserContextPartialDateV5('2027-02下旬')).toEqual({
+      start: '2027-02-21',
+      end: '2027-02-28',
+    });
     expect(resolveWeeklyPlanningUserContextPartialDateV5('custom:2028-02-late')).toEqual({
       start: '2028-02-21',
       end: '2028-02-29',
@@ -49,7 +53,7 @@ describe('Stable V5 durable goal-event partial date normalization', () => {
 
   it('canonicalizes provider-interpreted goal-event periods to ISO date ranges', () => {
     const result = normalizeWeeklyPlanningUserContextPartialDatesV5(
-      documentWithDate('2027-02-late'),
+      documentWithDate('2027-02下旬'),
     );
     const parsed = JSON.parse(result.rawResponse) as {
       userContextFacts: Array<{ dateExpression: string }>;
