@@ -239,10 +239,12 @@
   }
 
   .admin-ai-table td {
+    min-width: 0;
     display: grid;
     grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr);
     gap: 12px;
     padding: 9px 12px;
+    overflow-wrap: anywhere;
   }
 
   .admin-ai-table td::before {
