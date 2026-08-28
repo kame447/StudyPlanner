@@ -69,12 +69,12 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 ## Current implementation status
 
-Phase 1のcanonical designとPhase 2のlightweight telemetry foundationはmainへ統合済みである。Phase 3ではactor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query serviceまで実装済みである。
+Phase 1のcanonical design、Phase 2のlightweight telemetry foundation、Phase 3のaggregation / bounded read model foundationはmainへ統合済みである。Phase 3ではactor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query serviceを実装した。
 
-PR #220でPhase 3の初回実装をmainへ統合した後、post-merge adversarial auditでrolling active-userのnormal read path、snapshot failure recovery、environment isolation等に追加修正が必要と判明したため、Issue #213 / PR #222でcompletion auditを継続している。
+PR #220の初回実装後に行ったpost-merge adversarial auditで、rolling active-userのnormal read path、snapshot failure recovery、environment isolation、revision race、read-model validation、登録ユーザーread authority、profile registration timestamp、Firestore Rules verificationをhardeningし、PR #222としてmainへ統合した。merged main `4d57ce510251005c636a707bd8ee4a058cf75a06` の七視点再監査と主要CI / browser gateも完了している。
 
-管理画面の新UIはまだPhase 4へ進めていない。Phase 3の七視点監査、exact final HEAD verification、merged-main re-auditが完了した後に、OverviewからUI実装を開始する。
+管理画面の新UIはまだ未実装であり、現在の次phaseはPhase 4「Console shell and Overview」である。UI component自身では再集計せず、Phase 3のbounded admin query / typed read modelをsource of truthとしてOverviewから実装する。
 
-現行legacy admin user summaryは複数planner collectionをbrowser側で全件取得して集計するため、新consoleの最終read pathとしては使用しない。新consoleはPhase 3のbounded admin query/read modelをsource of truthとする。
+現行legacy admin user summaryは複数planner collectionをbrowser側で全件取得して集計するため、新consoleの最終read pathとしては使用しない。
 
 詳細な週間計画traceは引き続きrestricted diagnostic layerであり、長期analyticsの正本へ昇格させない。

@@ -1,9 +1,9 @@
 # Phase 3 Seven-View Audit
 
-Status: pre-merge PASS; merged-main re-audit required
+Status: merged-main PASS; Phase 3 complete
 Date: 2026-08-28
 Owning Issue: #213
-Active PR: #222
+Completed PR: #222
 Target: Phase 3 product-observability telemetry aggregation and bounded admin read models
 
 この文書はcanonicalなmetric semanticsやarchitectureを再定義しない。正仕様は`../spec/console-requirements.md`と`../architecture/telemetry-and-read-model.md`、実行順序は`../roadmap/current.md`を参照する。本書はPhase 4 UIへ進む前の敵対的検証記録である。
@@ -12,7 +12,7 @@ Target: Phase 3 product-observability telemetry aggregation and bounded admin re
 
 7視点すべてでBLOCKER / MAJORが0件となり、PR #222のexact final HEADでTypeScript、full Vitest、Firestore Rules regression、production build、PR diff check、Browser Regression、UI Quality Automation、UI Regression Matrixがterminal successになった場合のみpre-merge PASSとする。
 
-PASS後もPR #222をmainへmergeしたexact merged mainを再監査し、そこで新しいBLOCKER / MAJORが出た場合はPhase 4へ進まない。
+その後PR #222をmainへmergeし、exact merged mainを再監査して同じ責務・契約・data invariantが保たれ、主要CI / browser gateがterminal successであることを確認した時点でPhase 3を完了とする。
 
 ## Verified implementation candidate
 
@@ -29,7 +29,24 @@ PASS後もPR #222をmainへmergeしたexact merged mainを再監査し、そこ�
 
 Rules regressionの初回失敗はAuth Emulator未設定によるharness configuration defectであり、production defectではなかった。Auth / Firestore emulatorを明示設定して再実行し、server timestamp付きprofile作成、通常owner update、偽timestamp拒否、registration timestamp事後変更拒否、cross-user update拒否を実Rules engineで確認した。
 
-本監査記録の確定commit以降にproduction codeは変更しない。merge前にはPRのcurrent exact HEADで上記workflowが再度すべてgreenであることを確認する。
+監査記録確定後のPR exact HEAD `3a565a0a921f73bdbcaf04b7b8a5df214c23d062` でも、draft解除後に再トリガーされたCIを含めて必要gateがgreenであることを確認した。
+
+## Merged-main re-audit
+
+PR #222はsquash mergeされ、merged main commitは `4d57ce510251005c636a707bd8ee4a058cf75a06` となった。
+
+このcommitを対象に次を再確認した。
+
+- parent `9ad6be8d6dacb6d0a0b4a0ac8bb6dca9383a92ed` との差分は、監査済みPR #222と同じ27 files / 同じ変更内容であり、merge時の追加差分はない。
+- CI: TypeScript、full Vitest、Firebase Auth + Firestore Emulator Rules regression、production buildがsuccess。
+- Browser Regression: Chromium regressionがsuccess。
+- UI Quality Automation: bundle budget / browser qualityがsuccess。
+- UI Regression Matrix: visual regression / cross-browser smokeがsuccess。
+- review threadは0件で、merge前の未解決review指摘はなかった。
+
+同SHA上で発生した`QA Result Summary`のfailureは、別branchのQA workflow resultを既存PRへcommentするnotification処理がGitHub App権限403になったものであり、Phase 3 production code / merged-main verification failureではないと分類した。この集約workflowの権限問題はPhase 3 completion gateとは分離する。
+
+Merged-main re-audit result: PASS.
 
 ## 1. Responsibility / architecture boundary
 
@@ -123,7 +140,7 @@ Status: PASS
 - UI Phase 4開始前のinternal hardeningとして限定する。
 - typed browser query serviceはserver read modelを受け取るだけで、actor-day / profileをscan・aggregateしない。
 - `registeredUsers.scope = firebase_project`により、observability environment filterとFirebase project全体の登録数を同一概念として誤解しないcontractにする。
-- Browser Regression、UI Quality Automation、UI Regression Matrixがcandidate HEADでgreenである。
+- merged mainでBrowser Regression、UI Quality Automation、UI Regression Matrixがgreenである。
 
 ## 5. Tests / harness
 
@@ -190,19 +207,22 @@ Deferred condition:
 
 ## 7. Git / operations / documentation
 
-Status: PASS for pre-merge state
+Status: PASS for merged-main state
 
 確認事項:
 
 - parent Issue #213を再利用した。
 - #220 merge後に実害のあるpost-merge findingが出たため、follow-up branch `fix/product-observability-phase3-audit` / PR #222を作成した。replacement Issue / retry PRは増殖させていない。
-- candidate HEAD確認時、branchはmainに対して0 behindだった。
-- canonical roadmapをPhase 3 audit状態へ同期した。
-- domain READMEのPhase 1時点の古いimplementation statusを現在状態へ同期した。
-- registered-user authority / migration / unknown semanticsをcanonical architectureへ同期した。
+- merge前、branchはmainに対して0 behindだった。
+- PR #222はexact HEAD `3a565a0a921f73bdbcaf04b7b8a5df214c23d062` からsquash mergeした。
+- merged main commit `4d57ce510251005c636a707bd8ee4a058cf75a06` のdiffは監査済みPR差分と一致した。
+- canonical roadmap、domain README、registered-user authority / migration / unknown semanticsをcurrent stateへ同期する。
 - PR本文へclient/workerをFirestore Rulesより先にdeployするrollout constraintを記録した。
-- review thread / submitted reviewは0件で、未解決review指摘はない。
-- merge後にexact mainを七視点再監査する。
+- review thread / submitted reviewは0件で、未解決review指摘はなかった。
+
+Branch lifecycle note:
+
+- merged head branch `fix/product-observability-phase3-audit` はcleanup対象である。ただしbranch deletionは破壊操作のため、本監査では削除せず明示的な削除権限に従う。
 
 ## Current audit result
 
@@ -227,6 +247,7 @@ MAJOR found and fixed during audit:
 Current actionable production failures: 0.
 Current unresolved BLOCKER / MAJOR: 0.
 
-Pre-merge audit result: PASS on the implementation candidate. The current audit-record commit must also retain all required workflow greens before merge.
+Pre-merge audit result: PASS.
+Merged-main re-audit result: PASS.
 
-Phase 4 UI remains blocked until PR #222 is merged and the exact merged main passes the seven-view re-audit.
+Final result: Phase 3 complete. Phase 4 Console shell / Overview may begin using the bounded typed admin read model as its only analytics source of truth.

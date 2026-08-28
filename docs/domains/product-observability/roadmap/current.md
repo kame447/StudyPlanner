@@ -6,11 +6,11 @@ Owning Issue: #213
 
 ## Current phase
 
-Phase 1 と Phase 2 は完了済みである。Phase 3「Aggregation and read models」の初回実装も PR #220 で main に統合済みだが、merge 後の監査で追加修正が必要になったため、現在は `fix/product-observability-phase3-audit` / PR #222 で Phase 3 の completion gate を再確認している。
+Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Aggregation and read models」は完了済みである。Phase 3の初回実装はPR #220、post-merge adversarial auditで見つかったcorrectness / recovery / bounded-read / registration / Rules verificationのhardeningはPR #222でmainへ統合した。
 
-Phase 4「Console shell and Overview」は、この監査・修正が完了して main へ統合され、merged mainの七視点再監査が通るまで開始しない。
+PR #222のmerged main commit `4d57ce510251005c636a707bd8ee4a058cf75a06` を対象に七視点再監査を行い、TypeScript、full Vitest、Firestore Rules regression、production build、Browser Regression、UI Quality Automation、UI Regression Matrixがterminal successとなった。監査済みPRとの差分一致も確認し、Phase 3 completionを確定した。
 
-管理UIを先に作って read model の不足をUI側集計で埋めない。Phase 3 の source of truth と bounded query contract を確定してからUIへ進む。
+現在の次phaseはPhase 4「Console shell and Overview」である。管理UIを先に作ってread modelの不足をUI側集計で埋めず、Phase 3で確定したsource of truthとbounded query contractだけを利用して実装する。
 
 ## Completed foundation
 
@@ -40,7 +40,7 @@ PR #219 でweekly-planning application layerが決定したtyped planning outcom
 
 ## Phase 3: Aggregation and read models
 
-PR #220 で初回実装をmainへ統合した。
+Status: completed by PR #220 and hardening PR #222.
 
 実装済みの主要責務は、actor-day presence、daily service / AI usage / planning quality rollup、pseudonymous user summary、mergeable latency histogram、rollup checkpoint、authenticated bounded admin read endpoint、typed browser query serviceである。
 
@@ -48,7 +48,7 @@ post-merge adversarial auditで、rolling active-userのnormal read cost、snaps
 
 登録ユーザー総数と期間内新規登録者はactivity telemetryから推測せず、profile registration authorityをserver-side COUNT aggregationで読む。新規profileのcanonical `registeredAt`はFirestore server timestampで作成し、作成後は利用者から変更できない。legacy profileはbounded service-account backfillを行い、移行が不完全な間の新規登録数は0ではなくunknownとする。
 
-現在のcompletion gateは次を確認する。
+completion gateとして次を確認済みである。
 
 - rolling active userが日次countの単純加算ではなくdistinct actor unionで定義される
 - user summaryとdaily rollupがraw Firebase UID / email / prompt / user textを保持しない
@@ -62,17 +62,17 @@ post-merge adversarial auditで、rolling active-userのnormal read cost、snaps
 - 登録ユーザーをfirst activityで代用せず、profile authorityからbounded readする
 - registration timestampがclientから偽造・事後変更できず、legacy backfill不完全時に新規登録数を0へ補完しない
 - Firebase Emulator Suiteでprofile registrationのSecurity Rules契約を実動検証する
-- final HEADでTypeScript、full Vitest、Firestore Rules regression、production build、diff check、Browser Regression、UI Quality Automation、UI Regression Matrixを通す
-- 七視点監査でBLOCKER / MAJORを0件にする
+- exact merged mainでTypeScript、full Vitest、Firestore Rules regression、production build、Browser Regression、UI Quality Automation、UI Regression Matrixを通す
+- 七視点監査でBLOCKER / MAJORが0件である
 
-Current implementation branch: `fix/product-observability-phase3-audit`
-Current PR: #222
+Completion PR: #222
+Merged main commit: `4d57ce510251005c636a707bd8ee4a058cf75a06`
 
-このPRをmainへmergeし、exact merged mainの七視点再監査を通した時点でPhase 3 completionを確定する。
+Phase 3は完了しており、Phase 4 UIの開始条件を満たしている。
 
 ## Phase 4: Console shell and Overview
 
-Phase 3完了後、navigation shellとOverviewを実装する。
+次の実装phaseとしてnavigation shellとOverviewを実装する。
 
 Overviewでは、登録ユーザー、今日利用したユーザー、過去7日 / 30日利用、主要product activity、AI/API、planning quality、read-model freshnessを一画面から把握できるようにする。
 
