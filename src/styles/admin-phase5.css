@@ -163,7 +163,7 @@
 
 .admin-ai-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 920px;
   border-collapse: collapse;
   color: var(--text-primary);
   font-size: 0.84rem;
@@ -195,6 +195,18 @@
   color: var(--text-primary);
   font-size: 0.78rem;
   overflow-wrap: anywhere;
+}
+
+.admin-ai-token-breakdown {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-ai-token-breakdown span {
+  color: var(--text-muted);
 }
 
 .admin-observability-timeline {
@@ -297,6 +309,66 @@
 
   .admin-identity-result code {
     max-width: 78vw;
+  }
+
+  .admin-ai-table-wrap {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .admin-ai-table {
+    min-width: 0;
+    display: block;
+  }
+
+  .admin-ai-table thead {
+    display: none;
+  }
+
+  .admin-ai-table tbody,
+  .admin-ai-table tr,
+  .admin-ai-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-ai-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .admin-ai-table tr {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  }
+
+  .admin-ai-table td {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    overflow-wrap: anywhere;
+  }
+
+  .admin-ai-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+
+  .admin-ai-table tr:last-child td,
+  .admin-ai-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-ai-token-breakdown {
+    min-width: 0;
   }
 
   .admin-observability-timeline::before {
