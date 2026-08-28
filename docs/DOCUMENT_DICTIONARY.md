@@ -105,7 +105,9 @@ client-first executionの正仕様は `spec/client-first-execution-requirements.
 
 入口: `docs/domains/external-integrations/README.md`
 
-外部provider/APIの採否、adapter境界、利用条件、quota、fallbackなどのactive調査はこのdomainの`work/`へ置く。現在の全体追跡Issueは#187である。
+書籍教材metadataの検索、共有catalog、provider fallback、manual fallbackの正仕様は `spec/material-metadata.md` とする。
+
+外部provider/APIの採否、adapter境界、利用条件、quota、fallbackなどの調査証拠はこのdomainの`work/`へ置く。現在の全体追跡Issueは#187である。
 
 教材、予定、週間計画など各product domainの意味・lifecycle・永続modelそのものはexternal-integrationsへ移さない。外部サービス固有のresponseや運用条件を内部domainへ漏らさない接続境界だけを所有する。
 
