@@ -64,9 +64,20 @@ function readCheckpoint(
   nowIso: string,
 ): ProfileRegistrationBackfillCheckpoint {
   if (!value) return emptyCheckpoint(nowIso);
-  const cursor = value.cursor && typeof value.cursor === 'object'
-    ? value.cursor as Record<string, unknown>
-    : null;
+  let cursor: FirestoreOrderedCursor | null = null;
+  if (value.cursor !== null && value.cursor !== undefined) {
+    if (!value.cursor || typeof value.cursor !== 'object') {
+      throw new Error('profile_registration_backfill_checkpoint_invalid');
+    }
+    const record = value.cursor as Record<string, unknown>;
+    if (typeof record.orderedValue !== 'string' || typeof record.documentName !== 'string') {
+      throw new Error('profile_registration_backfill_checkpoint_invalid');
+    }
+    cursor = {
+      orderedValue: record.orderedValue,
+      documentName: record.documentName,
+    };
+  }
   if (
     value.schemaVersion !== BACKFILL_SCHEMA_VERSION
     || !Number.isSafeInteger(value.processedProfiles)
@@ -81,14 +92,7 @@ function readCheckpoint(
   }
   return {
     schemaVersion: BACKFILL_SCHEMA_VERSION,
-    cursor: cursor
-      && typeof cursor.orderedValue === 'string'
-      && typeof cursor.documentName === 'string'
-      ? {
-          orderedValue: cursor.orderedValue,
-          documentName: cursor.documentName,
-        }
-      : null,
+    cursor,
     processedProfiles: Number(value.processedProfiles),
     normalizedProfiles: Number(value.normalizedProfiles),
     malformedProfiles: Number(value.malformedProfiles),
@@ -98,9 +102,11 @@ function readCheckpoint(
 }
 
 function nextCursor(row: FirestoreOrderedDocument): FirestoreOrderedCursor {
-  const createdAt = typeof row.createdAt === 'string' ? row.createdAt : '';
+  if (typeof row.createdAt !== 'string') {
+    throw new Error('profile_registration_backfill_profile_invalid');
+  }
   return {
-    orderedValue: createdAt,
+    orderedValue: row.createdAt,
     documentName: row.documentName,
   };
 }
@@ -145,6 +151,7 @@ export class ProductObservabilityProfileRegistrationBackfillService {
       cursor: current.cursor,
       limit: pageSize,
     });
+    rows.forEach(nextCursor);
 
     let normalizedProfiles = current.normalizedProfiles;
     let malformedProfiles = current.malformedProfiles;
