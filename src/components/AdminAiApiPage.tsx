@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Bot,
@@ -40,6 +40,15 @@ function shiftDate(localDate: string, offset: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function validDateParam(value: string | null): string | null {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function initialEnvironment(): ObservabilityEnvironment {
+  const value = new URLSearchParams(window.location.search).get('environment');
+  return value === 'preview' || value === 'development' || value === 'test' ? value : 'production';
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('ja-JP').format(value);
 }
@@ -58,9 +67,22 @@ function formatCost(value: number, unknownCount: number): string {
   return unknownCount > 0 ? `${formatted} + 未算出${formatNumber(unknownCount)}件` : formatted;
 }
 
+function formatCostMicros(value: number | null): string {
+  if (value === null) return '未確定';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4,
+  }).format(value / 1_000_000);
+}
+
 function formatLatency(value: number | null): string {
   if (value === null) return '未計測';
   return value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}秒` : `${value}ms`;
+}
+
+function percentage(value: number | null): string {
+  return value === null ? '未計測' : `${(value * 100).toFixed(1)}%`;
 }
 
 function successRate(success: number, total: number): string {
@@ -136,10 +158,22 @@ function DimensionTable({ title, description, rows }: {
 
 export function AdminAiApiPage() {
   const today = useMemo(() => tokyoDate(new Date()), []);
-  const [fromDate, setFromDate] = useState(() => shiftDate(today, -6));
-  const [toDate, setToDate] = useState(today);
-  const [environment, setEnvironment] = useState<ObservabilityEnvironment>('production');
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [fromDate, setFromDate] = useState(
+    () => validDateParam(params.get('from')) ?? shiftDate(today, -6),
+  );
+  const [toDate, setToDate] = useState(
+    () => validDateParam(params.get('to')) ?? today,
+  );
+  const [environment, setEnvironment] = useState<ObservabilityEnvironment>(initialEnvironment);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const query = new URLSearchParams({ from: fromDate, to: toDate });
+    if (environment !== 'production') query.set('environment', environment);
+    window.history.replaceState({}, '', `${window.location.pathname}?${query.toString()}`);
+  }, [environment, fromDate, toDate]);
+
   const loadAnalysis = useCallback(
     () => getAdminObservabilityAiAnalysis({ fromDate, toDate, environment }),
     [environment, fromDate, refreshKey, toDate],
@@ -197,6 +231,25 @@ export function AdminAiApiPage() {
             <Metric icon={<Cpu size={19} />} label="総token" value={formatTokens(data.total.totalTokens, data.total.totalTokensUnknownCount)} note="providerが返したusageのみ" />
             <Metric icon={<Clock3 size={19} />} label="p95 latency" value={formatLatency(data.latencyP95Ms)} note={`p50 ${formatLatency(data.latencyP50Ms)}`} />
             <Metric icon={<CircleDollarSign size={19} />} label="推定費用" value={formatCost(data.total.estimatedCostMicros, data.total.estimatedCostUnknownCount)} note="pricing未定義は未算出のまま" />
+          </section>
+
+          <section className="admin-section-card panel">
+            <div className="admin-section-heading">
+              <div>
+                <h2>AI計画の効率</h2>
+                <p>planning sessionとAI requestをserver-side集計し、repairやcacheの効き方を確認します。</p>
+              </div>
+            </div>
+            <div className="admin-ai-efficiency-grid">
+              <div><span>計画セッション</span><strong>{formatNumber(data.planningEfficiency.sessionCount)}件</strong></div>
+              <div><span>1セッションあたりrequest</span><strong>{data.planningEfficiency.requestsPerSession === null ? '未計測' : data.planningEfficiency.requestsPerSession.toFixed(2)}</strong></div>
+              <div><span>repair request率</span><strong>{percentage(data.planningEfficiency.repairRate)}</strong></div>
+              <div><span>1セッション推定原価</span><strong>{formatCostMicros(data.planningEfficiency.estimatedCostPerSessionMicros)}</strong></div>
+              <div><span>cached token比率</span><strong>{percentage(data.planningEfficiency.cacheHitTokenRatio)}</strong></div>
+            </div>
+            {data.planningEfficiency.estimatedCostUnknownCount > 0 ? (
+              <p className="admin-overview-empty">費用未算出のplanning requestが {formatNumber(data.planningEfficiency.estimatedCostUnknownCount)}件あるため、セッション単価は未確定です。</p>
+            ) : null}
           </section>
 
           {data.total.failureCount > 0 || data.total.totalTokensUnknownCount > 0 || data.total.estimatedCostUnknownCount > 0 ? (
