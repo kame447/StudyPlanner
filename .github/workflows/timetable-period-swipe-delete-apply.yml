@@ -28,8 +28,9 @@ jobs:
           def replace_once(path: str, old: str, new: str) -> None:
               file_path = Path(path)
               text = file_path.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f'{path}: expected exactly one match, found {text.count(old)}')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
               file_path.write_text(text.replace(old, new, 1))
 
           component = r'''import {
@@ -46,6 +47,7 @@ jobs:
 
           interface TimetablePeriodSwipeItemProps {
             term: TimetableTerm;
+            rangeLabel: string;
             active: boolean;
             disabled: boolean;
             deleting: boolean;
@@ -69,6 +71,7 @@ jobs:
 
           export function TimetablePeriodSwipeItem({
             term,
+            rangeLabel,
             active,
             disabled,
             deleting,
@@ -122,6 +125,7 @@ jobs:
                 }
 
                 if (absY > absX) {
+                  event.currentTarget.releasePointerCapture?.(event.pointerId);
                   pointerRef.current = null;
                   setDragOffset(null);
                   setDragging(false);
@@ -146,9 +150,9 @@ jobs:
                 const nextOffset = clampSwipeOffset(
                   pointer.startOffset + event.clientX - pointer.startX,
                 );
-                const shouldOpen =
-                  nextOffset <= -ACTION_REVEAL_WIDTH_PX * OPEN_THRESHOLD_RATIO;
-                onOpenChange(shouldOpen);
+                onOpenChange(
+                  nextOffset <= -ACTION_REVEAL_WIDTH_PX * OPEN_THRESHOLD_RATIO,
+                );
                 suppressClickRef.current = true;
               }
 
@@ -225,18 +229,10 @@ jobs:
                   type="button"
                 >
                   <strong>{term.label}</strong>
-                  <span>{formatTermRange(term)}</span>
+                  <span>{rangeLabel}</span>
                 </button>
               </div>
             );
-          }
-
-          function formatTermRange(term: TimetableTerm): string {
-            if (!term.startDate && !term.endDate) {
-              return '期間未設定';
-            }
-
-            return `${term.startDate ?? '開始日未設定'} 〜 ${term.endDate ?? '終了日未設定'}`;
           }
           '''
           Path('src/components/TimetablePeriodSwipeItem.tsx').write_text(component)
@@ -271,6 +267,7 @@ jobs:
                 onDelete={onDelete}
                 onOpenChange={setOpen}
                 onSelect={onSelect}
+                rangeLabel="4/1〜8/10"
                 term={TERM}
               />
             );
@@ -367,6 +364,7 @@ jobs:
               "  async function selectExistingPeriod(term: TimetableTerm) {\n    if (term.id === activeTerm?.id) {",
               "  async function selectExistingPeriod(term: TimetableTerm) {\n    setOpenTermSwipeId(null);\n    if (term.id === activeTerm?.id) {",
           )
+
           delete_handler = r'''  async function deleteExistingPeriod(term: TimetableTerm) {
             if (isTermActionBusy) {
               return;
@@ -428,21 +426,9 @@ jobs:
               "    if (!activeTerm || isClearingTermData || isSavingTerm) {",
               "    if (!activeTerm || isTermActionBusy) {",
           )
-          replace_once(
-              'src/components/TimetableView.tsx',
-              "          onClick={() => {\n            if (!isSavingTerm && !isClearingTermData) {\n              setIsTermSheetOpen(false);\n            }\n          }}",
-              "          onClick={() => {\n            if (!isTermActionBusy) {\n              setOpenTermSwipeId(null);\n              setIsTermSheetOpen(false);\n            }\n          }}",
-          )
+
           view_path = Path('src/components/TimetableView.tsx')
           view_text = view_path.read_text()
-          view_text = view_text.replace(
-              'disabled={isSavingTerm || isClearingTermData}',
-              'disabled={isTermActionBusy}',
-          )
-          view_text = view_text.replace(
-              'onClick={() => setIsTermSheetOpen(false)}',
-              "onClick={() => {\n                  setOpenTermSwipeId(null);\n                  setIsTermSheetOpen(false);\n                }}",
-          )
           old_list = r'''                  <div className="timetable-period-list">
                     {availableTerms.map((term) => (
                       <button
@@ -482,13 +468,16 @@ jobs:
                         onSelect={() => {
                           void selectExistingPeriod(term);
                         }}
+                        rangeLabel={formatPeriodRange(term)}
                         term={term}
                       />
                     ))}
                   </div>'''
-          if view_text.count(old_list) != 1:
-              raise SystemExit(f'TimetableView list: expected one match, found {view_text.count(old_list)}')
+          count = view_text.count(old_list)
+          if count != 1:
+              raise SystemExit(f'TimetableView list: expected one match, found {count}')
           view_text = view_text.replace(old_list, new_list, 1)
+
           error_anchor = r'''              ) : null}
 
               <section className="timetable-period-form-card">'''
@@ -501,9 +490,24 @@ jobs:
               ) : null}
 
               <section className="timetable-period-form-card">'''
-          if view_text.count(error_anchor) != 1:
-              raise SystemExit(f'TimetableView sheet error anchor: expected one match, found {view_text.count(error_anchor)}')
+          count = view_text.count(error_anchor)
+          if count != 1:
+              raise SystemExit(f'TimetableView sheet error anchor: expected one match, found {count}')
           view_text = view_text.replace(error_anchor, error_insert, 1)
+
+          view_text = view_text.replace(
+              'disabled={isSavingTerm || isClearingTermData}',
+              'disabled={isTermActionBusy}',
+          )
+          view_text = view_text.replace(
+              "          onClick={() => {\n            if (!isSavingTerm && !isClearingTermData) {\n              setIsTermSheetOpen(false);\n            }\n          }}",
+              "          onClick={() => {\n            if (!isTermActionBusy) {\n              setOpenTermSwipeId(null);\n              setIsTermSheetOpen(false);\n            }\n          }}",
+              1,
+          )
+          view_text = view_text.replace(
+              'onClick={() => setIsTermSheetOpen(false)}',
+              "onClick={() => {\n                  setOpenTermSwipeId(null);\n                  setIsTermSheetOpen(false);\n                }}",
+          )
           view_text = view_text.replace(
               "                      isSavingTerm ||\n                      isClearingTermData ||\n                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)",
               "                      isTermActionBusy ||\n                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)",
