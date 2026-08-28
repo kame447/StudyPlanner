@@ -204,7 +204,10 @@ function decodeXmlEntities(value: string): string {
 }
 
 function stripTags(value: string): string {
-  return decodeXmlEntities(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+  const withoutCdataMarkers = value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  return decodeXmlEntities(withoutCdataMarkers.replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function extractTagValues(fragment: string, localName: string): string[] {
