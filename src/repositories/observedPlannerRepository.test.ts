@@ -54,6 +54,20 @@ function todo(overrides: Partial<TodoTask> = {}): TodoTask {
 }
 
 describe('createObservedPlannerRepository', () => {
+  it('records authenticated app activity once per loaded user', async () => {
+    const actions: ProductActivityAction[] = [];
+    const base = {
+      getPlans: vi.fn(async () => []),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.getPlans('user-1');
+    await repository.getPlans('user-1');
+    await repository.getPlans('user-2');
+
+    expect(actions).toEqual(['app_active', 'app_active']);
+  });
+
   it('records activity only after a successful planner mutation', async () => {
     const actions: ProductActivityAction[] = [];
     const base = {
