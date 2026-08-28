@@ -54,6 +54,10 @@ export function usesCloudflareOpenAiProxy(
   return config.provider === 'openai' && Boolean(getCloudflareAiProxyUrl());
 }
 
+export function allowsDirectOpenAiTransport(): boolean {
+  return !import.meta.env.PROD;
+}
+
 function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
@@ -159,6 +163,10 @@ export function getAiConfigValidationMessage(
     return undefined;
   }
 
+  if (!usesCloudflareOpenAiProxy(config) && !allowsDirectOpenAiTransport()) {
+    return '本番環境のAI通信にはCloudflare AI proxyの設定が必要です。';
+  }
+
   if (!usesCloudflareOpenAiProxy(config) && !config.baseUrl.trim()) {
     return 'AI接続先URLを入力してください。';
   }
@@ -184,9 +192,8 @@ export function getAiProviderLabel(config: AiConfig = getAiConfig()): string {
   }
 
   if (config.provider === 'openai') {
-    return usesCloudflareOpenAiProxy(config)
-      ? 'AI assist (Cloudflare Workers経由)'
-      : 'AI assist';
+    if (usesCloudflareOpenAiProxy(config)) return 'AI assist (Cloudflare Workers経由)';
+    return allowsDirectOpenAiTransport() ? 'AI assist (開発・評価用direct)' : 'AI assist (proxy未設定)';
   }
 
   return 'current pipeline only';
@@ -194,9 +201,13 @@ export function getAiProviderLabel(config: AiConfig = getAiConfig()): string {
 
 export function getAiStorageNote(config: AiConfig = getAiConfig()): string {
   if (config.provider === 'openai') {
-    return usesCloudflareOpenAiProxy(config)
-      ? 'OpenAIキーは Cloudflare Workers の secret に置き、ブラウザには保存しません。'
-      : 'OpenAIキーはこのブラウザタブの sessionStorage にだけ保存します。';
+    if (usesCloudflareOpenAiProxy(config)) {
+      return 'OpenAIキーは Cloudflare Workers の secret に置き、ブラウザには保存しません。';
+    }
+    if (!allowsDirectOpenAiTransport()) {
+      return '本番環境ではブラウザからOpenAIへ直接接続しません。Cloudflare AI proxyを設定してください。';
+    }
+    return 'direct接続は開発・評価専用です。APIキーはこのブラウザタブの sessionStorage にだけ保存します。';
   }
 
   return 'AI assist を使わず、current pipeline だけで動かします。';
