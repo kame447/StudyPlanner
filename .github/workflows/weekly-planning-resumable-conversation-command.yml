@@ -6,6 +6,7 @@ on:
       - agent/weekly-conversation-quality-luna-audit
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
+      - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
 
 permissions:
   actions: read
