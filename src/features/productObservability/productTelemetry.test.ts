@@ -8,10 +8,10 @@ import {
 
 describe('product telemetry port', () => {
   it('builds a bounded activity event without user identity or free-form metadata', async () => {
-    let writtenEvent: ProductActivityTelemetryDraft | null = null;
+    const writtenEvents: ProductActivityTelemetryDraft[] = [];
     const sink: ProductTelemetrySink = {
       async write(event) {
-        writtenEvent = event;
+        if (event.eventType === 'product_activity') writtenEvents.push(event);
       },
     };
     const port = createProductTelemetryPort({
@@ -29,7 +29,7 @@ describe('product telemetry port', () => {
     });
     await Promise.resolve();
 
-    expect(writtenEvent).toEqual({
+    expect(writtenEvents).toEqual([{
       schemaVersion: 1,
       eventId: 'activity-12345678',
       eventType: 'product_activity',
@@ -42,8 +42,8 @@ describe('product telemetry port', () => {
       payload: {
         action: 'plan_created',
       },
-    });
-    const serialized = JSON.stringify(writtenEvent);
+    }]);
+    const serialized = JSON.stringify(writtenEvents[0]);
     expect(serialized).not.toContain('userId');
     expect(serialized).not.toContain('email');
     expect(serialized).not.toContain('metadata');
