@@ -285,8 +285,30 @@ export function userPlanningContextDurableKeyV1(params: {
   return `${params.kind}|${normalizeIdentityPart(params.label)}`;
 }
 
+function recordIdentityValue(params: {
+  kind: UserPlanningContextSemanticKindV1;
+  value: string | null;
+  dateExpression: string | null;
+}): string {
+  if (params.kind === 'study_goal') return '';
+  if (params.kind === 'goal_event') return normalizeIdentityPart(params.dateExpression);
+  return normalizeIdentityPart(params.value);
+}
+
+export function userPlanningContextRecordIdentityV1(params: {
+  kind: UserPlanningContextSemanticKindV1;
+  label: string;
+  value: string | null;
+  dateExpression: string | null;
+}): string {
+  return [
+    userPlanningContextDurableKeyV1(params),
+    recordIdentityValue(params),
+  ].join('|');
+}
+
 function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
-  return userPlanningContextDurableKeyV1(fact);
+  return userPlanningContextRecordIdentityV1(fact);
 }
 
 function fnv1a(value: string): string {
@@ -312,14 +334,19 @@ function mergeFacts(params: {
   now: string;
 }): UserPlanningContextSnapshotV1 {
   const byIdentity = new Map<string, UserPlanningContextRecordV1>();
+  const confirmedDurableKeys = new Set<string>();
   for (const record of params.snapshot.records) {
-    byIdentity.set(userPlanningContextDurableKeyV1(record), record);
+    byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
+    if (record.origin === 'user_confirmed') {
+      confirmedDurableKeys.add(userPlanningContextDurableKeyV1(record));
+    }
   }
 
   for (const fact of params.facts) {
+    const durableKey = userPlanningContextDurableKeyV1(fact);
+    if (confirmedDurableKeys.has(durableKey)) continue;
     const identity = recordIdentity(fact);
     const previous = byIdentity.get(identity);
-    if (previous?.origin === 'user_confirmed') continue;
     const resolvedDate = resolveContextDateExpression(fact.dateExpression, params.observedDate);
     byIdentity.set(identity, {
       id: previous?.id ?? recordId(params.ownerId, fact),
