@@ -45,6 +45,10 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     pending: WeeklyPlanningPendingTurn;
     userText: string;
   }): Promise<WeeklyPlanningTurnExecutionResult>;
+  onStartedTurn?(params: {
+    snapshot: PlanningState;
+    pending: WeeklyPlanningPendingTurn;
+  }): void | Promise<void>;
   commitExecutionResult?(
     params: WeeklyPlanningControlledResultContext,
   ): void | Promise<void>;
@@ -59,6 +63,7 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     snapshot: PlanningState;
     pending: WeeklyPlanningPendingTurn;
     userText: string;
+    result?: WeeklyPlanningTurnExecutionResult;
     error: unknown;
     failedState: PlanningState;
     assistantMessage: WeeklyPlanningMessage;
@@ -170,7 +175,7 @@ async function runBestEffort(callback: (() => void | Promise<void>) | undefined)
   try {
     await callback();
   } catch {
-    // Persistence and trace side effects must not invalidate an already committed turn.
+    // Persistence, trace, and observability side effects must not invalidate product behavior.
   }
 }
 
@@ -257,6 +262,7 @@ export async function submitWeeklyPlanningControlledTurn(
   if (!isSameWeeklyPlanningPendingTurn(begun.pendingTurn, pending)) {
     return { accepted: false, draftCandidates: [] };
   }
+  await runBestEffort(() => params.onStartedTurn?.({ snapshot, pending }));
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   try {
@@ -338,6 +344,7 @@ export async function submitWeeklyPlanningControlledTurn(
       snapshot,
       pending,
       userText,
+      result: failedResult,
       error,
       failedState,
       assistantMessage,
