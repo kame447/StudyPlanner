@@ -7,11 +7,13 @@ import {
   Search,
   Users,
 } from 'lucide-react';
-import type { ObservabilityAdminIdentityMatch } from '../../shared/productObservabilityAdminReadModel';
+import type {
+  ObservabilityAdminIdentityMatch,
+  ObservabilityAdminUserListItem,
+} from '../../shared/productObservabilityAdminReadModel';
 import type {
   ObservabilityDailyRollup,
   ObservabilityOverviewReadModel,
-  ObservabilityUserSummary,
 } from '../../shared/productObservabilityReadModel';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import {
@@ -34,10 +36,10 @@ function formatTimestamp(value: string | null | undefined): string {
   }).format(date);
 }
 
-function formatActorId(actorSubjectId: string): string {
-  return actorSubjectId.length > 28
-    ? `${actorSubjectId.slice(0, 16)}…${actorSubjectId.slice(-8)}`
-    : actorSubjectId;
+function formatOpaqueId(value: string): string {
+  return value.length > 28
+    ? `${value.slice(0, 16)}…${value.slice(-8)}`
+    : value;
 }
 
 function todayInTokyo(): string {
@@ -63,6 +65,13 @@ function shortDate(localDate: string): string {
     day: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(`${localDate}T00:00:00.000Z`));
+}
+
+function recentErrorLabel(user: ObservabilityAdminUserListItem): string {
+  if (user.recentErrorState === 'unknown') return '未確認';
+  if (user.recentErrorState === 'absent') return 'なし';
+  const category = user.recentErrorCategory ? ` · ${user.recentErrorCategory}` : '';
+  return `${formatTimestamp(user.recentErrorAt)}${category}`;
 }
 
 type UserFilter = 'all' | 'product' | 'ai' | 'planning';
@@ -112,7 +121,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
   const loadUsers = useCallback(async (): Promise<UsersPageData> => {
     const toDate = todayInTokyo();
     const [page, trend] = await Promise.all([
-      getAdminObservabilityUsers({ environment: 'production', limit: 100 }),
+      getAdminObservabilityUsers({ environment: 'production', limit: 25 }),
       getAdminObservabilityOverview({
         environment: 'production',
         fromDate: shiftDate(toDate, -29),
@@ -201,7 +210,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
   const [identityMatches, setIdentityMatches] = useState<ObservabilityAdminIdentityMatch[]>([]);
   const [identityState, setIdentityState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [identityError, setIdentityError] = useState('');
-  const [extraUsers, setExtraUsers] = useState<ObservabilityUserSummary[]>([]);
+  const [extraUsers, setExtraUsers] = useState<ObservabilityAdminUserListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState('');
@@ -221,20 +230,22 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
   const visibleUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const filtered = users.filter((user) => {
-      if (query && !user.actorSubjectId.toLowerCase().includes(query)) return false;
+      const actor = user.actorSubjectId?.toLowerCase() ?? '';
+      if (query && !actor.includes(query) && !user.profileSubjectId.toLowerCase().includes(query)) return false;
       if (filter === 'product') return user.productActivityCount > 0;
       if (filter === 'ai') return user.aiRequestCount > 0;
       if (filter === 'planning') return user.planningOutcomeCount > 0;
       return true;
     });
     return [...filtered].sort((left, right) => {
+      const leftId = left.actorSubjectId ?? left.profileSubjectId;
+      const rightId = right.actorSubjectId ?? right.profileSubjectId;
       if (sort === 'events') {
-        return right.eventCount - left.eventCount
-          || left.actorSubjectId.localeCompare(right.actorSubjectId);
+        return right.eventCount - left.eventCount || leftId.localeCompare(rightId);
       }
-      if (sort === 'actor') return left.actorSubjectId.localeCompare(right.actorSubjectId);
-      return right.lastActivityAt.localeCompare(left.lastActivityAt)
-        || left.actorSubjectId.localeCompare(right.actorSubjectId);
+      if (sort === 'actor') return leftId.localeCompare(rightId);
+      const recency = (right.lastActivityAt ?? '').localeCompare(left.lastActivityAt ?? '');
+      return recency || leftId.localeCompare(rightId);
     });
   }, [filter, searchQuery, sort, users]);
 
@@ -262,7 +273,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
       const page = await getAdminObservabilityUsers({
         environment: 'production',
         cursor: resolvedCursor,
-        limit: 100,
+        limit: 25,
       });
       setExtraUsers((current) => [...current, ...page.users]);
       setNextCursor(page.nextCursor);
@@ -279,7 +290,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
         <div>
           <p className="admin-overview-eyebrow">Product Observability</p>
           <h1>Users</h1>
-          <p>通常分析は匿名actorだけを使い、必要なときだけプロフィールからactorを制限付きで照合します。</p>
+          <p>プロフィールauthorityと匿名actor集計をserver-sideで制限付きに結合し、個人情報をanalyticsへ複製せず利用状況を確認します。</p>
         </div>
       </header>
 
@@ -355,7 +366,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="actor IDで絞り込み"
+            placeholder="actor / profile IDで絞り込み"
             type="search"
           />
         </label>
@@ -373,7 +384,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
           <select value={sort} onChange={(event) => setSort(event.target.value as UserSort)}>
             <option value="recent">最終利用が新しい順</option>
             <option value="events">観測イベントが多い順</option>
-            <option value="actor">actor ID順</option>
+            <option value="actor">匿名ID順</option>
           </select>
         </label>
       </section>
@@ -381,7 +392,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
       {loadState === 'loading' ? (
         <section className="admin-state-card panel">
           <strong>読み込み中</strong>
-          <p>bounded user summaryを取得しています。</p>
+          <p>bounded user projectionを取得しています。</p>
         </section>
       ) : null}
 
@@ -397,41 +408,55 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
           <section className="admin-user-list" aria-label="匿名化ユーザー一覧">
             {visibleUsers.length === 0 ? (
               <div className="admin-state-card panel">
-                <strong>該当するactorがいません</strong>
+                <strong>該当するユーザーがいません</strong>
               </div>
-            ) : visibleUsers.map((user) => (
-              <button
-                key={user.actorSubjectId}
-                className="admin-user-card panel"
-                onClick={() => navigate(`/admin/users/${encodeURIComponent(user.actorSubjectId)}`)}
-                type="button"
-              >
-                <span className="admin-user-card-main">
-                  <span className="admin-user-avatar" aria-hidden="true">
-                    <Users size={18} />
+            ) : visibleUsers.map((user) => {
+              const displayId = user.actorSubjectId ?? user.profileSubjectId;
+              return (
+                <button
+                  key={user.profileSubjectId}
+                  className="admin-user-card panel"
+                  disabled={!user.actorSubjectId}
+                  onClick={() => {
+                    if (user.actorSubjectId) {
+                      navigate(`/admin/users/${encodeURIComponent(user.actorSubjectId)}`);
+                    }
+                  }}
+                  type="button"
+                >
+                  <span className="admin-user-card-main">
+                    <span className="admin-user-avatar" aria-hidden="true">
+                      <Users size={18} />
+                    </span>
+                    <span className="admin-user-copy">
+                      <strong>{formatOpaqueId(displayId)}</strong>
+                      <code>{displayId}</code>
+                      <span>登録 {formatTimestamp(user.registeredAt)}</span>
+                      <span>初回観測 {formatTimestamp(user.firstActivityAt)}</span>
+                    </span>
                   </span>
-                  <span className="admin-user-copy">
-                    <strong>{formatActorId(user.actorSubjectId)}</strong>
-                    <code>{user.actorSubjectId}</code>
-                    <span>初回観測 {formatTimestamp(user.firstActivityAt)}</span>
+                  <span className="admin-user-stats">
+                    <span>最終利用 <strong>{formatTimestamp(user.lastActivityAt)}</strong></span>
+                    <span>利用日数 <strong>{user.activeDayCount}日</strong></span>
+                    <span>操作 <strong>{user.productActivityCount}件</strong></span>
+                    <span><Bot aria-hidden="true" size={14} /> AI <strong>{user.aiRequestCount}件</strong></span>
+                    <span>計画 <strong>{user.planningOutcomeCount}件</strong></span>
+                    <span>直近error <strong>{recentErrorLabel(user)}</strong></span>
                   </span>
-                </span>
-                <span className="admin-user-stats">
-                  <span>最終利用 <strong>{formatTimestamp(user.lastActivityAt)}</strong></span>
-                  <span>イベント <strong>{user.eventCount}件</strong></span>
-                  <span>操作 <strong>{user.productActivityCount}件</strong></span>
-                  <span><Bot aria-hidden="true" size={14} /> AI <strong>{user.aiRequestCount}件</strong></span>
-                  <span>計画 <strong>{user.planningOutcomeCount}件</strong></span>
-                </span>
-                <ChevronRight className="admin-user-card-icon" aria-hidden="true" size={22} />
-              </button>
-            ))}
+                  {user.actorSubjectId ? (
+                    <ChevronRight className="admin-user-card-icon" aria-hidden="true" size={22} />
+                  ) : (
+                    <span className="admin-readonly-badge">まだ観測なし</span>
+                  )}
+                </button>
+              );
+            })}
           </section>
 
           {resolvedCursor ? (
             <section className="admin-section-card panel">
               <button className="ghost-button" type="button" disabled={loadingMore} onClick={loadMore}>
-                {loadingMore ? '読み込み中…' : '次の100件を読み込む'}
+                {loadingMore ? '読み込み中…' : '次の25件を読み込む'}
               </button>
               {loadMoreError ? <p role="alert">{loadMoreError}</p> : null}
             </section>
