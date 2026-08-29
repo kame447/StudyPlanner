@@ -149,6 +149,7 @@ const profile = {
 
 class FakeFirestore {
   queryCallCount = 0;
+  profilePageLimits: number[] = [];
   getCallCount = 0;
   countCollections: string[] = [];
 
@@ -162,14 +163,40 @@ class FakeFirestore {
     return 2;
   }
 
+  async queryDocumentsByNameAfter(params: { collection: string; limit?: number }) {
+    this.queryCallCount += 1;
+    this.profilePageLimits.push(params.limit ?? 0);
+    return params.collection === 'profiles' ? [{ ...profile }] : [];
+  }
+
   async queryDocumentsAfter(params: {
     collection: string;
     filters?: Array<{ field: string; value: string }>;
+    direction?: 'ASCENDING' | 'DESCENDING';
   }) {
     this.queryCallCount += 1;
     if (params.collection === 'profiles') {
       const matches = params.filters?.every((filter) => String(profile[filter.field as keyof typeof profile]) === filter.value) ?? true;
       return matches ? [{ ...profile }] : [];
+    }
+    if (params.direction === 'DESCENDING') {
+      return [{
+        id: 'event-error',
+        documentName: 'projects/test/databases/(default)/documents/observability_events/event-error',
+        eventId: 'ai-request-error',
+        eventType: 'ai_request_metric',
+        occurredAt: '2026-08-29T00:30:00.000Z',
+        appVersion: '1.0.0',
+        payload: {
+          purpose: 'weekly_planning_semantic_normalizer',
+          phase: 'repair',
+          provider: 'openai',
+          model: 'gpt-test',
+          status: 'provider_error',
+          errorCategory: 'provider_error',
+        },
+        correlation: { requestId: 'ai-request-error' },
+      }];
     }
     return [
       {
@@ -305,6 +332,40 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(result.timeline[1]).not.toHaveProperty('payload');
   });
 
+  it('lists profile-backed users with bounded joins and no raw profile identity', async () => {
+    const firestore = new FakeFirestore();
+    const identityStore = new FakeIdentityStore();
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      firestore as never,
+      new FakeReadModel() as never,
+      identityStore,
+      () => new Date('2026-08-29T12:00:00.000Z'),
+    );
+    const page = await service.listUsers({ environment: 'production', limit: 100 });
+
+    expect(firestore.profilePageLimits).toEqual([25]);
+    expect(firestore.countCollections).toEqual(['observability_actor_day']);
+    expect(page.nextCursor).toBeNull();
+    expect(page.users).toHaveLength(1);
+    expect(page.users[0]).toMatchObject({
+      actorSubjectId: 'actor-aaaaaaaa',
+      registeredAt: '2026-08-20T00:00:00.000Z',
+      activeDayCount: 2,
+      eventCount: 2,
+      productActivityCount: 1,
+      aiRequestCount: 1,
+      planningOutcomeCount: 0,
+      recentErrorState: 'present',
+      recentErrorAt: '2026-08-29T00:30:00.000Z',
+      recentErrorCategory: 'provider_error',
+    });
+    expect(page.users[0].profileSubjectId).toMatch(/^profile-/);
+    expect(page.users[0].profileSubjectId).not.toContain(profile.id);
+    expect(page.users[0]).not.toHaveProperty('firebaseUid');
+    expect(page.users[0]).not.toHaveProperty('email');
+  });
+
   it('resolves profile identity only on an explicit bounded exact lookup', async () => {
     const firestore = new FakeFirestore();
     const identityStore = new FakeIdentityStore();
@@ -336,7 +397,7 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(firestore.getCallCount).toBe(1);
   });
 
-  it('rejects forged event cursors before storage work', async () => {
+  it('rejects forged event and profile cursors before storage work', async () => {
     const service = new ProductObservabilityAdminAnalysisService(
       env,
       new FakeFirestore() as never,
@@ -348,6 +409,13 @@ describe('ProductObservabilityAdminAnalysisService', () => {
       cursor: {
         orderedValue: 'not-a-time',
         documentName: 'projects/test/databases/(default)/documents/other/event-1',
+      },
+    })).rejects.toThrow('observability_cursor_invalid');
+    await expect(service.listUsers({
+      environment: 'production',
+      cursor: {
+        orderedValue: 'profile',
+        documentName: 'projects/test/databases/(default)/documents/other/firebase-user-1',
       },
     })).rejects.toThrow('observability_cursor_invalid');
   });
