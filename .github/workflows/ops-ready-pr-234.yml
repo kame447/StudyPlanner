@@ -1,0 +1,25 @@
+name: One-shot Ready PR 234
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-ready-pr-234.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ready:
+    if: ${{ github.repository == 'kame447/StudyPlanner' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mark PR 234 ready for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr ready 234 --repo "$GITHUB_REPOSITORY"
+          test "$(gh pr view 234 --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = "false"
