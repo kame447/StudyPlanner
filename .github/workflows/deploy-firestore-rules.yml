@@ -8,6 +8,8 @@ on:
       - firestore.rules
       - firebase.json
       - scripts/ci/firestore-profile-registration-rules.mjs
+      - scripts/ci/deploy-firestore-rules.mjs
+      - scripts/ci/deploy-firestore-rules.test.mjs
       - scripts/ci/verify-deployed-firestore-rules.mjs
       - scripts/ci/verify-deployed-firestore-rules.test.mjs
       - .github/workflows/deploy-firestore-rules.yml
@@ -59,11 +61,9 @@ jobs:
           token_format: access_token
 
       - name: Deploy Firestore rules
-        run: >-
-          npx --yes firebase-tools@15.28.2 deploy
-          --only firestore:rules
-          --project "$GCP_PROJECT_ID"
-          --non-interactive
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/ci/deploy-firestore-rules.mjs
 
       - name: Verify deployed ruleset
         env:

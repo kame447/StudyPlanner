@@ -19,6 +19,7 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
+import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -88,6 +89,7 @@ interface DragSession {
   active: boolean;
   canceled: boolean;
   longPressTimer: number | null;
+  releaseInteractionLock: (() => void) | null;
   target: WeekPlanMoveTarget;
   reducedMotion: boolean;
 }
@@ -255,15 +257,24 @@ export function WeekView({
     }
   }
 
+  function releaseInteractionLock(session: DragSession | null) {
+    session?.releaseInteractionLock?.();
+    if (session) session.releaseInteractionLock = null;
+  }
+
   function clearDragSession() {
-    clearLongPressTimer(dragSessionRef.current);
+    const session = dragSessionRef.current;
+    clearLongPressTimer(session);
+    releaseInteractionLock(session);
     dragSessionRef.current = null;
     setDragVisual(null);
   }
 
   useEffect(() => {
     return () => {
-      clearLongPressTimer(dragSessionRef.current);
+      const session = dragSessionRef.current;
+      clearLongPressTimer(session);
+      releaseInteractionLock(session);
     };
   }, []);
 
@@ -320,6 +331,7 @@ export function WeekView({
       active: false,
       canceled: false,
       longPressTimer: null,
+      releaseInteractionLock: null,
       target,
       reducedMotion:
         typeof window !== 'undefined' &&
@@ -336,14 +348,17 @@ export function WeekView({
     session.active = true;
     suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
 
-    if (session.inputKind === 'touch' && 'vibrate' in navigator) {
-      navigator.vibrate?.(10);
+    if (session.inputKind === 'touch') {
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      if ('vibrate' in navigator) navigator.vibrate?.(10);
     }
 
     updateDrag(session, clientX, clientY);
   }
 
   function nudgeHorizontalScroll(session: DragSession, clientX: number) {
+    if (session.inputKind === 'touch') return;
+
     const scrollElement = session.scrollElement;
     if (!scrollElement || scrollElement.scrollWidth <= scrollElement.clientWidth) {
       return;
