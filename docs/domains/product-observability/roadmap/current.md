@@ -10,7 +10,9 @@ Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Ag
 
 Phase 4はPR #224で`/admin`のOverview入口、responsive console shell、bounded read modelを利用するregistered / active user・AI/API・planning quality・read-model freshness表示、desktop/mobile・light/darkのrender regressionをmainへ統合した。最終pre-merge head `5d11dd2a574909aac0cfe3317652f4348a870d45` ではCI、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderがすべてterminal successとなり、squash merge mainは`b053a677c00fea642a040831fd2161760567a382`である。
 
-現在の実装phaseはPhase 5「Users and AI / API」である。delivery candidateはPR #234 / `feat/product-observability-phase5-users-ai-api`。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、利用者分析・個別調査とAI/API利用分析を実装した。以降はこのcheckpoint以後のPR headをexact final validation対象として固定し、検証で不具合が出た場合だけ変更する。
+Phase 5「Users and AI / API」の実装はPR #234 / `feat/product-observability-phase5-users-ai-api`でcompletion candidateまで到達した。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、profile authorityを入口とする利用者分析・個別調査とAI/API利用分析を実装した。merge前はこのcheckpoint以後のPR headをexact final validation対象として固定し、検証で不具合が出た場合だけ変更する。
+
+Phase 5 merge後の次の実装phaseはPhase 6「Planning Analytics」である。
 
 ## Completed foundation
 
@@ -85,18 +87,23 @@ Merged main commit: `b053a677c00fea642a040831fd2161760567a382`
 
 ## Phase 5: Users and AI / API
 
-Status: delivery candidate in draft PR #234; exact-head final validation in progress.
+Status: implementation complete in completion candidate PR #234; exact-head merge gate is the remaining step.
 
 Active branch: `feat/product-observability-phase5-users-ai-api`
 Parent Issue: #213
 AI/API residual tracker: #160
 Base main at phase start: `b053a677c00fea642a040831fd2161760567a382`
+Completion PR: #234
 
-Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止し、opaque `actorSubjectId`を基本とするbounded user summaryへ置換した。利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みの最大100件単位で扱い、継続読込はcursor paginationとする。
+Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止した。通常一覧はprofile authorityを最大25件単位でdocument-name paginationし、server-sideで既存actor directory、opaque user summary、canonical `observability_actor_day` COUNT、保持中telemetryのbounded recent-error scanへ結合する。raw Firebase UID / emailは通常一覧DTOへ返さず、profile rowはOBSERVABILITY_IDENTITY_SECRETでHMACした`profileSubjectId`として表示する。
+
+これにより各ユーザー行で、canonical profileの登録日時、最終利用、正確な利用日数、主要product activity、AI利用、planning利用、直近30日のerror有無を同時に確認できる。actor directoryが未作成のprofileも一覧から消さず「まだ観測なし」とする。直近errorは最大100 eventまで新しい順に確認し、errorを発見した場合は`present`、30日窓を走査し切れた場合は`absent`、100件上限に達してまだ30日窓内の場合は`unknown`とする。高頻度ユーザーを推測で「errorなし」にしない。
+
+利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みのbounded pageに対して扱い、継続読込はcursor paginationとする。
 
 個別調査はactor summary、canonical `observability_actor_day`へのCOUNT、保持中lightweight telemetryの最大50件cursor paginationを使う。timelineはproduct action、AI request、planning outcome、request / trace / feature session等のallowlistだけを返し、raw prompt / responseや任意payloadを返さない。
 
-プロフィールから調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。登録日時はこのrestricted profile authorityから表示する。
+プロフィールから明示的に調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。
 
 AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase` / `aiByOperationKind`をserver-sideで期間統合し、model・機能purpose・initial/repair/single・chat completion/OCR/添付解析/文字起こし等のoperation単位で比較する。各分類ではrequest、success/failure、prompt/completion/total/cached token、主要failure category、latency p50/p95、推定費用を表示する。UI component自身は期間再集計を行わない。
 
@@ -106,9 +113,11 @@ planning用途の効率指標はsession数で代用せず、weekly-planning doma
 
 production AI transportはCloudflare AI proxyを正規経路とする。browser-direct OpenAI transportはdevelopment / evaluation互換に限定し、production contractから除外する。production buildでproxyが無い場合はdirect endpointへfallbackせずrules pipelineへfail closedする。
 
-Usersのactor/filter/sort、AI/APIのfrom/to/environmentはURLへ保持し、調査文脈を再現可能にする。
+Usersのactor/profile filter/sort、AI/APIのfrom/to/environmentはURLへ保持し、調査文脈を再現可能にする。
 
-専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。AI/APIの分類表はdesktop tableをそのままmobileで横スクロールさせるのではなく、mobileではlabel付きcard表現へ変換する。最初の拡張runでUsersの曖昧なtest locatorのみが失敗したため、user card内へscopeして修正した。実装監査中に個別利用日数COUNTのcollection名がPhase 3 canonical `observability_actor_day`と不一致だった問題も検出し修正した。
+専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。AI/APIの分類表はdesktop tableをそのままmobileで横スクロールさせるのではなく、mobileではlabel付きcard表現へ変換する。
+
+Phase 5の検証ループでは、Users test locatorの曖昧さ、個別利用日数COUNTの誤ったcollection名、admin-only CSSのglobal bundle混入、mobile AI headerのmax-content overflow、lazy `AdminApp`を経由しない専用render harnessがPhase 5 CSSを読み込まないboundary defectを検出した。いずれも同じPR #234上で原因を修正し、harnessは失敗時にoverflow offender DOMを出力する診断を保持する。
 
 Final completion gate:
 
@@ -118,6 +127,7 @@ Final completion gate:
 4. expanded Admin Renderでdesktop/mobile、light/dark、empty/unknown/errorを通す。
 5. PR #234の未解決review threadがないことを確認する。
 6. gate通過後にPR #234をreadyにし、squash mergeする。
+7. merge後に#160をcloseし、#213へPhase 5 completion checkpointとPhase 6 next actionを記録する。
 
 Phase 5 merge後の次のconcrete actionはPhase 6「Planning Analytics」である。weekly-planning typed outcomeだけをauthorityとしてsession funnelと品質比較を実装し、Phase 5で作ったAI request / feature-session / turn correlationを利用する。
 
