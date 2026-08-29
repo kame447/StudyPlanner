@@ -72,10 +72,14 @@ async function inspectUsers(page, options) {
   await openSurface(page, { ...options, view: 'users' });
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
   await expect(page.getByText('プロフィールから調査を開始')).toBeVisible();
-  await expect(page.getByPlaceholder('actor IDで絞り込み')).toBeVisible();
+  await expect(page.getByPlaceholder('actor / profile IDで絞り込み')).toBeVisible();
   const firstStats = page.locator('.admin-user-stats').first();
-  await expect(firstStats).toContainText('イベント');
+  await expect(firstStats).toContainText('最終利用');
+  await expect(firstStats).toContainText('利用日数');
   await expect(firstStats).toContainText('AI');
+  await expect(firstStats).toContainText('計画');
+  await expect(firstStats).toContainText('直近error');
+  await expect(page.locator('.admin-user-copy').first()).toContainText('登録');
   await screenshot(page, `users-${options.label}`);
 }
 
@@ -135,7 +139,7 @@ test.describe('Admin console rendered UI', () => {
       height: 844,
       state: 'empty',
     });
-    await expect(page.getByText('該当するactorがいません')).toBeVisible();
+    await expect(page.getByText('該当するユーザーがいません')).toBeVisible();
     await screenshot(page, 'users-empty-mobile-light');
   });
 
