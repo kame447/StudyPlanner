@@ -1,8 +1,10 @@
 name: One-shot Ready PR 234
 
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-ready-pr-234.yml
 
 permissions:
   contents: read
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   ready:
-    if: ${{ github.event.issue.pull_request && github.event.issue.number == 234 && github.actor == github.repository_owner && github.event.comment.body == '/ops-ready-234' }}
+    if: ${{ github.repository == 'kame447/StudyPlanner' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
