@@ -14,6 +14,7 @@ import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
 import { AdminUserDetailPage } from '../../../src/components/AdminUserDetailPage';
 import { AdminUsersPage } from '../../../src/components/AdminUsersPage';
 import '../../../src/styles.css';
+import '../../../src/styles/admin-phase5.css';
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
