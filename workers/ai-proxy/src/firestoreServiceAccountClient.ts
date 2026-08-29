@@ -298,9 +298,9 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        grant_type: 'urn:ietf:params:oauth-grant-type:jwt-bearer',
         assertion,
-      }),
+      }).toString().replace('oauth-grant-type', 'oauth:grant-type'),
     });
     if (!response.ok) throw new Error('Firebase service account token exchange failed');
 
@@ -555,8 +555,10 @@ export class FirestoreServiceAccountClient {
     filters?: Array<{ field: string; value: string }>;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
+    direction?: 'ASCENDING' | 'DESCENDING';
   }): Promise<FirestoreOrderedDocument[]> {
     const where = equalityWhere(params.filters ?? []);
+    const direction = params.direction ?? 'ASCENDING';
     const response = await this.request(`${this.documentsBase()}:runQuery`, {
       method: 'POST',
       body: JSON.stringify({
@@ -564,8 +566,8 @@ export class FirestoreServiceAccountClient {
           from: [{ collectionId: params.collection }],
           ...(where ? { where } : {}),
           orderBy: [
-            { field: { fieldPath: params.orderByField }, direction: 'ASCENDING' },
-            { field: { fieldPath: '__name__' }, direction: 'ASCENDING' },
+            { field: { fieldPath: params.orderByField }, direction },
+            { field: { fieldPath: '__name__' }, direction },
           ],
           ...(params.cursor ? {
             startAt: {
@@ -581,6 +583,40 @@ export class FirestoreServiceAccountClient {
       }),
     });
     if (!response.ok) throw new Error(`Firestore ordered query failed: ${response.status}`);
+    const payload = await response.json() as FirestoreRunQueryResult[];
+    return payload.flatMap((result) => {
+      const document = result.document;
+      if (!document?.name) return [];
+      return [{
+        ...decodeFirestoreFields(document.fields ?? {}),
+        id: documentId(document.name),
+        documentName: document.name,
+      }];
+    });
+  }
+
+  async queryDocumentsByNameAfter(params: {
+    collection: string;
+    cursorDocumentName?: string | null;
+    limit?: number;
+  }): Promise<FirestoreOrderedDocument[]> {
+    const response = await this.request(`${this.documentsBase()}:runQuery`, {
+      method: 'POST',
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: params.collection }],
+          orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+          ...(params.cursorDocumentName ? {
+            startAt: {
+              values: [{ referenceValue: params.cursorDocumentName }],
+              before: false,
+            },
+          } : {}),
+          limit: boundedQueryLimit(params.limit ?? 100),
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`Firestore name-ordered query failed: ${response.status}`);
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => {
       const document = result.document;
