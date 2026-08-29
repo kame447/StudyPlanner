@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
+import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -46,6 +47,7 @@ interface DragSession<TItem> {
   active: boolean;
   canceled: boolean;
   longPressTimer: number | null;
+  releaseInteractionLock: (() => void) | null;
   target: WeekPlanMoveTarget;
   reducedMotion: boolean;
 }
@@ -98,15 +100,24 @@ export function useTimelineDragController<TItem>({
     }
   }
 
+  function releaseInteractionLock(session: DragSession<TItem> | null) {
+    session?.releaseInteractionLock?.();
+    if (session) session.releaseInteractionLock = null;
+  }
+
   function clearDragSession() {
-    clearLongPressTimer(dragSessionRef.current);
+    const session = dragSessionRef.current;
+    clearLongPressTimer(session);
+    releaseInteractionLock(session);
     dragSessionRef.current = null;
     setDragVisual(null);
   }
 
   useEffect(() => {
     return () => {
-      clearLongPressTimer(dragSessionRef.current);
+      const session = dragSessionRef.current;
+      clearLongPressTimer(session);
+      releaseInteractionLock(session);
     };
   }, []);
 
@@ -145,6 +156,7 @@ export function useTimelineDragController<TItem>({
       active: false,
       canceled: false,
       longPressTimer: null,
+      releaseInteractionLock: null,
       target: descriptor.original,
       reducedMotion:
         typeof window !== 'undefined' &&
@@ -153,6 +165,8 @@ export function useTimelineDragController<TItem>({
   }
 
   function nudgeHorizontalScroll(session: DragSession<TItem>, clientX: number) {
+    if (session.inputKind === 'touch') return;
+
     const scrollElement = session.scrollElement;
     if (!scrollElement || scrollElement.scrollWidth <= scrollElement.clientWidth) return;
 
@@ -220,8 +234,9 @@ export function useTimelineDragController<TItem>({
     session.active = true;
     suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
 
-    if (session.inputKind === 'touch' && 'vibrate' in navigator) {
-      navigator.vibrate?.(10);
+    if (session.inputKind === 'touch') {
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      if ('vibrate' in navigator) navigator.vibrate?.(10);
     }
 
     updateDrag(session, clientX, clientY);

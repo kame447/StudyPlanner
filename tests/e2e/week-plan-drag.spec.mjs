@@ -149,6 +149,46 @@ test('long press activates touch drag and drop without opening the editor', asyn
   await context.close();
 });
 
+test('active long press touch drag keeps the background completely stationary', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 320, height: 780 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await page.goto(HARNESS_URL);
+  const session = await enableTouch(page);
+  const scroll = page.locator('.schedule-week-preview-scroll');
+  const scrollMetrics = await scroll.evaluate((element) => {
+    const maxScrollLeft = Math.max(element.scrollWidth - element.clientWidth, 0);
+    element.scrollLeft = Math.min(56, Math.floor(maxScrollLeft / 2));
+    return { maxScrollLeft, scrollLeft: element.scrollLeft };
+  });
+  expect(scrollMetrics.maxScrollLeft).toBeGreaterThan(0);
+
+  const { x, y } = await planCenter(page, /数学の復習.*タップで編集/);
+  const scrollBox = await scroll.boundingBox();
+  if (!scrollBox) throw new Error('Week scroll surface not measurable');
+  const bodyOverflowBefore = await page.evaluate(() => document.body.style.overflow);
+
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+
+  await dispatchTouch(session, 'touchMove', scrollBox.x + 2, y + 45);
+  await page.waitForTimeout(50);
+
+  expect(await scroll.evaluate((element) => element.scrollLeft)).toBe(scrollMetrics.scrollLeft);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  await dispatchTouch(session, 'touchCancel', scrollBox.x + 2, y + 45);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe(bodyOverflowBefore);
+
+  await context.close();
+});
+
 test('recurring plan drag keeps its weekday locked', async ({ page }) => {
   await page.goto(HARNESS_URL);
 
