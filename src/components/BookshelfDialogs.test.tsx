@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
+import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import type { StudyMaterial, StudySubject } from '../types/domain';
 
@@ -137,6 +138,91 @@ describe('bookshelf dialogs', () => {
       undefined,
     );
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps catalog cover URLs separate and persists the selected catalog identity', async () => {
+    const catalogCoverUrl = 'https://cover.example/9784023315686.jpg';
+    const catalogCandidate = {
+      catalogEntryId: 'seed:english-kintore',
+      title: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+      authors: ['TEX加藤'],
+      isbn13: '9784023315686',
+      coverImageUrl: catalogCoverUrl,
+      aliases: ['金フレ'],
+    };
+    const savedMaterial: StudyMaterial = {
+      ...material,
+      id: 'material-kintore',
+      name: catalogCandidate.title,
+      coverImageUrl: catalogCoverUrl,
+      coverImageDataUrl: undefined,
+      catalogEntryId: catalogCandidate.catalogEntryId,
+      catalogTitle: catalogCandidate.title,
+      catalogIsbn13: catalogCandidate.isbn13,
+      aliases: catalogCandidate.aliases,
+    };
+    const onSave = vi.fn().mockResolvedValue(savedMaterial);
+    let renderer!: ReactTestRenderer;
+
+    act(() => {
+      renderer = create(
+        <BookshelfMaterialDialog
+          userId="user-1"
+          material={null}
+          subjects={[subject]}
+          onClose={vi.fn()}
+          onSave={onSave}
+          onDelete={vi.fn()}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer.root.findByType(BookshelfMaterialSearch).props.onSelect(catalogCandidate);
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
+    });
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: catalogCandidate.title,
+        coverImageUrl: catalogCoverUrl,
+        coverImageDataUrl: undefined,
+        catalogEntryId: catalogCandidate.catalogEntryId,
+        catalogTitle: catalogCandidate.title,
+        catalogIsbn13: catalogCandidate.isbn13,
+        aliases: catalogCandidate.aliases,
+      }),
+      undefined,
+    );
+  });
+
+  it('shows the persisted catalog link while editing a linked material', () => {
+    let renderer!: ReactTestRenderer;
+
+    act(() => {
+      renderer = create(
+        <BookshelfMaterialDialog
+          userId="user-1"
+          material={{
+            ...material,
+            catalogEntryId: 'isbn13:9784023315686',
+            catalogTitle: 'TOEIC L&R TEST 出る単特急 金のフレーズ',
+            catalogIsbn13: '9784023315686',
+          }}
+          subjects={[subject]}
+          onClose={vi.fn()}
+          onSave={vi.fn()}
+          onDelete={vi.fn()}
+        />,
+      );
+    });
+
+    const renderedText = renderer.root.findAllByType('p').map((node) => node.children.join(' ')).join('\n');
+    expect(renderedText).toContain('教材DBに紐付け済み');
+    expect(renderedText).toContain('9784023315686');
   });
 
   it('preserves the existing current-position clamp when editing paced material', async () => {

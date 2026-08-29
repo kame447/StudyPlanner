@@ -90,13 +90,13 @@ describe('Stable V5 semantic normalizer debug trace', () => {
       };
     };
 
-    expect(system).toContain('pendingQuestion as authoritative');
-    expect(system).toContain('exact target');
+    expect(system).toContain('pendingQuestion binds only actual answers to its exact target');
+    expect(system).toContain('cannot suppress other explicit contributions');
     expect(system).not.toContain('fresh localIds');
-    expect(system).toContain('every sourceText must be supported by current userText');
-    expect(system).toContain('target is the amount intended for this plan');
-    expect(system).toContain('remaining is the unfinished amount');
-    expect(system).toContain('completed is done');
+    expect(system).toContain('each sourceText must be supported by current userText');
+    expect(system).toContain('target=plan amount');
+    expect(system).toContain('remaining=unfinished');
+    expect(system).toContain('completed=done');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
       publicStateSummary: {

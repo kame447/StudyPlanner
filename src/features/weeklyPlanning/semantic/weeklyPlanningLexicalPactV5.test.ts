@@ -3,7 +3,7 @@ import { createWeeklyPlanningSemanticBaseMessagesV5 } from './weeklyPlanningSema
 import { createWeeklyPlanningStableV5DialoguePrompt } from '../dialogue/weeklyPlanningStableV5AiDialogueRenderer';
 
 describe('Stable V5 lexical pact contracts', () => {
-  it('tells semantic interpretation to retain established partner-specific labels for existing entities', () => {
+  it('tells semantic interpretation to retain established labels for existing entities', () => {
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: 'それを30分やる',
       recentConversation: [
@@ -16,9 +16,9 @@ describe('Stable V5 lexical pact contracts', () => {
     });
 
     const system = messages.find((message) => message.role === 'system')?.content ?? '';
-    expect(system).toContain('partner-specific');
+    expect(system).toContain('accepted existingPublicId');
     expect(system).toContain('title/contextLabel');
-    expect(system).toContain('unless the user renames it');
+    expect(system).toContain('unless user renames it');
   });
 
   it('carries the established user-facing label into renderer decided facts and relevant labels unchanged', () => {

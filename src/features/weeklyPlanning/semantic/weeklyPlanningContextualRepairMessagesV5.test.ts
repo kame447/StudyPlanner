@@ -137,7 +137,7 @@ describe('Stable V5 contextual repair messages', () => {
       'assistant',
       'user',
     ]);
-    expect(repairMessages[0]?.content).toContain('pendingQuestion as authoritative');
+    expect(repairMessages[0]?.content).toContain('pendingQuestion binds only actual answers to its exact target');
     expect(repairMessages[0]?.content).not.toContain('work_breakdown target');
     expect(repairMessages[2]?.content).toBe(invalidResponse);
 

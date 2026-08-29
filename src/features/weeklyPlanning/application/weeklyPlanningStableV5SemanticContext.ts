@@ -2,6 +2,9 @@ import {
   userPlanningContextPromptSelectionV2,
 } from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import {
+  getWeeklyPlanningRegisteredMaterialContextV5,
+} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningMessage } from '../types';
@@ -109,6 +112,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
   previousState?: PlanningIntakeState;
   ownerId?: string;
   currentDate?: string;
+  userText?: string;
 }): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   return {
@@ -178,6 +182,12 @@ export function createStableV5SemanticPublicStateSummary(params: {
       reason: uncertainty.reason,
       sourceText: uncertainty.source.sourceText,
     })),
+    registeredMaterials: params.ownerId
+      ? getWeeklyPlanningRegisteredMaterialContextV5({
+          ownerId: params.ownerId,
+          userText: params.userText,
+        })
+      : [],
     userPlanningContext: params.ownerId && params.currentDate
       ? userPlanningContextPromptSelectionV2({
           ownerId: params.ownerId,

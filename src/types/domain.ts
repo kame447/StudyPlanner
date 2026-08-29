@@ -285,6 +285,10 @@ export interface StudyMaterial {
   color?: string;
   coverImageUrl?: string;
   coverImageDataUrl?: string;
+  catalogEntryId?: string;
+  catalogTitle?: string;
+  catalogIsbn10?: string;
+  catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
   paceEnabled?: boolean;
@@ -305,7 +309,12 @@ export interface StudyMaterialDraft {
   subjectId: string;
   subjectName: string;
   color?: string;
+  coverImageUrl?: string;
   coverImageDataUrl?: string;
+  catalogEntryId?: string;
+  catalogTitle?: string;
+  catalogIsbn10?: string;
+  catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
   paceEnabled?: boolean;
