@@ -111,6 +111,19 @@ function createStore(firestore: MemoryFirestore) {
 }
 
 describe('ProductObservabilityStore', () => {
+  it('looks up an actor without creating directory state on a read-only miss', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+
+    expect(await store.lookupActorSubjectId('raw-firebase-uid-123')).toBeNull();
+    expect(firestore.documents.size).toBe(0);
+
+    const created = await store.resolveActorSubjectId('raw-firebase-uid-123');
+    expect(created).toMatch(/^actor-/);
+    expect(await store.lookupActorSubjectId('raw-firebase-uid-123')).toBe(created);
+    expect(firestore.documents.size).toBe(1);
+  });
+
   it('stores a pseudonymous activity event without persisting the raw Firebase UID', async () => {
     const firestore = new MemoryFirestore();
     const store = createStore(firestore);

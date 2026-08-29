@@ -5,8 +5,13 @@ import react from '@vitejs/plugin-react';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(harnessDir, '../../..');
-const adminOverviewSuffix = path.normalize('src/components/AdminOverviewPage.tsx');
-const observabilityStub = path.resolve(harnessDir, 'adminObservabilityService.stub.js');
+const observabilityConsumers = [
+  'src/components/AdminOverviewPage.tsx',
+  'src/components/AdminUsersPage.tsx',
+  'src/components/AdminUserDetailPage.tsx',
+  'src/components/AdminAiApiPage.tsx',
+].map((value) => path.normalize(value));
+const observabilityStub = path.resolve(harnessDir, 'adminObservabilityService.phase5.stub.js');
 
 function stripViteQuery(id) {
   return id.split('?', 1)[0];
@@ -19,7 +24,7 @@ const observabilityStubPlugin = {
     const normalizedImporter = importer ? path.normalize(stripViteQuery(importer)) : '';
     if (
       source === '../services/adminObservabilityService'
-      && normalizedImporter.endsWith(adminOverviewSuffix)
+      && observabilityConsumers.some((suffix) => normalizedImporter.endsWith(suffix))
     ) {
       return observabilityStub;
     }

@@ -61,17 +61,32 @@ function recordingPort() {
 }
 
 describe('weekly planning typed outcome observability', () => {
-  it('emits session_started only for the first accepted turn', () => {
+  it('emits turn_started for every turn and session_started only for the first turn', () => {
     const { port, events } = recordingPort();
 
     recordWeeklyPlanningTurnStarted({ pending: turnPending(1), port });
     recordWeeklyPlanningTurnStarted({ pending: turnPending(2), port });
 
-    expect(events).toHaveLength(1);
+    expect(events.map((event) => event.outcomeType)).toEqual([
+      'turn_started',
+      'session_started',
+      'turn_started',
+    ]);
     expect(events[0]).toMatchObject({
+      outcomeType: 'turn_started',
+      featureSessionId: 'weekly-conversation-1',
+      requestId: 'weekly-request-1',
+      turnIndex: 1,
+    });
+    expect(events[1]).toMatchObject({
       outcomeType: 'session_started',
       featureSessionId: 'weekly-conversation-1',
       turnIndex: 1,
+    });
+    expect(events[2]).toMatchObject({
+      outcomeType: 'turn_started',
+      requestId: 'weekly-request-2',
+      turnIndex: 2,
     });
   });
 

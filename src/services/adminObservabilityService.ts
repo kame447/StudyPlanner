@@ -1,13 +1,21 @@
 import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
-  ObservabilityOverviewReadModel,
-  ObservabilityUserSummary,
-} from '../../shared/productObservabilityReadModel';
+  ObservabilityAdminIdentityMatch,
+  ObservabilityAdminUserListItem,
+  ObservabilityAiAnalysisReadModel,
+  ObservabilityUserInvestigationReadModel,
+} from '../../shared/productObservabilityAdminReadModel';
+import type { ObservabilityOverviewReadModel } from '../../shared/productObservabilityReadModel';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 
 export interface AdminObservabilityUserPage {
-  users: ObservabilityUserSummary[];
+  users: ObservabilityAdminUserListItem[];
+  nextCursor: string | null;
+}
+
+export interface AdminObservabilityUserInvestigation
+  extends Omit<ObservabilityUserInvestigationReadModel, 'nextCursor'> {
   nextCursor: string | null;
 }
 
@@ -56,6 +64,33 @@ export async function getAdminObservabilityOverview(params: {
   return payload.result;
 }
 
+export async function getAdminObservabilityAiAnalysis(params: {
+  fromDate: string;
+  toDate: string;
+  environment?: ObservabilityEnvironment;
+}): Promise<ObservabilityAiAnalysisReadModel> {
+  const query = new URLSearchParams({
+    from: params.fromDate,
+    to: params.toDate,
+    ...(params.environment ? { environment: params.environment } : {}),
+  });
+  const payload = await adminGet<{ ok: true; result: ObservabilityAiAnalysisReadModel }>(
+    '/observability/admin/ai',
+    query,
+  );
+  return payload.result;
+}
+
+export async function resolveAdminObservabilityUserIdentity(
+  search: string,
+): Promise<ObservabilityAdminIdentityMatch[]> {
+  const payload = await adminGet<{
+    ok: true;
+    matches: ObservabilityAdminIdentityMatch[];
+  }>('/observability/admin/user-identity', new URLSearchParams({ q: search }));
+  return payload.matches;
+}
+
 export async function getAdminObservabilityUsers(params: {
   environment?: ObservabilityEnvironment;
   cursor?: string | null;
@@ -67,11 +102,28 @@ export async function getAdminObservabilityUsers(params: {
   if (params.limit) query.set('limit', String(params.limit));
   const payload = await adminGet<{
     ok: true;
-    users: ObservabilityUserSummary[];
+    users: ObservabilityAdminUserListItem[];
     nextCursor: string | null;
   }>('/observability/admin/users', query);
   return {
     users: payload.users,
     nextCursor: payload.nextCursor,
   };
+}
+
+export async function getAdminObservabilityUserInvestigation(params: {
+  actorSubjectId: string;
+  environment?: ObservabilityEnvironment;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<AdminObservabilityUserInvestigation> {
+  const query = new URLSearchParams({ actor: params.actorSubjectId });
+  if (params.environment) query.set('environment', params.environment);
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
+  const payload = await adminGet<{
+    ok: true;
+    result: AdminObservabilityUserInvestigation;
+  }>('/observability/admin/users', query);
+  return payload.result;
 }

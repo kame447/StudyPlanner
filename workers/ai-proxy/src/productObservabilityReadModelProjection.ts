@@ -186,6 +186,7 @@ export function createEmptyDailyRollup(params: {
     aiByModel: [],
     aiByPurpose: [],
     aiByPhase: [],
+    aiByOperationKind: [],
     planning: createEmptyPlanningAggregate(),
     planningBySchedulerVersion: [],
     planningByPromptVersion: [],
@@ -391,6 +392,12 @@ export function projectDailyRollup(params: {
       aiByPhase: updateDimension({
         values: base.aiByPhase,
         key: payload.phase,
+        create: createEmptyAiAggregate,
+        update: (current) => addAiPayload(current, payload),
+      }),
+      aiByOperationKind: updateDimension({
+        values: base.aiByOperationKind ?? [],
+        key: payload.operationKind,
         create: createEmptyAiAggregate,
         update: (current) => addAiPayload(current, payload),
       }),

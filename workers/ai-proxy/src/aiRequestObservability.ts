@@ -14,7 +14,12 @@ export interface AiRequestUsage {
   totalTokens: number | null;
   cachedTokens: number | null;
   cacheWriteTokens: number | null;
+  reasoningTokens?: number | null;
 }
+
+type ExtendedAiRequestMetricPayload = AiRequestMetricPayload & {
+  reasoningTokens: number | null;
+};
 
 interface MetricMessage {
   role?: string;
@@ -64,6 +69,7 @@ export function emptyAiRequestUsage(): AiRequestUsage {
     totalTokens: null,
     cachedTokens: null,
     cacheWriteTokens: null,
+    reasoningTokens: null,
   };
 }
 
@@ -71,12 +77,14 @@ export function parseOpenAiUsage(value: unknown): AiRequestUsage {
   const root = record(value);
   const usage = record(root?.usage);
   const promptDetails = record(usage?.prompt_tokens_details);
+  const completionDetails = record(usage?.completion_tokens_details);
   return {
     promptTokens: nonNegativeInteger(usage?.prompt_tokens),
     completionTokens: nonNegativeInteger(usage?.completion_tokens),
     totalTokens: nonNegativeInteger(usage?.total_tokens),
     cachedTokens: nonNegativeInteger(promptDetails?.cached_tokens),
     cacheWriteTokens: nonNegativeInteger(promptDetails?.cache_write_tokens),
+    reasoningTokens: nonNegativeInteger(completionDetails?.reasoning_tokens),
   };
 }
 
@@ -120,7 +128,7 @@ export async function recordAiRequestMetricBestEffort(
     operationKind: params.operationKind,
     usage,
   });
-  const payload: AiRequestMetricPayload = {
+  const payload: ExtendedAiRequestMetricPayload = {
     operationKind: params.operationKind,
     purpose: params.purpose,
     phase: params.phase,
@@ -133,6 +141,7 @@ export async function recordAiRequestMetricBestEffort(
     totalTokens: usage.totalTokens,
     cachedTokens: usage.cachedTokens,
     cacheWriteTokens: usage.cacheWriteTokens,
+    reasoningTokens: usage.reasoningTokens ?? null,
     durationMs: Math.max(0, nowMs - params.startedAtMs),
     requestBytes: Math.max(0, Math.floor(params.requestBytes)),
     responseBytes: params.responseBytes === null

@@ -88,6 +88,7 @@ export interface ObservabilityDailyRollup {
   aiByModel: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   aiByPurpose: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   aiByPhase: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
+  aiByOperationKind?: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   planning: ObservabilityPlanningAggregate;
   planningBySchedulerVersion: Array<ObservabilityDimensionAggregate<ObservabilityPlanningAggregate>>;
   planningByPromptVersion: Array<ObservabilityDimensionAggregate<ObservabilityPlanningAggregate>>;
