@@ -228,7 +228,7 @@ export async function handleProductObservabilityAdminApi(
         });
       }
 
-      const page = await readModel.listUserSummaries({
+      const page = await analysis.listUsers({
         environment,
         cursor: decodeCursor(url.searchParams.get('cursor')),
         limit: requestedLimit(url.searchParams.get('limit')),
