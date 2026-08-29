@@ -1,18 +1,16 @@
 import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
   ObservabilityAdminIdentityMatch,
+  ObservabilityAdminUserListItem,
   ObservabilityAiAnalysisReadModel,
   ObservabilityUserInvestigationReadModel,
 } from '../../shared/productObservabilityAdminReadModel';
-import type {
-  ObservabilityOverviewReadModel,
-  ObservabilityUserSummary,
-} from '../../shared/productObservabilityReadModel';
+import type { ObservabilityOverviewReadModel } from '../../shared/productObservabilityReadModel';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 
 export interface AdminObservabilityUserPage {
-  users: ObservabilityUserSummary[];
+  users: ObservabilityAdminUserListItem[];
   nextCursor: string | null;
 }
 
@@ -104,7 +102,7 @@ export async function getAdminObservabilityUsers(params: {
   if (params.limit) query.set('limit', String(params.limit));
   const payload = await adminGet<{
     ok: true;
-    users: ObservabilityUserSummary[];
+    users: ObservabilityAdminUserListItem[];
     nextCursor: string | null;
   }>('/observability/admin/users', query);
   return {
