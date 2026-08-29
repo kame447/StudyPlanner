@@ -146,15 +146,15 @@ describe('Stable V5 semantic normalizer', () => {
 
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('current-turn meaning into semantic facts');
-    expect(system).toContain('pendingQuestion as authoritative');
-    expect(system).toContain('exact target');
+    expect(system).toContain('Interpret each current-turn contribution independently');
+    expect(system).toContain('pendingQuestion binds only actual answers to its exact target');
+    expect(system).toContain('cannot suppress other explicit contributions');
     expect(system).not.toContain('fresh localIds');
-    expect(system).toContain('every sourceText must be supported by current userText');
-    expect(system).toContain('target is the amount intended for this plan');
-    expect(system).toContain('remaining is the unfinished amount');
-    expect(system).toContain('completed is done');
-    expect(system).toContain('An effortEstimate may target the exact task, component, or workload localId');
+    expect(system).toContain('each sourceText must be supported by current userText');
+    expect(system).toContain('target=plan amount');
+    expect(system).toContain('remaining=unfinished');
+    expect(system).toContain('completed=done');
+    expect(system).toContain('effortEstimate targets the exact task/component/workload localId');
   });
 
   it('does not manufacture an omitted planning window from the user wording', async () => {
