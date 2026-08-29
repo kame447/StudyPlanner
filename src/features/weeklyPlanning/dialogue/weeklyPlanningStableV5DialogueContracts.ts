@@ -27,20 +27,26 @@ export interface WeeklyPlanningStableV5DialogueEffortQuestionIntent {
 
 export type WeeklyPlanningStableV5ProgressBasis =
   | 'known_bounded_quantity'
+  | 'known_registered_material_progress'
   | 'completion_progress_without_known_unit';
 
 export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
   mode:
     | 'existing_target_progress'
+    | 'registered_material_target_scope'
     | 'missing_task_identity'
     | 'all_requested_work_complete';
   targetFactId: string | null;
   progressBasis: WeeklyPlanningStableV5ProgressBasis | null;
   knownUnitCode: string | null;
   knownUnitLabel: string | null;
+  knownTotalUnits?: number | null;
+  knownCurrentUnits?: number | null;
+  knownRemainingUnits?: number | null;
   requestedInformation:
     | readonly ['current_progress']
+    | readonly ['plan_target_scope']
     | readonly ['task_identity']
     | readonly ['additional_task_or_constraint'];
 }
