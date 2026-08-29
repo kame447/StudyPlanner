@@ -298,9 +298,9 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth-grant-type:jwt-bearer',
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
-      }).toString().replace('oauth-grant-type', 'oauth:grant-type'),
+      }),
     });
     if (!response.ok) throw new Error('Firebase service account token exchange failed');
 
