@@ -1,0 +1,45 @@
+name: Temporary tooling runbook doc patch
+
+on:
+  push:
+    branches:
+      - docs/tooling-operations-runbook
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/tooling-operations-runbook
+          fetch-depth: 1
+      - name: Patch AGENTS and remove one-shot workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('AGENTS.md')
+          text = path.read_text()
+          marker = '### Required reporting\n'
+          section = '''### Tooling incident knowledge and Ready-for-review fallback\n\n- Before repeating or inventing a workaround for a GitHub/CI/tool failure, search `docs/work/tooling-operations-runbook.md` for a verified failure signature and safe fallback.\n- When a recurring or expensive-to-rediscover tooling failure is resolved, update that runbook with the symptom, cause, permissions, workaround, cleanup, and verification rather than leaving the knowledge only in chat or transient logs.\n- For PR Ready-for-review, use the normal GitHub operation first. If it fails and a re-fetch proves the PR is still `draft=true`, follow the runbook fallback instead of creating a replacement PR or repeatedly calling the same broken mutation.\n- The currently verified one-shot GitHub Actions fallback for the observed Ready mutation requires `pull-requests: write` and `contents: write`, must be scoped to the exact intended PR, and must be removed immediately after `draft=false` is verified.\n- Treat this fallback as an integration workaround, not as the default PR flow; re-check current GitHub/tool behavior before assuming the historical failure still applies.\n\n'''
+          if '### Tooling incident knowledge and Ready-for-review fallback' not in text:
+              if marker not in text:
+                  raise SystemExit('Required reporting marker not found')
+              text = text.replace(marker, section + marker, 1)
+              path.write_text(text)
+          PY
+          rm .github/workflows/temporary-tooling-runbook-doc-patch.yml
+      - name: Commit durable documentation patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AGENTS.md .github/workflows/temporary-tooling-runbook-doc-patch.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs: link tooling runbook from agent policy'
+          git push origin HEAD:docs/tooling-operations-runbook
