@@ -11,6 +11,8 @@ import type {
 } from '../../../shared/productObservabilityReadModel';
 import type {
   ObservabilityAdminIdentityMatch,
+  ObservabilityAdminRecentErrorState,
+  ObservabilityAdminUserListItem,
   ObservabilityAiAnalysisReadModel,
   ObservabilityAiDimensionSummary,
   ObservabilityUserInvestigationReadModel,
@@ -18,6 +20,7 @@ import type {
 } from '../../../shared/productObservabilityAdminReadModel';
 import {
   FirestoreServiceAccountClient,
+  type FirestoreAggregationFilter,
   type FirestoreOrderedCursor,
 } from './firestoreServiceAccountClient';
 import {
@@ -37,7 +40,12 @@ const PROFILE_COLLECTION = 'profiles';
 const ACTOR_SUBJECT_PATTERN = /^actor-[A-Za-z0-9-]{8,160}$/;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const DEFAULT_USER_LIST_PAGE_SIZE = 25;
+const MAX_USER_LIST_PAGE_SIZE = 25;
 const MAX_IDENTITY_MATCHES = 5;
+const MAX_RECENT_ERROR_SCAN = 100;
+const RECENT_ERROR_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const MIN_IDENTITY_SECRET_LENGTH = 32;
 const activityActions = new Set<string>(PRODUCT_ACTIVITY_ACTIONS);
 const planningOutcomes = new Set<string>(PLANNING_OUTCOME_TYPES);
 const aiStatuses = new Set<AiRequestMetricStatus>([
@@ -52,16 +60,15 @@ const aiStatuses = new Set<AiRequestMetricStatus>([
   'unknown_failure',
 ]);
 
+type AnalysisEnv = ProductObservabilityReadModelEnv & {
+  OBSERVABILITY_IDENTITY_SECRET?: string;
+};
+
 interface AnalysisFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
   countDocuments(
     collection: string,
-    filters?: readonly Array<{
-      field: string;
-      operator: 'EQUAL';
-      value: string;
-      valueType?: 'string';
-    }>,
+    filters?: readonly FirestoreAggregationFilter[],
   ): Promise<number>;
   queryDocumentsAfter(params: {
     collection: string;
@@ -69,11 +76,23 @@ interface AnalysisFirestore {
     filters?: Array<{ field: string; value: string }>;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
+    direction?: 'ASCENDING' | 'DESCENDING';
+  }): Promise<Array<Record<string, unknown> & { id: string; documentName: string }>>;
+  queryDocumentsByNameAfter(params: {
+    collection: string;
+    cursorDocumentName?: string | null;
+    limit?: number;
   }): Promise<Array<Record<string, unknown> & { id: string; documentName: string }>>;
 }
 
 interface IdentityStore {
   lookupActorSubjectId(firebaseUid: string): Promise<string | null>;
+}
+
+interface RecentErrorResult {
+  state: ObservabilityAdminRecentErrorState;
+  occurredAt: string | null;
+  category: string | null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -88,6 +107,17 @@ function finiteNonNegativeInteger(value: unknown): number | null {
 
 function finiteNonNegativeNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((item) => {
+    binary += String.fromCharCode(item);
+  });
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
 }
 
 function emptyAiAggregate(): ObservabilityAiAggregate {
@@ -185,6 +215,14 @@ function validateEventCursor(cursor: FirestoreOrderedCursor | null | undefined):
   }
 }
 
+function validateProfileCursor(cursor: FirestoreOrderedCursor | null | undefined): void {
+  if (!cursor) return;
+  if (cursor.orderedValue !== 'profile'
+    || !cursor.documentName.includes(`/documents/${PROFILE_COLLECTION}/`)) {
+    throw new Error('observability_cursor_invalid');
+  }
+}
+
 function profileString(profile: Record<string, unknown>, key: string): string {
   const value = profile[key];
   return typeof value === 'string' ? value.trim() : '';
@@ -267,18 +305,99 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
   };
 }
 
+function eventError(value: Record<string, unknown>): { occurredAt: string; category: string } | null {
+  const occurredAt = typeof value.occurredAt === 'string' ? value.occurredAt : '';
+  if (!occurredAt || !Number.isFinite(new Date(occurredAt).getTime())) return null;
+  const payload = record(value.payload) ?? {};
+  if (value.eventType === 'ai_request_metric'
+    && typeof payload.status === 'string'
+    && aiStatuses.has(payload.status as AiRequestMetricStatus)
+    && payload.status !== 'success') {
+    return {
+      occurredAt,
+      category: typeof payload.errorCategory === 'string' && payload.errorCategory.trim()
+        ? payload.errorCategory
+        : payload.status,
+    };
+  }
+  if (value.eventType === 'planning_outcome' && payload.outcomeType === 'failed') {
+    return { occurredAt, category: 'planning_failed' };
+  }
+  if (value.eventType === 'planning_outcome' && payload.outcomeType === 'approval_failure_observed') {
+    return { occurredAt, category: 'planning_approval_failure' };
+  }
+  return null;
+}
+
 export class ProductObservabilityAdminAnalysisService {
   private readonly readModel: ProductObservabilityReadModelService;
   private readonly identityStore: IdentityStore;
 
   constructor(
-    env: ProductObservabilityReadModelEnv,
+    private readonly env: AnalysisEnv,
     private readonly firestore: AnalysisFirestore = new FirestoreServiceAccountClient(env),
     readModel?: ProductObservabilityReadModelService,
     identityStore?: IdentityStore,
+    private readonly now: () => Date = () => new Date(),
   ) {
     this.readModel = readModel ?? new ProductObservabilityReadModelService(env);
     this.identityStore = identityStore ?? new ProductObservabilityStore(env);
+  }
+
+  private async profileSubjectId(firebaseUid: string): Promise<string> {
+    const secret = this.env.OBSERVABILITY_IDENTITY_SECRET?.trim() ?? '';
+    if (secret.length < MIN_IDENTITY_SECRET_LENGTH) {
+      throw new Error('OBSERVABILITY_IDENTITY_SECRET is not configured securely');
+    }
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(`admin-profile\n${firebaseUid}`),
+    );
+    return `profile-${base64Url(new Uint8Array(signature))}`;
+  }
+
+  private async recentError(
+    actorSubjectId: string,
+    environment: ObservabilityEnvironment,
+  ): Promise<RecentErrorResult> {
+    const cutoff = new Date(this.now().getTime() - RECENT_ERROR_WINDOW_MS).toISOString();
+    const rows = await this.firestore.queryDocumentsAfter({
+      collection: EVENT_COLLECTION,
+      orderByField: 'occurredAt',
+      filters: [
+        { field: 'actorSubjectId', value: actorSubjectId },
+        { field: 'environment', value: environment },
+      ],
+      limit: MAX_RECENT_ERROR_SCAN,
+      direction: 'DESCENDING',
+    });
+
+    let crossedCutoff = false;
+    for (const row of rows) {
+      const occurredAt = typeof row.occurredAt === 'string' ? row.occurredAt : '';
+      if (!occurredAt || !Number.isFinite(new Date(occurredAt).getTime())) continue;
+      if (occurredAt < cutoff) {
+        crossedCutoff = true;
+        break;
+      }
+      const found = eventError(row);
+      if (found) {
+        return { state: 'present', occurredAt: found.occurredAt, category: found.category };
+      }
+    }
+
+    if (rows.length < MAX_RECENT_ERROR_SCAN || crossedCutoff) {
+      return { state: 'absent', occurredAt: null, category: null };
+    }
+    return { state: 'unknown', occurredAt: null, category: null };
   }
 
   async getAiAnalysis(params: {
@@ -339,6 +458,81 @@ export class ProductObservabilityAdminAnalysisService {
             : null,
       },
       rollupCheckpoint: overview.rollupCheckpoint,
+    };
+  }
+
+  async listUsers(params: {
+    environment: ObservabilityEnvironment;
+    cursor?: FirestoreOrderedCursor | null;
+    limit?: number;
+  }): Promise<{
+    users: ObservabilityAdminUserListItem[];
+    nextCursor: FirestoreOrderedCursor | null;
+  }> {
+    validateProfileCursor(params.cursor);
+    const limit = Math.max(
+      1,
+      Math.min(MAX_USER_LIST_PAGE_SIZE, params.limit ?? DEFAULT_USER_LIST_PAGE_SIZE),
+    );
+    const profiles = await this.firestore.queryDocumentsByNameAfter({
+      collection: PROFILE_COLLECTION,
+      cursorDocumentName: params.cursor?.documentName ?? null,
+      limit,
+    });
+    const users = await Promise.all(profiles.map(async (profile): Promise<ObservabilityAdminUserListItem> => {
+      const firebaseUid = profile.id;
+      const [profileSubjectId, actorSubjectId] = await Promise.all([
+        this.profileSubjectId(firebaseUid),
+        this.identityStore.lookupActorSubjectId(firebaseUid),
+      ]);
+      if (!actorSubjectId) {
+        return {
+          profileSubjectId,
+          actorSubjectId: null,
+          registeredAt: registeredAt(profile),
+          firstActivityAt: null,
+          lastActivityAt: null,
+          activeDayCount: 0,
+          eventCount: 0,
+          productActivityCount: 0,
+          aiRequestCount: 0,
+          planningOutcomeCount: 0,
+          recentErrorState: 'absent',
+          recentErrorAt: null,
+          recentErrorCategory: null,
+        };
+      }
+
+      const [summary, activeDayCount, recentError] = await Promise.all([
+        this.readModel.getUserSummary(actorSubjectId, params.environment),
+        this.firestore.countDocuments(ACTOR_DAY_COLLECTION, [
+          { field: 'actorSubjectId', operator: 'EQUAL', value: actorSubjectId },
+          { field: 'environment', operator: 'EQUAL', value: params.environment },
+        ]),
+        this.recentError(actorSubjectId, params.environment),
+      ]);
+      return {
+        profileSubjectId,
+        actorSubjectId,
+        registeredAt: registeredAt(profile),
+        firstActivityAt: summary?.firstActivityAt ?? null,
+        lastActivityAt: summary?.lastActivityAt ?? null,
+        activeDayCount,
+        eventCount: summary?.eventCount ?? 0,
+        productActivityCount: summary?.productActivityCount ?? 0,
+        aiRequestCount: summary?.aiRequestCount ?? 0,
+        planningOutcomeCount: summary?.planningOutcomeCount ?? 0,
+        recentErrorState: recentError.state,
+        recentErrorAt: recentError.occurredAt,
+        recentErrorCategory: recentError.category,
+      };
+    }));
+    const last = profiles[profiles.length - 1];
+    return {
+      users,
+      nextCursor: profiles.length === limit && last
+        ? { orderedValue: 'profile', documentName: last.documentName }
+        : null,
     };
   }
 
