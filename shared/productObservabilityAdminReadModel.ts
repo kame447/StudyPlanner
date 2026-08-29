@@ -55,6 +55,24 @@ export interface ObservabilityAdminIdentityMatch {
   actorSubjectId: string | null;
 }
 
+export type ObservabilityAdminRecentErrorState = 'present' | 'absent' | 'unknown';
+
+export interface ObservabilityAdminUserListItem {
+  profileSubjectId: string;
+  actorSubjectId: string | null;
+  registeredAt: string | null;
+  firstActivityAt: string | null;
+  lastActivityAt: string | null;
+  activeDayCount: number;
+  eventCount: number;
+  productActivityCount: number;
+  aiRequestCount: number;
+  planningOutcomeCount: number;
+  recentErrorState: ObservabilityAdminRecentErrorState;
+  recentErrorAt: string | null;
+  recentErrorCategory: string | null;
+}
+
 export interface ObservabilityUserTimelineAiDetail {
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
