@@ -417,6 +417,14 @@ The agent must not perform a GitHub write action until this pre-flight check is 
 - Branch deletion remains a destructive operation. If deletion was not already explicit in the user's request or the currently authorized cleanup task, ask before deleting anything.
 - Do not use this fallback to bypass branch protection, repository rulesets, required reviews, force-push restrictions, or any other safety boundary, and do not extend it to history rewriting.
 
+### Tooling incident knowledge and Ready-for-review fallback
+
+- Before repeating or inventing a workaround for a GitHub/CI/tool failure, search `docs/work/tooling-operations-runbook.md` for a verified failure signature and safe fallback.
+- When a recurring or expensive-to-rediscover tooling failure is resolved, update that runbook with the symptom, cause, permissions, workaround, cleanup, and verification rather than leaving the knowledge only in chat or transient logs.
+- For PR Ready-for-review, use the normal GitHub operation first. If it fails and a re-fetch proves the PR is still `draft=true`, follow the runbook fallback instead of creating a replacement PR or repeatedly calling the same broken mutation.
+- The currently verified one-shot GitHub Actions fallback for the observed Ready mutation requires `pull-requests: write` and `contents: write`, must be scoped to the exact intended PR, and must be removed immediately after `draft=false` is verified.
+- Treat this fallback as an integration workaround, not as the default PR flow; re-check current GitHub/tool behavior before assuming the historical failure still applies.
+
 ### Required reporting
 
 When finishing GitHub-related work, report:
