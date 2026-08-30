@@ -345,6 +345,7 @@ run('Issue #152 adversarial Real API observation', () => {
         sourceTurnId: 'issue152-poison-turn',
         recordedAt: '2026-08-17T00:00:00.000Z',
         status: 'active',
+        origin: 'user_stated',
       }],
       updatedAt: '2026-08-17T00:00:00.000Z',
     });
