@@ -1338,3 +1338,11 @@ LangGraph / LangGraphJS:
 current mainとの差分監査では、registered-material / timetable context配線の変更は確認したが、本仕様の責任境界を変更する新しいspec blockerは確認されなかった。
 
 したがって次の工程は、current mainを取り込んで上記pre-flightを再確認した後、TypeScript runtime implementationへ進むことである。
+
+## 36. Exact documentation checkpoint
+
+このhardening revisionの正本変更は、本canonical specと [learning-consultation-prompt-and-evidence.md](learning-consultation-prompt-and-evidence.md) の2文書だけである。
+
+Issue #246のruntime codeはこのcheckpointでは未変更である。
+
+実装開始時はGitHub Issue #246のdurable checkpointに記録された最新branch HEADを参照し、current main取り込み後に新しいexact HEADへ更新する。
