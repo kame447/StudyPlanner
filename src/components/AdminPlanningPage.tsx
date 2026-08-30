@@ -210,7 +210,7 @@ function DailyTable({ rows }: { rows: Array<{ localDate: string; aggregate: Obse
               <th>開始日</th>
               <th>Session</th>
               <th>Preview</th>
-              <th>承認</th>
+              <th>承認開始</th>
               <th>保存</th>
               <th>失敗観測</th>
             </tr>
@@ -223,7 +223,7 @@ function DailyTable({ rows }: { rows: Array<{ localDate: string; aggregate: Obse
                   <td data-label="開始日">{row.localDate}</td>
                   <td data-label="Session">{formatNumber(total)}</td>
                   <td data-label="Preview">{percentage(total > 0 ? row.aggregate.previewReachedCount / total : null)}</td>
-                  <td data-label="承認">{percentage(total > 0 ? row.aggregate.approvalReachedCount / total : null)}</td>
+                  <td data-label="承認開始">{percentage(total > 0 ? row.aggregate.approvalReachedCount / total : null)}</td>
                   <td data-label="保存">{percentage(total > 0 ? row.aggregate.saveCompletedCount / total : null)}</td>
                   <td data-label="失敗観測">{percentage(total > 0 ? row.aggregate.failedCount / total : null)}</td>
                 </tr>
@@ -270,7 +270,7 @@ export function AdminPlanningPage() {
         <div>
           <p className="admin-overview-eyebrow">Product Observability</p>
           <h1>Planning Analytics</h1>
-          <p>週間計画が「開始 → Preview → 承認 → 保存」まで進めたかを、typed outcomeからsession単位で追います。</p>
+          <p>週間計画が「開始 → Preview → 承認開始 → 保存」まで進めたかを、typed outcomeからsession単位で追います。</p>
         </div>
         <div className="admin-overview-controls" aria-label="Planning表示条件">
           <label>
@@ -323,7 +323,7 @@ export function AdminPlanningPage() {
             <div className="admin-planning-funnel">
               <FunnelStep label="開始" count={data.aggregate.sessionCount} total={data.aggregate.sessionCount} />
               <FunnelStep label="Preview到達" count={data.aggregate.previewReachedCount} total={data.aggregate.sessionCount} />
-              <FunnelStep label="承認到達" count={data.aggregate.approvalReachedCount} total={data.aggregate.sessionCount} />
+              <FunnelStep label="承認開始" count={data.aggregate.approvalReachedCount} total={data.aggregate.sessionCount} />
               <FunnelStep label="保存完了" count={data.aggregate.saveCompletedCount} total={data.aggregate.sessionCount} final />
             </div>
           </section>
@@ -342,7 +342,7 @@ export function AdminPlanningPage() {
             <AlertTriangle aria-hidden="true" size={20} />
             <div>
               <strong>計測境界</strong>
-              <p>session cohort read modelの計測開始は {formatTimestamp(data.measurementStartedAt)}、最終更新は {formatTimestamp(data.lastUpdatedAt)} です。導入前のweekly-planning traceから過去analyticsを推測していません。promptVersion / modelがoutcomeに未設定のsessionは unknown として残します。</p>
+              <p>選択期間内で最初に集計対象となったcohort日は {formatTimestamp(data.measurementStartedAt)}、この期間のread model最終更新は {formatTimestamp(data.lastUpdatedAt)} です。Phase 6導入前のweekly-planning traceから過去analyticsを推測していません。promptVersion / modelがoutcomeに未設定のsessionは unknown として残します。</p>
             </div>
           </section>
 
