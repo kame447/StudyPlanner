@@ -13,6 +13,7 @@ import { WeeklyPlanningTraceDebugPage } from '../features/weeklyPlanning/trace/W
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import '../styles/admin-phase5.css';
+import '../styles/admin-phase6.css';
 import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
 
@@ -106,6 +107,7 @@ export function AdminApp() {
   const isOverviewPage = currentPath === '/admin';
   const isUsersPage = currentPath === '/admin/users' || currentPath.startsWith('/admin/users/');
   const isAiPage = currentPath === '/admin/ai';
+  const isPlanningPage = currentPath === '/admin/planning';
   const isTracePage = currentPath === TRACE_PATH;
 
   return (
@@ -146,7 +148,14 @@ export function AdminApp() {
                 <Bot aria-hidden="true" size={19} />
                 <span>AI・API</span>
               </button>
-              <FutureNavItem icon={<CalendarClock aria-hidden="true" size={19} />} label="Planning" />
+              <button
+                className={`admin-console-nav-item${isPlanningPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/planning')}
+                type="button"
+              >
+                <CalendarClock aria-hidden="true" size={19} />
+                <span>Planning</span>
+              </button>
               <button
                 className={`admin-console-nav-item${isTracePage ? ' active' : ''}`}
                 onClick={() => navigate(TRACE_PATH)}
