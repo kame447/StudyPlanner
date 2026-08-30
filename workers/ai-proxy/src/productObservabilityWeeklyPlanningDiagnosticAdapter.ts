@@ -1,4 +1,7 @@
 import {
+  WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING,
+} from '../../../shared/weeklyPlanningTraceContract';
+import {
   OBSERVABILITY_DEBUG_BUNDLE_SCHEMA,
   OBSERVABILITY_DEBUG_BUNDLE_SCHEMA_VERSION,
   type ObservabilityDebugBundleV1,
@@ -12,15 +15,19 @@ import { WeeklyPlanningTraceFirestoreClient } from './weeklyPlanningTraceFiresto
 import { loadWeeklyPlanningTraceAdminEntryPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { safeWeeklyPlanningTraceDocumentsForAdmin } from './weeklyPlanningTraceApi';
 import {
+  createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTraceSessionId,
+  parseWeeklyPlanningTraceHmacSecrets,
+  resolveWeeklyPlanningTraceEpoch,
+  weeklyPlanningTraceExpireAt,
 } from './weeklyPlanningTracePrivacy';
 
 const TRACE_SESSIONS = 'weekly_planning_trace_sessions';
 const TRACE_ENTRIES = 'weekly_planning_trace_entries';
+const TRACE_ACCESS_AUDIT = 'weekly_planning_trace_access_audit';
 const ADMINS = 'admins';
 const MAX_SESSION_PAGE_SIZE = 50;
-const MAX_ENTRY_PAGE_SIZE = 50;
 const DEBUG_BUNDLE_ENTRY_LIMIT = 200;
 const DEBUG_BUNDLE_SCAN_LIMIT = 200;
 const DEBUG_BUNDLE_BYTE_LIMIT = 512 * 1024;
@@ -30,6 +37,7 @@ export interface ProductObservabilityWeeklyPlanningDiagnosticEnv {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_SERVICE_ACCOUNT_EMAIL: string;
   FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: string;
+  WEEKLY_PLANNING_TRACE_HMAC_SECRETS?: string;
 }
 
 export interface ObservabilityDiagnosticSessionPageInternal {
@@ -243,7 +251,7 @@ export function createObservabilityDebugBundleFromTrace(params: {
   }
   const versions = diagnosticVersions(included);
   const requestIds = stringSet(included.map((entry) => entry.requestId));
-  const availableEntryCount = params.requestId ? projected.length : params.totalEntryCount;
+  const availableEntryCount = params.totalEntryCount;
   return {
     schema: OBSERVABILITY_DEBUG_BUNDLE_SCHEMA,
     schemaVersion: OBSERVABILITY_DEBUG_BUNDLE_SCHEMA_VERSION,
@@ -300,8 +308,11 @@ function validSessionId(value: string): boolean {
 
 export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
   private readonly firestore: WeeklyPlanningTraceFirestoreClient;
+  private readonly env: ProductObservabilityWeeklyPlanningDiagnosticEnv;
+  private authorizedAdminUid: string | null = null;
 
   constructor(env: ProductObservabilityWeeklyPlanningDiagnosticEnv) {
+    this.env = env;
     this.firestore = new WeeklyPlanningTraceFirestoreClient(env);
   }
 
@@ -310,6 +321,34 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     if (admin?.enabled !== true || admin.weeklyPlanningTraceReader !== true) {
       throw new Error('observability_trace_reader_forbidden');
     }
+    this.authorizedAdminUid = adminUid;
+  }
+
+  private async appendAccessAudit(
+    action: 'list_sessions' | 'list_entries_page' | 'create_debug_bundle',
+    sessionId: string | null,
+  ): Promise<void> {
+    const adminUid = this.authorizedAdminUid;
+    if (!adminUid) throw new Error('observability_trace_reader_forbidden');
+    const rawSecrets = this.env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS?.trim();
+    if (!rawSecrets) throw new Error('observability_trace_audit_unavailable');
+    const now = new Date();
+    const epoch = resolveWeeklyPlanningTraceEpoch(now);
+    const actor = await createWeeklyPlanningTraceSubject(
+      adminUid,
+      epoch,
+      parseWeeklyPlanningTraceHmacSecrets(rawSecrets),
+    );
+    const id = `trace-audit:${now.getTime()}:${crypto.randomUUID()}`;
+    await this.firestore.setImmutableDocument(TRACE_ACCESS_AUDIT, id, {
+      id,
+      actorToken: actor.token,
+      actorEpoch: actor.epoch,
+      action,
+      targetSessionId: sessionId,
+      occurredAt: now.toISOString(),
+      expireAt: weeklyPlanningTraceExpireAt(now),
+    });
   }
 
   async listSessions(params: {
@@ -319,28 +358,34 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     sessionId?: string | null;
   }): Promise<ObservabilityDiagnosticSessionPageInternal> {
     const limit = Math.max(1, Math.min(MAX_SESSION_PAGE_SIZE, params.limit ?? 25));
+    const status = params.status?.trim() ?? '';
+    if (status && !SESSION_STATUSES.has(status)) throw new Error('observability_trace_status_invalid');
     const exactSessionId = params.sessionId?.trim() ?? '';
     if (exactSessionId) {
       if (!validSessionId(exactSessionId)) throw new Error('observability_trace_session_invalid');
+      await this.appendAccessAudit('list_sessions', exactSessionId);
       const document = await this.firestore.getDocument(TRACE_SESSIONS, exactSessionId);
       const summary = document ? createObservabilityLogSessionSummary(document) : null;
-      return { sessions: summary ? [summary] : [], nextCursor: null };
+      return {
+        sessions: summary && (!status || summary.status === status) ? [summary] : [],
+        nextCursor: null,
+      };
     }
-    const status = params.status?.trim() ?? '';
-    if (status && !SESSION_STATUSES.has(status)) throw new Error('observability_trace_status_invalid');
+    await this.appendAccessAudit('list_sessions', null);
     const documents = await this.firestore.queryDocumentsAfter({
       collection: TRACE_SESSIONS,
       orderByField: 'lastActivityAt',
       direction: 'DESCENDING',
       cursor: params.cursor ?? null,
-      filters: status ? [{ field: 'status', value: status }] : [],
+      filters: [],
       limit: limit + 1,
     });
     const hasMore = documents.length > limit;
     const pageDocuments = documents.slice(0, limit);
     const sessions = pageDocuments
       .map(createObservabilityLogSessionSummary)
-      .filter((item): item is ObservabilityLogSessionSummary => Boolean(item));
+      .filter((item): item is ObservabilityLogSessionSummary => Boolean(item))
+      .filter((item) => !status || item.status === status);
     const last = pageDocuments[pageDocuments.length - 1];
     return {
       sessions,
@@ -364,12 +409,16 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     if (!Number.isSafeInteger(afterSequence) || afterSequence < -1) {
       throw new Error('observability_trace_cursor_invalid');
     }
+    await this.appendAccessAudit('list_entries_page', params.sessionId);
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
       this.firestore,
       params.sessionId,
       target,
       afterSequence,
-      Math.max(1, Math.min(MAX_ENTRY_PAGE_SIZE, params.limit ?? 20)),
+      Math.max(1, Math.min(
+        WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize,
+        params.limit ?? WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.defaultPageSize,
+      )),
     );
     return {
       entries: page.entries
@@ -392,6 +441,7 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     if (requestId && (requestId.length > 240 || /[\u0000-\u001f\u007f]/.test(requestId))) {
       throw new Error('observability_trace_request_invalid');
     }
+    await this.appendAccessAudit('create_debug_bundle', params.sessionId);
 
     if (requestId) {
       const availableEntryCount = await this.firestore.countDocuments(TRACE_ENTRIES, [
@@ -407,23 +457,39 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
         entries,
         totalEntryCount: availableEntryCount,
         requestId,
-        scanLimitReached: availableEntryCount > DEBUG_BUNDLE_ENTRY_LIMIT,
+        scanLimitReached: availableEntryCount > DEBUG_BUNDLE_SCAN_LIMIT,
       });
     }
 
     const totalEntryCount = integer(session.entryCount);
-    const firstPage = await loadWeeklyPlanningTraceAdminEntryPage(
-      this.firestore,
-      params.sessionId,
-      session,
-      -1,
-      DEBUG_BUNDLE_SCAN_LIMIT,
-    );
+    const entries: Record<string, unknown>[] = [];
+    let afterSequence = -1;
+    let scannedSequenceCount = 0;
+    let nextAfterSequence: number | null = totalEntryCount > 0 ? -1 : null;
+
+    while (nextAfterSequence !== null && scannedSequenceCount < DEBUG_BUNDLE_SCAN_LIMIT) {
+      const remainingScan = DEBUG_BUNDLE_SCAN_LIMIT - scannedSequenceCount;
+      const page = await loadWeeklyPlanningTraceAdminEntryPage(
+        this.firestore,
+        params.sessionId,
+        session,
+        afterSequence,
+        Math.min(WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize, remainingScan),
+      );
+      entries.push(...page.entries);
+      nextAfterSequence = page.nextAfterSequence;
+      const consumedThrough = nextAfterSequence ?? page.requestedEndSequence;
+      const consumedSequenceCount = Math.max(0, consumedThrough - afterSequence);
+      if (consumedSequenceCount === 0) break;
+      scannedSequenceCount += consumedSequenceCount;
+      afterSequence = consumedThrough;
+    }
+
     return createObservabilityDebugBundleFromTrace({
       session,
-      entries: firstPage.entries,
+      entries,
       totalEntryCount,
-      scanLimitReached: firstPage.nextAfterSequence !== null,
+      scanLimitReached: nextAfterSequence !== null,
     });
   }
 }
