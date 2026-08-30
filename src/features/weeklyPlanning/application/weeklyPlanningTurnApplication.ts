@@ -1,4 +1,4 @@
-import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
+import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -44,6 +44,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   selectedDate: string;
   plans: Plan[];
   actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -76,6 +77,7 @@ export function submitWeeklyPlanningApplicationTurn(
         userId: params.userId,
         plans: params.plans,
         actuals: params.actuals,
+        studyMaterials: params.studyMaterials,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
         timetableTerm: params.timetableTerm,

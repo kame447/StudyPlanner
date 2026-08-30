@@ -163,6 +163,7 @@ export default function App() {
     selectedDate,
     plans,
     actuals,
+    studyMaterials,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
     timetableTerm: activeTimetableTerm,

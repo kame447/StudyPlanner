@@ -1,4 +1,4 @@
-import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
+import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../types';
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
@@ -11,6 +11,7 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   userId: string;
   plans: Plan[];
   actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
