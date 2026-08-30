@@ -21,6 +21,7 @@ jobs:
         run: |
           git fetch origin refactor/stable-v5-explicit-personalization-context
           test "$(git rev-parse origin/refactor/stable-v5-explicit-personalization-context)" = "cec4289779f6be4507ebeeecfe4b09c35cb13d93"
-          git merge-base --is-ancestor origin/refactor/stable-v5-explicit-personalization-context origin/main
+          git merge-base --is-ancestor 738f9b64b180c70e4f299c1c8939dd2cc95d6990 origin/main
+          test "$(git rev-parse origin/refactor/stable-v5-explicit-personalization-context^{tree})" = "$(git rev-parse 738f9b64b180c70e4f299c1c8939dd2cc95d6990^{tree})"
       - name: Delete explicit merged branch
         run: git push origin --delete -- refactor/stable-v5-explicit-personalization-context
