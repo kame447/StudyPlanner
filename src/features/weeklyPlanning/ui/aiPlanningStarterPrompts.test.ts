@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Plan, StudyMaterial, TodoTask } from '../../../types/domain';
 import {
   AI_PLANNING_FALLBACK_PROMPTS,
+  buildAiPlanningStarterPromptOptions,
   buildAiPlanningStarterPrompts,
 } from './aiPlanningStarterPrompts';
 
@@ -112,6 +113,21 @@ describe('buildAiPlanningStarterPrompts', () => {
     expect(prompt).toBe(
       '登録済みTodo名: "英語レポート"。このTodoを優先して終えられるように計画して',
     );
+  });
+
+  it('keeps natural display copy while preserving the safe serialized prompt', () => {
+    const [option] = buildAiPlanningStarterPromptOptions({
+      referenceDate: '2026-08-21',
+      plans: [],
+      todos: [],
+      materials: [material({ name: '基本情報問題集', targetDate: null })],
+      limit: 1,
+    });
+
+    expect(option).toEqual({
+      displayText: '基本情報問題集を今週進める学習計画を作って',
+      prompt: '登録済み教材名: \"基本情報問題集\"。この教材を今週進める学習計画を作って',
+    });
   });
 
   it('serializes stored names as one data value instead of concatenating their clauses into the request', () => {

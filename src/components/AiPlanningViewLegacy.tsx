@@ -42,7 +42,7 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import { buildAiPlanningStarterPrompts } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
+import { buildAiPlanningStarterPromptOptions } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
   formatMinutes,
@@ -284,9 +284,9 @@ export function AiPlanningView({
   const activeChat =
     chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId) ??
     chatIndex.chats[0];
-  const starterPrompts = useMemo(
+  const starterPromptOptions = useMemo(
     () =>
-      buildAiPlanningStarterPrompts({
+      buildAiPlanningStarterPromptOptions({
         referenceDate: selectedDate,
         plans,
         todos: starterTodos,
@@ -754,13 +754,13 @@ export function AiPlanningView({
                 計画したいことをそのまま入力できます。登録内容に合わせた候補からも始められます。
               </p>
               <div className="ai-planning-starter-list">
-                {starterPrompts.map((prompt) => (
+                {starterPromptOptions.map((option) => (
                   <button
-                    key={prompt}
+                    key={`${option.displayText}\u0000${option.prompt}`}
                     type="button"
-                    onClick={() => useStarterPrompt(prompt)}
+                    onClick={() => useStarterPrompt(option.prompt)}
                   >
-                    <span>{prompt}</span>
+                    <span>{option.displayText}</span>
                     <ChevronRight aria-hidden="true" size={16} />
                   </button>
                 ))}
