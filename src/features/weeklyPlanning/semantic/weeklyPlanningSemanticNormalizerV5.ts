@@ -3,6 +3,7 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import {
   tryWeeklyPlanningDenseTurnCompletenessRetryV5,
 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
