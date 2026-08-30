@@ -17,27 +17,17 @@
   flex: 0 0 auto;
 }
 
-.admin-system-summary > div:last-child {
-  display: grid;
-  gap: 3px;
-}
-
 .admin-system-summary span,
-.admin-system-component span {
-  color: var(--muted-text, #667085);
-  font-size: 0.82rem;
-}
-
-.admin-system-summary strong {
-  font-size: 1.35rem;
-}
-
+.admin-system-component span,
 .admin-system-summary small,
-.admin-system-component small {
+.admin-system-component small,
+.admin-system-component dt,
+.admin-system-detail-card dt {
   color: var(--muted-text, #667085);
 }
 
-.admin-system-grid {
+.admin-system-grid,
+.admin-system-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
@@ -82,11 +72,6 @@
   min-width: 0;
 }
 
-.admin-system-component dt,
-.admin-system-detail-card dt {
-  color: var(--muted-text, #667085);
-}
-
 .admin-system-component dd,
 .admin-system-detail-card dd {
   margin: 0;
@@ -109,12 +94,6 @@
   border-color: color-mix(in srgb, #64748b 36%, var(--panel-border, #e5e7eb));
 }
 
-.admin-system-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
 .admin-system-detail-card {
   display: grid;
   gap: 14px;
@@ -122,19 +101,9 @@
   min-width: 0;
 }
 
-.admin-system-detail-card h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
 @media (max-width: 760px) {
   .admin-system-grid,
   .admin-system-detail-grid {
     grid-template-columns: 1fr;
-  }
-
-  .admin-system-component dl > div,
-  .admin-system-detail-card dl > div {
-    align-items: flex-start;
   }
 }
