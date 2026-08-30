@@ -3,6 +3,9 @@ import {
 } from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
+  decodeWeeklyPlanningStableV5QuestionSlot,
+} from '../intake/weeklyPlanningStableV5QuestionSlot';
+import {
   getWeeklyPlanningRegisteredMaterialContextV5,
 } from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -65,9 +68,7 @@ function pendingQuestionFromState(
   graphRevision: number,
 ): Record<string, unknown> | null {
   const context = state?.lastQuestionContext;
-  const targetSlot = context?.targetSlot;
-  if (!targetSlot?.startsWith('stable_v5:')) return null;
-  const questionCode = targetSlot.slice('stable_v5:'.length).trim();
+  const questionCode = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
   if (!questionCode) return null;
   return {
     actionId: context?.actionId ?? null,

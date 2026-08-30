@@ -8,6 +8,9 @@ import type {
   WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
 import {
+  decodeWeeklyPlanningStableV5QuestionSlot,
+} from '../intake/weeklyPlanningStableV5QuestionSlot';
+import {
   learningStrategyProposalIntentForStableV5Dialogue,
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
@@ -45,16 +48,13 @@ export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlannin
 const RECENT_TURN_LIMIT = 4;
 
 function questionCode(result: WeeklyPlanningTurnExecutionResult): string | null {
-  const targetSlot = result.state.lastQuestionContext?.targetSlot;
-  return targetSlot?.startsWith('stable_v5:')
-    ? targetSlot.slice('stable_v5:'.length)
-    : null;
+  return decodeWeeklyPlanningStableV5QuestionSlot(
+    result.state.lastQuestionContext?.targetSlot,
+  );
 }
 
 function questionCodeFromTargetSlot(targetSlot: string | undefined): string | null {
-  return targetSlot?.startsWith('stable_v5:')
-    ? targetSlot.slice('stable_v5:'.length)
-    : null;
+  return decodeWeeklyPlanningStableV5QuestionSlot(targetSlot);
 }
 
 function dialogueActionKind(
