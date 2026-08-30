@@ -66,6 +66,27 @@ describe('Firebase recurring mutation boundary', () => {
     expect(mocks.batchCommit).toHaveBeenCalledTimes(1);
   });
 
+  it('deletes all stored duplicates for an explicit occurrence delete', async () => {
+    const target = actual({ id: 'visible', occurrenceDate: '2026-09-03' });
+    mocks.getDocs.mockResolvedValue({
+      docs: [
+        { id: 'visible', data: () => ({ ...target }) },
+        { id: 'hidden', data: () => ({ ...target, id: undefined }) },
+      ],
+    });
+    const repository = createFirebasePlannerRepository({} as Firestore);
+
+    await repository.applyRecurringPlanMutation('user-1', {
+      planUpserts: [],
+      planDeletes: [],
+      actualUpserts: [],
+      actualDeletes: [target],
+    });
+
+    expect(mocks.batchDelete).toHaveBeenCalledTimes(2);
+    expect(mocks.batchCommit).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a rebound Actual out of the old Plan cascade delete', async () => {
     const linked = actual();
     mocks.getDocs.mockResolvedValue({

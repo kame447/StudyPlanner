@@ -386,15 +386,24 @@ export function createFirebasePlannerRepository(
         const reboundIds = new Set(
           mutation.actualUpserts.map((actual) => actual.id),
         );
-        const linkedActuals = (
-          await Promise.all(
+        const [linkedActuals, duplicateOccurrenceActuals] = await Promise.all([
+          Promise.all(
             mutation.planDeletes.map((plan) =>
               listActualsByPlanId(firestoreDb, userId, plan.id),
             ),
-          )
-        ).flat();
+          ).then((groups) => groups.flat()),
+          Promise.all(
+            mutation.actualDeletes.map((actual) =>
+              listActualsByPlanOccurrence(firestoreDb, actual),
+            ),
+          ).then((groups) => groups.flat()),
+        ]);
         const actualDeletesById = new Map(
-          [...mutation.actualDeletes, ...linkedActuals]
+          [
+            ...mutation.actualDeletes,
+            ...duplicateOccurrenceActuals,
+            ...linkedActuals,
+          ]
             .filter((actual) => !reboundIds.has(actual.id))
             .map((actual) => [actual.id, actual]),
         );

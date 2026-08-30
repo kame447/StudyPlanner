@@ -102,6 +102,25 @@ describe('planner repository recurring mutation boundary', () => {
     expect(state.actuals).toEqual([unrelated]);
   });
 
+  it('removes every raw duplicate for an explicitly deleted occurrence', async () => {
+    const source = plan();
+    const visible = actual({ id: 'visible', occurrenceDate: '2026-09-03' });
+    const hiddenDuplicate = actual({ id: 'hidden', occurrenceDate: '2026-09-03' });
+    const otherOccurrence = actual({ id: 'other', occurrenceDate: '2026-09-04' });
+    const { state, gateway } = createGateway({
+      plans: [source],
+      actuals: [visible, hiddenDuplicate, otherOccurrence],
+    });
+    const repository = createPlannerRepository(gateway);
+
+    await repository.applyRecurringPlanMutation(
+      'user-1',
+      mutation({ actualDeletes: [visible] }),
+    );
+
+    expect(state.actuals).toEqual([otherOccurrence]);
+  });
+
   it('preserves a rebound Actual when its old Plan is deleted in the same mutation', async () => {
     const source = plan();
     const linked = actual();

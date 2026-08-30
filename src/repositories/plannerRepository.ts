@@ -27,28 +27,50 @@ function assertMutationOwner(userId: string, mutation: RecurringPlanMutation): v
 
 function applyPlanMutation(
   current: Plan[],
+  userId: string,
   mutation: RecurringPlanMutation,
 ): Plan[] {
   const deleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
   return mutation.planUpserts.reduce(
     (records, plan) => replaceById(records, plan),
-    current.filter((plan) => !deleteIds.has(plan.id)),
+    current.filter(
+      (plan) => !(plan.userId === userId && deleteIds.has(plan.id)),
+    ),
   );
+}
+
+function actualOccurrenceKey(actual: Actual): string | null {
+  return actual.planId
+    ? `${actual.planId}\u0000${actual.occurrenceDate}`
+    : null;
 }
 
 function applyActualMutation(
   current: Actual[],
+  userId: string,
   mutation: RecurringPlanMutation,
 ): Actual[] {
   const planDeleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
   const actualDeleteIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
-  const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
-  const remaining = current.filter(
-    (actual) =>
-      reboundIds.has(actual.id) ||
-      (!actualDeleteIds.has(actual.id) &&
-        (!actual.planId || !planDeleteIds.has(actual.planId))),
+  const actualDeleteOccurrences = new Set(
+    mutation.actualDeletes
+      .map(actualOccurrenceKey)
+      .filter((key): key is string => key !== null),
   );
+  const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
+  const remaining = current.filter((actual) => {
+    if (actual.userId !== userId || reboundIds.has(actual.id)) {
+      return true;
+    }
+
+    const occurrenceKey = actualOccurrenceKey(actual);
+    const matchesExplicitDelete =
+      actualDeleteIds.has(actual.id) ||
+      (occurrenceKey !== null && actualDeleteOccurrences.has(occurrenceKey));
+    const matchesDeletedPlan =
+      actual.planId !== null && planDeleteIds.has(actual.planId);
+    return !matchesExplicitDelete && !matchesDeletedPlan;
+  });
   return mutation.actualUpserts.reduce(
     (records, actual) => upsertActualRecord(records, actual),
     remaining,
@@ -110,8 +132,8 @@ export function createPlannerRepository(
 
       const previousPlans = await storageGateway.readPlans();
       const previousActuals = await storageGateway.readActuals();
-      const nextPlans = applyPlanMutation(previousPlans, mutation);
-      const nextActuals = applyActualMutation(previousActuals, mutation);
+      const nextPlans = applyPlanMutation(previousPlans, userId, mutation);
+      const nextActuals = applyActualMutation(previousActuals, userId, mutation);
       let plansWritten = false;
 
       try {
