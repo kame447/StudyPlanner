@@ -17,6 +17,8 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 チャット形式で学習対象、進捗、期限、利用できない時間、希望時間帯などを伝えると、既存予定や時間割を考慮して週間計画を作成します。生成結果はプレビューとして表示され、修正または承認した後に予定へ保存されます。
 
+学習戦略・教材選択・進める順序・目安期限を予定作成前に相談し、AIの助言をユーザーが採用した場合だけ通常の計画へ接続する機能を Issue #246 で設計中です。これは未実装のplanned capabilityであり、現在のproduction機能としては扱いません。正仕様は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) にあります。
+
 ### 教材・進捗管理
 
 教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加ではISBNまたは教材名から共有catalog / NDL Searchを使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量はStudyPlanner側が所有します。
@@ -55,7 +57,9 @@ User approval
 Save
 ```
 
-週間計画の正仕様は [`docs/domains/weekly-planning/`](./docs/domains/weekly-planning/README.md) に集約しています。runtime の責務境界は [`current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md) を参照してください。
+Issue #246 のplanned consultation extensionでもこの責任境界を維持します。AIが教材・学習順序・目安期限を提案しても、その回答はuser fact、accepted planning condition、preview、saved Plan、durable memoryのいずれにも自動昇格しません。ユーザーが採用したscopeだけを既存Stable V5のplanning flowへ戻します。
+
+週間計画の正仕様は [`docs/domains/weekly-planning/`](./docs/domains/weekly-planning/README.md) に集約しています。runtime の責務境界は [`current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation の要件は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) を参照してください。
 
 ## 技術構成
 
@@ -145,7 +149,7 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 
 リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
 
-週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
+週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation requirement は [`docs/domains/weekly-planning/spec/learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
 
 client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。
 

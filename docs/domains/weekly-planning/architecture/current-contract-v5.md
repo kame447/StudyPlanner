@@ -1,10 +1,11 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-27
+Updated: 2026-08-30
 
 References:
 - [Domain index](../README.md)
+- [Learning consultation/advice requirement](../spec/learning-consultation-and-advice.md)
 - [Semantic ownership](weekly-planning-semantic-ownership-boundary-v5.md)
 - [Availability architecture](weekly-planning-availability-architecture-v5.md)
 - [Scheduling policy](../policies/scheduling.md)
@@ -30,6 +31,8 @@ raw user utterance + relevant conversation + typed machine state
 
 There is no production semantic rollback path to a legacy parser/interpreter/runtime selector.
 
+Issue #246 defines a planned pre-scheduling consultation/advice extension in [learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md). Until that runtime implementation is merged and verified, the flow above remains the production baseline. The requirement document must not be read as evidence that consultation routing or AdviceProposal state already exists in production.
+
 ## Ownership
 
 AI owns natural-language meaning and natural realization of typed dialogue decisions.
@@ -37,6 +40,8 @@ AI owns natural-language meaning and natural realization of typed dialogue decis
 Deterministic application owns schema/evidence/reference validation, canonical IDs, binding, revision/idempotency, Fact Graph lifecycle, question/confirmation necessity, repair agenda, proposal lifecycle, readiness, scheduler/placement safety, preview freshness, approval/save, persistence/recovery and deterministic calculation.
 
 After the semantic boundary, raw Japanese must not be reinterpreted by regex, keyword, dictionary or legacy parser as semantic truth.
+
+For the planned Issue #246 extension, whether a user turn semantically asks for learning consultation/advice is also a natural-language meaning decision. Deterministic routing may consume a validated typed consultation contribution, but must not establish that meaning by a second raw-text keyword/regex router.
 
 ## Semantic delta
 
@@ -56,6 +61,8 @@ For accepted active date constraints used by movable-work placement, the applica
 
 Unresolved or contradictory hard date constraints fail closed at scheduler-input compilation rather than being silently weakened.
 
+A consultation answer may suggest a date, but an AI-generated suggested date is not an accepted temporal fact. It becomes scheduler-relevant only after explicit user adoption and normal Stable V5 binding/lifecycle processing.
+
 ## Quantity roles
 
 Workload quantity roles are not interchangeable.
@@ -74,6 +81,8 @@ Important consequences:
 - corrections to total/completed/target must invalidate stale derived progress consistently.
 - input order must not change the converged bounded-progress truth.
 - open-ended work must not receive an invented total merely to make arithmetic or scheduling easier.
+
+For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
 
 ## Work decomposition / atomicity
 
@@ -108,6 +117,8 @@ Canonical commit is atomic. Validation failure leaves accepted state unchanged. 
 
 Derived facts remain derivations with source/basis. A correction to their basis must not leave stale derived truth active.
 
+Planned consultation advice does not enter the canonical planning Fact Graph merely because an answer was generated. Advice remains advisory state until the user adopts a defined scope and deterministic promotion creates normal planning contributions.
+
 ## Repair agenda / dialogue progression
 
 Not every uncertainty blocks the same boundary.
@@ -117,6 +128,8 @@ Deterministic application classifies what must be repaired now versus what can b
 Defer/pass-over is not silent deletion of uncertainty and does not convert it into accepted fact.
 
 See [Human Grounding Policy](../policies/human-grounding.md).
+
+Consultation must not be implemented by sending the user through the normal planning slot-question sequence. When Issue #246 is implemented, the consultation contract owns which missing information is material to a useful recommendation; only recommendation-changing/blocking gaps should trigger targeted questions.
 
 ## Proposal / readiness / scheduler
 
@@ -134,6 +147,8 @@ Unaccepted proposals do not affect scheduling. Readiness, question necessity, au
 
 When the resulting Stable V5 planning horizon is exactly seven days, scheduling uses six normal placement days plus a seventh reserve day and prioritizes normal days before reserve. The default/fallback horizon is not an unconditional seven-day cap: applicable hard temporal bounds can require a longer usable horizon, and the scheduler still enforces the compiled hard bounds across that horizon. Detailed horizon, balancing and scoring behavior is owned by current scheduler policy, not semantic truth.
 
+Issue #246 extends the same proposal principle to AI-generated study advice. Advice acceptance means only that a user has adopted a scope into planning intent; it is not preview approval or save authorization. Promotion must return to the normal Stable V5 readiness/scheduler/preview path instead of letting the advice branch call the scheduler or persistence layer directly.
+
 ## Availability
 
 Existing StudyPlanner plans and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
@@ -142,11 +157,50 @@ Required-source failure is not equivalent to a successfully loaded empty source.
 
 See [Availability Architecture](weekly-planning-availability-architecture-v5.md) and [Scheduling Policy](../policies/scheduling.md).
 
+A consultation answer may consume a deterministic capacity/availability summary when it materially affects advice. The answer model does not become an independent owner of free-time calculation or feasibility.
+
 ## Human grounding and memory
 
 Application-only knowledge is not automatically shared ground. Current-week acceptance, durable preference and observed learning evidence are distinct states. One week-local acceptance is not promoted to a durable preference without the required scope/consent.
 
 Authoritative app data may be used as grounded known context so the user can be asked for additions/deltas rather than forced to restate known facts. Renderer must not invent fields absent from that data.
+
+AI-generated consultation advice is not durable user memory. If the user separately expresses durable meaning such as `今後もこの方法でやりたい`, the existing user-context/memory authority owns that promotion.
+
+## Planned consultation/advice boundary — Issue #246
+
+The following is a planned extension, not a current production guarantee.
+
+```text
+raw user turn
+→ AI semantic interpretation
+→ validated consultation contribution
+→ deterministic context assembly
+→ bounded source-grounded consultation context
+→ separate learning-advice answer purpose
+→ validated advisory result
+→ deterministic conversation-scoped advice lifecycle
+→ user sees advice
+
+user later accepts/modifies/rejects
+→ AI interprets response/reference meaning
+→ deterministic advice identity/revision binding
+→ accepted scope is promoted into normal Stable V5 planning contributions
+→ existing readiness / scheduler / preview / approval / save
+```
+
+Non-negotiable boundary:
+
+```text
+AI advice
+≠ accepted Fact Graph truth
+≠ scheduler command
+≠ preview approval
+≠ saved Plan
+≠ durable memory
+```
+
+Exact state/schema details and future phases are owned by [Learning Consultation and Advice Contract](../spec/learning-consultation-and-advice.md), not duplicated here.
 
 ## Preview / approval / save
 
@@ -154,15 +208,21 @@ Preview is unsaved and bound to owner, conversation, graph revision and source f
 
 Pending assumptions, deferred repair that still affects preview/save, stale source revisions or unaccepted proposals must not silently become saved truth.
 
+Consultation advice is upstream of preview. Displaying or persisting advice alone must not create a preview. A preview can be produced only after accepted advice scope has been promoted and normal readiness requirements are satisfied.
+
 ## Persistence / trace / security
 
 Persisted/session state is owner- and conversation-bound. Trace is diagnostic evidence, not authorization or planning truth. Untrusted stored strings remain data rather than instructions.
+
+When consultation is implemented, advice/context/retrieval strings remain untrusted data. If prompt, request/response, trace or persisted session fields change, the feature-local `src/features/weeklyPlanning/AGENTS.md` trace persistence gate applies.
 
 ## Testing
 
 Deterministic tests own deterministic invariants. Model-dependent semantic/dialogue behavior uses the real-API/human-review gate defined under `quality/`. Exact completed Japanese wording is not a universal oracle.
 
 Version-independent safety scenarios are maintained in [regression-scenarios.md](../quality/regression-scenarios.md). Historical V4/task documents may supply evidence, but current guarantees must be expressed through current tests/contracts rather than relying on archive text alone.
+
+Issue #246's unimplemented acceptance/test matrix remains in its canonical requirement until production implementation exists. Do not list unimplemented consultation behavior as a current regression guarantee solely because the requirement has been documented.
 
 ## Execution ownership
 

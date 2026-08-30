@@ -1,14 +1,16 @@
 # Weekly Planning Stable V5 semantic ownership boundary
 
 Status: canonical semantic ownership contract
-Updated: 2026-08-27
+Updated: 2026-08-30
 Integration base: the semantic rule contract inventory merged from PR #142, with scheduler-facing temporal ownership refined by PR #204.
 
 This document narrows the ownership boundary already stated in `weekly-planning-dialogue-architecture-v5.md`. The goal is to prevent application-internal decisions from drifting into the LLM layer while also avoiding deterministic re-interpretation of raw user text.
 
+Planned Issue #246 learning consultation requirements live in [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md). That document extends the same ownership rule to user-initiated consultation/advice while runtime implementation remains pending.
+
 ## Rule
 
-The semantic model owns **meaning that requires natural-language interpretation**. Deterministic application code owns **mechanical representation, validation, state transition, and planning decisions after that meaning is represented**.
+The semantic model owns meaning that requires natural-language interpretation. Deterministic application code owns mechanical representation, validation, state transition, and planning decisions after that meaning is represented.
 
 The application must not re-read raw user text with regex/keywords to choose a different meaning after the semantic model has returned a document.
 
@@ -20,6 +22,15 @@ The application must not re-read raw user text with regex/keywords to choose a d
 - Whether a temporal phrase means today, tomorrow, this/next week, a weekday, an explicit absolute date, or a custom/unsupported expression.
 - Ambiguity. When meaning is not uniquely supported, the semantic layer emits uncertainty instead of asking deterministic code to guess.
 
+For the planned Issue #246 extension, the semantic layer also owns natural-language meaning such as:
+
+- whether the user is asking for learning consultation/advice rather than merely supplying a planning fact or operation;
+- what the consultation concerns: learning strategy, material choice, order, target milestone, feasibility explanation, comparison, rationale, etc.;
+- references to previously presented advice/options such as `それで`, `1つ目`, `期限だけ変えて`;
+- whether the user accepts, modifies, rejects, or separately expresses durable scope such as `今後も`.
+
+This does not require one flat `intent` enum to carry every mixed-turn contribution. Exact schema shape belongs to the current TypeScript semantic contract when implemented.
+
 ## Deterministic-owned representation and decisions
 
 - Calendar arithmetic after a supported symbolic date meaning exists. For example, `next_week` plus the captured request date/week boundary becomes a concrete date range in `weeklyPlanningCalendarResolver`.
@@ -29,6 +40,44 @@ The application must not re-read raw user text with regex/keywords to choose a d
 - Schema and evidence validation.
 - Public/internal fact IDs, graph revision, lifecycle, correction transactions, dependency safety, and stale-revision rejection.
 - Missing-information/readiness decisions, question target, proposal state, authorization, scheduler input, feasibility, preview, approval, and save.
+
+For planned Issue #246, deterministic application also owns:
+
+- whether a validated consultation contribution can be executed safely;
+- bounded context assembly from Bookshelf, user context, Plan/Actual/reporting and other source owners;
+- AdviceProposal / option / item identity and revision;
+- presented / accepted / modified / rejected / superseded / stale lifecycle;
+- reference binding to the correct advice identity after semantic meaning is represented;
+- staleness and idempotency checks;
+- promotion of accepted advice scope into normal Stable V5 planning contributions;
+- deterministic numeric calculations and capacity/feasibility signals supplied to the answer model;
+- persistence, recovery, preview, approval and save boundaries.
+
+The answer model may generate learning strategy prose and structured recommendation candidates, but it does not own formal acceptance, promotion or schedule mutation.
+
+## Consultation routing boundary — planned Issue #246
+
+Do not solve consultation by adding a deterministic raw-text router such as:
+
+```text
+if text contains "おすすめ" or "どの参考書"
+  → consultation
+```
+
+Correct shape:
+
+```text
+raw user turn + conversation
+→ AI semantic interpretation
+→ validated typed consultation meaning
+→ deterministic application routing
+```
+
+The application may branch deterministically on validated typed semantic output and machine state. It may not independently decide the user's linguistic intent by inspecting Japanese keywords after the semantic boundary.
+
+Current assistant-side clarification `question` and user-initiated consultation are different responsibilities. Do not overload one machine state merely because both involve a question in ordinary language.
+
+Mixed turns such as `このままで間に合う？無理なら少し増やして` may contain consultation plus conditional mutation. Before implementing partial acceptance, verify what the current atomic semantic commit contract can safely represent. Do not split such turns with ad-hoc raw-text parsing.
 
 ## Relative-date boundary
 
@@ -43,6 +92,8 @@ Deterministic resolver: captured request date + weekStartsOn -> concrete start/e
 ```
 
 Composite expressions that the current schema cannot represent symbolically must remain an explicit schema limitation. Do not silently add raw-text deterministic parsing to compensate; either extend the semantic representation or keep the meaning unresolved.
+
+The same distinction applies to consultation. The answer model may propose `10月末まで` as advice, but that prose does not become an accepted deadline. If the user adopts it, semantic interpretation represents the adoption/reference meaning and deterministic application binds/promotes it through the normal temporal contract.
 
 ## Scheduler-facing temporal compilation boundary
 
@@ -61,9 +112,13 @@ Downstream work distribution and placement consume the compiled values. They mus
 
 This does not mean every temporal operation is represented by `hardDateBounds`. Fixed commitments and other explicitly separate scheduler contracts may retain their own typed compilation path. The rule is that one semantic/application decision has one owner; a downstream path must not independently re-decide a meaning already compiled upstream.
 
+Consultation-specific code must not become another temporal compiler. Accepted advice returns to the normal planning representation before scheduler-facing compilation.
+
 ## Test rule
 
 Tests should protect the semantic contract or deterministic invariant, not one incidental English sentence used to explain that contract to the provider. Literal prompt assertions are appropriate only when the literal repair payload itself is the external contract.
+
+For Issue #246, real-model evaluation should test consultation/adoption/reference meaning across varied Japanese phrasing, while deterministic tests protect lifecycle, identity, stale rejection, promotion and no-silent-mutation invariants. Do not convert representative Japanese examples into production keyword rules.
 
 ## Change rule
 
@@ -72,3 +127,4 @@ Before adding a new prompt instruction or deterministic normalizer, identify whi
 1. If choosing the value requires understanding the user's language or referent, it belongs to semantic interpretation.
 2. If the meaning is already represented and the remaining transformation is mechanical, it belongs to deterministic code.
 3. If both layers currently make the same semantic choice, remove one owner rather than adding reconciliation heuristics.
+4. If the new behavior is advisory reasoning rather than user-language interpretation, keep the answer/recommendation purpose separate from formal application lifecycle authority.

@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-28
+Updated: 2026-08-30
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -20,10 +20,12 @@ Weekly planning:
 
 1. `docs/domains/weekly-planning/README.md`
 2. `docs/domains/weekly-planning/architecture/current-contract-v5.md`
-3. `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
-4. `docs/domains/weekly-planning/quality/test-philosophy.md`
-5. `docs/domains/weekly-planning/roadmap/current.md`
-6. `docs/domains/weekly-planning/work/README.md` / owning Issue
+3. `docs/domains/weekly-planning/spec/product-intent.md`
+4. `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` for Issue #246 pre-scheduling consultation requirements
+5. `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
+6. `docs/domains/weekly-planning/quality/test-philosophy.md`
+7. `docs/domains/weekly-planning/roadmap/current.md`
+8. `docs/domains/weekly-planning/work/README.md` / owning Issue
 
 Client-first/runtime work:
 
@@ -80,6 +82,8 @@ UI components and interaction surfaces. Examples:
 - admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
 UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.
+
+Issue #246のlearning consultationは既存のAI planning conversation surfaceへ統合する方針であり、componentがraw user textからconsultation intentを判定したり、AI adviceから直接Planを保存したりしない。runtime実装は未完了であり、canonical requirementは `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` が所有する。
 
 ### `src/hooks/`
 
@@ -146,6 +150,8 @@ Product observability is observation only. It must not become planner data autho
 
 Detailed weekly-planning trace remains owned by the weekly-planning feature and is consumed through a restricted adapter.
 
+Future Issue #246 metrics such as consultation routing, advice generation/adoption, stale blocks and AI cost belong here as service-wide projections. Product observability must not decide whether advice is accepted or safe to promote.
+
 ## 5. External integrations
 
 Canonical documentation root: `docs/domains/external-integrations/`
@@ -176,6 +182,8 @@ External integration code must preserve these boundaries:
 - an external outage does not disable the existing manual product path
 - external metadata does not become an authority for chapter structure, scheduling or progress semantics
 
+If Issue #246 later adds Web/RAG/provider retrieval for learning advice, provider adoption, normalization, terms, quota and fallback stay in this domain. Retrieved content is evidence/context, not schedule authority or durable user truth.
+
 ## 6. Weekly planning feature
 
 Canonical code root: `src/features/weeklyPlanning/`
@@ -184,6 +192,8 @@ Canonical documentation root: `docs/domains/weekly-planning/`
 
 Read the feature-local `AGENTS.md` before modifying weekly-planning code.
 
+Issue #246 extends this domain with pre-scheduling learning consultation. Its canonical requirement is `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md`; the runtime implementation is pending until that document's pre-implementation gate is satisfied.
+
 ### `semantic/`
 
 AI semantic boundary and typed semantic document processing.
@@ -191,6 +201,8 @@ AI semantic boundary and typed semantic document processing.
 Owns model-facing semantic contracts, validation/repair integration, canonical representation helpers, binding support and Fact Graph semantic lifecycle pieces.
 
 Natural-language meaning is AI-owned. Deterministic code may validate and mechanically transform represented meaning but must not re-read raw Japanese with regex/keywords to choose a different semantic truth.
+
+For planned Issue #246, consultation intent, consultation target, advice response and contextual references such as `それで` / `2つ目で` remain semantic meaning. Do not add a lexical consultation router in UI/application code.
 
 ### `intake/`
 
@@ -204,11 +216,15 @@ Turn execution/pipeline composition between semantic intake and deterministic ap
 
 Deterministic planning decisions: readiness, proposal lifecycle, work projection/compilation, approval contracts and related state decisions.
 
+When Issue #246 is implemented, advice identity/lifecycle, staleness, accept/modify/reject scope and promotion into normal planning state belong to deterministic planning/application responsibility rather than the answer model.
+
 ### `scheduling/`
 
 Availability resolution, session chunking, placement candidates/scoring and schedule generation from already accepted typed state.
 
 Scheduling may use deterministic constraints and explicit typed preferences. It must not silently infer semantic preferences from raw task text.
+
+Consultation advice must not call scheduling directly. Only user-adopted advice that has been promoted into normal accepted planning contributions may reach this layer.
 
 ### `dialogue/`
 
@@ -216,13 +232,19 @@ Deterministic decision of what must be communicated/asked plus the boundary that
 
 Rendered Japanese is presentation, not machine state.
 
+Assistant clarification and user-initiated consultation are distinct concepts. Future advice prose must not be reparsed as authoritative machine state; promotion-capable items need structured identity upstream.
+
 ### `preview/`
 
 Unsaved preview/candidate projection and preview metadata/freshness boundaries.
 
+Advice is upstream of preview. An advice response alone must not produce a preview.
+
 ### `application/`
 
 Session/application orchestration, approval/save boundary and feature-level application APIs. This is the preferred caller-facing facade for lifecycle operations.
+
+Issue #246's future consultation context assembly, advice lifecycle binding, stale check and promotion transaction should be exposed through this feature/application boundary instead of leaking provider/storage details to callers.
 
 ### `trace/`
 
@@ -230,13 +252,19 @@ Weekly-planning diagnostic observability only. Trace failure must not change the
 
 Service-wide product analytics does not move into this directory. Product-observability consumes trace through a diagnostic adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
 
+If Issue #246 changes prompt/request/response/session/trace fields, the feature-local `AGENTS.md` trace persistence gate applies in the same implementation PR.
+
 ### `evals/`
 
 Real-model/evaluation harnesses and observation scenarios. Evaluation fixtures are not production semantic rules.
 
+Issue #246's Japanese consultation/adoption conversations belong here or in the current real-API evaluation harness when implemented; fixtures must not become lexical production rules.
+
 ### `personalization/` and `profiling/`
 
 Typed personalization policy, observations/calibration, profile derivation and deterministic scoring. Keep explicit preference, current-session state and observed profile distinct.
+
+Assistant-generated advice is not observed learner evidence or durable preference.
 
 ### `parsing/`
 
@@ -246,11 +274,15 @@ Legacy/mechanical parsing helpers still present in the codebase. Presence of thi
 
 Conversation-support and feature configuration helpers. Do not place independent domain ownership here merely because the caller is chat/UI.
 
+A separate advice purpose/config may physically be referenced from here, but consultation routing, advice lifecycle and promotion ownership must remain in their semantic/application owners.
+
 ## 7. User planning context
 
 `src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
 
 Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
+
+Issue #246 advice is not durable user context merely because it is generated or persisted in a conversation. Only a separate user-stated durable meaning such as `今後もその方法でやりたい` may become a user-context candidate under the existing authority/lifecycle rules.
 
 ## 8. Major safety boundaries
 
@@ -258,9 +290,13 @@ Durable preference is not the same as current-week acceptance or observed learni
 
 AI may interpret language and render typed dialogue decisions. AI does not own formal IDs, revision/lifecycle, readiness, scheduler placement, approval or save.
 
+Future learning-advice generation may recommend strategy/material/order, but it does not gain scheduler, save, lifecycle or durable-memory authority.
+
 ### Preview / approval
 
 Preview is unsaved and revision-bound. Approval/save is an explicit deterministic boundary. Multi-device uniqueness production rollout remains Issue #51.
+
+Advice acceptance remains upstream of this boundary and is not equivalent to preview approval.
 
 ### Trace
 
@@ -278,9 +314,13 @@ External data is evidence/suggestion, never an automatic replacement for StudyPl
 
 Client-first execution does not mean client-authoritative shared state. Storage/reconciliation changes must align with Issue #164.
 
+Persisting an AdviceProposal for continuity does not semantically promote it to durable user memory or accepted planning truth.
+
 ### Reporting
 
 学習レポートは既存のPlan/Actual/教材情報を決定論的に集計するprojectionであり、LLMを数値・評価の正本にしない。ReportViewは保存・スケジューリング・意味解釈を所有しない。
+
+If consultation later consumes report aggregates, those deterministic values remain reporting-owned evidence and the answer model only explains/uses them.
 
 ## 9. Tests
 
@@ -291,6 +331,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 - product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
+- Issue #246 planned consultation test matrix: `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` until implementation promotes verified guarantees into current regression owners
 - CI: `.github/workflows/ci.yml`
 - Browser Regression: `.github/workflows/browser-regression.yml`
 
@@ -323,8 +364,8 @@ Choose the directory by change reason, not by current caller:
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
-- natural-language meaning → weekly `semantic/`
-- readiness/proposal/work decision → weekly `planning/`
+- natural-language meaning, including consultation/adoption reference meaning → weekly `semantic/`
+- readiness/proposal/work decision and future advice lifecycle/promotion → weekly `planning/` / `application/`
 - placement/availability → weekly `scheduling/`
 - dialogue action/realization boundary → weekly `dialogue/`
 - unsaved candidate → weekly `preview/`
