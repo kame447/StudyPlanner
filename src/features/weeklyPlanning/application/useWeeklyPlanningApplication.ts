@@ -4,6 +4,7 @@ import type {
   Plan,
   PlanDraft,
   ScheduleTemplate,
+  StudyMaterial,
   TimetableTerm,
 } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
@@ -56,6 +57,7 @@ export interface UseWeeklyPlanningApplicationInput {
   selectedDate: string;
   plans: Plan[];
   actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -97,6 +99,7 @@ export function useWeeklyPlanningApplication({
   selectedDate,
   plans,
   actuals = [],
+  studyMaterials = [],
   scheduleTemplates,
   timetableTermId,
   timetableTerm,
@@ -189,6 +192,7 @@ export function useWeeklyPlanningApplication({
       selectedDate,
       plans,
       actuals,
+      studyMaterials,
       scheduleTemplates,
       timetableTermId,
       timetableTerm,
