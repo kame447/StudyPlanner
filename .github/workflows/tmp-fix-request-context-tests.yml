@@ -1,0 +1,85 @@
+name: One-shot request-context test updater
+
+on:
+  push:
+    branches:
+      - refactor/stable-v5-request-context-authority
+    paths:
+      - '.github/workflows/tmp-fix-request-context-tests.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/stable-v5-request-context-authority
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Update explicit request-context test fixtures
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          helper = Path('src/features/weeklyPlanning/application/weeklyPlanningTestRequestContext.ts')
+          helper.write_text("""export const WEEKLY_PLANNING_TEST_REQUEST_CONTEXT = {\n  startedAtIso: '2026-07-27T00:00:00.000Z',\n  timeZone: 'Asia/Tokyo',\n  currentDate: '2026-07-27',\n  currentTime: '09:00',\n  notBeforeDate: '2026-07-27',\n  notBeforeTime: '09:01',\n  weekStartsOn: 'monday',\n} as const;\n""", encoding='utf-8')
+
+          targets = [
+              Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.test.ts'),
+              Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningStableV5FailureContract.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.activeDialogueProjection.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.dialogueContext.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.selfRepair.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.test.ts'),
+              Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutorStableV5Trace.test.ts'),
+          ]
+
+          total_insertions = 0
+          for path in targets:
+              text = path.read_text(encoding='utf-8')
+              import_path = './weeklyPlanningTestRequestContext' if '/application/' in str(path) else './application/weeklyPlanningTestRequestContext'
+              import_line = f"import {{ WEEKLY_PLANNING_TEST_REQUEST_CONTEXT }} from '{import_path}';\n"
+              if import_line not in text:
+                  text = import_line + text
+
+              lines = text.splitlines(keepends=True)
+              output = []
+              inserted = 0
+              for index, line in enumerate(lines):
+                  if 'traceRequestId:' in line:
+                      window = ''.join(lines[max(0, index - 12):index])
+                      if 'conversationId:' in window and 'scheduleTemplates:' in window:
+                          indent = line[:len(line) - len(line.lstrip())]
+                          if not output or 'requestContext:' not in output[-1]:
+                              output.append(f'{indent}requestContext: WEEKLY_PLANNING_TEST_REQUEST_CONTEXT,\n')
+                              inserted += 1
+                  output.append(line)
+              if inserted == 0:
+                  raise SystemExit(f'No execution input updated in {path}')
+              total_insertions += inserted
+              path.write_text(''.join(output), encoding='utf-8')
+
+          if total_insertions < 20:
+              raise SystemExit(f'Unexpectedly few requestContext insertions: {total_insertions}')
+          print(f'Inserted explicit requestContext into {total_insertions} execution inputs')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify TypeScript contract
+        run: npm run typecheck
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-fix-request-context-tests.yml
+      - name: Commit verified test updates
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/features/weeklyPlanning .github/workflows/tmp-fix-request-context-tests.yml
+          git commit -m 'test: supply explicit Stable V5 request context'
+          git push origin HEAD:refactor/stable-v5-request-context-authority
