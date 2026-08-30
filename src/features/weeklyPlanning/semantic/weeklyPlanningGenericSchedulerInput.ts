@@ -20,9 +20,6 @@ import {
   calibrateGenericPlanningWorkItemsV5,
 } from './weeklyPlanningGenericWorkItemCalibrationV5';
 import {
-  getWeeklyPlanningEstimateCalibrationRuntimeV5,
-} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
-import {
   type AvailabilityResolutionContext,
   type AvailabilityResolutionIssue,
   type AvailabilityWindowFact,
@@ -555,14 +552,9 @@ export function compileGenericSchedulerInput(params: {
     });
     return false;
   });
-  const runtimeCalibration = getWeeklyPlanningEstimateCalibrationRuntimeV5(
-    params.context.ownerId,
-  );
   const calibratedAggregateMovableWorkItems = calibrateGenericPlanningWorkItemsV5({
     items: aggregateMovableWorkItems,
-    calibrationMultiplier: params.estimateCalibrationMultiplier
-      ?? runtimeCalibration?.multiplier
-      ?? null,
+    calibrationMultiplier: params.estimateCalibrationMultiplier ?? null,
   });
   const observedEstimateApplication = applyObservedEstimateOverrides({
     items: calibratedAggregateMovableWorkItems,
