@@ -1,0 +1,48 @@
+name: Issue 266 Persistence Hardening
+
+on:
+  push:
+    branches:
+      - refactor/issue266-recurring-plan-mutations
+    paths:
+      - .github/workflows/issue266-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/issue266-recurring-plan-mutations
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply hardening
+        run: python3 scripts/ci/issue266-hardening.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused regression tests
+        run: npm run test:run -- src/domain/recurringPlanMutation.test.ts src/repositories/recurringPlanMutationRepository.test.ts src/repositories/firebasePlannerRepository.recurringMutation.test.ts src/repositories/plannerRepository.test.ts src/repositories/observedPlannerRepository.test.ts
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit hardening and remove one-shot files
+        run: |
+          rm .github/workflows/issue266-hardening.yml scripts/ci/issue266-hardening.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "test: harden recurring mutation persistence"
+          git push origin HEAD:refactor/issue266-recurring-plan-mutations
