@@ -437,7 +437,7 @@ review command適用はcompare-and-set型の条件を必須とする。
 - expectedAdviceRevision = activeAdviceRevision
 - expectedConsultationRevision = current consultation revision
 - target scopeが存在する
--同一command/decisionが未適用
+- 同一command/decisionが未適用
 
 approveとalternative、double approve、別タブ操作等が競合した場合、一つだけがformal state transitionを取得できる。
 
