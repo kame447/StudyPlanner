@@ -1,13 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
-import {
-  clearWeeklyPlanningEstimateCalibrationRuntimeV5,
-  setWeeklyPlanningEstimateCalibrationRuntimeV5,
-} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
 
 const source = {
   conversationId: 'conversation-calibration-integration',
@@ -66,20 +62,13 @@ const context = {
   timeZone: 'Asia/Tokyo',
 };
 
-afterEach(() => clearWeeklyPlanningEstimateCalibrationRuntimeV5());
-
 describe('actual-backed calibration → scheduler input integration', () => {
-  it('applies the owner-scoped multiplier before the common safety margin', () => {
-    setWeeklyPlanningEstimateCalibrationRuntimeV5({
-      ownerId: context.ownerId,
-      calibration: {
-        version: 'weekly-planning-estimate-calibration-v1',
-        multiplier: 1.2,
-        observationCount: 4,
-        medianRatio: 1.5,
-      },
+  it('applies an explicit turn-scoped multiplier before the common safety margin', () => {
+    const result = compileGenericSchedulerInput({
+      graph: graph(),
+      context,
+      estimateCalibrationMultiplier: 1.2,
     });
-    const result = compileGenericSchedulerInput({ graph: graph(), context });
     expect(result.status).toBe('ready');
     expect(result.input?.movableWorkItems.reduce(
       (sum, item) => sum + (item.estimatedMinutes ?? 0),
@@ -90,16 +79,16 @@ describe('actual-backed calibration → scheduler input integration', () => {
     )).toBe(true);
   });
 
-  it('never leaks one owner calibration into another owner scheduler input', () => {
-    setWeeklyPlanningEstimateCalibrationRuntimeV5({
-      ownerId: 'owner-a',
-      calibration: {
-        version: 'weekly-planning-estimate-calibration-v1',
-        multiplier: 1.5,
-        observationCount: 2,
-        medianRatio: 1.7,
-      },
+  it('does not inherit calibration from a prior compile when the current turn supplies none', () => {
+    const calibrated = compileGenericSchedulerInput({
+      graph: graph(),
+      context: { ...context, ownerId: 'owner-a' },
+      estimateCalibrationMultiplier: 1.5,
     });
+    expect(calibrated.input?.movableWorkItems.every(
+      (item) => item.calibrationMultiplier === 1.5,
+    )).toBe(true);
+
     const result = compileGenericSchedulerInput({
       graph: graph(),
       context: { ...context, ownerId: 'owner-b' },

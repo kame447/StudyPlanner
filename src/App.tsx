@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
@@ -26,6 +26,7 @@ import {
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
+import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
 
 const AiPlanningView = lazy(() =>
@@ -153,14 +154,10 @@ export default function App() {
     openDay,
     setEditorDraft,
   } = usePlannerAppState();
-  const activeTimetableTerm = useMemo(
-    () =>
-      timetableTerms.find((term) => term.isActive) ??
-      timetableTerms[0] ??
-      null,
-    [timetableTerms],
-  );
-  const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
+  const {
+    term: activeTimetableTerm,
+    termId: activeTimetableTermId,
+  } = resolveActiveTimetableTerm(timetableTerms);
   const weeklyPlanning = useWeeklyPlanningApplication({
     userId: user?.id,
     selectedDate,

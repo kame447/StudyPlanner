@@ -1,7 +1,8 @@
+import type { Actual, Plan } from '../../../types/domain';
 import type { WeeklyPlanningLearningStrategyProposalRecord } from '../intake/weeklyPlanningIntakeTypes';
 import {
-  getWeeklyPlanningMemoryPaceRuntimeV5,
-} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
+  deriveWeeklyPlanningMemoryPaceEstimateV5,
+} from '../personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type {
   GenericSchedulerObservedEstimateOverride,
   WeeklyPlanningGenericSchedulerGraphView,
@@ -37,7 +38,8 @@ function memoryWorkloadFactIds(params: {
 }
 
 export function projectWeeklyPlanningMemoryObservedPaceV5(params: {
-  ownerId: string;
+  plans: readonly Plan[];
+  actuals: readonly Actual[];
   graph: WeeklyPlanningGenericSchedulerGraphView;
   document: WeeklyPlanningSemanticDocumentV5 | null;
   localToFactId: Readonly<Record<string, string>>;
@@ -53,11 +55,14 @@ export function projectWeeklyPlanningMemoryObservedPaceV5(params: {
       && (estimate.kind === 'total_duration' || estimate.kind === 'duration_per_unit'));
     if (hasExplicitDuration) return;
 
-    const observed = getWeeklyPlanningMemoryPaceRuntimeV5(params.ownerId, workload.unitCode);
-    const minutesPerUnit = observed?.medianMinutesPerUnit ?? null;
+    const observed = deriveWeeklyPlanningMemoryPaceEstimateV5({
+      plans: params.plans,
+      actuals: params.actuals,
+      unitCode: workload.unitCode,
+    });
+    const minutesPerUnit = observed.medianMinutesPerUnit;
     if (
-      !observed
-      || observed.observationCount <= 0
+      observed.observationCount <= 0
       || minutesPerUnit === null
       || !Number.isFinite(minutesPerUnit)
       || minutesPerUnit <= 0
