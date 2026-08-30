@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
+import { AdminLogsPage } from '../../../src/components/AdminLogsPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
 import { AdminPlanningPage } from '../../../src/components/AdminPlanningPage';
 import { AdminUserDetailPage } from '../../../src/components/AdminUserDetailPage';
@@ -17,6 +18,7 @@ import { AdminUsersPage } from '../../../src/components/AdminUsersPage';
 import '../../../src/styles.css';
 import '../../../src/styles/admin-phase5.css';
 import '../../../src/styles/admin-phase6.css';
+import '../../../src/styles/admin-phase7.css';
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
@@ -51,6 +53,7 @@ function content() {
   }
   if (view === 'ai') return <AdminAiApiPage />;
   if (view === 'planning') return <AdminPlanningPage />;
+  if (view === 'logs') return <AdminLogsPage />;
   return <AdminOverviewPage navigate={(path) => { window.__adminHarnessNavigation = path; }} />;
 }
 
@@ -71,7 +74,7 @@ function AdminConsoleHarness() {
             {navItem(<Users aria-hidden="true" size={19} />, 'Users', view === 'users' || view === 'user-detail')}
             {navItem(<Bot aria-hidden="true" size={19} />, 'AI・API', view === 'ai')}
             {navItem(<CalendarClock aria-hidden="true" size={19} />, 'Planning', view === 'planning')}
-            {navItem(<ListTree aria-hidden="true" size={19} />, 'Logs')}
+            {navItem(<ListTree aria-hidden="true" size={19} />, 'Logs', view === 'logs')}
             {navItem(<Settings aria-hidden="true" size={19} />, 'System', false, true)}
           </nav>
           <div className="admin-console-sidebar-footer">

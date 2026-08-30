@@ -5,6 +5,11 @@ import type {
   ObservabilityAiAnalysisReadModel,
   ObservabilityUserInvestigationReadModel,
 } from '../../shared/productObservabilityAdminReadModel';
+import type {
+  ObservabilityDebugBundleV1,
+  ObservabilityLogEntryPage,
+  ObservabilityLogSessionPage,
+} from '../../shared/productObservabilityLogReadModel';
 import type { ObservabilityOverviewReadModel } from '../../shared/productObservabilityReadModel';
 import type { ObservabilityPlanningAnalysisReadModel } from '../../shared/productObservabilityPlanningReadModel';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
@@ -97,6 +102,53 @@ export async function getAdminObservabilityPlanningAnalysis(params: {
     query,
   );
   return payload.result;
+}
+
+export async function getAdminObservabilityLogs(params: {
+  cursor?: string | null;
+  limit?: number;
+  status?: string | null;
+  sessionId?: string | null;
+} = {}): Promise<ObservabilityLogSessionPage> {
+  const query = new URLSearchParams();
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.status) query.set('status', params.status);
+  if (params.sessionId) query.set('session', params.sessionId);
+  const payload = await adminGet<{
+    ok: true;
+    sessions: ObservabilityLogSessionPage['sessions'];
+    nextCursor: string | null;
+  }>('/observability/admin/logs', query);
+  return { sessions: payload.sessions, nextCursor: payload.nextCursor };
+}
+
+export async function getAdminObservabilityLogEntries(params: {
+  sessionId: string;
+  afterSequence?: number;
+  limit?: number;
+}): Promise<ObservabilityLogEntryPage> {
+  const query = new URLSearchParams({ session: params.sessionId });
+  if (params.afterSequence !== undefined) query.set('after', String(params.afterSequence));
+  if (params.limit) query.set('limit', String(params.limit));
+  const payload = await adminGet<{ ok: true; result: ObservabilityLogEntryPage }>(
+    '/observability/admin/log-entries',
+    query,
+  );
+  return payload.result;
+}
+
+export async function getAdminObservabilityDebugBundle(params: {
+  sessionId: string;
+  requestId?: string | null;
+}): Promise<ObservabilityDebugBundleV1> {
+  const query = new URLSearchParams({ session: params.sessionId });
+  if (params.requestId) query.set('request', params.requestId);
+  const payload = await adminGet<{ ok: true; bundle: ObservabilityDebugBundleV1 }>(
+    '/observability/admin/debug-bundle',
+    query,
+  );
+  return payload.bundle;
 }
 
 export async function resolveAdminObservabilityUserIdentity(
