@@ -24,7 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply implementation
-        run: python3 scripts/ci/issue266-apply.py
+        run: |
+          python3 scripts/ci/issue266-apply.py
+          python3 scripts/ci/issue266-fix.py
       - name: Install dependencies
         run: npm ci
       - name: Focused regression tests
@@ -39,7 +41,7 @@ jobs:
         run: git diff --check
       - name: Commit implementation and remove one-shot files
         run: |
-          rm .github/workflows/issue266-apply.yml scripts/ci/issue266-apply.py
+          rm .github/workflows/issue266-apply.yml scripts/ci/issue266-apply.py scripts/ci/issue266-fix.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
