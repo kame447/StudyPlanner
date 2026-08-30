@@ -2,12 +2,12 @@ export * from './adminObservabilityService.phase7.stub.js';
 
 const harnessState = new URLSearchParams(window.location.search).get('state') ?? 'populated';
 
-export async function getAdminObservabilitySystemStatus() {
+export async function getAdminObservabilitySystemStatus({ environment = 'production' } = {}) {
   if (harnessState === 'error') throw new Error('Harness System status read failed.');
   const empty = harnessState === 'empty';
   return {
     schemaVersion: 1,
-    environment: 'production',
+    environment,
     generatedAt: '2026-08-30T12:00:00.000Z',
     overallStatus: empty ? 'unknown' : 'warning',
     components: [
