@@ -1325,12 +1325,16 @@ LangGraph / LangGraphJS:
 
 2026-08-31 adversarial re-auditで見つかったCritical / High項目は本仕様へ反映済みである。
 
-ただしruntime implementation開始前に、現在branchがmainからbehindしている場合はcurrent mainを取り込んだ状態で次を再確認する。
+仕様上のblockerは解消済みであり、documentation hardening gateはclosedとする。
+
+ただしruntime implementation開始前に、現在branchへcurrent mainを取り込み、そのexact HEADで次を再確認することを実装pre-flightの必須条件とする。
 
 1. existing semantic typesとのauthority conflictがない。
 2. persisted session codecとのv2 migration方針が実装可能である。
 3. `study_advice` / existing learning strategy proposalとの責任分離が維持できる。
 4. current controllerのpending-turn / cancellation contractとconsultation concurrency contractが矛盾しない。
-5. current Bookshelf / userPlanningContext projectionからfingerprint dependencyを取得できる。
+5. current Bookshelf / userPlanningContext owner dataからfingerprint dependencyを取得できる。
 
-この再確認で新しいblockerがなければdocumentation gateをcloseし、TypeScript runtime implementationへ進む。
+current mainとの差分監査では、registered-material / timetable context配線の変更は確認したが、本仕様の責任境界を変更する新しいspec blockerは確認されなかった。
+
+したがって次の工程は、current mainを取り込んで上記pre-flightを再確認した後、TypeScript runtime implementationへ進むことである。
