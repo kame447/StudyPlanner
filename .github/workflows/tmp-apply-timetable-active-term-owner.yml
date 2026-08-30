@@ -1,0 +1,77 @@
+name: One-shot timetable active-term owner patch
+
+on:
+  push:
+    branches:
+      - refactor/timetable-active-term-owner
+    paths:
+      - '.github/workflows/tmp-apply-timetable-active-term-owner.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/timetable-active-term-owner
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Centralize active timetable term ownership
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app = Path('src/App.tsx')
+          text = app.read_text(encoding='utf-8')
+          old_import = "import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';"
+          new_import = "import { Suspense, lazy, useEffect, useRef, useState } from 'react';"
+          if text.count(old_import) != 1:
+              raise SystemExit(f'unexpected App react import count: {text.count(old_import)}')
+          text = text.replace(old_import, new_import)
+          anchor = "import type { ViewMode } from './types/domain';\n"
+          resolver_import = "import { resolveActiveTimetableTerm } from './domain/timetableTerm';\n"
+          if text.count(anchor) != 1:
+              raise SystemExit(f'unexpected App import anchor count: {text.count(anchor)}')
+          text = text.replace(anchor, resolver_import + anchor)
+          old_block = "  const activeTimetableTerm = useMemo(\n    () =>\n      timetableTerms.find((term) => term.isActive) ??\n      timetableTerms[0] ??\n      null,\n    [timetableTerms],\n  );\n  const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';\n"
+          new_block = "  const {\n    term: activeTimetableTerm,\n    termId: activeTimetableTermId,\n  } = resolveActiveTimetableTerm(timetableTerms);\n"
+          if text.count(old_block) != 1:
+              raise SystemExit(f'unexpected App active-term block count: {text.count(old_block)}')
+          text = text.replace(old_block, new_block)
+          app.write_text(text, encoding='utf-8')
+
+          data = Path('src/hooks/usePlannerDataState.ts')
+          text = data.read_text(encoding='utf-8')
+          anchor = "import { createId } from '../lib/id';\n"
+          resolver_import = "import { resolveActiveTimetableTerm } from '../domain/timetableTerm';\n"
+          if text.count(anchor) != 1:
+              raise SystemExit(f'unexpected data import anchor count: {text.count(anchor)}')
+          text = text.replace(anchor, resolver_import + anchor)
+          old_block = "  const activeSourceTerm =\n    sourceTerms.find((term) => term.isActive) ??\n    sourceTerms.find((term) => term.id === 'default') ??\n    pickLatestTimetableTerm(sourceTerms);\n"
+          new_block = "  const activeSourceTerm = resolveActiveTimetableTerm(sourceTerms).term;\n  if (!activeSourceTerm) {\n    throw new Error('Timetable term normalization requires at least one source term.');\n  }\n"
+          if text.count(old_block) != 1:
+              raise SystemExit(f'unexpected normalization active-term block count: {text.count(old_block)}')
+          text = text.replace(old_block, new_block)
+          data.write_text(text, encoding='utf-8')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run focused timetable resolver tests
+        run: npx vitest run src/domain/timetableTerm.test.ts
+      - name: Verify TypeScript contract
+        run: npm run typecheck
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-apply-timetable-active-term-owner.yml
+      - name: Commit verified patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor: route timetable selection through one owner'
+          git push origin HEAD:refactor/timetable-active-term-owner
