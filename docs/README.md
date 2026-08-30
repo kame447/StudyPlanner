@@ -14,7 +14,7 @@ Repository work:
 
 ## Domains
 
-- [Weekly planning](domains/weekly-planning/README.md)
+- [Weekly planning](domains/weekly-planning/README.md) — Issue #246 の「学習相談 → AI助言 → user adoption → 既存planning」planned requirement は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が正本。runtime implementation は未完了
 - [Client runtime](domains/client-runtime/README.md)
 - [Reporting](domains/reporting/README.md)
 - [Product observability](domains/product-observability/README.md)

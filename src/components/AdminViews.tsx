@@ -1,6 +1,7 @@
 import { resolveAdminRoute } from '../lib/adminRoutes';
 import { AdminAiApiPage } from './AdminAiApiPage';
 import { AdminOverviewPage } from './AdminOverviewPage';
+import { AdminPlanningPage } from './AdminPlanningPage';
 import { AdminUserDetailPage } from './AdminUserDetailPage';
 import { AdminUsersPage } from './AdminUsersPage';
 
@@ -31,6 +32,10 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
 
   if (route.type === 'ai-api') {
     return <AdminAiApiPage />;
+  }
+
+  if (route.type === 'planning') {
+    return <AdminPlanningPage />;
   }
 
   return (

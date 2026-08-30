@@ -1,5 +1,8 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
+  isWeeklyPlanningStableV5QuestionSlot,
+} from '../intake/weeklyPlanningStableV5QuestionSlot';
+import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
@@ -73,7 +76,7 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
 }
 
 function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): boolean {
-  return state?.lastQuestionContext?.targetSlot?.startsWith('stable_v5:') ?? false;
+  return isWeeklyPlanningStableV5QuestionSlot(state?.lastQuestionContext?.targetSlot);
 }
 
 function workloadSupersessions(

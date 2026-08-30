@@ -1,9 +1,10 @@
 # Weekly Planning Product Intent
 
 Status: canonical product specification
-Updated: 2026-08-27
+Updated: 2026-08-30
 
 Runtime contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
+Learning consultation/advice: [learning-consultation-and-advice.md](learning-consultation-and-advice.md)
 Scheduling policy: [../policies/scheduling.md](../policies/scheduling.md)
 Human grounding: [../policies/human-grounding.md](../policies/human-grounding.md)
 Current roadmap: [../roadmap/current.md](../roadmap/current.md)
@@ -15,6 +16,8 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 通常のplanning baselineは週単位だが、明示されたhard temporal constraintを守るためにschedulerのfallback horizonが7日を超える場合がある。機能名やUI上の「週間」を理由に、accepted deadline等を7日で切り捨てない。
 
 単に空き時間へ作業を詰めるのではなく、必要な不足情報だけを対話で確認し、ユーザーが内容と前提を理解した上で承認できる計画を作る。
+
+Issue #246では、このplanning flowの前段階として「どの教材を使うべきか」「どの順序で、いつまでに進めるべきか」等の学習相談を同じAI計画面で扱う方向を定義する。相談時のAI回答はadvisory proposalであり、ユーザーが採用するまではplanning condition、preview、Plan、durable memoryへ昇格しない。詳細要件は [Learning Consultation and Advice Contract](learning-consultation-and-advice.md) が所有する。runtime implementation完了まではこの記述をcurrent production capabilityとはみなさない。
 
 ## User outcomes
 
@@ -31,6 +34,14 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 - 会話またはUIで条件を修正し、最新条件でpreviewを再生成する
 - 明示承認した内容だけを通常予定として保存する
 
+Issue #246 implementation後は、さらに次を行えることを目標とする。
+
+- 具体的な予定条件が固まっていなくても、学習戦略・教材・順序・目安期限を相談できる
+- StudyPlannerが既に持つ目標、教材、進捗、予定等を再入力せず、関連contextとして利用した助言を得られる
+- AIの提案理由、前提、代替案を追加質問できる
+- 提案をaccept / modify / rejectできる
+- 採用した提案だけを通常のplanning flowへ接続し、既存preview / approval / save境界を維持できる
+
 ## Product principles
 
 ### Low-friction dialogue
@@ -41,11 +52,15 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 
 blockingな不確実性は必要な時点で修復する。一方、計画を安全に進められるlow-impact uncertaintyはdeferできる。ただし影響を持つ境界より前には再度解決する。詳細は [Human Grounding Policy](../policies/human-grounding.md) を参照する。
 
+consultationでは通常planningのrequired slotを最初から全部質問しない。助言内容を実質的に変える不足だけを確認し、前提を明示すれば有用な回答を返せる場合はprovisional adviceを優先する。
+
 ### Shared-ground first
 
 アプリ内部の一般heuristicや観測から推定した傾向は、ユーザーと共有済みの事実ではない。影響が大きい場合は提案として表面化し、accept/modify/rejectできるようにする。
 
 今回だけの方針とdurable preferenceを分離する。
+
+assistantが生成した学習助言も同様にshared groundではない。ユーザーが採用したscopeだけがcurrent planning intentへ昇格し、`今後も`等のdurable meaningが別途明示された場合だけmemory promotion候補になり得る。
 
 ### Progress is not the same as target
 
@@ -84,6 +99,8 @@ AIは自然言語の意味理解とtyped decisionの自然な説明を担当す�
 
 AIが生成した文章だけで予定を確定しない。
 
+Issue #246のanswer AIも同じ境界に従う。教材・学習順序・期限のadviceを生成できても、formal adoption、promotion、scheduler input、saveを所有しない。
+
 ### Preview before commit
 
 計画候補は未保存previewとして表示する。previewは現在のowner、conversation、state revision、source factsに束縛される。
@@ -91,6 +108,8 @@ AIが生成した文章だけで予定を確定しない。
 条件が変わった場合は古いpreviewを確定せず、最新条件で再計算する。保存には明示的な承認を要求する。
 
 review/approval段階では、ユーザーが「全体を承認する」以外に、不要な仮予定を個別に除外し、残した内容だけを承認できることを維持する。個別編集がpreview candidate段階かpromoted draft段階かはUI/application contractで一貫させ、正しいblock identityへ作用させる。
+
+consultation adviceはpreviewよりさらに前段階であり、advice表示だけでpreviewを作らない。advice adoption後に通常planning stateへpromotionされて初めてpreview readinessの対象になる。
 
 ## Scheduling intent
 
@@ -103,6 +122,8 @@ resulting planning horizonがちょうど7日間の場合、current Stable V5で
 また、新しい予定をrequest-timeの`notBefore`より前へ置かない。existing plans、timetable、accepted hard unavailable/life constraintを空き時間として扱わない。
 
 6+1 baselineは「7日horizonになった場合」のcurrent production scheduling policyであり、単なるhistorical noteではない。一方、soft cap、session長、細かなscoring定数はtunable policyであり、永久不変のproduct lawとは区別する。
+
+consultationでAIが「10月末までがおすすめ」と述べても、その値はscheduler hard boundではない。userがその期限を採用し、existing semantic/application boundaryを通過した後だけ正式なplanning constraintになり得る。
 
 ## Life / availability intent
 
@@ -120,11 +141,15 @@ resulting planning horizonがちょうど7日間の場合、current Stable V5で
 
 一度の会話や一週間の採用を無期限profileへ自動昇格しない。詳細は [../policies/adaptive-memory.md](../policies/adaptive-memory.md) と personalization documentation を参照する。
 
+AI-generated adviceは上記のどのuser truthにも自動的には属さない。初期状態ではconversation-scoped advisory stateであり、userがplanning scopeとして採用した場合と、durable preferenceとして別途表明した場合を分ける。
+
 ## Failure behavior
 
 曖昧・矛盾・AI failure・schema failure・source failureを「成功した計画」として隠さない。安全に続行できない場合はstateを壊さず、必要な確認または再試行を提示する。
 
 legacy raw-text parserを意味理解のfallbackとして復活させない。
+
+consultation answerのprovider failure、context failure、validation failureもaccepted planning stateを変更しない。古いadviceやpartial streaming proseから予定条件を復元しない。
 
 ## Acceptance boundary
 
@@ -143,5 +168,15 @@ legacy raw-text parserを意味理解のfallbackとして復活させない。
 - explicit approvalなしにsaveしない
 - desktop/mobileで主要な会話・preview・調整・承認操作が成立する
 - deterministic regression、Browser Regression、必要なreal-model evaluationで責務境界を検証できる
+
+Issue #246 implementation後は追加で次を満たす。
+
+- user consultationをassistant clarificationと混同しない
+- advice表示だけでplanning mutation / preview / saveを起こさない
+- userが採用したadvice scopeだけをnormal planning flowへpromotionする
+- stale / ambiguous adviceをsilent applyしない
+- adviceをdurable memoryへ自動昇格しない
+
+詳細なIssue #246 acceptance criteriaは [learning-consultation-and-advice.md](learning-consultation-and-advice.md) が所有する。
 
 2026-08-22以前の詳細な初期計画書は [historical product plan](../../../archive/weekly-planning/legacy/product-plan-pre-stable-v5.md) として保持する。旧parser、旧UI、当時の固定実装手順はcurrent contractを上書きしない。ただし、そこで確立され現在のcode/testsでも生きている原則はcurrent owning docsへ移管して維持する。

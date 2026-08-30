@@ -63,8 +63,11 @@ async function inspectOverview(page, options) {
   await expect(page.getByText('Planningの状態')).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '管理者画面ナビゲーション' });
   const aiApiNav = navigation.getByRole('button', { name: 'AI・API' });
+  const planningNav = navigation.getByRole('button', { name: 'Planning' });
   await expect(aiApiNav).toBeVisible();
   await expect(aiApiNav).toBeEnabled();
+  await expect(planningNav).toBeVisible();
+  await expect(planningNav).toBeEnabled();
   await screenshot(page, `overview-${options.label}`);
 }
 
@@ -108,6 +111,22 @@ async function inspectAi(page, options) {
   await screenshot(page, `ai-${options.label}`);
 }
 
+async function inspectPlanning(page, options) {
+  await openSurface(page, { ...options, view: 'planning' });
+  await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
+  await expect(page.getByText('Planning Session', { exact: true })).toBeVisible();
+  await expect(page.getByText('保存完了率')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Session funnel' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '品質シグナル' })).toBeVisible();
+  await expect(page.getByText('fallback使用')).toBeVisible();
+  await expect(page.getByText('semantic repair使用')).toBeVisible();
+  await expect(page.getByText('abandoned')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Scheduler version別' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Prompt version別' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Model別' })).toBeVisible();
+  await screenshot(page, `planning-${options.label}`);
+}
+
 const viewports = [
   { theme: 'light', width: 1440, height: 1000, label: 'desktop-light' },
   { theme: 'dark', width: 1440, height: 1000, label: 'desktop-dark' },
@@ -128,6 +147,9 @@ test.describe('Admin console rendered UI', () => {
     });
     test(`AI API ${viewport.label} remains readable and contained`, async ({ page }) => {
       await inspectAi(page, viewport);
+    });
+    test(`Planning ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectPlanning(page, viewport);
     });
   }
 
@@ -169,6 +191,21 @@ test.describe('Admin console rendered UI', () => {
     await screenshot(page, 'ai-empty-desktop-light');
   });
 
+  test('Planning empty state reports no sessions without fabricating conversion', async ({ page }) => {
+    await openSurface(page, {
+      view: 'planning',
+      theme: 'light',
+      width: 1440,
+      height: 1000,
+      state: 'empty',
+    });
+    await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
+    await expect(page.getByText('0', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('未計測', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('この期間に比較可能なsession cohortはありません。').first()).toBeVisible();
+    await screenshot(page, 'planning-empty-desktop-light');
+  });
+
   test('Overview error state remains readable and contained', async ({ page }) => {
     await openSurface(page, {
       view: 'overview',
@@ -179,5 +216,18 @@ test.describe('Admin console rendered UI', () => {
     });
     await expect(page.getByText('Overviewを取得できませんでした')).toBeVisible();
     await screenshot(page, 'overview-error-desktop-dark');
+  });
+
+  test('Planning error state remains readable and contained', async ({ page }) => {
+    await openSurface(page, {
+      view: 'planning',
+      theme: 'dark',
+      width: 390,
+      height: 844,
+      state: 'error',
+    });
+    await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
+    await expect(page.getByText('Harness planning analytics read failed.')).toBeVisible();
+    await screenshot(page, 'planning-error-mobile-dark');
   });
 });

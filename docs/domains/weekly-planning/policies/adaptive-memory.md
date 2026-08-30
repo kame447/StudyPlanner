@@ -1,11 +1,12 @@
 # 週間計画 Adaptive Memory Learning Policy
 
 Status: canonical policy
-Updated: 2026-08-27
-Applies to: 暗記・想起を主要目的とする学習の提案、復習配置、personalization、長期記憶、会話grounding
+Updated: 2026-08-30
+Applies to: 暗記・想起を主要目的とする学習の提案、復習配置、personalization、長期記憶、会話grounding、planned Issue #246 consultation advice
 
 Parent contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Human grounding: [human-grounding.md](human-grounding.md)
+Learning consultation/advice: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
 Personalization index: [../personalization/README.md](../personalization/README.md)
 
 ## Core rule
@@ -23,6 +24,14 @@ proposal presented
 
 `今回は` / `今週は` と `今後も` / `いつも` を別scopeとして扱い、week-local acceptanceをdurable preferenceへ暗黙昇格させない。
 
+Issue #246のAI-generated adviceも同じ扱いとする。assistantが生成したrecommendationはuser memoryではなく、初期状態ではconversation-scoped advisory stateである。
+
+```text
+AI-generated advice
+≠ user-stated fact
+≠ durable preference
+```
+
 ## Learning principles
 
 暗記・想起中心の学習では、cold-start proposalの根拠として次の抽象原則を利用できる。
@@ -32,6 +41,8 @@ proposal presented
 - session長、復習回数、間隔はユーザー・教材・期限によって変わる。
 
 `1日後・3日後・7日後`、`必ず3周`、`必ず15〜30分` のような固定系列を科学的正解としてhard ruleにしない。
+
+consultation answerが上記heuristicを利用する場合も、「一般に有利になりやすい」と「このユーザーのdurable preference」を混同しない。
 
 ## Session policy
 
@@ -67,9 +78,13 @@ review / retrieval
 
 Cold-start heuristicはcandidate generation/scoringの補助であり、未共有のsemantic preferenceではない。
 
+consultation adviceが「朝にやるとよい」等を提案しても、それだけでは4の`accepted learning proposal`にすらならない。user acceptanceを経たscopeだけがcandidate rankingへ影響できる。
+
 ## Quantity boundary
 
 word/problem/page countは進捗・対象範囲であり、時間そのものではない。語数だけからsession数や総時間を決めない。ユーザーが明示した量、observed throughput、accepted estimate等の根拠がある場合だけ時間推定へ利用する。
+
+consultationで数量・必要日数を説明する場合も、deterministic calculationまたはaccepted estimateを根拠にする。AI adviceが独自に架空のthroughputをuser profileへ保存しない。
 
 ## Observation and memory
 
@@ -87,15 +102,47 @@ Memoryを分離する。
 - current weekly/conversation state: 今回成立した事実・方針
 - durable user preference: 今後も使うことが明示されたowner-scoped preference
 - observed learning profile: execution evidenceから導出したprofile/estimate
+- consultation advice: assistant-generated advisory state。user truthではない
 
 Observed profileがexplicit preferenceを勝手に書き換えない。衝突時は影響と代替案を提示する。
 
+AdviceProposalを保存する必要があっても、その保存先・retentionとuser memory semanticsを同一視しない。conversationをまたぐ技術的永続化は「durable preferenceに昇格した」という意味ではない。
+
+## Advice → memory promotion boundary
+
+次の2つを区別する。
+
+```text
+assistant: 「英単語は15分ずつ分けるのがおすすめです」
+user: 「じゃあ今回はそれで予定組んで」
+→ current planning acceptance
+
+user: 「今後も英単語は15分ずつにしたい」
+→ durable user-context candidateになり得る
+```
+
+前者を後者へ自動昇格しない。
+
+AIが以前自分で提案した内容を「ユーザーは15分学習を好む」と再推定してmemoryへ書き戻すことも禁止する。
+
+user-stated durable meaningがある場合、その意味のinterpretationはAI semantic layerが担当できるが、正式なmemory identity、authority、source-of-truth routing、replace/supersede/revoke、persistenceはexisting userPlanningContext responsibilityが所有する。
+
 ## Responsibility
 
-AI semantic layer owns meaning such as learning mode, proposal response and scope expressions (`今回は` / `今後も`).
+AI semantic layer owns meaning such as learning mode, proposal response and scope expressions (`今回は` / `今後も`). Planned Issue #246では、advice adoptionとdurable-scope表現を意味として区別する。
 
-Deterministic application owns proposal lifecycle, accepted scope, memory promotion, observation storage/derivation, readiness and scheduler use. Renderer explains typed decisions but does not invent preference or authorization.
+Deterministic application owns proposal lifecycle, accepted scope, memory promotion, observation storage/derivation, readiness and scheduler use. Renderer / answer AI explains or proposes but does not invent preference or authorization。
+
+Advice storage lifecycleとmemory lifecycleを同じbooleanや同一record kindへ潰さない。
 
 ## Quality gate
 
 Tests must protect scope separation and proposal acceptance rather than one fixed Japanese sentence. Model-dependent behavior follows [../quality/real-api-eval-policy.md](../quality/real-api-eval-policy.md).
+
+Issue #246 implementationでは少なくとも次を回帰として持つ。
+
+- advice生成だけでdurable memoryが増えない
+- current-plan adoptionだけでdurable preferenceが増えない
+- `今後も`等のdurable meaningが明示された場合だけ別memory candidateになり得る
+- rejected / stale adviceをmemory evidenceとして再利用しない
+- observed profileとassistant adviceを混同しない
