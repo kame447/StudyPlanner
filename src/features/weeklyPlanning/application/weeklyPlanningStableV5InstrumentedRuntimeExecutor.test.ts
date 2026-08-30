@@ -36,6 +36,15 @@ function input(requestId: string, userId = 'owner-1') {
     scheduleTemplates: [],
     conversationId: 'conversation-1',
     traceRequestId: requestId,
+    requestContext: {
+      startedAtIso: '2026-07-27T00:00:00.000Z',
+      timeZone: 'Asia/Tokyo',
+      currentDate: '2026-07-27',
+      currentTime: '00:00',
+      notBeforeDate: '2026-07-27',
+      notBeforeTime: '00:00',
+      weekStartsOn: 'monday' as const,
+    },
   };
 }
 

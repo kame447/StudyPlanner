@@ -11,10 +11,7 @@ import {
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningMessage } from '../types';
-import {
-  createWeeklyPlanningLegacyRequestContext,
-  type WeeklyPlanningTurnRequestContext,
-} from './weeklyPlanningTemporalContext';
+import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 
 export const STABLE_V5_RECENT_TURN_LIMIT = 4;
@@ -29,27 +26,13 @@ export function activeStableV5PlanningWindows(graph: WeeklyPlanningFactGraphV5) 
   return graph.planningWindows.filter((window) => activeIds.has(window.id));
 }
 
-function systemTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo';
-}
-
 export function stableV5RequestContextForInput(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): {
   context: WeeklyPlanningTurnRequestContext;
-  source: 'captured_request' | 'legacy_selected_date_fallback';
+  source: 'captured_request';
 } {
-  if (input.requestContext) {
-    return { context: input.requestContext, source: 'captured_request' };
-  }
-  return {
-    context: createWeeklyPlanningLegacyRequestContext({
-      selectedDate: input.selectedDate,
-      timeZone: systemTimeZone(),
-      weekStartsOn: input.weekStartsOn ?? 'monday',
-    }),
-    source: 'legacy_selected_date_fallback',
-  };
+  return { context: input.requestContext, source: 'captured_request' };
 }
 
 function effortMeasurementFromState(
