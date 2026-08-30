@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildObservabilitySystemReadModel } from './productObservabilitySystemStatusService';
+import {
+  buildObservabilitySystemReadModel,
+  ProductObservabilitySystemStatusService,
+} from './productObservabilitySystemStatusService';
 
 describe('Phase 8 system observability projection', () => {
   const generatedAt = '2026-08-30T12:00:00.000Z';
@@ -67,5 +70,72 @@ describe('Phase 8 system observability projection', () => {
     expect(model.components.find((item) => item.key === 'authentication')?.status).toBe('healthy');
     expect(model.overallStatus).toBe('unavailable');
     expect(model.trace.retainedSessionObserved).toBeNull();
+  });
+
+  it('uses a bounded index-safe telemetry probe and scopes dirty sources to the selected environment', async () => {
+    const queryCalls: Array<{
+      collection: string;
+      filters?: Array<{ field: string; value: string }>;
+      limit?: number;
+    }> = [];
+    const firestore = {
+      async getDocument(collection: string) {
+        if (collection !== 'observability_rollup_state') return null;
+        return {
+          processedEventCount: 300,
+          activeUserDirtySources: [
+            { environment: 'production', localDate: '2026-08-30', revision: 1 },
+            { environment: 'preview', localDate: '2026-08-30', revision: 1 },
+          ],
+          lastRunStartedAt: '2026-08-30T11:59:00.000Z',
+          lastSuccessfulRunAt: '2026-08-30T11:59:30.000Z',
+          lastFailureAt: null,
+          lastFailureCategory: null,
+        };
+      },
+      async queryDocumentsAfter(params: {
+        collection: string;
+        orderByField: string;
+        filters?: Array<{ field: string; value: string }>;
+        limit?: number;
+        direction?: 'ASCENDING' | 'DESCENDING';
+      }) {
+        queryCalls.push({
+          collection: params.collection,
+          filters: params.filters,
+          limit: params.limit,
+        });
+        if (params.collection === 'observability_events') {
+          return [
+            {
+              id: 'event-production',
+              documentName: 'projects/test/databases/(default)/documents/observability_events/event-production',
+              environment: 'production',
+              observedAt: '2026-08-30T11:59:50.000Z',
+            },
+            {
+              id: 'event-preview',
+              documentName: 'projects/test/databases/(default)/documents/observability_events/event-preview',
+              environment: 'preview',
+              observedAt: '2026-08-30T11:59:40.000Z',
+            },
+          ];
+        }
+        return [];
+      },
+    };
+    const service = new ProductObservabilitySystemStatusService({} as never, firestore);
+
+    const model = await service.getSystemStatus('preview');
+
+    expect(model.environment).toBe('preview');
+    expect(model.components.find((item) => item.key === 'telemetry_ingestion')?.lastObservedAt)
+      .toBe('2026-08-30T11:59:40.000Z');
+    expect(model.aggregation.dirtySourceCount).toBe(1);
+    expect(queryCalls.find((call) => call.collection === 'observability_events')).toEqual({
+      collection: 'observability_events',
+      filters: undefined,
+      limit: 50,
+    });
   });
 });
