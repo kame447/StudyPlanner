@@ -1,0 +1,44 @@
+name: Cleanup merged branches once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cleanup-merged-branches-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Delete verified merged branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            'docs/regression-pattern-knowledge'
+            'docs/tooling-operations-runbook'
+            'feat/product-observability-phase5-users-ai-api'
+            'fix/post-merge-css-bundle-budget'
+            'research/material-metadata-apis'
+          )
+          for branch in "${branches[@]}"; do
+            git push origin --delete -- "$branch"
+          done
+
+      - name: Remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/cleanup-merged-branches-once.yml
+          git commit -m 'chore: remove one-shot merged branch cleanup workflow'
+          git push origin HEAD:main
