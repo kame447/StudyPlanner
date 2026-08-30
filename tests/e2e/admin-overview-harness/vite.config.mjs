@@ -10,8 +10,9 @@ const observabilityConsumers = [
   'src/components/AdminUsersPage.tsx',
   'src/components/AdminUserDetailPage.tsx',
   'src/components/AdminAiApiPage.tsx',
+  'src/components/AdminPlanningPage.tsx',
 ].map((value) => path.normalize(value));
-const observabilityStub = path.resolve(harnessDir, 'adminObservabilityService.phase5.stub.js');
+const observabilityStub = path.resolve(harnessDir, 'adminObservabilityService.phase6.stub.js');
 
 function stripViteQuery(id) {
   return id.split('?', 1)[0];
