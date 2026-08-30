@@ -1,7 +1,7 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-08-27
+Updated: 2026-08-30
 
 Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
 
@@ -9,15 +9,16 @@ Stable V5 is the sole production weekly-planning runtime. This directory is the 
 
 1. [Current contract](architecture/current-contract-v5.md)
 2. [Product intent](spec/product-intent.md)
-3. [Semantic ownership](architecture/weekly-planning-semantic-ownership-boundary-v5.md)
-4. [Dialogue architecture](architecture/weekly-planning-dialogue-architecture-v5.md)
-5. [Availability architecture](architecture/weekly-planning-availability-architecture-v5.md)
-6. [Scheduling policy](policies/scheduling.md)
-7. [Human grounding policy](policies/human-grounding.md)
-8. [Test philosophy](quality/test-philosophy.md)
-9. [Regression scenarios](quality/regression-scenarios.md)
-10. [Current roadmap](roadmap/current.md)
-11. [Active work](work/README.md)
+3. [Learning consultation and advice](spec/learning-consultation-and-advice.md)
+4. [Semantic ownership](architecture/weekly-planning-semantic-ownership-boundary-v5.md)
+5. [Dialogue architecture](architecture/weekly-planning-dialogue-architecture-v5.md)
+6. [Availability architecture](architecture/weekly-planning-availability-architecture-v5.md)
+7. [Scheduling policy](policies/scheduling.md)
+8. [Human grounding policy](policies/human-grounding.md)
+9. [Test philosophy](quality/test-philosophy.md)
+10. [Regression scenarios](quality/regression-scenarios.md)
+11. [Current roadmap](roadmap/current.md)
+12. [Active work](work/README.md)
 
 ## Supporting current references
 
@@ -31,7 +32,7 @@ These documents supplement the canonical owners above; they do not override them
 
 ## Responsibility map
 
-- `spec/`: product intent and user-facing requirements
+- `spec/`: product intent and user-facing requirements. `learning-consultation-and-advice.md` owns the planned Issue #246 consultation/advice extension.
 - `architecture/`: runtime/data/ownership invariants
 - `policies/`: scheduling, conversation, grounding and learning policies
 - `personalization/`: personalization-specific current index/design references
@@ -43,6 +44,7 @@ These documents supplement the canonical owners above; they do not override them
 
 - Stable V5 owns weekly-planning production semantics.
 - AI interprets natural language and realizes typed dialogue; deterministic application code owns validation, lifecycle, repair/question/proposal decisions, scheduling, preview, approval and save.
+- Issue #246 extends the product toward pre-scheduling learning consultation: user questions can be grounded in StudyPlanner context, answered as advisory state, and promoted into normal planning only after explicit user adoption. The runtime implementation is still pending; [the canonical consultation requirement](spec/learning-consultation-and-advice.md) must not be read as an already-shipped production guarantee.
 - Accepted active movable-work date constraints are resolved into scheduler-facing hard date bounds / preferred placements before downstream distribution and placement; downstream code must not become a second owner of the same temporal meaning.
 - When the resulting planning horizon is exactly 7 days, Stable V5 uses six normal placement days plus a seventh reserve day. Applicable hard temporal bounds may require a longer fallback horizon; details live in `policies/scheduling.md` rather than historical task records.
 - Request-time `notBefore`, authoritative busy sources, typed life constraints and work atomicity are current scheduling safety boundaries.
@@ -57,4 +59,4 @@ These documents supplement the canonical owners above; they do not override them
 
 A historical file, old `Status: active`, branch name or PR number never overrides this domain index or the current contract.
 
-At the same time, moving a historical task/design to `docs/archive/` does **not** mean every concept inside it is obsolete. If current code/tests still enforce an invariant, that invariant must be represented in the current owning spec/architecture/policy/quality document before the historical record is treated as archive-only evidence.
+At the same time, moving a historical task/design to `docs/archive/` does not mean every concept inside it is obsolete. If current code/tests still enforce an invariant, that invariant must be represented in the current owning spec/architecture/policy/quality document before the historical record is treated as archive-only evidence.
