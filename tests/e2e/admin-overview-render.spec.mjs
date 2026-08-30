@@ -63,6 +63,7 @@ async function inspectOverview(page, options) {
   await expect(navigation.getByRole('button', { name: 'AI・API' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: 'Planning' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: 'Logs' })).toBeEnabled();
+  await expect(navigation.getByRole('button', { name: 'System' })).toBeEnabled();
   await screenshot(page, `overview-${options.label}`);
 }
 
@@ -132,6 +133,19 @@ async function inspectLogs(page, options) {
   await screenshot(page, `logs-${options.label}`);
 }
 
+async function inspectSystem(page, options) {
+  await openSurface(page, { ...options, view: 'system' });
+  await expect(page.getByRole('heading', { name: 'System' })).toBeVisible();
+  await expect(page.getByText('Read-only infrastructure status')).toBeVisible();
+  await expect(page.getByText('AI proxy', { exact: true })).toBeVisible();
+  await expect(page.getByText('Telemetry ingestion', { exact: true })).toBeVisible();
+  await expect(page.getByText('Aggregation / read model', { exact: true })).toBeVisible();
+  await expect(page.getByText('Trace availability', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Aggregation' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Trace' })).toBeVisible();
+  await screenshot(page, `system-${options.label}`);
+}
+
 const viewports = [
   { theme: 'light', width: 1440, height: 1000, label: 'desktop-light' },
   { theme: 'dark', width: 1440, height: 1000, label: 'desktop-dark' },
@@ -147,6 +161,7 @@ test.describe('Admin console rendered UI', () => {
     test(`AI API ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectAi(page, viewport); });
     test(`Planning ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectPlanning(page, viewport); });
     test(`Logs ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectLogs(page, viewport); });
+    test(`System ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectSystem(page, viewport); });
   }
 
   test('Users empty state remains explicit on mobile', async ({ page }) => {
@@ -184,6 +199,14 @@ test.describe('Admin console rendered UI', () => {
     await screenshot(page, 'logs-empty-mobile-light');
   });
 
+  test('System empty state keeps quiet telemetry explicit instead of reporting failure', async ({ page }) => {
+    await openSurface(page, { view: 'system', theme: 'light', width: 390, height: 844, state: 'empty' });
+    await expect(page.getByRole('heading', { name: 'System' })).toBeVisible();
+    await expect(page.getByText('未判定').first()).toBeVisible();
+    await expect(page.getByText(/No retained event was found/)).toBeVisible();
+    await screenshot(page, 'system-empty-mobile-light');
+  });
+
   test('Overview error state remains readable and contained', async ({ page }) => {
     await openSurface(page, { view: 'overview', theme: 'dark', width: 1440, height: 1000, state: 'error' });
     await expect(page.getByText('Overviewを取得できませんでした')).toBeVisible();
@@ -201,5 +224,12 @@ test.describe('Admin console rendered UI', () => {
     await expect(page.getByText('Logsを取得できませんでした')).toBeVisible();
     await expect(page.getByText('Harness restricted diagnostic read failed.')).toBeVisible();
     await screenshot(page, 'logs-error-mobile-dark');
+  });
+
+  test('System read error remains explicit and contained', async ({ page }) => {
+    await openSurface(page, { view: 'system', theme: 'dark', width: 390, height: 844, state: 'error' });
+    await expect(page.getByText('System statusを取得できませんでした')).toBeVisible();
+    await expect(page.getByText('Harness System status read failed.')).toBeVisible();
+    await screenshot(page, 'system-error-mobile-dark');
   });
 });

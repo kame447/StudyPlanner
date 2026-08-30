@@ -176,21 +176,30 @@ describe('AdminOverviewPage', () => {
     expect(text).not.toContain('Planning品質スコア');
   });
 
-  it('keeps future drill-down buttons disabled until their phases are implemented', () => {
+  it('exposes the implemented AI, Planning, and System drill-down routes', () => {
+    const navigate = vi.fn();
     let renderer: ReturnType<typeof create>;
     act(() => {
-      renderer = create(<AdminOverviewPage navigate={vi.fn()} />);
+      renderer = create(<AdminOverviewPage navigate={navigate} />);
     });
 
-    const disabledButtons = renderer!.root.findAll(
-      (node) => node.type === 'button' && node.props.disabled === true,
+    const detailButtons = renderer!.root.findAll(
+      (node) => node.type === 'button' && node.props.className === 'admin-overview-detail-link',
     );
-    expect(disabledButtons.map((button) => button.children.join(' '))).toEqual(
-      expect.arrayContaining([
-        'AI・APIの詳細は次フェーズ',
-        'Planningの詳細は次フェーズ',
-        'Systemの詳細は次フェーズ',
-      ]),
-    );
+    expect(detailButtons.map((button) => button.children.join(' '))).toEqual([
+      'AI・APIの詳細を確認',
+      'Planningの詳細を確認',
+      'Systemの詳細を確認',
+    ]);
+    expect(detailButtons.every((button) => button.props.disabled !== true)).toBe(true);
+
+    act(() => {
+      detailButtons.forEach((button) => button.props.onClick());
+    });
+    expect(navigate.mock.calls).toEqual([
+      ['/admin/ai'],
+      ['/admin/planning'],
+      ['/admin/system'],
+    ]);
   });
 });

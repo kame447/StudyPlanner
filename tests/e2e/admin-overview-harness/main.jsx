@@ -13,28 +13,28 @@ import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
 import { AdminLogsPage } from '../../../src/components/AdminLogsPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
 import { AdminPlanningPage } from '../../../src/components/AdminPlanningPage';
+import { AdminSystemPage } from '../../../src/components/AdminSystemPage';
 import { AdminUserDetailPage } from '../../../src/components/AdminUserDetailPage';
 import { AdminUsersPage } from '../../../src/components/AdminUsersPage';
 import '../../../src/styles.css';
 import '../../../src/styles/admin-phase5.css';
 import '../../../src/styles/admin-phase6.css';
 import '../../../src/styles/admin-phase7.css';
+import '../../../src/styles/admin-phase8.css';
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const view = params.get('view') ?? 'overview';
 document.documentElement.dataset.theme = theme;
 
-function navItem(icon, label, active = false, disabled = false) {
+function navItem(icon, label, active = false) {
   return (
     <button
-      className={`admin-console-nav-item${active ? ' active' : ''}${disabled ? ' is-disabled' : ''}`}
+      className={`admin-console-nav-item${active ? ' active' : ''}`}
       type="button"
-      disabled={disabled}
     >
       {icon}
       <span>{label}</span>
-      {disabled ? <small>準備中</small> : null}
     </button>
   );
 }
@@ -54,6 +54,7 @@ function content() {
   if (view === 'ai') return <AdminAiApiPage />;
   if (view === 'planning') return <AdminPlanningPage />;
   if (view === 'logs') return <AdminLogsPage />;
+  if (view === 'system') return <AdminSystemPage />;
   return <AdminOverviewPage navigate={(path) => { window.__adminHarnessNavigation = path; }} />;
 }
 
@@ -75,7 +76,7 @@ function AdminConsoleHarness() {
             {navItem(<Bot aria-hidden="true" size={19} />, 'AI・API', view === 'ai')}
             {navItem(<CalendarClock aria-hidden="true" size={19} />, 'Planning', view === 'planning')}
             {navItem(<ListTree aria-hidden="true" size={19} />, 'Logs', view === 'logs')}
-            {navItem(<Settings aria-hidden="true" size={19} />, 'System', false, true)}
+            {navItem(<Settings aria-hidden="true" size={19} />, 'System', view === 'system')}
           </nav>
           <div className="admin-console-sidebar-footer">
             <a href="#normal" className="admin-console-return-link">
