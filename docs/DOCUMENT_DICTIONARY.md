@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-28
+Updated: 2026-08-30
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -70,12 +70,15 @@ archiveは現在の実装命令にならない。
 - dialogue/runtime structure: `architecture/weekly-planning-dialogue-architecture-v5.md`
 - availability: `architecture/weekly-planning-availability-architecture-v5.md`
 - product intent: `spec/product-intent.md`
+- pre-scheduling learning consultation / advice requirement: `spec/learning-consultation-and-advice.md`
 - scheduling behavior: `policies/scheduling.md`
 - human grounding: `policies/human-grounding.md`
 - memory/learning policy: `policies/adaptive-memory.md`
 - test policy: `quality/test-philosophy.md`
 - regression scenarios: `quality/regression-scenarios.md`
 - execution order: `roadmap/current.md`
+
+`spec/learning-consultation-and-advice.md` はIssue #246の正本であり、相談→助言→採用→既存Stable V5へのpromotionに関するproduct requirement、planned runtime boundary、state/lifecycle、failure、test、future evolutionを所有する。production codeが未実装の間は`architecture/current-contract-v5.md`のcurrent runtime baselineを上書きしない。
 
 ### Client runtime
 
