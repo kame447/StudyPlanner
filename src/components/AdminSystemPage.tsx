@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleHelp, RefreshCw, ServerCog, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
   ObservabilitySystemComponentKey,
   ObservabilitySystemHealth,
@@ -12,7 +13,7 @@ const COMPONENT_LABELS: Record<ObservabilitySystemComponentKey, string> = {
   authentication: 'Authentication',
   telemetry_ingestion: 'Telemetry ingestion',
   aggregation_read_model: 'Aggregation / read model',
-  trace_availability: 'Trace availability',
+  trace_availability: 'Trace availability（全環境）',
 };
 
 const STATUS_LABELS: Record<ObservabilitySystemHealth, string> = {
@@ -20,6 +21,13 @@ const STATUS_LABELS: Record<ObservabilitySystemHealth, string> = {
   warning: '要確認',
   unavailable: '利用不可',
   unknown: '未判定',
+};
+
+const ENVIRONMENT_LABELS: Record<ObservabilityEnvironment, string> = {
+  production: '本番環境',
+  preview: 'プレビュー',
+  development: '開発環境',
+  test: 'テスト',
 };
 
 function formatTimestamp(value: string | null): string {
@@ -43,25 +51,26 @@ function StatusIcon({ status }: { status: ObservabilitySystemHealth }) {
 }
 
 export function AdminSystemPage() {
+  const [environment, setEnvironment] = useState<ObservabilityEnvironment>('production');
   const [data, setData] = useState<ObservabilitySystemReadModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError('');
     try {
-      setData(await getAdminObservabilitySystemStatus());
+      setData(await getAdminObservabilitySystemStatus({ environment }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'System statusを取得できませんでした。');
     } finally {
       setLoading(false);
     }
-  }
+  }, [environment]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   return (
     <main className="admin-shell admin-system-page">
@@ -71,10 +80,30 @@ export function AdminSystemPage() {
           <h1>System</h1>
           <p>利用分析ではなく、観測基盤と主要依存先が調査可能な状態かを確認します。</p>
         </div>
-        <button className="ghost-button" type="button" disabled={loading} onClick={() => { void load(); }}>
-          <RefreshCw aria-hidden="true" size={17} />
-          再読込
-        </button>
+        <div className="admin-overview-controls" aria-label="System表示条件">
+          <label>
+            <span>環境</span>
+            <select
+              value={environment}
+              onChange={(event) => setEnvironment(event.target.value as ObservabilityEnvironment)}
+              disabled={loading}
+            >
+              {(Object.keys(ENVIRONMENT_LABELS) as ObservabilityEnvironment[]).map((key) => (
+                <option key={key} value={key}>{ENVIRONMENT_LABELS[key]}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="admin-overview-refresh-button"
+            type="button"
+            disabled={loading}
+            onClick={() => { void load(); }}
+            aria-label="System statusを再読み込み"
+            title="再読み込み"
+          >
+            <RefreshCw aria-hidden="true" size={17} />
+          </button>
+        </div>
       </header>
 
       {loading ? (
@@ -91,7 +120,7 @@ export function AdminSystemPage() {
             <div>
               <span>全体状態</span>
               <strong>{STATUS_LABELS[data.overallStatus]}</strong>
-              <small>{data.environment} · {formatTimestamp(data.generatedAt)}</small>
+              <small>{ENVIRONMENT_LABELS[data.environment]} · {formatTimestamp(data.generatedAt)}</small>
             </div>
           </section>
 
@@ -119,8 +148,8 @@ export function AdminSystemPage() {
             <article className="panel admin-system-detail-card">
               <h2>Aggregation</h2>
               <dl>
-                <div><dt>処理済みevent</dt><dd>{data.aggregation.processedEventCount ?? '—'}</dd></div>
-                <div><dt>再集計待ちsource</dt><dd>{data.aggregation.dirtySourceCount ?? '—'}</dd></div>
+                <div><dt>処理済みevent（全環境）</dt><dd>{data.aggregation.processedEventCount ?? '—'}</dd></div>
+                <div><dt>再集計待ちsource（選択環境）</dt><dd>{data.aggregation.dirtySourceCount ?? '—'}</dd></div>
                 <div><dt>最終成功</dt><dd>{formatTimestamp(data.aggregation.lastSuccessfulRunAt)}</dd></div>
                 <div><dt>最終失敗</dt><dd>{formatTimestamp(data.aggregation.lastFailureAt)}</dd></div>
               </dl>
@@ -129,7 +158,7 @@ export function AdminSystemPage() {
             <article className="panel admin-system-detail-card">
               <h2>Trace</h2>
               <dl>
-                <div><dt>保存session</dt><dd>{data.trace.retainedSessionObserved === null ? '不明' : data.trace.retainedSessionObserved ? 'あり' : 'なし'}</dd></div>
+                <div><dt>保存session（全環境）</dt><dd>{data.trace.retainedSessionObserved === null ? '不明' : data.trace.retainedSessionObserved ? 'あり' : 'なし'}</dd></div>
                 <div><dt>最終activity</dt><dd>{formatTimestamp(data.trace.latestSessionActivityAt)}</dd></div>
                 <div><dt>詳細アクセス</dt><dd>{data.trace.accessMode === 'restricted' ? '制限付き' : data.trace.accessMode}</dd></div>
               </dl>
