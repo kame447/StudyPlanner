@@ -8,17 +8,6 @@ import type {
 } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
-import {
-  deriveWeeklyPlanningEstimateCalibration,
-} from '../personalization/weeklyPlanningEstimateCalibration';
-import {
-  clearWeeklyPlanningEstimateCalibrationRuntimeV5,
-  setWeeklyPlanningEstimateCalibrationRuntimeV5,
-} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
-import {
-  clearWeeklyPlanningMemoryPaceRuntimeV5,
-  setWeeklyPlanningMemoryPaceRuntimeV5,
-} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -117,10 +106,6 @@ export function useWeeklyPlanningApplication({
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
   const { weekStartsOn } = useWeeklyPlanningPersonalization();
-  const estimateCalibration = useMemo(
-    () => deriveWeeklyPlanningEstimateCalibration({ plans, actuals }),
-    [actuals, plans],
-  );
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
@@ -151,19 +136,6 @@ export function useWeeklyPlanningApplication({
     }
     return next;
   }, [dispatchPlanningAction, ownerId]);
-
-  useEffect(() => {
-    setWeeklyPlanningEstimateCalibrationRuntimeV5({
-      ownerId,
-      calibration: estimateCalibration,
-    });
-    return () => clearWeeklyPlanningEstimateCalibrationRuntimeV5(ownerId);
-  }, [estimateCalibration, ownerId]);
-
-  useEffect(() => {
-    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans, actuals });
-    return () => clearWeeklyPlanningMemoryPaceRuntimeV5(ownerId);
-  }, [actuals, ownerId, plans]);
 
   useEffect(() => {
     const session = controllerSessionRef.current;
@@ -216,6 +188,7 @@ export function useWeeklyPlanningApplication({
       supplementalContext,
       selectedDate,
       plans,
+      actuals,
       scheduleTemplates,
       timetableTermId,
       timetableTerm,

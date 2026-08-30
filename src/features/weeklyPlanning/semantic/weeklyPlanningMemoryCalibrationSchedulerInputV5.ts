@@ -28,6 +28,7 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
   sessionMinutes: number;
   context: CompilerInput['context'];
   externalSources: CompilerInput['externalSources'];
+  estimateCalibrationMultiplier?: number | null;
   resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
   resolvedTemporalConstraints?: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): GenericSchedulerInputCompilationResult | null {
@@ -78,6 +79,7 @@ export function compileWeeklyPlanningMemoryCalibrationSchedulerInputV5(params: {
     graph: projectedGraph,
     context: params.context,
     externalSources: params.externalSources,
+    estimateCalibrationMultiplier: params.estimateCalibrationMultiplier,
     resolvedDateExpressions: params.resolvedDateExpressions,
     resolvedTemporalConstraints: params.resolvedTemporalConstraints,
   });
