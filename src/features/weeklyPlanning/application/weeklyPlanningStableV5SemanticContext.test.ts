@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import { createStableV5SemanticPublicStateSummary } from './weeklyPlanningStableV5SemanticContext';
+import {
+  createStableV5SemanticPublicStateSummary,
+  stableV5RequestContextForInput,
+} from './weeklyPlanningStableV5SemanticContext';
 
 function baseState(): PlanningIntakeState {
   return {
@@ -22,6 +25,38 @@ function baseState(): PlanningIntakeState {
     sourceTurns: [],
   };
 }
+
+describe('Stable V5 request context authority', () => {
+  it('uses the captured request context without regenerating temporal defaults', () => {
+    const requestContext = {
+      startedAtIso: '2026-08-30T12:34:56.000Z',
+      timeZone: 'America/Los_Angeles',
+      currentDate: '2026-08-30',
+      currentTime: '05:34',
+      notBeforeDate: '2026-08-30',
+      notBeforeTime: '05:35',
+      weekStartsOn: 'sunday' as const,
+    };
+
+    const resolved = stableV5RequestContextForInput({
+      messages: [],
+      userText: 'next week',
+      selectedDate: '2030-01-01',
+      userId: 'user-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-1',
+      traceRequestId: 'request-1',
+      requestContext,
+    });
+
+    expect(resolved).toEqual({
+      context: requestContext,
+      source: 'captured_request',
+    });
+    expect(resolved.context).toBe(requestContext);
+  });
+});
 
 describe('Stable V5 semantic public-state question binding', () => {
   it('publishes an options proposal as the exact machine pending question', () => {

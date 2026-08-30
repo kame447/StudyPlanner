@@ -12,6 +12,9 @@ import {
   getWeeklyPlanningStableV5StagedGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
+import type {
+  ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+} from './weeklyPlanningStableV5RuntimeContracts';
 
 const { normalizeMock } = vi.hoisted(() => ({
   normalizeMock: vi.fn(),
@@ -257,9 +260,35 @@ vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
 }));
 
 import {
-  executeWeeklyPlanningStableV5RuntimeTurn,
+  executeWeeklyPlanningStableV5RuntimeTurn as executeWeeklyPlanningStableV5RuntimeTurnStrict,
   isWeeklyPlanningStableV5PreviewAuthorized,
 } from './weeklyPlanningStableV5RuntimeExecutor';
+
+type DirectRuntimeTestInput = Omit<
+  ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  'requestContext'
+> & {
+  requestContext?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['requestContext'];
+};
+
+function testRequestContext(selectedDate: string) {
+  return {
+    startedAtIso: `${selectedDate}T00:00:00.000Z`,
+    timeZone: 'Asia/Tokyo',
+    currentDate: selectedDate,
+    currentTime: '00:00',
+    notBeforeDate: selectedDate,
+    notBeforeTime: '00:00',
+    weekStartsOn: 'monday' as const,
+  };
+}
+
+function executeWeeklyPlanningStableV5RuntimeTurn(input: DirectRuntimeTestInput) {
+  return executeWeeklyPlanningStableV5RuntimeTurnStrict({
+    ...input,
+    requestContext: input.requestContext ?? testRequestContext(input.selectedDate),
+  });
+}
 
 describe('Stable V5 runtime executor', () => {
   beforeEach(() => {
