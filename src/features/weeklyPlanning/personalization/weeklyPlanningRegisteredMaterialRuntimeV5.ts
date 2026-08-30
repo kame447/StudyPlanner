@@ -23,13 +23,11 @@ export interface WeeklyPlanningRegisteredMaterialContextV5 {
   maxUnitsPerDay: number | null;
 }
 
-interface RegisteredMaterialRuntimeEntryV5 {
+interface RegisteredMaterialContextEntryV5 {
   context: WeeklyPlanningRegisteredMaterialContextV5;
   matchTerms: string[];
   updatedAt: string;
 }
-
-const runtimeMaterials = new Map<string, RegisteredMaterialRuntimeEntryV5[]>();
 
 function normalizedLookupText(value: string | null | undefined): string {
   return (value ?? '')
@@ -56,7 +54,7 @@ function uniqueAliases(values: readonly string[] | undefined): string[] {
   return aliases;
 }
 
-function createEntry(material: StudyMaterial): RegisteredMaterialRuntimeEntryV5 | null {
+function createEntry(material: StudyMaterial): RegisteredMaterialContextEntryV5 | null {
   if (material.status === 'archived') return null;
   const name = material.name.trim();
   if (!name) return null;
@@ -95,25 +93,11 @@ function createEntry(material: StudyMaterial): RegisteredMaterialRuntimeEntryV5 
   };
 }
 
-export function setWeeklyPlanningRegisteredMaterialRuntimeV5(params: {
-  ownerId: string;
+export function createWeeklyPlanningRegisteredMaterialContextV5(params: {
   materials: readonly StudyMaterial[];
-}): void {
-  const ownerId = params.ownerId.trim();
-  if (!ownerId) return;
-  const entries = params.materials
-    .map(createEntry)
-    .filter((entry): entry is RegisteredMaterialRuntimeEntryV5 => entry !== null);
-  runtimeMaterials.set(ownerId, entries);
-}
-
-export function getWeeklyPlanningRegisteredMaterialContextV5(params: {
-  ownerId: string;
   userText?: string;
   limit?: number;
 }): WeeklyPlanningRegisteredMaterialContextV5[] {
-  const ownerId = params.ownerId.trim();
-  if (!ownerId) return [];
   const query = normalizedLookupText(params.userText);
   const limit = Math.max(
     0,
@@ -124,8 +108,9 @@ export function getWeeklyPlanningRegisteredMaterialContextV5(params: {
   );
   if (limit === 0) return [];
 
-  return (runtimeMaterials.get(ownerId) ?? [])
-    .slice()
+  return params.materials
+    .map(createEntry)
+    .filter((entry): entry is RegisteredMaterialContextEntryV5 => entry !== null)
     .sort((left, right) => {
       const leftMatched = Boolean(query) && left.matchTerms.some((term) => query.includes(term));
       const rightMatched = Boolean(query) && right.matchTerms.some((term) => query.includes(term));
@@ -137,8 +122,4 @@ export function getWeeklyPlanningRegisteredMaterialContextV5(params: {
     })
     .slice(0, limit)
     .map((entry) => structuredClone(entry.context));
-}
-
-export function clearWeeklyPlanningRegisteredMaterialRuntimeV5(ownerId: string): void {
-  runtimeMaterials.delete(ownerId.trim());
 }
