@@ -98,6 +98,16 @@ Update the checkpoint after meaningful milestones and before intentionally handi
 - If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
 - Never weaken a test, hide an error, or change an assertion solely to make CI green.
 
+### Explanation and reporting clarity
+
+- When explaining implementation, architecture, bugs, refactors, or progress to the user, start with product concepts, responsibility boundaries, data flow, and observable behavior.
+- Do not make raw variable, function, class, file, or internal field names the primary explanation unless the user explicitly asks for code-level detail.
+- Prefer plain domain language first, such as "the current bookshelf data is passed directly into the planning turn", before introducing implementation identifiers.
+- Introduce concrete identifiers only after the concept is clear and only when they improve traceability, debugging, or review.
+- If a technical term or acronym is necessary, explain its meaning on first use unless the user has already established that vocabulary.
+- Progress and final summaries should prioritize: what was wrong, what responsibility or flow changed, why the new structure is safer or clearer, and what remains. Put low-level implementation names after that explanation rather than in place of it.
+- Do not oversimplify away important behavior or uncertainty. The goal is conceptual clarity first, implementation detail second.
+
 ## Project overview
 
 This project is a study planning support web app.
