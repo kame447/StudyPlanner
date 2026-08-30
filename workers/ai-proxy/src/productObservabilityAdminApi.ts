@@ -2,6 +2,7 @@ import type { ObservabilityEnvironment } from '../../../shared/productObservabil
 import type { FirestoreOrderedCursor } from './firestoreServiceAccountClient';
 import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
 import { ProductObservabilityAdminAnalysisService } from './productObservabilityAdminAnalysisService';
+import { ProductObservabilityAdminPlanningAnalysisService } from './productObservabilityAdminPlanningAnalysisService';
 import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
@@ -11,6 +12,7 @@ export const PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH = '/observability/admin/o
 export const PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH = '/observability/admin/users';
 export const PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH = '/observability/admin/user-identity';
 export const PRODUCT_OBSERVABILITY_ADMIN_AI_PATH = '/observability/admin/ai';
+export const PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH = '/observability/admin/planning';
 
 export interface ProductObservabilityAdminApiEnv extends ProductObservabilityReadModelEnv {
   FIREBASE_WEB_API_KEY: string;
@@ -159,7 +161,8 @@ export function isProductObservabilityAdminPath(pathname: string): boolean {
   return pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH
-    || pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH;
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH;
 }
 
 export async function handleProductObservabilityAdminApi(
@@ -181,6 +184,7 @@ export async function handleProductObservabilityAdminApi(
   const url = new URL(request.url);
   const readModel = new ProductObservabilityReadModelService(env);
   const analysis = new ProductObservabilityAdminAnalysisService(env);
+  const planningAnalysis = new ProductObservabilityAdminPlanningAnalysisService(env);
   try {
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH) {
       const fromDate = url.searchParams.get('from')?.trim() ?? '';
@@ -197,6 +201,17 @@ export async function handleProductObservabilityAdminApi(
       const fromDate = url.searchParams.get('from')?.trim() ?? '';
       const toDate = url.searchParams.get('to')?.trim() ?? '';
       const result = await analysis.getAiAnalysis({
+        environment: environmentFrom(url.searchParams.get('environment'), env),
+        fromDate,
+        toDate,
+      });
+      return jsonResponse(request, env, 200, { ok: true, result });
+    }
+
+    if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH) {
+      const fromDate = url.searchParams.get('from')?.trim() ?? '';
+      const toDate = url.searchParams.get('to')?.trim() ?? '';
+      const result = await planningAnalysis.getPlanningAnalysis({
         environment: environmentFrom(url.searchParams.get('environment'), env),
         fromDate,
         toDate,
