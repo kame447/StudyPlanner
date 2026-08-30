@@ -79,7 +79,16 @@ describe('actual-backed calibration → scheduler input integration', () => {
     )).toBe(true);
   });
 
-  it('does not inherit calibration when the current turn supplies none', () => {
+  it('does not inherit calibration from a prior compile when the current turn supplies none', () => {
+    const calibrated = compileGenericSchedulerInput({
+      graph: graph(),
+      context: { ...context, ownerId: 'owner-a' },
+      estimateCalibrationMultiplier: 1.5,
+    });
+    expect(calibrated.input?.movableWorkItems.every(
+      (item) => item.calibrationMultiplier === 1.5,
+    )).toBe(true);
+
     const result = compileGenericSchedulerInput({
       graph: graph(),
       context: { ...context, ownerId: 'owner-b' },
