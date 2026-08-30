@@ -4,7 +4,6 @@ import { resolveActiveTimetableTerm } from './timetableTerm';
 
 function term(params: Partial<TimetableTerm> & Pick<TimetableTerm, 'id'>): TimetableTerm {
   return {
-    id: params.id,
     userId: 'user-1',
     year: 2026,
     kind: 'fullYear',
@@ -13,6 +12,7 @@ function term(params: Partial<TimetableTerm> & Pick<TimetableTerm, 'id'>): Timet
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...params,
+    id: params.id,
   };
 }
 
