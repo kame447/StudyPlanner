@@ -1,7 +1,7 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-08-27
+Updated: 2026-08-30
 
 This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
 
@@ -14,6 +14,8 @@ Current durable records:
 - `20260731-trace-privacy-and-lifecycle.md` — Issue #45
 
 Issue-only active scopes such as #52, #128, #152 and #160 do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
+
+Issue #246 is a special case where product/runtime requirements are intentionally canonicalized in [`../spec/learning-consultation-and-advice.md`](../spec/learning-consultation-and-advice.md) before implementation. Do not create another `work/` Markdown that copies that requirement. Use Issue #246 for implementation tracking/checkpoints and keep the stable requirement in the canonical spec.
 
 Cross-domain Issue #164 belongs to [`../../client-runtime/`](../../client-runtime/README.md).
 
