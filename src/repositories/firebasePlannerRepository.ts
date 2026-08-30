@@ -22,6 +22,7 @@ import type {
   TimetableTerm,
   TodoTask,
 } from '../types/domain';
+import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type { PlannerRepository } from './repositoryContracts';
 import {
   dedupeLinkedActualRecords,
@@ -220,6 +221,20 @@ async function upsertActualDocument(
   return nextActual;
 }
 
+
+function assertMutationOwner(userId: string, mutation: RecurringPlanMutation): void {
+  const records = [
+    ...mutation.planUpserts,
+    ...mutation.planDeletes,
+    ...mutation.actualUpserts,
+    ...mutation.actualDeletes,
+  ];
+
+  if (records.some((record) => record.userId !== userId)) {
+    throw new Error('Recurring plan mutation contains records owned by another user.');
+  }
+}
+
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
 ): PlannerRepository {
@@ -361,6 +376,68 @@ export function createFirebasePlannerRepository(
           normalizeErrorMessage(
             '時間割の時限設定を取得できませんでした。',
             error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async applyRecurringPlanMutation(userId, mutation) {
+      try {
+        assertMutationOwner(userId, mutation);
+        const reboundIds = new Set(
+          mutation.actualUpserts.map((actual) => actual.id),
+        );
+        const linkedActuals = (
+          await Promise.all(
+            mutation.planDeletes.map((plan) =>
+              listActualsByPlanId(firestoreDb, userId, plan.id),
+            ),
+          )
+        ).flat();
+        const actualDeletesById = new Map(
+          [...mutation.actualDeletes, ...linkedActuals]
+            .filter((actual) => !reboundIds.has(actual.id))
+            .map((actual) => [actual.id, actual]),
+        );
+        const operationCount =
+          mutation.planUpserts.length +
+          mutation.planDeletes.length +
+          mutation.actualUpserts.length +
+          actualDeletesById.size;
+
+        if (operationCount > 500) {
+          throw new Error('Recurring plan mutation exceeds the Firestore batch limit.');
+        }
+        if (operationCount === 0) {
+          return;
+        }
+
+        const batch = writeBatch(firestoreDb);
+        mutation.planUpserts.forEach((plan) => {
+          batch.set(
+            doc(firestoreDb, 'plans', plan.id),
+            stripUndefinedDeep(plan),
+            { merge: true },
+          );
+        });
+        mutation.planDeletes.forEach((plan) => {
+          batch.delete(doc(firestoreDb, 'plans', plan.id));
+        });
+        mutation.actualUpserts.forEach((actual) => {
+          batch.set(
+            doc(firestoreDb, 'actuals', actual.id),
+            stripUndefinedDeep(actual),
+            { merge: true },
+          );
+        });
+        actualDeletesById.forEach((actual) => {
+          batch.delete(doc(firestoreDb, 'actuals', actual.id));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '繰り返し予定を保存できませんでした。',
+            error as FirebaseLikeError,
           ),
         );
       }

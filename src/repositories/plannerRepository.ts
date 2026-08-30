@@ -1,3 +1,5 @@
+import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
+import type { Actual, Plan } from '../types/domain';
 import type {
   PlannerRepository,
   PlannerStorageGateway,
@@ -8,6 +10,54 @@ import {
   replaceById,
   upsertActualRecord,
 } from './repositoryUtils';
+
+
+function assertMutationOwner(userId: string, mutation: RecurringPlanMutation): void {
+  const records = [
+    ...mutation.planUpserts,
+    ...mutation.planDeletes,
+    ...mutation.actualUpserts,
+    ...mutation.actualDeletes,
+  ];
+
+  if (records.some((record) => record.userId !== userId)) {
+    throw new Error('Recurring plan mutation contains records owned by another user.');
+  }
+}
+
+function applyPlanMutation(
+  current: Plan[],
+  mutation: RecurringPlanMutation,
+): Plan[] {
+  const deleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+  return mutation.planUpserts.reduce(
+    (records, plan) => replaceById(records, plan),
+    current.filter((plan) => !deleteIds.has(plan.id)),
+  );
+}
+
+function applyActualMutation(
+  current: Actual[],
+  mutation: RecurringPlanMutation,
+): Actual[] {
+  const planDeleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+  const actualDeleteIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
+  const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
+  const remaining = current.filter(
+    (actual) =>
+      reboundIds.has(actual.id) ||
+      (!actualDeleteIds.has(actual.id) &&
+        (!actual.planId || !planDeleteIds.has(actual.planId))),
+  );
+  return mutation.actualUpserts.reduce(
+    (records, actual) => upsertActualRecord(records, actual),
+    remaining,
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function createPlannerRepository(
   storageGateway: PlannerStorageGateway,
@@ -44,6 +94,46 @@ export function createPlannerRepository(
     },
     async getTimetablePeriods(userId) {
       return filterByUserId(await storageGateway.readTimetablePeriods(), userId);
+    },
+    async applyRecurringPlanMutation(userId, mutation) {
+      assertMutationOwner(userId, mutation);
+      const hasPlanChanges =
+        mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
+      const hasActualChanges =
+        mutation.actualUpserts.length > 0 ||
+        mutation.actualDeletes.length > 0 ||
+        mutation.planDeletes.length > 0;
+
+      if (!hasPlanChanges && !hasActualChanges) {
+        return;
+      }
+
+      const previousPlans = await storageGateway.readPlans();
+      const previousActuals = await storageGateway.readActuals();
+      const nextPlans = applyPlanMutation(previousPlans, mutation);
+      const nextActuals = applyActualMutation(previousActuals, mutation);
+      let plansWritten = false;
+
+      try {
+        if (hasPlanChanges) {
+          await storageGateway.writePlans(nextPlans);
+          plansWritten = true;
+        }
+        if (hasActualChanges) {
+          await storageGateway.writeActuals(nextActuals);
+        }
+      } catch (error) {
+        if (plansWritten && hasActualChanges) {
+          try {
+            await storageGateway.writePlans(previousPlans);
+          } catch (rollbackError) {
+            throw new Error(
+              `Recurring plan mutation failed (${errorText(error)}) and local rollback failed (${errorText(rollbackError)}).`,
+            );
+          }
+        }
+        throw error;
+      }
     },
     async upsertPlan(plan) {
       const nextPlans = replaceById(await storageGateway.readPlans(), plan);

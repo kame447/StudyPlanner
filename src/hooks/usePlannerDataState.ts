@@ -21,12 +21,11 @@ import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecur
 import { sortMonthEvents } from '../lib/monthEvents';
 import { applyMaterialProgressUpdates } from '../lib/materialPace';
 import { plannerRepository } from '../repositories';
+import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
-  applyRecurringPlanDeleteScope,
-  applyRecurringPlanEditScope,
-  applyRecurringPlanSeriesEdit,
-  supportsScopedRecurringPlanEdits,
-} from '../domain/recurringPlan';
+  buildRecurringPlanDeleteMutation,
+  buildRecurringPlanEditMutation,
+} from '../domain/recurringPlanMutation';
 import {
   createActualFromDraft,
   createDayNoteFromDraft,
@@ -133,16 +132,6 @@ function summarizePlanForLog(plan: Plan) {
     hasOverrides: plan.recurrenceRules.some(
       (rule) => rule.isOverride || rule.kind === 'date',
     ),
-  };
-}
-
-function summarizeActualForLog(actual: Actual) {
-  return {
-    id: actual.id,
-    userId: actual.userId,
-    planId: actual.planId,
-    occurrenceDate: actual.occurrenceDate,
-    title: actual.title,
   };
 }
 
@@ -272,11 +261,6 @@ export function usePlannerDataState({
         current,
       ),
     );
-  }
-
-  function removePlansByIds(current: Plan[], planIds: string[]): Plan[] {
-    const idSet = new Set(planIds);
-    return current.filter((plan) => !idSet.has(plan.id));
   }
 
   function upsertActualsById(current: Actual[], nextActuals: Actual[]): Actual[] {
@@ -490,188 +474,65 @@ export function usePlannerDataState({
     const occurrenceDate = occurrencePlan.occurrenceDate ?? occurrencePlan.date;
 
     try {
-      if (pendingRecurringPlanAction.kind === 'edit') {
-        const draft = pendingRecurringPlanAction.draft;
-
-        if (!draft) {
-          return;
-        }
-
-        if (scope === 'all') {
-          const seriesPlans = plans.filter(
-            (plan) => plan.seriesId === sourcePlan.seriesId,
-          );
-          const updatedPlans = seriesPlans.map((plan) =>
-            applyRecurringPlanSeriesEdit(plan, draft),
-          );
-
-          await runSequentially(updatedPlans, async (plan) => {
-            await plannerRepository.upsertPlan(plan);
-          });
-          setPlans((current) => sortAndUpsertPlans(current, updatedPlans));
-          setSelectedDate(occurrenceDate);
-          setMonthDate(startOfMonth(occurrenceDate));
-          setPendingRecurringPlanAction(null);
-          closePlanEditor();
-          showNotice('繰り返し予定を更新しました。', 'success');
-          return;
-        }
-
-        const editResult = applyRecurringPlanEditScope(
-          sourcePlan,
-          occurrenceDate,
-          draft,
-          scope,
-        );
-        const migratedActuals =
-          scope === 'future' && editResult.createdPlan
-            ? actuals
-                .filter(
-                  (actual) =>
-                    actual.planId === sourcePlan.id &&
-                    actual.occurrenceDate.localeCompare(occurrenceDate) >= 0,
-                )
-                .map((actual) => ({
-                  ...actual,
-                  planId: editResult.createdPlan?.id ?? actual.planId,
-                }))
-            : [];
-        const deletedPlanIds =
-          editResult.updatedPlan === null ? [sourcePlan.id] : [];
-
-        if (editResult.createdPlan) {
-          await plannerRepository.upsertPlan(editResult.createdPlan);
-        }
-
-        if (editResult.updatedPlan) {
-          await plannerRepository.upsertPlan(editResult.updatedPlan);
-        }
-
-        const savedMigratedActuals: Actual[] = [];
-
-        if (migratedActuals.length > 0) {
-          await runSequentially(migratedActuals, async (actual) => {
-            savedMigratedActuals.push(await plannerRepository.upsertActual(actual));
-          });
-        }
-
-        if (editResult.updatedPlan === null) {
-          await plannerRepository.deletePlan(userId, sourcePlan.id);
-        }
-
-        setPlans((current) => {
-          const withoutDeleted = removePlansByIds(current, deletedPlanIds);
-          const nextPlans = [
-            ...(editResult.updatedPlan ? [editResult.updatedPlan] : []),
-            ...(editResult.createdPlan ? [editResult.createdPlan] : []),
-          ];
-          return sortAndUpsertPlans(withoutDeleted, nextPlans);
-        });
-        setActuals((current) => upsertActualsById(current, savedMigratedActuals));
-        setSelectedDate(occurrenceDate);
-        setMonthDate(startOfMonth(occurrenceDate));
-        setPendingRecurringPlanAction(null);
-        closePlanEditor();
-        showNotice('繰り返し予定を更新しました。', 'success');
-        return;
-      }
-
-      if (scope === 'all') {
-        const seriesPlans = plans.filter(
-          (plan) =>
-            plan.seriesId === sourcePlan.seriesId && plan.userId === userId,
-        );
-        const skippedPlans = plans.filter(
-          (plan) =>
-            plan.seriesId === sourcePlan.seriesId && plan.userId !== userId,
-        );
-        const seriesPlanIds = seriesPlans.map((plan) => plan.id);
-        const seriesActuals = actuals.filter(
-          (actual) =>
-            actual.userId === userId &&
-            typeof actual.planId === 'string' &&
-            seriesPlanIds.includes(actual.planId),
-        );
-
-        console.info('[RecurringPlanScope] delete-all targets', {
-          source:
-            editingPlanId && editingPlanId === sourcePlan.id
-              ? 'plan-editor'
-              : 'plan-card',
-          action: 'delete',
-          scope,
-          userId,
-          sourcePlanId: sourcePlan.id,
-          sourceSeriesId: sourcePlan.seriesId,
-          plans: seriesPlans.map(summarizePlanForLog),
-          actuals: seriesActuals.map(summarizeActualForLog),
-          skippedPlans: skippedPlans.map(summarizePlanForLog),
-        });
-
-        await runSequentially(seriesPlanIds, async (planId) => {
-          console.info('[RecurringPlanScope] delete-all operation', {
-            collection: 'plans',
-            operation: 'delete-series-plan',
-            planId,
-            scope,
-            seriesId: sourcePlan.seriesId,
-          });
-          try {
-            await plannerRepository.deletePlan(userId, planId);
-          } catch (error) {
-            console.error('[RecurringPlanScope] delete-all operation failed', {
-              collection: 'plans',
-              operation: 'delete-series-plan',
-              planId,
+      const mutation =
+        pendingRecurringPlanAction.kind === 'edit'
+          ? pendingRecurringPlanAction.draft
+            ? buildRecurringPlanEditMutation(
+                plans,
+                actuals,
+                sourcePlan,
+                occurrenceDate,
+                pendingRecurringPlanAction.draft,
+                scope,
+              )
+            : null
+          : buildRecurringPlanDeleteMutation(
+              plans,
+              actuals,
+              sourcePlan,
+              occurrenceDate,
               scope,
-              seriesId: sourcePlan.seriesId,
-              error: getErrorDiagnostics(error),
-            });
-            throw error;
-          }
-        });
-        setPlans((current) => removePlansByIds(current, seriesPlanIds));
-        setActuals((current) =>
-          current.filter(
-            (actual) => !actual.planId || !seriesPlanIds.includes(actual.planId),
-          ),
-        );
-        setPendingRecurringPlanAction(null);
-        closePlanEditor();
-        showNotice('繰り返し予定を削除しました。');
+            );
+
+      if (!mutation) {
         return;
       }
 
-      const nextPlan = applyRecurringPlanDeleteScope(sourcePlan, occurrenceDate, scope);
-      const actualsToDelete = actuals.filter(
-        (actual) =>
-          actual.planId === sourcePlan.id &&
-          (scope === 'single'
-            ? actual.occurrenceDate === occurrenceDate
-            : actual.occurrenceDate.localeCompare(occurrenceDate) >= 0),
+      await plannerRepository.applyRecurringPlanMutation(userId, mutation);
+      const deletedPlanIds = new Set(
+        mutation.planDeletes.map((plan) => plan.id),
       );
-
-      if (nextPlan) {
-        await plannerRepository.upsertPlan(nextPlan);
-        await runSequentially(actualsToDelete, async (actual) => {
-          await plannerRepository.deleteActual(userId, actual.id);
-        });
-        setPlans((current) => sortAndUpsertPlans(current, [nextPlan]));
-      } else {
-        await plannerRepository.deletePlan(userId, sourcePlan.id);
-        setPlans((current) => removePlansByIds(current, [sourcePlan.id]));
-      }
-
-      setActuals((current) =>
-        current.filter(
-          (actual) =>
-            !actualsToDelete.some((candidate) => candidate.id === actual.id) &&
-            !(nextPlan === null && actual.planId === sourcePlan.id),
+      const deletedActualIds = new Set(
+        mutation.actualDeletes.map((actual) => actual.id),
+      );
+      setPlans((current) =>
+        sortAndUpsertPlans(
+          current.filter((plan) => !deletedPlanIds.has(plan.id)),
+          mutation.planUpserts,
         ),
       );
+      setActuals((current) =>
+        upsertActualsById(
+          current.filter(
+            (actual) =>
+              !deletedActualIds.has(actual.id) &&
+              (!actual.planId || !deletedPlanIds.has(actual.planId)),
+          ),
+          mutation.actualUpserts,
+        ),
+      );
+
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        setSelectedDate(occurrenceDate);
+        setMonthDate(startOfMonth(occurrenceDate));
+      }
       setPendingRecurringPlanAction(null);
       closePlanEditor();
-      showNotice('繰り返し予定を削除しました。');
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        showNotice('繰り返し予定を更新しました。', 'success');
+      } else {
+        showNotice('繰り返し予定を削除しました。');
+      }
     } catch (error) {
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
