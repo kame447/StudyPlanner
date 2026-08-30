@@ -6,6 +6,11 @@ describe('admin route resolution', () => {
     expect(resolveAdminRoute('/admin')).toEqual({ type: 'overview' });
   });
 
+  it('resolves the analytics top-level routes', () => {
+    expect(resolveAdminRoute('/admin/ai')).toEqual({ type: 'ai-api' });
+    expect(resolveAdminRoute('/admin/planning')).toEqual({ type: 'planning' });
+  });
+
   it('resolves the user list and decoded user detail routes', () => {
     expect(resolveAdminRoute('/admin/users')).toEqual({ type: 'users' });
     expect(resolveAdminRoute('/admin/users/user%40example.com')).toEqual({

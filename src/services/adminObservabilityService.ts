@@ -6,6 +6,7 @@ import type {
   ObservabilityUserInvestigationReadModel,
 } from '../../shared/productObservabilityAdminReadModel';
 import type { ObservabilityOverviewReadModel } from '../../shared/productObservabilityReadModel';
+import type { ObservabilityPlanningAnalysisReadModel } from '../../shared/productObservabilityPlanningReadModel';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 
@@ -76,6 +77,23 @@ export async function getAdminObservabilityAiAnalysis(params: {
   });
   const payload = await adminGet<{ ok: true; result: ObservabilityAiAnalysisReadModel }>(
     '/observability/admin/ai',
+    query,
+  );
+  return payload.result;
+}
+
+export async function getAdminObservabilityPlanningAnalysis(params: {
+  fromDate: string;
+  toDate: string;
+  environment?: ObservabilityEnvironment;
+}): Promise<ObservabilityPlanningAnalysisReadModel> {
+  const query = new URLSearchParams({
+    from: params.fromDate,
+    to: params.toDate,
+    ...(params.environment ? { environment: params.environment } : {}),
+  });
+  const payload = await adminGet<{ ok: true; result: ObservabilityPlanningAnalysisReadModel }>(
+    '/observability/admin/planning',
     query,
   );
   return payload.result;
