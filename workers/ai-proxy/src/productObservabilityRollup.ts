@@ -1,4 +1,8 @@
-import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
+import type {
+  ObservabilityEnvironment,
+  PlanningOutcomeMetricPayload,
+  StoredObservabilityEvent,
+} from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   type ObservabilityActiveUserDirtySource,
@@ -8,6 +12,10 @@ import {
   type ObservabilityRollupCursor,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
+import type {
+  ObservabilityPlanningDailyCohort,
+  ObservabilityPlanningSessionSummary,
+} from '../../../shared/productObservabilityPlanningReadModel';
 import {
   FirestoreServiceAccountClient,
   FirestoreTransactionConflictError,
@@ -15,6 +23,14 @@ import {
   type FirestoreServiceAccountEnv,
   type FirestoreTransactionDocumentWrite,
 } from './firestoreServiceAccountClient';
+import {
+  PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
+  PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
+  planningDailyCohortDocumentId,
+  planningSessionDocumentId,
+  projectPlanningDailyCohort,
+  projectPlanningSessionSummary,
+} from './productObservabilityPlanningProjection';
 import {
   observabilityReportingDate,
   projectActorDay,
@@ -240,6 +256,9 @@ function failureCategory(error: unknown): string {
   if (error instanceof FirestoreTransactionConflictError) return 'transaction_conflict';
   if (error instanceof Error && error.message === 'invalid_observability_event') {
     return 'invalid_event';
+  }
+  if (error instanceof Error && error.message.startsWith('invalid_planning_')) {
+    return 'planning_projection_invalid';
   }
   if (error instanceof Error && error.message === 'active_user_dirty_sources_overflow') {
     return 'active_user_dirty_sources_overflow';
@@ -483,6 +502,48 @@ export class ProductObservabilityRollupEngine {
             rollupId,
             nextDaily as unknown as Record<string, unknown>,
           );
+
+          if (event.eventType === 'planning_outcome') {
+            const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
+            const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
+            if (!featureSessionId) throw new Error('invalid_planning_session_event');
+            const sessionId = planningSessionDocumentId(event.environment, featureSessionId);
+            const sessionBefore = withoutStorageId<ObservabilityPlanningSessionSummary>(
+              await read(PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION, sessionId),
+            );
+            const nextSession = projectPlanningSessionSummary({
+              current: sessionBefore,
+              event: planningEvent,
+              nowIso: runStartedAt,
+            });
+            const cohortDates = new Set<string>();
+            if (sessionBefore?.startedDate) cohortDates.add(sessionBefore.startedDate);
+            if (nextSession.startedDate) cohortDates.add(nextSession.startedDate);
+            for (const cohortDate of cohortDates) {
+              const cohortId = planningDailyCohortDocumentId(event.environment, cohortDate);
+              const cohortBefore = withoutStorageId<ObservabilityPlanningDailyCohort>(
+                await read(PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION, cohortId),
+              );
+              const nextCohort = projectPlanningDailyCohort({
+                current: cohortBefore,
+                previousSession: sessionBefore,
+                nextSession,
+                environment: event.environment,
+                cohortDate,
+                nowIso: runStartedAt,
+              });
+              stage(
+                PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
+                cohortId,
+                nextCohort as unknown as Record<string, unknown>,
+              );
+            }
+            stage(
+              PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
+              sessionId,
+              nextSession as unknown as Record<string, unknown>,
+            );
+          }
 
           const summaryCollection = userSummaryCollection(event);
           const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
