@@ -37,6 +37,7 @@ function material(overrides: Partial<StudyMaterial> = {}): StudyMaterial {
 describe('weekly planning registered material context V5', () => {
   it('prioritizes an alias mentioned in the current turn and exposes only planning-relevant facts', () => {
     const [matched, other] = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
       materials: [
         material({
           id: 'material-other',
@@ -76,6 +77,7 @@ describe('weekly planning registered material context V5', () => {
       }),
     );
     const contexts = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
       materials: [
         ...activeMaterials,
         material({ id: 'archived', name: '使っていない教材', status: 'archived' }),
@@ -87,10 +89,24 @@ describe('weekly planning registered material context V5', () => {
   });
 
   it('uses only the current explicit material snapshot and never retains a previous one', () => {
-    const first = createWeeklyPlanningRegisteredMaterialContextV5({ materials: [material()] });
+    const first = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [material()],
+    });
     expect(first[0]?.materialId).toBe('material-1');
 
-    const second = createWeeklyPlanningRegisteredMaterialContextV5({ materials: [] });
+    const second = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [],
+    });
     expect(second).toEqual([]);
+  });
+
+  it('filters another owner material even when it is present in the provided snapshot', () => {
+    const contexts = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [material({ userId: 'different-owner' })],
+    });
+    expect(contexts).toEqual([]);
   });
 });
