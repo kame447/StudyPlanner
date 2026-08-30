@@ -43,12 +43,6 @@ import type {
 export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
 const RECENT_TURN_LIMIT = 4;
-const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
-  'AIに接続できなかったため',
-  '入力内容は保持していますが、予定条件の構造化処理に失敗しました',
-  '直前の会話状態とAIの構造化結果が一致しなかったため',
-  '同じ送信はすでに処理済みのため',
-] as const;
 
 function questionCode(result: WeeklyPlanningTurnExecutionResult): string | null {
   const targetSlot = result.state.lastQuestionContext?.targetSlot;
@@ -71,10 +65,10 @@ function dialogueActionKind(
   return 'status';
 }
 
-function isSystemResult(result: WeeklyPlanningTurnExecutionResult): boolean {
-  return Boolean(result.failure)
-    || result.responseSource === 'system'
-    || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
+export function isWeeklyPlanningStableV5SystemResult(
+  result: Pick<WeeklyPlanningTurnExecutionResult, 'failure' | 'responseSource'>,
+): boolean {
+  return Boolean(result.failure) || result.responseSource === 'system';
 }
 
 function selfRepairNotice(params: {
@@ -292,7 +286,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
 }): Promise<WeeklyPlanningTurnExecutionResult> {
-  if (isSystemResult(params.result)) {
+  if (isWeeklyPlanningStableV5SystemResult(params.result)) {
     const dialogueRendererTrace = createWeeklyPlanningSystemDialogueRendererTrace(
       params.result.message,
     );
