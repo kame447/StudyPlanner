@@ -53,8 +53,9 @@ jobs:
               output = []
               inserted = 0
               for index, line in enumerate(lines):
-                  if 'traceRequestId:' in line:
-                      window = ''.join(lines[max(0, index - 12):index])
+                  stripped = line.strip()
+                  if stripped.startswith('traceRequestId:') or stripped == 'traceRequestId,':
+                      window = ''.join(lines[max(0, index - 20):index])
                       if 'conversationId:' in window and 'scheduleTemplates:' in window:
                           indent = line[:len(line) - len(line.lstrip())]
                           if not output or 'requestContext:' not in output[-1]:
