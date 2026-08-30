@@ -35,172 +35,63 @@ jobs:
                   raise SystemExit(f'{label}: expected 1 match, got {count}')
               p.write_text(text.replace(old, new), encoding='utf-8')
 
-          # App -> weekly planning hook
-          replace(
-              'src/App.tsx',
-              '    actuals,\n    scheduleTemplates,\n',
-              '    actuals,\n    studyMaterials,\n    scheduleTemplates,\n',
-              'App weekly planning materials input',
-          )
+          replace('src/App.tsx', '    actuals,\n    scheduleTemplates,\n', '    actuals,\n    studyMaterials,\n    scheduleTemplates,\n', 'App weekly planning materials input')
 
-          # Hook boundary
           p = Path('src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts')
           text = p.read_text(encoding='utf-8')
-          text = text.replace(
-              '  ScheduleTemplate,\n  TimetableTerm,\n',
-              '  ScheduleTemplate,\n  StudyMaterial,\n  TimetableTerm,\n',
-              1,
-          )
-          text = text.replace(
-              '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              1,
-          )
-          text = text.replace(
-              '  actuals = [],\n  scheduleTemplates,\n',
-              '  actuals = [],\n  studyMaterials = [],\n  scheduleTemplates,\n',
-              1,
-          )
-          text = text.replace(
-              '      actuals,\n      scheduleTemplates,\n',
-              '      actuals,\n      studyMaterials,\n      scheduleTemplates,\n',
-              1,
-          )
+          text = text.replace('  ScheduleTemplate,\n  TimetableTerm,\n', '  ScheduleTemplate,\n  StudyMaterial,\n  TimetableTerm,\n', 1)
+          text = text.replace('  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n', '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n', 1)
+          text = text.replace('  actuals = [],\n  scheduleTemplates,\n', '  actuals = [],\n  studyMaterials = [],\n  scheduleTemplates,\n', 1)
+          text = text.replace('      actuals,\n      scheduleTemplates,\n', '      actuals,\n      studyMaterials,\n      scheduleTemplates,\n', 1)
           p.write_text(text, encoding='utf-8')
 
-          # Application turn
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts',
-              "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';",
-              "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';",
-              'turn application import',
-          )
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts',
-              '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              'turn application interface',
-          )
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts',
-              '        actuals: params.actuals,\n        scheduleTemplates: params.scheduleTemplates,\n',
-              '        actuals: params.actuals,\n        studyMaterials: params.studyMaterials,\n        scheduleTemplates: params.scheduleTemplates,\n',
-              'turn application gateway input',
-          )
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts', "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';", "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';", 'turn application import')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts', '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n', '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n', 'turn application interface')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts', '        actuals: params.actuals,\n        scheduleTemplates: params.scheduleTemplates,\n', '        actuals: params.actuals,\n        studyMaterials: params.studyMaterials,\n        scheduleTemplates: params.scheduleTemplates,\n', 'turn application gateway input')
 
-          # Runtime gateway
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts',
-              "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';",
-              "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';",
-              'runtime gateway import',
-          )
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts',
-              '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              'runtime gateway interface',
-          )
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts',
-              '        actuals: params.actuals,\n        scheduleTemplates: params.scheduleTemplates,\n',
-              '        actuals: params.actuals,\n        studyMaterials: params.studyMaterials,\n        scheduleTemplates: params.scheduleTemplates,\n',
-              'runtime gateway executor input',
-          )
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts', "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';", "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';", 'runtime gateway import')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts', '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n', '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n', 'runtime gateway interface')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts', '        actuals: params.actuals,\n        scheduleTemplates: params.scheduleTemplates,\n', '        actuals: params.actuals,\n        studyMaterials: params.studyMaterials,\n        scheduleTemplates: params.scheduleTemplates,\n', 'runtime gateway executor input')
 
-          # Public execution input
-          replace(
-              'src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes.ts',
-              "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../types/domain';",
-              "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../types/domain';",
-              'execution types import',
-          )
-          replace(
-              'src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes.ts',
-              '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              'execution types interface',
-          )
+          replace('src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes.ts', "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../types/domain';", "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../types/domain';", 'execution types import')
+          replace('src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes.ts', '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n', '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n', 'execution types interface')
+          replace('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts', '    actuals: input.actuals,\n    scheduleTemplates: input.scheduleTemplates,\n', '    actuals: input.actuals,\n    studyMaterials: input.studyMaterials,\n    scheduleTemplates: input.scheduleTemplates,\n', 'turn executor Stable V5 input')
 
-          # Public executor -> Stable V5
-          replace(
-              'src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts',
-              '    actuals: input.actuals,\n    scheduleTemplates: input.scheduleTemplates,\n',
-              '    actuals: input.actuals,\n    studyMaterials: input.studyMaterials,\n    scheduleTemplates: input.scheduleTemplates,\n',
-              'turn executor Stable V5 input',
-          )
+          replace('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeContracts.ts', "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';", "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';", 'Stable V5 contract import')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeContracts.ts', '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n', '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n', 'Stable V5 contract interface')
+          replace('src/features/weeklyPlanning/application/weeklyPlanningStableV5SemanticTurn.ts', '    currentDate: requestContext.currentDate,\n    userText: input.userText,\n', '    currentDate: requestContext.currentDate,\n    userText: input.userText,\n    studyMaterials: input.studyMaterials ?? [],\n', 'semantic turn material snapshot')
 
-          # Stable V5 runtime contract
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeContracts.ts',
-              "import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';",
-              "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';",
-              'Stable V5 contract import',
-          )
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeContracts.ts',
-              '  actuals?: Actual[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              '  actuals?: Actual[];\n  studyMaterials?: StudyMaterial[];\n  scheduleTemplates: ScheduleTemplate[];\n',
-              'Stable V5 contract interface',
-          )
-
-          # Semantic turn passes the exact snapshot to public summary
-          replace(
-              'src/features/weeklyPlanning/application/weeklyPlanningStableV5SemanticTurn.ts',
-              '    currentDate: requestContext.currentDate,\n    userText: input.userText,\n',
-              '    currentDate: requestContext.currentDate,\n    userText: input.userText,\n    studyMaterials: input.studyMaterials ?? [],\n',
-              'semantic turn material snapshot',
-          )
-
-          # Semantic public context consumes explicit materials
           p = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5SemanticContext.ts')
           text = p.read_text(encoding='utf-8')
-          text = text.replace(
-              "import {\n  getWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';",
-              "import type { StudyMaterial } from '../../../types/domain';\nimport {\n  createWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';",
-              1,
-          )
-          text = text.replace(
-              '  userText?: string;\n}): Record<string, unknown> {',
-              '  userText?: string;\n  studyMaterials?: readonly StudyMaterial[];\n}): Record<string, unknown> {',
-              1,
-          )
+          text = text.replace("import {\n  getWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';", "import type { StudyMaterial } from '../../../types/domain';\nimport {\n  createWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';", 1)
+          text = text.replace('  userText?: string;\n}): Record<string, unknown> {', '  userText?: string;\n  studyMaterials?: readonly StudyMaterial[];\n}): Record<string, unknown> {', 1)
           old = "    registeredMaterials: params.ownerId\n      ? getWeeklyPlanningRegisteredMaterialContextV5({\n          ownerId: params.ownerId,\n          userText: params.userText,\n        })\n      : [],"
-          new = "    registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({\n      materials: params.studyMaterials ?? [],\n      userText: params.userText,\n    }),"
+          new = "    registeredMaterials: params.ownerId\n      ? createWeeklyPlanningRegisteredMaterialContextV5({\n          ownerId: params.ownerId,\n          materials: params.studyMaterials ?? [],\n          userText: params.userText,\n        })\n      : [],"
           if text.count(old) != 1:
               raise SystemExit(f'semantic context registered materials: expected 1 match, got {text.count(old)}')
-          text = text.replace(old, new)
-          p.write_text(text, encoding='utf-8')
+          p.write_text(text.replace(old, new), encoding='utf-8')
 
-          # Dialogue renderer consumes the same exact turn snapshot
           p = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5TurnDialogue.ts')
           text = p.read_text(encoding='utf-8')
-          text = text.replace(
-              "import {\n  getWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';",
-              "import {\n  createWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';",
-              1,
-          )
+          text = text.replace("import {\n  getWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';", "import {\n  createWeeklyPlanningRegisteredMaterialContextV5,\n} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';", 1)
           old = "        registeredMaterials: getWeeklyPlanningRegisteredMaterialContextV5({\n          ownerId: params.input.userId,\n          userText: params.input.userText,\n        }),"
-          new = "        registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({\n          materials: params.input.studyMaterials ?? [],\n          userText: params.input.userText,\n        }),"
+          new = "        registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({\n          ownerId: params.input.userId,\n          materials: params.input.studyMaterials ?? [],\n          userText: params.input.userText,\n        }),"
           if text.count(old) != 1:
               raise SystemExit(f'dialogue registered materials: expected 1 match, got {text.count(old)}')
-          text = text.replace(old, new)
-          p.write_text(text, encoding='utf-8')
+          p.write_text(text.replace(old, new), encoding='utf-8')
 
-          # Remove React effect synchronization and hidden runtime imports
           p = Path('src/hooks/usePlannerAppState.ts')
           text = p.read_text(encoding='utf-8')
           old_import = "import {\n  clearWeeklyPlanningRegisteredMaterialRuntimeV5,\n  setWeeklyPlanningRegisteredMaterialRuntimeV5,\n} from '../features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5';\n"
           old_effect = "  useEffect(() => {\n    const ownerId = user?.id?.trim();\n    if (!ownerId) return;\n    setWeeklyPlanningRegisteredMaterialRuntimeV5({\n      ownerId,\n      materials: studyMaterials,\n    });\n    return () => clearWeeklyPlanningRegisteredMaterialRuntimeV5(ownerId);\n  }, [studyMaterials, user?.id]);\n\n"
           if text.count(old_import) != 1 or text.count(old_effect) != 1:
               raise SystemExit('usePlannerAppState hidden material runtime blocks did not match exactly')
-          text = text.replace(old_import, '').replace(old_effect, '')
-          p.write_text(text, encoding='utf-8')
+          p.write_text(text.replace(old_import, '').replace(old_effect, ''), encoding='utf-8')
           PY
       - name: Install dependencies
         run: npm ci
       - name: Run focused material projection tests
-        run: npx vitest run src/features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5.test.ts
+        run: npx vitest run src/features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5.test.ts src/features/weeklyPlanning/application/weeklyPlanningRegisteredMaterialSemanticContextV5.test.ts
       - name: Verify TypeScript contract
         run: npm run typecheck
       - name: Remove one-shot workflow
