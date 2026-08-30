@@ -1,0 +1,114 @@
+name: Apply Issue 248 Fix
+
+on:
+  push:
+    branches:
+      - fix/stable-v5-rendered-text-routing
+    paths:
+      - .github/workflows/tmp-issue248-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stable-v5-rendered-text-routing
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Apply typed routing fix and regression test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5TurnDialogue.ts')
+          text = path.read_text()
+          old = """const RECENT_TURN_LIMIT = 4;
+          const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
+            'AIに接続できなかったため',
+            '入力内容は保持していますが、予定条件の構造化処理に失敗しました',
+            '直前の会話状態とAIの構造化結果が一致しなかったため',
+            '同じ送信はすでに処理済みのため',
+          ] as const;
+          """
+          new = """const RECENT_TURN_LIMIT = 4;
+          """
+          if old not in text:
+              raise SystemExit('expected system-message prefix block not found')
+          text = text.replace(old, new, 1)
+
+          old_fn = """function isSystemResult(result: WeeklyPlanningTurnExecutionResult): boolean {
+            return Boolean(result.failure)
+              || result.responseSource === 'system'
+              || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
+          }
+          """
+          new_fn = """export function isWeeklyPlanningStableV5SystemResult(
+            result: Pick<WeeklyPlanningTurnExecutionResult, 'failure' | 'responseSource'>,
+          ): boolean {
+            return Boolean(result.failure) || result.responseSource === 'system';
+          }
+          """
+          if old_fn not in text:
+              raise SystemExit('expected isSystemResult implementation not found')
+          text = text.replace(old_fn, new_fn, 1)
+          text = text.replace(
+              '  if (isSystemResult(params.result)) {',
+              '  if (isWeeklyPlanningStableV5SystemResult(params.result)) {',
+              1,
+          )
+          path.write_text(text)
+
+          test = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5TurnDialogueRouting.test.ts')
+          test.write_text("""import { describe, expect, it } from 'vitest';
+          import type { WeeklyPlanningTurnFailure } from '../weeklyPlanningTurnExecutionTypes';
+          import { isWeeklyPlanningStableV5SystemResult } from './weeklyPlanningStableV5TurnDialogue';
+
+          const failure: WeeklyPlanningTurnFailure = {
+            code: 'stable_v5_provider_failure',
+            userMessage: 'provider failed',
+            traceCode: 'provider_failed',
+            diagnostics: {
+              attemptCount: 1,
+              repairAttempted: false,
+              validationErrorCategories: [],
+              providerErrorCategory: 'provider_error',
+            },
+          };
+
+          describe('Stable V5 system result classification', () => {
+            it('classifies explicit system response source as system', () => {
+              expect(isWeeklyPlanningStableV5SystemResult({ responseSource: 'system' })).toBe(true);
+            });
+
+            it('classifies an explicit failure as system even without a response source', () => {
+              expect(isWeeklyPlanningStableV5SystemResult({ failure })).toBe(true);
+            });
+
+            it('does not classify non-system response sources as system', () => {
+              expect(isWeeklyPlanningStableV5SystemResult({ responseSource: 'ai' })).toBe(false);
+              expect(isWeeklyPlanningStableV5SystemResult({ responseSource: 'rules' })).toBe(false);
+              expect(isWeeklyPlanningStableV5SystemResult({ responseSource: 'deterministic_fallback' })).toBe(false);
+            });
+
+            it('requires explicit machine state rather than presentation text', () => {
+              expect(isWeeklyPlanningStableV5SystemResult({})).toBe(false);
+            });
+          });
+          """)
+          PY
+          rm .github/workflows/tmp-issue248-apply.yml
+      - name: Commit applied fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: stop inferring Stable V5 state from rendered text"
+          git push origin HEAD:fix/stable-v5-rendered-text-routing
