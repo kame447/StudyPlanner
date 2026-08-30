@@ -22,6 +22,16 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - name: Verify legacy runtime consumers are gone
+        run: |
+          if grep -R --line-number --exclude='weeklyPlanningEstimateCalibrationRuntimeV5.ts' --exclude='weeklyPlanningEstimateCalibrationRuntimeV5.test.ts' 'weeklyPlanningEstimateCalibrationRuntimeV5' src/features/weeklyPlanning; then
+            echo 'Legacy estimate calibration runtime consumer still exists.'
+            exit 1
+          fi
+          if grep -R --line-number --exclude='weeklyPlanningMemoryPaceRuntimeV5.ts' 'weeklyPlanningMemoryPaceRuntimeV5' src/features/weeklyPlanning; then
+            echo 'Legacy memory pace runtime consumer still exists.'
+            exit 1
+          fi
       - name: Remove hidden personalization runtime fallback
         run: |
           python3 - <<'PY'
