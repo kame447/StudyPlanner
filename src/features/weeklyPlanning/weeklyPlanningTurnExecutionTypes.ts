@@ -1,4 +1,4 @@
-import type { Actual, Plan, ScheduleTemplate, TimetableTerm } from '../../types/domain';
+import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../types/domain';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
@@ -16,6 +16,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   userId: string;
   plans: Plan[];
   actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
