@@ -1,18 +1,20 @@
 # Product Observability Roadmap
 
 Status: canonical execution order
-Updated: 2026-08-29
+Updated: 2026-08-30
 Owning Issue: #213
 
 ## Current phase
 
-Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Aggregation and read models」、Phase 4「Console shell and Overview」は完了済みである。
+Phase 1「Canonical design」、Phase 2「Telemetry foundation」、Phase 3「Aggregation and read models」、Phase 4「Console shell and Overview」、Phase 5「Users and AI / API」は完了済みである。
 
-Phase 4はPR #224で`/admin`のOverview入口、responsive console shell、bounded read modelを利用するregistered / active user・AI/API・planning quality・read-model freshness表示、desktop/mobile・light/darkのrender regressionをmainへ統合した。最終pre-merge head `5d11dd2a574909aac0cfe3317652f4348a870d45` ではCI、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderがすべてterminal successとなり、squash merge mainは`b053a677c00fea642a040831fd2161760567a382`である。
+Phase 4はPR #224で`/admin`のOverview入口、responsive console shell、bounded read modelを利用するregistered / active user・AI/API・planning quality・read-model freshness表示、desktop/mobile・light/darkのrender regressionをmainへ統合した。squash merge mainは`b053a677c00fea642a040831fd2161760567a382`である。
 
-Phase 5「Users and AI / API」の実装はPR #234 / `feat/product-observability-phase5-users-ai-api`でcompletion candidateまで到達した。Phase 4までに確定したbounded admin query / typed read modelをsource of truthとして、旧Users画面のbrowser-side full collection scanを通常read pathから外し、profile authorityを入口とする利用者分析・個別調査とAI/API利用分析を実装した。merge前はこのcheckpoint以後のPR headをexact final validation対象として固定し、検証で不具合が出た場合だけ変更する。
+Phase 5はPR #234でbounded Users / individual investigation / AI・API analyticsを実装し、exact head `5f603093f3c2c05a1427d3c6c306b9af541b0dc4`でCI、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderをすべて通した後、`c47164427ad3f0d732b426f545430925e5ff8acf`としてmainへsquash mergeした。
 
-Phase 5 merge後の次の実装phaseはPhase 6「Planning Analytics」である。
+現在はPhase 6「Planning Analytics」のcompletion candidate PR #245を検証中である。weekly-planning typed outcomeの`featureSessionId`だけをsession authorityとして、`session_started`のAsia/Tokyo日付へsession cohortを固定し、後日のpreview / approval / save / failure等を同じ開始日cohortへ差分反映するserver-side read modelを追加した。期間内event件数同士を割る方式や、詳細traceからanalytics historyを再推論する方式は採用しない。
+
+Phase 6 merge後の次のconcrete actionはPhase 7「Log Explorer and Debug Bundle」である。
 
 ## Completed foundation
 
@@ -87,57 +89,66 @@ Merged main commit: `b053a677c00fea642a040831fd2161760567a382`
 
 ## Phase 5: Users and AI / API
 
-Status: implementation complete in completion candidate PR #234; exact-head merge gate is the remaining step.
+Status: completed by PR #234.
 
-Active branch: `feat/product-observability-phase5-users-ai-api`
+Completion PR: #234
+Merged main commit: `c47164427ad3f0d732b426f545430925e5ff8acf`
+Final verified head: `5f603093f3c2c05a1427d3c6c306b9af541b0dc4`
 Parent Issue: #213
 AI/API residual tracker: #160
-Base main at phase start: `b053a677c00fea642a040831fd2161760567a382`
-Completion PR: #234
 
 Usersのnormal read pathはprofiles / plans / actuals / todos / day_notesのbrowser-side full scanを廃止した。通常一覧はprofile authorityを最大25件単位でdocument-name paginationし、server-sideで既存actor directory、opaque user summary、canonical `observability_actor_day` COUNT、保持中telemetryのbounded recent-error scanへ結合する。raw Firebase UID / emailは通常一覧DTOへ返さず、profile rowはOBSERVABILITY_IDENTITY_SECRETでHMACした`profileSubjectId`として表示する。
 
-これにより各ユーザー行で、canonical profileの登録日時、最終利用、正確な利用日数、主要product activity、AI利用、planning利用、直近30日のerror有無を同時に確認できる。actor directoryが未作成のprofileも一覧から消さず「まだ観測なし」とする。直近errorは最大100 eventまで新しい順に確認し、errorを発見した場合は`present`、30日窓を走査し切れた場合は`absent`、100件上限に達してまだ30日窓内の場合は`unknown`とする。高頻度ユーザーを推測で「errorなし」にしない。
-
-利用者全体では直近30日のdaily distinct actor推移をbounded Overview read modelから表示する。list / filter / sortは取得済みのbounded pageに対して扱い、継続読込はcursor paginationとする。
-
 個別調査はactor summary、canonical `observability_actor_day`へのCOUNT、保持中lightweight telemetryの最大50件cursor paginationを使う。timelineはproduct action、AI request、planning outcome、request / trace / feature session等のallowlistだけを返し、raw prompt / responseや任意payloadを返さない。
 
-プロフィールから明示的に調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。actor directoryの参照はread-only lookupとし、調査によるmissで新しいactor identityを生成しない。
+プロフィールから明示的に調査を始める場合だけrestricted identity resolverを使う。email / Firebase UID / usernameの完全一致・最大5件に限定し、analytics event / user summaryへemailやraw UIDを複製しない。
 
-AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase` / `aiByOperationKind`をserver-sideで期間統合し、model・機能purpose・initial/repair/single・chat completion/OCR/添付解析/文字起こし等のoperation単位で比較する。各分類ではrequest、success/failure、prompt/completion/total/cached token、主要failure category、latency p50/p95、推定費用を表示する。UI component自身は期間再集計を行わない。
+AI / APIではdaily rollupの`aiByModel` / `aiByPurpose` / `aiByPhase` / `aiByOperationKind`をserver-sideで期間統合し、model・機能purpose・initial/repair/single・operation単位で比較する。各分類ではrequest、success/failure、prompt/completion/total/cached token、主要failure category、latency p50/p95、推定費用を表示する。UI component自身は期間再集計を行わない。
 
-planning用途の効率指標はsession数で代用せず、weekly-planning domainが各turn開始時に一度だけ出すcanonical `turn_started`を分母とする。これによりrequest/turn、repair request率、完全に算出可能な場合だけcost/turn、cached token比率をserver-sideで導出する。`turn_started`導入前の履歴には正確なturn分母が存在しないため、分母0の期間は未計測として扱い、過去値を推測で補完しない。
+planning用途の効率指標はsession数で代用せず、weekly-planning domainが各turn開始時に一度だけ出すcanonical `turn_started`を分母とする。`turn_started`導入前の履歴は未計測として扱い、過去値を推測で補完しない。
 
-#160のusage semanticsとして、OpenAIが返す`completion_tokens_details.reasoning_tokens`をraw usageとして保持する。cached input / cache-write / reasoningをproviderが返さない場合は0へ補完せずunknown/nullとする。pricing未定義時もraw usageは保持し、costだけを算出不能として分離する。
+production AI transportはCloudflare AI proxyを正規経路とし、proxyが無いproduction buildではdirect endpointへfallbackせずfail closedする。
 
-production AI transportはCloudflare AI proxyを正規経路とする。browser-direct OpenAI transportはdevelopment / evaluation互換に限定し、production contractから除外する。production buildでproxyが無い場合はdirect endpointへfallbackせずrules pipelineへfail closedする。
+専用Admin Render harnessはOverview / Users / user detail / AI APIまで拡張され、desktop/mobile × light/darkに加えてempty / unknown / errorとroot horizontal overflowを検証する。
 
-Usersのactor/profile filter/sort、AI/APIのfrom/to/environmentはURLへ保持し、調査文脈を再現可能にする。
+Phase 5のexact final headではTypeScript checks、full Vitest、Firestore Rules regression、production build、Browser Regression、UI Quality Automation、UI Regression Matrix、Admin Overview Renderがterminal success、未解決review thread 0件を確認してmergeした。
 
-専用Admin Render harnessはOverviewのみからOverview / Users / user detail / AI APIへ拡張した。desktop/mobile × light/darkの主要16ケースに加え、empty / unknown / error状態を検証し、root horizontal overflowも自動検査する。AI/APIの分類表はdesktop tableをそのままmobileで横スクロールさせるのではなく、mobileではlabel付きcard表現へ変換する。
+## Phase 6: Planning Analytics
 
-Phase 5の検証ループでは、Users test locatorの曖昧さ、個別利用日数COUNTの誤ったcollection名、admin-only CSSのglobal bundle混入、mobile AI headerのmax-content overflow、lazy `AdminApp`を経由しない専用render harnessがPhase 5 CSSを読み込まないboundary defectを検出した。いずれも同じPR #234上で原因を修正し、harnessは失敗時にoverflow offender DOMを出力する診断を保持する。
+Status: implementation complete in completion candidate PR #245; exact-head merge gate is in progress.
 
-Final completion gate:
+Active branch: `feat/product-observability-phase6-planning-analytics`
+Parent Issue: #213
+Completion PR: #245
+
+weekly-planning typed outcomeの`featureSessionId`をsession identityのauthorityとする。browser側や管理UIでraw telemetryを再集計せず、rollup transaction内で軽量`observability_planning_session_summary`と開始日単位の`observability_planning_daily_rollups`をmaterializeする。
+
+cohort日は`session_started`のAsia/Tokyo reporting dateで固定する。sessionが日を跨いでpreview / approval / saveへ進んでも、後続結果は開始日のcohortへ戻して差分更新する。このため期間内に発生したevent件数同士を割る方式で起こる期間境界のconversion歪みを避ける。
+
+管理UI `/admin/planning` は、開始session数、Preview到達、承認開始、保存完了のsession funnel、平均turn数、first Previewまでの平均turn数を表示する。`approvalReachedCount`の表示意味はtyped `approval_started` authorityに合わせて「承認開始」とし、承認完了と誤認させない。
+
+品質シグナルはsession内で一度でも観測したfailed / fallback / semantic repair / stale / unscheduled / approval failureをsession単位のbooleanとして集計し、同一session内の複数発火で水増ししない。
+
+appVersion / schedulerVersion / promptVersion / model別の比較をserver-side cohort read modelから返す。planning outcomeにpromptVersion / modelが存在しない場合、AI request集計から推測して結合せず`unknown`のまま保持する。session内でdimensionが複数値へ変わった場合は`__mixed__`として明示する。
+
+`abandoned`はruntime上の一意なauthorityが未定義のため、0件として解釈せず管理UIで「未計測」と表示する。Phase 6導入前にrollup cursorを通過済みのweekly-planning trace / telemetryから履歴を再構成するbackfillは行わない。
+
+normal admin readは最大93日の決定的なdaily cohort documentだけを読む。raw planning eventや詳細traceを通常readでscanしない。
+
+専用Admin Render harnessはPlanningを追加し、Overview / Users / user detail / AI API / Planningをdesktop/mobile × light/darkで実描画する。Planning固有のempty / error、全surfaceのhorizontal overflowも検証する。
+
+Phase 6 completion gate:
 
 1. exact final headでTypeScript checksとfull Vitestを通す。
 2. Firestore Rules regressionとproduction buildを通す。
 3. Browser Regression、UI Quality Automation、UI Regression Matrixを通す。
-4. expanded Admin Renderでdesktop/mobile、light/dark、empty/unknown/errorを通す。
-5. PR #234の未解決review threadがないことを確認する。
-6. gate通過後にPR #234をreadyにし、squash mergeする。
-7. merge後に#160をcloseし、#213へPhase 5 completion checkpointとPhase 6 next actionを記録する。
+4. expanded Admin RenderでPlanningを含むdesktop/mobile、light/dark、empty/errorを通す。
+5. PR #245の未解決review threadがないことを確認する。
+6. mainに新規commitがある場合は同一branchへ追随し、追随後のexact headで上記gateを再実行する。
+7. gate通過後にPR #245をreadyにし、squash mergeする。
+8. merge後にbranchを削除し、#213へPhase 6 completion checkpointとPhase 7 next actionを記録する。
 
-Phase 5 merge後の次のconcrete actionはPhase 6「Planning Analytics」である。weekly-planning typed outcomeだけをauthorityとしてsession funnelと品質比較を実装し、Phase 5で作ったAI request / feature-session / turn correlationを利用する。
-
-## Phase 6: Planning Analytics
-
-weekly-planning typed outcomeからsession funnelと品質指標を作る。
-
-preview / approval / save / failed / fallback / repair / stale / unscheduled等を期間・version別に比較できるようにする。
-
-`abandoned`はruntime上の一意なauthorityが定義されるまで発火させない。
+Phase 6 merge後の次のconcrete actionはPhase 7「Log Explorer and Debug Bundle」である。feature-owned diagnostic adapterとrestricted trace boundaryを維持したまま、共通の探索・debug bundle導線を実装する。
 
 ## Phase 7: Log Explorer and Debug Bundle
 
