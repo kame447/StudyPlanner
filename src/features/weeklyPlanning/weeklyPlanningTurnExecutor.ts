@@ -35,7 +35,6 @@ export async function executeWeeklyPlanningTurn(
     timetableTerms: input.timetableTerms,
     conversationId: input.conversationId,
     traceRequestId: input.traceRequestId,
-    weekStartsOn: input.weekStartsOn,
     requestContext: input.requestContext,
   });
   return weeklyPlanningStableV5TurnResultProjector.project({ input, result });
