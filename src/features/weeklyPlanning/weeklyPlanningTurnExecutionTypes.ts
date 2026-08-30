@@ -22,7 +22,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
-  requestContext?: WeeklyPlanningTurnRequestContext;
+  requestContext: WeeklyPlanningTurnRequestContext;
 }
 
 export type WeeklyPlanningTurnFailureCode =
