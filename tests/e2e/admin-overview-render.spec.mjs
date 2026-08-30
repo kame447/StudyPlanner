@@ -114,7 +114,7 @@ async function inspectAi(page, options) {
 async function inspectPlanning(page, options) {
   await openSurface(page, { ...options, view: 'planning' });
   await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
-  await expect(page.getByText('Planning Session')).toBeVisible();
+  await expect(page.getByText('Planning Session', { exact: true })).toBeVisible();
   await expect(page.getByText('保存完了率')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Session funnel' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '品質シグナル' })).toBeVisible();
@@ -227,7 +227,7 @@ test.describe('Admin console rendered UI', () => {
       state: 'error',
     });
     await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
-    await expect(page.getByText('Planning分析を取得できませんでした。')).toBeVisible();
+    await expect(page.getByText('Harness planning analytics read failed.')).toBeVisible();
     await screenshot(page, 'planning-error-mobile-dark');
   });
 });
