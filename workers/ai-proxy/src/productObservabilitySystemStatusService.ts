@@ -16,6 +16,7 @@ const OBSERVABILITY_EVENTS = 'observability_events';
 const ROLLUP_STATE = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
 const TRACE_SESSIONS = 'weekly_planning_trace_sessions';
+const TELEMETRY_PROBE_LIMIT = 50;
 
 interface SystemStatusFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
@@ -61,18 +62,24 @@ function ageSeconds(value: string | null, nowMs: number): number | null {
   return Math.max(0, Math.floor((nowMs - timestamp) / 1000));
 }
 
-function aggregationProbe(value: Record<string, unknown> | null): AggregationProbe | null {
+function aggregationProbe(
+  value: Record<string, unknown> | null,
+  environment: ObservabilityEnvironment,
+): AggregationProbe | null {
   if (!value) return null;
   const processedEventCount = nonNegativeInteger(value.processedEventCount);
-  const dirtySources = Array.isArray(value.activeUserDirtySources)
-    ? value.activeUserDirtySources.length
-    : value.activeUserDirtySources === undefined
-      ? 0
-      : -1;
-  if (processedEventCount === null || dirtySources < 0) return null;
+  const dirtySources = value.activeUserDirtySources;
+  if (processedEventCount === null || (dirtySources !== undefined && !Array.isArray(dirtySources))) {
+    return null;
+  }
+  const dirtySourceCount = (Array.isArray(dirtySources) ? dirtySources : []).filter((source) => {
+    return Boolean(source)
+      && typeof source === 'object'
+      && (source as Record<string, unknown>).environment === environment;
+  }).length;
   return {
     processedEventCount,
-    dirtySourceCount: dirtySources,
+    dirtySourceCount,
     lastRunStartedAt: isoTimestamp(value.lastRunStartedAt),
     lastSuccessfulRunAt: isoTimestamp(value.lastSuccessfulRunAt),
     lastFailureAt: isoTimestamp(value.lastFailureAt),
@@ -140,7 +147,7 @@ export function buildObservabilitySystemReadModel(params: {
       status: observedAt ? 'healthy' : 'unknown',
       summary: observedAt
         ? 'Telemetry storage is reachable; latest accepted event is shown.'
-        : 'Telemetry storage is reachable, but no retained event was found.',
+        : 'Telemetry storage is reachable, but no retained event for this environment was found in the bounded probe.',
       lastObservedAt: observedAt,
       ageSeconds: ageSeconds(observedAt, nowMs),
       detail: 'Inactivity alone is not treated as an ingestion failure.',
@@ -254,14 +261,15 @@ export class ProductObservabilitySystemStatusService {
         const latest = await this.firestore.queryDocumentsAfter({
           collection: OBSERVABILITY_EVENTS,
           orderByField: 'observedAt',
-          filters: [{ field: 'environment', value: environment }],
           direction: 'DESCENDING',
-          limit: 1,
+          limit: TELEMETRY_PROBE_LIMIT,
         });
-        return { observedAt: isoTimestamp(latest[0]?.observedAt) };
+        const latestForEnvironment = latest.find((event) => event.environment === environment);
+        return { observedAt: isoTimestamp(latestForEnvironment?.observedAt) };
       }),
       probe(async () => aggregationProbe(
         await this.firestore.getDocument(ROLLUP_STATE, ROLLUP_STATE_ID),
+        environment,
       )),
       probe(async () => {
         const latest = await this.firestore.queryDocumentsAfter({
