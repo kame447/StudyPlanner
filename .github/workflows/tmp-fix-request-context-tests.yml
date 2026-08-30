@@ -30,9 +30,11 @@ jobs:
           helper = Path('src/features/weeklyPlanning/application/weeklyPlanningTestRequestContext.ts')
           helper.write_text("""export const WEEKLY_PLANNING_TEST_REQUEST_CONTEXT = {\n  startedAtIso: '2026-07-27T00:00:00.000Z',\n  timeZone: 'Asia/Tokyo',\n  currentDate: '2026-07-27',\n  currentTime: '09:00',\n  notBeforeDate: '2026-07-27',\n  notBeforeTime: '09:01',\n  weekStartsOn: 'monday',\n} as const;\n""", encoding='utf-8')
 
-          targets = [
+          application_targets = [
               Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.test.ts'),
               Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts'),
+          ]
+          public_targets = [
               Path('src/features/weeklyPlanning/weeklyPlanningStableV5FailureContract.test.ts'),
               Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.activeDialogueProjection.test.ts'),
               Path('src/features/weeklyPlanning/weeklyPlanningTurnExecutor.dialogueContext.test.ts'),
@@ -42,34 +44,47 @@ jobs:
           ]
 
           total_insertions = 0
-          for path in targets:
-              text = path.read_text(encoding='utf-8')
-              import_path = './weeklyPlanningTestRequestContext' if '/application/' in str(path) else './application/weeklyPlanningTestRequestContext'
-              import_line = f"import {{ WEEKLY_PLANNING_TEST_REQUEST_CONTEXT }} from '{import_path}';\n"
-              if import_line not in text:
-                  text = import_line + text
 
-              lines = text.splitlines(keepends=True)
-              output = []
-              inserted = 0
-              for index, line in enumerate(lines):
-                  stripped = line.strip()
-                  if stripped.startswith('traceRequestId:') or stripped == 'traceRequestId,':
-                      window = ''.join(lines[max(0, index - 20):index])
-                      if 'conversationId:' in window and 'scheduleTemplates:' in window:
-                          indent = line[:len(line) - len(line.lstrip())]
-                          if not output or 'requestContext:' not in output[-1]:
-                              output.append(f'{indent}requestContext: WEEKLY_PLANNING_TEST_REQUEST_CONTEXT,\n')
-                              inserted += 1
-                  output.append(line)
-              if inserted == 0:
-                  raise SystemExit(f'No execution input updated in {path}')
-              total_insertions += inserted
-              path.write_text(''.join(output), encoding='utf-8')
+          instrumented = application_targets[0]
+          text = instrumented.read_text(encoding='utf-8')
+          import_line = "import { WEEKLY_PLANNING_TEST_REQUEST_CONTEXT } from './weeklyPlanningTestRequestContext';\n"
+          if import_line not in text:
+              text = import_line + text
+          function_start = text.index('function input(')
+          return_index = text.index('  return {', function_start)
+          if 'requestContext:' not in text[return_index:return_index + 240]:
+              text = text[:return_index] + "  return {\n    requestContext: WEEKLY_PLANNING_TEST_REQUEST_CONTEXT," + text[return_index + len('  return {'):]
+              total_insertions += 1
+          instrumented.write_text(text, encoding='utf-8')
+
+          runtime = application_targets[1]
+          text = runtime.read_text(encoding='utf-8')
+          if import_line not in text:
+              text = import_line + text
+          marker = 'executeWeeklyPlanningStableV5RuntimeTurn({' 
+          count = text.count(marker)
+          if count == 0:
+              raise SystemExit('No Stable V5 runtime execution calls found')
+          text = text.replace(marker, marker + "\n      requestContext: WEEKLY_PLANNING_TEST_REQUEST_CONTEXT,")
+          total_insertions += count
+          runtime.write_text(text, encoding='utf-8')
+
+          for path in public_targets:
+              text = path.read_text(encoding='utf-8')
+              public_import = "import { WEEKLY_PLANNING_TEST_REQUEST_CONTEXT } from './application/weeklyPlanningTestRequestContext';\n"
+              if public_import not in text:
+                  text = public_import + text
+              marker = 'executeWeeklyPlanningTurn({' 
+              count = text.count(marker)
+              if count == 0:
+                  raise SystemExit(f'No weekly planning execution calls found in {path}')
+              text = text.replace(marker, marker + "\n      requestContext: WEEKLY_PLANNING_TEST_REQUEST_CONTEXT,")
+              total_insertions += count
+              path.write_text(text, encoding='utf-8')
 
           if total_insertions < 20:
               raise SystemExit(f'Unexpectedly few requestContext insertions: {total_insertions}')
-          print(f'Inserted explicit requestContext into {total_insertions} execution inputs')
+          print(f'Inserted explicit requestContext into {total_insertions} test execution inputs')
           PY
       - name: Install dependencies
         run: npm ci
