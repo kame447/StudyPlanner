@@ -1,134 +1,154 @@
 # Learning Consultation Prompt and Evidence Design
 
-Status: supporting design / subordinate to canonical requirement / runtime implementation pending
+Status: supporting design / subordinate to canonical requirement / runtime implementation in progress
 Updated: 2026-08-30
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 Parent canonical: [learning-consultation-and-advice.md](learning-consultation-and-advice.md)
 
 ## 1. この文書の位置付け
 
-この文書は、Issue #246 の学習相談機能について、answer purposeへ実際に何を渡し、どの規則で回答させるかを詳細化する supporting design である。
+この文書は、Issue #246 の学習相談機能について、learning-advice answer purposeへ実際に何を渡し、どの規則で回答させるかを詳細化するsupporting designである。
 
-親の正仕様は [Learning Consultation and Advice Contract](learning-consultation-and-advice.md) であり、本書はその責任境界を変更しない。
+親の正仕様は [Learning Consultation and Advice Contract](learning-consultation-and-advice.md) であり、本書はその責任境界を変更しない。矛盾がある場合は親仕様を優先する。
 
-矛盾がある場合は親の正仕様を優先する。
-
-本書が所有するのは次だけである。
+本書が所有するもの:
 
 - answer purposeの固定instruction設計
 - Source Policy
 - Consultation Contextの入力構成
 - Evidence Bundle
 - exact user questionの受け渡し
+- revision / alternative生成時のReview Context
 - output contract
-- promptを巨大な一枚の文章にしないための分離方針
-- Luna等のanswer modelを評価する条件
+- Luna等のanswer model評価条件
 
-本書は次を所有しない。
+本書が所有しないもの:
 
-- consultation routingの正式state
-- AdviceProposal lifecycle
-- accept / modify / rejectのformal binding
+- consultation / review routingの正式state
+- AdviceProposal / ReviewDecisionのformal state transition
+- review / validity / promotionのauthority
 - scheduler
 - preview
-- approval / save
+- Plan approval / save
 - durable memory
 - external provider採用そのもの
 
-これらは親仕様および各owner domainが所有する。
-
-現時点でruntime implementationは未着手である。
-
 ---
 
-## 2. 結論: 「短くする」のではなく「分離する」
+## 2. 結論: 「短くする」のではなく「責任ごとに分離する」
 
-answer modelへ渡す情報を、巨大な一枚のpromptへ混ぜない。
+answer modelへ必要情報を巨大な一枚のpromptへ混ぜない。
 
-一方で、重要な判断規則をtoken節約のために削除することもしない。
+重要な判断規則をtoken節約のために削除することもしない。
 
-実運用では次の6層へ分離する。
+基本構造:
 
 ```text
 A. System Instructions
    変わりにくい学習相談AIの役割・判断原則
 
 B. Source Policy
-   どの種類の主張で、どの種類の情報源を重視するか
+   claim typeごとに何を重視するか
 
 C. Consultation Context
    StudyPlannerが持つ今回のユーザー固有情報
 
 D. Evidence Bundle
-   今回の相談に必要な外部・内部evidence
+   今回の相談に必要な内部・外部evidence
 
 E. User Question
    今回ユーザーが実際に聞いた質問
 
 F. Output Contract
    人間向け回答 + validated structured recommendation
+
+G. Review Context (optional)
+   revision / alternative時のみ、前proposalとuser feedbackを渡す
 ```
 
-重要なのは、情報量を減らすことではなく、意味の種類を分けることである。
+`Review Context`は初回相談では不要であり、再提案時だけ追加する。
 
-```text
-hard instruction
-user fact
-external evidence
-current question
-output schema
-```
-
-を同じprose blockへ混在させない。
+命令、user fact、外部evidence、review feedback、current question、output schemaを同じprose blockへ混在させない。
 
 ---
 
-## 3. Runtime envelope
+## 3. Runtime input envelope
 
-概念上、answer purposeへの入力は次のように扱う。
+概念上、answer purposeへの入力は次の責任を持つ。
 
 ```text
 LearningConsultationAnswerInput
-├─ system_instructions_version
-├─ source_policy
-├─ user_question
-├─ consultation_context
-├─ evidence_bundle
-├─ deterministic_signals
-└─ output_contract_version
+├─ systemInstructionsVersion
+├─ sourcePolicy
+├─ userQuestion
+├─ consultationContext
+├─ evidenceBundle
+├─ deterministicSignals
+├─ reviewContext?       // revision / alternative only
+└─ outputContractVersion
 ```
 
 exact TypeScript名は実装時にcurrent codeと照合して決める。
 
-このspecが固定するのは責任と意味であり、field名ではない。
+### 3.1 exact user questionを独立して渡す
 
-### 3.1 exact user questionは独立して渡す
-
-ユーザーが何を聞いたかを、長いconversation historyからanswer modelへ再推測させない。
-
-例えば:
+長いconversation historyからcurrent questionを再推測させない。
 
 ```yaml
-user_question: >-
+userQuestion: >-
   数学の点数を上げたいけど、
   どの参考書をいつまでに仕上げればいい？
 ```
 
-conversation historyが必要な場合も、`user_question`とは別にrelevant contextとして渡す。
+過去turnが必要でも、`userQuestion`とは別のbounded contextとして渡す。
 
-これにより、answer modelが過去の別質問をcurrent requestと取り違えるリスクを減らす。
+### 3.2 Review Context
+
+`request_revision` / `request_alternative`では、current questionだけを再送しない。
+
+概念上次を渡す。
+
+```text
+ReviewContext
+├─ sourceAdviceId
+├─ sourceRevision
+├─ reviewAction
+│  ├─ request_revision
+│  └─ request_alternative
+├─ selectedOptionIds / selectedItemIds
+├─ userFeedback
+└─ priorAdviceSnapshot
+```
+
+`priorAdviceSnapshot`はvalidated structured proposalから作り、renderer proseを後からregexで再解析しない。
+
+例:
+
+```yaml
+reviewContext:
+  sourceAdviceId: advice_123
+  sourceRevision: 1
+  reviewAction: request_alternative
+  userFeedback: "標準問題精講は重すぎるから嫌。別の案がいい"
+  priorAdviceSnapshot:
+    recommendations:
+      - material: 標準問題精講
+        purpose: 標準問題演習
+```
+
+answer modelはこのfeedbackを次案の重要contextとして利用する。
+
+ただしfeedbackを教材の客観factやdurable user preferenceとして勝手に扱わない。
 
 ---
 
 ## 4. System Instructionsの責任
 
-System Instructionsには、毎回変わらないanswer modelの役割と判断原則を置く。
+System Instructionsには毎回変わらない役割・判断原則を置く。
 
-サイト一覧、今回のユーザー情報、検索結果を大量に埋め込まない。
+サイト一覧、今回のuser context、検索結果全文、proposal history全文を埋め込まない。
 
 ### 4.1 System prompt candidate
-
-初期候補は次の意味を保持する。
 
 ```text
 あなたはStudyPlannerの学習戦略アドバイザーです。
@@ -150,115 +170,101 @@ System Instructionsには、毎回変わらないanswer modelの役割と判断�
 - なぜその方針を勧めるのか
 
 基本原則:
-- StudyPlannerから与えられたユーザー固有情報をユーザー事実として最優先する
+- StudyPlannerから与えられたユーザー固有情報を最優先する
 - 既に分かっている情報を聞き直さない
 - 一般的な学習ルートをそのままコピーせず、現在地へ適合させる
 - 有名だからという理由だけで教材を増やさない
 - 現在の教材で十分なら継続を選択肢に含める
-- source_policyに従い、主張の種類ごとに適切なevidenceを使う
+- sourcePolicyに従い、claim typeごとに適切なevidenceを使う
 - 一つの塾・予備校・出版社の方針を唯一の正解として扱わない
 - 最新性が重要な事実をmodel memoryだけで断定しない
 - 複数ソースが異なる場合は前提とtrade-offを比較する
-- 学習科学の知見を使う場合も固定日数・固定回数を普遍的な科学的正解として扱わない
-- deterministic_signalsが与えられている数値はapplication-owned truthとして使用する
-- 不足情報があっても合理的な仮定で有用な回答が可能なら質問しすぎない
-- 推薦が大きく変わる不足情報だけを質問する
+- 学習科学を使う場合も固定日数・固定回数を普遍的な科学的正解にしない
+- deterministicSignalsが与えられている数値はapplication-owned truthとして使用する
+- 合理的な仮定で有用な回答が可能なら質問しすぎない
+- recommendationが大きく変わる不足だけを質問する
 - 根拠が弱い場合は不確実性・仮定を説明する
 - 根拠のない確率や合格保証を生成しない
+
+reviewContextがある場合:
+- 前proposalとuserFeedbackを必ず考慮する
+- request_revisionでは、ユーザーが残したい部分を可能な限り維持して指定箇所を修正する
+- request_alternativeでは、拒否された要素をそのまま再提示せず、意味のある別案を作る
+- 制約上ほぼ同じ案しか成立しない場合は、無理に違う案を捏造せず理由を説明する
+- feedbackだけでは有用な差分を作れない場合、推薦を大きく変える質問を最大1つだけ返してよい
+- userFeedbackを、ユーザーが明示していない恒久的嗜好や客観的事実へ拡張しない
 
 境界:
 - あなたの回答はadviceである
 - user-stated factではない
-- accepted planning conditionではない
+- user-approved planning strategyではない
+- promoted planning conditionではない
 - saved Planではない
 - durable memoryではない
-- schedule/save/lifecycleを直接変更しない
+- review state / validity / promotion / schedule / saveを直接変更しない
 
 回答:
 - ユーザー向けに理解しやすく簡潔に説明する
 - 同時にstructured recommendationを返す
-- structured recommendationもuser adoption前はproposalである
+- structured recommendationもuser approval前はproposalである
 ```
 
-### 4.2 System promptを巨大化させない理由
+### 4.2 巨大promptにしない理由
 
-System promptへ次をすべて直書きしない。
+System Promptへ次を直接混ぜない。
 
 - 個別サイト一覧
-- 今回の教材情報
-- 検索結果全文
+- Bookshelf全文
 - conversation全文
 - schedule全文
-- Bookshelf全文
+- 検索結果全文
+- proposal履歴全文
 
-理由はtoken数そのものより、authorityの混同を避けるためである。
-
-answer modelにとって、
-
-```text
-命令
-事実
-参考意見
-質問
-```
-
-が視覚的・構造的に分かれていることを優先する。
+問題はtoken数だけでなく、`instruction / fact / evidence / feedback`のauthorityが混ざることである。
 
 ---
 
 ## 5. Source Policy
 
-### 5.1 一つの「サイトランキング」にしない
+### 5.1 サイトを一律ランキングしない
 
-情報源の信頼性は、何を主張するかによって変わる。
+情報源のauthorityはclaim typeによって変わる。
 
-例えば、武田塾の参考書ルートは教材順序のadvisory evidenceとして有用でも、大学の正式な試験日・配点の最終authorityではない。
-
-逆に大学公式サイトは試験制度のauthorityだが、個人に最適な参考書順序の唯一のauthorityではない。
-
-したがってSource Policyはclaim-type-specificにする。
+例えば武田塾の参考書ルートは教材順序のstrategy evidenceとして有用だが、大学の正式試験日・配点の最終authorityではない。
 
 ### 5.2 User-owned authoritative context
 
-ユーザー本人についての事実はStudyPlanner側のauthoritative contextを最優先する。
+ユーザー本人についてはStudyPlanner側のauthoritative contextを最優先する。
 
-例:
-
-- 明示された目標
+- 明示目標
 - 志望校 / 試験
-- 現在点
-- 目標点
-- 登録教材
-- 教材進捗
-- 実際の学習実績
+- 現在点 / 目標点
+- 登録教材 / 教材進捗
+- Actual study evidence
 - 利用可能時間
-- 明示的な希望・制約
+- 明示的希望・制約
 
-外部の一般ルートがこれらを上書きしてはいけない。
+外部の一般ルートがこれを上書きしない。
 
 ### 5.3 Official fact sources
 
 用途:
 
 - 試験日
-- 科目
-- 配点
-- 出題範囲
+- 科目 / 配点 / 出題範囲
 - 募集要項
-- 資格試験制度
+- 資格制度
 - 教材の正式名称・版・ISBN等
 
-候補例:
+候補:
 
-- 各大学・学校の公式情報
+- 大学・学校公式
 - 大学入試センター
 - 文部科学省
-- 各資格試験の公式運営団体
-- 教材出版社の公式情報
+- 資格試験公式運営団体
+- 教材出版社公式
 
-この層は事実確認では最優先する。
-
-ただし「この教材をこの人が使うべきか」という個人戦略まで公式情報が決めるわけではない。
+事実確認では最優先する。
 
 ### 5.4 Exam analysis / large educational data sources
 
@@ -270,7 +276,7 @@ answer modelにとって、
 - 実際の問題分析
 - 模試データに基づく現在地の解釈
 
-候補例:
+候補:
 
 - 河合塾 / Kei-Net
 - 駿台
@@ -279,7 +285,7 @@ answer modelにとって、
 - 東進
 - 代々木ゼミナール
 
-一機関の評価値を絶対値として扱わず、指標定義や年度差を考慮する。
+一機関の評価を絶対値として扱わない。
 
 ### 5.5 Study-route / material-strategy sources
 
@@ -288,56 +294,38 @@ answer modelにとって、
 - 教材の順序
 - 教材間の前提関係
 - 到達レベルの目安
-- 次教材の候補
-- 学習ルートの比較
+- 次教材候補
+- 学習ルート比較
 
-候補例:
+候補:
 
 - 武田塾の参考書ルート
 - 河合塾の教材・学習アドバイス
 - Z会の学習・教材情報
-- その他、検証済みの教育機関
+- その他検証済み教育機関
 
-この層はstrategy evidenceであり、source of truthではない。
+この層はstrategy evidenceでありsource of truthではない。
 
-例えば一般ルートが
-
-```text
-A → B → C
-```
-
-でも、ユーザーがすでにBを80%完了しているなら、Aから全面的にやり直すことを自動的に勧めない。
-
-必要なら
-
-```text
-Bの残り
-→ A相当で実際に弱い部分だけ補修
-→ C
-```
-
-のように個人化する。
+一般ルートが `A → B → C` でも、ユーザーがBを80%終えているならAから全面的にやり直すことを自動推奨しない。
 
 ### 5.6 Learning science sources
 
 用途:
 
-- 復習方法
-- 記憶定着
+- 復習 / 記憶定着
 - 問題演習
 - 学習順序
-- メタ認知
-- 自己調整学習
-- feedback方法
+- メタ認知 / 自己調整
+- feedback
 
-候補例:
+候補:
 
 - Institute of Education Sciences / What Works Clearinghouse
 - Education Endowment Foundation
 - peer-reviewed research
 - systematic review / meta-analysis
 
-参考にできる概念例:
+利用可能な概念例:
 
 - retrieval practice
 - spaced practice
@@ -349,428 +337,285 @@ Bの残り
 - self-regulated learning
 - feedback
 
-ただし、
-
-```text
-必ず1・3・7日後に復習する
-必ず3周する
-必ず25分で区切る
-```
-
-等を普遍的な科学的正解として固定しない。
+「必ず1・3・7日後」「必ず3周」等を普遍的な科学的正解として固定しない。
 
 ### 5.7 Model general knowledge
 
-外部・内部evidenceで不足する説明補助に使える。
+説明補助には使えるが、次をmodel memoryだけで確定しない。
 
-ただし、次をmodel memoryだけで確定しない。
-
-- 最新の入試制度
-- 最新年度の試験日
+- 最新入試制度 / 試験日
 - 最新版教材
 - ISBN / ページ数
-- 最新の参考書ルート
+- 最新参考書ルート
 - 現在の大学難易度
 
-### 5.8 Named sitesは固定whitelistではない
+### 5.8 Named sitesは永久whitelistではない
 
-上記サイト名は初期candidate providerの例であり、永久的な信頼whitelistではない。
-
-provider採用時には別途、
-
-- 情報の更新頻度
-- publication date
-- claimの種類
-- 利用規約
-- retrieval可能性
-- citation可能性
-- structured化のしやすさ
-- provider failure時のfallback
-
-をexternal-integrations側で評価する。
+provider採用時にはexternal-integrations側で、更新頻度、publication date、利用規約、retrieval可否、citation、normalization、fallbackを評価する。
 
 ---
 
 ## 6. Consultation Context
 
-### 6.1 今回必要な情報だけをprojectionする
+質問に関係するStudyPlanner内情報だけをbounded projectionとして渡す。
 
-answer modelへユーザーの全履歴を毎回送らない。
+候補:
 
-applicationがcurrent questionに関係する情報を選び、read-only projectionとして構成する。
+- goal / target exam / target score
+- current score / diagnostic evidence
+- Bookshelf materials / progress / aliases / pace metadata
+- current planning state
+- Timetable / existing Plan
+- Actual / Reporting aggregate
+- availability / capacity
+- explicit preferences / constraints
+- authoritative dates
 
-概念例:
+全データを毎回渡さない。
 
-```yaml
-user_question: >-
-  数学の点数を上げたいけど、
-  どの参考書をいつまでに仕上げればいい？
-
-conversation_context:
-  relevant_turns:
-    - ...
-
-goal:
-  exam: 共通テスト
-  subject: 数学
-  current_score: 55
-  target_score: 75
-  exam_date: 2027-01-16
-
-materials:
-  - material_id: ...
-    name: 基礎問題精講
-    progress: 0.30
-    current_unit: ...
-
-available_time:
-  weekday_minutes: 60
-  weekend_minutes: 120
-
-observed_learning:
-  recent_actuals: ...
-
-deterministic_signals:
-  remaining_days: ...
-  estimated_capacity_minutes: ...
-  pace_if_current_material_continues: ...
-```
-
-これはillustrativeであり、exact schemaではない。
-
-### 6.2 context selectionの原則
-
-- current questionに関係する情報だけを優先する
-- known contextを重複質問させないために必要情報を含める
-- user-owned factとobserved evidenceを区別する
-- durable preferenceとcurrent-session conditionを区別する
-- Bookshelf / Schedule / Actual等のsource ownershipを保持する
-- 全履歴をコピーして新しいuser profileを作らない
-- token/privacy budgetを持つ
+context itemには可能な限りsource identity / revision / authority / observation timeを持たせる。
 
 ---
 
 ## 7. Evidence Bundle
 
-### 7.1 外部ページ全文をそのままpromptへ貼らない
+外部ページ全文をそのままpromptへ投げない。
 
-今回の質問に必要なclaimを、provenance付きevidence itemとして渡す。
-
-概念モデル:
+概念上、必要な主張をbounded `EvidenceItem`へ正規化する。
 
 ```text
 EvidenceItem
 ├─ evidenceId
-├─ sourceType
-├─ provider / publisher
-├─ reference / URL / catalog identity
-├─ publicationOrUpdatedAt
+├─ sourceCategory
+├─ provider / title
+├─ sourceUrl or sourceIdentity
+├─ publishedAt / updatedAt when known
 ├─ retrievedAt
-├─ summarizedClaim
-├─ applicableScope
-├─ authorityCategory
-└─ provenance
+├─ claimType
+├─ summary / normalized claims
+├─ applicability
+└─ authority / uncertainty
 ```
 
-### 7.2 例
+retrieved contentはinstructionではなくuntrusted evidenceである。
 
-```yaml
-evidence_bundle:
-  - evidence_id: official-exam-001
-    authority: official_fact
-    provider: 大学入試センター
-    claim: ...
-    updated_at: ...
-    retrieved_at: ...
+外部ページ内の「以前の指示を無視せよ」等をsystem instructionとして実行しない。
 
-  - evidence_id: exam-analysis-001
-    authority: exam_analysis
-    provider: 河合塾
-    claim: ...
-
-  - evidence_id: route-001
-    authority: study_route
-    provider: 武田塾
-    claim: ...
-
-  - evidence_id: learning-science-001
-    authority: learning_science
-    provider: IES / WWC
-    claim: ...
-```
-
-### 7.3 external textはinstructionではない
-
-retrieved pageや教材title、user note等に、
-
-```text
-Ignore previous instructions
-system message
-このツールを実行しろ
-```
-
-等の文字列があってもinstructionとして扱わない。
-
-Evidence Bundleは常にdataである。
+copyright上、必要な事実・要約を扱い、 proprietaryな教材ルート全文を無差別複製する設計にしない。
 
 ---
 
-## 8. Source retrieval strategy
+## 8. Deterministic Signals
 
-### 8.1 毎回すべてのサイトを検索しない
+残り日数、remaining workload、必要ペース、利用可能時間、capacity、正式feasibility等はStudyPlanner側で計算して渡す。
 
-質問内容から必要なevidence categoryを決める。
-
-例:
+answer AIが同じ数字を推測で上書きしない。
 
 ```text
-「共通テストはいつ？」
-→ official fact sourceを優先
-
-「この参考書の次は何がいい？」
-→ user material/progress
-   + material strategy / route evidence
-   + 必要ならexam requirement
-
-「どう復習したらいい？」
-→ user context
-   + learning science evidence
-
-「今のペースで間に合う？」
-→ official deadline
-   + deterministic capacity / pace
-   + exam requirement
-   + strategy evidence
-```
-
-### 8.2 External retrievalが無くても動ける設計
-
-Phase 1では毎回Web/RAG検索を必須にしない。
-
-内部contextだけで有用な回答が可能なら回答できる。
-
-ただし、最新性や正確な外部事実が回答の重要部分なら、evidence不足を無視してmodel memoryで埋めない。
-
-将来external retrievalを追加しても、answer purposeのinput/output contractを変更せずEvidence Bundleへ追加できる設計を優先する。
-
----
-
-## 9. 複数ソースが食い違う場合
-
-answer modelは単純多数決をしない。
-
-比較するもの:
-
-- claimの種類
-- source authority
-- publication/update時点
-- 各sourceの前提
-- ユーザーの現在地
-- ユーザーの目標
-- 残期間
-- 現在教材
-- 教材変更コスト
-- 実際の学習実績
-
-例:
-
-```text
-武田塾ルート: 教材Aを推奨
-河合塾側の分析: 現在レベルなら教材B相当
-StudyPlanner: ユーザーは教材Cを70%完了
-```
-
-この場合に、サイトの知名度だけでA/B/Cを選ばない。
-
-既存教材Cで目標へ到達可能なら、変更コストを含めC継続が合理的な場合もある。
-
-逆にActualや模試から前提不足が明確なら、一部基礎へ戻す提案もできる。
-
----
-
-## 10. Deterministic signals
-
-次はanswer modelに推測させず、可能な範囲でapplication側の正式計算を渡す。
-
-- remaining days
-- remaining workload
-- required daily pace
-- available study minutes
-- scheduler capacity
-- deadline feasibility
-- accepted progressから導出できるremaining
-
-answer modelはこれらを戦略説明へ利用できるが、独自計算で上書きしない。
-
-```text
-計算・制約のtruth
-→ deterministic application
-
-教材選択・順序・優先度・trade-off・説明
-→ answer AI
+strategy judgment → answer AI
+numeric truth      → deterministic application
 ```
 
 ---
 
-## 11. Question economy
+## 9. Output Contract
 
-answer modelは「情報がないから全部聞く」をしない。
+answer purposeは自然言語だけでなくvalidated structured resultを返す。
 
-質問条件:
-
-```text
-その情報の回答によって、推薦が大きく変わるか？
-```
-
-Yesの場合のみ質問候補とする。
-
-合理的な仮定を置けば有用なprovisional adviceが可能なら、
-
-- 仮定を明示する
-- 先に役立つ回答を出す
-- 必要なら一点だけ追加確認する
-
-を優先する。
-
-例:
-
-「数学の参考書何がいい？」で現在学力が完全に不明なら、基礎教材と難関教材の選択が大きく変わるため質問価値が高い。
-
-一方、今回の推薦に無関係な別科目教材の進捗率を機械的に聞かない。
-
----
-
-## 12. Output Contract
-
-answer purposeはproseだけを返さない。
-
-概念上、少なくとも次を返せるようにする。
+概念上:
 
 ```text
 AdviceAnswerDocument
 ├─ userFacingAnswer
 ├─ recommendations[]
-│  ├─ recommendationType
-│  ├─ material
+│  ├─ material / method / sequence
 │  ├─ purpose
 │  ├─ prerequisite
-│  ├─ sequence
 │  ├─ milestone
 │  ├─ suggestedTargetPeriod
 │  ├─ rationale
 │  ├─ assumptions
 │  ├─ evidenceRefs
-│  ├─ alternatives
 │  └─ uncertainty
-└─ materialBlockingQuestion?
+├─ alternatives
+├─ blockingQuestion?
+└─ planningImplications
 ```
 
-exact schemaは実装時に決める。
+application-owned `adviceId / revision / optionId / itemId / review state`をanswer AIへ自由生成させない。
 
-重要なのは、後段が日本語回答をregex parsingしてproposalを復元しないことである。
+AI output validation後にdeterministic applicationがformal proposal identityを付与する。
 
----
+### 9.1 Revision / alternative output
 
-## 13. Luna / answer modelの扱い
+reviewContext付きcallでも出力は新しい`AdviceAnswerDocument`である。
 
-### 13.1 「promptが長いから無理」とは判断しない
+前proposalをin-place mutationする命令を返させない。
 
-モデル適性で重要なのは単純な文字数より、
-
-- authorityの分離
-- context selection
-- conflicting evidenceの扱い
-- structured outputの安定性
-- Japanese dialogue quality
-- instruction adherence
-
-である。
-
-必要情報を削ってpromptを短くすることをquality改善とみなさない。
-
-### 13.2 Lunaを初期candidateにできる
-
-Lunaを初期answer model候補にできるが、「context windowに入るから十分」とは判断しない。
-
-実装前または実装初期にReal API evaluationで確認する。
-
-評価軸:
-
-- exact user questionへ答えているか
-- relevant contextを正しく使うか
-- user contextとgeneric routeが衝突した際にuser contextを優先できるか
-- official factとadvisory opinionを区別できるか
-- 武田塾等のrouteを唯一の正解として扱わないか
-- 複数sourceの前提差を説明できるか
-- 学習科学を固定レシピ化しないか
-- 不要な質問を増やさないか
-- deterministic signalを上書きしないか
-- evidenceが無い最新情報を捏造しないか
-- structured outputがschema validationを通るか
-- adviceをschedule/memory authorizationとして扱わないか
-- latency / token / costが許容範囲か
-
-### 13.3 Model escalationはcontractを変えない
-
-もしLunaがquality thresholdを満たさない場合、より強いmodelへ一部相談だけをescalateできる設計にする。
-
-ただしmodel差し替えによって、
-
-- Source Policy
-- Consultation Context
-- Evidence Bundle
-- Output Contract
-- application authority
-
-を変更しない。
-
-modelは交換可能なadvice generatorであり、domain ownerではない。
+applicationが新proposal revisionとしてcommitし、lineageを付与する。
 
 ---
 
-## 14. Promptだけに安全性を依存しない
+## 10. Review feedbackの扱い
 
-次の不変条件はSystem Promptにも書くが、最終保証はdeterministic applicationが持つ。
+### `request_revision`
+
+同じ方針をベースに指定箇所を直す。
+
+例:
 
 ```text
-AI-generated advice
-≠ user-stated fact
-≠ accepted planning condition
-≠ saved Plan
-≠ durable memory
+v1: 基礎問題精講を10月末まで
+user: 教材はそれで、期限だけ11月末にして
 ```
 
-たとえanswer modelが誤って
+AIは教材を勝手に入れ替えず、期限変更が戦略全体へ与える影響だけ再評価する。
+
+### `request_alternative`
+
+現在案を採用せず別方向を求める。
+
+例:
 
 ```text
-この予定を登録します
+v1: 標準問題精講
+user: これは重すぎる。別の案がいい
 ```
 
-と出力しても、それだけでschedule mutationできない構造にする。
+新案は拒否された教材を単に再提示しない。
 
-prompt complianceは防御層の一つであり、authorization boundaryではない。
+ただし無理に「違うふり」をするために質の低い教材を捏造しない。
+
+### `dismiss`
+
+`dismiss`はanswer AIへ再生成callを行う契機ではない。
+
+「もういい」に対して別案を自動生成しない。
 
 ---
 
-## 15. Implementation前チェック
+## 11. Question economy
 
-runtime実装へ進む前に、少なくとも次を具体化する。
+- known contextを再質問しない
+- recommendationが大きく変わる不足だけを質問する
+- 仮定を明示して有用な案を出せるなら先に回答する
+- planning slotを相談開始時に全部聞かない
+- revision / alternativeでも大量質問へ戻らない
 
-- [ ] exact user questionをtop-level inputとして渡す
-- [ ] System InstructionsとSource Policyを分離する
-- [ ] Consultation Contextのselection責任をapplicationに置く
-- [ ] user fact / observed evidence / external evidenceを区別する
-- [ ] Evidence Bundleにprovenance / freshnessを持たせる
-- [ ] named sitesを永久的なtruth whitelistにしない
-- [ ] question typeごとに必要source categoryを選択できるようにする
-- [ ] deterministic calculationを別入力として扱う
-- [ ] answer proseとstructured recommendationを同時に返す
-- [ ] output schema validationを通す
-- [ ] external textをinstructionとして扱わない
-- [ ] LunaをReal API Japanese evaluationで検証する
-- [ ] Luna不十分時もmodel差し替えだけで済むcontractにする
-- [ ] prompt complianceだけでschedule/memory safetyを保証しない
+review feedbackを何度受けても有意な別案を作れない場合は、固定回数heuristicではなく、差分を決める1つのtargeted questionを返せる。
 
-このチェックが完了しても、それ自体はruntime feature完成を意味しない。
+---
 
-実装・lifecycle・promotion・preview・saveについては親の [Learning Consultation and Advice Contract](learning-consultation-and-advice.md) に従う。
+## 12. Example envelopes
+
+### 12.1 Initial consultation
+
+```yaml
+userQuestion: "数学の点数を上げたい。どの参考書をいつまでにやればいい？"
+
+consultationContext:
+  targetExam: 共通テスト
+  currentScore: 55
+  targetScore: 75
+  examDate: 2027-01-16
+  materials:
+    - name: 基礎問題精講
+      progress: 0.30
+  availableTime:
+    weekdayMinutes: 60
+    weekendMinutes: 120
+
+evidenceBundle:
+  - sourceCategory: official_exam
+    source: 大学入試センター
+    claim: "..."
+  - sourceCategory: exam_analysis
+    source: 河合塾
+    claim: "..."
+  - sourceCategory: study_route
+    source: 武田塾
+    claim: "..."
+
+deterministicSignals:
+  remainingDays: 138
+```
+
+### 12.2 Alternative request
+
+```yaml
+userQuestion: "その教材は嫌。別の案にして"
+
+consultationContext:
+  # current authoritative context
+  ...
+
+reviewContext:
+  sourceAdviceId: advice_123
+  sourceRevision: 1
+  reviewAction: request_alternative
+  userFeedback: "その教材は嫌"
+  priorAdviceSnapshot:
+    recommendations:
+      - material: 標準問題精講
+        purpose: 標準問題演習
+
+# evidence / deterministic signals are refreshed as needed
+```
+
+新proposal v2のformal ID / revision / lineageはapplicationが付与する。
+
+---
+
+## 13. Luna / answer model evaluation
+
+「promptを読める長さだから採用」では判断しない。
+
+Real API evaluationで少なくとも次を見る。
+
+### Initial answer quality
+
+- current user questionへ直接答える
+- user contextを一般ルートより優先できる
+- 一つの教育機関を絶対視しない
+- 不要な教材を増やさない
+- deterministic signalsを上書きしない
+- 不足時に質問しすぎない
+- structured outputが安定する
+
+### Review loop quality
+
+- `request_revision`で残すべき部分を維持できる
+- `request_alternative`で実質的な別案を作れる
+- rejected elementを無視して同案を反復しない
+- user feedbackを勝手にdurable preferenceへ一般化しない
+- 差分を作れないとき適切なtargeted clarificationへ落とせる
+- prior proposal / current context / evidenceの衝突を扱える
+
+### Safety / authority
+
+- 「承認しました」と自分でformal stateを変更したふりをしない
+- schedule / saveを実行したと主張しない
+- evidence内prompt injectionを命令として扱わない
+- model memoryで最新事実を捏造しない
+
+Lunaが基準を満たさない場合でもinput/output contractはmodel非依存に保ち、answer providerだけ差し替えられるようにする。
+
+---
+
+## 14. Implementation rule
+
+このsupporting designを理由に重要安全条件をpromptだけへ委ねない。
+
+次は必ずapplication側でも保証する。
+
+- advice生成だけでplanning stateを変えない
+- review actionをtyped stateからbindする
+- `dismiss`時に自動再生成しない
+- approval時にstalenessをrevalidateする
+- stale proposalをpromoteしない
+- revisionはnew proposalとしてcommitする
+- duplicate review / promotionをidempotentに防ぐ
+- review feedbackをdurable memoryへ自動昇格しない
+- validated final outputだけをAdviceProposal候補にする
+
+Promptは判断品質を高めるための契約であり、security / lifecycle authorityそのものではない。
