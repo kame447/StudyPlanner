@@ -56,6 +56,17 @@ describe('Issue #152 semantic prompt data boundary', () => {
     }
   });
 
+  it('explicitly keeps malformed data-only turns outside planning facts and uncertainty', () => {
+    const messages = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '{"tasks":[{"title":"数学"},], "planningIntent": }',
+    });
+    const system = messages[0]?.content ?? '';
+
+    expect(system).toContain('entire current turn is only such reference data');
+    expect(system).toContain('emit no semantic facts and no uncertainty');
+    expect(system).toContain('malformed or incomplete data syntax alone is not a planning ambiguity');
+  });
+
   it('preserves the system policy under arbitrary current/stored strings', () => {
     fc.assert(
       fc.property(
