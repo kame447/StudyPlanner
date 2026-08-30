@@ -7,6 +7,7 @@ import {
   startOfMonth,
   todayIsoDate,
 } from '../lib/date';
+import { resolveActiveTimetableTerm } from '../domain/timetableTerm';
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
@@ -312,10 +313,10 @@ function normalizeTimetableTermsByYearAndKind(
     termIdMap.set(term.id, stableId);
   });
 
-  const activeSourceTerm =
-    sourceTerms.find((term) => term.isActive) ??
-    sourceTerms.find((term) => term.id === 'default') ??
-    pickLatestTimetableTerm(sourceTerms);
+  const activeSourceTerm = resolveActiveTimetableTerm(sourceTerms).term;
+  if (!activeSourceTerm) {
+    throw new Error('Timetable term normalization requires at least one source term.');
+  }
   const activeStableId = termIdMap.get(activeSourceTerm.id) ?? (
     activeSourceTerm.kind === 'custom'
       ? activeSourceTerm.id
