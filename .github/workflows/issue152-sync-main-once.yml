@@ -1,0 +1,58 @@
+name: Issue 152 sync main once
+
+on:
+  push:
+    branches:
+      - test/issue152-adversarial-validation-lab
+    paths:
+      - .github/workflows/issue152-sync-main-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/issue152-adversarial-validation-lab
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge latest main and classify conflicts
+        id: merge
+        shell: bash
+        run: |
+          set -uo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          if git merge --no-edit origin/main; then
+            echo 'merged=true' >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U | sort > issue152-merge-conflicts.txt
+            echo 'merged=false' >> "$GITHUB_OUTPUT"
+            git merge --abort || true
+          fi
+
+      - name: Upload conflict report
+        if: steps.merge.outputs.merged != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue152-merge-conflicts
+          path: issue152-merge-conflicts.txt
+
+      - name: Push reconciled branch and remove this workflow
+        if: steps.merge.outputs.merged == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/issue152-sync-main-once.yml
+          git commit -m 'chore: remove one-shot Issue 152 sync workflow'
+          git push origin HEAD:test/issue152-adversarial-validation-lab
+
+      - name: Fail when manual conflict resolution is required
+        if: steps.merge.outputs.merged != 'true'
+        shell: bash
+        run: exit 1
