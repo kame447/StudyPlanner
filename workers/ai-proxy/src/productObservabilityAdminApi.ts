@@ -7,12 +7,16 @@ import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
 } from './productObservabilityReadModelService';
+import { ProductObservabilityWeeklyPlanningDiagnosticAdapter } from './productObservabilityWeeklyPlanningDiagnosticAdapter';
 
 export const PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH = '/observability/admin/overview';
 export const PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH = '/observability/admin/users';
 export const PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH = '/observability/admin/user-identity';
 export const PRODUCT_OBSERVABILITY_ADMIN_AI_PATH = '/observability/admin/ai';
 export const PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH = '/observability/admin/planning';
+export const PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH = '/observability/admin/logs';
+export const PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH = '/observability/admin/log-entries';
+export const PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH = '/observability/admin/debug-bundle';
 
 export interface ProductObservabilityAdminApiEnv extends ProductObservabilityReadModelEnv {
   FIREBASE_WEB_API_KEY: string;
@@ -35,6 +39,10 @@ const CLIENT_VALIDATION_ERRORS = new Set([
   'observability_limit_invalid',
   'observability_environment_invalid',
   'observability_identity_search_invalid',
+  'observability_trace_session_invalid',
+  'observability_trace_status_invalid',
+  'observability_trace_cursor_invalid',
+  'observability_trace_request_invalid',
 ]);
 
 function allowedOrigins(env: ProductObservabilityAdminApiEnv): Set<string> {
@@ -157,12 +165,24 @@ function requestedLimit(value: string | null): number {
   return Math.min(100, parsed);
 }
 
+function afterSequence(value: string | null): number {
+  if (value === null || value === '') return -1;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < -1) {
+    throw new Error('observability_trace_cursor_invalid');
+  }
+  return parsed;
+}
+
 export function isProductObservabilityAdminPath(pathname: string): boolean {
   return pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_USERS_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_AI_PATH
-    || pathname === PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH;
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH;
 }
 
 export async function handleProductObservabilityAdminApi(
@@ -219,6 +239,41 @@ export async function handleProductObservabilityAdminApi(
       return jsonResponse(request, env, 200, { ok: true, result });
     }
 
+    if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH
+      || url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH
+      || url.pathname === PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH) {
+      const diagnostics = new ProductObservabilityWeeklyPlanningDiagnosticAdapter(env);
+      await diagnostics.assertTraceReader(adminUid);
+      if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH) {
+        const page = await diagnostics.listSessions({
+          cursor: decodeCursor(url.searchParams.get('cursor')),
+          limit: requestedLimit(url.searchParams.get('limit')),
+          status: url.searchParams.get('status'),
+          sessionId: url.searchParams.get('session'),
+        });
+        return jsonResponse(request, env, 200, {
+          ok: true,
+          sessions: page.sessions,
+          nextCursor: encodeCursor(page.nextCursor),
+        });
+      }
+      const sessionId = url.searchParams.get('session')?.trim() ?? '';
+      if (!sessionId) throw new Error('observability_trace_session_invalid');
+      if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH) {
+        const result = await diagnostics.listEntries({
+          sessionId,
+          afterSequence: afterSequence(url.searchParams.get('after')),
+          limit: requestedLimit(url.searchParams.get('limit')),
+        });
+        return jsonResponse(request, env, 200, { ok: true, result });
+      }
+      const bundle = await diagnostics.createDebugBundle({
+        sessionId,
+        requestId: url.searchParams.get('request'),
+      });
+      return jsonResponse(request, env, 200, { ok: true, bundle });
+    }
+
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_USER_IDENTITY_PATH) {
       const matches = await analysis.resolveUserIdentity(url.searchParams.get('q') ?? '');
       return jsonResponse(request, env, 200, { ok: true, matches });
@@ -258,11 +313,16 @@ export async function handleProductObservabilityAdminApi(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'observability_read_failed';
     const validationFailure = CLIENT_VALIDATION_ERRORS.has(message);
-    if (!validationFailure) {
+    const forbidden = message === 'observability_trace_reader_forbidden';
+    const notFound = message === 'observability_trace_session_not_found';
+    if (!validationFailure && !forbidden && !notFound) {
       console.error('[Product Observability] admin read failed', { message });
     }
-    return jsonResponse(request, env, validationFailure ? 400 : 503, {
-      error: validationFailure ? message : 'Observability read model is temporarily unavailable.',
+    const status = forbidden ? 403 : notFound ? 404 : validationFailure ? 400 : 503;
+    return jsonResponse(request, env, status, {
+      error: validationFailure || forbidden || notFound
+        ? message
+        : 'Observability read model is temporarily unavailable.',
     });
   }
 }

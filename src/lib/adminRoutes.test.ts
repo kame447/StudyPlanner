@@ -9,6 +9,11 @@ describe('admin route resolution', () => {
   it('resolves the analytics top-level routes', () => {
     expect(resolveAdminRoute('/admin/ai')).toEqual({ type: 'ai-api' });
     expect(resolveAdminRoute('/admin/planning')).toEqual({ type: 'planning' });
+    expect(resolveAdminRoute('/admin/logs')).toEqual({ type: 'logs' });
+  });
+
+  it('keeps the legacy trace URL as a compatibility route to Logs', () => {
+    expect(resolveAdminRoute('/admin/weekly-planning-traces')).toEqual({ type: 'logs' });
   });
 
   it('resolves the user list and decoded user detail routes', () => {

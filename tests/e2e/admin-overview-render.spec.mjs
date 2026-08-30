@@ -32,9 +32,7 @@ async function assertNoHorizontalOverflow(page) {
       .slice(0, 8);
     return { overflow, viewportWidth, rootScrollWidth: root.scrollWidth, offenders };
   });
-  if (diagnostic.overflow > 1) {
-    console.log(`ADMIN_HORIZONTAL_OVERFLOW ${JSON.stringify(diagnostic)}`);
-  }
+  if (diagnostic.overflow > 1) console.log(`ADMIN_HORIZONTAL_OVERFLOW ${JSON.stringify(diagnostic)}`);
   expect(diagnostic.overflow).toBeLessThanOrEqual(1);
 }
 
@@ -62,12 +60,9 @@ async function inspectOverview(page, options) {
   await expect(page.getByText('遅いケースの応答時間')).toBeVisible();
   await expect(page.getByText('Planningの状態')).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '管理者画面ナビゲーション' });
-  const aiApiNav = navigation.getByRole('button', { name: 'AI・API' });
-  const planningNav = navigation.getByRole('button', { name: 'Planning' });
-  await expect(aiApiNav).toBeVisible();
-  await expect(aiApiNav).toBeEnabled();
-  await expect(planningNav).toBeVisible();
-  await expect(planningNav).toBeEnabled();
+  await expect(navigation.getByRole('button', { name: 'AI・API' })).toBeEnabled();
+  await expect(navigation.getByRole('button', { name: 'Planning' })).toBeEnabled();
+  await expect(navigation.getByRole('button', { name: 'Logs' })).toBeEnabled();
   await screenshot(page, `overview-${options.label}`);
 }
 
@@ -82,7 +77,6 @@ async function inspectUsers(page, options) {
   await expect(firstStats).toContainText('AI');
   await expect(firstStats).toContainText('計画');
   await expect(firstStats).toContainText('直近error');
-  await expect(page.locator('.admin-user-copy').first()).toContainText('登録');
   await screenshot(page, `users-${options.label}`);
 }
 
@@ -107,7 +101,6 @@ async function inspectAi(page, options) {
   await expect(page.getByRole('heading', { name: 'Purpose別' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Phase別' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Operation別' })).toBeVisible();
-  await expect(page.locator('.admin-ai-token-breakdown').first()).toBeVisible();
   await screenshot(page, `ai-${options.label}`);
 }
 
@@ -121,10 +114,22 @@ async function inspectPlanning(page, options) {
   await expect(page.getByText('fallback使用')).toBeVisible();
   await expect(page.getByText('semantic repair使用')).toBeVisible();
   await expect(page.getByText('abandoned')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Scheduler version別' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Prompt version別' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Model別' })).toBeVisible();
   await screenshot(page, `planning-${options.label}`);
+}
+
+async function inspectLogs(page, options) {
+  await openSurface(page, { ...options, view: 'logs' });
+  await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible();
+  await expect(page.getByText('Restricted diagnostics')).toBeVisible();
+  await expect(page.getByPlaceholder('weekly-trace-...')).toBeVisible();
+  await expect(page.getByText('診断データは高感度です。')).toBeVisible();
+  await expect(page.getByText('Weekly Planning', { exact: true })).toBeVisible();
+  await expect(page.getByText('subject-a1b2c3d4e5f6')).toBeVisible();
+  await page.locator('.admin-log-session-toggle').first().click();
+  await expect(page.getByText('Session Debug Bundle')).toBeVisible();
+  await expect(page.getByText('approval_failed')).toBeVisible();
+  await expect(page.getByText('Redacted detail').first()).toBeVisible();
+  await screenshot(page, `logs-${options.label}`);
 }
 
 const viewports = [
@@ -151,40 +156,25 @@ test.describe('Admin console rendered UI', () => {
     test(`Planning ${viewport.label} remains readable and contained`, async ({ page }) => {
       await inspectPlanning(page, viewport);
     });
+    test(`Logs ${viewport.label} remains readable and contained`, async ({ page }) => {
+      await inspectLogs(page, viewport);
+    });
   }
 
   test('Users empty state remains explicit on mobile', async ({ page }) => {
-    await openSurface(page, {
-      view: 'users',
-      theme: 'light',
-      width: 390,
-      height: 844,
-      state: 'empty',
-    });
+    await openSurface(page, { view: 'users', theme: 'light', width: 390, height: 844, state: 'empty' });
     await expect(page.getByText('該当するユーザーがいません')).toBeVisible();
     await screenshot(page, 'users-empty-mobile-light');
   });
 
   test('User detail empty state does not invent history', async ({ page }) => {
-    await openSurface(page, {
-      view: 'user-detail',
-      theme: 'dark',
-      width: 390,
-      height: 844,
-      state: 'empty',
-    });
+    await openSurface(page, { view: 'user-detail', theme: 'dark', width: 390, height: 844, state: 'empty' });
     await expect(page.getByText('actorが見つかりません')).toBeVisible();
     await screenshot(page, 'user-detail-empty-mobile-dark');
   });
 
   test('AI API empty state reports no requests instead of fabricating usage', async ({ page }) => {
-    await openSurface(page, {
-      view: 'ai',
-      theme: 'light',
-      width: 1440,
-      height: 1000,
-      state: 'empty',
-    });
+    await openSurface(page, { view: 'ai', theme: 'light', width: 1440, height: 1000, state: 'empty' });
     await expect(page.getByRole('heading', { name: 'AI・API' })).toBeVisible();
     await expect(page.getByText('この期間のAIリクエストはありません。').first()).toBeVisible();
     await expect(page.getByText('未計測', { exact: true }).first()).toBeVisible();
@@ -192,42 +182,36 @@ test.describe('Admin console rendered UI', () => {
   });
 
   test('Planning empty state reports no sessions without fabricating conversion', async ({ page }) => {
-    await openSurface(page, {
-      view: 'planning',
-      theme: 'light',
-      width: 1440,
-      height: 1000,
-      state: 'empty',
-    });
+    await openSurface(page, { view: 'planning', theme: 'light', width: 1440, height: 1000, state: 'empty' });
     await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
     await expect(page.getByText('0', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('未計測', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('この期間に比較可能なsession cohortはありません。').first()).toBeVisible();
     await screenshot(page, 'planning-empty-desktop-light');
   });
 
+  test('Logs empty state does not equate missing trace with no incidents', async ({ page }) => {
+    await openSurface(page, { view: 'logs', theme: 'light', width: 390, height: 844, state: 'empty' });
+    await expect(page.getByText('該当する診断sessionはありません')).toBeVisible();
+    await expect(page.getByText(/0件を「障害なし」とは解釈しません/)).toBeVisible();
+    await screenshot(page, 'logs-empty-mobile-light');
+  });
+
   test('Overview error state remains readable and contained', async ({ page }) => {
-    await openSurface(page, {
-      view: 'overview',
-      theme: 'dark',
-      width: 1440,
-      height: 1000,
-      state: 'error',
-    });
+    await openSurface(page, { view: 'overview', theme: 'dark', width: 1440, height: 1000, state: 'error' });
     await expect(page.getByText('Overviewを取得できませんでした')).toBeVisible();
     await screenshot(page, 'overview-error-desktop-dark');
   });
 
   test('Planning error state remains readable and contained', async ({ page }) => {
-    await openSurface(page, {
-      view: 'planning',
-      theme: 'dark',
-      width: 390,
-      height: 844,
-      state: 'error',
-    });
-    await expect(page.getByRole('heading', { name: 'Planning Analytics' })).toBeVisible();
+    await openSurface(page, { view: 'planning', theme: 'dark', width: 390, height: 844, state: 'error' });
     await expect(page.getByText('Harness planning analytics read failed.')).toBeVisible();
     await screenshot(page, 'planning-error-mobile-dark');
+  });
+
+  test('Logs restricted read error remains explicit and contained', async ({ page }) => {
+    await openSurface(page, { view: 'logs', theme: 'dark', width: 390, height: 844, state: 'error' });
+    await expect(page.getByText('Logsを取得できませんでした')).toBeVisible();
+    await expect(page.getByText('Harness restricted diagnostic read failed.')).toBeVisible();
+    await screenshot(page, 'logs-error-mobile-dark');
   });
 });

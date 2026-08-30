@@ -9,15 +9,13 @@ import {
   Users,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { WeeklyPlanningTraceDebugPage } from '../features/weeklyPlanning/trace/WeeklyPlanningTraceDebugPage';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import '../styles/admin-phase5.css';
 import '../styles/admin-phase6.css';
+import '../styles/admin-phase7.css';
 import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
-
-const TRACE_PATH = '/admin/weekly-planning-traces';
 
 function FutureNavItem({ icon, label }: { icon: ReactNode; label: string }) {
   return (
@@ -108,7 +106,7 @@ export function AdminApp() {
   const isUsersPage = currentPath === '/admin/users' || currentPath.startsWith('/admin/users/');
   const isAiPage = currentPath === '/admin/ai';
   const isPlanningPage = currentPath === '/admin/planning';
-  const isTracePage = currentPath === TRACE_PATH;
+  const isLogsPage = currentPath === '/admin/logs' || currentPath === '/admin/weekly-planning-traces';
 
   return (
     <div className="app-shell admin-app-shell">
@@ -157,8 +155,8 @@ export function AdminApp() {
                 <span>Planning</span>
               </button>
               <button
-                className={`admin-console-nav-item${isTracePage ? ' active' : ''}`}
-                onClick={() => navigate(TRACE_PATH)}
+                className={`admin-console-nav-item${isLogsPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/logs')}
                 type="button"
               >
                 <ListTree aria-hidden="true" size={19} />
@@ -177,11 +175,7 @@ export function AdminApp() {
           </aside>
 
           <div className="admin-console-main">
-            {isTracePage ? (
-              <WeeklyPlanningTraceDebugPage onBack={() => navigate('/admin')} />
-            ) : (
-              <AdminRoutes path={currentPath} navigate={navigate} />
-            )}
+            <AdminRoutes path={currentPath} navigate={navigate} />
           </div>
         </div>
       </AdminGuard>
