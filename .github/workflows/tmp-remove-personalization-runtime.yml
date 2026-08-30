@@ -1,0 +1,61 @@
+name: One-shot personalization runtime cleanup
+
+on:
+  push:
+    branches:
+      - refactor/stable-v5-explicit-personalization-context
+    paths:
+      - '.github/workflows/tmp-remove-personalization-runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/stable-v5-explicit-personalization-context
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Remove hidden personalization runtime fallback
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/semantic/weeklyPlanningGenericSchedulerInput.ts')
+          text = path.read_text(encoding='utf-8')
+          import_block = "import {\n  getWeeklyPlanningEstimateCalibrationRuntimeV5,\n} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';\n"
+          runtime_block = "  const runtimeCalibration = getWeeklyPlanningEstimateCalibrationRuntimeV5(\n    params.context.ownerId,\n  );\n"
+          fallback = "params.estimateCalibrationMultiplier\n      ?? runtimeCalibration?.multiplier\n      ?? null"
+          if text.count(import_block) != 1:
+              raise SystemExit(f'unexpected calibration runtime import count: {text.count(import_block)}')
+          if text.count(runtime_block) != 1:
+              raise SystemExit(f'unexpected calibration runtime lookup count: {text.count(runtime_block)}')
+          if text.count(fallback) != 1:
+              raise SystemExit(f'unexpected calibration runtime fallback count: {text.count(fallback)}')
+          text = text.replace(import_block, '')
+          text = text.replace(runtime_block, '')
+          text = text.replace(fallback, 'params.estimateCalibrationMultiplier ?? null')
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm src/features/weeklyPlanning/personalization/weeklyPlanningEstimateCalibrationRuntimeV5.ts
+          rm src/features/weeklyPlanning/personalization/weeklyPlanningEstimateCalibrationRuntimeV5.test.ts
+          rm src/features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceRuntimeV5.ts
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify TypeScript contract
+        run: npm run typecheck
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-remove-personalization-runtime.yml
+      - name: Commit verified cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor: remove hidden personalization runtime registries'
+          git push origin HEAD:refactor/stable-v5-explicit-personalization-context
