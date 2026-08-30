@@ -3,6 +3,9 @@ import {
   isWeeklyPlanningStableV5QuestionSlot,
 } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import {
+  deriveWeeklyPlanningEstimateCalibration,
+} from '../personalization/weeklyPlanningEstimateCalibration';
+import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
@@ -181,8 +184,14 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     horizon,
     timeZone: requestContext.timeZone,
   });
+  const actuals = input.actuals ?? [];
+  const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({
+    plans: input.plans,
+    actuals,
+  });
   const observedPaceProjection = projectWeeklyPlanningMemoryObservedPaceV5({
-    ownerId: input.userId,
+    plans: input.plans,
+    actuals,
     graph: activeGraph,
     document: semantic.normalization.document,
     localToFactId: semantic.canonicalization?.localToFactId ?? {},
@@ -192,6 +201,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     graph: activeGraph,
     context: schedulerContext,
     externalSources,
+    estimateCalibrationMultiplier: estimateCalibration.multiplier,
     observedEstimateOverrides: observedPaceProjection.estimateOverrides,
     resolvedDateExpressions,
     resolvedTemporalConstraints,
@@ -222,6 +232,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         sessionMinutes: acceptedCalibration.selectedSessionMinutes,
         context: schedulerContext,
         externalSources,
+        estimateCalibrationMultiplier: estimateCalibration.multiplier,
         resolvedDateExpressions,
         resolvedTemporalConstraints,
       })
@@ -295,6 +306,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     activeGraph,
     resolvedDateExpressions,
     resolvedTemporalConstraints,
+    estimateCalibration,
     observedPaceProjection,
     baselineCompilation,
     acceptedMemorySessionCompilation,
