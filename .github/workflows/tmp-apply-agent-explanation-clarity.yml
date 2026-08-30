@@ -1,0 +1,46 @@
+name: One-shot AGENTS explanation clarity update
+
+on:
+  push:
+    branches:
+      - docs/agent-explanation-clarity
+    paths:
+      - '.github/workflows/tmp-apply-agent-explanation-clarity.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/agent-explanation-clarity
+          fetch-depth: 0
+      - name: Add explanation clarity rule
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('AGENTS.md')
+          text = path.read_text()
+          marker = "## Project overview\n"
+          section = """### Explanation and reporting clarity\n\n- When explaining implementation, architecture, bugs, refactors, or progress to the user, start with product concepts, responsibility boundaries, data flow, and observable behavior.\n- Do not make raw variable, function, class, file, or internal field names the primary explanation unless the user explicitly asks for code-level detail.\n- Prefer plain domain language first, such as \"the current bookshelf data is passed directly into the planning turn\", before introducing implementation identifiers.\n- Introduce concrete identifiers only after the concept is clear and only when they improve traceability, debugging, or review.\n- If a technical term or acronym is necessary, explain its meaning on first use unless the user has already established that vocabulary.\n- Progress and final summaries should prioritize: what was wrong, what responsibility or flow changed, why the new structure is safer or clearer, and what remains. Put low-level implementation names after that explanation rather than in place of it.\n- Do not oversimplify away important behavior or uncertainty. The goal is conceptual clarity first, implementation detail second.\n\n"""
+          if section.strip() in text:
+              raise SystemExit('section already present')
+          if marker not in text:
+              raise SystemExit('project overview marker missing')
+          text = text.replace(marker, section + marker, 1)
+          path.write_text(text)
+          PY
+          rm .github/workflows/tmp-apply-agent-explanation-clarity.yml
+          git diff --check
+          git diff -- AGENTS.md
+      - name: Commit verified documentation change
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AGENTS.md .github/workflows/tmp-apply-agent-explanation-clarity.yml
+          git commit -m 'docs: clarify agent explanation style'
+          git push origin HEAD:docs/agent-explanation-clarity
