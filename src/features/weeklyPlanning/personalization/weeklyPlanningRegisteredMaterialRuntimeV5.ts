@@ -94,10 +94,13 @@ function createEntry(material: StudyMaterial): RegisteredMaterialContextEntryV5 
 }
 
 export function createWeeklyPlanningRegisteredMaterialContextV5(params: {
+  ownerId: string;
   materials: readonly StudyMaterial[];
   userText?: string;
   limit?: number;
 }): WeeklyPlanningRegisteredMaterialContextV5[] {
+  const ownerId = params.ownerId.trim();
+  if (!ownerId) return [];
   const query = normalizedLookupText(params.userText);
   const limit = Math.max(
     0,
@@ -109,6 +112,7 @@ export function createWeeklyPlanningRegisteredMaterialContextV5(params: {
   if (limit === 0) return [];
 
   return params.materials
+    .filter((material) => material.userId === ownerId)
     .map(createEntry)
     .filter((entry): entry is RegisteredMaterialContextEntryV5 => entry !== null)
     .sort((left, right) => {
