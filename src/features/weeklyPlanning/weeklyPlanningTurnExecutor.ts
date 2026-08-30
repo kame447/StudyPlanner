@@ -1,4 +1,7 @@
 import {
+  resolveWeeklyPlanningRequestContextAtIngress,
+} from './application/weeklyPlanningRequestContextIngress';
+import {
   executeWeeklyPlanningStableV5RuntimeTurn,
 } from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 import {
@@ -22,6 +25,11 @@ export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   weeklyPlanningStableV5TurnResultProjector.begin(input.traceRequestId);
+  const requestContext = resolveWeeklyPlanningRequestContextAtIngress({
+    requestContext: input.requestContext,
+    selectedDate: input.selectedDate,
+    weekStartsOn: input.weekStartsOn,
+  }).context;
   const result = await executeWeeklyPlanningStableV5RuntimeTurn({
     previousState: input.previousState,
     messages: input.messages,
@@ -35,7 +43,7 @@ export async function executeWeeklyPlanningTurn(
     timetableTerms: input.timetableTerms,
     conversationId: input.conversationId,
     traceRequestId: input.traceRequestId,
-    requestContext: input.requestContext,
+    requestContext,
   });
   return weeklyPlanningStableV5TurnResultProjector.project({ input, result });
 }
