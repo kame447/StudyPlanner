@@ -120,13 +120,13 @@ describe('buildAiPlanningStarterPrompts', () => {
       referenceDate: '2026-08-21',
       plans: [],
       todos: [],
-      materials: [material({ name: '基本情報問題集', targetDate: null })],
+      materials: [material({ name: '基本情報問題集', targetDate: undefined })],
       limit: 1,
     });
 
     expect(option).toEqual({
       displayText: '基本情報問題集を今週進める学習計画を作って',
-      prompt: '登録済み教材名: \"基本情報問題集\"。この教材を今週進める学習計画を作って',
+      prompt: '登録済み教材名: "基本情報問題集"。この教材を今週進める学習計画を作って',
     });
   });
 
