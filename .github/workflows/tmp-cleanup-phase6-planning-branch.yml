@@ -1,0 +1,20 @@
+name: One-shot Phase 6 planning branch cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-cleanup-phase6-planning-branch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete merged Phase 6 implementation branch
+        run: git push origin --delete -- feat/product-observability-phase6-planning-analytics
