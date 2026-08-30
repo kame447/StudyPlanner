@@ -509,8 +509,8 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
                 <div><span>トークン使用量</span><strong>{formatCompact(data.period.ai.totalTokens)}</strong><small>{data.period.ai.totalTokensUnknownCount > 0 ? '一部未計測' : '計測済み'}</small></div>
                 <div><span>推定コスト</span><strong>{formatUsdMicros(data.period.ai.estimatedCostMicros)}</strong><small>{data.period.ai.estimatedCostUnknownCount > 0 ? '一部未計測' : '計測済み'}</small></div>
               </div>
-              <button className="admin-overview-detail-link" type="button" disabled title="AI・API詳細はPhase 5で実装します">
-                AI・APIの詳細は次フェーズ
+              <button className="admin-overview-detail-link" type="button" onClick={() => navigate('/admin/ai')}>
+                AI・APIの詳細を確認
               </button>
             </article>
 
@@ -532,8 +532,8 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
                   </div>
                 ))}
               </div>
-              <button className="admin-overview-detail-link" type="button" disabled title="Planning詳細はPhase 6で実装します">
-                Planningの詳細は次フェーズ
+              <button className="admin-overview-detail-link" type="button" onClick={() => navigate('/admin/planning')}>
+                Planningの詳細を確認
               </button>
             </article>
 
@@ -577,8 +577,8 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
                   state={data.rollupCheckpoint.activeUserDirtySources.length > 0 ? 'warning' : 'ok'}
                 />
               </div>
-              <button className="admin-overview-detail-link" type="button" disabled title="System詳細はPhase 8で実装します">
-                Systemの詳細は次フェーズ
+              <button className="admin-overview-detail-link" type="button" onClick={() => navigate('/admin/system')}>
+                Systemの詳細を確認
               </button>
             </article>
           </section>
@@ -611,7 +611,7 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
           <footer className="admin-overview-footer">
             <Clock3 aria-hidden="true" size={15} />
             集計最終更新: {formatTimestamp(data.rollupCheckpoint.updatedAt)}
-            <button type="button" onClick={() => navigate('/admin/weekly-planning-traces')}>ログを確認</button>
+            <button type="button" onClick={() => navigate('/admin/logs')}>ログを確認</button>
           </footer>
         </>
       ) : null}
