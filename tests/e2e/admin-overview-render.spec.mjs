@@ -127,7 +127,7 @@ async function inspectLogs(page, options) {
   await expect(page.getByText('subject-a1b2c3d4e5f6')).toBeVisible();
   await page.locator('.admin-log-session-toggle').first().click();
   await expect(page.getByText('Session Debug Bundle')).toBeVisible();
-  await expect(page.getByText('approval_failed')).toBeVisible();
+  await expect(page.getByText('approval_failed', { exact: true })).toBeVisible();
   await expect(page.getByText('Redacted detail').first()).toBeVisible();
   await screenshot(page, `logs-${options.label}`);
 }
@@ -141,24 +141,12 @@ const viewports = [
 
 test.describe('Admin console rendered UI', () => {
   for (const viewport of viewports) {
-    test(`Overview ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectOverview(page, viewport);
-    });
-    test(`Users ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectUsers(page, viewport);
-    });
-    test(`User detail ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectUserDetail(page, viewport);
-    });
-    test(`AI API ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectAi(page, viewport);
-    });
-    test(`Planning ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectPlanning(page, viewport);
-    });
-    test(`Logs ${viewport.label} remains readable and contained`, async ({ page }) => {
-      await inspectLogs(page, viewport);
-    });
+    test(`Overview ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectOverview(page, viewport); });
+    test(`Users ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectUsers(page, viewport); });
+    test(`User detail ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectUserDetail(page, viewport); });
+    test(`AI API ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectAi(page, viewport); });
+    test(`Planning ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectPlanning(page, viewport); });
+    test(`Logs ${viewport.label} remains readable and contained`, async ({ page }) => { await inspectLogs(page, viewport); });
   }
 
   test('Users empty state remains explicit on mobile', async ({ page }) => {
