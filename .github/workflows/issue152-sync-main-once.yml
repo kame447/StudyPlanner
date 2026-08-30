@@ -1,0 +1,59 @@
+name: Issue 152 sync main once
+
+on:
+  push:
+    branches:
+      - test/issue152-adversarial-validation-lab
+    paths:
+      - .github/workflows/issue152-sync-main-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/issue152-adversarial-validation-lab
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge latest main without rewriting history
+        id: merge
+        shell: bash
+        run: |
+          set +e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-ff --no-edit origin/main
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            git diff --name-only --diff-filter=U | sort | tee /tmp/issue152-main-sync-conflicts.txt
+            git merge --abort
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload conflict evidence
+        if: steps.merge.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue152-main-sync-conflicts-${{ github.sha }}
+          path: /tmp/issue152-main-sync-conflicts.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove one-shot workflow and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/issue152-sync-main-once.yml
+          git commit -m 'chore: remove one-shot Issue 152 main sync'
+          git push origin HEAD:test/issue152-adversarial-validation-lab
+
+      - name: Enforce merge result
+        shell: bash
+        run: test '${{ steps.merge.outputs.code }}' = '0'
