@@ -1,0 +1,20 @@
+name: One-shot issue 251 branch cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-cleanup-issue251-branch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete merged issue 251 branch
+        run: git push origin --delete -- fix/stable-v5-question-slot-decoding
