@@ -1,6 +1,6 @@
 # Learning Consultation and Advice Contract
 
-Status: canonical product requirement / runtime implementation pending
+Status: canonical product requirement / runtime implementation in progress
 Updated: 2026-08-30
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 
@@ -10,6 +10,7 @@ Semantic ownership: [../architecture/weekly-planning-semantic-ownership-boundary
 Human grounding: [../policies/human-grounding.md](../policies/human-grounding.md)
 Adaptive memory: [../policies/adaptive-memory.md](../policies/adaptive-memory.md)
 Material metadata: [../../external-integrations/spec/material-metadata.md](../../external-integrations/spec/material-metadata.md)
+Prompt / evidence design: [learning-consultation-prompt-and-evidence.md](learning-consultation-prompt-and-evidence.md)
 Test philosophy: [../quality/test-philosophy.md](../quality/test-philosophy.md)
 Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 
@@ -17,7 +18,7 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 
 この文書は、AI計画に「予定を作る前段階の学習相談」を追加するための正仕様である。
 
-対象は、単に既存条件から予定を生成する依頼ではなく、学習方針そのものをユーザーが相談するturnである。
+対象は、単に既存条件から予定を生成する依頼ではなく、学習方針そのものをユーザーが相談し、提案をレビューし、承認した方針だけを既存planningへ接続するturnである。
 
 代表例:
 
@@ -29,29 +30,34 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 - 「この勉強法で間に合う？」
 - 「なぜその教材がおすすめなの？」
 
-現行Stable V5は、予定作成に必要な不足情報をassistant側から確認することはできる。一方、本Issueが扱うのは逆方向、すなわちuserがStudyPlannerへ学習戦略を質問し、回答を受け、その回答を必要なら後続turnで予定へ接続する能力である。
+現行Stable V5は予定作成に必要な不足情報をassistant側から確認できる。本Issueが扱うのは逆方向、すなわちuserがStudyPlannerへ学習戦略を質問し、回答をレビューし、明示的に承認した方針だけを後続planningへ接続する能力である。
 
-この文書が定義するのは要求・責任境界・状態モデル・安全条件・将来発展であり、現時点でproduction runtimeにこの機能が実装済みであることを意味しない。実装完了までは [current-contract-v5.md](../architecture/current-contract-v5.md) のproduction baselineが優先される。
+production runtimeへこの機能が完全実装されるまでは [current-contract-v5.md](../architecture/current-contract-v5.md) のproduction baselineが優先される。
 
 ## 2. Product goal
 
-AI計画を「自然言語から予定を登録する機能」だけで終わらせず、次の一連の流れを同じ対話面で成立させる。
+同じAI計画の会話面で次を成立させる。
 
 ```text
 相談する
 → 方針・教材・順序・目安期限について助言を得る
 → 理由や代替案を聞く
-→ 必要なら修正する
-→ ユーザーが採用する
-→ 既存Stable V5の計画条件へ変換する
+→ proposalをレビューする
+   ├─ approve
+   ├─ request_revision
+   ├─ request_alternative
+   └─ dismiss
+→ approveされたproposalをcurrent contextで再検証する
+→ approved + currentなscopeだけを既存Stable V5の計画条件へpromotionする
+→ readiness / scheduler
 → preview
-→ 明示承認
+→ Planの最終承認
 → save
 ```
 
 最終的なproduct outcomeは「AIがそれらしい勉強法を話すこと」ではない。
 
-ユーザーが、自分の目標・現在地・教材・予定・進捗にgroundされた提案を理解し、採用するかを自分で決め、その意思だけが安全に既存planning runtimeへ接続されることを目的とする。
+ユーザーが、自分の目標・現在地・教材・予定・進捗にgroundされた提案を理解し、修正・別案・終了も含めて自分で判断し、その意思だけが安全に既存planning runtimeへ接続されることを目的とする。
 
 ## 3. Core invariants
 
@@ -60,32 +66,40 @@ AI計画を「自然言語から予定を登録する機能」だけで終わら
 ```text
 AI-generated advice
 ≠ user-stated fact
-≠ user-accepted planning condition
+≠ user-approved planning strategy
+≠ promoted planning condition
 ≠ preview
 ≠ saved Plan
 ≠ durable memory
+```
+
+また、2種類の承認を混同しない。
+
+```text
+Advice approval
+= この学習方針をplanning材料として使ってよい
+
+Plan approval
+= 実際に生成されたpreviewを保存してよい
 ```
 
 AIが「基礎問題精講を10月末までに終えるのがおすすめ」と回答しただけでは、次のどれも成立しない。
 
 - ユーザーがその教材を使うと決めた
 - 10月末を期限として承認した
-- 週間計画へ追加してよい
-- 長期記憶として保持してよい
 - schedulerへ渡してよい
 - Planとして保存してよい
+- 長期記憶として保持してよい
 
-assistantの文章をmachine stateやauthorizationの代替にしない。
+assistant proseをmachine stateやauthorizationの代替にしない。
 
-ユーザーの明示的なaccept / modify / rejectをsemantic layerが意味として解釈し、deterministic applicationが対象proposal、scope、revisionを検証した後にだけ、採用された範囲をplanning inputへpromoteできる。
+ユーザーのreview actionをsemantic layerが意味として解釈し、deterministic applicationが対象proposal、scope、revision、validityを検証した後にだけ、approved scopeをplanning inputへpromoteできる。
 
 ## 4. Product scope
 
 ### 4.1 対象とする相談
 
 初期実装は、予定作成と意味的に接続できる学習相談を対象とする。
-
-例:
 
 - 学習戦略: 何から始めるべきか、どの順序がよいか
 - 教材選択: どの教材を使うべきか、今の教材を継続すべきか
@@ -99,8 +113,6 @@ assistantの文章をmachine stateやauthorizationの代替にしない。
 
 ### 4.2 初期非対象
 
-次はIssue #246の初期実装へ混ぜない。
-
 - StudyPlannerと無関係な汎用雑談assistant化
 - AI回答から直接Planを書き込むshortcut
 - 「数学ならこの参考書」のような巨大な決定論的教材heuristic表
@@ -113,14 +125,20 @@ assistantの文章をmachine stateやauthorizationの代替にしない。
 
 ## 5. Existing StudyPlanner boundariesとの関係
 
-この機能はStable V5の原則を変更するのではなく、予定作成より手前にadvisory branchを追加する。
+この機能はStable V5の原則を変更せず、予定作成より手前にadvisory branchを追加する。
 
 ### AIが所有する意味
 
 - current turnが相談・助言要求を含むか
 - 何について相談しているか
 - 学習目標、教材、科目、期限、比較対象等の自然言語上の意味
-- 「それで」「2つ目で」「教材はそれ、期限は11月末で」等のproposal response / contextual reference
+- proposal / option / itemへのcontextual reference
+- user review actionの意味
+  - `approve`
+  - `request_revision`
+  - `request_alternative`
+  - `dismiss`
+- revision / alternativeに対するuser feedbackの意味
 - `今回は` / `今後も` 等のscope meaning
 - recommendationに必要な曖昧さが自然言語上存在すること
 
@@ -129,24 +147,27 @@ assistantの文章をmachine stateやauthorizationの代替にしない。
 - consultation routeを実行可能状態として受理するか
 - source-of-truthごとのcontext取得
 - context budget / provenance / revision
-- advice ID / option ID / item ID
-- advice lifecycle
-- stale判定
-- accept / modify / reject対象の正式binding
-- promotion transaction
-- idempotency
+- advice ID / option ID / item ID / review decision ID
+- proposal revision / lineage
+- review binding
+- validity / stale判定
+- promotion state
+- promotion transaction / idempotency
 - planning Fact Graphへ入れる正式な構造
-- readiness / scheduler / preview / approval / save
+- readiness / scheduler / preview / Plan approval / save
 - persistence / sync / recovery
 
 ### Answer AIが所有するもの
 
 - grounded contextに基づく学習戦略・教材選択・順序・説明の生成
 - 複数案の比較やtrade-offの言語化
+- revision requestを踏まえた修正版の生成
+- alternative requestを踏まえた実質的に異なる別案の生成
+- 必要な場合の最小限のtargeted clarification
 - 不確実性や前提の説明
 - deterministic calculationやcatalog evidenceを人間が理解しやすい形で説明すること
 
-Answer AIはformal lifecycle、scheduler placement、approval、saveを所有しない。
+Answer AIはformal review state、validity、promotion、scheduler placement、Plan approval、saveを所有しない。
 
 ## 6. Intent / turn routing contract
 
@@ -156,8 +177,6 @@ Answer AIはformal lifecycle、scheduler placement、approval、saveを所有し
 
 Issue #246が扱う「userがassistantへ質問すること」を同じmachine labelへ雑に重ねない。
 
-少なくとも概念上、次を区別する。
-
 ```text
 assistant clarification
   application → userへ質問
@@ -166,13 +185,11 @@ user consultation
   user → StudyPlannerへ学習相談
 ```
 
-exact TypeScript名は実装時にcurrent schemaへ合わせて決めるが、責任の混同は禁止する。
-
 ### 6.2 初期routingは粗く保つ
 
-production semantic routingを、教材名や科目ごとの大量keyword/regexにしない。
+production semantic routingを教材名や科目ごとの大量keyword/regexにしない。
 
-初期責任は概念上、少なくとも次の大分類を安全に分けられればよい。
+少なくとも次を安全に分ける。
 
 ```text
 planning_operation
@@ -180,7 +197,7 @@ consultation
 other / unsupported / unresolved
 ```
 
-必要ならevaluation・analytics上のsubtypeとして次を持てる。
+必要ならevaluation上のsubtypeを持てる。
 
 ```text
 learning_strategy
@@ -194,9 +211,30 @@ comparison
 rationale
 ```
 
-subtypeは「この語が入っていたらこの処理」のheuristic authorityにしない。
+subtypeをraw-text heuristic authorityにしない。
 
-### 6.3 mixed turn
+### 6.3 Review action routing
+
+proposalがpresentedされている文脈では、user responseを少なくとも次へ意味分類できる必要がある。
+
+```text
+approve
+request_revision
+request_alternative
+dismiss
+unresolved
+```
+
+例:
+
+- 「これでいい」「1つ目で」「その方針で進めたい」→ `approve`
+- 「教材はそれで、期限だけ11月末にして」→ `request_revision`
+- 「その教材は嫌。別の案にして」→ `request_alternative`
+- 「もういい」「今回は相談やめる」→ `dismiss`
+
+「それで予定組んで」のような発話もsemantic上`approve`になり得るが、この表現を必須トリガーにはしない。
+
+### 6.4 mixed turn
 
 次のようなturnは単純なsingle-label分類では足りない。
 
@@ -204,19 +242,15 @@ subtypeは「この語が入っていたらこの処理」のheuristic authority
 「このままで間に合う？ 無理なら少し増やして」
 ```
 
-これはconsultationとconditional mutationを同時に含み得る。
+consultationとconditional mutationを同時に含み得るため、raw textを分割するad-hoc parserを追加しない。
 
-現行Stable V5のcandidate-level partial acceptanceがどこまで保証されるかを実装前に監査し、未保証の状態でraw textを分割するad-hoc parserを追加しない。
-
-安全に一括処理できない場合は、意味を失わない最小のclarificationまたは段階処理へ落とす。
+current schemaで安全にatomic handlingできない場合は、意味を失わない最小clarificationまたは段階処理へ落とす。
 
 ## 7. Orchestration model
 
-### 7.1 Manager patternを採用する
+### 7.1 Manager pattern
 
-StudyPlanner applicationが会話・状態・正式なlifecycleのownerであり続ける。
-
-consultationを検出した後、専用のanswer purposeへ質問とgrounded contextを渡す。
+StudyPlanner applicationが会話・状態・正式lifecycleのownerであり続ける。
 
 ```text
 user turn
@@ -226,42 +260,51 @@ user turn
 → bounded ConsultationContext
 → learning-advice answer purpose
 → validated AdviceAnswerDocument
-→ deterministic AdviceProposal lifecycle
+→ deterministic AdviceProposal commit
 → user-facing response
+→ user review
 ```
 
-「別のAIへ渡す」とは、必ずしも別provider・別modelを意味しない。
+review後の分岐:
 
-必要なのは少なくとも次の分離である。
+```text
+approve
+→ deterministic revalidation
+→ currentならpromotion
+→ Stable V5
 
-- separate purpose
-- separate prompt / instruction contract
-- separate input envelope
-- separate output validation
-- separate metrics
-- authorityの分離
+request_revision
+→ prior proposal + feedback + current context
+→ learning-advice answer purpose
+→ new proposal revision
 
-同一modelを利用してもこの境界を守れる。
+request_alternative
+→ prior proposal + feedback + current context
+→ learning-advice answer purpose
+→ materially different proposal revision
 
-### 7.2 Full handoffを初期設計にしない
+dismiss
+→ consultationを終了
+→ 自動再生成しない
+```
 
-consultation agentへconversation authorityを丸ごと移すhandoffより、applicationが中心に残りspecialistをtool-likeに呼ぶmanager patternを優先する。
+### 7.2 Full handoffを初期採用しない
+
+consultation specialistへconversation authorityを丸ごと移さず、application managerが正式state ownerに残る。
 
 理由:
 
 - Stable V5の正式state ownerを維持できる
 - adviceからschedule mutationへの越権を防ぎやすい
-- proposal lifecycleを一箇所で管理できる
+- review / validity / promotionを一箇所で管理できる
 - trace / cost / security policyを統一できる
-- 後からanswer providerを差し替えやすい
+- answer providerを差し替えやすい
 
 ## 8. ConsultationContext grounding
 
 ### 8.1 原則
 
 回答AIへ質問本文だけを渡さない。
-
-recommendationに関係するStudyPlanner内の利用可能情報を、source ownerを壊さないread-only contextとして組み立てる。
 
 ```text
 source domain
@@ -285,14 +328,14 @@ contextへ含めたからといって、元データをweekly planning Fact Grap
 - Actual / observed study evidence
 - Reportingが所有するdeterministic aggregate
 - planning availability / capacity signal
-- exam / goal dateのauthoritative sourceが存在する場合その情報
+- authoritative exam / goal date
 - accepted current-session constraints
 
-すべてを毎回渡すことは要件ではない。relevanceとtoken/privacy budgetでboundedにする。
+すべてを毎回渡さず、relevanceとtoken/privacy budgetでboundedにする。
 
 ### 8.3 Provenance
 
-context itemは概念上、少なくとも次を追跡できる必要がある。
+context itemは少なくとも次を追跡できる必要がある。
 
 - source domain
 - source identity
@@ -300,8 +343,6 @@ context itemは概念上、少なくとも次を追跡できる必要がある�
 - authority
 - scope
 - observation / retrieval time when relevant
-
-recommendation textだけを保存し、何を根拠にしたかを失う設計にしない。
 
 ### 8.4 Bookshelf boundary
 
@@ -319,7 +360,7 @@ provider固有responseをanswer promptやdomain stateへ直接漏らさない。
 
 ## 9. Knowledge and evidence tiers
 
-教材・学習戦略回答では、根拠の強さを区別する。
+教材・学習戦略回答では根拠の種類を区別する。
 
 ### Tier 1: user-owned authoritative context
 
@@ -340,23 +381,21 @@ provider固有responseをanswer promptやdomain stateへ直接漏らさない。
 
 ### Tier 3: trusted external retrieval
 
-将来導入するRAG / Web / provider検索。
+RAG / Web / provider検索。
 
-導入時は [../../external-integrations/](../../external-integrations/README.md) の責任としてprovider、利用条件、normalization、fallbackを定義する。
+provider、利用条件、normalization、fallbackは [../../external-integrations/](../../external-integrations/README.md) がownerとなる。
+
+claim typeごとの詳細source policyは [learning-consultation-prompt-and-evidence.md](learning-consultation-prompt-and-evidence.md) を参照する。
 
 ### Tier 4: model general knowledge
 
 一般的な学習法、典型的な教材の位置付け、教育的な説明等。
 
-model-only knowledgeを、最新の版・ISBN・ページ数・公式難易度等の確定事実として話さない。
-
-named commercial materialを推奨する場合、可能ならStudyPlanner catalog identityへ解決する。解決不能でも助言を完全禁止する必要はないが、存在・版・metadataを捏造しない。
+model-only knowledgeを最新の版・ISBN・ページ数・公式難易度等の確定事実として話さない。
 
 ## 10. AdviceAnswerDocument
 
 assistant proseだけをmachine stateの唯一の表現にしない。
-
-answer purposeは、概念上次を含むvalidated structured resultを返す。
 
 ```text
 AdviceAnswerDocument
@@ -370,13 +409,9 @@ AdviceAnswerDocument
 └─ whether one missing input materially blocks a useful answer
 ```
 
-exact field名・schema versionは実装時にcurrent TypeScript contractがownerとなる。
-
-この文書が固定するのは責務であり、将来のfield名ではない。
-
 ### 10.1 Recommendation item
 
-予定へ昇格する可能性がある内容は、文章中の位置ではなくstable item identityを持てるようにする。
+予定へ昇格する可能性がある内容はstable item identityを持てるようにする。
 
 例:
 
@@ -396,11 +431,9 @@ Option B
 
 ### 10.2 Uncertainty
 
-根拠が薄いrecommendationを確定口調にする必要はない。
+根拠が薄いrecommendationを確定口調にしない。
 
-ただし、未校正の架空確率を毎回表示することも禁止する。
-
-初期段階は定性的なuncertaintyとassumptionでよい。
+未校正の架空確率も生成しない。
 
 例:
 
@@ -410,28 +443,22 @@ Option B
 
 ## 11. Question economy for consultation
 
-consultationを検出した後、通常planningのslot-fillingへそのまま流してはいけない。
-
-「良い回答を作るためにあると便利な情報」と「無いと回答が実質的に変わるblocking information」を分離する。
-
-原則:
+「あると便利な情報」と「無いとrecommendationが実質的に変わるblocking information」を分離する。
 
 - known contextを聞き直さない
 - recommendationが大きく変わる不足だけを質問する
-- 仮定を明示すれば有用な回答を出せるなら、先にprovisional adviceを出してよい
+- 仮定を明示すれば有用な回答を出せるなら先にprovisional adviceを出してよい
 - 1turnで大量のプロフィール入力を要求しない
 - 「わからない」を許容する
-- planning開始時に必要なslotをconsultation開始時から全部聞かない
+- planning開始時のslotをconsultation開始時から全部聞かない
 
-例えば「数学の点数を上げたい、どの参考書をやればいい？」では、target examや現在レベルがrecommendationを大きく変える可能性がある。一方、無関係な教材の進捗率まで機械的に質問する必要はない。
+revision / alternativeが繰り返される場合も固定回数で機械的に質問へ切り替えない。
+
+ただし、過去feedbackだけでは次の案を有意に差別化できない場合、answer AIはrecommendationを大きく変える1問だけをtargeted clarificationとして返せる。
 
 ## 12. Deterministic calculation boundary
 
-consultationには2種類の判断が混在する。
-
 ### 12.1 決定論的に計算できるもの
-
-例:
 
 - 残り500語を25学習日で終えるなら1日20語
 - 既存予定を考慮した利用可能学習時間
@@ -439,11 +466,9 @@ consultationには2種類の判断が混在する。
 - explicit deadlineまでの日数
 - scheduler / capacity engineが正式に返したfeasibility
 
-これらはdeterministic applicationが数値のsource of truthとなり、answer AIは説明だけを担当する。
+これらはdeterministic applicationがsource of truthとなる。
 
 ### 12.2 戦略判断
-
-例:
 
 - どの参考書が現在地に合いそうか
 - どの順番で教材を進めるか
@@ -452,92 +477,199 @@ consultationには2種類の判断が混在する。
 
 これらはevidence-grounded advisory judgmentとしてAIが生成できる。
 
-AIがscheduler計算を想像して「余裕で間に合います」と断定しない。feasibilityが重要なら正式なdeterministic signalをcontextとして受け取る。
+AIがscheduler計算を想像して「余裕で間に合います」と断定しない。
 
-## 13. AdviceProposal lifecycle
+## 13. AdviceProposal / Review state model
 
 consultation回答はconversation-scoped advisory stateとして保持する。
+
+### 13.1 AdviceProposal
 
 概念モデル:
 
 ```text
 AdviceProposal
 ├─ adviceId
+├─ consultationId
 ├─ owner / conversation
-├─ source question turn
+├─ revision
+├─ sourceQuestionTurnId
+├─ supersedesAdviceId
 ├─ structured options/items
 ├─ assumptions
 ├─ evidence refs
-├─ context revision fingerprint
+├─ contextRevisionFingerprint
 ├─ createdAt
-└─ lifecycle
+├─ reviewStatus
+├─ validity
+├─ promotionStatus
+└─ supersededByAdviceId
 ```
 
-lifecycleは少なくとも次を表現できる設計にする。
+proposal revisionはimmutableに近い扱いを優先する。
+
+「期限だけ変えて」のような修正でv1を上書きせず、v1を履歴として残し、v2を生成する。
+
+### 13.2 一本のlifecycle enumに潰さない
+
+次の3軸を分離する。
 
 ```text
-presented
-→ accepted
-→ modified
-→ rejected
-→ superseded
-→ stale
+reviewStatus
+  presented
+  approved
+  revision_requested
+  alternative_requested
+  dismissed
+
+validity
+  current
+  stale
+
+promotionStatus
+  not_promoted
+  promoted
+  blocked
 ```
 
-すべてを単純なboolean `accepted`に潰さない。
+理由:
 
-### 13.1 `accepted`の意味
+- `approved`後にも前提変更で`stale`になり得る
+- `alternative_requested`は相談終了ではない
+- `dismissed`は再生成すべきではない
+- `promoted`かどうかと人間のreview判断は別責任である
 
-ここでのacceptedは「ユーザーがこの助言の全部または一部をplanning intentとして採用した」という意味である。
+`superseded`は単独statusへ押し込むより、proposal lineage (`supersedesAdviceId` / `supersededByAdviceId`) で追跡できる設計を優先する。
+
+### 13.3 ReviewDecision
+
+user reviewはfirst-class command / recordとして対象identityを持つ。
+
+```text
+ReviewDecision
+├─ decisionId
+├─ targetAdviceId
+├─ targetOptionIds / targetItemIds
+├─ action
+│  ├─ approve
+│  ├─ request_revision
+│  ├─ request_alternative
+│  └─ dismiss
+├─ feedback
+└─ decidedAtTurnId
+```
+
+ReviewDecisionのformal binding、ID、idempotencyはdeterministic applicationが所有する。
+
+### 13.4 Feedbackのauthority
+
+review feedbackは次のproposal生成に使う重要contextである。
+
+例:
+
+```text
+Proposal v1:
+  標準問題精講を使う
+
+User:
+  「それは重すぎるから嫌。別の案にして」
+```
+
+次回answer inputにはv1とfeedbackを含める。
+
+ただし「重すぎる」というfeedbackを自動的に教材の客観factやdurable preferenceへ昇格しない。
+
+### 13.5 Item-level scope
+
+proposal全体だけでなくoption/item単位のidentityを持てる構造を優先する。
+
+- 「2つ目で」
+- 「教材はAで、期限だけ遅くして」
+- 「復習方法だけ変えたい」
+
+## 14. Review / promotion contract
+
+### 14.1 `approve`
+
+`approve`は「この助言の対象scopeをplanning材料として採用してよい」という意味である。
 
 saved Planになったことを意味しない。
 
 ```text
-advice accepted
-→ planning contributionへpromotion
+advice approve
+→ context revalidation
+→ currentならplanning contributionへpromotion
 → Stable V5 readiness
 → scheduler
 → preview
-→ user approval
+→ Plan approval
 → save
 ```
 
-### 13.2 Item-level scope
+### 14.2 Approval時のrevalidation
 
-将来的な複数案・部分採用に備え、proposal全体だけでなくoption/item単位のidentityを持てる構造を優先する。
+proposal生成時の`contextRevisionFingerprint`とapproval時のcurrent contextを比較する。
 
-例:
+重要sourceが変わっていれば、approvedであっても直接promoteしない。
 
-- 「教材はAで、期限はB案より遅くして」
-- 「2つ目だけ予定にして」
-- 「教材はそのまま、復習方法だけ変えたい」
+```text
+reviewStatus = approved
+validity = stale
+promotionStatus = blocked
+```
 
-## 14. Adoption / promotion contract
+この場合はrevalidation / regeneration / targeted clarificationを行い、新proposalが生成された場合は再承認を必要とする。
 
-### 14.1 User response
+### 14.3 `request_revision`
 
-userが次のように返せる。
+同じ方向性を維持しつつ指定箇所を修正する意図。
 
-- 「それで予定組んで」
-- 「1つ目で」
-- 「教材はそれで、期限だけ11月末にして」
-- 「やっぱその案なし」
-- 「今後もそのやり方にしたい」
+```text
+prior proposal
++ review feedback
++ current context
+→ learning-advice answer purpose
+→ new proposal revision
+```
 
-semantic layerはnatural-language meaningとcontextual referenceを構造化する。
+元proposalを上書きしない。
 
-### 14.2 Deterministic binding
+### 14.4 `request_alternative`
+
+現在案を採用せず、別の戦略を求める意図。
+
+```text
+prior proposal
++ rejected aspects / feedback
++ current context
+→ learning-advice answer purpose
+→ materially different new proposal
+```
+
+同じ案を言い換えて返すだけにしない。
+
+ただし制約上ほぼ同一案しか成立しない場合は、その理由を説明し、必要なら推薦を大きく変える1問だけを聞く。
+
+### 14.5 `dismiss`
+
+相談または現在proposalを終了する意図。
+
+`dismiss`後に自動で別案を生成しない。
+
+これにより「もういい」「今回はやめる」に対してAIが再提案を続けるループを防ぐ。
+
+### 14.6 Deterministic binding
 
 applicationは次を確認する。
 
-- referenced advice / itemが現在conversationに存在する
-- lifecycleが適用可能
+- referenced advice / option / itemが現在conversationに存在する
 - ownerが一致する
-- revision / source contextが許容範囲
+- review actionを適用可能なrevisionである
 - ambiguous referenceでない
-- 同一adoption operationがすでに適用済みでない
+- validityが検証可能である
+- 同一review / promotion operationがすでに適用済みでない
 
-### 14.3 Stale advice
+### 14.7 Stale advice
 
 recommendation生成後に重要sourceが変わった場合、古いadviceを黙って適用しない。
 
@@ -547,50 +679,45 @@ recommendation生成後に重要sourceが変わった場合、古いadviceを黙
 - material progressが大幅更新
 - referenced materialが削除・変更
 - current goalがsuperseded
-- planning availabilityが大きく変更し、期限recommendationの前提が崩れた
+- planning availabilityが大きく変更
 
-stale adviceは履歴として表示できるが、promotion前にrevalidation / regeneration / targeted clarificationのいずれかを行う。
+stale adviceは履歴として表示できるが、直接promotionしない。
 
-staleness判定のexact fingerprintは実装時に定義するが、少なくとも「生成時の根拠を失ったadviceをそのまま正式条件にする」ことは禁止する。
-
-### 14.4 Promotion result
+### 14.8 Promotion result
 
 promotionはscheduler blockを直接生成しない。
 
-accepted advice scopeを、既存Stable V5が理解する通常のplanning contribution / typed factsへ変換し、以後は既存runtimeへ渡す。
+approved + currentなadvice scopeを、既存Stable V5が理解する通常のplanning contribution / typed factsへ変換する。
 
-これによりconsultation-specific logicがschedulerの第二ownerになることを防ぐ。
+consultation-specific logicをschedulerの第二ownerにしない。
 
 ## 15. Memory and persistence boundary
 
 ### 15.1 Adviceは長期記憶ではない
 
-AIが生成したrecommendationを「ユーザーについて知っている事実」としてuser planning contextへ自動保存しない。
+AI recommendationをuser planning contextへ自動保存しない。
 
 ```text
 assistant: 「英単語は朝15分がおすすめです」
-
 → advice
 → user preferenceではない
 ```
 
-一方、userが
+userが「今後も英単語は15分ずつにしたい」と別途表明した場合はdurable user-context candidateになり得る。
 
-```text
-「今後も英単語は15分ずつにしたい」
-```
+そのpromotionは [adaptive-memory.md](../policies/adaptive-memory.md) と `userPlanningContext` の規則がownerとなる。
 
-と表明した場合、これはadvice acceptanceとは別にdurable user-context candidateになり得る。
+### 15.2 Review feedbackも自動でdurable memoryにしない
 
-そのpromotionは [adaptive-memory.md](../policies/adaptive-memory.md) と `userPlanningContext` のauthority/lifecycle規則がownerとなる。
+「その教材は嫌」「もっと軽い方がいい」等のreview feedbackは、現在consultationの再提案contextとして利用できる。
 
-### 15.2 Conversation/session state
+ただし、`今回は`なのか`今後も`なのかをsemanticに区別せず長期嗜好へ昇格しない。
 
-AdviceProposalは初期状態ではconversation/session-scoped stateとする。
+### 15.3 Conversation/session state
 
-cross-device persistence、cloud authority、reconciliation、offline behaviorは [../../client-runtime/](../../client-runtime/README.md) と関連Issueの責任であり、このspecが特定storage providerを固定しない。
+AdviceProposal / ReviewDecisionは初期状態ではconversation/session-scoped stateとする。
 
-logical identity / lifecycle / stalenessはstorage方式に依存せず維持する。
+cross-device persistence、cloud authority、reconciliation、offline behaviorは [../../client-runtime/](../../client-runtime/README.md) と関連Issueがownerとなる。
 
 ## 16. UX contract
 
@@ -598,36 +725,44 @@ logical identity / lifecycle / stalenessはstorage方式に依存せず維持す
 
 ユーザーへ「相談モード」「予定作成モード」の手動切替を要求しない。
 
-AiPlanningの同じ会話面でsemantic routingする。
-
 ### 16.2 MVP
-
-初期UIで最低限必要なのは次である。
 
 - userが自然文で相談できる
 - assistantが自然な回答を返す
 - 回答だけでpreviewが勝手に出ない
-- userが自然文で採用・修正・拒否できる
-- 採用後は既存planning previewへ移行する
-- adviceとpreview / saved planが視覚・状態上区別される
+- userが自然文でapprove / revision / alternative / dismissできる
+- approve後にcurrent contextを再検証する
+- approved + currentなら既存planning previewへ移行する
+- advice approvalとPlan approvalを状態上区別する
+- adviceとpreview / saved planが視覚的にも区別される
 
-### 16.3 Future UI
+### 16.3 UI wording
 
-将来は次を追加できる。
+Advice reviewのprimary actionは「予定を保存する」と誤解させない。
 
-- 「この方針で予定を作る」action
+候補:
+
+```text
+[この方針で進める]
+[修正する]
+[別の案を見る]
+```
+
+preview後のfinal actionは既存のPlan save / approval表現を使用する。
+
+### 16.4 Future UI
+
 - 複数案カード
 - option比較
 - recommendation itemの部分選択
 - rationale / evidence detailsのprogressive disclosure
 - 「前提が変わったので再提案」表示
-- advice history
+- advice revision history
+- dismiss / reopen UX
 
-buttonはsemantic authorizationを補助できるが、button表示自体をformal acceptanceにしない。実際のapplication commandとして対象IDを明示的に送る。
+buttonは対象proposal IDを明示したapplication commandとして送る。button label自体をmachine authorizationにしない。
 
 ## 17. Streaming contract
-
-answer generationをstreaming表示してもよいが、partial tokenをmachine stateの正本にしない。
 
 ```text
 streaming text
@@ -637,7 +772,7 @@ validated final answer envelope
 → AdviceProposal commit candidate
 ```
 
-途中切断、provider error、validation failure時に半分の文章をvalid AdviceProposalとして残さない。
+途中切断、provider error、validation failure時にpartial textをvalid AdviceProposalとして残さない。
 
 resume/retryで同一turnから重複proposalを作らないidentity設計を持つ。
 
@@ -645,29 +780,27 @@ resume/retryで同一turnから重複proposalを作らないidentity設計を持
 
 ### Semantic routing failure
 
-validated consultation meaningが得られない場合、planning mutationを行わない。
+validated consultation / review meaningが得られない場合、planning mutationを行わない。
 
 必要なら1回のsemantic repairまたは最小clarificationへ落とす。legacy raw-text parserへfallbackしない。
 
 ### Context source failure
 
-sourceを`required`と`optional`に分けられる設計にする。
+sourceを`required`と`optional`に分ける。
 
-required sourceのload failureを「データが0件だった」とみなさない。
-
-optional sourceが取れなくても有用な回答が可能なら、前提・制約を明示してdegradeできる。
+required sourceのload failureを「0件」とみなさない。
 
 ### Answer provider failure
 
-accepted planning stateを変更しない。
+accepted planning stateを変更しない。架空fallback adviceを作らない。
 
-架空のfallback adviceを作らない。
+revision / alternative request時にprovider failureした場合も、元proposalの履歴を失わない。
 
 ### Output validation failure
 
-current AI contractが許す範囲でsemantic/structured repairを最大1回行える。
+許される範囲でstructured repairを最大1回行い、修復できなければcontrolled failureとする。
 
-修復できなければcontrolled failureとし、未検証proseからplanning factsを抽出しない。
+未検証proseからplanning factsを抽出しない。
 
 ### Ambiguous advice reference
 
@@ -679,19 +812,28 @@ current AI contractが許す範囲でsemantic/structured repairを最大1回行�
 
 ### External retrieval failure
 
-model knowledgeで回答を継続できる場合も、最新書誌等を捏造しない。必要ならidentity解決不能を表示する。
+model knowledgeで回答を継続できても、最新書誌等を捏造しない。
 
 ### Streaming interruption
 
-partial responseをaccepted/presented proposalとしてcommitしない。
+partial responseをpresented proposalとしてcommitしない。
+
+### Review loop
+
+`request_alternative`を無限に言い換えループさせない。
+
+feedbackから差分を作れない場合は、別案を乱造するより1つのtargeted clarificationを優先できる。
+
+`dismiss`は必ず自動再提案を止める。
 
 ## 19. Security boundary
 
-相談機能はprompt injection surfaceを増やすため、Issue #152のsecurity contractと整合させる。
+Issue #152のsecurity contractと整合させる。
 
 - Bookshelf title / note / imported metadataはuntrusted data
 - Memory textもinstructionではなくdata
 - external retrieval contentもinstructionではなくevidence
+- review feedbackもuser dataでありsystem instructionではない
 - retrieved text中の「system instruction」等を実行しない
 - advice AIはschedule/save authorizationを持たない
 - advice resultからtool execution permissionを導出しない
@@ -700,46 +842,46 @@ partial responseをaccepted/presented proposalとしてcommitしない。
 
 ## 20. Observability
 
-service-wide metricsは [../../product-observability/](../../product-observability/README.md) がownerであり、weekly planningはtyped eventを供給する側に留まる。
+service-wide metricsは [../../product-observability/](../../product-observability/README.md) がownerであり、weekly planningはtyped eventを供給する。
 
-将来計測候補:
+候補:
 
 - consultation route rate
 - semantic route accuracy evaluation
 - answer前clarification数
 - advice generation success/failure
 - named material identity resolution rate
-- advice → adoption rate
-- partial adoption / modify / reject rate
+- advice approval rate
+- revision request rate
+- alternative request rate
+- dismiss rate
+- stale promotion block rate
 - regeneration rate
-- stale adoption block rate
 - provider latency
 - token / cost
 - consultationからpreviewまでのturn数
 
-`adoption rateを最大化する`ことをquality goalにしない。
+approval rateを最大化することをquality goalにしない。
 
-ユーザーがadviceを拒否・修正できること自体が正常なproduct behaviorである。
-
-raw conversationや個人情報をanalyticsのために無制限保存しない。
+reject / alternative / dismissは正常なproduct behaviorである。
 
 ## 21. Test and evaluation contract
-
-実装PRは次を最低限保護する。
 
 ### 21.1 Deterministic tests
 
 - consultation turnだけでaccepted planning Fact Graphをmutationしない
 - advice生成だけでpreview/saveへ進まない
-- AdviceProposal lifecycleがexplicitである
-- explicit semantic acceptanceなしにpromotionしない
-- rejectされたadviceを適用しない
-- modifyは正しいadvice/itemだけへ作用する
+- review / validity / promotionが別状態である
+- explicit semantic `approve`なしにpromotionしない
+- `request_revision`が元proposalを上書きせずnew revisionを作る
+- `request_alternative`が元proposalとfeedbackを再提案inputへ渡す
+- `dismiss`後に自動再生成しない
+- alternative requestとdismissを混同しない
 - ambiguous referenceはfail safeする
-- stale adviceは直接applyできない
-- repeated adoption/retryがduplicate planning effectを作らない
-- advice textがdurable memoryへ自動昇格しない
-- durable scopeをuserが明示した場合だけ別memory candidateになり得る
+- approvedでもstaleなら直接promotionしない
+- fresh proposalへ再承認なしでpromotionしない
+- repeated review / promotion retryがduplicate planning effectを作らない
+- review feedbackがdurable memoryへ自動昇格しない
 - Bookshelf source factsをFact Graphへ複製しない
 - deterministic calculation resultをanswer AIが書き換えない
 - required context load failureをempty contextとして扱わない
@@ -757,10 +899,12 @@ raw conversationや個人情報をanalyticsのために無制限保存しない�
 「この参考書難しいけど変えた方がいい？」
 「金フレ終わったら次何やる？」
 「なんでそれがおすすめ？」
-「じゃあそれで予定組んで」
-「教材はそれで、期限は11月末にして」
-「2つ目の案で」
-「やっぱさっきの案なし」
+「それでいい」
+「1つ目で」
+「教材はそれで、期限だけ11月末にして」
+「その教材は嫌。別の案にして」
+「いや、それも違う」
+「もういい、今回はやめる」
 「今後もそのやり方にしたい」
 「このままで間に合う？ 無理なら少し増やして」
 ```
@@ -771,58 +915,58 @@ raw conversationや個人情報をanalyticsのために無制限保存しない�
 - context selection
 - recommendation grounding
 - assumptions
-- lifecycle
+- review action
 - reference binding
+- revision lineage
+- validity / staleness
 - promotion delta
 - preview boundary
 - memory scope
 
-完成日本語の一字一句をuniversal oracleにしない。
-
 ### 21.3 Browser / E2E
 
 - consultation → answer: previewは出ない
-- consultation → accept: existing planning previewへ遷移
-- consultation → modify → accept
-- consultation → reject
-- multi-option → one option adoption
+- consultation → approve → preview
+- consultation → request_revision → v2 → approve → preview
+- consultation → request_alternative → v2
+- consultation → dismiss: 再提案されない
+- multi-option → one option approve
+- approval直前にcontext変更 → stale block → regenerated proposal
 - reload後のsession continuity
-- stale advice handling
 - desktop/mobile
 - provider failure UX
 
 ## 22. Issue #246 implementation acceptance criteria
-
-Issue #246のruntime実装は、少なくとも次がすべて成立して完了とする。
 
 1. 学習戦略・教材選択等のuser consultationを通常の予定作成要求と安全に区別できる。
 2. raw-text regex/keyword routerを新たなsemantic authorityとして導入していない。
 3. consultation時に関連するStudyPlanner contextをsource ownershipを壊さず利用できる。
 4. answer AIがvalidated structured adviceを返し、proseだけをmachine truthにしない。
 5. advice生成だけではaccepted planning state、preview、Plan、durable memoryが変化しない。
-6. userがadviceをaccept / modify / rejectできる。
-7. 「それで予定組んで」等を正しいadvice identityへbindできる。
-8. adoption後も既存Stable V5 readiness / scheduler / preview / approval / saveを通る。
-9. stale / ambiguous / failed adviceをsilent applyしない。
-10. repeated request / retry / reloadでduplicate planning effectを作らない。
-11. Bookshelf等のauthoritative dataを不必要に複製しない。
-12. current-week acceptanceとdurable preferenceを分離する。
-13. deterministic calculationはapplication-owned truthのまま維持する。
-14. security / prompt-injection boundaryをIssue #152と整合させる。
-15. deterministic regression、Real API evaluation、Browser Regressionで代表flowを検証する。
-16. desktop/mobile双方で相談→採用→previewの主要操作が成立する。
-17. trace/persistence変更がある場合はfeature-local `AGENTS.md` のtrace persistence gateを満たす。
-18. current canonical docsを実装と同じPRで同期する。
+6. user reviewを`approve / request_revision / request_alternative / dismiss`として安全に扱える。
+7. contextual responseを正しいadvice / option / item identityへbindできる。
+8. revision / alternativeは元proposalを上書きせずlineageを持つnew proposalを生成する。
+9. dismissは自動再提案を停止する。
+10. approve時にcontextを再検証し、staleならpromotionをblockする。
+11. approved + currentなscopeだけがexisting Stable V5へpromotionされる。
+12. promotion後も既存Stable V5 readiness / scheduler / preview / Plan approval / saveを通る。
+13. repeated request / retry / reloadでduplicate planning effectを作らない。
+14. Bookshelf等のauthoritative dataを不必要に複製しない。
+15. advice approval、review feedback、durable preferenceを分離する。
+16. deterministic calculationはapplication-owned truthのまま維持する。
+17. security / prompt-injection boundaryをIssue #152と整合させる。
+18. deterministic regression、Real API evaluation、Browser Regressionで代表flowを検証する。
+19. desktop/mobile双方で相談→review→previewの主要操作が成立する。
+20. trace/persistence変更がある場合はfeature-local `AGENTS.md` のtrace persistence gateを満たす。
+21. current canonical docsを実装と同じPRで同期する。
 
 ## 23. Phased evolution
 
 ### Phase 0: contract / research / eval design
 
-この文書と関連canonical docsを整備する段階。
+完了。
 
-runtime behaviorは変更しない。
-
-実装前に、semantic representation、state owner、promotion boundary、context source、failure behaviorをレビュー可能にする。
+canonical requirement、prompt/evidence design、責任境界、失敗時挙動、研究/OSS evidenceを整備した。
 
 ### Phase 1: core consultation loop
 
@@ -830,9 +974,11 @@ runtime behaviorは変更しない。
 - bounded internal context
 - separate answer purpose
 - validated structured advice
-- conversation-scoped AdviceProposal
-- natural-language accept / modify / reject
-- accepted scopeをexisting Stable V5へpromotion
+- conversation-scoped AdviceProposal / ReviewDecision
+- `approve / request_revision / request_alternative / dismiss`
+- revision lineage
+- approval-time staleness check
+- approved scopeをexisting Stable V5へpromotion
 - regression / Real API / Browser tests
 
 最初から外部Web検索を必須にしない。
@@ -842,9 +988,9 @@ runtime behaviorは変更しない。
 - named material catalog resolution
 - evidence/provenance details
 - multiple options
-- option/item identity
-- partial adoption
-- 「この方針で予定を作る」UI action
+- stronger option/item identity
+- partial approval
+- explicit review action UI
 - better stale detection
 
 ### Phase 3: planning intelligence
@@ -865,7 +1011,7 @@ runtime behaviorは変更しない。
 - evidence-backed personalized strategy
 - proactive suggestion candidate
 
-proactive suggestionもsilent applyせずproposal lifecycleを通す。
+proactive suggestionもsilent applyせず同じreview boundaryを通す。
 
 ### Phase 5: research-grade adaptation
 
@@ -878,86 +1024,90 @@ proactive suggestionもsilent applyせずproposal lifecycleを通す。
 - counterfactual strategy evaluation
 - long-horizon adaptive curriculum
 
-高度なモデルを導入しても、user approval / source ownership / deterministic scheduling境界を外さない。
+高度なモデルでもuser approval / source ownership / deterministic scheduling境界を外さない。
 
 ## 24. Design decisions and rejected alternatives
 
 ### Decision A: 巨大heuristic表を作らない
 
-却下:
+教材・試験・版・目的の組合せをapplicationの巨大rule tableへしない。
 
-```text
-数学 + 偏差値50 → 教材A
-英語 + TOEIC600 → 教材B
-...
-```
-
-理由:
-
-- 教材・試験・版・学習目的の組合せが増え続ける
-- maintenance負債が大きい
-- raw language semanticsとrecommendation knowledgeが混ざる
-- StudyPlanner applicationが教育知識の巨大rule engineになる
-
-代わりに、AI advisory judgmentをsource-groundedに利用する。
+AI advisory judgmentをsource-groundedに利用する。
 
 ### Decision B: raw LLM chatbotにschedule mutationさせない
-
-却下:
 
 ```text
 user question
 → LLM
-→ LLMが直接Plan作成
+→ direct Plan mutation
+```
+
+は採用しない。
+
+### Decision C: AI回答を長期記憶のtruthにしない
+
+assistant proposalはuser factではない。
+
+### Decision D: specialistへのfull conversation handoffを初期採用しない
+
+application managerがauthorityを維持する。
+
+### Decision E: advice textから後でregex抽出しない
+
+promotion可能情報は生成時にstructured itemとして保持する。
+
+### Decision F: `reject = 必ず再生成` にしない
+
+却下:
+
+```text
+user rejects
+→ always regenerate
 ```
 
 理由:
 
-- adviceとauthorizationが混ざる
-- Stable V5のpreview/approval境界を破る
-- retry / stale / multi-device / identityを安全に扱えない
+- 「もういい」でも再提案してしまう
+- consultation終了意思を尊重できない
+- unwanted regeneration loopを作る
 
-### Decision C: AI回答を長期記憶のtruthにしない
+代わりに`request_alternative`と`dismiss`を分ける。
 
-assistantが提案した内容はuser factではない。
+### Decision G: review / stale / promotionを単一lifecycleにしない
 
-長期記憶へ入れるには別のuser-stated durable meaningが必要。
+`approved`かつ`stale`、`approved`かつ`not_promoted`等の状態を正しく表現するため、別軸で管理する。
 
-### Decision D: specialistへのfull conversation handoffを初期採用しない
+### Decision H: revision時にproposalをin-place editしない
 
-application managerがauthorityを維持し、answer purposeをspecialistとして呼ぶ。
-
-### Decision E: advice textから後でregex抽出しない
-
-promotion可能な情報は生成時にstructured itemとして保持する。
-
-renderer proseはpresentationであり、後段parserのsource of truthにしない。
+過去の根拠と意思決定を追跡できるよう、new revisionを生成しlineageを保持する。
 
 ## 25. Open implementation decisions
 
-次は実装開始時にcurrent code/schemaと照合して決める。これらが未決だからといって上記invariantを弱めてよいわけではない。
+current code/schemaと照合して決める。
 
-- semantic document内でconsultation contributionをどう表現するか
-- mixed consultation + mutation turnをどこまでatomicに扱うか
+- consultation semantic contributionのexact TypeScript表現
+- review semantic actionのexact schema
+- mixed consultation + mutation turnのatomicity
 - answer purposeのexact identifier
 - AdviceAnswerDocumentのexact schema
-- AdviceProposalの永続化場所
+- AdviceProposal / ReviewDecisionの永続化場所
+- proposal ID / revision / lineage generation
 - context sourceごとのrequired / optional分類
 - context budgetとselection policy
-- stale fingerprintのexact構成
+- contextRevisionFingerprintのexact構成
+- approval revalidationのchange threshold
 - material identity resolutionを必須にする条件
 - initial UIでstreamingを使うか
-- MVPでoption-level acceptanceまで入れるか
-- action buttonをPhase 1へ含めるかPhase 2にするか
+- Phase 1でoption-level approvalをどこまで入れるか
 - external retrievalをいつ導入するか
-- goal domainが正式導入された後のcontext ownership
+- goal domain正式導入後のcontext ownership
 - cross-device advice stateのauthority / reconciliation
 
 ## 26. Dependency / ownership map
 
 ```text
 weekly-planning
-  owns: consultation routing contract, advice lifecycle, promotion into planning
+  owns: consultation routing, review state, validity, promotion into planning
 
 Bookshelf / StudyMaterial
   owns: registered material identity, user progress, user-specific material state
@@ -969,13 +1119,13 @@ external-integrations
   owns: provider adoption, retrieval, normalization, quota/terms/fallback
 
 reporting
-  owns: deterministic user-facing Actual aggregation when consultation consumes it
+  owns: deterministic Actual aggregation when consultation consumes it
 
 client-runtime
   owns: local/cloud/sync authority and reconciliation
 
 product-observability
-  owns: service-wide consultation/adoption/cost metrics and bounded admin read models
+  owns: service-wide consultation/review/cost metrics
 
 weekly-planning trace
   owns: detailed diagnostic evidence for this runtime only
@@ -985,161 +1135,58 @@ weekly-planning trace
 
 ## 27. Research evidence and adopted patterns
 
-調査結果はStudyPlannerのsource of truthではなく、設計判断のevidenceとして保持する。
+調査結果はStudyPlannerのsource of truthではなく設計evidenceとして保持する。
 
-### 27.1 Tier A: agent runtime / HITL implementation patterns
-
-#### OpenAI Agents SDK
+### 27.1 OpenAI Agents SDK
 
 Repository:
 - https://github.com/openai/openai-agents-python
 
 Relevant docs:
-- https://github.com/openai/openai-agents-python/blob/main/docs/human_in_the_loop.md
-- https://github.com/openai/openai-agents-python/blob/main/docs/agents.md
-- https://github.com/openai/openai-agents-python/blob/main/docs/handoffs.md
+- `docs/human_in_the_loop.md`
+- `docs/agents.md`
+- `docs/handoffs.md`
 
-Observed pattern:
+採用するpattern:
 
-- approval-required operationをinterruptとして停止できる
-- serializable run stateを保持してresumeできる
-- approve / rejectは具体的なpending callへscopeされる
-- streamingでもapproval boundary自体は変えない
-- managerがspecialistをtool-likeに呼ぶpatternとconversation handoffを分ける
+- approval対象をstable identityへscopeする
+- serializable stateからresumeする
+- approve / reject feedbackをstateful workflowへ戻せる
+- managerがspecialistをtool-likeに呼ぶ
+- streaming presentationとformal approval stateを分ける
 
-StudyPlannerへの採用:
+StudyPlannerではgeneric tool approval modelをそのままcopyせず、AdviceProposal / ReviewDecisionへdomain化する。
 
-- advice adoptionをprose推測ではなくfirst-class lifecycleにする
-- stable advice/item identityを持つ
-- application managerが正式state ownerに残る
-- partial streamingをformal stateにしない
-
-採用しないもの:
-
-- generic tool approval modelをそのままStudyPlanner domain modelにコピーすること
-- consultation specialistへplanner authorityを委譲すること
-
-#### LangGraph / LangGraphJS
+### 27.2 LangGraph / LangGraphJS
 
 Repositories:
 - https://github.com/langchain-ai/langgraph
 - https://github.com/langchain-ai/langgraphjs
 
-Observed pattern:
+採用するpattern:
 
-- thread-scoped checkpoint stateとcross-thread long-term storeを分ける
-- interrupt / resumeにはdurable thread identityが必要
-- resume/retry時のside effectはidempotencyを考慮する必要がある
-- human edit / approve / rejectをstate transitionとして扱う
+- thread-scoped checkpointとlong-term memoryを分離する
+- interrupt / resumeにdurable identityを持つ
+- human approve / reject / editをstate transitionとして扱う
+- retry side effectをidempotentにする
 
-StudyPlannerへの採用:
+framework自体を採用する判断ではない。
 
-- AdviceProposalはconversation/thread state、durable preferenceは別memory responsibility
-- adoptionはidempotent operationにする
-- resume/reloadを前提にidentity / revisionを持つ
+### 27.3 Education / tutor architecture evidence
 
-採用しないもの:
-
-- LangGraph自体を依存ライブラリとして導入する判断
-- graph frameworkの型をStudyPlanner domain contractに流用すること
-
-### 27.2 Tier B: education / research architecture evidence
-
-#### GenMentor
-
-Repository:
-- https://github.com/GeminiLight/gen-mentor
-
-Observed pattern:
-
-学習支援を、learner model、skill gap identification、learning path scheduling、content generation、chat tutor等の責務へ分ける。
-
-StudyPlannerへの採用:
-
-- learner/context理解、strategy recommendation、schedulingを一つのmonolithic LLMへ集約しない
-- recommendationとscheduler authorityを分離する
-
-#### OATutor
-
-Repository:
-- https://github.com/CAHLR/OATutor
-
-StudyPlannerへの示唆:
-
-- adaptive tutoringではlearner evidenceとinstructional policyを分けて評価する必要がある
-- 将来personalizationを入れても、単一会話から強いlearner truthを作らない
-
-#### TASA
-
-Repository:
-- https://github.com/YANGWU001/TASA
-
-StudyPlannerへの示唆:
-
-- persona / event memory / forgetting-aware learner stateのような長期適応は将来方向として有用
-- 初期Issue #246へ重いlearner modelを持ち込まず、まず観測・authority・memory scopeを正しく分ける
-
-### 27.3 Tier C: exploratory OSS product patterns
-
-#### Tutor MCP
-
-Repository:
-- https://github.com/ArnaudGuiovanna/tutor-mcp
-
-StudyPlannerへの示唆:
-
-algorithmic state、episodic memory、narrative contextを分け、LLMに十分なcontextを渡しつつschedule authorityを持たせない設計はStudyPlannerの境界と近い。
-
-#### edu-agent
-
-Repository:
-- https://github.com/StudentTraineeCenter/edu-agent
-
-StudyPlannerへの示唆:
-
-RAG-grounded tutor、weak-point awareness、personalized study planは将来retrieval/context方向の参考になる。
-
-#### Adaptive Educational AI Agent
-
-Repository:
-- https://github.com/Felipeegert/Adaptive-Educational-AI-Agent
-
-StudyPlannerへの示唆:
-
-deterministic business ruleとLLM explanationを分けるpatternは、数値計算/feasibilityとadvice explanationの境界に適用できる。
-
-#### AiTutor
-
-Repository:
-- https://github.com/yaswanth-jogireddy/AiTutor
-
-StudyPlannerへの示唆:
-
-学習目的・syllabusを会話で調整し、userが修正できるflowは「planを作る前に方針を相談する」UXの参考になる。
-
-#### OpenTutor
-
-Repository:
-- https://github.com/zijinz456/OpenTutor
-
-StudyPlannerへの示唆:
-
-教材grounding、citation、adaptive workspace、study planを組み合わせる方向はPhase 4以降の参考になる。
-
-#### StudyPal
-
-Repository:
-- https://github.com/adnanahmaddev/StudyPal
-
-StudyPlannerへの示唆:
-
-複数の学習支援modeでもconversation continuity / shared contextを維持するUXは、「相談モード」を手動切替させない方針と整合する。
+- GenMentor: learner/context理解、skill gap、learning path、content/tutor責任の分離
+- OATutor: learner evidenceとinstructional policyを分けて評価する示唆
+- TASA: persona / event memory / forgetting-aware stateは将来方向として参考
+- Tutor MCP: algorithmic state、episodic memory、narrative contextの分離
+- edu-agent: RAG-grounded tutor / weak-point awareness / personalized plan
+- Adaptive Educational AI Agent: deterministic ruleとLLM explanationの分離
+- AiTutor: syllabus / learning objectiveを会話で調整するflow
+- OpenTutor:教材grounding、citation、adaptive workspace
+- StudyPal: conversation continuity / shared context
 
 ### 27.4 Evidenceの使い方
 
-上記OSSを「実装例があるから正しい」と扱わない。
-
-判断優先順位は次とする。
+判断優先順位:
 
 ```text
 StudyPlanner current code / tests
@@ -1149,17 +1196,20 @@ StudyPlanner current code / tests
 → exploratory OSS pattern
 ```
 
-他repoの型・agent数・memory構造・UIをそのままコピーせず、StudyPlannerの責任境界へ変換して採用する。
+他repoの型・agent数・memory構造・UIをそのままコピーしない。
 
-## 28. Pre-implementation gate
+## 28. Implementation gate / current status
 
-Issue #246のproduction code実装へ入る前に、最低限次を満たす。
+Phase 0 documentation gateはPR #253でmainへ反映済みであり、runtime implementationへ進んでよい。
 
-1. このcanonical specがreview可能な状態でmainへ入っている。
-2. `DOCUMENT_DICTIONARY.md`、weekly-planning domain index、product intent、runtime boundary、grounding/memory/test/roadmapの参照関係が矛盾していない。
-3. Issue #246本文はこのspecを正本として参照し、詳細仕様を二重管理していない。
-4. current production runtimeとplanned requirementを文書上で混同していない。
-5. mixed turn、advice lifecycle、staleness、promotion、memory scopeの未決事項が実装前レビュー対象として可視化されている。
-6. future code PRはこのspecを参照し、PR本文やpromptだけを新しい正仕様にしない。
+実装中も次を満たす。
 
-このgateを満たすまでは、Issue #246のruntime implementationを開始しない。
+1. このcanonical specを正仕様として扱う。
+2. current production runtimeとplanned behaviorを混同しない。
+3. review / validity / promotionを別責任として実装する。
+4. `request_alternative`と`dismiss`を混同しない。
+5. review feedbackを再提案contextとして保持するが、durable user truthへ自動昇格しない。
+6. approved proposalもpromotion直前にstalenessを再検証する。
+7. new revisionは元proposalを上書きせずlineageを持つ。
+8. raw-text regex/keyword routingをsemantic authorityとして追加しない。
+9. future code PRはこのspecとprompt/evidence supporting designを同じreview対象として同期する。
