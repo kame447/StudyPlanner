@@ -13,7 +13,7 @@ const COMPONENT_LABELS: Record<ObservabilitySystemComponentKey, string> = {
   authentication: 'Authentication',
   telemetry_ingestion: 'Telemetry ingestion',
   aggregation_read_model: 'Aggregation / read model',
-  trace_availability: 'Trace availability（全環境）',
+  trace_availability: 'Trace availability',
 };
 
 const STATUS_LABELS: Record<ObservabilitySystemHealth, string> = {
