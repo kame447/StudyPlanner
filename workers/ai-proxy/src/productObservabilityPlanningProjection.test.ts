@@ -4,6 +4,10 @@ import type {
   PlanningOutcomeType,
   StoredObservabilityEvent,
 } from '../../../shared/productObservabilityContract';
+import type {
+  ObservabilityPlanningDailyCohort,
+  ObservabilityPlanningSessionSummary,
+} from '../../../shared/productObservabilityPlanningReadModel';
 import {
   planningRates,
   projectPlanningDailyCohort,
@@ -69,8 +73,8 @@ describe('planning session cohort projection', () => {
       event({ outcomeType: 'save_completed', occurredAt: '2026-08-30T00:02:00.000Z' }),
     ];
 
-    let session = null;
-    let cohort = null;
+    let session: ObservabilityPlanningSessionSummary | null = null;
+    let cohort: ObservabilityPlanningDailyCohort | null = null;
     for (const planningEvent of events) {
       const previous = session;
       session = projectPlanningSessionSummary({ current: session, event: planningEvent, nowIso });
