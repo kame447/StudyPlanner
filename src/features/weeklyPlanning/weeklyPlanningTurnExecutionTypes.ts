@@ -22,7 +22,12 @@ export interface WeeklyPlanningTurnExecutionInput {
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
-  requestContext: WeeklyPlanningTurnRequestContext;
+  /**
+   * Current production turns provide a request-clock capture from the runtime gateway.
+   * Optionality exists only for pre-capture direct callers; the turn ingress upgrades those
+   * callers once before entering Stable V5, whose runtime contract requires this context.
+   */
+  requestContext?: WeeklyPlanningTurnRequestContext;
 }
 
 export type WeeklyPlanningTurnFailureCode =
