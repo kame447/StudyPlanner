@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Merge latest main and classify conflicts
+      - name: Merge latest main and capture three-way conflicts
         id: merge
         shell: bash
         run: |
@@ -31,17 +31,29 @@ jobs:
           if git merge --no-edit origin/main; then
             echo 'merged=true' >> "$GITHUB_OUTPUT"
           else
-            git diff --name-only --diff-filter=U | sort > issue152-merge-conflicts.txt
+            mkdir -p issue152-conflict-artifact/{base,ours,theirs,markers}
+            git diff --name-only --diff-filter=U | sort > issue152-conflict-artifact/conflicts.txt
+            while IFS= read -r path; do
+              mkdir -p \
+                "issue152-conflict-artifact/base/$(dirname "$path")" \
+                "issue152-conflict-artifact/ours/$(dirname "$path")" \
+                "issue152-conflict-artifact/theirs/$(dirname "$path")" \
+                "issue152-conflict-artifact/markers/$(dirname "$path")"
+              git show ":1:$path" > "issue152-conflict-artifact/base/$path"
+              git show ":2:$path" > "issue152-conflict-artifact/ours/$path"
+              git show ":3:$path" > "issue152-conflict-artifact/theirs/$path"
+              cp "$path" "issue152-conflict-artifact/markers/$path"
+            done < issue152-conflict-artifact/conflicts.txt
             echo 'merged=false' >> "$GITHUB_OUTPUT"
             git merge --abort || true
           fi
 
-      - name: Upload conflict report
+      - name: Upload three-way conflict evidence
         if: steps.merge.outputs.merged != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: issue152-merge-conflicts
-          path: issue152-merge-conflicts.txt
+          name: issue152-three-way-conflicts
+          path: issue152-conflict-artifact
 
       - name: Push reconciled branch and remove this workflow
         if: steps.merge.outputs.merged == 'true'
