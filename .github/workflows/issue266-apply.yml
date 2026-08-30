@@ -1,0 +1,926 @@
+name: Issue 266 Implementation Patch
+
+on:
+  push:
+    branches:
+      - refactor/issue266-recurring-plan-mutations
+    paths:
+      - .github/workflows/issue266-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/issue266-recurring-plan-mutations
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one anchor, found {text.count(old)}')
+              p.write_text(text.replace(old, new, 1))
+
+          recurring = Path('src/domain/recurringPlan.ts')
+          text = recurring.read_text()
+          text = text.replace("import type {\n  Plan,", "import type {\n  Actual,\n  Plan,", 1)
+          append = r'''
+
+export interface RecurringPlanMutation {
+  planUpserts: Plan[];
+  planDeletes: string[];
+  actualUpserts: Actual[];
+  actualDeletes: string[];
+}
+
+function emptyRecurringPlanMutation(): RecurringPlanMutation {
+  return {
+    planUpserts: [],
+    planDeletes: [],
+    actualUpserts: [],
+    actualDeletes: [],
+  };
+}
+
+function getRecurringSeriesId(plan: Plan): string {
+  return plan.seriesId || plan.id;
+}
+
+function getOwnedSeriesPlans(plans: Plan[], sourcePlan: Plan): Plan[] {
+  const seriesId = getRecurringSeriesId(sourcePlan);
+  return plans.filter(
+    (plan) =>
+      plan.userId === sourcePlan.userId &&
+      getRecurringSeriesId(plan) === seriesId,
+  );
+}
+
+function getOwnedLinkedActuals(
+  actuals: Actual[],
+  userId: string,
+  planIds: string[],
+): Actual[] {
+  const planIdSet = new Set(planIds);
+  return actuals.filter(
+    (actual) =>
+      actual.userId === userId &&
+      typeof actual.planId === 'string' &&
+      planIdSet.has(actual.planId),
+  );
+}
+
+function assertRecurringDraftOwner(sourcePlan: Plan, draft: PlanDraft): void {
+  if (draft.userId !== sourcePlan.userId) {
+    throw new Error('Recurring plan edit owner does not match the source plan.');
+  }
+}
+
+export function buildRecurringPlanEditMutation(
+  plans: Plan[],
+  actuals: Actual[],
+  sourcePlan: Plan,
+  occurrenceDate: string,
+  draft: PlanDraft,
+  scope: RecurringPlanScope,
+): RecurringPlanMutation {
+  assertRecurringDraftOwner(sourcePlan, draft);
+
+  if (scope === 'all') {
+    return {
+      ...emptyRecurringPlanMutation(),
+      planUpserts: getOwnedSeriesPlans(plans, sourcePlan).map((plan) =>
+        applyRecurringPlanSeriesEdit(plan, draft),
+      ),
+    };
+  }
+
+  const editResult = applyRecurringPlanEditScope(
+    sourcePlan,
+    occurrenceDate,
+    draft,
+    scope,
+  );
+  const mutation = emptyRecurringPlanMutation();
+
+  if (editResult.updatedPlan) {
+    mutation.planUpserts.push(editResult.updatedPlan);
+  } else {
+    mutation.planDeletes.push(sourcePlan.id);
+  }
+
+  if (editResult.createdPlan) {
+    mutation.planUpserts.push(editResult.createdPlan);
+  }
+
+  if (scope === 'future' && editResult.createdPlan) {
+    mutation.actualUpserts = actuals
+      .filter(
+        (actual) =>
+          actual.userId === sourcePlan.userId &&
+          actual.planId === sourcePlan.id &&
+          actual.occurrenceDate.localeCompare(occurrenceDate) >= 0,
+      )
+      .map((actual) => ({
+        ...actual,
+        planId: editResult.createdPlan?.id ?? actual.planId,
+      }));
+  }
+
+  if (editResult.updatedPlan === null) {
+    const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
+    mutation.actualDeletes = actuals
+      .filter(
+        (actual) =>
+          actual.userId === sourcePlan.userId &&
+          actual.planId === sourcePlan.id &&
+          !reboundIds.has(actual.id),
+      )
+      .map((actual) => actual.id);
+  }
+
+  return mutation;
+}
+
+export function buildRecurringPlanDeleteMutation(
+  plans: Plan[],
+  actuals: Actual[],
+  sourcePlan: Plan,
+  occurrenceDate: string,
+  scope: RecurringPlanScope,
+): RecurringPlanMutation {
+  if (scope === 'all') {
+    const seriesPlans = getOwnedSeriesPlans(plans, sourcePlan);
+    const planDeletes = seriesPlans.map((plan) => plan.id);
+    return {
+      ...emptyRecurringPlanMutation(),
+      planDeletes,
+      actualDeletes: getOwnedLinkedActuals(
+        actuals,
+        sourcePlan.userId,
+        planDeletes,
+      ).map((actual) => actual.id),
+    };
+  }
+
+  const nextPlan = applyRecurringPlanDeleteScope(
+    sourcePlan,
+    occurrenceDate,
+    scope,
+  );
+  const mutation = emptyRecurringPlanMutation();
+
+  if (nextPlan) {
+    mutation.planUpserts.push(nextPlan);
+    mutation.actualDeletes = actuals
+      .filter(
+        (actual) =>
+          actual.userId === sourcePlan.userId &&
+          actual.planId === sourcePlan.id &&
+          (scope === 'single'
+            ? actual.occurrenceDate === occurrenceDate
+            : actual.occurrenceDate.localeCompare(occurrenceDate) >= 0),
+      )
+      .map((actual) => actual.id);
+    return mutation;
+  }
+
+  mutation.planDeletes.push(sourcePlan.id);
+  mutation.actualDeletes = getOwnedLinkedActuals(
+    actuals,
+    sourcePlan.userId,
+    [sourcePlan.id],
+  ).map((actual) => actual.id);
+  return mutation;
+}
+'''
+          if 'export interface RecurringPlanMutation' in text:
+              raise SystemExit('recurring mutation contract already exists')
+          recurring.write_text(text.rstrip() + append + '\n')
+
+          contracts = Path('src/repositories/repositoryContracts.ts')
+          text = contracts.read_text()
+          text = text.replace("} from '../types/domain';\n", "} from '../types/domain';\nimport type { RecurringPlanMutation } from '../domain/recurringPlan';\n", 1)
+          text = text.replace(
+              "  getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;\n  upsertPlan(plan: Plan): Promise<Plan>;",
+              "  getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;\n  applyRecurringPlanMutation(\n    userId: string,\n    mutation: RecurringPlanMutation,\n  ): Promise<void>;\n  upsertPlan(plan: Plan): Promise<Plan>;",
+              1,
+          )
+          contracts.write_text(text)
+
+          planner = Path('src/repositories/plannerRepository.ts')
+          text = planner.read_text()
+          text = text.replace(
+              "import type {\n  PlannerRepository,\n  PlannerStorageGateway,\n} from './repositoryContracts';",
+              "import type { RecurringPlanMutation } from '../domain/recurringPlan';\nimport type {\n  PlannerRepository,\n  PlannerStorageGateway,\n} from './repositoryContracts';",
+              1,
+          )
+          helper = r'''
+
+function assertRecurringMutationOwners(
+  userId: string,
+  mutation: RecurringPlanMutation,
+): void {
+  const hasWrongOwner =
+    mutation.planUpserts.some((plan) => plan.userId !== userId) ||
+    mutation.actualUpserts.some((actual) => actual.userId !== userId);
+
+  if (hasWrongOwner) {
+    throw new Error('Recurring plan mutation contains records owned by another user.');
+  }
+}
+
+function applyRecurringPlanRecords(
+  current: import('../types/domain').Plan[],
+  userId: string,
+  mutation: RecurringPlanMutation,
+): import('../types/domain').Plan[] {
+  const deleteIds = new Set(mutation.planDeletes);
+  return mutation.planUpserts.reduce(
+    (records, plan) => replaceById(records, plan),
+    current.filter(
+      (plan) => !(plan.userId === userId && deleteIds.has(plan.id)),
+    ),
+  );
+}
+
+function applyRecurringActualRecords(
+  current: import('../types/domain').Actual[],
+  userId: string,
+  mutation: RecurringPlanMutation,
+): import('../types/domain').Actual[] {
+  const deleteIds = new Set(mutation.actualDeletes);
+  return mutation.actualUpserts.reduce(
+    (records, actual) => upsertActualRecord(records, actual),
+    current.filter(
+      (actual) => !(actual.userId === userId && deleteIds.has(actual.id)),
+    ),
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+'''
+          anchor = "export function createPlannerRepository(\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('planner repository function anchor mismatch')
+          text = text.replace(anchor, helper + '\n' + anchor, 1)
+          method = r'''    async applyRecurringPlanMutation(userId, mutation) {
+      assertRecurringMutationOwners(userId, mutation);
+      const hasPlanChanges =
+        mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
+      const hasActualChanges =
+        mutation.actualUpserts.length > 0 || mutation.actualDeletes.length > 0;
+
+      if (!hasPlanChanges && !hasActualChanges) {
+        return;
+      }
+
+      const previousPlans = await storageGateway.readPlans();
+      const previousActuals = await storageGateway.readActuals();
+      const nextPlans = applyRecurringPlanRecords(previousPlans, userId, mutation);
+      const nextActuals = applyRecurringActualRecords(previousActuals, userId, mutation);
+      let plansWritten = false;
+
+      try {
+        if (hasPlanChanges) {
+          await storageGateway.writePlans(nextPlans);
+          plansWritten = true;
+        }
+        if (hasActualChanges) {
+          await storageGateway.writeActuals(nextActuals);
+        }
+      } catch (error) {
+        if (plansWritten && hasActualChanges) {
+          try {
+            await storageGateway.writePlans(previousPlans);
+          } catch (rollbackError) {
+            throw new Error(
+              `Recurring plan mutation failed (${errorText(error)}) and local rollback failed (${errorText(rollbackError)}).`,
+            );
+          }
+        }
+        throw error;
+      }
+    },
+'''
+          anchor = "    async upsertPlan(plan) {\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('planner upsert anchor mismatch')
+          text = text.replace(anchor, method + anchor, 1)
+          planner.write_text(text)
+
+          firebase = Path('src/repositories/firebasePlannerRepository.ts')
+          text = firebase.read_text()
+          text = text.replace(
+              "import type { PlannerRepository } from './repositoryContracts';",
+              "import type { RecurringPlanMutation } from '../domain/recurringPlan';\nimport type { PlannerRepository } from './repositoryContracts';",
+              1,
+          )
+          fbhelper = r'''
+
+function assertRecurringMutationOwners(
+  userId: string,
+  mutation: RecurringPlanMutation,
+): void {
+  if (
+    mutation.planUpserts.some((plan) => plan.userId !== userId) ||
+    mutation.actualUpserts.some((actual) => actual.userId !== userId)
+  ) {
+    throw new Error('Recurring plan mutation contains records owned by another user.');
+  }
+}
+'''
+          anchor = "export function createFirebasePlannerRepository(\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('firebase factory anchor mismatch')
+          text = text.replace(anchor, fbhelper + '\n' + anchor, 1)
+          fbmethod = r'''    async applyRecurringPlanMutation(userId, mutation) {
+      try {
+        assertRecurringMutationOwners(userId, mutation);
+        const operationCount =
+          mutation.planUpserts.length +
+          mutation.planDeletes.length +
+          mutation.actualUpserts.length +
+          mutation.actualDeletes.length;
+
+        if (operationCount > 500) {
+          throw new Error('Recurring plan mutation exceeds the Firestore batch limit.');
+        }
+        if (operationCount === 0) {
+          return;
+        }
+
+        const batch = writeBatch(firestoreDb);
+        mutation.planUpserts.forEach((plan) => {
+          batch.set(
+            doc(firestoreDb, 'plans', plan.id),
+            stripUndefinedDeep(plan),
+            { merge: true },
+          );
+        });
+        mutation.planDeletes.forEach((planId) => {
+          batch.delete(doc(firestoreDb, 'plans', planId));
+        });
+        mutation.actualUpserts.forEach((actual) => {
+          batch.set(
+            doc(firestoreDb, 'actuals', actual.id),
+            stripUndefinedDeep(actual),
+            { merge: true },
+          );
+        });
+        mutation.actualDeletes.forEach((actualId) => {
+          batch.delete(doc(firestoreDb, 'actuals', actualId));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '繰り返し予定を保存できませんでした。',
+            error as FirebaseLikeError,
+          ),
+        );
+      }
+    },
+'''
+          anchor = "    async upsertPlan(plan) {\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('firebase upsert anchor mismatch')
+          text = text.replace(anchor, fbmethod + anchor, 1)
+          firebase.write_text(text)
+
+          observed = Path('src/repositories/observedPlannerRepository.ts')
+          text = observed.read_text()
+          obsmethod = r'''    async applyRecurringPlanMutation(userId, mutation) {
+      await repository.applyRecurringPlanMutation(userId, mutation);
+      mutation.planUpserts.forEach((plan) => {
+        recordBestEffort(
+          telemetry,
+          isNewTimestampedRecord(plan) ? 'plan_created' : 'plan_updated',
+        );
+      });
+      mutation.planDeletes.forEach(() => recordBestEffort(telemetry, 'plan_deleted'));
+      mutation.actualUpserts.forEach(() => recordBestEffort(telemetry, 'actual_recorded'));
+      mutation.actualDeletes.forEach(() => recordBestEffort(telemetry, 'actual_deleted'));
+    },
+'''
+          anchor = "    async upsertPlan(plan) {\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('observed upsert anchor mismatch')
+          text = text.replace(anchor, obsmethod + anchor, 1)
+          observed.write_text(text)
+
+          hook = Path('src/hooks/usePlannerDataState.ts')
+          text = hook.read_text()
+          old_import = """import {\n  applyRecurringPlanDeleteScope,\n  applyRecurringPlanEditScope,\n  applyRecurringPlanSeriesEdit,\n  supportsScopedRecurringPlanEdits,\n} from '../domain/recurringPlan';"""
+          new_import = """import {\n  buildRecurringPlanDeleteMutation,\n  buildRecurringPlanEditMutation,\n  supportsScopedRecurringPlanEdits,\n} from '../domain/recurringPlan';"""
+          if old_import not in text:
+              raise SystemExit('hook recurrence import anchor missing')
+          text = text.replace(old_import, new_import, 1)
+          summary_actual = """function summarizeActualForLog(actual: Actual) {\n  return {\n    id: actual.id,\n    userId: actual.userId,\n    planId: actual.planId,\n    occurrenceDate: actual.occurrenceDate,\n    title: actual.title,\n  };\n}\n\n"""
+          if summary_actual not in text:
+              raise SystemExit('hook actual log helper anchor missing')
+          text = text.replace(summary_actual, '', 1)
+          start = text.index('  async function confirmRecurringPlanScope(scope: RecurringPlanScope) {')
+          end = text.index('  async function movePlanOccurrence(', start)
+          replacement = r'''  async function confirmRecurringPlanScope(scope: RecurringPlanScope) {
+    if (!userId || !pendingRecurringPlanAction) {
+      return;
+    }
+
+    const occurrencePlan = pendingRecurringPlanAction.plan;
+    const sourcePlan = resolveStoredPlan(occurrencePlan);
+    const occurrenceDate = occurrencePlan.occurrenceDate ?? occurrencePlan.date;
+
+    try {
+      const mutation =
+        pendingRecurringPlanAction.kind === 'edit'
+          ? pendingRecurringPlanAction.draft
+            ? buildRecurringPlanEditMutation(
+                plans,
+                actuals,
+                sourcePlan,
+                occurrenceDate,
+                pendingRecurringPlanAction.draft,
+                scope,
+              )
+            : null
+          : buildRecurringPlanDeleteMutation(
+              plans,
+              actuals,
+              sourcePlan,
+              occurrenceDate,
+              scope,
+            );
+
+      if (!mutation) {
+        return;
+      }
+
+      await plannerRepository.applyRecurringPlanMutation(userId, mutation);
+      setPlans((current) =>
+        sortAndUpsertPlans(
+          removePlansByIds(current, mutation.planDeletes),
+          mutation.planUpserts,
+        ),
+      );
+      const deletedActualIds = new Set(mutation.actualDeletes);
+      setActuals((current) =>
+        upsertActualsById(
+          current.filter((actual) => !deletedActualIds.has(actual.id)),
+          mutation.actualUpserts,
+        ),
+      );
+
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        setSelectedDate(occurrenceDate);
+        setMonthDate(startOfMonth(occurrenceDate));
+      }
+      setPendingRecurringPlanAction(null);
+      closePlanEditor();
+      showNotice(
+        pendingRecurringPlanAction.kind === 'edit'
+          ? '繰り返し予定を更新しました。'
+          : '繰り返し予定を削除しました。',
+        pendingRecurringPlanAction.kind === 'edit' ? 'success' : undefined,
+      );
+    } catch (error) {
+      console.error('[RecurringPlanScope] failed', {
+        action: pendingRecurringPlanAction.kind,
+        scope,
+        source:
+          editingPlanId && editingPlanId === sourcePlan.id
+            ? 'plan-editor'
+            : 'plan-card',
+        userId,
+        sourcePlan: summarizePlanForLog(sourcePlan),
+        error: getErrorDiagnostics(error),
+      });
+      await loadPlannerData(userId);
+      showNotice(
+        resolveErrorMessage(
+          error,
+          pendingRecurringPlanAction.kind === 'edit'
+            ? '繰り返し予定の更新に失敗しました。'
+            : '繰り返し予定の削除に失敗しました。',
+        ),
+        'error',
+      );
+    }
+  }
+
+'''
+          text = text[:start] + replacement + text[end:]
+          hook.write_text(text)
+
+          domain_test = r'''import { describe, expect, it } from 'vitest';
+import type { Actual, Plan, PlanDraft, RecurrenceRule } from '../types/domain';
+import {
+  buildRecurringPlanDeleteMutation,
+  buildRecurringPlanEditMutation,
+} from './recurringPlan';
+
+function rule(overrides: Partial<RecurrenceRule> = {}): RecurrenceRule {
+  return {
+    id: 'rule-1',
+    kind: 'daily',
+    startDate: '2026-09-01',
+    until: '2026-09-05',
+    dates: [],
+    weekdays: [],
+    dayType: null,
+    startTime: '09:00',
+    endTime: '10:00',
+    isOverride: false,
+    ...overrides,
+  };
+}
+
+function plan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'plan-1',
+    seriesId: 'series-1',
+    userId: 'user-1',
+    title: 'Math',
+    subject: 'Math',
+    date: '2026-09-01',
+    startTime: '09:00',
+    endTime: '10:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [rule()],
+    type: 'study',
+    memo: '',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function draft(overrides: Partial<PlanDraft> = {}): PlanDraft {
+  return {
+    userId: 'user-1',
+    title: 'Updated Math',
+    subject: 'Math',
+    date: '2026-09-03',
+    startTime: '10:00',
+    endTime: '11:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [rule()],
+    type: 'study',
+    memo: '',
+    ...overrides,
+  };
+}
+
+function actual(overrides: Partial<Actual> = {}): Actual {
+  return {
+    id: 'actual-1',
+    userId: 'user-1',
+    planId: 'plan-1',
+    occurrenceDate: '2026-09-01',
+    actualStartTime: '09:00',
+    actualEndTime: '10:00',
+    title: 'Math',
+    subject: 'Math',
+    note: '',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('recurring plan mutation ownership', () => {
+  it('derives future plan split and Actual rebind from the same boundary', () => {
+    const source = plan();
+    const mutation = buildRecurringPlanEditMutation(
+      [source],
+      [
+        actual({ id: 'past', occurrenceDate: '2026-09-02' }),
+        actual({ id: 'future', occurrenceDate: '2026-09-03' }),
+        actual({ id: 'later', occurrenceDate: '2026-09-05' }),
+        actual({ id: 'wrong-user', userId: 'user-2', occurrenceDate: '2026-09-04' }),
+      ],
+      source,
+      '2026-09-03',
+      draft(),
+      'future',
+    );
+
+    const created = mutation.planUpserts.find((item) => item.id !== source.id);
+    expect(created).toBeDefined();
+    expect(mutation.actualUpserts.map((item) => item.id)).toEqual(['future', 'later']);
+    expect(mutation.actualUpserts.every((item) => item.planId === created?.id)).toBe(true);
+    expect(mutation.actualDeletes).toEqual([]);
+  });
+
+  it('limits all-series edits to the source owner', () => {
+    const source = plan();
+    const sibling = plan({ id: 'plan-2' });
+    const wrongOwner = plan({ id: 'plan-other-user', userId: 'user-2' });
+    const unrelated = plan({ id: 'unrelated', seriesId: 'series-2' });
+    const mutation = buildRecurringPlanEditMutation(
+      [source, sibling, wrongOwner, unrelated],
+      [],
+      source,
+      '2026-09-03',
+      draft(),
+      'all',
+    );
+
+    expect(mutation.planUpserts.map((item) => item.id).sort()).toEqual(['plan-1', 'plan-2']);
+  });
+
+  it('deletes only one occurrence Actual for single delete', () => {
+    const source = plan();
+    const mutation = buildRecurringPlanDeleteMutation(
+      [source],
+      [
+        actual({ id: 'target', occurrenceDate: '2026-09-03' }),
+        actual({ id: 'other', occurrenceDate: '2026-09-04' }),
+      ],
+      source,
+      '2026-09-03',
+      'single',
+    );
+
+    expect(mutation.planUpserts).toHaveLength(1);
+    expect(mutation.actualDeletes).toEqual(['target']);
+  });
+
+  it('deletes future Actuals from the same boundary as the truncated plan', () => {
+    const source = plan();
+    const mutation = buildRecurringPlanDeleteMutation(
+      [source],
+      [
+        actual({ id: 'past', occurrenceDate: '2026-09-02' }),
+        actual({ id: 'boundary', occurrenceDate: '2026-09-03' }),
+        actual({ id: 'future', occurrenceDate: '2026-09-05' }),
+      ],
+      source,
+      '2026-09-03',
+      'future',
+    );
+
+    expect(mutation.planUpserts).toHaveLength(1);
+    expect(mutation.actualDeletes).toEqual(['boundary', 'future']);
+  });
+
+  it('deletes only owned series Plans and their owned linked Actuals for all', () => {
+    const source = plan();
+    const sibling = plan({ id: 'plan-2' });
+    const wrongOwner = plan({ id: 'wrong-owner-plan', userId: 'user-2' });
+    const unrelated = plan({ id: 'unrelated', seriesId: 'series-2' });
+    const mutation = buildRecurringPlanDeleteMutation(
+      [source, sibling, wrongOwner, unrelated],
+      [
+        actual({ id: 'a1', planId: source.id }),
+        actual({ id: 'a2', planId: sibling.id }),
+        actual({ id: 'wrong-user', userId: 'user-2', planId: source.id }),
+        actual({ id: 'standalone', planId: null }),
+      ],
+      source,
+      '2026-09-03',
+      'all',
+    );
+
+    expect(mutation.planDeletes.sort()).toEqual(['plan-1', 'plan-2']);
+    expect(mutation.actualDeletes.sort()).toEqual(['a1', 'a2']);
+  });
+});
+'''
+          Path('src/domain/recurringPlanMutation.test.ts').write_text(domain_test)
+
+          repository_test = r'''import { describe, expect, it } from 'vitest';
+import type { RecurringPlanMutation } from '../domain/recurringPlan';
+import type {
+  Actual,
+  DayNote,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  StudyMaterial,
+  StudySubject,
+  TimetablePeriod,
+  TimetableTerm,
+  TodoTask,
+} from '../types/domain';
+import { createPlannerRepository } from './plannerRepository';
+import type { PlannerStorageGateway } from './repositoryContracts';
+
+function plan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'plan-1',
+    seriesId: 'series-1',
+    userId: 'user-1',
+    title: 'Math',
+    subject: 'Math',
+    date: '2026-09-01',
+    startTime: '09:00',
+    endTime: '10:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'study',
+    memo: '',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function actual(overrides: Partial<Actual> = {}): Actual {
+  return {
+    id: 'actual-1',
+    userId: 'user-1',
+    planId: 'plan-1',
+    occurrenceDate: '2026-09-01',
+    actualStartTime: '09:00',
+    actualEndTime: '10:00',
+    subject: 'Math',
+    note: '',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function createGateway(seed: { plans?: Plan[]; actuals?: Actual[]; failActualWrite?: boolean }) {
+  const state = {
+    plans: [...(seed.plans ?? [])],
+    actuals: [...(seed.actuals ?? [])],
+    dayNotes: [] as DayNote[],
+    monthEvents: [] as MonthEvent[],
+    todos: [] as TodoTask[],
+    studySubjects: [] as StudySubject[],
+    studyMaterials: [] as StudyMaterial[],
+    scheduleTemplates: [] as ScheduleTemplate[],
+    timetableTerms: [] as TimetableTerm[],
+    timetablePeriods: [] as TimetablePeriod[],
+  };
+  let failActualWrite = seed.failActualWrite ?? false;
+  const gateway: PlannerStorageGateway = {
+    async readPlans() { return state.plans; },
+    async writePlans(items) { state.plans = [...items]; },
+    async readActuals() { return state.actuals; },
+    async writeActuals(items) {
+      if (failActualWrite) {
+        failActualWrite = false;
+        throw new Error('actual write failed');
+      }
+      state.actuals = [...items];
+    },
+    async readDayNotes() { return state.dayNotes; },
+    async writeDayNotes(items) { state.dayNotes = [...items]; },
+    async readMonthEvents() { return state.monthEvents; },
+    async writeMonthEvents(items) { state.monthEvents = [...items]; },
+    async readTodos() { return state.todos; },
+    async writeTodos(items) { state.todos = [...await items]; },
+    async readStudySubjects() { return state.studySubjects; },
+    async writeStudySubjects(items) { state.studySubjects = [...await items]; },
+    async readStudyMaterials() { return state.studyMaterials; },
+    async writeStudyMaterials(items) { state.studyMaterials = [...await items]; },
+    async readScheduleTemplates() { return state.scheduleTemplates; },
+    async writeScheduleTemplates(items) { state.scheduleTemplates = [...await items]; },
+    async readTimetableTerms() { return state.timetableTerms; },
+    async writeTimetableTerms(items) { state.timetableTerms = [...await items]; },
+    async readTimetablePeriods() { return state.timetablePeriods; },
+    async writeTimetablePeriods(items) { state.timetablePeriods = [...await items]; },
+  };
+  return { state, gateway };
+}
+
+function mutation(overrides: Partial<RecurringPlanMutation> = {}): RecurringPlanMutation {
+  return {
+    planUpserts: [],
+    planDeletes: [],
+    actualUpserts: [],
+    actualDeletes: [],
+    ...overrides,
+  };
+}
+
+describe('planner repository recurring mutation boundary', () => {
+  it('applies Plan and Actual changes as one logical repository operation', async () => {
+    const source = plan();
+    const linked = actual();
+    const { state, gateway } = createGateway({ plans: [source], actuals: [linked] });
+    const repository = createPlannerRepository(gateway);
+    const nextPlan = plan({ title: 'Updated', updatedAt: '2026-09-01T01:00:00.000Z' });
+    const nextActual = actual({ planId: 'plan-2' });
+
+    await repository.applyRecurringPlanMutation(
+      'user-1',
+      mutation({ planUpserts: [nextPlan], actualUpserts: [nextActual] }),
+    );
+
+    expect(state.plans[0]?.title).toBe('Updated');
+    expect(state.actuals[0]?.planId).toBe('plan-2');
+  });
+
+  it('rolls Plan storage back when the following Actual write fails', async () => {
+    const source = plan();
+    const linked = actual();
+    const { state, gateway } = createGateway({
+      plans: [source],
+      actuals: [linked],
+      failActualWrite: true,
+    });
+    const repository = createPlannerRepository(gateway);
+
+    await expect(
+      repository.applyRecurringPlanMutation(
+        'user-1',
+        mutation({
+          planUpserts: [plan({ title: 'Should rollback' })],
+          actualDeletes: [linked.id],
+        }),
+      ),
+    ).rejects.toThrow('actual write failed');
+
+    expect(state.plans).toEqual([source]);
+    expect(state.actuals).toEqual([linked]);
+  });
+
+  it('does not delete records owned by another user even when ids are supplied', async () => {
+    const ownPlan = plan();
+    const otherPlan = plan({ id: 'other-plan', userId: 'user-2' });
+    const ownActual = actual();
+    const otherActual = actual({ id: 'other-actual', userId: 'user-2', planId: otherPlan.id });
+    const { state, gateway } = createGateway({
+      plans: [ownPlan, otherPlan],
+      actuals: [ownActual, otherActual],
+    });
+    const repository = createPlannerRepository(gateway);
+
+    await repository.applyRecurringPlanMutation(
+      'user-1',
+      mutation({
+        planDeletes: [otherPlan.id],
+        actualDeletes: [otherActual.id],
+      }),
+    );
+
+    expect(state.plans).toContainEqual(otherPlan);
+    expect(state.actuals).toContainEqual(otherActual);
+  });
+
+  it('rejects cross-owner upserts before writing either collection', async () => {
+    const source = plan();
+    const linked = actual();
+    const { state, gateway } = createGateway({ plans: [source], actuals: [linked] });
+    const repository = createPlannerRepository(gateway);
+
+    await expect(
+      repository.applyRecurringPlanMutation(
+        'user-1',
+        mutation({ planUpserts: [plan({ id: 'foreign', userId: 'user-2' })] }),
+      ),
+    ).rejects.toThrow('another user');
+
+    expect(state.plans).toEqual([source]);
+    expect(state.actuals).toEqual([linked]);
+  });
+});
+'''
+          Path('src/repositories/recurringPlanMutationRepository.test.ts').write_text(repository_test)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused regression tests
+        run: npm run test:run -- src/domain/recurringPlanMutation.test.ts src/repositories/recurringPlanMutationRepository.test.ts src/repositories/plannerRepository.test.ts src/repositories/observedPlannerRepository.test.ts
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit implementation and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/issue266-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "refactor: centralize recurring plan mutations"
+          git push origin HEAD:refactor/issue266-recurring-plan-mutations
