@@ -1,0 +1,49 @@
+name: Issue 152 fix quantity contract once
+
+on:
+  push:
+    branches:
+      - test/issue152-adversarial-validation-lab
+    paths:
+      - .github/workflows/issue152-fix-quantity-contract-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/issue152-adversarial-validation-lab
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Restore canonical quantity-role wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          path = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts')
+          old = "  'Quantity roles: target is the amount intended for this plan; remaining is the unfinished amount; completed is done. Approximate current progress is workload state, not effort or durable concern; if no supported numeric amount is present, use uncertainty for the completed/remaining amount instead of inventing one. Do not derive target from total/completed. An effortEstimate may target the exact task, component, or workload localId.',"
+          new = "  'Quantity roles: target=plan amount; remaining=unfinished; completed=done. Approximate current progress is workload state, not effort or durable concern; if no supported numeric amount is present, use uncertainty for the completed/remaining amount instead of inventing one. Do not derive target from total/completed. effortEstimate targets the exact task/component/workload localId.',"
+          text = path.read_text()
+          if text.count(old) != 1:
+              raise RuntimeError('canonical quantity-role source line did not match exactly once')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          git diff -- src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts
+
+      - name: Commit correction and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/issue152-fix-quantity-contract-once.yml
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts
+          git commit -m 'fix: preserve canonical quantity-role prompt contract'
+          git push origin HEAD:test/issue152-adversarial-validation-lab
