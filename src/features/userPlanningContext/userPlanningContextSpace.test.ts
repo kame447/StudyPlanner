@@ -75,14 +75,74 @@ describe('UserPlanningContextSpace', () => {
         observedDate: '2026-08-07',
         resolvedDate: '2026-08-21',
         status: 'active',
+        origin: 'user_stated',
       }),
       expect.objectContaining({
         kind: 'concern',
         label: '数学',
         value: '学習上の不安・優先度が高い',
         resolvedDate: null,
+        origin: 'user_stated',
       }),
     ]));
+  });
+
+  it('keeps a study goal active across plans and replaces the same goal label when it changes', () => {
+    stageUserPlanningContextFactsV1({
+      ownerId: OWNER_A,
+      conversationId: 'conversation-1',
+      requestId: 'goal-1',
+      observedDate: '2026-08-07',
+      now: '2026-08-07T08:00:00.000Z',
+      facts: [{
+        localId: 'goal-1',
+        kind: 'study_goal',
+        label: '第一志望',
+        value: '国公立大学の理系',
+        dateExpression: null,
+        sourceText: '国公立大学の理系を志望しています',
+      }],
+    });
+    finalizeStagedUserPlanningContextV1({
+      ownerId: OWNER_A,
+      conversationId: 'conversation-1',
+      requestId: 'goal-1',
+    });
+
+    stageUserPlanningContextFactsV1({
+      ownerId: OWNER_A,
+      conversationId: 'conversation-2',
+      requestId: 'goal-2',
+      observedDate: '2026-10-01',
+      now: '2026-10-01T08:00:00.000Z',
+      facts: [{
+        localId: 'goal-2',
+        kind: 'study_goal',
+        label: '第一志望',
+        value: '静岡大学情報学部',
+        dateExpression: null,
+        sourceText: '第一志望は静岡大学情報学部です',
+      }],
+    });
+    finalizeStagedUserPlanningContextV1({
+      ownerId: OWNER_A,
+      conversationId: 'conversation-2',
+      requestId: 'goal-2',
+    });
+
+    const active = userPlanningContextPromptSummaryV1({
+      ownerId: OWNER_A,
+      currentDate: '2026-12-01',
+    });
+    expect(active).toEqual([
+      expect.objectContaining({
+        kind: 'study_goal',
+        label: '第一志望',
+        value: '静岡大学情報学部',
+        status: 'active',
+        origin: 'user_stated',
+      }),
+    ]);
   });
 
   it('does not persist discarded turn context', () => {
@@ -137,7 +197,7 @@ describe('UserPlanningContextSpace', () => {
     })).toEqual([]);
   });
 
-  it('marks resolved past events historical while retaining them in history', () => {
+  it('moves expired goal events to needs-review instead of treating the goal outcome as known history', () => {
     stageUserPlanningContextFactsV1({
       ownerId: OWNER_A,
       conversationId: 'conversation-a',
@@ -164,7 +224,7 @@ describe('UserPlanningContextSpace', () => {
     });
     expect(snapshot.records[0]).toMatchObject({
       label: '模試',
-      status: 'historical',
+      status: 'needs_review',
     });
     expect(userPlanningContextPromptSummaryV1({
       ownerId: OWNER_A,

@@ -137,8 +137,10 @@
 }
 
 /* When a full editor/sheet takes over, the FAB finishes the hand-off instead
-   of remaining visible behind the modal. */
+   of remaining visible behind the modal. MonthEventDialog is portaled to body
+   so the hand-off must recognize both the legacy nested and portaled shapes. */
 .schedule-workspace-shell:has(.month-event-modal-overlay) .schedule-add-fab.daily-add-fab,
+body:has(> .month-event-dialog-motion .month-event-modal-overlay) .schedule-add-fab.daily-add-fab,
 .schedule-workspace-shell:has(.quick-entry-overlay) .schedule-add-fab.daily-add-fab {
   transform: translate3d(0, -34px, 0) scale(0.72);
   opacity: 0;
@@ -148,6 +150,7 @@
 
 .schedule-workspace-shell:has(.month-day-sheet-overlay) .quick-add-options,
 .schedule-workspace-shell:has(.month-event-modal-overlay) .quick-add-options,
+body:has(> .month-event-dialog-motion .month-event-modal-overlay) .quick-add-options,
 .schedule-workspace-shell:has(.quick-entry-overlay) .quick-add-options {
   opacity: 0;
   pointer-events: none;

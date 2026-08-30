@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeView } from './components/HomeView';
 import { SplashScreen } from './components/SplashScreen';
+import { StudySessionProvider } from './components/StudySessionView';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
@@ -120,6 +121,7 @@ export default function App() {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
     deletePlan,
@@ -141,6 +143,7 @@ export default function App() {
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
+    deleteTimetableTerm,
     clearTimetableTermData,
     saveTimetablePeriod,
     deleteTimetablePeriod,
@@ -165,6 +168,8 @@ export default function App() {
     actuals,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
+    timetableTerm: activeTimetableTerm,
+    timetableTerms,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });
@@ -181,7 +186,9 @@ export default function App() {
         ? 'bookshelf'
         : viewMode === 'timetable'
           ? 'timetable'
-          : 'schedule';
+          : viewMode === 'report'
+            ? 'home'
+            : 'schedule';
   const primaryNavClassName = isScheduleSurface
     ? 'schedule-bottom-nav'
     : isAiPlanningSurface
@@ -229,7 +236,7 @@ export default function App() {
   }
 
   if (booting) {
-    return <SplashScreen />;
+    return <SplashScreen fixedLight />;
   }
 
   if (!user || !appAccessGranted) {
@@ -332,7 +339,7 @@ export default function App() {
             onChangeWeek={openWeek}
             onChangeDay={openDay}
           />
-        ) : viewMode === 'timetable' ? null : (
+        ) : viewMode === 'timetable' || viewMode === 'report' ? null : (
           <AppViewSwitcher
             viewMode={viewMode}
             onChange={(nextViewMode) => {
@@ -383,26 +390,28 @@ export default function App() {
         }
       >
         {isHomeSurface ? (
-          <HomeView
-            plans={plans}
-            actuals={actuals}
-            todos={todos}
-            studyMaterials={studyMaterials}
-            primaryHeaderRef={primaryHeaderRef}
-            primaryBottomNavRef={primaryBottomNavRef}
-            onOpenAiPlanning={openAiPlanningSurface}
-            onOpenSchedule={openScheduleSurface}
-            onOpenDay={(date) => {
-              setPrimarySurface('workspace');
-              openDay(date);
-            }}
-            onOpenTodo={() => {
-              setPrimarySurface('workspace');
-              setViewMode('todo');
-            }}
-            onOpenBookshelf={openBookshelfSurface}
-            onOpenReport={openReportSurface}
-          />
+          <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
+            <HomeView
+              plans={plans}
+              actuals={actuals}
+              todos={todos}
+              studyMaterials={studyMaterials}
+              primaryHeaderRef={primaryHeaderRef}
+              primaryBottomNavRef={primaryBottomNavRef}
+              onOpenAiPlanning={openAiPlanningSurface}
+              onOpenSchedule={openScheduleSurface}
+              onOpenDay={(date) => {
+                setPrimarySurface('workspace');
+                openDay(date);
+              }}
+              onOpenTodo={() => {
+                setPrimarySurface('workspace');
+                setViewMode('todo');
+              }}
+              onOpenBookshelf={openBookshelfSurface}
+              onOpenReport={openReportSurface}
+            />
+          </StudySessionProvider>
         ) : null}
 
         {isAiPlanningSurface ? (
@@ -446,6 +455,8 @@ export default function App() {
                     ? weeklyPlanning.removeDraftBlock
                     : undefined
                 }
+                onOpenPlan={openEditPlan}
+                onMovePlan={movePlanOccurrence}
                 onOpenDay={openDay}
               />
             ) : null}
@@ -461,6 +472,8 @@ export default function App() {
                 studyMaterials={studyMaterials}
                 scheduleTemplates={scheduleTemplates}
                 timetableTermId={activeTimetableTermId}
+                timetableTerm={activeTimetableTerm}
+                timetableTerms={timetableTerms}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
                 onRemoveWeeklyDraftBlock={
                   weeklyPlanning.canEditDraftBlocks
@@ -469,6 +482,7 @@ export default function App() {
                 }
                 onChangeDay={openDay}
                 onEditPlan={openEditPlan}
+                onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
                 onSavePlan={savePlanDraft}
                 onSaveActual={saveActual}
@@ -501,7 +515,7 @@ export default function App() {
                 actuals={actuals}
                 studySubjects={studySubjects}
                 studyMaterials={studyMaterials}
-                onOpenDay={openDay}
+                onBack={openHomeSurface}
               />
             ) : null}
 
@@ -509,9 +523,11 @@ export default function App() {
               <TimetableView
                 userId={user.id}
                 activeTerm={activeTimetableTerm}
+                timetableTerms={timetableTerms}
                 timetablePeriods={timetablePeriods}
                 scheduleTemplates={scheduleTemplates}
                 onActivateTerm={activateTimetableTerm}
+                onDeleteTerm={deleteTimetableTerm}
                 onClearTermData={clearTimetableTermData}
                 onSaveTimetablePeriod={saveTimetablePeriod}
                 onDeleteTimetablePeriod={deleteTimetablePeriod}

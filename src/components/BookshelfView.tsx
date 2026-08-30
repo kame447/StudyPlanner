@@ -426,7 +426,6 @@ export function BookshelfView({
           <label className="bookshelf-search-field">
             <Search aria-hidden="true" size={18} />
             <input
-              autoFocus
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="教材名・カテゴリで検索"

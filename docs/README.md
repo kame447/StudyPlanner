@@ -16,6 +16,9 @@ Repository work:
 
 - [Weekly planning](domains/weekly-planning/README.md)
 - [Client runtime](domains/client-runtime/README.md)
+- [Reporting](domains/reporting/README.md)
+- [Product observability](domains/product-observability/README.md)
+- [External integrations](domains/external-integrations/README.md) — 書籍教材metadataの正仕様は [`material-metadata.md`](domains/external-integrations/spec/material-metadata.md)
 
 ## Cross-cutting work
 

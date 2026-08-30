@@ -47,7 +47,24 @@ import type {
   ResolvedTaskDateEligibility,
   TaskDateRuleResolutionIssue,
 } from './weeklyPlanningTaskDateRuleResolver';
-import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
+import {
+  isValidCalendarDate,
+  listCalendarDatesInclusive,
+  type CalendarWeekStartsOn,
+} from './weeklyPlanningCalendarResolver';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  resolveWeeklyPlanningDateExpressionsV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
+  materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
+  resolveWeeklyPlanningTemporalConstraintsV5,
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
+  type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningSchedulerHardDateBoundV5,
+  type WeeklyPlanningSchedulerPreferredPlacementV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   distributeGenericSchedulerWorkItemsV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
@@ -82,6 +99,8 @@ export interface GenericSchedulerPlanningHorizon {
   endDate: string;
   timeZone: string;
   planningWindowFactIds: string[];
+  referenceDate?: string;
+  weekStartsOn?: CalendarWeekStartsOn;
 }
 
 export interface GenericSchedulerTaskRelation {
@@ -102,6 +121,8 @@ export interface GenericSchedulerInput {
   availabilityWindows: AvailabilityWindowFact[];
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
+  hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
   sourceFactRefs: string[];
 }
 
@@ -124,6 +145,13 @@ export type GenericSchedulerInputIssue =
       blocking: true;
       factId: string | null;
       details?: Record<string, string | number | boolean | null>;
+    }
+  | {
+      domain: 'temporal_constraint';
+      code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound';
+      blocking: true;
+      factId: string;
+      details: Record<string, string | number | boolean | null>;
     }
   | {
       domain: 'work_item';
@@ -177,7 +205,9 @@ export interface GenericSchedulerInputCompilationResult {
   issues: GenericSchedulerInputIssue[];
 }
 
-export type GenericSchedulerInputContext = AvailabilityResolutionContext;
+export type GenericSchedulerInputContext = AvailabilityResolutionContext & {
+  weekStartsOn?: CalendarWeekStartsOn;
+};
 
 function semanticUncertaintyIssues(
   graph: WeeklyPlanningGenericSchedulerGraphView,
@@ -291,6 +321,8 @@ function collectSourceFactRefs(params: {
   windows: AvailabilityWindowFact[];
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
+  hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
 }): string[] {
   const refs = new Set<string>();
   for (const fact of params.graph.planningWindows) refs.add(fact.id);
@@ -308,6 +340,10 @@ function collectSourceFactRefs(params: {
   for (const window of params.windows) refs.add(window.sourceRef);
   for (const selection of params.selections) refs.add(selection.requestFactId);
   for (const relation of params.relations) refs.add(relation.factId);
+  for (const bound of params.hardDateBounds) {
+    for (const ref of bound.sourceFactIds) refs.add(ref);
+  }
+  for (const preferred of params.preferredPlacements) refs.add(preferred.sourceFactId);
   return [...refs].sort();
 }
 
@@ -366,26 +402,120 @@ function applyObservedEstimateOverrides(params: {
   return { items, appliedWorkloadFactIds };
 }
 
+function isWorkItemFixedByTemporalScope(params: {
+  graph: WeeklyPlanningGenericSchedulerGraphView;
+  item: Pick<GenericPlanningWorkItem, 'taskId' | 'componentId'>;
+}): boolean {
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  return params.graph.temporalConstraints.some((constraint) =>
+    constraint.kind === 'fixed_interval'
+    && constraint.constraintLevel === 'hard'
+    && weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: constraint.taskId,
+      constraintTargetFactId: constraint.targetFactId,
+      taskId: params.item.taskId,
+      targetFactId,
+    }));
+}
+
+function taskFullyFixedByTemporalScope(params: {
+  graph: WeeklyPlanningGenericSchedulerGraphView;
+  taskId: string;
+  workItems: readonly GenericPlanningWorkItem[];
+}): boolean {
+  if (params.graph.temporalConstraints.some((constraint) =>
+    constraint.kind === 'fixed_interval'
+    && constraint.constraintLevel === 'hard'
+    && constraint.taskId === params.taskId
+    && constraint.targetFactId === params.taskId)) {
+    return true;
+  }
+  const taskItems = params.workItems.filter((item) => item.taskId === params.taskId);
+  return taskItems.length > 0 && taskItems.every((item) =>
+    isWorkItemFixedByTemporalScope({ graph: params.graph, item }));
+}
+
+function temporalConstraintIssues(params: {
+  graph: WeeklyPlanningGenericSchedulerGraphView;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+}): GenericSchedulerInputIssue[] {
+  const issues: GenericSchedulerInputIssue[] = [];
+  for (const constraint of params.graph.temporalConstraints) {
+    if (
+      constraint.constraintLevel !== 'hard'
+      || !constraint.dateExpression
+      || !['earliest_start', 'deadline', 'latest_end'].includes(constraint.kind)
+    ) {
+      continue;
+    }
+    const resolved = resolvedWeeklyPlanningDateExpressionForFactV5({
+      resolved: params.resolvedDateExpressions,
+      factId: constraint.id,
+    });
+    if (resolved?.status === 'resolved' && resolved.range) continue;
+    issues.push({
+      domain: 'temporal_constraint',
+      code: 'unresolved_hard_date_expression',
+      blocking: true,
+      factId: constraint.id,
+      details: {
+        taskId: constraint.taskId,
+        targetFactId: constraint.targetFactId,
+        expression: constraint.dateExpression,
+        resolutionStatus: resolved?.status ?? 'missing_resolved_snapshot',
+      },
+    });
+  }
+  for (const bound of params.resolvedTemporalConstraints.hardDateBounds) {
+    if (!bound.startDate || !bound.endDate || bound.startDate <= bound.endDate) continue;
+    issues.push({
+      domain: 'temporal_constraint',
+      code: 'contradictory_hard_date_bound',
+      blocking: true,
+      factId: bound.sourceFactIds[0] ?? `${bound.taskId}:${bound.targetFactId}`,
+      details: {
+        taskId: bound.taskId,
+        targetFactId: bound.targetFactId,
+        startDate: bound.startDate,
+        endDate: bound.endDate,
+        sourceFactIds: bound.sourceFactIds.join(','),
+      },
+    });
+  }
+  return issues;
+}
+
 export function compileGenericSchedulerInput(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
   estimateCalibrationMultiplier?: number | null;
   observedEstimateOverrides?: readonly GenericSchedulerObservedEstimateOverride[];
+  resolvedDateExpressions?: WeeklyPlanningResolvedDateExpressionsV5;
+  resolvedTemporalConstraints?: WeeklyPlanningResolvedTemporalConstraintsV5;
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
     ...validateHorizon(params),
   ];
+  const resolvedDateExpressions = params.resolvedDateExpressions
+    ?? resolveWeeklyPlanningDateExpressionsV5({
+      graph: params.graph,
+      currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
+    });
 
   const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
     graph: params.graph,
     context: {
       currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
       planningStartDate: params.context.planningStartDate,
       planningEndDate: params.context.planningEndDate,
       timeZone: params.context.timeZone,
     },
+    resolvedDateExpressions,
   });
   const commitments = commitmentResolution.commitments;
   const taskDateRules = commitmentResolution.dateRules;
@@ -410,20 +540,9 @@ export function compileGenericSchedulerInput(params: {
     },
   })));
 
-  const fixedTaskIds = new Set([
-    ...commitments.reservations.map((reservation) => reservation.taskId),
-    ...params.graph.temporalConstraints
-      .filter((constraint) =>
-        constraint.kind === 'fixed_interval' && constraint.constraintLevel === 'hard')
-      .map((constraint) => constraint.taskId),
-  ]);
-  const workloadTaskById = new Map(
-    params.graph.workloads.map((workload) => [workload.id, workload.taskId]),
-  );
-
   const work = compileGenericPlanningWorkItems(params.graph);
   const aggregateMovableWorkItems = work.items.filter((item) => {
-    if (!fixedTaskIds.has(item.taskId)) return true;
+    if (!isWorkItemFixedByTemporalScope({ graph: params.graph, item })) return true;
     issues.push({
       domain: 'deduplication',
       code: 'fixed_task_movable_work_suppressed',
@@ -451,8 +570,10 @@ export function compileGenericSchedulerInput(params: {
   });
 
   for (const issue of work.issues) {
-    const issueTaskId = workloadTaskById.get(issue.workloadFactId);
-    if (issueTaskId && fixedTaskIds.has(issueTaskId)) continue;
+    const issueItem = work.items.find((item) => item.workloadFactId === issue.workloadFactId);
+    if (issueItem && isWorkItemFixedByTemporalScope({ graph: params.graph, item: issueItem })) {
+      continue;
+    }
     if (
       issue.code === 'missing_effort_estimate'
       && observedEstimateApplication.appliedWorkloadFactIds.has(issue.workloadFactId)
@@ -474,6 +595,7 @@ export function compileGenericSchedulerInput(params: {
     }),
     context: params.context,
     externalSources: params.externalSources,
+    resolvedDateExpressions,
   });
   issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
     domain: 'availability',
@@ -483,6 +605,20 @@ export function compileGenericSchedulerInput(params: {
     details: issue.details,
   })));
 
+  const resolvedTemporalConstraints = params.resolvedTemporalConstraints
+    ?? resolveWeeklyPlanningTemporalConstraintsV5({
+      graph: params.graph,
+      currentDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
+      namedTimePeriods: params.context.namedTimePeriods,
+      resolvedDateExpressions,
+    });
+  issues.push(...temporalConstraintIssues({
+    graph: params.graph,
+    resolvedDateExpressions,
+    resolvedTemporalConstraints,
+  }));
+
   const relations = compileRelations({ graph: params.graph, issues });
   const blocking = issues.some((issue) => issue.blocking);
   if (blocking) {
@@ -490,17 +626,34 @@ export function compileGenericSchedulerInput(params: {
   }
 
   const movableTasksWithoutWorkload = params.graph.tasks.filter((task) =>
-    !fixedTaskIds.has(task.id)
+    !taskFullyFixedByTemporalScope({
+      graph: params.graph,
+      taskId: task.id,
+      workItems: work.items,
+    })
     && !aggregateMovableWorkItems.some((item) => item.taskId === task.id));
   if (movableTasksWithoutWorkload.length > 0) {
     return { status: 'needs_resolution', input: null, issues };
   }
 
+  const hardDateBounds = resolvedTemporalConstraints.hardDateBounds.map((bound) => ({
+    ...bound,
+    sourceFactIds: [...bound.sourceFactIds],
+  }));
+  const horizonDates = listCalendarDatesInclusive(
+    params.context.planningStartDate,
+    params.context.planningEndDate,
+  ) ?? [];
+  const preferredPlacements = materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
+    resolved: resolvedTemporalConstraints,
+    dates: horizonDates,
+  });
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
     items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
+    hardDateBounds,
   });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
@@ -516,6 +669,8 @@ export function compileGenericSchedulerInput(params: {
       endDate: params.context.planningEndDate,
       timeZone: params.context.timeZone,
       planningWindowFactIds: params.graph.planningWindows.map((fact) => fact.id),
+      referenceDate: params.context.currentDate,
+      weekStartsOn: params.context.weekStartsOn,
     },
     movableWorkItems,
     fixedTaskReservations: commitments.reservations,
@@ -523,6 +678,8 @@ export function compileGenericSchedulerInput(params: {
     availabilityWindows: availability.windows,
     sourceSelections: availability.sourceSelections,
     relations,
+    hardDateBounds,
+    preferredPlacements,
     sourceFactRefs: collectSourceFactRefs({
       graph: params.graph,
       movableWorkItems,
@@ -531,6 +688,8 @@ export function compileGenericSchedulerInput(params: {
       windows: availability.windows,
       selections: availability.sourceSelections,
       relations,
+      hardDateBounds,
+      preferredPlacements,
     }),
   };
 

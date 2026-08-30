@@ -5,7 +5,8 @@
 .bottom-sheet-motion.is-open,
 [data-weekly-planning-motion='open'] .quick-entry-overlay,
 .month-event-dialog-motion.is-open .month-event-modal-overlay,
-.timetable-term-sheet-overlay {
+.timetable-term-sheet-overlay,
+.ai-planning-preview-motion.is-open .ai-planning-preview-overlay-v2 {
   animation: planner-sheet-overlay-in 180ms ease-out both;
 }
 
@@ -13,7 +14,8 @@
 .bottom-sheet-motion.is-open .schedule-record-sheet,
 [data-weekly-planning-motion='open'] .quick-entry-modal,
 .month-event-dialog-motion.is-open .month-event-modal,
-.timetable-term-sheet-overlay .timetable-term-sheet {
+.timetable-term-sheet-overlay .timetable-term-sheet,
+.ai-planning-preview-motion.is-open .ai-planning-preview-dialog-v2 {
   transform-origin: 50% 100%;
   backface-visibility: hidden;
   will-change: transform, opacity;
@@ -22,15 +24,26 @@
 
 .bottom-sheet-motion.is-closing,
 [data-weekly-planning-motion='closing'] .quick-entry-overlay,
-.month-event-dialog-motion.is-closing .month-event-modal-overlay {
-  pointer-events: none;
+.month-event-dialog-motion.is-closing .month-event-modal-overlay,
+.ai-planning-preview-motion.is-closing .ai-planning-preview-overlay-v2 {
+  touch-action: none;
   animation: planner-sheet-overlay-out 210ms ease-in both;
+}
+
+.bottom-sheet-motion.is-closing.is-bottom-sheet-drag-dismissing,
+[data-weekly-planning-motion='closing'] .quick-entry-overlay.is-bottom-sheet-drag-dismissing,
+.month-event-dialog-motion.is-closing .month-event-modal-overlay.is-bottom-sheet-drag-dismissing,
+.ai-planning-preview-motion.is-closing .ai-planning-preview-overlay-v2.is-bottom-sheet-drag-dismissing {
+  animation: none;
+  opacity: 0;
 }
 
 .bottom-sheet-motion.is-closing .schedule-action-sheet,
 .bottom-sheet-motion.is-closing .schedule-record-sheet,
 [data-weekly-planning-motion='closing'] .quick-entry-modal,
-.month-event-dialog-motion.is-closing .month-event-modal {
+.month-event-dialog-motion.is-closing .month-event-modal,
+.ai-planning-preview-motion.is-closing .ai-planning-preview-dialog-v2 {
+  pointer-events: none;
   animation: planner-bottom-sheet-out 220ms cubic-bezier(0.4, 0, 0.65, 1) both;
 }
 
@@ -47,8 +60,21 @@
 .month-event-dialog-motion .month-event-modal-overlay,
 .timetable-term-sheet-overlay,
 [data-weekly-planning-motion] .quick-entry-overlay,
-.bottom-sheet-motion {
+.bottom-sheet-motion,
+.ai-planning-preview-overlay-v2 {
   overscroll-behavior: contain;
+}
+
+.schedule-action-sheet.is-bottom-sheet-dragging,
+.schedule-record-sheet.is-bottom-sheet-dragging,
+.quick-entry-modal.is-bottom-sheet-dragging,
+.month-event-modal.is-bottom-sheet-dragging,
+.timetable-term-sheet.is-bottom-sheet-dragging,
+.ai-planning-preview-dialog-v2.is-bottom-sheet-dragging {
+  animation: none !important;
+  transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1) !important;
+  transition: none !important;
+  user-select: none;
 }
 
 @keyframes planner-sheet-overlay-in {
@@ -83,14 +109,14 @@
   }
 
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1);
     opacity: 1;
   }
 }
 
 @keyframes planner-bottom-sheet-out {
   from {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1);
     opacity: 1;
   }
 
@@ -131,7 +157,9 @@
   .month-event-dialog-motion .month-event-save-button,
   .timetable-term-sheet-overlay,
   .timetable-term-sheet,
-  .timetable-term-sheet-overlay .section-header .ghost-button {
+  .timetable-term-sheet-overlay .section-header .ghost-button,
+  .ai-planning-preview-overlay-v2,
+  .ai-planning-preview-dialog-v2 {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
     transition-duration: 1ms !important;

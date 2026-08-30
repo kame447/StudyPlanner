@@ -6,6 +6,9 @@ import {
   type WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   isTaskAllowedOnDate,
   resolveWeeklyPlanningTaskDateRules,
 } from './weeklyPlanningTaskDateRuleResolver';
@@ -79,12 +82,25 @@ const context = {
   planningEndDate: '2026-07-26',
 };
 
+function resolve(params: {
+  rules?: TaskDateRuleFact[];
+  recurrences?: RecurrenceFact[];
+} = {}) {
+  const value = graph(params);
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: value,
+    currentDate: context.currentDate,
+  });
+  return resolveWeeklyPlanningTaskDateRules({
+    graph: value,
+    ...context,
+    resolvedDateExpressions,
+  });
+}
+
 describe('weekly planning task date rule resolver', () => {
   it('keeps a task only on explicitly allowed dates', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({ rules: [rule('allow-1', 'allowed_date', '2026-07-24')] }),
-      ...context,
-    });
+    const result = resolve({ rules: [rule('allow-1', 'allowed_date', '2026-07-24')] });
 
     expect(result.readiness).toBe('ready');
     expect(result.eligibilities).toEqual([{
@@ -98,15 +114,12 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('unions multiple non-consecutive allowed dates', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({
-        rules: [
-          rule('allow-1', 'allowed_date', '2026-07-20'),
-          rule('allow-2', 'allowed_date', '2026-07-22'),
-          rule('allow-3', 'allowed_date', '2026-07-23'),
-        ],
-      }),
-      ...context,
+    const result = resolve({
+      rules: [
+        rule('allow-1', 'allowed_date', '2026-07-20'),
+        rule('allow-2', 'allowed_date', '2026-07-22'),
+        rule('allow-3', 'allowed_date', '2026-07-23'),
+      ],
     });
 
     expect(result.eligibilities[0]).toEqual({
@@ -118,11 +131,8 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('resolves a discontinuous weekday set into concrete allowed dates', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({
-        recurrences: [recurrence('recurrence-1', 'weekly', ['wed', 'fri', 'sat', 'sun'])],
-      }),
-      ...context,
+    const result = resolve({
+      recurrences: [recurrence('recurrence-1', 'weekly', ['wed', 'fri', 'sat', 'sun'])],
     });
 
     expect(result.readiness).toBe('ready');
@@ -134,13 +144,25 @@ describe('weekly planning task date rule resolver', () => {
     });
   });
 
+  it('resolves a custom recurrence with canonical weekdays by the shared calendar rule', () => {
+    const result = resolve({
+      recurrences: [recurrence('recurrence-custom', 'custom', ['wed', 'fri', 'sun'])],
+    });
+
+    expect(result.readiness).toBe('ready');
+    expect(result.issues).toEqual([]);
+    expect(result.eligibilities[0]).toEqual({
+      taskId: 'task-1',
+      allowedDates: ['2026-07-22', '2026-07-24', '2026-07-26'],
+      excludedDates: [],
+      sourceFactIds: ['recurrence-custom'],
+    });
+  });
+
   it('subtracts an exact excluded date from a weekday recurrence', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({
-        rules: [rule('exclude-1', 'excluded_date', '2026-07-25')],
-        recurrences: [recurrence('recurrence-1', 'weekly', ['wed', 'fri', 'sat', 'sun'])],
-      }),
-      ...context,
+    const result = resolve({
+      rules: [rule('exclude-1', 'excluded_date', '2026-07-25')],
+      recurrences: [recurrence('recurrence-1', 'weekly', ['wed', 'fri', 'sat', 'sun'])],
     });
 
     expect(result.eligibilities[0]).toEqual({
@@ -152,10 +174,7 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('excludes one date while allowing the remaining planning dates', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({ rules: [rule('exclude-1', 'excluded_date', '2026-07-25')] }),
-      ...context,
-    });
+    const result = resolve({ rules: [rule('exclude-1', 'excluded_date', '2026-07-25')] });
 
     expect(result.eligibilities[0]).toEqual({
       taskId: 'task-1',
@@ -168,14 +187,11 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('blocks contradictory allow and exclude rules for the same date', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({
-        rules: [
-          rule('allow-1', 'allowed_date', '2026-07-24'),
-          rule('exclude-1', 'excluded_date', '2026-07-24'),
-        ],
-      }),
-      ...context,
+    const result = resolve({
+      rules: [
+        rule('allow-1', 'allowed_date', '2026-07-24'),
+        rule('exclude-1', 'excluded_date', '2026-07-24'),
+      ],
     });
 
     expect(result.readiness).toBe('needs_resolution');
@@ -188,10 +204,7 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('keeps custom dates unresolved instead of parsing Japanese later', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({ rules: [rule('allow-custom', 'allowed_date', 'custom:試験前日')] }),
-      ...context,
-    });
+    const result = resolve({ rules: [rule('allow-custom', 'allowed_date', 'custom:試験前日')] });
 
     expect(result.readiness).toBe('needs_resolution');
     expect(result.issues[0]).toMatchObject({
@@ -202,11 +215,8 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('blocks a non-canonical weekday code', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({
-        recurrences: [recurrence('recurrence-invalid', 'weekly', ['水曜'])],
-      }),
-      ...context,
+    const result = resolve({
+      recurrences: [recurrence('recurrence-invalid', 'weekly', ['水曜'])],
     });
 
     expect(result.readiness).toBe('needs_resolution');
@@ -219,10 +229,7 @@ describe('weekly planning task date rule resolver', () => {
   });
 
   it('does not turn an out-of-range rule into a different date', () => {
-    const result = resolveWeeklyPlanningTaskDateRules({
-      graph: graph({ rules: [rule('allow-next', 'allowed_date', '2026-08-01')] }),
-      ...context,
-    });
+    const result = resolve({ rules: [rule('allow-next', 'allowed_date', '2026-08-01')] });
 
     expect(result.eligibilities[0].allowedDates).toEqual([]);
     expect(result.issues).toContainEqual(expect.objectContaining({

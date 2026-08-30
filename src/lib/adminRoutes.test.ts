@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { resolveAdminRoute } from './adminRoutes';
 
 describe('admin route resolution', () => {
-  it('keeps the admin root as an explicit users redirect', () => {
-    expect(resolveAdminRoute('/admin')).toEqual({ type: 'redirect-to-users' });
+  it('resolves the admin root as overview', () => {
+    expect(resolveAdminRoute('/admin')).toEqual({ type: 'overview' });
   });
 
   it('resolves the user list and decoded user detail routes', () => {

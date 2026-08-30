@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Actual, Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
+import type {
+  Actual,
+  Plan,
+  PlanDraft,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
 import {
@@ -63,6 +69,8 @@ export interface UseWeeklyPlanningApplicationInput {
   actuals?: Actual[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
@@ -102,6 +110,8 @@ export function useWeeklyPlanningApplication({
   actuals = [],
   scheduleTemplates,
   timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
@@ -208,6 +218,8 @@ export function useWeeklyPlanningApplication({
       plans,
       scheduleTemplates,
       timetableTermId,
+      timetableTerm,
+      timetableTerms,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
@@ -332,6 +344,7 @@ export function useWeeklyPlanningApplication({
     clearDraftBlocks: () => dispatchAndPersist({ type: 'clear_draft_blocks' }),
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({
       userId,
+      featureSessionId: controllerSessionRef.current?.conversationId,
       plans,
       approvalOperations,
       saveWeeklyApprovedPlan,

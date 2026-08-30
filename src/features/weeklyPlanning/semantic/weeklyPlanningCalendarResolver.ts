@@ -55,6 +55,7 @@ export type CalendarDateExpressionResolution =
     };
 
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_DATE_RANGE_PATTERN = /^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/;
 const CUSTOM_DATE_EXPRESSION_PATTERN = /^custom:.+$/;
 const WEEKDAY_INDEX_BY_EXPRESSION: Record<CanonicalWeekdayDateExpression, number> = {
   'weekday:sunday': 0,
@@ -102,6 +103,15 @@ function parseCalendarDate(value: string): Date | null {
   return date;
 }
 
+function parseAbsoluteDateRangeExpression(value: string): CalendarDateRange | null {
+  const match = ISO_DATE_RANGE_PATTERN.exec(value);
+  if (!match) return null;
+  const start = match[1];
+  const end = match[2];
+  if (!isValidCalendarDate(start) || !isValidCalendarDate(end) || start > end) return null;
+  return { start, end };
+}
+
 function formatCalendarDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -120,6 +130,7 @@ export function canonicalWeekdayIndex(expression: string): number | null {
 export function isCanonicalDateExpressionSyntax(value: string): boolean {
   return (
     isValidCalendarDate(value)
+    || parseAbsoluteDateRangeExpression(value) !== null
     || (CANONICAL_RELATIVE_DATE_EXPRESSIONS as readonly string[]).includes(value)
     || (CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(value)
     || CUSTOM_DATE_EXPRESSION_PATTERN.test(value)
@@ -206,6 +217,13 @@ export function resolveCanonicalDateExpression(params: {
           status: 'resolved',
           range: { start: params.expression, end: params.expression },
         }
+      : { status: 'invalid_absolute_date', range: null };
+  }
+
+  if (ISO_DATE_RANGE_PATTERN.test(params.expression)) {
+    const range = parseAbsoluteDateRangeExpression(params.expression);
+    return range
+      ? { status: 'resolved', range }
       : { status: 'invalid_absolute_date', range: null };
   }
 

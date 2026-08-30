@@ -404,6 +404,27 @@ The agent must not perform a GitHub write action until this pre-flight check is 
 - Do not keep temporary verification, patch-application, or superseded branches after they are no longer needed.
 - Keep the repository limited to `main`, currently active implementation branches, and explicitly justified long-lived branches.
 
+
+### Branch deletion fallback when direct GitHub deletion is unavailable
+
+- Prefer the native Git or GitHub branch-delete operation whenever the current tool surface exposes it.
+- If the current GitHub connector does not expose a branch-delete write, but GitHub Actions and repository contents writes are available, a one-shot GitHub Actions workflow may be used as a fallback only for an already-authorized branch-cleanup task.
+- Before creating the workflow, re-fetch the current branch list and verify every deletion target individually. Each target must be merged or explicitly abandoned, must have no active pull request that still needs the branch, and must not be `main`, the default branch, an active implementation branch, a justified long-lived branch, or a Dependabot branch unless the user explicitly requested that specific deletion.
+- Put deletion targets in an explicit allowlist. Never use a wildcard, prefix sweep, age-based heuristic, or broad pattern that could catch an active branch.
+- Give the one-shot workflow only the minimum required permission (`contents: write`) and delete branches with an explicit command such as `git push origin --delete -- <branch>`.
+- Wait for the cleanup workflow to reach a terminal successful state, then re-fetch the remote branch list and verify that every intended target is absent and every protected/active branch is still present.
+- Remove the one-shot cleanup workflow immediately after successful verification and verify that the temporary workflow file is absent from the current `main` tree.
+- Branch deletion remains a destructive operation. If deletion was not already explicit in the user's request or the currently authorized cleanup task, ask before deleting anything.
+- Do not use this fallback to bypass branch protection, repository rulesets, required reviews, force-push restrictions, or any other safety boundary, and do not extend it to history rewriting.
+
+### Tooling incident knowledge and Ready-for-review fallback
+
+- Before repeating or inventing a workaround for a GitHub/CI/tool failure, search `docs/work/tooling-operations-runbook.md` for a verified failure signature and safe fallback.
+- When a recurring or expensive-to-rediscover tooling failure is resolved, update that runbook with the symptom, cause, permissions, workaround, cleanup, and verification rather than leaving the knowledge only in chat or transient logs.
+- For PR Ready-for-review, use the normal GitHub operation first. If it fails and a re-fetch proves the PR is still `draft=true`, follow the runbook fallback instead of creating a replacement PR or repeatedly calling the same broken mutation.
+- The currently verified one-shot GitHub Actions fallback for the observed Ready mutation requires `pull-requests: write` and `contents: write`, must be scoped to the exact intended PR, and must be removed immediately after `draft=false` is verified.
+- Treat this fallback as an integration workaround, not as the default PR flow; re-check current GitHub/tool behavior before assuming the historical failure still applies.
+
 ### Required reporting
 
 When finishing GitHub-related work, report:

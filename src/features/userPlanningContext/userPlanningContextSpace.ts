@@ -1,9 +1,18 @@
 import {
+  resolveUserPlanningContextLifecycleDateV1,
+} from './userPlanningContextDateExpression';
+import {
+  USER_PLANNING_CONTEXT_ORIGINS_V1,
+  USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
+  USER_PLANNING_CONTEXT_STATUSES_V1,
   USER_PLANNING_CONTEXT_STORAGE_VERSION,
   createEmptyUserPlanningContextSnapshotV1,
+  type UserPlanningContextOriginV1,
   type UserPlanningContextRecordV1,
   type UserPlanningContextSemanticFactV1,
+  type UserPlanningContextSemanticKindV1,
   type UserPlanningContextSnapshotV1,
+  type UserPlanningContextStatusV1,
 } from './userPlanningContextTypes';
 
 const MAX_CONTEXT_BYTES = 256 * 1024;
@@ -24,6 +33,7 @@ const stagedContexts = new Map<string, {
 export interface UserPlanningContextFinalizeReceiptV1 {
   ownerId: string;
   previousRaw: string | null;
+  committedRecords: UserPlanningContextRecordV1[];
 }
 
 function storageKey(ownerId: string): string {
@@ -108,8 +118,26 @@ function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function isRecordValue(value: unknown, ownerId: string): value is UserPlanningContextRecordV1 {
-  if (!isRecord(value)) return false;
+function isSemanticKind(value: unknown): value is UserPlanningContextSemanticKindV1 {
+  return typeof value === 'string'
+    && (USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 as readonly string[]).includes(value);
+}
+
+function isOrigin(value: unknown): value is UserPlanningContextOriginV1 {
+  return typeof value === 'string'
+    && (USER_PLANNING_CONTEXT_ORIGINS_V1 as readonly string[]).includes(value);
+}
+
+function isStatus(value: unknown): value is UserPlanningContextStatusV1 {
+  return typeof value === 'string'
+    && (USER_PLANNING_CONTEXT_STATUSES_V1 as readonly string[]).includes(value);
+}
+
+function normalizeRecordValue(
+  value: unknown,
+  ownerId: string,
+): UserPlanningContextRecordV1 | null {
+  if (!isRecord(value)) return null;
   if (!hasOnlyKeys(value, [
     'id',
     'ownerId',
@@ -124,70 +152,84 @@ function isRecordValue(value: unknown, ownerId: string): value is UserPlanningCo
     'sourceTurnId',
     'recordedAt',
     'status',
-  ])) return false;
-  return isNonEmptyBoundedString(value.id, 160)
-    && value.ownerId === ownerId
-    && (value.kind === 'goal_event'
-      || value.kind === 'concern'
-      || value.kind === 'learning_preference')
-    && isNonEmptyBoundedString(value.label, MAX_LABEL_LENGTH)
-    && isNullableBoundedString(value.value, MAX_VALUE_LENGTH)
-    && isNullableBoundedString(value.dateExpression, 240)
-    && isDate(value.observedDate)
-    && (value.resolvedDate === null || isDate(value.resolvedDate))
-    && isNonEmptyBoundedString(value.sourceText, MAX_SOURCE_TEXT_LENGTH)
-    && isNonEmptyBoundedString(value.sourceConversationId, 240)
-    && isNonEmptyBoundedString(value.sourceTurnId, 240)
-    && isTimestamp(value.recordedAt)
-    && (value.status === 'active' || value.status === 'historical');
+    'origin',
+  ])) return null;
+  if (!isNonEmptyBoundedString(value.id, 160)
+    || value.ownerId !== ownerId
+    || !isSemanticKind(value.kind)
+    || !isNonEmptyBoundedString(value.label, MAX_LABEL_LENGTH)
+    || !isNullableBoundedString(value.value, MAX_VALUE_LENGTH)
+    || !isNullableBoundedString(value.dateExpression, 240)
+    || !isDate(value.observedDate)
+    || (value.resolvedDate !== null && !isDate(value.resolvedDate))
+    || !isNonEmptyBoundedString(value.sourceText, MAX_SOURCE_TEXT_LENGTH)
+    || !isNonEmptyBoundedString(value.sourceConversationId, 240)
+    || !isNonEmptyBoundedString(value.sourceTurnId, 240)
+    || !isTimestamp(value.recordedAt)
+    || !isStatus(value.status)) {
+    return null;
+  }
+  return {
+    id: value.id,
+    ownerId,
+    kind: value.kind,
+    label: value.label,
+    value: value.value,
+    dateExpression: value.dateExpression,
+    observedDate: value.observedDate,
+    resolvedDate: value.resolvedDate,
+    sourceText: value.sourceText,
+    sourceConversationId: value.sourceConversationId,
+    sourceTurnId: value.sourceTurnId,
+    recordedAt: value.recordedAt,
+    status: value.status,
+    origin: isOrigin(value.origin) ? value.origin : 'migration',
+  };
+}
+
+export function normalizeUserPlanningContextSnapshotV1(
+  value: unknown,
+  ownerId: string,
+): UserPlanningContextSnapshotV1 | null {
+  if (!isRecord(value)) return null;
+  if (!hasOnlyKeys(value, ['version', 'ownerId', 'records', 'updatedAt'])) return null;
+  if (value.version !== USER_PLANNING_CONTEXT_STORAGE_VERSION || value.ownerId !== ownerId) {
+    return null;
+  }
+  if (!Array.isArray(value.records) || value.records.length > MAX_CONTEXT_RECORDS) return null;
+  const records = value.records.map((record) => normalizeRecordValue(record, ownerId));
+  if (records.some((record) => record === null) || !isTimestamp(value.updatedAt)) return null;
+  const normalizedRecords = records as UserPlanningContextRecordV1[];
+  const ids = normalizedRecords.map((record) => record.id);
+  if (new Set(ids).size !== ids.length) return null;
+  return {
+    version: USER_PLANNING_CONTEXT_STORAGE_VERSION,
+    ownerId,
+    records: normalizedRecords,
+    updatedAt: value.updatedAt,
+  };
 }
 
 export function validateUserPlanningContextSnapshotV1(
   value: unknown,
   ownerId: string,
 ): value is UserPlanningContextSnapshotV1 {
-  if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['version', 'ownerId', 'records', 'updatedAt'])) return false;
-  if (value.version !== USER_PLANNING_CONTEXT_STORAGE_VERSION) return false;
-  if (value.ownerId !== ownerId) return false;
-  if (!Array.isArray(value.records) || value.records.length > MAX_CONTEXT_RECORDS) return false;
-  if (!value.records.every((record) => isRecordValue(record, ownerId))) return false;
-  if (!isTimestamp(value.updatedAt)) return false;
-  const ids = value.records.map((record) => record.id);
-  return new Set(ids).size === ids.length;
+  return normalizeUserPlanningContextSnapshotV1(value, ownerId) !== null;
 }
 
-function addDays(date: string, amount: number): string | null {
-  if (!isDate(date) || !Number.isInteger(amount)) return null;
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  parsed.setUTCDate(parsed.getUTCDate() + amount);
-  return parsed.toISOString().slice(0, 10);
-}
-
-function resolveContextDateExpression(
-  expression: string | null,
-  observedDate: string,
-): string | null {
-  if (!expression) return null;
-  if (isDate(expression)) return expression;
-  if (expression === 'today') return observedDate;
-  if (expression === 'tomorrow' || expression === 'next_day') return addDays(observedDate, 1);
-  if (expression === 'day_after_tomorrow') return addDays(observedDate, 2);
-  const dayOffset = /^custom:(\d+)日後$/.exec(expression);
-  if (dayOffset) return addDays(observedDate, Number(dayOffset[1]));
-  const weekOffset = /^custom:(\d+)週間後$/.exec(expression)
-    ?? /^custom:(\d+)週後$/.exec(expression);
-  if (weekOffset) return addDays(observedDate, Number(weekOffset[1]) * 7);
-  return null;
-}
-
-function statusForRecord(
-  resolvedDate: string | null,
+function refreshedStatusForRecord(
+  record: Pick<UserPlanningContextRecordV1, 'kind' | 'status' | 'resolvedDate'>,
   currentDate: string,
-): 'active' | 'historical' {
-  return resolvedDate && isDate(currentDate) && resolvedDate < currentDate
-    ? 'historical'
-    : 'active';
+): UserPlanningContextStatusV1 {
+  if (record.status === 'revoked'
+    || record.status === 'superseded'
+    || record.status === 'archived') {
+    return record.status;
+  }
+  if (record.resolvedDate && isDate(currentDate) && record.resolvedDate < currentDate) {
+    return record.kind === 'goal_event' ? 'needs_review' : 'historical';
+  }
+  return 'active';
 }
 
 function parseSnapshot(raw: string | null, ownerId: string): UserPlanningContextSnapshotV1 {
@@ -198,11 +240,12 @@ function parseSnapshot(raw: string | null, ownerId: string): UserPlanningContext
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!validateUserPlanningContextSnapshotV1(parsed, ownerId)) {
+    const normalized = normalizeUserPlanningContextSnapshotV1(parsed, ownerId);
+    if (!normalized) {
       removeRaw(ownerId);
       return createEmptyUserPlanningContextSnapshotV1(ownerId);
     }
-    return structuredClone(parsed);
+    return normalized;
   } catch {
     removeRaw(ownerId);
     return createEmptyUserPlanningContextSnapshotV1(ownerId);
@@ -216,10 +259,17 @@ export function loadUserPlanningContextSnapshotV1(params: {
   const snapshot = parseSnapshot(readRaw(params.ownerId), params.ownerId);
   return {
     ...snapshot,
-    records: snapshot.records.map((record) => ({
-      ...record,
-      status: statusForRecord(record.resolvedDate, params.currentDate),
-    })),
+    records: snapshot.records.map((record) => {
+      const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+        record.dateExpression,
+        record.observedDate,
+      ) ?? record.resolvedDate;
+      const next = { ...record, resolvedDate };
+      return {
+        ...next,
+        status: refreshedStatusForRecord(next, params.currentDate),
+      };
+    }),
   };
 }
 
@@ -227,14 +277,37 @@ function normalizeIdentityPart(value: string | null): string {
   return (value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
 }
 
-function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
+export function userPlanningContextDurableKeyV1(params: {
+  kind: UserPlanningContextSemanticKindV1;
+  label: string;
+}): string {
+  return `${params.kind}|${normalizeIdentityPart(params.label)}`;
+}
+
+function recordIdentityValue(params: {
+  kind: UserPlanningContextSemanticKindV1;
+  value: string | null;
+  dateExpression: string | null;
+}): string {
+  if (params.kind === 'study_goal') return '';
+  if (params.kind === 'goal_event') return normalizeIdentityPart(params.dateExpression);
+  return normalizeIdentityPart(params.value);
+}
+
+export function userPlanningContextRecordIdentityV1(params: {
+  kind: UserPlanningContextSemanticKindV1;
+  label: string;
+  value: string | null;
+  dateExpression: string | null;
+}): string {
   return [
-    fact.kind,
-    normalizeIdentityPart(fact.label),
-    fact.kind === 'goal_event'
-      ? normalizeIdentityPart(fact.dateExpression)
-      : normalizeIdentityPart(fact.value),
+    userPlanningContextDurableKeyV1(params),
+    recordIdentityValue(params),
   ].join('|');
+}
+
+function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
+  return userPlanningContextRecordIdentityV1(fact);
 }
 
 function fnv1a(value: string): string {
@@ -246,8 +319,15 @@ function fnv1a(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function recordId(ownerId: string, fact: UserPlanningContextSemanticFactV1): string {
+function inferredRecordId(ownerId: string, fact: UserPlanningContextSemanticFactV1): string {
   return `upc_${fnv1a(`${ownerId}|${recordIdentity(fact)}`)}`;
+}
+
+function userConfirmedRecordId(ownerId: string, now: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `upc_${crypto.randomUUID()}`;
+  }
+  return `upc_${fnv1a(`${ownerId}|${now}|${Math.random()}`)}`;
 }
 
 function mergeFacts(params: {
@@ -260,23 +340,25 @@ function mergeFacts(params: {
   now: string;
 }): UserPlanningContextSnapshotV1 {
   const byIdentity = new Map<string, UserPlanningContextRecordV1>();
+  const protectedDurableKeys = new Set<string>();
   for (const record of params.snapshot.records) {
-    const identity = [
-      record.kind,
-      normalizeIdentityPart(record.label),
-      record.kind === 'goal_event'
-        ? normalizeIdentityPart(record.dateExpression)
-        : normalizeIdentityPart(record.value),
-    ].join('|');
-    byIdentity.set(identity, record);
+    byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
+    if (record.origin === 'user_confirmed') {
+      protectedDurableKeys.add(userPlanningContextDurableKeyV1(record));
+    }
   }
 
   for (const fact of params.facts) {
+    const durableKey = userPlanningContextDurableKeyV1(fact);
+    if (protectedDurableKeys.has(durableKey)) continue;
     const identity = recordIdentity(fact);
-    const resolvedDate = resolveContextDateExpression(fact.dateExpression, params.observedDate);
     const previous = byIdentity.get(identity);
+    const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+      fact.dateExpression,
+      params.observedDate,
+    );
     byIdentity.set(identity, {
-      id: previous?.id ?? recordId(params.ownerId, fact),
+      id: previous?.id ?? inferredRecordId(params.ownerId, fact),
       ownerId: params.ownerId,
       kind: fact.kind,
       label: fact.label.trim(),
@@ -288,7 +370,8 @@ function mergeFacts(params: {
       sourceConversationId: params.conversationId,
       sourceTurnId: params.requestId,
       recordedAt: params.now,
-      status: statusForRecord(resolvedDate, params.observedDate),
+      status: 'active',
+      origin: 'user_stated',
     });
   }
 
@@ -300,6 +383,54 @@ function mergeFacts(params: {
     ownerId: params.ownerId,
     records,
     updatedAt: params.now,
+  };
+}
+
+export function createUserConfirmedPlanningContextRecordV1(params: {
+  ownerId: string;
+  kind: UserPlanningContextSemanticKindV1;
+  label: string;
+  value: string | null;
+  dateExpression: string | null;
+  currentDate: string;
+  sourceText?: string;
+  now?: string;
+  existingId?: string;
+}): UserPlanningContextRecordV1 {
+  const label = params.label.trim();
+  if (!label || label.length > MAX_LABEL_LENGTH) {
+    throw new Error('覚えておく内容を整理できませんでした。');
+  }
+  if (params.value !== null && params.value.length > MAX_VALUE_LENGTH) {
+    throw new Error('覚えておく内容が長すぎます。');
+  }
+  if (params.dateExpression !== null && params.dateExpression.length > 240) {
+    throw new Error('覚えておく時期の情報が長すぎます。');
+  }
+  const now = params.now ?? new Date().toISOString();
+  const sourceText = params.sourceText?.trim() || 'ユーザー設定で確認・編集';
+  if (sourceText.length > MAX_SOURCE_TEXT_LENGTH) {
+    throw new Error('覚えておく内容が長すぎます。');
+  }
+  const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
+    params.dateExpression,
+    params.currentDate,
+  );
+  return {
+    id: params.existingId ?? userConfirmedRecordId(params.ownerId, now),
+    ownerId: params.ownerId,
+    kind: params.kind,
+    label,
+    value: params.value,
+    dateExpression: params.dateExpression,
+    observedDate: params.currentDate,
+    resolvedDate,
+    sourceText,
+    sourceConversationId: 'user-settings',
+    sourceTurnId: `user-settings:${now}`,
+    recordedAt: now,
+    status: 'active',
+    origin: 'user_confirmed',
   };
 }
 
@@ -355,9 +486,18 @@ export function finalizeStagedUserPlanningContextV1(params: {
     throw new Error('User planning context owner mismatch.');
   }
   const previousRaw = readRaw(params.ownerId);
+  const committedRecords = staged.snapshot.records.filter(
+    (record) => record.sourceConversationId === params.conversationId
+      && record.sourceTurnId === params.requestId
+      && record.origin === 'user_stated',
+  );
   writeRaw(params.ownerId, JSON.stringify(staged.snapshot));
   stagedContexts.delete(key);
-  return { ownerId: params.ownerId, previousRaw };
+  return {
+    ownerId: params.ownerId,
+    previousRaw,
+    committedRecords: committedRecords.map((record) => ({ ...record })),
+  };
 }
 
 export function rollbackFinalizedUserPlanningContextV1(
@@ -374,6 +514,19 @@ export function discardStagedUserPlanningContextV1(params: {
   stagedContexts.delete(stagedKey(params.conversationId, params.requestId));
 }
 
+export function isUserPlanningContextVisibleV1(record: UserPlanningContextRecordV1): boolean {
+  return record.status === 'active'
+    || record.status === 'historical'
+    || record.status === 'needs_review';
+}
+
+export function userPlanningContextDisplayTextV1(record: UserPlanningContextRecordV1): string {
+  const sourceText = record.sourceText.trim();
+  if (sourceText && sourceText !== 'ユーザー設定で確認・編集') return sourceText;
+  if (record.value) return `${record.label}: ${record.value}`;
+  return record.label;
+}
+
 export function userPlanningContextPromptSummaryV1(params: {
   ownerId: string;
   currentDate: string;
@@ -386,6 +539,7 @@ export function userPlanningContextPromptSummaryV1(params: {
   observedDate: string;
   resolvedDate: string | null;
   status: UserPlanningContextRecordV1['status'];
+  origin: UserPlanningContextRecordV1['origin'];
 }> {
   return loadUserPlanningContextSnapshotV1(params).records
     .filter((record) => record.status === 'active')
@@ -399,6 +553,7 @@ export function userPlanningContextPromptSummaryV1(params: {
       observedDate: record.observedDate,
       resolvedDate: record.resolvedDate,
       status: record.status,
+      origin: record.origin,
     }));
 }
 
@@ -412,10 +567,11 @@ export function exportUserPlanningContextSnapshotV1(params: {
 export function hydrateUserPlanningContextSnapshotV1(
   snapshot: UserPlanningContextSnapshotV1,
 ): void {
-  if (!validateUserPlanningContextSnapshotV1(snapshot, snapshot.ownerId)) {
+  const normalized = normalizeUserPlanningContextSnapshotV1(snapshot, snapshot.ownerId);
+  if (!normalized) {
     throw new Error('User planning context snapshot is invalid.');
   }
-  writeRaw(snapshot.ownerId, JSON.stringify(snapshot));
+  writeRaw(normalized.ownerId, JSON.stringify(normalized));
 }
 
 export function clearUserPlanningContextForOwnerV1(ownerId: string): void {

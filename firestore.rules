@@ -44,7 +44,9 @@ service cloud.firestore {
     match /profiles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId)
-        && !request.resource.data.keys().hasAny(['weeklyPlanningTracePolicy']);
+        && !request.resource.data.keys().hasAny(['weeklyPlanningTracePolicy'])
+        && request.resource.data.registeredAt is timestamp
+        && request.resource.data.registeredAt == request.time;
       allow update: if isOwner(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'id',
@@ -129,6 +131,18 @@ service cloud.firestore {
     match /weekly_planning_personalization_profiles/{userId} {
       allow read, create, update, delete: if isOwner(userId)
         && hasAcceptedWeeklyPlanningPolicy();
+    }
+
+    match /user_planning_contexts/{userId} {
+      allow read: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy();
+      allow create, update: if isOwner(userId)
+        && hasAcceptedWeeklyPlanningPolicy()
+        && request.resource.data.schemaVersion == 'studyplanner-user-planning-context-cloud-v1'
+        && request.resource.data.ownerId == userId
+        && request.resource.data.snapshot.ownerId == userId
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1;
+      allow delete: if false;
     }
 
     match /weekly_planning_approval_operations/{operationId} {

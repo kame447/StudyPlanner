@@ -7,10 +7,16 @@ import {
   prepareWeeklyPlanningTraceServerWrite,
 } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from '../semantic/weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import {
   createMemoryStorageHarness,
@@ -92,6 +98,18 @@ function recurringGraph(): WeeklyPlanningFactGraphV5 {
       source: source('recurrence-daily'),
       createdRevision: 1,
     }],
+    factLifecycles: [
+      'task-mock',
+      'component-math',
+      'workload-daily',
+      'recurrence-daily',
+    ].map((factId) => ({
+      factId,
+      status: 'active' as const,
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
+    })),
   };
 }
 
@@ -183,7 +201,9 @@ describe('recurrence preview trace persistence gate', () => {
     expect(compilation.status).toBe('ready');
     const preview = scheduleWeeklyPlanningStableV5Preview({
       input: compilation.input!,
-      graph,
+      graph: createWeeklyPlanningPlacementGraphViewV5(
+        createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+      ),
     });
     expect(preview.status).toBe('ready');
     expect(preview.candidates.map((candidate) => candidate.date)).toEqual(WEEK);

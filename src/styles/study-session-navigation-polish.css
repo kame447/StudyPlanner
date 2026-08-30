@@ -1,0 +1,127 @@
+/* Study session motion + restrained product styling.
+   Motion is only used to explain spatial navigation and gesture feedback. */
+.study-session-overlay {
+  background: color-mix(in srgb, var(--app-background) 72%, transparent);
+  overscroll-behavior-x: contain;
+}
+
+.study-session-page {
+  margin-right: 0;
+  margin-left: auto;
+  background: var(--app-background);
+  box-shadow: -14px 0 34px rgba(20, 32, 45, 0.1);
+  transform: translate3d(var(--study-session-swipe-x, 0px), 0, 0);
+  transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+  animation: study-session-enter-from-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.study-session-page.is-swiping-back {
+  transition: none;
+}
+
+@keyframes study-session-enter-from-right {
+  from {
+    translate: 100% 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+/* The timer is the instrument. Secondary information recedes instead of becoming another card grid. */
+.study-session-timer-view .study-session-card {
+  box-shadow: none;
+}
+
+.study-session-timer-view .study-session-primary-card {
+  border-color: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.study-session-primary-card h2,
+.study-session-record-summary h2 {
+  font-size: clamp(1.75rem, 6.5vw, 2.55rem);
+  letter-spacing: -0.025em;
+}
+
+.study-session-timer-view .study-session-context-card {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.study-session-context-icon,
+.study-session-context-icon.material {
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.study-session-context-row,
+.study-session-record-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+/* Replace the repeated two-card selector with a compact segmented control. */
+.study-session-mode-picker {
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 68%, var(--app-background));
+}
+
+.study-session-mode-picker button {
+  min-height: 54px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.study-session-mode-picker button.active {
+  background: var(--surface-strong);
+  color: var(--home-blue, var(--accent));
+  box-shadow: 0 1px 3px rgba(20, 32, 45, 0.1);
+}
+
+.study-session-mode-picker button:disabled {
+  opacity: 0.72;
+}
+
+/* One solid accent reads more like a product control than a generic generated CTA gradient. */
+.study-session-control.primary,
+.study-session-save-button {
+  background: var(--home-blue, #2c77d7);
+  box-shadow: none;
+}
+
+.study-session-control.primary:hover,
+.study-session-save-button:hover {
+  filter: brightness(0.97);
+}
+
+.study-session-timer-ring {
+  padding: 8px;
+}
+
+.study-session-icon-button {
+  box-shadow: none;
+}
+
+.study-session-control:focus-visible,
+.study-session-save-button:focus-visible,
+.study-session-mode-picker button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--home-blue, var(--accent)) 34%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-session-page {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

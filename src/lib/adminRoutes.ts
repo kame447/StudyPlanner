@@ -1,16 +1,21 @@
 export type AdminRoute =
-  | { type: 'redirect-to-users' }
+  | { type: 'overview' }
   | { type: 'users' }
   | { type: 'user-detail'; userId: string }
+  | { type: 'ai-api' }
   | { type: 'not-found' };
 
 export function resolveAdminRoute(path: string): AdminRoute {
   if (path === '/admin') {
-    return { type: 'redirect-to-users' };
+    return { type: 'overview' };
   }
 
   if (path === '/admin/users') {
     return { type: 'users' };
+  }
+
+  if (path === '/admin/ai') {
+    return { type: 'ai-api' };
   }
 
   const detailMatch = path.match(/^\/admin\/users\/([^/]+)$/);

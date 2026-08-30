@@ -26,6 +26,9 @@ import {
   recordWeeklyPlanningDialogueRendererResponseV5,
 } from './weeklyPlanningStableV5TurnDialogueTrace';
 import {
+  getWeeklyPlanningRegisteredMaterialContextV5,
+} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
+import {
   createWeeklyPlanningSelfRepairNoticeV5,
 } from '../semantic/weeklyPlanningSelfRepairV5';
 import {
@@ -160,6 +163,23 @@ function schedulableWorkFallbackText(
   if (intent.mode === 'missing_task_identity') {
     return '予定に入れたい作業を一つ教えてください。';
   }
+  if (intent.mode === 'registered_material_target_scope') {
+    const unit = intent.knownUnitLabel?.trim() || '単位';
+    const total = intent.knownTotalUnits;
+    const current = intent.knownCurrentUnits;
+    const remaining = intent.knownRemainingUnits;
+    if (
+      typeof total === 'number'
+      && Number.isFinite(total)
+      && typeof current === 'number'
+      && Number.isFinite(current)
+      && typeof remaining === 'number'
+      && Number.isFinite(remaining)
+    ) {
+      return `本棚では全${total}${unit}のうち${current}${unit}まで進んでいて、残りは${remaining}${unit}です。今回の計画では残りをすべて進めますか？ それとも今回進める範囲を指定しますか？`;
+    }
+    return '本棚に保存済みの進捗は確認できています。今回の計画でどこまで進めるかだけ教えてください。';
+  }
   if (intent.progressBasis === 'known_bounded_quantity' && intent.knownUnitLabel?.trim()) {
     return `今は${intent.knownUnitLabel.trim()}でどのくらいまで進んでいますか？`;
   }
@@ -204,6 +224,10 @@ function createRenderInput(params: {
   const planningInformation = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
+        registeredMaterials: getWeeklyPlanningRegisteredMaterialContextV5({
+          ownerId: params.input.userId,
+          userText: params.input.userText,
+        }),
         groundingRecords: groundingRecords(params.result),
         selfRepairNotice: params.notice,
       }

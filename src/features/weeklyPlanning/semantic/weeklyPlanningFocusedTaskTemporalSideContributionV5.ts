@@ -3,6 +3,11 @@ import type {
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
+  CANONICAL_RELATIVE_DATE_EXPRESSIONS,
+  CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
+  isCanonicalDateExpressionSyntax,
+} from './weeklyPlanningCalendarResolver';
+import {
   SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5,
   SEMANTIC_NAMED_TIME_PERIODS_V5,
@@ -59,7 +64,20 @@ export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5: JsonSch
             { type: 'null' },
           ],
         },
-        dateExpression: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        dateExpression: {
+          anyOf: [
+            {
+              type: 'string',
+              enum: [
+                ...CANONICAL_RELATIVE_DATE_EXPRESSIONS,
+                ...CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
+              ],
+            },
+            { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+            { type: 'string', pattern: '^custom:.+$' },
+            { type: 'null' },
+          ],
+        },
         namedTimePeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         startTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         endTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -78,7 +96,11 @@ const SYSTEM_PROMPT = [
   'Interpret only whether currentUserText states a temporal constraint on knownTask. The existing pending question is context only and must not suppress a side contribution.',
   'Return temporal_constraint only when the current text clearly constrains when knownTask can, should, must, or must not occur or be completed. Return fallback for non-temporal meaning, plan-wide availability/unavailability, or ambiguous target/scope.',
   'Use deadline for completion-by timing; earliest_start/latest_end for one-sided bounds; fixed_interval for an exact occupied interval; preferred_window/avoid_window for soft task timing; allowed_date/excluded_date only for date eligibility without a clock.',
-  'Keep relative date meaning symbolic, such as tomorrow or a weekday expression. Preserve an explicitly stated clock in startTime/endTime as appropriate. Do not invent missing dates, clocks, or hardness.',
+  `dateExpression is a machine representation, never copied natural-language date text. Use ISO YYYY-MM-DD, custom:<expression>, or one canonical token: ${[
+    ...CANONICAL_RELATIVE_DATE_EXPRESSIONS,
+    ...CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
+  ].join(', ')}. For example, a user-language expression meaning tomorrow must become tomorrow.`,
+  'Preserve an explicitly stated clock in startTime/endTime as appropriate. Do not invent missing dates, clocks, or hardness.',
 ].join('\n');
 
 interface ExistingTaskTargetV5 {
@@ -160,6 +182,13 @@ function nullableString(value: unknown): string | null | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function canonicalDateExpression(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === 'string' && isCanonicalDateExpressionSyntax(value)
+    ? value
+    : undefined;
+}
+
 function temporalKind(value: unknown): SemanticTemporalConstraintKindV5 | null {
   if (typeof value !== 'string') return null;
   const supported = [
@@ -214,7 +243,7 @@ export function parseFocusedTaskTemporalSideContributionDecisionV5(
       && (SEMANTIC_CONSTRAINT_LEVELS_V5 as readonly string[]).includes(value.constraintLevel)
       ? value.constraintLevel as SemanticConstraintLevelV5
       : null;
-    const dateExpression = nullableString(value.dateExpression);
+    const dateExpression = canonicalDateExpression(value.dateExpression);
     const period = namedTimePeriod(value.namedTimePeriod);
     const startTime = nullableString(value.startTime);
     const endTime = nullableString(value.endTime);

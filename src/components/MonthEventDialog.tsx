@@ -13,7 +13,7 @@ import {
 } from '../lib/date';
 import {
   doesMonthEventOccurOnDate,
-  formatMonthEventTimeRange,
+  formatMonthEventTimeRangeForDate,
   getMonthEventRepeatLabel,
   MONTH_EVENT_REPEAT_OPTIONS,
   sortMonthEvents,
@@ -125,6 +125,20 @@ function isAllDayTimeRange(draft: MonthEventDraft): boolean {
   );
 }
 
+function createRangeAwareEmptyDraft(userId: string, date: string): MonthEventDraft {
+  return {
+    ...createEmptyMonthEventDraft(userId, date),
+    endDate: date,
+  };
+}
+
+function createRangeAwareDraftFromEvent(event: MonthEvent): MonthEventDraft {
+  return {
+    ...createMonthEventDraftFromEvent(event),
+    endDate: event.endDate ?? event.date,
+  };
+}
+
 export function MonthEventDialog({
   openDate,
   userId,
@@ -136,13 +150,13 @@ export function MonthEventDialog({
 }: MonthEventDialogProps) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MonthEventDraft>(
-    createEmptyMonthEventDraft(userId, openDate ?? ''),
+    createRangeAwareEmptyDraft(userId, openDate ?? ''),
   );
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
   const [expandedAddons, setExpandedAddons] = useState<Set<MonthEventAddonKey>>(
-    () => getInitialExpandedAddons(createEmptyMonthEventDraft(userId, openDate ?? '')),
+    () => getInitialExpandedAddons(createRangeAwareEmptyDraft(userId, openDate ?? '')),
   );
   const [isAllDay, setIsAllDay] = useState(false);
   const [isSavingMonthEvent, setIsSavingMonthEvent] = useState(false);
@@ -175,10 +189,9 @@ export function MonthEventDialog({
         ? monthEvents.find((monthEvent) => monthEvent.id === initialEventId) ?? null
         : null;
 
-    const nextDraft =
-      initialEvent
-        ? createMonthEventDraftFromEvent(initialEvent)
-        : createEmptyMonthEventDraft(userId, openDate);
+    const nextDraft = initialEvent
+      ? createRangeAwareDraftFromEvent(initialEvent)
+      : createRangeAwareEmptyDraft(userId, openDate);
 
     setEditingEventId(initialEvent?.id ?? null);
     setDraft(nextDraft);
@@ -197,10 +210,13 @@ export function MonthEventDialog({
 
   const activeDate = openDate;
   const startMinutes = parseTimeToMinutes(draft.startTime, 'start');
-  const datetimeButtonDate = formatMonthEventDateButton(draft.date);
+  const resolvedEndDate = draft.endDate ?? draft.date;
+  const startDateButtonLabel = formatMonthEventDateButton(draft.date);
+  const endDateButtonLabel = formatMonthEventDateButton(resolvedEndDate);
+  const isSameDayRange = resolvedEndDate === draft.date;
 
   function resetEditor(nextStatus = '') {
-    const nextDraft = createEmptyMonthEventDraft(userId, activeDate);
+    const nextDraft = createRangeAwareEmptyDraft(userId, activeDate);
 
     setEditingEventId(null);
     setDraft(nextDraft);
@@ -218,7 +234,7 @@ export function MonthEventDialog({
   }
 
   function handleSelectEvent(monthEvent: MonthEvent) {
-    const nextDraft = createMonthEventDraftFromEvent(monthEvent);
+    const nextDraft = createRangeAwareDraftFromEvent(monthEvent);
 
     setEditingEventId(monthEvent.id);
     setDraft(nextDraft);
@@ -248,6 +264,15 @@ export function MonthEventDialog({
 
   function updateStartTime(nextStartTime: string) {
     setDraft((current) => {
+      const currentEndDate = current.endDate ?? current.date;
+
+      if (currentEndDate !== current.date) {
+        return {
+          ...current,
+          startTime: nextStartTime,
+        };
+      }
+
       const nextStartMinutes = parseTimeToMinutes(nextStartTime, 'start');
       const nextEndTime = editingEventId
         ? calculateShiftedEndTimeForEdit(
@@ -269,6 +294,51 @@ export function MonthEventDialog({
       ...current,
       endTime: nextEndTime,
     }));
+  }
+
+  function updateEventDate(target: 'start' | 'end' | null, nextDate: string) {
+    if (!target) {
+      return;
+    }
+
+    setDraft((current) => {
+      const currentEndDate = current.endDate ?? current.date;
+
+      if (target === 'end') {
+        const nextEndTime =
+          nextDate === current.date &&
+          parseTimeToMinutes(current.endTime, 'end') <=
+            parseTimeToMinutes(current.startTime, 'start')
+            ? calculateAutoEndTimeForCreate(
+                parseTimeToMinutes(current.startTime, 'start'),
+              )
+            : current.endTime;
+
+        return {
+          ...current,
+          endDate: nextDate,
+          endTime: nextEndTime,
+        };
+      }
+
+      const nextEndDate =
+        currentEndDate.localeCompare(nextDate) < 0 ? nextDate : currentEndDate;
+      const nextEndTime =
+        nextEndDate === nextDate &&
+        parseTimeToMinutes(current.endTime, 'end') <=
+          parseTimeToMinutes(current.startTime, 'start')
+          ? calculateAutoEndTimeForCreate(
+              parseTimeToMinutes(current.startTime, 'start'),
+            )
+          : current.endTime;
+
+      return {
+        ...current,
+        date: nextDate,
+        endDate: nextEndDate,
+        endTime: nextEndTime,
+      };
+    });
   }
 
   async function handleSave() {
@@ -387,7 +457,7 @@ export function MonthEventDialog({
                   type="button"
                   aria-label="開始日"
                 >
-                  {datetimeButtonDate}
+                  {startDateButtonLabel}
                 </button>
                 <TimeWheelPicker
                   value={draft.startTime}
@@ -405,14 +475,18 @@ export function MonthEventDialog({
                   type="button"
                   aria-label="終了日"
                 >
-                  {datetimeButtonDate}
+                  {endDateButtonLabel}
                 </button>
                 <TimeWheelPicker
                   value={draft.endTime}
                   role="end"
                   disabled={isAllDay}
                   inputClassName="month-event-time-input"
-                  minMinutes={Math.min(startMinutes + 1, MINUTES_PER_DAY)}
+                  minMinutes={
+                    isSameDayRange
+                      ? Math.min(startMinutes + 1, MINUTES_PER_DAY)
+                      : 0
+                  }
                   onChange={updateEndTime}
                 />
               </div>
@@ -449,7 +523,7 @@ export function MonthEventDialog({
                     <span className="month-event-timeline-copy">
                       <strong>{monthEvent.title}</strong>
                       <span>
-                        {formatMonthEventTimeRange(monthEvent)}
+                        {formatMonthEventTimeRangeForDate(monthEvent, activeDate)}
                         {monthEvent.repeat !== 'none'
                           ? ` / ${getMonthEventRepeatLabel(monthEvent.repeat)}`
                           : ''}
@@ -705,13 +779,8 @@ export function MonthEventDialog({
       </div>
       <DayCalendarDialog
         open={datePickerTarget !== null}
-        selectedDate={draft.date}
-        onSelectDate={(nextDate) =>
-          setDraft((current) => ({
-            ...current,
-            date: nextDate,
-          }))
-        }
+        selectedDate={datePickerTarget === 'end' ? resolvedEndDate : draft.date}
+        onSelectDate={(nextDate) => updateEventDate(datePickerTarget, nextDate)}
         onClose={() => setDatePickerTarget(null)}
       />
     </div>

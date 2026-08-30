@@ -16,3 +16,10 @@ test-results/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Project-local Diagram Design installation
+.agents/skills/diagram-design/
+.agents/skills/studyplanner-diagram-explainer/
+.claude/skills/diagram-design/
+.claude/skills/studyplanner-diagram-explainer/
+skills-lock.json

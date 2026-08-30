@@ -1,8 +1,15 @@
 import splashLogo from '../assets/studyplanner-logo.png';
 
-export function SplashScreen() {
+export function SplashScreen({ fixedLight = false }: { fixedLight?: boolean }) {
   return (
-    <main className="loading-screen splash-screen" aria-label="アプリ起動中">
+    <main
+      className={
+        fixedLight
+          ? 'loading-screen splash-screen splash-screen--startup-light'
+          : 'loading-screen splash-screen'
+      }
+      aria-label="アプリ起動中"
+    >
       <div className="splash-screen__inner">
         <img
           src={splashLogo}

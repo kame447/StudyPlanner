@@ -82,16 +82,13 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(result.status).toBe('accepted');
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('publicStateSummary and recentConversation are context, not output');
-    expect(system).toContain('Emit only facts stated or changed in current userText');
-    expect(system).toContain('every sourceText must be supported by current userText');
-    expect(system).toContain(
-      'a new nested fact on an existing task/component needs only a minimal containing shell bound by exact existingPublicId',
-    );
-    expect(system).toContain('Interpret current-turn meaning into semantic facts independently');
-    expect(system).toContain('pendingQuestion as authoritative only for an actual answer');
-    expect(system).toContain('It must not suppress other explicit contributions');
-    expect(system).toContain('leave an unanswered question pending');
+    expect(system).toContain('Context is not output');
+    expect(system).toContain('Emit only current userText changes');
+    expect(system).toContain('each sourceText must be supported by current userText');
+    expect(system).toContain('New nested facts on existing entities need only a minimal shell with exact existingPublicId');
+    expect(system).toContain('Interpret each current-turn contribution independently');
+    expect(system).toContain('pendingQuestion binds only actual answers to its exact target');
+    expect(system).toContain('cannot suppress other explicit contributions');
     expect(system).not.toContain('Current SemanticDocument is a delta');
   });
 

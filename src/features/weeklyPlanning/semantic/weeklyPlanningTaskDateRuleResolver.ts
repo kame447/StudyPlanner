@@ -1,11 +1,17 @@
 import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type { TaskDateRuleFact } from './weeklyPlanningFactGraphV2';
 import {
-  calendarWeekday,
   intersectCalendarDates,
   listCalendarDatesInclusive,
-  resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
 
 export interface WeeklyPlanningTaskDateRuleGraphView {
   readonly tasks: ReadonlyArray<{ id: string }>;
@@ -52,16 +58,6 @@ interface MutableTaskDateEligibility {
   excludedRuleByDate: Map<string, string>;
 }
 
-const WEEKDAY_INDEX: Record<string, number> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
-
 function mutableState(
   mutable: Map<string, MutableTaskDateEligibility>,
   taskId: string,
@@ -82,16 +78,16 @@ function mutableState(
 
 function resolveRuleDates(params: {
   rule: TaskDateRuleFact;
-  currentDate: string;
   planningStartDate: string;
   planningEndDate: string;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: TaskDateRuleResolutionIssue[];
 }): string[] | null {
-  const resolution = resolveCanonicalDateExpression({
-    expression: params.rule.dateExpression,
-    currentDate: params.currentDate,
+  const resolution = resolvedWeeklyPlanningDateExpressionForFactV5({
+    resolved: params.resolvedDateExpressions,
+    factId: params.rule.id,
   });
-  if (resolution.status !== 'resolved') {
+  if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
     params.issues.push({
       code: 'unsupported_task_date_expression',
       taskDateRuleFactId: params.rule.id,
@@ -99,7 +95,7 @@ function resolveRuleDates(params: {
       blocking: true,
       details: {
         expression: params.rule.dateExpression,
-        resolutionStatus: resolution.status,
+        resolutionStatus: resolution?.status ?? 'missing_resolved_snapshot',
       },
     });
     return null;
@@ -131,51 +127,31 @@ function resolveRecurrenceDates(params: {
   planningDates: string[];
   issues: TaskDateRuleResolutionIssue[];
 }): string[] | null {
-  if (params.recurrence.kind === 'daily') return [...params.planningDates];
-  if (params.recurrence.kind === 'weekdays') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day !== null && day >= 1 && day <= 5;
-    });
-  }
-  if (params.recurrence.kind === 'weekends') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day === 0 || day === 6;
-    });
-  }
-  if (params.recurrence.kind === 'custom') return null;
-  if (params.recurrence.days.length === 0) return null;
-
-  const indexes = new Set<number>();
-  let invalid = false;
-  for (const day of params.recurrence.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
-      invalid = true;
-      params.issues.push({
-        code: 'invalid_task_recurrence_weekday',
-        taskDateRuleFactId: params.recurrence.id,
-        taskId: params.recurrence.taskId,
-        blocking: true,
-        details: { day },
-      });
-    } else {
-      indexes.add(index);
-    }
-  }
-  if (invalid || indexes.size === 0) return null;
-  return params.planningDates.filter((date) => {
-    const day = calendarWeekday(date);
-    return day !== null && indexes.has(day);
+  const resolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: params.recurrence.kind,
+    days: params.recurrence.days,
+    dates: params.planningDates,
   });
+  for (const day of resolution.invalidDays) {
+    params.issues.push({
+      code: 'invalid_task_recurrence_weekday',
+      taskDateRuleFactId: params.recurrence.id,
+      taskId: params.recurrence.taskId,
+      blocking: true,
+      details: { day },
+    });
+  }
+  if (resolution.invalidDays.length > 0) return null;
+  return resolution.calendarDates;
 }
 
 export function resolveWeeklyPlanningTaskDateRules(params: {
   graph: WeeklyPlanningTaskDateRuleGraphView;
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskDateRuleResolutionResult {
   const issues: TaskDateRuleResolutionIssue[] = [];
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
@@ -206,9 +182,9 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     }
     const dates = resolveRuleDates({
       rule,
-      currentDate: params.currentDate,
       planningStartDate: params.planningStartDate,
       planningEndDate: params.planningEndDate,
+      resolvedDateExpressions: params.resolvedDateExpressions,
       issues,
     });
     if (!dates) continue;

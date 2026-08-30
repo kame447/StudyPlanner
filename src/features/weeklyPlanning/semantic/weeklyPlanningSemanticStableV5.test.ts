@@ -243,7 +243,7 @@ describe('Stable V5 semantic document', () => {
     const system = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '来週の予定を作りたい',
     })[0]?.content ?? '';
-    expect(system).toContain('current-turn meaning into semantic facts');
+    expect(system).toContain('Interpret each current-turn contribution independently');
     expect(system).toContain('Emit relations only when stated');
     expect(system).not.toContain('schema and deterministic validators own canonical wire shape');
     expect(system).not.toContain('Do not emit application, scheduling, readiness, preview, save commands');

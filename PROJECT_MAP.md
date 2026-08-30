@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-22
+Updated: 2026-08-28
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -31,6 +31,32 @@ Client-first/runtime work:
 2. `docs/domains/client-runtime/spec/client-first-execution-requirements.md`
 3. Issue #164
 
+Reporting work:
+
+1. `docs/domains/reporting/README.md`
+2. `docs/domains/reporting/spec/learning-report.md`
+3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
+4. `src/components/ReportView.tsx`
+
+Product observability / admin analytics work:
+
+1. `docs/domains/product-observability/README.md`
+2. `docs/domains/product-observability/spec/console-requirements.md`
+3. `docs/domains/product-observability/architecture/telemetry-and-read-model.md`
+4. `docs/domains/product-observability/roadmap/current.md`
+5. Issue #213
+6. current admin / AI metrics / weekly trace code
+
+External API / provider integration work:
+
+1. `docs/domains/external-integrations/README.md`
+2. `docs/domains/external-integrations/spec/material-metadata.md` for book material metadata
+3. Issue #187
+4. `shared/materialMetadataContract.ts`
+5. `workers/ai-proxy/src/materialMetadataApi.ts`
+6. `src/services/materialMetadataService.ts`
+7. `src/components/BookshelfMaterialSearch.tsx`
+
 `docs/archive/` is evidence, not current instruction.
 
 ## 2. Application shell
@@ -47,11 +73,13 @@ UI components and interaction surfaces. Examples:
 
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
 - calendar / home / bookshelf / timetable views
+- `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
+- `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
 - `QuickEntryModal.tsx`: generic quick/manual entry surface
 - `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
-- admin/report views
+- admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
-UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization or persistence decisions.
+UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.
 
 ### `src/hooks/`
 
@@ -73,17 +101,82 @@ Components must not know storage implementation details, fallback ordering or tr
 
 External/service integration and the separate single-event natural-language subsystem.
 
+External provider adapters may physically live under services or a feature-owned integration module, but provider selection, terms, normalization and fallback boundaries are governed by `docs/domains/external-integrations/`. A component or product domain must not branch on provider names or persist raw provider responses as its canonical model.
+
+`src/services/materialMetadataService.ts` is the browser-facing client for normalized material metadata search. It authenticates to the Worker and validates the provider-neutral response; it does not call NDL directly.
+
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
+
+Current admin data access and AI request metrics also live under services today. Issue #213 will move service-wide observability behavior behind a product-observability application/repository boundary rather than making UI depend on current physical locations.
 
 ### `src/lib/`
 
 Small reusable deterministic helpers and cross-cutting utility logic. Domain-changing policy should not be hidden here merely to avoid creating a feature module.
 
+`src/lib/learningReport.ts` owns deterministic user-facing report aggregation/projection for the reporting domain. Its output must preserve the report invariant that selected-period actual total, trend-bucket total and breakdown total are the same filtered Actual set.
+
+Legacy/general report helpers remain in `src/lib/reportAnalytics.ts`; new user-facing learning report behavior should not be reimplemented inside JSX.
+
+Current `src/lib/adminAnalytics.ts` is legacy/current admin aggregation evidence, not the future owner of service-wide telemetry semantics. Issue #213 defines the migration away from browser-side full-collection analytics.
+
 ### `src/types/`
 
 Shared application/domain types. Prefer feature-local types when one feature owns the contract.
 
-## 4. Weekly planning feature
+`shared/materialMetadataContract.ts` is a transport/integration contract shared by browser and Worker. It is not the `StudyMaterial` persistence model.
+
+## 4. Product observability
+
+Canonical documentation root: `docs/domains/product-observability/`
+
+Current implementation is distributed across admin components, `src/services/adminDataService.ts`, `src/lib/adminAnalytics.ts`, AI client metrics, AI proxy, and weekly-planning trace adapters. Do not infer future ownership from those current physical locations.
+
+Issue #213 establishes the target boundary:
+
+- lightweight product activity telemetry
+- AI/API request metrics
+- weekly-planning typed outcome projection
+- opaque actor correlation
+- server-side aggregation / rollup
+- bounded admin read models
+- cross-page drill-down
+- restricted diagnostic adapters / Debug Bundle
+
+Product observability is observation only. It must not become planner data authority, weekly-planning lifecycle authority, authorization source or user-facing report authority.
+
+Detailed weekly-planning trace remains owned by the weekly-planning feature and is consumed through a restricted adapter.
+
+## 5. External integrations
+
+Canonical documentation root: `docs/domains/external-integrations/`
+
+Issue #187 tracks the current external-API integration program. This responsibility owns provider/API adoption evidence, authentication and quota assumptions, provider-specific usage conditions, normalized adapter boundaries and graceful degradation when an external service is unavailable.
+
+For book material metadata, `docs/domains/external-integrations/spec/material-metadata.md` is the canonical requirement. The initial runtime path is:
+
+```text
+BookshelfMaterialSearch
+  ↓ authenticated request
+materialMetadataService
+  ↓
+Cloudflare Worker materialMetadataApi
+  ↓
+shared Firestore bibliographic catalog
+  ├─ hit → normalized result
+  └─ miss → NDL Search → normalize → cache
+```
+
+The shared catalog is an external bibliographic cache, not a shared user `StudyMaterial` collection. Manual/user-specific materials are not automatically published to it.
+
+External integration code must preserve these boundaries:
+
+- raw provider responses are not canonical product models
+- provider names and fallback ordering do not leak into UI/domain callers
+- cache/persistence/image reuse follows provider-specific terms
+- an external outage does not disable the existing manual product path
+- external metadata does not become an authority for chapter structure, scheduling or progress semantics
+
+## 6. Weekly planning feature
 
 Canonical code root: `src/features/weeklyPlanning/`
 
@@ -133,7 +226,9 @@ Session/application orchestration, approval/save boundary and feature-level appl
 
 ### `trace/`
 
-Observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
+Weekly-planning diagnostic observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
+
+Service-wide product analytics does not move into this directory. Product-observability consumes trace through a diagnostic adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
 
 ### `evals/`
 
@@ -151,13 +246,13 @@ Legacy/mechanical parsing helpers still present in the codebase. Presence of thi
 
 Conversation-support and feature configuration helpers. Do not place independent domain ownership here merely because the caller is chat/UI.
 
-## 5. User planning context
+## 7. User planning context
 
 `src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
 
 Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
 
-## 6. Major safety boundaries
+## 8. Major safety boundaries
 
 ### AI
 
@@ -171,13 +266,29 @@ Preview is unsaved and revision-bound. Approval/save is an explicit deterministi
 
 Trace is best-effort diagnostic evidence, never authorization or planning truth.
 
+### Product observability
+
+Telemetry and analytics are best-effort observation, never product authority. Lightweight analytics must remain separable from raw diagnostic content. Management UI reads typed read models and does not make browser-side full scans the canonical analytics design.
+
+### External integrations
+
+External data is evidence/suggestion, never an automatic replacement for StudyPlanner-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
+
 ### Persistence
 
 Client-first execution does not mean client-authoritative shared state. Storage/reconciliation changes must align with Issue #164.
 
-## 7. Tests
+### Reporting
+
+学習レポートは既存のPlan/Actual/教材情報を決定論的に集計するprojectionであり、LLMを数値・評価の正本にしない。ReportViewは保存・スケジューリング・意味解釈を所有しない。
+
+## 9. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
+- material metadata adapter/client: `workers/ai-proxy/src/materialMetadataApi.test.ts` / `src/services/materialMetadataService.test.ts`
+- material search manual fallback: `tests/e2e/bookshelf-material-search-fallback.spec.mjs`
+- reporting aggregation: `src/lib/learningReport.test.ts`
+- product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
 - CI: `.github/workflows/ci.yml`
@@ -185,7 +296,7 @@ Client-first execution does not mean client-authoritative shared state. Storage/
 
 Do not use a green unrelated check to justify a changed responsibility boundary.
 
-## 8. Documentation ownership
+## 10. Documentation ownership
 
 Documentation placement is defined only by `docs/DOCUMENT_DICTIONARY.md`.
 
@@ -203,19 +314,22 @@ Active work belongs either in the owning GitHub Issue or in the owning domain's 
 
 Completed/superseded records move to `docs/archive/work/` and never re-enter the execution queue merely because they contain an old `Status: active`, branch name or PR number.
 
-## 9. Change-location rule
+## 11. Change-location rule
 
 Choose the directory by change reason, not by current caller:
 
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
+- learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
+- service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
+- external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
 - natural-language meaning → weekly `semantic/`
 - readiness/proposal/work decision → weekly `planning/`
 - placement/availability → weekly `scheduling/`
 - dialogue action/realization boundary → weekly `dialogue/`
 - unsaved candidate → weekly `preview/`
 - approval/session orchestration → weekly `application/`
-- observability → weekly `trace/`
+- weekly-planning diagnostic trace → weekly `trace/`
 - persistence → repository/feature-owned persistence boundary
 - documentation → `docs/domains/<responsibility>/<document-type>/` according to `DOCUMENT_DICTIONARY.md`
 

@@ -52,6 +52,7 @@ import type {
   TodoTaskDraft,
   ViewMode,
 } from '../types/domain';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type { ShowNotice } from './useNoticeState';
 
 interface UsePlannerDataStateOptions {
@@ -205,6 +206,23 @@ function createTimetableTermId(year: number, kind: TimetableTermKind): string {
   return `${normalizedYear}-${getTimetableTermKindKey(kind)}`;
 }
 
+function normalizeTimetableDate(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? '';
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+
+  const [year, month, day] = normalized.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+    ? normalized
+    : null;
+}
+
 function createDefaultTimetableTerm(userId: string): TimetableTerm {
   const now = new Date().toISOString();
   const year = new Date().getFullYear();
@@ -235,6 +253,12 @@ function sortTimetableTerms(terms: TimetableTerm[]): TimetableTerm[] {
 
     if (right.isActive) {
       return 1;
+    }
+
+    const dateComparison = (right.startDate ?? '').localeCompare(left.startDate ?? '');
+
+    if (dateComparison !== 0) {
+      return dateComparison;
     }
 
     return (
@@ -279,7 +303,8 @@ function normalizeTimetableTermsByYearAndKind(
   const termIdMap = new Map<string, string>();
 
   sourceTerms.forEach((term) => {
-    const stableId = createTimetableTermId(term.year, term.kind);
+    const stableId =
+      term.kind === 'custom' ? term.id : createTimetableTermId(term.year, term.kind);
     const group = groupedTerms.get(stableId) ?? [];
 
     group.push(term);
@@ -291,9 +316,10 @@ function normalizeTimetableTermsByYearAndKind(
     sourceTerms.find((term) => term.isActive) ??
     sourceTerms.find((term) => term.id === 'default') ??
     pickLatestTimetableTerm(sourceTerms);
-  const activeStableId = termIdMap.get(activeSourceTerm.id) ?? createTimetableTermId(
-    activeSourceTerm.year,
-    activeSourceTerm.kind,
+  const activeStableId = termIdMap.get(activeSourceTerm.id) ?? (
+    activeSourceTerm.kind === 'custom'
+      ? activeSourceTerm.id
+      : createTimetableTermId(activeSourceTerm.year, activeSourceTerm.kind)
   );
 
   if (!termIdMap.has('default')) {
@@ -396,6 +422,7 @@ interface UsePlannerDataStateResult {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -587,6 +614,10 @@ export function usePlannerDataState({
           previousTerm.year === term.year &&
           previousTerm.kind === term.kind &&
           previousTerm.label === term.label &&
+          previousTerm.startDate === term.startDate &&
+          previousTerm.endDate === term.endDate &&
+          previousTerm.usesAlternatingWeeks === term.usesAlternatingWeeks &&
+          previousTerm.alternatingWeekAnchorDate === term.alternatingWeekAnchorDate &&
           previousTerm.isActive === term.isActive
         ) {
           return;
@@ -895,6 +926,61 @@ export function usePlannerDataState({
     }
   }
 
+  async function movePlanOccurrence(plan: Plan, target: WeekPlanMoveTarget) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(target.startTime, target.endTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+
+    const sourcePlan = resolveStoredPlan(plan);
+    const occurrenceDate = plan.occurrenceDate ?? plan.date;
+    const draft: PlanDraft = {
+      ...createPlanDraftFromPlan(plan),
+      date: target.date,
+      startTime: target.startTime,
+      endTime: target.endTime,
+    };
+
+    if (isScopedRecurringEditCandidate(sourcePlan)) {
+      if (target.date !== occurrenceDate) {
+        showNotice(
+          '繰り返し予定は週表示のドラッグでは曜日を変更できません。時刻は変更できます。',
+          'info',
+        );
+        return;
+      }
+
+      setPendingRecurringPlanAction({
+        kind: 'edit',
+        plan,
+        draft,
+      });
+      return;
+    }
+
+    const nextPlan = createPlanFromDraft(draft, sourcePlan);
+    const previousPlans = plans;
+
+    try {
+      setPlans((current) =>
+        sortByDateTime(upsertByKey(current, nextPlan, (item) => item.id)),
+      );
+      await plannerRepository.upsertPlan(nextPlan);
+      showNotice('予定を移動しました。', 'success');
+    } catch (error) {
+      setPlans(previousPlans);
+      showNotice(
+        resolveErrorMessage(error, '予定を移動できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
   async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -1018,7 +1104,7 @@ export function usePlannerDataState({
           setActuals((current) => upsertActualsById(current, linkedActuals));
         }
         if (linkedTodo) {
-          setTodos((current) => upsertByKey(current, linkedTodo, (todo) => todo.id));
+          setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
         }
       });
     } catch (error) {
@@ -1678,7 +1764,12 @@ export function usePlannerDataState({
       subjectId: subject.id,
       subjectName: subject.name,
       color: draft.color ?? subject.color,
+      coverImageUrl: draft.coverImageUrl || undefined,
       coverImageDataUrl: draft.coverImageDataUrl || undefined,
+      catalogEntryId: draft.catalogEntryId?.trim() || currentMaterial?.catalogEntryId,
+      catalogTitle: draft.catalogTitle?.trim() || currentMaterial?.catalogTitle,
+      catalogIsbn10: draft.catalogIsbn10?.trim() || currentMaterial?.catalogIsbn10,
+      catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
       paceEnabled,
@@ -1752,6 +1843,11 @@ export function usePlannerDataState({
       throw new Error('時間割のタイトルを入れてください。');
     }
 
+    if (draft.weekInterval === 2 && !normalizeTimetableDate(draft.weekIntervalAnchorDate)) {
+      showNotice('隔週の授業は基準日を設定してください。', 'error');
+      throw new Error('隔週の授業は基準日を設定してください。');
+    }
+
     const currentTemplate = scheduleTemplates.find(
       (template) => template.id === targetTemplateId,
     );
@@ -1767,6 +1863,15 @@ export function usePlannerDataState({
           ? Math.max(1, Math.round(draft.periodNumber))
           : undefined,
       classroom: draft.classroom?.trim() ?? '',
+      alternatingWeek:
+        draft.alternatingWeek === 'a' || draft.alternatingWeek === 'b'
+          ? draft.alternatingWeek
+          : 'both',
+      weekInterval: draft.weekInterval === 2 ? 2 : 1,
+      weekIntervalAnchorDate:
+        draft.weekInterval === 2
+          ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
+          : null,
       memo: draft.memo.trim(),
       createdAt: currentTemplate?.createdAt ?? now,
       updatedAt: now,
@@ -1809,16 +1914,39 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const year = Number.isFinite(draft.year)
-      ? Math.round(draft.year)
-      : new Date().getFullYear();
-    const stableTermId = createTimetableTermId(year, draft.kind);
+    const startDate = normalizeTimetableDate(draft.startDate);
+    const endDate = normalizeTimetableDate(draft.endDate);
+
+    if (startDate && endDate && endDate < startDate) {
+      showNotice('時間割の終了日は開始日以降にしてください。', 'error');
+      throw new Error('時間割の終了日は開始日以降にしてください。');
+    }
+
+    const usesAlternatingWeeks = draft.usesAlternatingWeeks === true;
+    const alternatingWeekAnchorDate = usesAlternatingWeeks
+      ? normalizeTimetableDate(draft.alternatingWeekAnchorDate) ?? startDate
+      : null;
+
+    if (usesAlternatingWeeks && !alternatingWeekAnchorDate) {
+      showNotice('交互週を使う場合はA週の基準日を設定してください。', 'error');
+      throw new Error('交互週を使う場合はA週の基準日を設定してください。');
+    }
+
+    const yearFromStartDate = startDate ? Number(startDate.slice(0, 4)) : null;
+    const year = Number.isFinite(yearFromStartDate)
+      ? Number(yearFromStartDate)
+      : Number.isFinite(draft.year)
+        ? Math.round(draft.year)
+        : new Date().getFullYear();
+    const isCustomPeriod = draft.kind === 'custom';
+    const stableTermId = isCustomPeriod
+      ? draft.id?.trim() || createId('timetable-term')
+      : createTimetableTermId(year, draft.kind);
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
-    const existingTerm = timetableTerms.find(
-      (term) =>
-        term.id === stableTermId ||
-        (term.year === year && term.kind === draft.kind),
-    );
+    const existingTerm = timetableTerms.find((term) => term.id === stableTermId) ??
+      (!isCustomPeriod
+        ? timetableTerms.find((term) => term.year === year && term.kind === draft.kind)
+        : undefined);
     const now = new Date().toISOString();
     const nextActiveTerm: TimetableTerm = {
       id: stableTermId,
@@ -1826,6 +1954,10 @@ export function usePlannerDataState({
       year,
       kind: draft.kind,
       label,
+      startDate,
+      endDate,
+      usesAlternatingWeeks,
+      alternatingWeekAnchorDate,
       isActive: true,
       createdAt: existingTerm?.createdAt ?? now,
       updatedAt: now,
@@ -1849,11 +1981,11 @@ export function usePlannerDataState({
           .map((term) => ({ ...term, isActive: false, updatedAt: now }));
         return sortTimetableTerms([...withInactive, nextActiveTerm]);
       });
-      showNotice('学期を切り替えました。', 'success');
+      showNotice('時間割の期間を保存しました。', 'success');
       return nextActiveTerm;
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '学期を切り替えられませんでした。'),
+        resolveErrorMessage(error, '時間割の期間を保存できませんでした。'),
         'error',
       );
       throw error;
@@ -1865,28 +1997,94 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (term.isActive || term.id === 'default') {
-      showNotice('現在選択中の学期は削除できません。', 'error');
-      throw new Error('現在選択中の学期は削除できません。');
+    const targetTerm = timetableTerms.find((item) => item.id === term.id) ?? term;
+    if (timetableTerms.length <= 1) {
+      showNotice(
+        '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+        'error',
+      );
+      throw new Error('最後の期間は削除できません。');
     }
 
-    const hasTemplates = scheduleTemplates.some(
-      (template) => (template.termId || 'default') === term.id,
+    const targetTermId = targetTerm.id;
+    const targetTemplates = scheduleTemplates.filter(
+      (template) => (template.termId || 'default') === targetTermId,
     );
-    const hasPeriods = timetablePeriods.some((period) => period.termId === term.id);
-
-    if (hasTemplates || hasPeriods) {
-      showNotice('時間割データが入っている学期は削除できません。', 'error');
-      throw new Error('時間割データが入っている学期は削除できません。');
-    }
+    const targetPeriods = timetablePeriods.filter(
+      (period) => period.termId === targetTermId,
+    );
+    const remainingTerms = timetableTerms.filter((item) => item.id !== targetTermId);
+    const fallbackTerm = targetTerm.isActive
+      ? sortTimetableTerms(remainingTerms)[0] ?? null
+      : null;
+    const nextFallbackTerm = fallbackTerm
+      ? {
+          ...fallbackTerm,
+          isActive: true,
+          updatedAt: new Date().toISOString(),
+        }
+      : null;
+    const deletedTemplates: ScheduleTemplate[] = [];
+    const deletedPeriods: TimetablePeriod[] = [];
+    let fallbackActivated = false;
 
     try {
-      await plannerRepository.deleteTimetableTerm(userId, term.id);
-      setTimetableTerms((current) => current.filter((item) => item.id !== term.id));
-      showNotice('学期を削除しました。');
+      await runSequentially(targetTemplates, async (template) => {
+        await plannerRepository.deleteScheduleTemplate(userId, template.id);
+        deletedTemplates.push(template);
+      });
+      await runSequentially(targetPeriods, async (period) => {
+        await plannerRepository.deleteTimetablePeriod(userId, period.id);
+        deletedPeriods.push(period);
+      });
+
+      if (nextFallbackTerm) {
+        await plannerRepository.upsertTimetableTerm(nextFallbackTerm);
+        fallbackActivated = true;
+      }
+
+      await plannerRepository.deleteTimetableTerm(userId, targetTermId);
+
+      setScheduleTemplates((current) =>
+        current.filter(
+          (template) => (template.termId || 'default') !== targetTermId,
+        ),
+      );
+      setTimetablePeriods((current) =>
+        current.filter((period) => period.termId !== targetTermId),
+      );
+      setTimetableTerms((current) =>
+        sortTimetableTerms(
+          current
+            .filter((item) => item.id !== targetTermId)
+            .map((item) =>
+              nextFallbackTerm && item.id === nextFallbackTerm.id
+                ? nextFallbackTerm
+                : item,
+            ),
+        ),
+      );
+      showNotice('期間を削除しました。', 'success');
     } catch (error) {
+      try {
+        await runSequentially(deletedPeriods, async (period) => {
+          await plannerRepository.upsertTimetablePeriod(period);
+        });
+        await runSequentially(deletedTemplates, async (template) => {
+          await plannerRepository.upsertScheduleTemplate(template);
+        });
+        if (fallbackActivated && fallbackTerm) {
+          await plannerRepository.upsertTimetableTerm(fallbackTerm);
+        }
+      } catch (rollbackError) {
+        console.error('[TimetableTermDelete] rollback failed', {
+          termId: targetTermId,
+          error: getErrorDiagnostics(rollbackError),
+        });
+      }
+
       showNotice(
-        resolveErrorMessage(error, '学期を削除できませんでした。'),
+        resolveErrorMessage(error, '期間を削除できませんでした。'),
         'error',
       );
       throw error;
@@ -1931,10 +2129,10 @@ export function usePlannerDataState({
           current.map((item) => (item.id === targetTermId ? nextTerm : item)),
         ),
       );
-      showNotice('この学期の授業をすべて削除しました。', 'success');
+      showNotice('この期間の授業をすべて削除しました。', 'success');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, 'この学期の授業を削除できませんでした。'),
+        resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'),
         'error',
       );
       throw error;
@@ -2082,6 +2280,7 @@ export function usePlannerDataState({
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

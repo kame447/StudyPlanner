@@ -38,6 +38,19 @@ describe('Stable V5 human-scale effort question policy', () => {
     });
   });
 
+  it('never asks a future qualitative custom scope for its unknowable total duration', () => {
+    expect(createWeeklyPlanningEffortQuestionPlanV5({
+      amount: 1,
+      unitCode: 'custom',
+      unitLabel: '分野（理論化学）',
+      quantityRole: 'target',
+    })).toEqual({
+      kind: 'session_duration',
+      unitCode: 'custom',
+      sessionQuantities: [],
+    });
+  });
+
   it('does not infer a one-session policy from vocabulary units or word-count thresholds', () => {
     for (const amount of [80, 99, 100, 101, 220]) {
       expect(createWeeklyPlanningEffortQuestionPlanV5({

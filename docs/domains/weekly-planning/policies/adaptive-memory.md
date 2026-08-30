@@ -1,7 +1,7 @@
 # 週間計画 Adaptive Memory Learning Policy
 
 Status: canonical policy
-Updated: 2026-08-23
+Updated: 2026-08-27
 Applies to: 暗記・想起を主要目的とする学習の提案、復習配置、personalization、長期記憶、会話grounding
 
 Parent contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
@@ -53,14 +53,17 @@ review / retrieval
 
 `暗記なら朝と夜` のような時間帯固定heuristicを標準規則にしない。
 
-配置の優先順位:
+配置はhard feasibilityとsoft rankingを混同しない。
+
+まず、authoritative availability / fixed schedule / existing plan / accepted hard temporal or life constraint / `notBefore` を満たすsafe candidate集合だけを残す。explicit preference、durable preference、本人実績、accepted learning proposal、cold-start heuristicのいずれも、このhard gateを越えてfree timeを作ったり、禁止された日時を復活させたりしない。
+
+そのsafe candidate集合の中で順位付けする場合のevidence precedenceは次とする。
 
 1. current turnで明示された時間・曜日・session長
 2. durable explicit preference
-3. availability / fixed schedule / existing plan / safety constraint
-4. 同種学習の本人実績
-5. accepted learning proposal
-6. cold-start general heuristic
+3. 同種学習の本人実績
+4. accepted learning proposal
+5. cold-start general heuristic
 
 Cold-start heuristicはcandidate generation/scoringの補助であり、未共有のsemantic preferenceではない。
 

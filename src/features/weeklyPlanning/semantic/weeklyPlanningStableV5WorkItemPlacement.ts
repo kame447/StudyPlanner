@@ -1,7 +1,10 @@
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
-import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
+import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
+import {
+  hardDateBoundForTargetV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   preferredTaskDistributedDateV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
@@ -26,7 +29,7 @@ import {
 
 export interface WeeklyPlanningPlacementRuntimeContextV5 {
   input: GenericSchedulerInput;
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningPlacementGraphViewV5;
   dates: string[];
   windowsByDate: Map<string, PlacementWindow[]>;
   hardAvailableByDate: Map<string, PlacementWindow[]>;
@@ -73,10 +76,18 @@ function eligibleDates(params: {
     ? [...params.dates]
     : eligibility.allowedDates;
   const excluded = new Set(eligibility?.excludedDates ?? []);
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  const hardDateBound = hardDateBoundForTargetV5({
+    bounds: params.input.hardDateBounds ?? [],
+    taskId: params.item.taskId,
+    targetFactId,
+  });
   return allowed.filter((date) =>
     params.dates.includes(date)
     && !excluded.has(date)
-    && (!params.item.requiredDate || date === params.item.requiredDate));
+    && (!params.item.requiredDate || date === params.item.requiredDate)
+    && (!hardDateBound?.startDate || date >= hardDateBound.startDate)
+    && (!hardDateBound?.endDate || date <= hardDateBound.endDate));
 }
 
 function findWorkItemSlot(params: {
@@ -88,10 +99,9 @@ function findWorkItemSlot(params: {
   preferLongSegment: boolean;
 }): MinuteInterval | null {
   const explicitPreferences = preferredPlacementsForWorkItem({
-    graph: params.context.graph,
+    placements: params.context.input.preferredPlacements ?? [],
     item: params.item,
     dates: params.dates,
-    namedTimePeriods: params.context.namedTimePeriods,
   });
   const preferredSlot = explicitPreferences.length > 0
     ? findPreferredPlacementSlot({

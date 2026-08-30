@@ -1,4 +1,4 @@
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -45,6 +45,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
@@ -74,8 +76,16 @@ export function submitWeeklyPlanningApplicationTurn(
         plans: params.plans,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
+        timetableTerm: params.timetableTerm,
+        timetableTerms: params.timetableTerms,
         weekStartsOn: params.weekStartsOn,
         timeZone: params.timeZone,
+      });
+    },
+    onStartedTurn({ pending }) {
+      services.outcomeLifecycle.started?.({
+        ownerId: params.ownerId,
+        pending,
       });
     },
     commitExecutionResult({ pending }) {
@@ -100,12 +110,13 @@ export function submitWeeklyPlanningApplicationTurn(
         committed,
       });
     },
-    onFailedTurn({ pending, userText, error, failedState, assistantMessage }) {
+    onFailedTurn({ pending, userText, result, error, failedState, assistantMessage }) {
       services.stagingLifecycle.discard(pending);
       services.outcomeLifecycle.failed({
         ownerId: params.ownerId,
         pending,
         userText,
+        result,
         error,
         failedState,
         assistantMessage,

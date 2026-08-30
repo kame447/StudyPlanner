@@ -19,6 +19,14 @@ function normalizedLabel(value: unknown): string | null {
   return label;
 }
 
+function normalizedMaterialLookup(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('ja-JP')
+    .replace(/[\s\u3000\-_・･.,，。:：/／\\()（）\[\]［］「」『』【】]/g, '');
+}
+
 function factById(
   planningInformation: Record<string, unknown> | null,
   key: string,
@@ -163,6 +171,123 @@ function boundedWorkloadForTarget(params: {
     && workload.quantityRole === 'scope_total') ?? null;
 }
 
+function registeredMaterialTargetLabel(params: {
+  planningInformation: Record<string, unknown> | null;
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+}): string | null {
+  const target = params.questionTarget;
+  if (!target) return null;
+  if (target.collection === 'components') {
+    return normalizedLabel(target.fact.label);
+  }
+  if (target.collection === 'tasks') {
+    const taskId = typeof target.fact.id === 'string' ? target.fact.id : null;
+    if (taskId) {
+      const materialComponents = recordArray(params.planningInformation, 'components')
+        .filter((component) => component.taskId === taskId && component.role === 'material');
+      if (materialComponents.length === 1) {
+        const label = normalizedLabel(materialComponents[0].label);
+        if (label) return label;
+      }
+    }
+    return normalizedLabel(target.fact.title);
+  }
+  if (target.collection === 'uncertainties') {
+    if (target.fact.field !== 'work_breakdown') return null;
+    const ownerId = typeof target.fact.targetFactId === 'string'
+      ? target.fact.targetFactId
+      : null;
+    if (!ownerId) return null;
+    const materialComponents = recordArray(params.planningInformation, 'components')
+      .filter((component) => component.taskId === ownerId && component.role === 'material');
+    if (materialComponents.length === 1) {
+      const label = normalizedLabel(materialComponents[0].label);
+      if (label) return label;
+    }
+    return ownerLabelForFactId(params.planningInformation, ownerId);
+  }
+  const id = targetFactId(target);
+  return id ? ownerLabelForFactId(params.planningInformation, id) : null;
+}
+
+function registeredMaterialTerms(material: Record<string, unknown>): string[] {
+  const rawAliases = Array.isArray(material.aliases)
+    ? material.aliases.filter((value): value is string => typeof value === 'string')
+    : [];
+  return [material.name, material.catalogTitle, ...rawAliases]
+    .map(normalizedMaterialLookup)
+    .filter((value, index, values) => value.length >= 2 && values.indexOf(value) === index);
+}
+
+function registeredMaterialForLabel(params: {
+  planningInformation: Record<string, unknown> | null;
+  label: string;
+}): Record<string, unknown> | null {
+  const normalized = normalizedMaterialLookup(params.label);
+  if (!normalized) return null;
+  const materials = recordArray(params.planningInformation, 'registeredMaterials')
+    .filter((material) => material.paceEnabled === true);
+  const exact = materials.filter((material) => registeredMaterialTerms(material).includes(normalized));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return null;
+  const contained = materials.filter((material) =>
+    registeredMaterialTerms(material).some((term) =>
+      term.length >= 3 && (normalized.includes(term) || term.includes(normalized))));
+  return contained.length === 1 ? contained[0] : null;
+}
+
+function registeredMaterialUnitLabel(material: Record<string, unknown>): string | null {
+  const explicit = normalizedLabel(material.progressUnitLabel);
+  if (explicit) return explicit;
+  switch (material.progressUnit) {
+    case 'page': return 'ページ';
+    case 'problem': return '問';
+    case 'section': return 'セクション';
+    case 'video': return '本';
+    case 'word': return '語';
+    case 'custom': return '単位';
+    default: return null;
+  }
+}
+
+function registeredMaterialTargetScopeIntent(params: {
+  planningInformation: Record<string, unknown> | null;
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+}) {
+  const label = registeredMaterialTargetLabel(params);
+  if (!label) return null;
+  const material = registeredMaterialForLabel({
+    planningInformation: params.planningInformation,
+    label,
+  });
+  if (!material) return null;
+  const total = material.totalUnits;
+  const current = material.currentUnit;
+  if (
+    typeof total !== 'number'
+    || !Number.isFinite(total)
+    || total <= 0
+    || typeof current !== 'number'
+    || !Number.isFinite(current)
+    || current < 0
+    || current > total
+  ) return null;
+  const unitLabel = registeredMaterialUnitLabel(material);
+  if (!unitLabel) return null;
+  return {
+    kind: 'schedulable_work_detail' as const,
+    mode: 'registered_material_target_scope' as const,
+    targetFactId: targetFactId(params.questionTarget),
+    progressBasis: 'known_registered_material_progress' as const,
+    knownUnitCode: typeof material.progressUnit === 'string' ? material.progressUnit : null,
+    knownUnitLabel: unitLabel,
+    knownTotalUnits: total,
+    knownCurrentUnits: current,
+    knownRemainingUnits: Math.max(0, total - current),
+    requestedInformation: ['plan_target_scope'] as const,
+  };
+}
+
 function resolutionIntent(params: {
   questionCode: string;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
@@ -252,6 +377,11 @@ export function questionIntentForStableV5Dialogue(params: {
         || params.questionTarget?.collection === 'components')
       && typeof fact?.id === 'string'
     ) {
+      const registeredIntent = registeredMaterialTargetScopeIntent({
+        planningInformation: params.planningInformation ?? null,
+        questionTarget: params.questionTarget,
+      });
+      if (registeredIntent) return registeredIntent;
       const boundedWorkload = boundedWorkloadForTarget({
         planningInformation: params.planningInformation ?? null,
         targetCollection: params.questionTarget.collection,
@@ -292,6 +422,18 @@ export function questionIntentForStableV5Dialogue(params: {
       } as const;
     }
     return null;
+  }
+
+  if (
+    params.questionCode === 'semantic_uncertainty'
+    && params.questionTarget?.collection === 'uncertainties'
+    && fact?.field === 'work_breakdown'
+  ) {
+    const registeredIntent = registeredMaterialTargetScopeIntent({
+      planningInformation: params.planningInformation ?? null,
+      questionTarget: params.questionTarget,
+    });
+    if (registeredIntent) return registeredIntent;
   }
 
   const measurement = effortMeasurement(params.effortMeasurement);

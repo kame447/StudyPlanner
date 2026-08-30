@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, useRef, useState } from 'react';
 import {
   formatMinutes,
   minutesBetween,
@@ -272,26 +272,7 @@ export function NaturalLanguageAssistant({
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
   const runtimeInfo = getPlannerAiRuntimeInfo();
   const isWeeklyPlanningBusy = Boolean(weeklyPlanningPendingTurn || weeklyPlanningPendingApproval);
-  const weeklyPlanningInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const wasWeeklyPlanningBusyRef = useRef(isWeeklyPlanningBusy);
   void weeklyPlanningWeekStartDate;
-
-  function scheduleWeeklyPlanningInputFocus() {
-    const focus = () => weeklyPlanningInputRef.current?.focus();
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(focus);
-    } else {
-      setTimeout(focus, 0);
-    }
-  }
-
-  useEffect(() => {
-    const wasBusy = wasWeeklyPlanningBusyRef.current;
-    wasWeeklyPlanningBusyRef.current = isWeeklyPlanningBusy;
-    if (wasBusy && !isWeeklyPlanningBusy) {
-      scheduleWeeklyPlanningInputFocus();
-    }
-  }, [isWeeklyPlanningBusy]);
 
   function appendWeeklyPlanningMessage(
     role: WeeklyPlanningMessage['role'],
@@ -413,21 +394,18 @@ export function NaturalLanguageAssistant({
     setError('');
     setStatus('');
     setText('');
-    scheduleWeeklyPlanningInputFocus();
   }
 
   function cancelWeeklyPlanningTurn() {
     if (!onCancelWeeklyPlanningTurn()) return;
     setError('');
     setStatus('');
-    scheduleWeeklyPlanningInputFocus();
   }
 
   function clearWeeklyPlanningConversationOnly() {
     if (!onClearWeeklyPlanningConversation()) return;
     setError('');
     setStatus('');
-    scheduleWeeklyPlanningInputFocus();
   }
 
   function clearWeeklyPlanningDraftsOnly() {
@@ -551,8 +529,6 @@ export function NaturalLanguageAssistant({
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : '週間計画の会話状態を更新できませんでした。');
-    } finally {
-      scheduleWeeklyPlanningInputFocus();
     }
   }
 
@@ -971,7 +947,6 @@ export function NaturalLanguageAssistant({
                 <span>条件を修正する</span>
                 <textarea
                   maxLength={MAX_NATURAL_LANGUAGE_INPUT_LENGTH}
-                  ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={handleWeeklyPlanningKeyDown}
@@ -1332,7 +1307,6 @@ export function NaturalLanguageAssistant({
                 <span>週間計画にしたいこと</span>
                 <textarea
                   maxLength={MAX_NATURAL_LANGUAGE_INPUT_LENGTH}
-                  ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={handleWeeklyPlanningKeyDown}

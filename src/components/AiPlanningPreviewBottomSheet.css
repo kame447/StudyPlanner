@@ -1,0 +1,56 @@
+.ai-planning-view-shell-v2.is-preview-open .ai-planning-view {
+  pointer-events: none;
+}
+
+.ai-planning-view-shell-v2.is-preview-open .ai-planning-conversation {
+  overflow-y: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+.ai-planning-preview-overlay-v2 {
+  align-items: end;
+  justify-items: center;
+  overscroll-behavior: none;
+}
+
+.ai-planning-preview-dialog-v2 {
+  position: relative;
+  transform-origin: 50% 100%;
+}
+
+.ai-planning-preview-dialog-v2::before {
+  content: '';
+  position: absolute;
+  z-index: 12;
+  top: 6px;
+  left: 50%;
+  width: 38px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #64748b 38%, transparent);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-header {
+  padding-top: 16px;
+  touch-action: none;
+}
+
+.ai-planning-preview-dialog-v2.is-bottom-sheet-dragging {
+  cursor: grabbing;
+}
+
+@media (max-width: 520px) {
+  .ai-planning-preview-overlay-v2 {
+    padding: max(6px, env(safe-area-inset-top, 0px)) 6px 0;
+  }
+
+  .ai-planning-preview-dialog-v2 {
+    height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)));
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)));
+    border-radius: 18px 18px 0 0;
+  }
+}

@@ -1,6 +1,9 @@
 import { createMonthEventDraftFromEvent } from '../domain/planner';
 import { minutesBetween } from './date';
-import { getPreviousMonthEventOccurrenceDate } from './monthEvents';
+import {
+  getMonthEventOccurrenceStartDate,
+  getPreviousMonthEventOccurrenceDate,
+} from './monthEvents';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
 
 export type MonthEventDeleteScope = 'single' | 'future';
@@ -34,6 +37,7 @@ export function sanitizeMonthEventDraft(draft: MonthEventDraft): MonthEventDraft
 
   return {
     ...draft,
+    endDate: draft.endDate?.trim() || draft.date,
     title: draft.title.trim(),
     repeatUntil,
     excludedDates,
@@ -49,7 +53,16 @@ export function validateMonthEventDraft(draft: MonthEventDraft): string | null {
     return 'タイトルを入れてください。';
   }
 
-  if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+  const endDate = draft.endDate ?? draft.date;
+
+  if (endDate.localeCompare(draft.date) < 0) {
+    return '終了日は開始日以降にしてください。';
+  }
+
+  if (
+    endDate === draft.date &&
+    minutesBetween(draft.startTime, draft.endTime) <= 0
+  ) {
     return '終了時刻は開始時刻より後にしてください。';
   }
 
@@ -61,7 +74,12 @@ export function resolveMonthEventDeleteMutation(
   occurrenceDate: string,
   scope: MonthEventDeleteScope,
 ): MonthEventDeleteMutation {
-  const baseDraft = createMonthEventDraftFromEvent(monthEvent);
+  const baseDraft: MonthEventDraft = {
+    ...createMonthEventDraftFromEvent(monthEvent),
+    endDate: monthEvent.endDate ?? monthEvent.date,
+  };
+  const occurrenceStartDate =
+    getMonthEventOccurrenceStartDate(monthEvent, occurrenceDate) ?? occurrenceDate;
 
   if (scope === 'single') {
     return {
@@ -69,14 +87,14 @@ export function resolveMonthEventDeleteMutation(
       targetMonthEventId: monthEvent.id,
       draft: sanitizeMonthEventDraft({
         ...baseDraft,
-        excludedDates: [...baseDraft.excludedDates, occurrenceDate],
+        excludedDates: [...baseDraft.excludedDates, occurrenceStartDate],
       }),
     };
   }
 
   const previousOccurrenceDate = getPreviousMonthEventOccurrenceDate(
     monthEvent,
-    occurrenceDate,
+    occurrenceStartDate,
   );
 
   if (!previousOccurrenceDate) {

@@ -5,10 +5,15 @@ import { minutesBetween, sortByDateTime } from '../lib/date';
 import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
+import {
+  clearWeeklyPlanningRegisteredMaterialRuntimeV5,
+  setWeeklyPlanningRegisteredMaterialRuntimeV5,
+} from '../features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type {
   Actual,
   ActualDraft,
@@ -74,6 +79,7 @@ interface PlannerAppState {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
@@ -161,6 +167,7 @@ export function usePlannerAppState(): PlannerAppState {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -209,6 +216,16 @@ export function usePlannerAppState(): PlannerAppState {
   useEffect(() => {
     setWeeklyApprovedPlanOverlay([]);
   }, [user?.id]);
+
+  useEffect(() => {
+    const ownerId = user?.id?.trim();
+    if (!ownerId) return;
+    setWeeklyPlanningRegisteredMaterialRuntimeV5({
+      ownerId,
+      materials: studyMaterials,
+    });
+    return () => clearWeeklyPlanningRegisteredMaterialRuntimeV5(ownerId);
+  }, [studyMaterials, user?.id]);
 
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
@@ -339,6 +356,7 @@ export function usePlannerAppState(): PlannerAppState {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
     deletePlan,

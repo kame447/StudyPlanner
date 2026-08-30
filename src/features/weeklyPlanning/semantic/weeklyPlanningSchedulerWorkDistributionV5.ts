@@ -7,10 +7,16 @@ import type {
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
 import {
-  calendarWeekday,
-  listCalendarDatesInclusive,
-} from './weeklyPlanningCalendarResolver';
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
+import {
+  filterWeeklyPlanningDatesByHardBoundV5,
+  hardDateBoundForTargetV5,
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
+  type WeeklyPlanningSchedulerHardDateBoundV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   distributeDiscreteQuantityAcrossWeeklyBucketsV5,
   distributeMinutesAcrossWeeklyBucketsV5,
@@ -33,35 +39,19 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
   readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
-  readonly workloads: ReadonlyArray<Pick<WorkloadFact, 'id' | 'unitCode' | 'perOccurrence'>>;
+  readonly workloads: ReadonlyArray<Pick<
+    WorkloadFact,
+    'id' | 'taskId' | 'componentId' | 'unitCode' | 'perOccurrence'
+  >>;
   readonly recurrences: ReadonlyArray<RecurrenceFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
-}
-
-function recurrenceDates(
-  recurrence: RecurrenceFact,
-  dates: readonly string[],
-): string[] | null {
-  if (recurrence.kind === 'daily') return [...dates];
-  if (recurrence.kind === 'weekdays') {
-    return dates.filter((date) => {
-      const weekday = calendarWeekday(date);
-      return weekday !== null && weekday >= 1 && weekday <= 5;
-    });
-  }
-  if (recurrence.kind === 'weekends') {
-    return dates.filter((date) => {
-      const weekday = calendarWeekday(date);
-      return weekday === 0 || weekday === 6;
-    });
-  }
-  return null;
 }
 
 function recurringPerOccurrenceSlices(params: {
   graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
   item: GenericPlanningWorkItem;
   dates: readonly string[];
+  hardDateBounds: readonly WeeklyPlanningSchedulerHardDateBoundV5[];
 }): GenericPlanningWorkItem[] {
   const workload = params.graph.workloads.find(
     (candidate) => candidate.id === params.item.workloadFactId,
@@ -70,15 +60,37 @@ function recurringPerOccurrenceSlices(params: {
 
   const targetFactId = params.item.componentId ?? params.item.taskId;
   const recurrences = params.graph.recurrences.filter((recurrence) =>
-    recurrence.taskId === params.item.taskId
-    && recurrence.targetFactId === targetFactId);
+    weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: recurrence.taskId,
+      constraintTargetFactId: recurrence.targetFactId,
+      taskId: params.item.taskId,
+      targetFactId,
+    }));
   if (recurrences.length !== 1) return [params.item];
 
   const recurrence = recurrences[0];
-  const occurrenceDates = recurrenceDates(recurrence, params.dates);
-  if (occurrenceDates === null) return [params.item];
+  const hardBound = hardDateBoundForTargetV5({
+    bounds: params.hardDateBounds,
+    taskId: params.item.taskId,
+    targetFactId,
+  });
+  const boundedDates = filterWeeklyPlanningDatesByHardBoundV5({
+    dates: params.dates,
+    bound: hardBound,
+  });
+  const recurrenceResolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: recurrence.kind,
+    days: recurrence.days,
+    dates: boundedDates,
+  });
+  if (
+    recurrenceResolution.calendarDates === null
+    || recurrenceResolution.invalidDays.length > 0
+  ) {
+    return [params.item];
+  }
 
-  return occurrenceDates.map((date) => ({
+  return recurrenceResolution.calendarDates.map((date) => ({
     ...params.item,
     id: `${params.item.id}:recurrence:${recurrence.id}:${date}`,
     requiredDate: date,
@@ -266,6 +278,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   items: readonly GenericPlanningWorkItem[];
   startDate: string;
   endDate: string;
+  hardDateBounds?: readonly WeeklyPlanningSchedulerHardDateBoundV5[];
   preferredSessionMinutes?: number | null;
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
@@ -275,6 +288,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
         graph: params.graph,
         item,
         dates,
+        hardDateBounds: params.hardDateBounds ?? [],
       }));
   const dayDistributed = dates.length === 0
     ? recurrenceDistributed

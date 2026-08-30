@@ -5,6 +5,9 @@ import {
   normalizePlanningWindowCanonicalV5,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
+  normalizeWeeklyPlanningRecurrenceConsistencyV5,
+} from './weeklyPlanningRecurrenceConsistencyV5';
+import {
   normalizeWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
 import {
@@ -25,13 +28,15 @@ export function canonicalizeWeeklyPlanningSemanticRepresentationV5(
     : { ...document, planningWindow: planningWindow.window };
   const weekday = normalizeWeeklyPlanningWeekdayEncodingV5(withPlanningWindow);
   const temporalClock = normalizeWeeklyPlanningTemporalClockEncodingV5(weekday.document);
+  const recurrence = normalizeWeeklyPlanningRecurrenceConsistencyV5(temporalClock.document);
 
   return {
-    document: temporalClock.document,
+    document: recurrence.document,
     repairs: [
       ...planningWindow.repairs,
       ...weekday.repairs,
       ...temporalClock.repairs,
+      ...recurrence.repairs,
     ],
   };
 }

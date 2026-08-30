@@ -24,9 +24,7 @@ async function seedUser(page) {
   });
 }
 
-test('empty timetable cells remain operable with the keyboard while touch keeps double-tap creation', async ({
-  page,
-}) => {
+async function openTimetable(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedUser(page);
   await page.goto('/');
@@ -36,6 +34,10 @@ test('empty timetable cells remain operable with the keyboard while touch keeps 
     .filter({ hasText: '時間割' })
     .click();
   await expect(page.locator('.timetable-view')).toBeVisible();
+}
+
+test('empty timetable cells remain operable with the keyboard', async ({ page }) => {
+  await openTimetable(page);
 
   const emptyCell = page.getByRole('button', { name: '月曜 1限 授業を追加' });
   await emptyCell.focus();
@@ -43,5 +45,29 @@ test('empty timetable cells remain operable with the keyboard while touch keeps 
   await page.keyboard.press('Enter');
 
   await expect(page.locator('.timetable-editor-modal')).toBeVisible();
-  await expect(page.getByPlaceholder('例: 英語演習 / 情報科学概論')).toBeVisible();
+  await expect(page.getByLabel('授業名')).toBeVisible();
+});
+
+test('pointer users still need a deliberate double tap to create an empty timetable cell', async ({
+  page,
+}) => {
+  await openTimetable(page);
+
+  const emptyCell = page.getByRole('button', { name: '月曜 1限 授業を追加' });
+  const pointerEvent = {
+    pointerId: 1,
+    clientX: 120,
+    clientY: 220,
+  };
+
+  await emptyCell.dispatchEvent('pointerdown', pointerEvent);
+  await emptyCell.dispatchEvent('pointerup', pointerEvent);
+  await expect(page.locator('.timetable-editor-modal')).toBeHidden();
+
+  await page.waitForTimeout(50);
+  await emptyCell.dispatchEvent('pointerdown', pointerEvent);
+  await emptyCell.dispatchEvent('pointerup', pointerEvent);
+
+  await expect(page.locator('.timetable-editor-modal')).toBeVisible();
+  await expect(page.getByLabel('授業名')).toBeVisible();
 });

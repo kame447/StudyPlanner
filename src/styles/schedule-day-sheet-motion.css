@@ -56,6 +56,13 @@
   backface-visibility: hidden;
 }
 
+.month-day-sheet.is-bottom-sheet-dragging {
+  animation: none !important;
+  transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1) !important;
+  transition: none !important;
+  user-select: none;
+}
+
 .month-day-sheet-add {
   will-change: transform, opacity;
 }
@@ -105,13 +112,13 @@
   }
 
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1);
   }
 }
 
 @keyframes month-day-sheet-panel-out {
   from {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, var(--planner-bottom-sheet-drag-y, 0px), 0) scale(1);
   }
 
   to {

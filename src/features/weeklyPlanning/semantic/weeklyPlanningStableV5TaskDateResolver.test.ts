@@ -10,6 +10,9 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  resolveWeeklyPlanningDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
   resolveWeeklyPlanningTaskDateRules,
 } from './weeklyPlanningTaskDateRuleResolver';
 
@@ -74,7 +77,7 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 task date resolver compatibility', () => {
-  it('passes Fact Graph V5 directly to the common resolver without projection', () => {
+  it('passes Fact Graph V5 directly to the common resolver with the captured date snapshot', () => {
     const canonical = canonicalizeWeeklyPlanningSemanticDocumentV5({
       graph: createEmptyWeeklyPlanningFactGraphV5(),
       document: document(),
@@ -86,11 +89,16 @@ describe('Stable V5 task date resolver compatibility', () => {
     });
 
     expect(canonical.status).toBe('applied');
+    const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+      graph: canonical.graph,
+      currentDate: '2026-07-22',
+    });
     const resolved = resolveWeeklyPlanningTaskDateRules({
       graph: canonical.graph,
       currentDate: '2026-07-22',
       planningStartDate: '2026-07-22',
       planningEndDate: '2026-07-28',
+      resolvedDateExpressions,
     });
     const taskId = canonical.localToFactId['task-1'];
 

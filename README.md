@@ -19,11 +19,15 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加ではISBNまたは教材名から共有catalog / NDL Searchを使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量はStudyPlanner側が所有します。
 
 ### ホーム・時間割
 
 ホームでは、今日の予定、次の予定、週間の進捗、継続状況をまとめて確認できます。時間割は授業などの固定予定として管理し、週間計画の空き時間計算にも利用します。
+
+### 学習レポート
+
+ホームの週間進捗から、今日・今週・今月・累計の学習時間、期間ごとの推移、教材・科目別の内訳を確認できます。レポートは主要タブではなく、ホームから必要なときに開く二次画面として扱います。
 
 ### レスポンシブ UI
 
@@ -55,7 +59,11 @@ Save
 
 ## 技術構成
 
-フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication、永続化には Cloud Firestore を利用し、Firebase 未設定の開発環境では一部機能を localStorage へフォールバックできます。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
+フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
+
+管理・分析consoleは、UIからplanner collectionを都度全件scanする構造を最終形にせず、lightweight telemetry、集計read model、restricted diagnostic traceを分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
+
+外部APIはprovider固有responseをproduct domainへ直接流さず、Cloudflare Worker上のintegration boundaryで正規化します。書籍教材の初期実装では共有catalogを先に参照し、miss時だけNDL Searchへ問い合わせることで外部依存と不要なrequestを抑えます。
 
 テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
 
@@ -101,8 +109,11 @@ npm run deploy:firestore-rules
 ```bash
 npx wrangler login
 npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc
+npx wrangler secret put OBSERVABILITY_IDENTITY_SECRET --config workers/ai-proxy/wrangler.jsonc
 npm run deploy:worker
 ```
+
+`OBSERVABILITY_IDENTITY_SECRET` は telemetry 上の利用者識別子を Firebase UID から分離するための server-only secret です。十分に長いランダム値を設定し、フロントエンドへ公開しないでください。
 
 `workers/ai-proxy/wrangler.jsonc` の環境設定はデプロイ先に合わせて設定してください。
 
@@ -135,6 +146,14 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
 
 週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
+
+client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。
+
+学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
+
+管理・分析console、AI/API usage、service-wide telemetry、diagnostic drill-downは [`docs/domains/product-observability/README.md`](./docs/domains/product-observability/README.md) を入口とし、要件は [`console-requirements.md`](./docs/domains/product-observability/spec/console-requirements.md)、内部architectureは [`telemetry-and-read-model.md`](./docs/domains/product-observability/architecture/telemetry-and-read-model.md) を正仕様として扱います。
+
+外部API/providerの採否、利用条件、normalization、fallbackは [`docs/domains/external-integrations/README.md`](./docs/domains/external-integrations/README.md) を入口とし、書籍教材検索の正仕様は [`material-metadata.md`](./docs/domains/external-integrations/spec/material-metadata.md) を参照してください。
 
 過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
 

@@ -1,9 +1,9 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-23
+Updated: 2026-08-28
 
-この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、**責務 × 文書種別 × lifecycle** で一意に決める。
+この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
 ## 1. 配置キー
 
@@ -13,6 +13,9 @@ Updated: 2026-08-23
 
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
+- `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
+- `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
+- `domains/external-integrations/`: 外部provider/APIとの接続、利用条件、adapter境界、fallback、外部dataと内部domain modelの分離
 - `work/`: repository横断のtask運用ルール・template
 - `archive/`: current decisionを所有しない履歴・監査証跡
 
@@ -80,6 +83,34 @@ archiveは現在の実装命令にならない。
 
 client-first executionの正仕様は `spec/client-first-execution-requirements.md`。作業状態はIssue #164を正とし、同じrequirements本文をtask文書へ複製しない。
 
+### Reporting
+
+入口: `docs/domains/reporting/README.md`
+
+学習レポートのuser-facing requirement、情報階層、集計不変条件、navigation contractの正仕様は `spec/learning-report.md` とする。集計の詳細実装はproduction code/testsを正とし、specへfield-level実装を重複させない。
+
+### Product observability
+
+入口: `docs/domains/product-observability/README.md`
+
+正本:
+
+- management / analytics console product requirement、information hierarchy、metric semantics: `spec/console-requirements.md`
+- telemetry、identity、aggregation、read model、privacy / retention、diagnostic drill-down architecture: `architecture/telemetry-and-read-model.md`
+- execution order: `roadmap/current.md`
+
+週間計画traceのruntime schema / lifecycleはこのdomainへ移さず、`domains/weekly-planning/`とIssue #45 / #89をownerとして維持する。product-observabilityはservice-wide projection / consumerとして扱う。
+
+### External integrations
+
+入口: `docs/domains/external-integrations/README.md`
+
+書籍教材metadataの検索、共有catalog、provider fallback、manual fallbackの正仕様は `spec/material-metadata.md` とする。
+
+外部provider/APIの採否、adapter境界、利用条件、quota、fallbackなどの調査証拠はこのdomainの`work/`へ置く。現在の全体追跡Issueは#187である。
+
+教材、予定、週間計画など各product domainの意味・lifecycle・永続modelそのものはexternal-integrationsへ移さない。外部サービス固有のresponseや運用条件を内部domainへ漏らさない接続境界だけを所有する。
+
 ## 4. Work record rules
 
 未完了taskは責務domainの `work/` に置く。横断的なtask template/運用規則だけ `docs/work/` に置く。
@@ -108,7 +139,7 @@ historical文書内の旧path/branch/PRは当時の証跡として残してよ�
 
 ### Archive invariant transfer gate
 
-**文書をarchiveへ移すことと、その文書に含まれる概念を廃止することは別である。**
+文書をarchiveへ移すことと、その文書に含まれる概念を廃止することは別である。
 
 canonical / design / task / audit文書をarchiveへ移す前に、必ず次を行う。
 

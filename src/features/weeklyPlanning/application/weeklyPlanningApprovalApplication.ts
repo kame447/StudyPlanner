@@ -23,9 +23,15 @@ import {
 import {
   resolveWeeklyPlanningApprovalRuntime,
 } from './weeklyPlanningApprovalRuntimeResolver';
+import {
+  recordWeeklyPlanningApprovalCompleted,
+  recordWeeklyPlanningApprovalFailure,
+  recordWeeklyPlanningApprovalStarted,
+} from './weeklyPlanningOutcomeObservability';
 
 interface WeeklyPlanningApprovalApplicationInput {
   userId: string | null | undefined;
+  featureSessionId?: string | null;
   plans: Plan[];
   approvalOperations: readonly WeeklyDraftApprovalOperation[];
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
@@ -34,6 +40,18 @@ interface WeeklyPlanningApprovalApplicationInput {
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
 }
+
+export interface WeeklyPlanningApprovalApplicationServices {
+  recordApprovalStarted: typeof recordWeeklyPlanningApprovalStarted;
+  recordApprovalCompleted: typeof recordWeeklyPlanningApprovalCompleted;
+  recordApprovalFailure: typeof recordWeeklyPlanningApprovalFailure;
+}
+
+const defaultServices: WeeklyPlanningApprovalApplicationServices = {
+  recordApprovalStarted: recordWeeklyPlanningApprovalStarted,
+  recordApprovalCompleted: recordWeeklyPlanningApprovalCompleted,
+  recordApprovalFailure: recordWeeklyPlanningApprovalFailure,
+};
 
 type PlanDraftWithEstimateMetadata = PlanDraft & {
   weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
@@ -80,6 +98,7 @@ function cloneEstimateMetadata(
 
 export async function approveWeeklyPlanningDraftBlocks({
   userId,
+  featureSessionId,
   plans,
   approvalOperations,
   saveWeeklyApprovedPlan,
@@ -87,8 +106,11 @@ export async function approveWeeklyPlanningDraftBlocks({
   getState,
   dispatch,
   onOperationCompleted,
-}: WeeklyPlanningApprovalApplicationInput): Promise<void> {
+}: WeeklyPlanningApprovalApplicationInput,
+services: WeeklyPlanningApprovalApplicationServices = defaultServices,
+): Promise<void> {
   const authenticatedUserId = userId?.trim();
+  const planningSessionId = featureSessionId?.trim();
   if (!authenticatedUserId) return;
 
   const snapshot = getState();
@@ -104,6 +126,13 @@ export async function approveWeeklyPlanningDraftBlocks({
   };
   const begun = dispatch({ type: 'begin_approval', pending });
   if (!ownsPendingApproval(begun, pending)) return;
+  if (planningSessionId) {
+    services.recordApprovalStarted({
+      featureSessionId: planningSessionId,
+      pending,
+      previewCount: blocks.length,
+    });
+  }
 
   try {
     const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
@@ -192,17 +221,43 @@ export async function approveWeeklyPlanningDraftBlocks({
     const message = failed
       ? '一部の仮予定を保存できませんでした。未保存分だけ再試行できます。'
       : `${completedBlockIds.length}件の仮予定を通常予定として保存しました。`;
-    dispatch({
+    const completedState = dispatch({
       type: 'complete_approval',
       pending,
       completedBlockIds,
       assistantMessage: createWeeklyPlanningApplicationMessage('assistant', message),
     });
-    if (failed) throw new Error(message);
+    if (failed) {
+      if (planningSessionId) {
+        services.recordApprovalFailure({
+          featureSessionId: planningSessionId,
+          pending,
+          stateRevision: completedState.revision,
+          previewCount: blocks.length,
+        });
+      }
+      throw new Error(message);
+    }
+    if (planningSessionId) {
+      services.recordApprovalCompleted({
+        featureSessionId: planningSessionId,
+        pending,
+        completedState,
+        previewCount: blocks.length,
+      });
+    }
   } catch (error) {
     const current = getState();
     if (ownsPendingApproval(current, pending)) {
-      dispatch({ type: 'fail_approval', pending });
+      const failedState = dispatch({ type: 'fail_approval', pending });
+      if (planningSessionId) {
+        services.recordApprovalFailure({
+          featureSessionId: planningSessionId,
+          pending,
+          stateRevision: failedState.revision,
+          previewCount: blocks.length,
+        });
+      }
     }
     throw error;
   }

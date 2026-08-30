@@ -1,4 +1,8 @@
-import { addDays, minutesBetween, minutesFromTime } from './date';
+import {
+  addDays,
+  minutesFromTime,
+  parseTimeToMinutes,
+} from './date';
 import type { MonthEvent, MonthEventRepeat } from '../types/domain';
 
 export const MONTH_EVENT_REPEAT_OPTIONS: Array<{
@@ -20,14 +24,31 @@ function isSameOrAfterDate(targetDate: string, baseDate: string): boolean {
   return targetDate.localeCompare(baseDate) >= 0;
 }
 
-export function getMonthEventRepeatLabel(repeat: MonthEventRepeat): string {
-  return (
-    MONTH_EVENT_REPEAT_OPTIONS.find((option) => option.value === repeat)?.label ??
-    '繰り返しなし'
+function calendarDayNumber(dateString: string): number {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+export function getMonthEventEndDate(
+  event: Pick<MonthEvent, 'date' | 'endDate'>,
+): string {
+  const candidate = event.endDate?.trim();
+
+  return candidate && candidate.localeCompare(event.date) >= 0
+    ? candidate
+    : event.date;
+}
+
+function getMonthEventSpanDays(
+  event: Pick<MonthEvent, 'date' | 'endDate'>,
+): number {
+  return Math.max(
+    0,
+    calendarDayNumber(getMonthEventEndDate(event)) - calendarDayNumber(event.date),
   );
 }
 
-export function doesMonthEventOccurOnDate(
+function isMonthEventOccurrenceStartDate(
   event: MonthEvent,
   targetDate: string,
 ): boolean {
@@ -68,18 +89,57 @@ export function doesMonthEventOccurOnDate(
   );
 }
 
+export function getMonthEventOccurrenceStartDate(
+  event: MonthEvent,
+  targetDate: string,
+): string | null {
+  if (!isSameOrAfterDate(targetDate, event.date)) {
+    return null;
+  }
+
+  const spanDays = getMonthEventSpanDays(event);
+
+  for (let offset = 0; offset <= spanDays; offset += 1) {
+    const candidateDate = addDays(targetDate, -offset);
+
+    if (candidateDate.localeCompare(event.date) < 0) {
+      break;
+    }
+
+    if (
+      isMonthEventOccurrenceStartDate(event, candidateDate) &&
+      targetDate.localeCompare(addDays(candidateDate, spanDays)) <= 0
+    ) {
+      return candidateDate;
+    }
+  }
+
+  return null;
+}
+
+export function getMonthEventRepeatLabel(repeat: MonthEventRepeat): string {
+  return (
+    MONTH_EVENT_REPEAT_OPTIONS.find((option) => option.value === repeat)?.label ??
+    '繰り返しなし'
+  );
+}
+
+export function doesMonthEventOccurOnDate(
+  event: MonthEvent,
+  targetDate: string,
+): boolean {
+  return getMonthEventOccurrenceStartDate(event, targetDate) !== null;
+}
+
 export function getPreviousMonthEventOccurrenceDate(
   event: MonthEvent,
   targetDate: string,
 ): string | null {
-  if (targetDate.localeCompare(event.date) <= 0) {
-    return null;
-  }
-
-  let candidateDate = addDays(targetDate, -1);
+  const currentOccurrenceStart = getMonthEventOccurrenceStartDate(event, targetDate);
+  let candidateDate = addDays(currentOccurrenceStart ?? targetDate, -1);
 
   while (candidateDate.localeCompare(event.date) >= 0) {
-    if (doesMonthEventOccurOnDate(event, candidateDate)) {
+    if (isMonthEventOccurrenceStartDate(event, candidateDate)) {
       return candidateDate;
     }
 
@@ -99,10 +159,57 @@ export function sortMonthEvents(events: MonthEvent[]): MonthEvent[] {
   });
 }
 
-export function formatMonthEventTimeRange(event: Pick<MonthEvent, 'startTime' | 'endTime'>) {
+export function formatMonthEventTimeRange(
+  event: Pick<MonthEvent, 'startTime' | 'endTime'>,
+) {
   return `${event.startTime}-${event.endTime}`;
 }
 
-export function formatMonthEventDuration(event: Pick<MonthEvent, 'startTime' | 'endTime'>) {
-  return minutesBetween(event.startTime, event.endTime);
+export function formatMonthEventTimeRangeForDate(
+  event: MonthEvent,
+  targetDate: string,
+): string {
+  const occurrenceStart = getMonthEventOccurrenceStartDate(event, targetDate);
+
+  if (!occurrenceStart) {
+    return formatMonthEventTimeRange(event);
+  }
+
+  const spanDays = getMonthEventSpanDays(event);
+
+  if (spanDays === 0) {
+    return formatMonthEventTimeRange(event);
+  }
+
+  const isAllDay =
+    event.startTime === '00:00' &&
+    (event.endTime === '24:00' ||
+      event.endTime === '00:00' ||
+      event.endTime === '23:59');
+
+  if (isAllDay) {
+    return '終日';
+  }
+
+  const occurrenceEnd = addDays(occurrenceStart, spanDays);
+
+  if (targetDate === occurrenceStart) {
+    return `${event.startTime}〜`;
+  }
+
+  if (targetDate === occurrenceEnd) {
+    return `〜${event.endTime}`;
+  }
+
+  return '終日';
+}
+
+export function formatMonthEventDuration(
+  event: Pick<MonthEvent, 'date' | 'endDate' | 'startTime' | 'endTime'>,
+) {
+  return (
+    getMonthEventSpanDays(event) * 24 * 60 +
+    parseTimeToMinutes(event.endTime, 'end') -
+    parseTimeToMinutes(event.startTime, 'start')
+  );
 }

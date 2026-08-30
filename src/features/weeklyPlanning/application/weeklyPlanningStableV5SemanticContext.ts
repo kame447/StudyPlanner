@@ -1,7 +1,10 @@
 import {
-  userPlanningContextPromptSummaryV1,
-} from '../../userPlanningContext/userPlanningContextSpace';
+  userPlanningContextPromptSelectionV2,
+} from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import {
+  getWeeklyPlanningRegisteredMaterialContextV5,
+} from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningMessage } from '../types';
@@ -93,12 +96,23 @@ function learningStrategyProposalsFromState(
     }));
 }
 
+function userPlanningContextRelevantScopeKeys(
+  active: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>,
+): string[] {
+  return [
+    ...active.tasks.flatMap((task) => [task.title, task.category]),
+    ...active.components.flatMap((component) => [component.label, component.role]),
+    ...active.workloads.flatMap((workload) => [workload.unitCode, workload.unitLabel]),
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
 export function createStableV5SemanticPublicStateSummary(params: {
   graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
   ownerId?: string;
   currentDate?: string;
+  userText?: string;
 }): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   return {
@@ -168,11 +182,18 @@ export function createStableV5SemanticPublicStateSummary(params: {
       reason: uncertainty.reason,
       sourceText: uncertainty.source.sourceText,
     })),
+    registeredMaterials: params.ownerId
+      ? getWeeklyPlanningRegisteredMaterialContextV5({
+          ownerId: params.ownerId,
+          userText: params.userText,
+        })
+      : [],
     userPlanningContext: params.ownerId && params.currentDate
-      ? userPlanningContextPromptSummaryV1({
+      ? userPlanningContextPromptSelectionV2({
           ownerId: params.ownerId,
           currentDate: params.currentDate,
-        })
+          relevantScopeKeys: userPlanningContextRelevantScopeKeys(active),
+        }).map(({ scope: _scope, relevanceTier: _relevanceTier, ...record }) => record)
       : [],
     lastAssistantMessage:
       [...params.messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,

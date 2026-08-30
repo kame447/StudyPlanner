@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
-import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import {
+  doesMonthEventOccurOnDate,
+  formatMonthEventTimeRangeForDate,
+  sortMonthEvents,
+} from '../lib/monthEvents';
 import type { MonthEvent } from '../types/domain';
 
 const ACCENT_CLASSES = ['mint', 'violet', 'blue', 'amber', 'pink'];
@@ -11,10 +15,6 @@ function formatHeading(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(date.getTime())) return dateString;
   return `${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAY_LABELS[date.getDay()]}`;
-}
-
-function isAllDay(event: MonthEvent): boolean {
-  return event.startTime === '00:00' && (event.endTime === '24:00' || event.endTime === '23:59');
 }
 
 interface MonthDaySheetProps {
@@ -107,14 +107,7 @@ export function MonthDaySheet({
                 disabled={isClosing}
               >
                 <span className="month-day-sheet-time">
-                  {isAllDay(event) ? (
-                    <strong>終日</strong>
-                  ) : (
-                    <>
-                      <strong>{event.startTime}</strong>
-                      <small>{event.endTime}</small>
-                    </>
-                  )}
+                  <strong>{formatMonthEventTimeRangeForDate(event, renderedDate)}</strong>
                 </span>
                 <span className="month-day-sheet-bar" aria-hidden="true" />
                 <strong className="month-day-sheet-title">{event.title}</strong>

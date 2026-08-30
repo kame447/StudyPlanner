@@ -1,5 +1,8 @@
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
+  createWeeklyPlanningPlacementGraphViewV5,
+} from '../semantic/weeklyPlanningPlacementGraphViewV5';
+import {
   runWeeklyPlanningStableV5PlanningStage,
 } from './weeklyPlanningStableV5PlanningStage';
 import {
@@ -32,6 +35,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   if (semanticTurn.status === 'failure') return semanticTurn.output;
 
   const { requestContext, semantic } = semanticTurn;
+  const semanticObservability = {
+    repairUsed: semantic.normalization.diagnostics.repairAttempted,
+    schedulerVersion: null,
+    previewCount: null,
+    unscheduledCount: null,
+  } as const;
   stageWeeklyPlanningStableV5Turn({ input, semanticTurn });
 
   const evaluation = runWeeklyPlanningStableV5PlanningStage({
@@ -44,19 +53,33 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     graph: semantic.graph,
     evaluation,
   });
-  if (responseRoute.kind === 'respond') return responseRoute.output;
+  if (responseRoute.kind === 'respond') {
+    return {
+      ...responseRoute.output,
+      observability: semanticObservability,
+    };
+  }
 
   const preview = executeWeeklyPlanningStableV5Preview({
     input,
-    graph: semantic.graph,
+    graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph),
     schedulerInput: responseRoute.schedulerInput,
     requestContext,
   });
 
-  return weeklyPlanningStableV5ResponseRouter.afterPreview({
+  const output = weeklyPlanningStableV5ResponseRouter.afterPreview({
     input,
     semanticTurn,
     evaluation,
     preview,
   });
+  return {
+    ...output,
+    observability: {
+      repairUsed: semantic.normalization.diagnostics.repairAttempted,
+      schedulerVersion: preview.schedulerVersion,
+      previewCount: preview.candidates.length,
+      unscheduledCount: preview.unscheduledWorkItemIds.length,
+    },
+  };
 }

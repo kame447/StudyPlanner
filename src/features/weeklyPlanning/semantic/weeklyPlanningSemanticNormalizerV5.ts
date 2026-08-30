@@ -3,6 +3,8 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
+  tryWeeklyPlanningDenseTurnCompletenessRetryV5,
+} from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
 import {
   tryFocusedAuthorizationRouteV5,
@@ -22,7 +24,7 @@ import {
   type WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import {
-  SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+  semanticNormalizerCompletionTokenBudgetV5,
   semanticNormalizerErrorMessage,
   WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
@@ -134,7 +136,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             messages: baseMessages,
             temperature: 0,
             responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
-            maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+            maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(input),
           },
         },
       });
@@ -168,6 +170,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       recordInitialValidation({ input, validation: initialValidation });
 
       if (initialValidation.document) {
+        const denseCompletenessRetry = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({
+          run,
+          baseMessages,
+          initialResponse,
+          initialDocument: initialValidation.document,
+        });
+        if (denseCompletenessRetry) return finish(denseCompletenessRetry);
+
         const completenessRetry = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({
           run,
           baseMessages,

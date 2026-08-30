@@ -589,6 +589,7 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
   try {
     const upstreamJson = JSON.parse(upstreamText) as {
       choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: unknown;
     };
     const content = upstreamJson.choices?.[0]?.message?.content?.trim();
     if (!content) {
@@ -596,7 +597,10 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
         error: 'OpenAI response content was empty.',
       });
     }
-    return jsonResponse(request, env, 200, { content });
+    return jsonResponse(request, env, 200, {
+      content,
+      ...(upstreamJson.usage === undefined ? {} : { usage: upstreamJson.usage }),
+    });
   } catch {
     return jsonResponse(request, env, 502, {
       error: 'OpenAI response could not be parsed.',
@@ -706,6 +710,7 @@ async function handlePlanningAttachmentRequest(
   try {
     const upstreamJson = JSON.parse(upstreamText) as {
       choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: unknown;
     };
     const content = upstreamJson.choices?.[0]?.message?.content?.trim();
     if (!content) {
@@ -719,7 +724,10 @@ async function handlePlanningAttachmentRequest(
         error: 'AI planning image analysis response could not be parsed.',
       });
     }
-    return jsonResponse(request, env, 200, { result });
+    return jsonResponse(request, env, 200, {
+      result,
+      ...(upstreamJson.usage === undefined ? {} : { usage: upstreamJson.usage }),
+    });
   } catch {
     return jsonResponse(request, env, 502, {
       error: 'AI planning image analysis response could not be parsed.',

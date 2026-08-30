@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
 import { resolveAdminRoute } from '../lib/adminRoutes';
-import { AdminAppReturnButton } from './AdminAppReturnButton';
+import { AdminAiApiPage } from './AdminAiApiPage';
+import { AdminOverviewPage } from './AdminOverviewPage';
 import { AdminUserDetailPage } from './AdminUserDetailPage';
 import { AdminUsersPage } from './AdminUsersPage';
 
@@ -12,22 +12,8 @@ interface AdminRoutesProps {
 export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
   const route = resolveAdminRoute(path);
 
-  useEffect(() => {
-    if (route.type === 'redirect-to-users') {
-      navigate('/admin/users', { replace: true });
-    }
-  }, [navigate, route.type]);
-
-  if (route.type === 'redirect-to-users') {
-    return (
-      <main className="admin-shell">
-        <AdminAppReturnButton onReturn={() => navigate('/')} />
-
-        <section className="admin-state-card panel">
-          <strong>管理者画面へ移動しています</strong>
-        </section>
-      </main>
-    );
+  if (route.type === 'overview') {
+    return <AdminOverviewPage navigate={(nextPath) => navigate(nextPath)} />;
   }
 
   if (route.type === 'users') {
@@ -41,6 +27,10 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
         navigate={(nextPath) => navigate(nextPath)}
       />
     );
+  }
+
+  if (route.type === 'ai-api') {
+    return <AdminAiApiPage />;
   }
 
   return (

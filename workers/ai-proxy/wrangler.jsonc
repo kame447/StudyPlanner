@@ -2,6 +2,11 @@
   "name": "studyplanner-ai-proxy",
   "main": "src/traceWorker.ts",
   "compatibility_date": "2026-04-10",
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
   "vars": {
     "FIREBASE_WEB_API_KEY": "AIzaSyAMS_X5k0BFL2dtoLOGjPV22lcUj5gI7oo",
     "ALLOWED_ORIGIN": "https://studyplannner.pages.dev,https://studyplanner.pages.dev,https://agent-trace-production-recov.studyplannner.pages.dev,https://agent-trace-log-schema-simpl.studyplannner.pages.dev,http://localhost:5173,https://localhost:5173,https://localhost:4173,http://127.0.0.1:5173,https://127.0.0.1:5173,https://127.0.0.1:4173,https://192.168.0.5:5173,https://192.168.0.5:4173",

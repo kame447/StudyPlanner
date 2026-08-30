@@ -1,7 +1,7 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 References:
 - [Human Grounding Policy](../policies/human-grounding.md)
@@ -24,7 +24,8 @@ AIの自然な日本語や一つのsemantic phrasingをuniversal oracleとしな
 - proposal lifecycle/acceptance scope
 - current-week/durable promotion boundary
 - authoritative availability / not-before / scheduling distribution
-- reserve/slack behavior
+- hard temporal bound resolution / target applicability / scheduler-input compilation
+- reserve/slack behavior when the resulting horizon is exactly seven days
 - readiness/scheduler
 - preview/approval/save
 - persistence/recovery/trace
@@ -40,7 +41,8 @@ Historical V4 roleplay、closed task、auditが重要なfailure caseを持って
 
 特に次を「古い実装詳細」と誤認して落とさない。
 
-- 7日horizonのcurrent reserve/slack behavior
+- resulting planning horizonが7日間の場合のcurrent reserve/slack behavior
+- accepted hard temporal boundをdefault 7日で切り捨てず、task/component scopeを越えて漏らさないこと
 - request-timeより前へ配置しないこと
 - existing plans/timetable/life hard constraintsを空き時間にしないこと
 - progress / remaining / current targetの分離

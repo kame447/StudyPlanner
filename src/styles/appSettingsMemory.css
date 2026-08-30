@@ -1,0 +1,140 @@
+.memory-settings-panel {
+  gap: 14px;
+}
+
+.memory-settings-intro {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-sync-row,
+.memory-settings-toolbar,
+.memory-record-meta,
+.memory-editor-actions,
+.memory-record-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memory-settings-toolbar {
+  justify-content: space-between;
+}
+
+.memory-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-record-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.memory-record-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.memory-record-main p {
+  margin: 0;
+  color: var(--text-secondary, #667085);
+  overflow-wrap: anywhere;
+}
+
+.memory-record-text {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.memory-record-meta {
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-secondary, #667085);
+}
+
+.memory-record-actions {
+  flex: 0 0 auto;
+}
+
+.memory-editor-card {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-editor-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.memory-editor-field input,
+.memory-editor-field select,
+.memory-editor-field textarea {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color, rgba(15, 23, 42, 0.14));
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: inherit;
+  padding: 9px 11px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.memory-editor-field textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.memory-editor-field input:focus,
+.memory-editor-field select:focus,
+.memory-editor-field textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent, #2563eb) 30%, transparent);
+  outline-offset: 1px;
+  border-color: var(--accent, #2563eb);
+}
+
+.memory-editor-actions {
+  justify-content: flex-end;
+}
+
+.memory-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+}
+
+.settings-inline-error {
+  margin: 0;
+  color: var(--danger, #b42318);
+  font-size: 13px;
+}
+
+.confidence-badge.muted {
+  opacity: 0.72;
+}
+
+.icon-button.danger {
+  color: var(--danger, #b42318);
+}
+
+@media (max-width: 640px) {
+  .memory-record-card {
+    align-items: stretch;
+  }
+
+  .memory-record-actions {
+    align-self: center;
+  }
+
+  .memory-settings-toolbar {
+    align-items: center;
+  }
+}

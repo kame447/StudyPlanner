@@ -90,12 +90,20 @@ function scopeTotalForTarget(params: {
   return candidates.length === 1 ? candidates[0] : null;
 }
 
+function concreteMaterialProgressQuestion(label: string): string {
+  return `「${label}」の全体量を教えてください。問題集なら全何問、参考書なら全何ページ、単語帳なら全何語、章単位なら全何章、という形で大丈夫です。あわせて、今どこまで終わっているかも同じ単位で教えてください。`;
+}
+
 function progressQuestion(params: {
   label: string;
   scopeTotal: WorkloadFactV5 | null;
+  material?: boolean;
 }): string {
   if (params.scopeTotal) {
     return `「${params.label}」は全${params.scopeTotal.amount}${params.scopeTotal.unitLabel}のうち、今どこまで終わっていますか？`;
+  }
+  if (params.material) {
+    return concreteMaterialProgressQuestion(params.label);
   }
   return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
 }
@@ -186,6 +194,7 @@ export function stableV5MissingSchedulableWorkQuestion(
           targetFactId: componentWithNoWorkload.id,
           targetKind: 'component',
         }),
+        material: componentWithNoWorkload.role === 'material',
       }),
       questionCode: 'missing_schedulable_work',
       taskTitles,
@@ -275,8 +284,13 @@ function semanticUncertaintyQuestion(
     : null;
   if (uncertainty?.field === 'work_breakdown' && uncertainty.targetFactId) {
     const task = graph.tasks.find((fact) => fact.id === uncertainty.targetFactId);
-    const label = task?.title?.trim() || 'この予定';
-    return `「${label}」は、まず中身を分けて考えましょう。今残っているものをざっくり教えてもらえますか？`;
+    const materialComponents = graph.components.filter((component) =>
+      component.taskId === uncertainty.targetFactId && component.role === 'material');
+    if (materialComponents.length === 1) {
+      return concreteMaterialProgressQuestion(materialComponents[0].label.trim());
+    }
+    const label = task?.title?.trim() || 'この作業';
+    return progressQuestion({ label, scopeTotal: null });
   }
   const sourceText = uncertainty
     ? questionSourceExcerpt(uncertainty.source.sourceText)

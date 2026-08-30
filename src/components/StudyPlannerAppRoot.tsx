@@ -1,6 +1,7 @@
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { useCallback, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import App from '../App';
+import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
 import {
   WeeklyPlanningPersonalizationProvider,
 } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
@@ -33,7 +34,7 @@ function StartupSurface({
       <div style={loading ? { display: 'none' } : undefined}>
         {children}
       </div>
-      {loading ? <SplashScreen /> : null}
+      {loading ? <SplashScreen fixedLight /> : null}
     </>
   );
 }
@@ -72,13 +73,15 @@ function ConsentedStudyPlannerApp({
   }
 
   return (
-    <WeeklyPlanningPersonalizationProvider
-      profile={personalization.profile}
-      setWeekStartsOn={personalization.setWeekStartsOn}
-      resetProfile={personalization.resetProfile}
-    >
-      <App />
-    </WeeklyPlanningPersonalizationProvider>
+    <UserPlanningContextProvider ownerId={userId}>
+      <WeeklyPlanningPersonalizationProvider
+        profile={personalization.profile}
+        setWeekStartsOn={personalization.setWeekStartsOn}
+        resetProfile={personalization.resetProfile}
+      >
+        <App />
+      </WeeklyPlanningPersonalizationProvider>
+    </UserPlanningContextProvider>
   );
 }
 

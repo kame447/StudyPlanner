@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-08-23
+Updated: 2026-08-27
 
 References:
 - [Domain index](../README.md)
@@ -46,11 +46,15 @@ Provider failure, malformed output, validation failure or repair failure does no
 
 ## Time semantics
 
-Natural-language time meaning belongs to AI; calendar arithmetic and placement lower bounds belong to the application.
+Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
 
 The request clock is distinct from UI `selectedDate`. New future-plan blocks must not be placed before the deterministic `notBefore` boundary.
 
 A relative date can remain symbolic at the semantic boundary and be resolved deterministically from captured calendar context. Do not let renderer wording or current UI navigation become the source of date truth.
+
+For accepted active date constraints used by movable-work placement, the application resolves supported date expressions and compiles task/component applicability into scheduler-facing absolute hard date bounds and preferred placements before downstream distribution/placement. Downstream placement consumes that compiled representation rather than independently re-resolving the same deadline / earliest-start / latest-end / preferred-window meaning from raw semantic facts. Task-level constraints may apply to component work; component-specific constraints must not leak to sibling components. Removed or superseded facts must not remain effective through a downstream re-read.
+
+Unresolved or contradictory hard date constraints fail closed at scheduler-input compilation rather than being silently weakened.
 
 ## Quantity roles
 
@@ -128,7 +132,7 @@ application candidate
 
 Unaccepted proposals do not affect scheduling. Readiness, question necessity, authoritative occupied sources, placement and feasibility are application decisions.
 
-For a current seven-day Stable V5 horizon, scheduling uses six normal placement days plus a seventh reserve day and prioritizes normal days before reserve. The intent is to retain recovery/slack capacity rather than pre-fill the entire week. Detailed balancing/scoring constants are current scheduler policy, not semantic truth.
+When the resulting Stable V5 planning horizon is exactly seven days, scheduling uses six normal placement days plus a seventh reserve day and prioritizes normal days before reserve. The default/fallback horizon is not an unconditional seven-day cap: applicable hard temporal bounds can require a longer usable horizon, and the scheduler still enforces the compiled hard bounds across that horizon. Detailed horizon, balancing and scoring behavior is owned by current scheduler policy, not semantic truth.
 
 ## Availability
 

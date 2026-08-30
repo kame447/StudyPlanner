@@ -1,0 +1,27 @@
+.admin-overview-chart-labels span,
+.admin-overview-bar-item {
+  min-width: 0;
+}
+
+.admin-overview-chart-labels span {
+  overflow: hidden;
+  text-overflow: clip;
+  text-align: center;
+}
+
+.admin-overview-bar-chart {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-overview-bar-item small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+@media screen and (max-width: 820px) {
+  .admin-overview-bar-item small:not(:first-child) {
+    font-size: 0.5rem;
+  }
+}

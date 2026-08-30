@@ -11,9 +11,15 @@ import {
   projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5,
 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 
+export type WeeklyPlanningActiveSchedulerGraphViewV5 =
+  WeeklyPlanningGenericSchedulerGraphView
+  & {
+    readonly studyContexts: ReadonlyArray<WeeklyPlanningFactGraphV5['studyContexts'][number]>;
+  };
+
 export function createWeeklyPlanningActiveSchedulerGraphViewV5(
   graph: WeeklyPlanningFactGraphV5,
-): WeeklyPlanningGenericSchedulerGraphView {
+): WeeklyPlanningActiveSchedulerGraphViewV5 {
   const availabilityDeclarations = projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5(
     filterActiveWeeklyPlanningFactsV5(graph, graph.availabilityDeclarations),
   );
@@ -22,6 +28,7 @@ export function createWeeklyPlanningActiveSchedulerGraphViewV5(
     revision: graph.revision,
     planningWindows: filterActiveWeeklyPlanningFactsV5(graph, graph.planningWindows),
     tasks: filterActiveWeeklyPlanningFactsV5(graph, graph.tasks),
+    studyContexts: filterActiveWeeklyPlanningFactsV5(graph, graph.studyContexts),
     components: filterActiveWeeklyPlanningFactsV5(graph, graph.components),
     workloads: filterActiveWeeklyPlanningFactsV5(graph, graph.workloads),
     effortEstimates: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),

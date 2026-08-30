@@ -13,16 +13,21 @@ import {
   requestTimetableOcr,
   type TimetableOcrResult,
 } from '../lib/timetableOcrImport';
+import { resolveTimetableAlternatingWeek } from '../lib/timetableCalendar';
+import { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';
 import type {
   RecurrenceWeekday,
   ScheduleTemplate,
+  ScheduleTemplateAlternatingWeek,
   ScheduleTemplateDraft,
+  ScheduleTemplateWeekInterval,
+  TimetableAlternatingWeek,
   TimetablePeriod,
   TimetablePeriodDraft,
   TimetableTerm,
   TimetableTermDraft,
-  TimetableTermKind,
 } from '../types/domain';
+import '../styles/timetable-period-config.css';
 
 const TimetableOcrImportDialog = lazy(() =>
   import('./TimetableOcrImportDialog').then((module) => ({
@@ -33,9 +38,11 @@ const TimetableOcrImportDialog = lazy(() =>
 interface TimetableViewProps {
   userId: string;
   activeTerm: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
   scheduleTemplates: ScheduleTemplate[];
   onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  onDeleteTerm: (term: TimetableTerm) => Promise<void>;
   onClearTermData: (term: TimetableTerm) => Promise<void>;
   onSaveTimetablePeriod: (
     draft: TimetablePeriodDraft,
@@ -53,6 +60,15 @@ type DisplayPeriod = TimetablePeriodDraft & {
   id?: string;
 };
 
+interface PeriodFormState {
+  id?: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  usesAlternatingWeeks: boolean;
+  alternatingWeekAnchorDate: string;
+}
+
 const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'mon', label: '月' },
   { value: 'tue', label: '火' },
@@ -61,20 +77,6 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'fri', label: '金' },
   { value: 'sat', label: '土' },
 ];
-
-const TERM_KIND_OPTIONS: Array<{ value: TimetableTermKind; label: string }> = [
-  { value: 'firstHalf', label: '前期' },
-  { value: 'secondHalf', label: '後期' },
-  { value: 'term1', label: '1学期' },
-  { value: 'term2', label: '2学期' },
-  { value: 'term3', label: '3学期' },
-  { value: 'term4', label: '4学期' },
-  { value: 'fullYear', label: '通年' },
-];
-
-const TERM_YEARS = [2024, 2025, 2026, 2027];
-const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
-const EMPTY_CELL_TAP_MOVE_THRESHOLD_PX = 10;
 
 const DEFAULT_PERIODS: DisplayPeriod[] = [
   { userId: '', termId: 'default', periodNumber: 1, label: '1', startTime: '08:40', endTime: '10:10' },
@@ -86,25 +88,15 @@ const DEFAULT_PERIODS: DisplayPeriod[] = [
 ];
 
 const TIMETABLE_IMPORT_FILE_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg,.pdf,application/pdf';
+const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
+const EMPTY_CELL_TAP_MOVE_THRESHOLD_PX = 10;
 
 function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
 }
 
 function getTimeKey(startTime: string | null, endTime: string | null): string | null {
-  if (!startTime || !endTime) {
-    return null;
-  }
-
-  return `${startTime}-${endTime}`;
-}
-
-function getTermKindLabel(kind: TimetableTermKind): string {
-  return TERM_KIND_OPTIONS.find((option) => option.value === kind)?.label ?? '通年';
-}
-
-function createTermLabel(year: number, kind: TimetableTermKind): string {
-  return `${year}年 ${getTermKindLabel(kind)}`;
+  return startTime && endTime ? `${startTime}-${endTime}` : null;
 }
 
 function toMinutes(time: string): number {
@@ -127,10 +119,6 @@ function hasValidPeriodTime(period: DisplayPeriod): period is DisplayPeriod & {
 }
 
 function getPeriodTimeStatus(period: DisplayPeriod): 'valid' | 'partial' | 'invalid' {
-  if (!period.startTime && !period.endTime) {
-    return 'partial';
-  }
-
   if (!hasCompletePeriodTime(period)) {
     return 'partial';
   }
@@ -138,11 +126,49 @@ function getPeriodTimeStatus(period: DisplayPeriod): 'valid' | 'partial' | 'inva
   return hasValidPeriodTime(period) ? 'valid' : 'invalid';
 }
 
+function getTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function createPeriodForm(term: TimetableTerm | null): PeriodFormState {
+  if (!term) {
+    return {
+      label: '',
+      startDate: '',
+      endDate: '',
+      usesAlternatingWeeks: false,
+      alternatingWeekAnchorDate: '',
+    };
+  }
+
+  return {
+    id: term.id,
+    label: term.label,
+    startDate: term.startDate ?? '',
+    endDate: term.endDate ?? '',
+    usesAlternatingWeeks: term.usesAlternatingWeeks === true,
+    alternatingWeekAnchorDate: term.alternatingWeekAnchorDate ?? term.startDate ?? '',
+  };
+}
+
+function formatPeriodRange(term: TimetableTerm | null): string {
+  if (!term?.startDate && !term?.endDate) {
+    return '期間未設定';
+  }
+
+  return `${term.startDate ?? '開始日未設定'} 〜 ${term.endDate ?? '終了日未設定'}`;
+}
+
 function createTemplateDraft(
   userId: string,
   termId: string,
   weekday: RecurrenceWeekday,
   period: DisplayPeriod & { startTime: string; endTime: string },
+  activeTerm: TimetableTerm | null,
 ): ScheduleTemplateDraft {
   return {
     userId,
@@ -155,6 +181,9 @@ function createTemplateDraft(
     termId,
     periodNumber: period.periodNumber,
     classroom: '',
+    alternatingWeek: activeTerm?.usesAlternatingWeeks ? 'both' : undefined,
+    weekInterval: 1,
+    weekIntervalAnchorDate: null,
     memo: '',
     active: true,
   };
@@ -174,6 +203,9 @@ function createTemplateDraftFromTemplate(
     termId: getTemplateTermId(template),
     periodNumber: template.periodNumber,
     classroom: template.classroom ?? '',
+    alternatingWeek: template.alternatingWeek ?? 'both',
+    weekInterval: template.weekInterval ?? 1,
+    weekIntervalAnchorDate: template.weekIntervalAnchorDate ?? null,
     memo: template.memo,
     active: template.active,
   };
@@ -197,10 +229,6 @@ function findPeriodNumberForTemplate(
 
   if (timeMatch) {
     return timeMatch.periodNumber;
-  }
-
-  if (periods.length === 0) {
-    return null;
   }
 
   const validPeriods = periods.filter(hasValidPeriodTime);
@@ -234,12 +262,43 @@ function makePeriodDraft(
   };
 }
 
+function templateVisibleInAlternatingWeek(
+  template: ScheduleTemplate,
+  usesAlternatingWeeks: boolean,
+  week: TimetableAlternatingWeek,
+): boolean {
+  if (!usesAlternatingWeeks) {
+    return true;
+  }
+
+  const scope = template.alternatingWeek ?? 'both';
+  return scope === 'both' || scope === week;
+}
+
+function getTemplatePatternLabel(template: ScheduleTemplate): string {
+  const labels: string[] = [];
+
+  if (template.alternatingWeek === 'a') {
+    labels.push('A週');
+  } else if (template.alternatingWeek === 'b') {
+    labels.push('B週');
+  }
+
+  if (template.weekInterval === 2) {
+    labels.push('隔週');
+  }
+
+  return labels.join(' · ');
+}
+
 export function TimetableView({
   userId,
   activeTerm,
+  timetableTerms = [],
   timetablePeriods,
   scheduleTemplates,
   onActivateTerm,
+  onDeleteTerm,
   onClearTermData,
   onSaveTimetablePeriod,
   onDeleteTimetablePeriod,
@@ -267,9 +326,15 @@ export function TimetableView({
   const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
   const [isClearingTermData, setIsClearingTermData] = useState(false);
-  const [termYear, setTermYear] = useState(activeTerm?.year ?? new Date().getFullYear());
-  const [termKind, setTermKind] = useState<TimetableTermKind>(activeTerm?.kind ?? 'fullYear');
-  const selectedTermLabel = activeTerm?.label ?? createTermLabel(termYear, termKind);
+  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
+  const [openTermSwipeId, setOpenTermSwipeId] = useState<string | null>(null);
+  const [periodForm, setPeriodForm] = useState<PeriodFormState>(() => createPeriodForm(activeTerm));
+  const todayAlternatingWeek = resolveTimetableAlternatingWeek(getTodayIsoDate(), activeTerm);
+  const [alternatingWeekView, setAlternatingWeekView] = useState<TimetableAlternatingWeek>(
+    todayAlternatingWeek ?? 'a',
+  );
+  const usesAlternatingWeeks = activeTerm?.usesAlternatingWeeks === true;
+  const selectedTermLabel = activeTerm?.label ?? '時間割の期間を設定';
   const savedPeriodsForTerm = useMemo(
     () =>
       timetablePeriods
@@ -284,6 +349,13 @@ export function TimetableView({
         (template) => getTemplateTermId(template) === activeTermId,
       ),
     [activeTermId, scheduleTemplates],
+  );
+  const visibleTermTemplates = useMemo(
+    () =>
+      termTemplates.filter((template) =>
+        templateVisibleInAlternatingWeek(template, usesAlternatingWeeks, alternatingWeekView),
+      ),
+    [alternatingWeekView, termTemplates, usesAlternatingWeeks],
   );
   const displayPeriods = useMemo(() => {
     const basePeriods =
@@ -318,7 +390,7 @@ export function TimetableView({
   const templateByCell = useMemo(() => {
     const map = new Map<string, ScheduleTemplate[]>();
 
-    termTemplates.forEach((template) => {
+    visibleTermTemplates.forEach((template) => {
       const periodNumber = findPeriodNumberForTemplate(template, displayPeriods);
 
       if (!periodNumber) {
@@ -335,22 +407,27 @@ export function TimetableView({
     });
 
     return map;
-  }, [displayPeriods, termTemplates]);
+  }, [displayPeriods, visibleTermTemplates]);
+  const availableTerms = useMemo(
+    () =>
+      timetableTerms
+        .slice()
+        .sort(
+          (left, right) =>
+            Number(right.isActive) - Number(left.isActive) ||
+            (right.startDate ?? '').localeCompare(left.startDate ?? '') ||
+            right.updatedAt.localeCompare(left.updatedAt),
+        ),
+    [timetableTerms],
+  );
+  const isTermActionBusy =
+    isSavingTerm || isClearingTermData || deletingTermId !== null;
 
   function updateDraft<K extends keyof ScheduleTemplateDraft>(
     key: K,
     value: ScheduleTemplateDraft[K],
   ) {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [key]: value,
-      };
-    });
+    setDraft((current) => current ? { ...current, [key]: value } : current);
   }
 
   function closeEditor() {
@@ -365,7 +442,7 @@ export function TimetableView({
     }
 
     setEditingTemplate(null);
-    setDraft(createTemplateDraft(userId, activeTermId, weekday, period));
+    setDraft(createTemplateDraft(userId, activeTermId, weekday, period, activeTerm));
   }
 
   function openEditEditor(template: ScheduleTemplate) {
@@ -428,6 +505,18 @@ export function TimetableView({
     }
   }
 
+  function openPeriodSheet(term: TimetableTerm | null = activeTerm) {
+    setOpenTermSwipeId(null);
+    setPeriodForm(createPeriodForm(term));
+    setPeriodActionError(null);
+    setIsTermSheetOpen(true);
+  }
+
+  function startNewPeriod() {
+    setOpenTermSwipeId(null);
+    setPeriodForm(createPeriodForm(null));
+  }
+
   async function persistPeriods(periods: DisplayPeriod[]) {
     for (const period of periods) {
       await onSaveTimetablePeriod(makePeriodDraft(userId, activeTermId, period), period.id);
@@ -487,22 +576,18 @@ export function TimetableView({
 
     const lastPeriod = displayPeriods[displayPeriods.length - 1];
     const lastPeriodHasClass = termTemplates.some(
-      (template) =>
-        findPeriodNumberForTemplate(template, displayPeriods) === lastPeriod.periodNumber,
+      (template) => findPeriodNumberForTemplate(template, displayPeriods) === lastPeriod.periodNumber,
     );
 
-    if (lastPeriodHasClass || !lastPeriod.id) {
-      const remainingPeriods = displayPeriods.slice(0, -1);
+    if (lastPeriodHasClass) {
+      setPeriodActionError('授業が入っている時限は削除できません。');
+      return;
+    }
 
-      if (lastPeriodHasClass) {
-        setPeriodActionError('授業が入っている時限は削除できません。');
-        return;
-      }
-
+    if (!lastPeriod.id) {
       setSavingPeriods(true);
       try {
-        setPeriodActionError(null);
-        await persistPeriods(remainingPeriods);
+        await persistPeriods(displayPeriods.slice(0, -1));
       } finally {
         setSavingPeriods(false);
       }
@@ -518,30 +603,137 @@ export function TimetableView({
     }
   }
 
-  async function applyTermSelection() {
-    if (isSavingTerm) {
+  async function applyPeriodForm() {
+    const label = periodForm.label.trim();
+    const startDate = periodForm.startDate;
+    const endDate = periodForm.endDate;
+
+    if (!label || !startDate || !endDate) {
+      setPeriodActionError('時間割名・開始日・終了日を入力してください。');
       return;
     }
 
-    const nextLabel = createTermLabel(termYear, termKind);
+    if (endDate < startDate) {
+      setPeriodActionError('終了日は開始日以降にしてください。');
+      return;
+    }
+
+    if (periodForm.usesAlternatingWeeks && !periodForm.alternatingWeekAnchorDate) {
+      setPeriodActionError('交互週を使う場合はA週の基準日を設定してください。');
+      return;
+    }
 
     setIsSavingTerm(true);
     try {
+      setPeriodActionError(null);
       await onActivateTerm({
+        id: periodForm.id,
         userId,
-        year: termYear,
-        kind: termKind,
-        label: nextLabel,
+        year: Number(startDate.slice(0, 4)),
+        kind: 'custom',
+        label,
+        startDate,
+        endDate,
+        usesAlternatingWeeks: periodForm.usesAlternatingWeeks,
+        alternatingWeekAnchorDate: periodForm.usesAlternatingWeeks
+          ? periodForm.alternatingWeekAnchorDate
+          : null,
         isActive: true,
       });
+      setAlternatingWeekView('a');
+      setOpenTermSwipeId(null);
       setIsTermSheetOpen(false);
     } finally {
       setIsSavingTerm(false);
     }
   }
 
+  async function selectExistingPeriod(term: TimetableTerm) {
+    setOpenTermSwipeId(null);
+    if (term.id === activeTerm?.id) {
+      setPeriodForm(createPeriodForm(term));
+      return;
+    }
+
+    setIsSavingTerm(true);
+    try {
+      await onActivateTerm({
+        id: term.id,
+        userId,
+        year: term.year,
+        kind: term.kind,
+        label: term.label,
+        startDate: term.startDate,
+        endDate: term.endDate,
+        usesAlternatingWeeks: term.usesAlternatingWeeks,
+        alternatingWeekAnchorDate: term.alternatingWeekAnchorDate,
+        isActive: true,
+      });
+      setAlternatingWeekView(
+        resolveTimetableAlternatingWeek(getTodayIsoDate(), term) ?? 'a',
+      );
+      setIsTermSheetOpen(false);
+    } finally {
+      setIsSavingTerm(false);
+    }
+  }
+
+  async function deleteExistingPeriod(term: TimetableTerm) {
+    if (isTermActionBusy) {
+      return;
+    }
+
+    if (availableTerms.length <= 1) {
+      setPeriodActionError(
+        '最後の期間は削除できません。新しい期間を追加してから削除してください。',
+      );
+      setOpenTermSwipeId(null);
+      return;
+    }
+
+    const templateCount = scheduleTemplates.filter(
+      (template) => getTemplateTermId(template) === term.id,
+    ).length;
+    const periodCount = timetablePeriods.filter(
+      (period) => period.termId === term.id,
+    ).length;
+    const hasData = templateCount > 0 || periodCount > 0;
+    const confirmed = window.confirm(
+      hasData
+        ? `「${term.label}」を削除しますか？\nこの期間に登録されている授業と時限設定も一緒に削除されます。この操作は元に戻せません。`
+        : `「${term.label}」を削除しますか？この操作は元に戻せません。`,
+    );
+
+    if (!confirmed) {
+      setOpenTermSwipeId(null);
+      return;
+    }
+
+    const fallbackTerm = availableTerms.find((item) => item.id !== term.id) ?? null;
+    setDeletingTermId(term.id);
+    try {
+      setPeriodActionError(null);
+      await onDeleteTerm(term);
+      setOpenTermSwipeId(null);
+      if (periodForm.id === term.id) {
+        setPeriodForm(createPeriodForm(fallbackTerm));
+        setAlternatingWeekView(
+          fallbackTerm
+            ? resolveTimetableAlternatingWeek(getTodayIsoDate(), fallbackTerm) ?? 'a'
+            : 'a',
+        );
+      }
+    } catch (error) {
+      setPeriodActionError(
+        error instanceof Error ? error.message : '期間を削除できませんでした。',
+      );
+    } finally {
+      setDeletingTermId(null);
+    }
+  }
+
   async function clearCurrentTermData() {
-    if (!activeTerm || isClearingTermData || isSavingTerm) {
+    if (!activeTerm || isTermActionBusy) {
       return;
     }
 
@@ -565,6 +757,11 @@ export function TimetableView({
     event.preventDefault();
 
     if (!draft || !draft.title.trim()) {
+      return;
+    }
+
+    if (draft.weekInterval === 2 && !draft.weekIntervalAnchorDate) {
+      setPeriodActionError('隔週の授業は基準日を設定してください。');
       return;
     }
 
@@ -603,9 +800,7 @@ export function TimetableView({
     }
   }
 
-  async function handleTimetableImportFileChange(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
+  async function handleTimetableImportFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
 
@@ -619,10 +814,8 @@ export function TimetableView({
     try {
       const payload = await createTimetableOcrFilePayload(file);
       const result = await requestTimetableOcr(payload);
-
       setTimetableOcrFileName(file.name);
       setTimetableOcrResult(result);
-      setTimetableOcrNotice(null);
     } catch (error) {
       setTimetableOcrNotice(
         error instanceof Error
@@ -635,10 +828,17 @@ export function TimetableView({
   }
 
   return (
-    <section className="panel timetable-view">
+    <section className="panel timetable-view timetable-period-based-view">
       <div className="section-header timetable-header">
         <div className="timetable-title-block">
-          <h2>{selectedTermLabel}</h2>
+          <button
+            className="timetable-period-trigger"
+            onClick={() => openPeriodSheet()}
+            type="button"
+          >
+            <span>{selectedTermLabel}</span>
+            <small>{formatPeriodRange(activeTerm)}</small>
+          </button>
         </div>
         <div className="timetable-term-control">
           <input
@@ -656,23 +856,39 @@ export function TimetableView({
             onClick={() => importFileInputRef.current?.click()}
             type="button"
           >
-            {isReadingTimetableFile ? '読み取り中...' : '画像/PDFから読み取り'}
+            {isReadingTimetableFile ? '読み取り中...' : '画像/PDF'}
           </button>
           <button
             className="ghost-button timetable-term-switch"
-            onClick={() => {
-              setTermYear(activeTerm?.year ?? termYear);
-              setTermKind(activeTerm?.kind ?? termKind);
-              setIsTermSheetOpen(true);
-            }}
+            onClick={() => openPeriodSheet()}
             type="button"
           >
-            学期切替
+            期間
           </button>
         </div>
       </div>
+
       {timetableOcrNotice ? (
         <p className="timetable-ocr-notice">{timetableOcrNotice}</p>
+      ) : null}
+
+      {usesAlternatingWeeks ? (
+        <div className="timetable-alternating-control" aria-label="交互週の表示">
+          <span>交互週</span>
+          <div className="segmented-control">
+            {(['a', 'b'] as TimetableAlternatingWeek[]).map((week) => (
+              <button
+                className={week === alternatingWeekView ? 'segment active' : 'segment'}
+                key={week}
+                onClick={() => setAlternatingWeekView(week)}
+                type="button"
+              >
+                {week.toUpperCase()}週
+              </button>
+            ))}
+          </div>
+          <small>時間割全体のA週/B週を切り替えます。</small>
+        </div>
       ) : null}
 
       <div className="timetable-grid-shell">
@@ -734,6 +950,7 @@ export function TimetableView({
                   </span>
                 )}
               </div>
+
               {WEEKDAY_OPTIONS.map((weekday) => {
                 const cellKey = `${weekday.value}:${period.periodNumber}`;
                 const templates = templateByCell.get(cellKey) ?? [];
@@ -746,15 +963,11 @@ export function TimetableView({
                         ? `${weekday.label}曜 ${period.label}限 ${primaryTemplate.title}を編集`
                         : `${weekday.label}曜 ${period.label}限 授業を追加`
                     }
-                    className={
-                      [
-                        'timetable-grid-cell',
-                        templates.length > 0 ? 'has-class' : '',
-                        hasValidPeriodTime(period) ? '' : 'needs-time',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')
-                    }
+                    className={[
+                      'timetable-grid-cell',
+                      templates.length > 0 ? 'has-class' : '',
+                      hasValidPeriodTime(period) ? '' : 'needs-time',
+                    ].filter(Boolean).join(' ')}
                     key={cellKey}
                     onClick={(event) => {
                       if (primaryTemplate) {
@@ -763,8 +976,7 @@ export function TimetableView({
                       }
 
                       // Pointer users keep the deliberate double-tap gesture.
-                      // Keyboard-generated clicks have detail=0 and must remain
-                      // fully operable with Enter/Space.
+                      // Keyboard-generated clicks have detail=0 and remain immediately operable.
                       if (event.detail === 0) {
                         openCreateEditor(weekday.value, period);
                       }
@@ -797,22 +1009,23 @@ export function TimetableView({
                   >
                     {templates.length > 0 ? (
                       <span className="timetable-cell-stack">
-                        {templates.map((template) => (
-                          <span className="timetable-class-card" key={template.id}>
-                            <strong>{template.title}</strong>
-                            {template.subject ? (
-                              <span className="timetable-class-subject">
-                                {template.subject}
+                        {templates.map((template) => {
+                          const patternLabel = getTemplatePatternLabel(template);
+                          return (
+                            <span className="timetable-class-card" key={template.id}>
+                              <strong>{template.title}</strong>
+                              <span className="timetable-class-meta">
+                                {template.classroom?.trim() || '教室未設定'}
                               </span>
-                            ) : null}
-                            <span className="timetable-class-meta">
-                              {template.classroom?.trim() || '教室未設定'}
+                              {patternLabel ? (
+                                <span className="timetable-pattern-badge">{patternLabel}</span>
+                              ) : null}
                             </span>
-                          </span>
-                        ))}
+                          );
+                        })}
                       </span>
                     ) : (
-                      <span className="timetable-empty-cell-label">追加</span>
+                      <span className="timetable-empty-cell-label">＋</span>
                     )}
                   </button>
                 );
@@ -850,107 +1063,205 @@ export function TimetableView({
 
       {isTermSheetOpen ? (
         <div
-          className="overlay timetable-term-sheet-overlay"
+          className="overlay timetable-term-sheet-overlay timetable-period-sheet-overlay"
           onClick={() => {
-            if (!isSavingTerm && !isClearingTermData) {
+            if (!isTermActionBusy) {
+              setOpenTermSwipeId(null);
               setIsTermSheetOpen(false);
             }
           }}
         >
           <div
-            className="timetable-term-sheet"
+            className="timetable-term-sheet timetable-period-sheet"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="timetable-term-sheet-handle" aria-hidden="true" />
-            <div className="section-header">
+            <div className="section-header timetable-period-sheet-header">
               <div>
-                <h2>学期切替</h2>
-                <p>年度と学期を選択します。</p>
+                <h2>時間割の期間</h2>
+                <p>「前期」などの制度ではなく、実際に使う日付で管理します。</p>
               </div>
               <button
                 className="ghost-button"
-                disabled={isSavingTerm || isClearingTermData}
-                onClick={() => setIsTermSheetOpen(false)}
+                disabled={isTermActionBusy}
+                onClick={() => {
+                  setOpenTermSwipeId(null);
+                  setIsTermSheetOpen(false);
+                }}
                 type="button"
               >
                 閉じる
               </button>
             </div>
+
             <div className="timetable-term-sheet-body">
-              <div className="timetable-current-term-card">
-                <span>現在の学期</span>
-                <strong>{selectedTermLabel}</strong>
-              </div>
-              <label className="field">
-                <span>年度</span>
-                <select
-                  value={termYear}
-                  disabled={isSavingTerm || isClearingTermData}
-                  onChange={(event) => setTermYear(Number(event.target.value))}
-                >
-                  {TERM_YEARS.map((year) => (
-                    <option key={year} value={year}>
-                      {year}年
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="field">
-                <span>学期</span>
-                <div className="timetable-term-kind-grid">
-                  {TERM_KIND_OPTIONS.map((option) => (
+              {availableTerms.length > 0 ? (
+                <section className="timetable-period-list-section">
+                  <div className="timetable-period-list-heading">
+                    <span>登録済みの期間</span>
                     <button
-                      className={
-                        option.value === termKind
-                          ? 'segment active timetable-term-kind'
-                          : 'segment timetable-term-kind'
-                      }
-                      disabled={isSavingTerm || isClearingTermData}
-                      key={option.value}
-                      onClick={() => setTermKind(option.value)}
+                      className="ghost-button"
+                      disabled={isTermActionBusy}
+                      onClick={startNewPeriod}
                       type="button"
                     >
-                      {option.label}
+                      ＋ 新しい期間
                     </button>
-                  ))}
+                  </div>
+                  <div className="timetable-period-list">
+          {availableTerms.map((term) => (
+            <TimetablePeriodSwipeItem
+              active={term.id === activeTerm?.id}
+              deleting={deletingTermId === term.id}
+              disabled={isTermActionBusy}
+              isOpen={openTermSwipeId === term.id}
+              key={term.id}
+              onDelete={() => {
+                void deleteExistingPeriod(term);
+              }}
+              onOpenChange={(open) => {
+                setOpenTermSwipeId((current) =>
+                  open ? term.id : current === term.id ? null : current,
+                );
+              }}
+              onSelect={() => {
+                void selectExistingPeriod(term);
+              }}
+              rangeLabel={formatPeriodRange(term)}
+              term={term}
+            />
+          ))}
+        </div>
+                </section>
+              ) : null}
+
+
+    {periodActionError ? (
+      <p className="timetable-period-error timetable-period-sheet-error">
+        {periodActionError}
+      </p>
+    ) : null}
+              <section className="timetable-period-form-card">
+                <label className="field">
+                  <span>時間割名</span>
+                  <input
+                    autoComplete="off"
+                    placeholder="例：2026年前期"
+                    value={periodForm.label}
+                    onChange={(event) =>
+                      setPeriodForm((current) => ({ ...current, label: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <div className="timetable-period-date-grid">
+                  <label className="field">
+                    <span>開始日</span>
+                    <input
+                      type="date"
+                      value={periodForm.startDate}
+                      onChange={(event) =>
+                        setPeriodForm((current) => ({
+                          ...current,
+                          startDate: event.target.value,
+                          alternatingWeekAnchorDate:
+                            current.usesAlternatingWeeks && !current.alternatingWeekAnchorDate
+                              ? event.target.value
+                              : current.alternatingWeekAnchorDate,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>終了日</span>
+                    <input
+                      type="date"
+                      value={periodForm.endDate}
+                      onChange={(event) =>
+                        setPeriodForm((current) => ({ ...current, endDate: event.target.value }))
+                      }
+                    />
+                  </label>
                 </div>
-              </div>
-              <div className="timetable-term-danger-zone">
-                <button
-                  className="ghost-button timetable-clear-term-button"
-                  disabled={
-                    !activeTerm ||
-                    isSavingTerm ||
-                    isClearingTermData ||
-                    (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)
-                  }
-                  onClick={() => {
-                    void clearCurrentTermData();
-                  }}
-                  type="button"
-                >
-                  {isClearingTermData ? '削除中...' : 'この学期の授業をすべて削除'}
-                </button>
-              </div>
+
+                <label className="timetable-setting-row">
+                  <span>
+                    <strong>交互週を使う</strong>
+                    <small>A週/B週で時間割全体の内容が変わる場合だけ有効にします。</small>
+                  </span>
+                  <input
+                    checked={periodForm.usesAlternatingWeeks}
+                    onChange={(event) =>
+                      setPeriodForm((current) => ({
+                        ...current,
+                        usesAlternatingWeeks: event.target.checked,
+                        alternatingWeekAnchorDate: event.target.checked
+                          ? current.alternatingWeekAnchorDate || current.startDate
+                          : '',
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                </label>
+
+                {periodForm.usesAlternatingWeeks ? (
+                  <label className="field timetable-anchor-field">
+                    <span>A週の基準日</span>
+                    <input
+                      type="date"
+                      value={periodForm.alternatingWeekAnchorDate}
+                      onChange={(event) =>
+                        setPeriodForm((current) => ({
+                          ...current,
+                          alternatingWeekAnchorDate: event.target.value,
+                        }))
+                      }
+                    />
+                    <small>この日を含む週をA週として、その次をB週にします。</small>
+                  </label>
+                ) : null}
+              </section>
+
+              {activeTerm ? (
+                <div className="timetable-term-danger-zone">
+                  <button
+                    className="ghost-button timetable-clear-term-button"
+                    disabled={
+                      isTermActionBusy ||
+                      (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)
+                    }
+                    onClick={() => {
+                      void clearCurrentTermData();
+                    }}
+                    type="button"
+                  >
+                    {isClearingTermData ? '削除中...' : 'この期間の授業をすべて削除'}
+                  </button>
+                </div>
+              ) : null}
             </div>
-            <div className="row-actions timetable-import-actions">
+
+            <div className="row-actions timetable-period-sheet-actions">
               <button
                 className="ghost-button"
-                disabled={isSavingTerm || isClearingTermData}
-                onClick={() => setIsTermSheetOpen(false)}
+                disabled={isTermActionBusy}
+                onClick={() => {
+                  setOpenTermSwipeId(null);
+                  setIsTermSheetOpen(false);
+                }}
                 type="button"
               >
                 キャンセル
               </button>
               <button
                 className="primary-button"
-                disabled={isSavingTerm || isClearingTermData}
+                disabled={isTermActionBusy}
                 onClick={() => {
-                  void applyTermSelection();
+                  void applyPeriodForm();
                 }}
                 type="button"
               >
-                {isSavingTerm ? '切替中...' : '切り替える'}
+                {isSavingTerm ? '保存中...' : '保存して使用'}
               </button>
             </div>
           </div>
@@ -977,21 +1288,33 @@ export function TimetableView({
               </div>
               <button
                 className="primary-button timetable-editor-save"
-                disabled={savingTemplateId !== null || !draft.title.trim()}
+                disabled={
+                  savingTemplateId !== null ||
+                  !draft.title.trim() ||
+                  (draft.weekInterval === 2 && !draft.weekIntervalAnchorDate)
+                }
                 type="submit"
               >
-                保存
+                {savingTemplateId ? '保存中...' : '保存'}
               </button>
             </div>
 
             <div className="timetable-editor-body">
               <section className="timetable-editor-card timetable-title-card">
-                <label className="field timetable-title-field">
+                <label className="field">
                   <span>授業名</span>
                   <input
+                    autoComplete="off"
                     value={draft.title}
                     onChange={(event) => updateDraft('title', event.target.value)}
-                    placeholder="例: 英語演習 / 情報科学概論"
+                  />
+                </label>
+                <label className="field">
+                  <span>教科</span>
+                  <input
+                    autoComplete="off"
+                    value={draft.subject}
+                    onChange={(event) => updateDraft('subject', event.target.value)}
                   />
                 </label>
               </section>
@@ -1011,122 +1334,145 @@ export function TimetableView({
                     >
                       {WEEKDAY_OPTIONS.map((weekday) => (
                         <option key={weekday.value} value={weekday.value}>
-                          {weekday.label}
+                          {weekday.label}曜
                         </option>
                       ))}
                     </select>
                   </label>
-
                   <label className="field">
                     <span>時限</span>
                     <select
                       value={draft.periodNumber ?? ''}
                       onChange={(event) => {
-                        const nextPeriod = displayPeriods.find(
-                          (period) => period.periodNumber === Number(event.target.value),
+                        const periodNumber = Number(event.target.value);
+                        const period = displayPeriods.find(
+                          (candidate) => candidate.periodNumber === periodNumber,
                         );
-
-                        if (!nextPeriod) {
-                          return;
-                        }
-
-                        if (!hasValidPeriodTime(nextPeriod)) {
-                          setPeriodActionError('先にこの時限の開始時刻と終了時刻を設定してください。');
-                          return;
-                        }
-
-                        setDraft((current) =>
-                          current
-                            ? {
-                                ...current,
-                                periodNumber: nextPeriod.periodNumber,
-                                startTime: nextPeriod.startTime,
-                                endTime: nextPeriod.endTime,
-                              }
-                            : current,
-                        );
+                        updateDraft('periodNumber', periodNumber);
+                        if (period?.startTime) updateDraft('startTime', period.startTime);
+                        if (period?.endTime) updateDraft('endTime', period.endTime);
                       }}
                     >
                       {displayPeriods.map((period) => (
                         <option key={period.periodNumber} value={period.periodNumber}>
                           {period.label}限
-                          {hasValidPeriodTime(period)
-                            ? ''
-                            : '（時刻未設定）'}
                         </option>
                       ))}
                     </select>
                   </label>
-
-                  <label className="field">
-                    <span>開始</span>
-                    <input
-                      type="time"
-                      value={draft.startTime}
-                      onChange={(event) => updateDraft('startTime', event.target.value)}
-                    />
-                  </label>
-
-                  <label className="field">
-                    <span>終了</span>
-                    <input
-                      type="time"
-                      value={draft.endTime}
-                      onChange={(event) => updateDraft('endTime', event.target.value)}
-                    />
-                  </label>
                 </div>
+              </section>
+
+              {usesAlternatingWeeks ? (
+                <section className="timetable-editor-card">
+                  <div className="timetable-card-title timetable-pattern-title">
+                    <strong>交互週</strong>
+                    <span>時間割全体のA/Bどちらに出る授業か</span>
+                  </div>
+                  <div className="timetable-pattern-options">
+                    {([
+                      ['both', 'A/B共通'],
+                      ['a', 'A週'],
+                      ['b', 'B週'],
+                    ] as Array<[ScheduleTemplateAlternatingWeek, string]>).map(([value, label]) => (
+                      <button
+                        className={
+                          (draft.alternatingWeek ?? 'both') === value
+                            ? 'segment active'
+                            : 'segment'
+                        }
+                        key={value}
+                        onClick={() => updateDraft('alternatingWeek', value)}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="timetable-editor-card">
+                <div className="timetable-card-title timetable-pattern-title">
+                  <strong>授業の頻度</strong>
+                  <span>隔週はこの授業だけの設定です</span>
+                </div>
+                <div className="timetable-pattern-options two-options">
+                  {([
+                    [1, '毎週'],
+                    [2, '隔週'],
+                  ] as Array<[ScheduleTemplateWeekInterval, string]>).map(([value, label]) => (
+                    <button
+                      className={(draft.weekInterval ?? 1) === value ? 'segment active' : 'segment'}
+                      key={value}
+                      onClick={() => {
+                        updateDraft('weekInterval', value);
+                        if (value === 1) {
+                          updateDraft('weekIntervalAnchorDate', null);
+                        } else if (!draft.weekIntervalAnchorDate) {
+                          updateDraft(
+                            'weekIntervalAnchorDate',
+                            activeTerm?.startDate ?? getTodayIsoDate(),
+                          );
+                        }
+                      }}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {draft.weekInterval === 2 ? (
+                  <label className="field timetable-anchor-field">
+                    <span>この授業がある週の基準日</span>
+                    <input
+                      type="date"
+                      value={draft.weekIntervalAnchorDate ?? ''}
+                      onChange={(event) =>
+                        updateDraft('weekIntervalAnchorDate', event.target.value || null)
+                      }
+                    />
+                    <small>この日を含む週から1週おきに授業があるものとして扱います。</small>
+                  </label>
+                ) : null}
               </section>
 
               <section className="timetable-editor-card">
-                <div className="timetable-card-title">
-                  <strong>詳細</strong>
-                </div>
                 <div className="timetable-detail-grid">
-                  <label className="field">
-                    <span>教科</span>
-                    <input
-                      value={draft.subject}
-                      onChange={(event) => updateDraft('subject', event.target.value)}
-                      placeholder="英語"
-                    />
-                  </label>
-
                   <label className="field">
                     <span>教室</span>
                     <input
+                      autoComplete="off"
                       value={draft.classroom ?? ''}
                       onChange={(event) => updateDraft('classroom', event.target.value)}
-                      placeholder="A101"
                     />
                   </label>
-
-                  <label className="field timetable-memo-field">
+                  <label className="field">
                     <span>メモ</span>
                     <textarea
+                      rows={3}
                       value={draft.memo}
                       onChange={(event) => updateDraft('memo', event.target.value)}
-                      rows={2}
                     />
                   </label>
                 </div>
               </section>
-            </div>
 
-            {editingTemplate ? (
-              <div className="row-actions timetable-editor-actions">
-                <button
-                  className="ghost-button timetable-delete-button"
-                  disabled={savingTemplateId === editingTemplate.id}
-                  onClick={() => {
-                    void deleteTemplate();
-                  }}
-                  type="button"
-                >
-                  削除
-                </button>
-              </div>
-            ) : null}
+              {editingTemplate ? (
+                <div className="row-actions timetable-editor-actions">
+                  <button
+                    className="ghost-button danger-button"
+                    disabled={savingTemplateId !== null}
+                    onClick={() => {
+                      void deleteTemplate();
+                    }}
+                    type="button"
+                  >
+                    授業を削除
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </form>
         </div>
       ) : null}
@@ -1138,9 +1484,12 @@ export function TimetableView({
             termId={activeTermId}
             fileName={timetableOcrFileName}
             result={timetableOcrResult}
-            existingPeriods={savedPeriodsForTerm}
-            existingTemplates={termTemplates}
-            onClose={() => setTimetableOcrResult(null)}
+            existingPeriods={timetablePeriods}
+            existingTemplates={scheduleTemplates}
+            onClose={() => {
+              setTimetableOcrResult(null);
+              setTimetableOcrFileName('');
+            }}
             onSaveTimetablePeriod={onSaveTimetablePeriod}
             onSaveScheduleTemplate={onSaveScheduleTemplate}
           />

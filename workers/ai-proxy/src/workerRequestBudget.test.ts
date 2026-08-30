@@ -59,12 +59,22 @@ function createPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const OPENAI_USAGE = {
+  prompt_tokens: 120,
+  completion_tokens: 30,
+  total_tokens: 150,
+  prompt_tokens_details: {
+    cached_tokens: 80,
+    cache_write_tokens: 20,
+  },
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('AI proxy deployed worker request budget', () => {
-  it('accepts a schema-heavy request above the former 32 KiB limit and preserves 3,200 output tokens', async () => {
+  it('accepts a schema-heavy request above the former 32 KiB limit, preserves 3,200 output tokens and propagates usage', async () => {
     const upstreamBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -77,6 +87,7 @@ describe('AI proxy deployed worker request budget', () => {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
           choices: [{ message: { content: '{"ok":true}' } }],
+          usage: OPENAI_USAGE,
         }), { status: 200 });
       }
       throw new Error(`Unexpected fetch: ${url}`);
@@ -110,7 +121,10 @@ describe('AI proxy deployed worker request budget', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ content: '{"ok":true}' });
+    expect(await response.json()).toEqual({
+      content: '{"ok":true}',
+      usage: OPENAI_USAGE,
+    });
     expect(upstreamBodies).toHaveLength(1);
     expect(upstreamBodies[0]).toMatchObject({
       model: 'gpt-test',
@@ -120,6 +134,43 @@ describe('AI proxy deployed worker request budget', () => {
     expect(quotaCalls).toHaveLength(2);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('propagates attachment provider usage without changing the parsed user result', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return new Response(JSON.stringify({
+          users: [{ localId: 'user-1', emailVerified: true }],
+        }), { status: 200 });
+      }
+      if (url.endsWith('/chat/completions')) {
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: '{"text":"教材 1章"}' } }],
+          usage: OPENAI_USAGE,
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const { env } = createEnv('gpt-5.6-luna');
+    const response = await worker.fetch(
+      new Request('https://proxy.example/planning-attachment', {
+        method: 'POST',
+        headers: createHeaders(),
+        body: JSON.stringify({
+          mimeType: 'image/png',
+          base64: 'aGVsbG8=',
+        }),
+      }),
+      env as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      result: { text: '教材 1章' },
+      usage: OPENAI_USAGE,
+    });
   });
 
   it('omits an unsupported custom temperature from Luna upstream requests', async () => {

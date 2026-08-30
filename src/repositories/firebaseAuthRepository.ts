@@ -11,8 +11,8 @@ import {
   signOut as firebaseSignOut,
   updateProfile,
 } from 'firebase/auth';
-import type { Firestore } from 'firebase/firestore';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import type { FieldValue, Firestore } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { createGoogleProvider } from '../lib/firebaseClient';
 import type { User } from '../types/domain';
 import type { AuthRepository } from './repositoryContracts';
@@ -24,6 +24,10 @@ interface ProfileDoc {
   avatar: string;
   createdAt: string;
 }
+
+type ProfileWriteDoc = ProfileDoc & {
+  registeredAt?: FieldValue;
+};
 
 let localPersistencePromise: Promise<void> | null = null;
 
@@ -95,7 +99,7 @@ async function getProfileById(
 
 async function upsertProfile(
   firestoreDb: Firestore,
-  profile: ProfileDoc,
+  profile: ProfileWriteDoc,
 ): Promise<ProfileDoc> {
   await setDoc(doc(firestoreDb, 'profiles', profile.id), profile, {
     merge: true,
@@ -115,6 +119,9 @@ async function ensureProfile(
     throw new Error('ユーザーのメールアドレスを取得できませんでした。');
   }
 
+  const createdAt = existingProfile?.createdAt
+    || authUser.metadata.creationTime
+    || new Date().toISOString();
   const nextProfile = await upsertProfile(firestoreDb, {
     id: authUser.uid,
     email,
@@ -123,10 +130,8 @@ async function ensureProfile(
       authUser.displayName?.trim() ||
       normalizeUsername(fallbackUsername, email),
     avatar: existingProfile?.avatar ?? '',
-    createdAt:
-      existingProfile?.createdAt ||
-      authUser.metadata.creationTime ||
-      new Date().toISOString(),
+    createdAt,
+    ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
   });
 
   return mapProfileDocToUser(nextProfile);
@@ -242,8 +247,7 @@ export function createFirebaseAuthRepository(
         throw new Error(
           normalizeErrorMessage(
             'パスワード再設定メールを送信できませんでした。',
-            error as { message?: string | null },
-          ),
+            error as { message?: string | null }),
         );
       }
     },
@@ -289,15 +293,16 @@ export function createFirebaseAuthRepository(
         displayName: nextUsername,
       });
 
+      const createdAt = currentProfile?.createdAt
+        || authUser.metadata.creationTime
+        || new Date().toISOString();
       const nextProfile = await upsertProfile(firestoreDb, {
         id: userId,
         email,
         username: nextUsername,
         avatar: draft.avatar.trim(),
-        createdAt:
-          currentProfile?.createdAt ||
-          authUser.metadata.creationTime ||
-          new Date().toISOString(),
+        createdAt,
+        ...(!currentProfile ? { registeredAt: serverTimestamp() } : {}),
       });
 
       return mapProfileDocToUser(nextProfile);

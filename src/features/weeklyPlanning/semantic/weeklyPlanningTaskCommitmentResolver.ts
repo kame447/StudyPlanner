@@ -2,12 +2,21 @@ import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type { TemporalConstraintFactV2 } from './weeklyPlanningFactGraphV2';
 import {
   addCalendarDays,
-  calendarWeekday,
   intersectCalendarDates,
   isValidCalendarDate,
   listCalendarDatesInclusive,
-  resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn,
 } from './weeklyPlanningCalendarResolver';
+import {
+  resolveWeeklyPlanningCalendarRecurrenceDatesV5,
+} from './weeklyPlanningRecurrenceCalendarV5';
+import {
+  resolvedWeeklyPlanningDateExpressionForFactV5,
+  type WeeklyPlanningResolvedDateExpressionsV5,
+} from './weeklyPlanningResolvedDateExpressionsV5';
+import {
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
+} from './weeklyPlanningResolvedTemporalConstraintsV5';
 
 export interface WeeklyPlanningTaskCommitmentGraphView {
   readonly revision: number;
@@ -35,6 +44,7 @@ export interface TaskCommitmentReservation {
 
 export interface TaskCommitmentResolutionContext {
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
   timeZone: string;
@@ -66,15 +76,6 @@ export interface TaskCommitmentResolutionResult {
 }
 
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
-const WEEKDAY_INDEX: Record<string, number> = {
-  sun: 0,
-  mon: 1,
-  tue: 2,
-  wed: 3,
-  thu: 4,
-  fri: 5,
-  sat: 6,
-};
 
 function stableHash(input: string): string {
   let hash = 2166136261;
@@ -91,39 +92,22 @@ function datesFromRecurrence(params: {
   constraint: TemporalConstraintFactV2;
   issues: TaskCommitmentResolutionIssue[];
 }): string[] {
-  if (params.recurrence.kind === 'daily') return [...params.planningDates];
-  if (params.recurrence.kind === 'weekdays') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day !== null && day >= 1 && day <= 5;
-    });
-  }
-  if (params.recurrence.kind === 'weekends') {
-    return params.planningDates.filter((date) => {
-      const day = calendarWeekday(date);
-      return day === 0 || day === 6;
-    });
-  }
-
-  const indexes = new Set<number>();
-  for (const day of params.recurrence.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
-      params.issues.push({
-        code: 'invalid_commitment_weekday',
-        temporalConstraintFactId: params.constraint.id,
-        taskId: params.constraint.taskId,
-        blocking: true,
-        details: { day },
-      });
-    } else {
-      indexes.add(index);
-    }
-  }
-  return params.planningDates.filter((date) => {
-    const day = calendarWeekday(date);
-    return day !== null && indexes.has(day);
+  const resolution = resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+    kind: params.recurrence.kind,
+    days: params.recurrence.days,
+    dates: params.planningDates,
   });
+  for (const day of resolution.invalidDays) {
+    params.issues.push({
+      code: 'invalid_commitment_weekday',
+      temporalConstraintFactId: params.constraint.id,
+      taskId: params.constraint.taskId,
+      blocking: true,
+      details: { day },
+    });
+  }
+  if (resolution.invalidDays.length > 0) return [];
+  return resolution.calendarDates ?? [];
 }
 
 function resolveDates(params: {
@@ -131,11 +115,16 @@ function resolveDates(params: {
   constraint: TemporalConstraintFactV2;
   context: TaskCommitmentResolutionContext;
   planningDates: string[];
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   issues: TaskCommitmentResolutionIssue[];
 }): string[] {
   const recurrences = params.graph.recurrences.filter((recurrence) =>
-    recurrence.taskId === params.constraint.taskId
-    && recurrence.targetFactId === params.constraint.taskId);
+    weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: recurrence.taskId,
+      constraintTargetFactId: recurrence.targetFactId,
+      taskId: params.constraint.taskId,
+      targetFactId: params.constraint.targetFactId,
+    }));
   if (recurrences.length > 1) {
     params.issues.push({
       code: 'ambiguous_commitment_recurrence',
@@ -157,11 +146,11 @@ function resolveDates(params: {
     : null;
 
   if (params.constraint.dateExpression) {
-    const resolution = resolveCanonicalDateExpression({
-      expression: params.constraint.dateExpression,
-      currentDate: params.context.currentDate,
+    const resolution = resolvedWeeklyPlanningDateExpressionForFactV5({
+      resolved: params.resolvedDateExpressions,
+      factId: params.constraint.id,
     });
-    if (resolution.status !== 'resolved') {
+    if (!resolution || resolution.status !== 'resolved' || !resolution.range) {
       params.issues.push({
         code: 'unsupported_commitment_date_expression',
         temporalConstraintFactId: params.constraint.id,
@@ -169,7 +158,7 @@ function resolveDates(params: {
         blocking: true,
         details: {
           expression: params.constraint.dateExpression,
-          resolutionStatus: resolution.status,
+          resolutionStatus: resolution?.status ?? 'missing_resolved_snapshot',
         },
       });
       return [];
@@ -228,6 +217,7 @@ function createEndPoint(
 export function resolveWeeklyPlanningTaskCommitments(params: {
   graph: WeeklyPlanningTaskCommitmentGraphView;
   context: TaskCommitmentResolutionContext;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
 }): TaskCommitmentResolutionResult {
   const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
@@ -289,6 +279,7 @@ export function resolveWeeklyPlanningTaskCommitments(params: {
       constraint,
       context: params.context,
       planningDates,
+      resolvedDateExpressions: params.resolvedDateExpressions,
       issues,
     });
     for (const date of dates) {

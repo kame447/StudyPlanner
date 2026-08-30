@@ -1,5 +1,7 @@
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import type {
+  WeeklyPlanningPlacementGraphViewV5,
+} from '../semantic/weeklyPlanningPlacementGraphViewV5';
 import {
   scheduleWeeklyPlanningStableV5Preview,
   WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
@@ -13,7 +15,7 @@ export function executeWeeklyPlanningStableV5Preview(params: {
     ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
     'plans' | 'scheduleTemplates' | 'timetableTermId' | 'traceRequestId'
   >;
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningPlacementGraphViewV5;
   schedulerInput: GenericSchedulerInput;
   requestContext: WeeklyPlanningTurnRequestContext;
 }) {

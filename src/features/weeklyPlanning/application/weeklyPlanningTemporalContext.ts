@@ -7,7 +7,17 @@ import {
   isValidCalendarDate,
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
+import type { RecurrenceFact } from '../semantic/weeklyPlanningFactGraph';
 import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import {
+  isWeeklyPlanningCalendarExpandableRecurrenceV5,
+} from '../semantic/weeklyPlanningRecurrenceCalendarV5';
+import {
+  hardDateBoundForTargetV5,
+  WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
+  type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningSchedulerHardDateBoundV5,
+} from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 
 const DEFAULT_PLANNING_DAY_COUNT = 7;
 
@@ -28,10 +38,20 @@ export interface WeeklyPlanningTemporalGraphView {
     start: string | null;
     end: string | null;
   }>;
-  factLifecycles: ReadonlyArray<{
+  factLifecycles?: ReadonlyArray<{
     factId: string;
     status: string;
   }>;
+  workloads?: ReadonlyArray<{
+    id: string;
+    taskId: string;
+    componentId: string | null;
+    perOccurrence: boolean;
+  }>;
+  recurrences?: ReadonlyArray<Pick<
+    RecurrenceFact,
+    'id' | 'taskId' | 'targetFactId' | 'kind' | 'days'
+  >>;
 }
 
 interface ZonedClockParts {
@@ -127,14 +147,84 @@ export function createWeeklyPlanningLegacyRequestContext(params: {
   };
 }
 
-function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
-  if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
+function activeFacts<T extends { id: string }>(
+  graph: WeeklyPlanningTemporalGraphView,
+  facts: readonly T[],
+): T[] {
+  const lifecycles = graph.factLifecycles ?? [];
+  if (lifecycles.length === 0) return [...facts];
   const activeIds = new Set(
-    graph.factLifecycles
+    lifecycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
-  return graph.planningWindows.filter((window) => activeIds.has(window.id));
+  return facts.filter((fact) => activeIds.has(fact.id));
+}
+
+function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
+  return activeFacts(graph, graph.planningWindows);
+}
+
+function recurringHardDateBounds(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+}): WeeklyPlanningSchedulerHardDateBoundV5[] {
+  const workloads = activeFacts(params.graph, params.graph.workloads ?? []);
+  const recurrences = activeFacts(params.graph, params.graph.recurrences ?? []);
+  const result: WeeklyPlanningSchedulerHardDateBoundV5[] = [];
+  for (const workload of workloads) {
+    if (!workload.perOccurrence) continue;
+    const targetFactId = workload.componentId ?? workload.taskId;
+    const matchingRecurrences = recurrences.filter((recurrence) =>
+      recurrence.taskId === workload.taskId
+      && recurrence.targetFactId === targetFactId
+      && isWeeklyPlanningCalendarExpandableRecurrenceV5({
+        kind: recurrence.kind,
+        days: recurrence.days,
+      }));
+    if (matchingRecurrences.length !== 1) continue;
+    const bound = hardDateBoundForTargetV5({
+      bounds: params.resolvedTemporalConstraints.hardDateBounds,
+      taskId: workload.taskId,
+      targetFactId,
+    });
+    if (bound) result.push(bound);
+  }
+  return result;
+}
+
+function fallbackPlanningHorizon(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  selectedDate: string;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+}): { startDate: string; endDate: string } | null {
+  const defaultEndDate = addCalendarDays(
+    params.selectedDate,
+    DEFAULT_PLANNING_DAY_COUNT - 1,
+  );
+  if (!defaultEndDate) return null;
+
+  let endDate = defaultEndDate;
+  const recurringBounds = recurringHardDateBounds({
+    graph: params.graph,
+    resolvedTemporalConstraints: params.resolvedTemporalConstraints,
+  });
+  for (const bound of recurringBounds) {
+    if (bound.endDate && bound.endDate > endDate) {
+      endDate = bound.endDate;
+      continue;
+    }
+    if (!bound.endDate && bound.startDate && bound.startDate > params.selectedDate) {
+      const recurringDefaultEnd = addCalendarDays(
+        bound.startDate,
+        DEFAULT_PLANNING_DAY_COUNT - 1,
+      );
+      if (recurringDefaultEnd && recurringDefaultEnd > endDate) {
+        endDate = recurringDefaultEnd;
+      }
+    }
+  }
+  return { startDate: params.selectedDate, endDate };
 }
 
 function frozenGroundingRange(params: {
@@ -158,13 +248,17 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
   graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
   groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
 }): { startDate: string; endDate: string } | null {
   const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
   if (windows.length === 0) {
-    const endDate = addCalendarDays(params.selectedDate, DEFAULT_PLANNING_DAY_COUNT - 1);
-    return endDate ? { startDate: params.selectedDate, endDate } : null;
+    return fallbackPlanningHorizon({
+      graph: params.graph,
+      selectedDate: params.selectedDate,
+      resolvedTemporalConstraints: params.resolvedTemporalConstraints,
+    });
   }
 
   const window = windows[0];
@@ -203,15 +297,10 @@ export function createWeeklyPlanningSchedulerContext(params: {
   return {
     ownerId: params.ownerId,
     currentDate: params.requestContext.currentDate,
+    weekStartsOn: params.requestContext.weekStartsOn,
     planningStartDate: params.horizon?.startDate ?? '',
     planningEndDate: params.horizon?.endDate ?? '',
     timeZone: params.requestContext.timeZone,
-    namedTimePeriods: {
-      morning: { startTime: '06:00', endTime: '12:00' },
-      afternoon: { startTime: '12:00', endTime: '17:00' },
-      evening: { startTime: '17:00', endTime: '21:00' },
-      night: { startTime: '21:00', endTime: '24:00' },
-      before_sleep: { startTime: '21:00', endTime: '24:00' },
-    },
+    namedTimePeriods: WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5,
   };
 }

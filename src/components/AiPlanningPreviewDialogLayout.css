@@ -1,0 +1,24 @@
+.ai-planning-preview-dialog-v2 {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-header,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-mode-tabs,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-period-nav,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-hint,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-total,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-error,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-actions {
+  flex: 0 0 auto;
+}
+
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-overview-scroll,
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-day-detail {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.ai-planning-preview-dialog-v2 > .ai-planning-preview-overview-scroll {
+  height: auto;
+}

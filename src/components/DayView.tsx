@@ -6,7 +6,9 @@ import {
   getActualOccurrenceKey,
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
+import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { DailyMaterialShelf } from './DailyMaterialShelf';
@@ -24,6 +26,7 @@ import type {
   ScheduleTemplate,
   StudyMaterial,
   StudySubject,
+  TimetableTerm,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -36,10 +39,13 @@ interface DayViewProps {
   studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
+  onMovePlan: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -102,10 +108,13 @@ export function DayView({
   studyMaterials,
   scheduleTemplates,
   timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onChangeDay,
   onEditPlan,
+  onMovePlan,
   onDeletePlan,
   onSavePlan,
   onSaveActual,
@@ -175,15 +184,33 @@ export function DayView({
     [dayMonthEvents],
   );
   const selectedWeekday = getRecurrenceWeekday(selectedDate);
+  const resolvedTimetableTerm = useMemo(
+    () =>
+      timetableTerms.length > 0
+        ? resolveTimetableTermForDate(selectedDate, timetableTerms, timetableTermId)
+        : timetableTerm ?? null,
+    [selectedDate, timetableTerm, timetableTermId, timetableTerms],
+  );
+  const resolvedTimetableTermId =
+    resolvedTimetableTerm?.id ?? (timetableTerms.length === 0 ? timetableTermId : null);
   const timetableImportCandidates = useMemo(
     () =>
-      buildTimetableImportCandidates({
-        templates: scheduleTemplates,
-        date: selectedDate,
-        weekday: selectedWeekday,
-        termId: timetableTermId,
-      }),
-    [scheduleTemplates, selectedDate, selectedWeekday, timetableTermId],
+      resolvedTimetableTermId
+        ? buildTimetableImportCandidates({
+            templates: scheduleTemplates,
+            date: selectedDate,
+            weekday: selectedWeekday,
+            termId: resolvedTimetableTermId,
+            term: resolvedTimetableTerm,
+          })
+        : [],
+    [
+      resolvedTimetableTerm,
+      resolvedTimetableTermId,
+      scheduleTemplates,
+      selectedDate,
+      selectedWeekday,
+    ],
   );
   const importedTimetableSourceIds = useMemo(
     () =>
@@ -307,6 +334,7 @@ export function DayView({
           (block) => block.date === selectedDate && block.status === 'draft',
         )}
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+        onMovePlan={onMovePlan}
         selectedEntryId={
           selectedPlan
             ? `plan:${selectedPlan.id}`

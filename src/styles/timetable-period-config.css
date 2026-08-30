@@ -1,0 +1,431 @@
+.timetable-period-trigger {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timetable-period-trigger:hover,
+.timetable-period-trigger:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.timetable-period-trigger:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+
+.timetable-period-trigger > span {
+  overflow: hidden;
+  font-size: clamp(1.08rem, 3.8vw, 1.45rem);
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-period-trigger > small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.timetable-alternating-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border) 84%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent) 6%);
+}
+
+.timetable-alternating-control > span {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.timetable-alternating-control .segmented-control {
+  flex: 0 0 auto;
+}
+
+.timetable-alternating-control .segment {
+  min-width: 58px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.timetable-alternating-control > small {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.timetable-pattern-badge {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface) 90%);
+  color: var(--accent-strong);
+  font-size: clamp(0.5rem, 1.55vw, 0.62rem);
+  font-weight: 900;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-class-card:has(.timetable-pattern-badge) {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+.timetable-period-sheet-overlay {
+  z-index: var(--z-modal-overlay, 1000);
+  padding-bottom: calc(16px + var(--app-bottom-nav-clearance, 72px));
+}
+
+.timetable-period-sheet {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  max-height: calc(
+    100dvh - 32px - var(--app-bottom-nav-clearance, 72px) - env(safe-area-inset-top, 0px)
+  );
+}
+
+.timetable-period-sheet-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timetable-period-sheet-header > div {
+  min-width: 0;
+}
+
+.timetable-period-sheet-header h2 {
+  margin: 0;
+}
+
+.timetable-period-sheet-header p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.timetable-period-list-section,
+.timetable-period-form-card {
+  display: grid;
+  gap: 10px;
+}
+
+.timetable-period-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timetable-period-list-heading > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.timetable-period-list-heading .ghost-button {
+  min-height: 34px;
+  padding: 5px 9px;
+  font-size: 0.74rem;
+}
+
+.timetable-period-list {
+  display: grid;
+  gap: 7px;
+}
+
+.timetable-period-swipe-row {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+
+.timetable-period-swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 0;
+  display: flex;
+  align-items: stretch;
+  width: 84px;
+  padding-left: 8px;
+}
+
+.timetable-period-delete-action {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 18px;
+  background: #ff334f;
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+  opacity: 0;
+  transform: translate3d(18px, 0, 0) scale(0.96);
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease;
+  pointer-events: none;
+}
+
+.timetable-period-swipe-row.is-revealed .timetable-period-delete-action {
+  pointer-events: auto;
+}
+
+.timetable-period-delete-action:hover {
+  filter: brightness(0.97);
+}
+
+.timetable-period-delete-action:active {
+  filter: brightness(0.91);
+}
+
+.timetable-period-delete-action:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: -3px;
+}
+
+.timetable-period-delete-action:disabled {
+  cursor: default;
+  filter: saturate(0.55);
+}
+
+.timetable-period-list-item {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: pan-y;
+  will-change: transform;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.timetable-period-swipe-row.is-revealed:not(.is-dragging) .timetable-period-list-item {
+  box-shadow: 0 8px 22px rgba(31, 43, 43, 0.08);
+}
+
+.timetable-period-swipe-row.is-dragging .timetable-period-list-item,
+.timetable-period-swipe-row.is-dragging .timetable-period-delete-action {
+  transition: none;
+}
+
+.timetable-period-list-item.active {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface) 91%);
+}
+
+.timetable-period-list-item > strong {
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-period-list-item > span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.timetable-period-sheet-error {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timetable-period-list-item,
+  .timetable-period-delete-action {
+    transition: none;
+  }
+}
+
+.timetable-period-form-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-muted) 6%);
+}
+
+.timetable-period-date-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.timetable-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 52px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.timetable-setting-row > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timetable-setting-row strong {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.timetable-setting-row small,
+.timetable-anchor-field small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.timetable-setting-row input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.timetable-anchor-field {
+  padding-top: 2px;
+}
+
+.timetable-period-sheet-actions {
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.timetable-pattern-title {
+  display: grid;
+  gap: 2px;
+}
+
+.timetable-pattern-title > span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.timetable-pattern-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.timetable-pattern-options.two-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.timetable-pattern-options .segment {
+  min-height: 40px;
+  padding: 7px 8px;
+}
+
+:root[data-theme='dark'] .timetable-period-form-card,
+:root[data-theme='dark'] .timetable-setting-row,
+:root[data-theme='dark'] .timetable-period-list-item {
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .timetable-alternating-control {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+}
+
+@media screen and (max-width: 640px) {
+  .timetable-period-trigger {
+    padding-inline: 4px;
+  }
+
+  .timetable-period-trigger > span {
+    font-size: 1rem;
+  }
+
+  .timetable-period-trigger > small {
+    font-size: 0.62rem;
+  }
+
+  .timetable-alternating-control {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 10px;
+  }
+
+  .timetable-alternating-control .segmented-control {
+    justify-self: end;
+  }
+
+  .timetable-alternating-control > small {
+    grid-column: 1 / -1;
+  }
+
+  .timetable-period-sheet-header {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+  }
+
+  .timetable-period-sheet-header p {
+    display: block !important;
+  }
+
+  .timetable-period-date-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .timetable-period-list-heading {
+    align-items: flex-start;
+  }
+
+  .timetable-period-sheet-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+  }
+
+  .timetable-pattern-options .segment {
+    min-width: 0;
+  }
+}

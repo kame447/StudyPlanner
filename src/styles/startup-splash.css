@@ -1,0 +1,22 @@
+/* The branded startup artwork is intentionally light-only. Keep the entire
+   browser canvas white until startup releases the splash, even when the saved
+   application theme is dark. Internal lazy-loading splashes remain themed. */
+html:has(.splash-screen--startup-light),
+html:has(.splash-screen--startup-light) body,
+body:has(.splash-screen--startup-light),
+body:has(.splash-screen--startup-light) #root {
+  background: #fff !important;
+  background-image: none !important;
+  color-scheme: light;
+  transition: none !important;
+}
+
+.splash-screen--startup-light {
+  background: #fff !important;
+  color: #1f2b2b;
+  color-scheme: light;
+}
+
+.splash-screen--startup-light .splash-screen__message {
+  color: #5d6c69;
+}

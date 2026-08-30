@@ -1,7 +1,7 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-08-22
+Updated: 2026-08-27
 
 This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
 
