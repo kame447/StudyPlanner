@@ -1,0 +1,26 @@
+name: One-shot accidental branch cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-cleanup-accidental-branches.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete explicitly authorized accidental branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for branch in tmp-ignore no-op no-op2 no-op3 no-op4 no-op5; do
+            git push origin --delete -- "$branch"
+          done
