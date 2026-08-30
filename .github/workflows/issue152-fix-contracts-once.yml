@@ -1,0 +1,83 @@
+name: Issue 152 fix contracts once
+
+on:
+  push:
+    branches:
+      - test/issue152-adversarial-validation-lab
+    paths:
+      - .github/workflows/issue152-fix-contracts-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/issue152-adversarial-validation-lab
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Restore current semantic contracts and fixture schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}: {old!r}')
+              path.write_text(text.replace(old, new, 1))
+
+          semantic = Path('src/features/weeklyPlanning/semantic')
+          prompt = semantic / 'weeklyPlanningSemanticPromptAssemblyV5.ts'
+          replace_once(
+              prompt,
+              "  'publicStateSummary and recentConversation are context, not output. Emit only facts stated or changed in current userText; every sourceText must be supported by current userText. Do not replay unchanged facts; a new nested fact on an existing task/component needs only a minimal containing shell bound by exact existingPublicId.',",
+              "  'Context is not output. publicStateSummary and recentConversation are context only. Emit only current userText changes; each sourceText must be supported by current userText. Do not replay unchanged facts. New nested facts on existing entities need only a minimal shell with exact existingPublicId.',",
+          )
+          replace_once(
+              prompt,
+              "  'Interpret each current-turn contribution independently. Treat pendingQuestion as authoritative only for an actual answer; bind it to its exact target. It must not suppress other explicit contributions: emit them and leave an unanswered question pending; do not invent uncertainty for it.',",
+              "  'Interpret each current-turn contribution independently. pendingQuestion binds only actual answers to its exact target; it cannot suppress other explicit contributions or invent uncertainty. Leave an unanswered question pending.',",
+          )
+
+          policy = semantic / 'weeklyPlanningSemanticMeaningPolicyV5.ts'
+          replace_once(
+              policy,
+              'Keep perOccurrence workload and recurrence aligned.',
+              'Keep perOccurrence/recurrence aligned on the same target.',
+          )
+
+          fixture = Path('src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts')
+          replace_once(
+              fixture,
+              "        status: 'active',\n      }],",
+              "        status: 'active',\n        origin: 'user_stated',\n      }],",
+          )
+          PY
+
+          git diff --check
+          git diff -- \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticMeaningPolicyV5.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts
+
+      - name: Commit correction and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/issue152-fix-contracts-once.yml
+          git add \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptAssemblyV5.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticMeaningPolicyV5.ts \
+            src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts
+          git commit -m 'fix: restore current Issue 152 semantic contracts'
+          git push origin HEAD:test/issue152-adversarial-validation-lab
