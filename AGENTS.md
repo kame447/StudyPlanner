@@ -382,6 +382,19 @@ Before creating or modifying an Issue, branch, commit, or pull request, the agen
 
 The agent must not perform a GitHub write action until this pre-flight check is complete.
 
+### Concurrent-work guard
+
+Before the first implementation write, and again whenever interrupted work is resumed, the agent must determine whether the same logical task is already being worked by another chat or agent using repository evidence rather than chat memory.
+
+- Re-fetch the owning Issue and inspect its latest durable checkpoint, recent comments, active branch/PR references, exact HEAD/base, and stated next action.
+- Search current open pull requests and branches for the same logical task, including branches whose names do not contain the Issue number.
+- Treat an active checkpoint, recent unmerged implementation, or an explicitly active branch/PR for the same scope as occupied work. Do not create a parallel branch/PR or independently implement the same scope.
+- Resume an existing active branch only when the user's request clearly hands off or continues that work, and only after re-fetching its current HEAD and diff. Never assume a remembered branch state is current.
+- When taking ownership of a task that has no active owner, immediately record the active branch, pull request if one exists, exact base/HEAD, scope, and next action in the owning Issue or canonical work checkpoint so other agents can detect it before writing.
+- If another agent's active work overlaps materially in files, responsibility, or acceptance criteria, do not race it. Reuse the existing owner path or leave the overlapping scope untouched until ownership is resolved.
+- Distinct concurrent tasks may proceed only when their responsibility boundaries and release units are genuinely separate; sharing a nearby file alone is not sufficient evidence of conflict, but shared semantic ownership or the same acceptance criterion is.
+- Repository evidence is the coordination source of truth. A missing memory of another chat is never evidence that no one else is working on the task.
+
 ### Issue, branch, and pull request roles
 
 - Use an Issue for bugs, investigation, design decisions, backlog, verification tracking, operational work, and tasks that are not yet implementation-ready.
