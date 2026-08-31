@@ -10,10 +10,11 @@ describe('admin route resolution', () => {
     expect(resolveAdminRoute('/admin/ai')).toEqual({ type: 'ai-api' });
     expect(resolveAdminRoute('/admin/planning')).toEqual({ type: 'planning' });
     expect(resolveAdminRoute('/admin/logs')).toEqual({ type: 'logs' });
+    expect(resolveAdminRoute('/admin/system')).toEqual({ type: 'system' });
   });
 
-  it('keeps the legacy trace URL as a compatibility route to Logs', () => {
-    expect(resolveAdminRoute('/admin/weekly-planning-traces')).toEqual({ type: 'logs' });
+  it('does not keep the retired feature-specific trace URL', () => {
+    expect(resolveAdminRoute('/admin/weekly-planning-traces')).toEqual({ type: 'not-found' });
   });
 
   it('resolves the user list and decoded user detail routes', () => {

@@ -1,9 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { StudyMaterial } from '../../../types/domain';
 import {
-  clearWeeklyPlanningRegisteredMaterialRuntimeV5,
-  getWeeklyPlanningRegisteredMaterialContextV5,
-  setWeeklyPlanningRegisteredMaterialRuntimeV5,
+  createWeeklyPlanningRegisteredMaterialContextV5,
   WEEKLY_PLANNING_REGISTERED_MATERIAL_CONTEXT_LIMIT_V5,
 } from './weeklyPlanningRegisteredMaterialRuntimeV5';
 
@@ -36,13 +34,9 @@ function material(overrides: Partial<StudyMaterial> = {}): StudyMaterial {
   };
 }
 
-afterEach(() => {
-  clearWeeklyPlanningRegisteredMaterialRuntimeV5(OWNER_ID);
-});
-
-describe('weekly planning registered material runtime V5', () => {
+describe('weekly planning registered material context V5', () => {
   it('prioritizes an alias mentioned in the current turn and exposes only planning-relevant facts', () => {
-    setWeeklyPlanningRegisteredMaterialRuntimeV5({
+    const [matched, other] = createWeeklyPlanningRegisteredMaterialContextV5({
       ownerId: OWNER_ID,
       materials: [
         material({
@@ -53,10 +47,6 @@ describe('weekly planning registered material runtime V5', () => {
         }),
         material(),
       ],
-    });
-
-    const [matched, other] = getWeeklyPlanningRegisteredMaterialContextV5({
-      ownerId: OWNER_ID,
       userText: '明日から9月7日まで金フレを進めたい',
     });
 
@@ -86,7 +76,7 @@ describe('weekly planning registered material runtime V5', () => {
         updatedAt: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
       }),
     );
-    setWeeklyPlanningRegisteredMaterialRuntimeV5({
+    const contexts = createWeeklyPlanningRegisteredMaterialContextV5({
       ownerId: OWNER_ID,
       materials: [
         ...activeMaterials,
@@ -94,18 +84,29 @@ describe('weekly planning registered material runtime V5', () => {
       ],
     });
 
-    const contexts = getWeeklyPlanningRegisteredMaterialContextV5({ ownerId: OWNER_ID });
-
     expect(contexts).toHaveLength(WEEKLY_PLANNING_REGISTERED_MATERIAL_CONTEXT_LIMIT_V5);
     expect(contexts.some((entry) => entry.materialId === 'archived')).toBe(false);
   });
 
-  it('returns defensive copies so prompt consumers cannot mutate runtime state', () => {
-    setWeeklyPlanningRegisteredMaterialRuntimeV5({ ownerId: OWNER_ID, materials: [material()] });
-    const first = getWeeklyPlanningRegisteredMaterialContextV5({ ownerId: OWNER_ID });
-    first[0]!.aliases.push('mutated');
+  it('uses only the current explicit material snapshot and never retains a previous one', () => {
+    const first = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [material()],
+    });
+    expect(first[0]?.materialId).toBe('material-1');
 
-    const second = getWeeklyPlanningRegisteredMaterialContextV5({ ownerId: OWNER_ID });
-    expect(second[0]?.aliases).toEqual(['金フレ', '金のフレーズ']);
+    const second = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [],
+    });
+    expect(second).toEqual([]);
+  });
+
+  it('filters another owner material even when it is present in the provided snapshot', () => {
+    const contexts = createWeeklyPlanningRegisteredMaterialContextV5({
+      ownerId: OWNER_ID,
+      materials: [material({ userId: 'different-owner' })],
+    });
+    expect(contexts).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
 } from './productObservabilityReadModelService';
+import { ProductObservabilitySystemStatusService } from './productObservabilitySystemStatusService';
 import { ProductObservabilityWeeklyPlanningDiagnosticAdapter } from './productObservabilityWeeklyPlanningDiagnosticAdapter';
 
 export const PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH = '/observability/admin/overview';
@@ -17,6 +18,7 @@ export const PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH = '/observability/admin/p
 export const PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH = '/observability/admin/logs';
 export const PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH = '/observability/admin/log-entries';
 export const PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH = '/observability/admin/debug-bundle';
+export const PRODUCT_OBSERVABILITY_ADMIN_SYSTEM_PATH = '/observability/admin/system';
 
 export interface ProductObservabilityAdminApiEnv extends ProductObservabilityReadModelEnv {
   FIREBASE_WEB_API_KEY: string;
@@ -182,7 +184,8 @@ export function isProductObservabilityAdminPath(pathname: string): boolean {
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_PLANNING_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH
     || pathname === PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH
-    || pathname === PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH;
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH
+    || pathname === PRODUCT_OBSERVABILITY_ADMIN_SYSTEM_PATH;
 }
 
 export async function handleProductObservabilityAdminApi(
@@ -236,6 +239,14 @@ export async function handleProductObservabilityAdminApi(
         fromDate,
         toDate,
       });
+      return jsonResponse(request, env, 200, { ok: true, result });
+    }
+
+    if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_SYSTEM_PATH) {
+      const system = new ProductObservabilitySystemStatusService(env);
+      const result = await system.getSystemStatus(
+        environmentFrom(url.searchParams.get('environment'), env),
+      );
       return jsonResponse(request, env, 200, { ok: true, result });
     }
 

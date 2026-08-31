@@ -5,10 +5,6 @@ import { minutesBetween, sortByDateTime } from '../lib/date';
 import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
-import {
-  clearWeeklyPlanningRegisteredMaterialRuntimeV5,
-  setWeeklyPlanningRegisteredMaterialRuntimeV5,
-} from '../features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
@@ -216,16 +212,6 @@ export function usePlannerAppState(): PlannerAppState {
   useEffect(() => {
     setWeeklyApprovedPlanOverlay([]);
   }, [user?.id]);
-
-  useEffect(() => {
-    const ownerId = user?.id?.trim();
-    if (!ownerId) return;
-    setWeeklyPlanningRegisteredMaterialRuntimeV5({
-      ownerId,
-      materials: studyMaterials,
-    });
-    return () => clearWeeklyPlanningRegisteredMaterialRuntimeV5(ownerId);
-  }, [studyMaterials, user?.id]);
 
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
