@@ -283,6 +283,11 @@ jobs:
               ")).rejects.toThrow('another user');",
               ")).rejects.toThrow('所有者が一致しません');",
           )
+          replace_once(
+              'src/hooks/usePlannerDataState.ts',
+              "  async function runSequentially<T>(\n    items: T[],\n    handler: (item: T) => Promise<void>,\n  ): Promise<void> {\n    for (const item of items) {\n      await handler(item);\n    }\n  }\n\n",
+              '',
+          )
 
           observed = Path('src/repositories/observedPlannerRepository.ts')
           observed_text = observed.read_text()
