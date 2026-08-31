@@ -1,0 +1,24 @@
+name: Cleanup merged branches once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.head_commit.message == 'chore: cleanup merged branches'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete explicitly verified merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init cleanup-repo
+          cd cleanup-repo
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin --delete -- docs/issue-246-learning-advice-contract
+          git push origin --delete -- fix/issue268-cross-entity-consistency
