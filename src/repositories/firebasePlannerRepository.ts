@@ -380,6 +380,84 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async applyRecurringPlanMutation(userId, mutation) {
+    try {
+      assertOwnedRecords(
+        userId,
+        [
+...mutation.planUpserts,
+...mutation.planDeletes,
+...mutation.actualUpserts,
+...mutation.actualDeletes,
+        ],
+        '繰り返し予定更新',
+      );
+      const reboundIds = new Set(
+        mutation.actualUpserts.map((actual) => actual.id),
+      );
+      const [linkedActuals, duplicateOccurrenceActuals] = await Promise.all([
+        Promise.all(
+mutation.planDeletes.map((plan) =>
+  listActualsByPlanId(firestoreDb, userId, plan.id),
+),
+        ).then((groups) => groups.flat()),
+        Promise.all(
+mutation.actualDeletes.map((actual) =>
+  listActualsByPlanOccurrence(firestoreDb, actual),
+),
+        ).then((groups) => groups.flat()),
+      ]);
+      const actualDeletesById = new Map(
+        [
+...mutation.actualDeletes,
+...duplicateOccurrenceActuals,
+...linkedActuals,
+        ]
+.filter((actual) => !reboundIds.has(actual.id))
+.map((actual) => [actual.id, actual]),
+      );
+      const operationCount =
+        mutation.planUpserts.length +
+        mutation.planDeletes.length +
+        mutation.actualUpserts.length +
+        actualDeletesById.size;
+
+      if (operationCount > 500) {
+        throw new Error('Recurring plan mutation exceeds the Firestore batch limit.');
+      }
+      if (operationCount === 0) return;
+
+      const batch = writeBatch(firestoreDb);
+      mutation.planUpserts.forEach((plan) => {
+        batch.set(
+doc(firestoreDb, 'plans', plan.id),
+stripUndefinedDeep(plan),
+{ merge: true },
+        );
+      });
+      mutation.planDeletes.forEach((plan) => {
+        batch.delete(doc(firestoreDb, 'plans', plan.id));
+      });
+      mutation.actualUpserts.forEach((actual) => {
+        batch.set(
+doc(firestoreDb, 'actuals', actual.id),
+stripUndefinedDeep(actual),
+{ merge: true },
+        );
+      });
+      actualDeletesById.forEach((actual) => {
+        batch.delete(doc(firestoreDb, 'actuals', actual.id));
+      });
+      await batch.commit();
+    } catch (error) {
+      throw new Error(
+        normalizeErrorMessage(
+'繰り返し予定を保存できませんでした。',
+error as FirebaseLikeError,
+        ),
+      );
+    }
+  },
     async deletePlanWithDependents(mutation) {
       try {
         assertOwnedRecords(

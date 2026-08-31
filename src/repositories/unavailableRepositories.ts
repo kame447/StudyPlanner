@@ -65,6 +65,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async getTimetablePeriods() {
       return [];
     },
+    async applyRecurringPlanMutation() {
+      throw createConfigurationError();
+    },
     async deletePlanWithDependents() {
       throw createConfigurationError();
     },
