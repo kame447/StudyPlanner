@@ -1,1 +1,0 @@
-verify stale material state projection fix
