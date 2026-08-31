@@ -1,6 +1,6 @@
 # Learning Consultation and Advice Contract
 
-Status: canonical product requirement / seven-view hardening in progress
+Status: canonical product requirement / implementation preflight complete
 Updated: 2026-08-31
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 
@@ -15,11 +15,11 @@ Regression patterns: [../../../work/regression-patterns.md](../../../work/regres
 Test philosophy: [../quality/test-philosophy.md](../quality/test-philosophy.md)
 Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 
-## 1. この文書の役割
+## 1. 文書の役割
 
 この文書は、AI計画に「予定を作る前段階の学習相談」を追加するための正仕様である。
 
-対象は、既存条件から予定を生成するだけのturnではない。ユーザーが学習方針そのものを相談し、AIがStudyPlanner内の現在情報にgroundされた助言を返し、ユーザーがレビューした意思だけを既存Stable V5 planningへ安全に接続するturnを扱う。
+ユーザーが学習方針そのものを相談し、StudyPlanner内の現在情報にgroundされた助言を受け、ユーザーが採用した意思だけを既存Stable V5 planningへ安全に接続する。
 
 代表例:
 
@@ -31,44 +31,46 @@ Current roadmap: [../roadmap/current.md](../roadmap/current.md)
 - 「この勉強法で間に合う？」
 - 「なぜその教材がおすすめなの？」
 
-production runtimeへこの機能が完全実装されるまでは [current-contract-v5.md](../architecture/current-contract-v5.md) がproduction baselineである。
+production runtimeへ完全実装されるまでは [current-contract-v5.md](../architecture/current-contract-v5.md) がproduction baselineである。
 
-本書では次の語を規範的に使う。
+本書では次を規範語として使う。
 
 - 必須: 実装が満たさなければならない。
 - 禁止: 実装してはならない。
 - 推奨: 特別な理由がない限り従う。
-- projection: 表示・集計・prompt入力等の派生状態。authorizationやsource of truthではない。
+- projection: 表示・集計・prompt入力・interaction選択等の派生値。source of truthではない。
 
 ## 2. Product goal
 
-同じAI計画の会話面で次を成立させる。
-
 ```text
-相談する
-→ 関連するStudyPlanner contextをowner domainからboundedに取得
-→ 学習方針・教材・順序・目安期限について助言を得る
-→ 理由や代替案を聞く
-→ proposalをレビューする
+user turn
+→ deterministic active-interaction projection
+→ typed high-level turn-purpose interpretation
+   ├─ planning operation → existing Stable V5
+   ├─ learning consultation
+   ├─ consultation review / follow-up
+   └─ unresolved / other
+→ consultationならowner domainからbounded context取得
+→ learning-advice answer purpose
+→ AdviceProposal / clarification / explanation
+→ user review
    ├─ approve
    ├─ request_revision
    ├─ request_alternative
    └─ dismiss
 → approve対象をcurrent contextで再検証
-→ approved + current + fully-accounted-for scopeだけをStable V5へpromotion
+→ approved + current + fully-accounted-for scopeだけをStable V5 planning contributionへpromotion
 → readiness / scheduler
 → preview
-→ Planの最終承認
+→ Plan approval
 → save
 ```
 
-最終的なproduct outcomeは「AIがそれらしい勉強法を話すこと」ではない。
+最終目的はAIがそれらしい勉強法を話すことではない。
 
-ユーザーが、自分の目標・現在地・教材・予定・進捗にgroundされた提案を理解し、修正・別案・終了を含めて自分で判断し、その意思だけが安全にplanningへ反映されることを目的とする。
+ユーザーが、目標・現在地・教材・予定・進捗にgroundされた案を理解し、修正・別案・終了を含めて自分で判断し、その意思だけがplanningへ反映されることを目的とする。
 
 ## 3. Non-negotiable invariants
-
-最重要不変条件:
 
 ```text
 AI-generated advice
@@ -80,7 +82,7 @@ AI-generated advice
 ≠ durable memory
 ```
 
-また、2種類の承認を混同しない。
+承認も分離する。
 
 ```text
 Advice approval
@@ -90,74 +92,71 @@ Plan approval
 = 実際に生成されたpreviewを保存してよい
 ```
 
-AIが「基礎問題精講を10月末までに終えるのがおすすめ」と回答しただけでは、次のどれも成立しない。
-
-- ユーザーがその教材を使うと決めた
-- 10月末を正式期限として承認した
-- schedulerへ渡してよい
-- Planとして保存してよい
-- 長期記憶として保持してよい
-
-追加の必須不変条件:
+必須不変条件:
 
 1. renderer proseからmachine stateを再構成しない。
-2. activeなproposal revision以外へreview commandを適用しない。
-3. 1 proposal revisionにつき成功するadoption decisionは最大1回とする。
-4. conversation内でimplicit short-answerを受け取れるauthorization-bearing targetは常に1つだけとする。
-5. reviewとpromotionはimmutable operation identityとexpected revisionへbindする。
-6. AI回答生成中に根拠が変わった結果をcurrent proposalとしてcommitしない。
-7. reload後もreview対象・根拠・lineageをtyped stateから復元できる。
-8. `empty / unavailable / omitted / stale / non_revalidatable`を同じ状態へ潰さない。
-9. 相対期限は一度canonical valueへ解決し、promotion時にproseを再解釈しない。
-10. unresolvedな教材名をcanonical material identityとして扱わない。
-11. consultation clarificationとplanning clarificationを同じpending question stateへ混在させない。
-12. 新しいproposalを生成したturnだけで、そのnew revisionを暗黙承認しない。
-13. approved scopeのplanning-relevantな内容をsilent partial promotionしない。
-14. stale explanationはhistorical adviceをcurrent recommendationへ復活させない。
-15. prompt用projectionをfreshness / identity / availabilityのsource of truthとして使わない。
-16. consultation AdviceProposalを既存のgeneric proposal / assumption proposalと同じidentity namespaceへ曖昧に載せない。
-17. same-browser multi-tabでlocal read-check-writeだけをformal compare-and-set authorityにしない。
-18. promotion後のstrategy変更で過去ReviewDecision / PromotionReceiptを上書きしない。
+2. active proposal revision以外へreview commandを適用しない。
+3. 1 proposal revisionにつき成功するadoption decisionは最大1回。
+4. implicit short replyを受け取れるformal targetは最大1つ。
+5. ActiveInteractionはunderlying formal statesから導出するprojectionであり、独立したmutable/persisted truthにしない。
+6. review / promotionはstable operation identityとexpected revisionへbindする。
+7. AI回答生成中に依存contextが変わった結果をcurrent proposalとしてcommitしない。
+8. reviewable proposalと、それを表示するassistant presentationを別々の成功状態としてcommitしない。
+9. reload後もreview対象・根拠・lineageをtyped stateから復元できる。
+10. `empty / unavailable / omitted / stale / non_revalidatable`を同じ状態へ潰さない。
+11. 相対期限は一度canonical valueへ解決し、後段でproseを再解釈しない。
+12. unresolvedな教材名をcanonical material identityとして扱わない。
+13. consultation clarificationとplanning clarificationを同じpending stateへ混在させない。
+14. new proposal revisionを生成した同じturnだけで暗黙承認しない。
+15. approved scopeのplanning-relevant contentをsilent partial promotionしない。
+16. stale explanationはhistorical adviceをcurrent recommendationへ復活させない。
+17. prompt用projectionをfreshness / identity / availabilityのSSOTにしない。
+18. AdviceProposalを既存generic proposal / assumption proposalと同じidentity namespaceへ曖昧に載せない。
+19. same-browser multi-tabをlocal read-check-writeだけで守ったことにしない。
+20. promotion後の変更で過去ReviewDecision / PromotionReceiptを書き換えない。
 
-## 4. Product scope
+## 4. Phase 1 scope
 
-### 4.1 Phase 1で対象とする相談
+対象:
 
-- 学習戦略: 何から始めるか、どの順序がよいか
-- 教材選択: 何を使うか、現在教材を継続するか
-- 教材遷移: 現教材の次に何を行うか
-- 目標分解: 目標点までにどの段階をいつまでに終えるか
+- 学習戦略
+- 教材選択・教材遷移
+- 目標分解
 - 期限提案
 - feasibility explanation
 - 学習方法
-- 複数案の比較
+- 複数案比較
 - 理由説明
 
-### 4.2 Phase 1で行わないもの
+非対象:
 
-- StudyPlannerと無関係な汎用雑談assistant化
-- AI回答から直接Planを書き込むshortcut
-- 教材・試験ごとの巨大な決定論的heuristic表
-- 無制限なautonomous web research
+- StudyPlannerと無関係な汎用assistant
+- adviceから直接Planを書き込むshortcut
+- 教材・試験ごとの巨大なdeterministic heuristic表
+- 無制限autonomous web research
 - AI回答の自動長期記憶化
-- owner domainのsource of truth複製
+- owner domainのSSOT複製
 - item単位の部分承認
-- cross-device consultation state同期
+- cross-device consultation-state同期
 - offline multi-device conflict resolution
 
-Phase 1でreview可能なscopeは「proposal全体」または「複数optionのうち1つのoption全体」に限定する。
+Phase 1のreview単位はproposal全体、または複数optionのうち1 option全体。
 
-same-browser multi-tabのmutation safetyはPhase 1から必要であり、cross-device非対応を理由に省略しない。
+same-browser multi-tab mutation safetyはPhase 1から必要である。
 
 ## 5. SSOT / ownership map
 
-同じ事実・identity・authorizationに複数ownerを作らない。
+一つの事実・identity・authorizationに複数ownerを作らない。
 
 ```text
-Bookshelf / StudyMaterial
+Bookshelf / StudyMaterial / #187
   registered material identity
   aliases / catalog link
   user-specific progress / pace
+
+planner-data application boundary / #269
+  planner source load availability
+  ready / unavailable / stale distinction
 
 userPlanningContext
   durable explicit user facts / preferences
@@ -165,235 +164,225 @@ userPlanningContext
 Stable V5 Fact Graph
   accepted planning facts / lifecycle
 
-Timetable / Plan / Actual / Reporting owners
-  their canonical domain state and deterministic aggregates
+Timetable / Plan / Actual / Reporting
+  canonical domain state / deterministic aggregate
 
-client-runtime / Issue #164
-  local durable persistence
-  local replica
-  migration infrastructure
+weekly-planning turn commit boundary / #270
+  one logical turnのformal application commit
+  conversation presentationとrequired staged domain stateの整合
+
+client-runtime / #164
+  local persistence policy
+  local replica / migration
   multi-tab mutation coordination
   future local/cloud reconciliation
 
-approval/server authority / Issue #51
+approval/server authority / #51
   final Plan-save uniqueness across devices
 
-security / Issue #152
+security / #152
   prompt-injection / trust / provenance policy
-  untrusted stored/supplemental content boundary
-
-external-integrations / Issue #187
-  material catalog / retrieval providers
-  registered-material identity integration boundary
+  stored / OCR / supplemental content boundary
 
 product-observability
   service-wide metrics
 
-weekly-planning
+weekly-planning #246
   consultation routing/state/review binding
   freshness orchestration
   promotion into normal Stable V5 planning
 ```
 
-weekly-planningは各ownerのstable port / facadeを利用し、第二のidentity resolver、storage policy、security policy、final-save authorityを作らない。
+weekly-planningはowner domainのstable port/facadeを利用し、第二のidentity resolver、load-status inference、storage policy、security policy、final-save authorityを作らない。
 
-## 6. SOLID architecture requirements
+## 6. SOLID requirements
 
-### 6.1 SRP — Single Responsibility Principle
+### 6.1 SRP
 
-consultation orchestratorはflow調整だけを所有する。
+consultation application serviceはflow orchestrationだけを所有する。
 
-所有してはならないもの:
+所有しない:
 
-- 教材identity照合アルゴリズム
-- Bookshelf / Timetable等のstorage実装
-- context source固有のfetch/fallback policy
-- localStorage / IndexedDB等の具体的永続化
-- AI provider SDK
+- 教材identity matching policy
+- owner-domain storage
+- context-source fetch/fallback policyそのもの
+- localStorage / IndexedDBの具体実装
+- provider SDK
 - scheduler placement
 - final Plan save
 
-### 6.2 OCP — Open/Closed Principle
+high-level turn-purpose interpreterは「どのsemantic purposeへ渡すか」だけを所有し、Stable V5 planning semanticsやAdviceProposal lifecycleを所有しない。
 
-新しいcontext sourceやexternal providerはadapter / port追加で拡張する。
+### 6.2 OCP
 
-source追加のたびにconsultation core state machineへ巨大switchやprovider固有分岐を追加しない。
+context source/provider追加はadapter/port追加で行う。
 
-### 6.3 LSP — Liskov Substitution Principle
+consultation coreへsource固有の巨大switchを増やさない。
+
+### 6.3 LSP
 
 context source adapterは共通contractを守る。
 
-最低限:
-
 - source identity
 - requirement
-- availability status
+- availability
 - authority
-- canonical digest / basis
+- canonical digest/basis
 - provenance
 - bounded items
 
-adapter差し替えで`empty`の意味やfreshness semanticsが変わってはならない。
+adapter交換で`empty`やfreshnessの意味を変えない。
 
-### 6.4 ISP — Interface Segregation Principle
+### 6.4 ISP
 
-Answer AIへrepository全体・manager全体を渡さない。相談に必要なbounded read modelだけを渡す。
+Answer AIへrepository/manager全体を渡さない。
 
-promotion mapperへAI clientを渡さない。validated proposalとowner-domain portsだけを渡す。
+promotion mapperへAI clientを渡さない。
 
-### 6.5 DIP — Dependency Inversion Principle
+### 6.5 DIP
 
-weekly-planningはconcrete provider / localStorage / raw catalog responseへ直接依存しない。
-
-owner domainが公開するstable interfaceへ依存する。
+weekly-planningはconcrete AI provider、localStorage、raw catalog responseへ直接依存せず、stable interfaceへ依存する。
 
 ## 7. Existing Stable V5との責任分離
 
-### 7.1 `study_advice`を新機能のauthorityとして流用しない
+### 7.1 Legacy `study_advice`はauthorityではない
 
-current codeに存在する互換語彙 `PlanningIntent = 'study_advice'` をconsultation lifecycleのformal authorityとして流用しない。
+current `PlanningIntent = 'study_advice'` を新consultation lifecycleのformal authorityとして流用しない。
 
-conceptとして少なくとも次を区別する。
+### 7.2 Existing LearningStrategyProposalは別概念
 
-```text
-planning_operation
-learning_consultation
-consultation_review
-consultation_followup
-other / unresolved
-```
+current weekly learning-strategy proposalは週内capacity / memorization session等のplanning-side proposalである。
 
-exact TypeScript名は実装時に既存schemaへ合わせてよいが、意味責任を統合しない。
+AdviceProposalと型・ledger・statusを共有しない。
 
-### 7.2 既存LearningStrategyProposalとの分離
+### 7.3 Generic `proposal` referenceと分離
 
-current Stable V5のweekly learning strategy proposalは、週内capacity / memorization session等のplanning-side proposalである。
+Stable V5のgeneric proposal referenceからAdviceProposalをmutationできてはならない。
 
-Issue #246のAdviceProposalは学習相談のadvisory stateであり、同じ型・ledger・statusを共有しない。
+Phase 1はconsultation advice専用reference family/namespaceを持つことを推奨する。
 
-### 7.3 Generic proposal referenceとのnamespace分離
+## 8. Turn-purpose routing architecture
 
-Stable V5には既存proposalを指すgeneric semantic referenceがある。
+### 8.1 Purpose boundaryの位置
 
-AdviceProposalを曖昧に同じnamespaceへ載せない。
+相談判定を既存`WeeklyPlanningSemanticDocumentV5`へ押し込まない。
 
-許される設計は次のどちらか。
+current production planning semantic documentはplanning semanticsのownerとして維持する。
 
-1. consultation advice専用のtyped reference namespaceを持つ。
-2. 共有reference schemaへ明示的なproposal-family discriminatorを追加し、deterministic applicationがfamilyまで検証する。
+その手前に、strict structured outputを持つ小さなhigh-level semantic purpose boundaryを置く。
 
-既存generic proposal decisionがAdviceProposalをmutationできてはならない。
-
-## 8. Turn routing and active interaction
-
-### 8.1 3種類の「質問」を分ける
+概念:
 
 ```text
-planning clarification
-  application → userへplanning不足情報を質問
-
-consultation clarification
-  learning consultation → userへ助言に必要な1問を質問
-
-user consultation
-  user → StudyPlannerへ学習相談
-```
-
-別machine stateとして扱う。
-
-### 8.2 ActiveInteraction invariant
-
-conversation内で、`それでいい`、`はい`、`1つ目`等のimplicit short replyを受け取れるtargetは常に最大1つ。
-
-概念上:
-
-```text
-ActiveInteraction
-  none
-  planning_clarification
-  consultation_clarification
+TurnPurpose
+  planning_operation
+  learning_consultation
   consultation_review
-  preview_approval
+  consultation_followup
+  unresolved / other
 ```
 
-これは表示履歴を消すという意味ではない。historical stateは保持できるが、implicit authorizationを持てるのはactive targetだけである。
+raw keyword/regexでrouteしない。
 
-新しい無関係な相談やplanning flowが始まった場合、以前のtargetはimplicit authorityを失う。
+provider abstractionやstrict-response infrastructureは既存OpenAI-compatible clientを再利用できるが、schema/purposeはplanning semantic normalizerから分離する。
 
-ambiguousなshort replyはmutationせずclarificationする。
+### 8.2 ActiveInteractionを先に解決する
 
-古いadviceを後から利用する場合は明示的に再activateし、current contextでrevalidateしてからreviewableにする。
+short replyやreview follow-upでは、purpose classifierへ複数formal targetを選ばせない。
 
-### 8.3 Raw-text heuristic禁止
+まずdeterministic applicationが現在のformal statesからActiveInteractionを投影する。
 
-教材名、科目名、「おすすめ」「それで」等のkeyword/regexをformal semantic authorityにしない。
-
-semantic repairで失敗してもlegacy raw-text parserへfallbackしない。
-
-### 8.4 Mixed turn
-
-例:
+候補:
 
 ```text
-「教材はそれで、期限だけ11月末にして、そのまま予定組んで」
+none
+planning_clarification
+consultation_clarification
+consultation_review
+preview_approval
 ```
 
-Phase 1 rule:
+ActiveInteractionは保存しない。
 
-- active proposal内容の変更を含む場合はnew revisionを生成する。
-- 同じturnのschedule要求でnew revisionをauto-approveしない。
-- new revisionへ別の明示的review decisionを必要とする。
-- 内容変更なしの「それで予定組んで」はactive current proposalへのapproveになり得る。
+underlying authority:
 
-### 8.5 Cross-option composition
+- planning clarification → existing planning question state
+- consultation clarification → PendingConsultationClarification
+- consultation review → active AdviceProposal + consultation lifecycle
+- preview approval → existing preview/approval interaction state
+
+複数authorityが同時にimplicit targetを主張したら、projection conflictとしてfail closedし、implicit mutationを行わない。
+
+### 8.3 No active interaction
+
+active targetがないturnだけ、high-level purpose interpretationでplanning consultation等をsemanticに分類する。
+
+### 8.4 Result shape
+
+consultation resultを`PlanningIntakeState`へ偽装しない。
+
+application execution resultはconceptually discriminated unionにする。
 
 ```text
-「Aの教材でBの期限」
-「AとB両方やる」
+PlanningTurnResult
+ConsultationTurnResult
+ControlledFailureResult
 ```
 
-これは既存optionのapproveではない。
+planning branchは既存Stable V5 result contractを維持する。
 
-`request_revision`として新しいproposalを生成し、新revisionへfresh approvalを要求する。
+### 8.5 Raw-text heuristic禁止
+
+教材名、科目名、「おすすめ」「それで」等のkeyword/regexをformal route authorityにしない。
+
+provider/validation failure時もlegacy parserへfallbackしない。
+
+### 8.6 Mixed turn
+
+`教材はそれで、期限だけ11月末にして、そのまま予定組んで`
+
+- content変更 → new revision
+- same turnのschedule要求でnew revisionをauto-approveしない
+- fresh reviewを要求
+- content変更なしならactive proposal approveになり得る
+
+### 8.7 Cross-option composition
+
+`Aの教材でBの期限`、`AとB両方`はapproveではなくrequest_revision。
+
+new proposal + fresh approvalを要求する。
 
 ## 9. Answer output contract
 
-Answer AIのvalidated outputはPhase 1で必ず1種類だけ。
+Answer AI outputはexactly one:
 
 ```text
-AdviceAnswerDocument
-  proposal
-  clarification
-  explanation
+proposal
+clarification
+explanation
 ```
 
-### 9.1 Proposal
+AIはformal adviceId / optionId / review status / validity / promotion statusを生成しない。
 
-新しいreviewable AdviceProposal候補。
+### Proposal
 
-複数optionを返してよい。
+reviewable proposal candidate。複数option可。
 
-AIはformal adviceId / optionId / review status / promotion statusを生成しない。
+### Clarification
 
-### 9.2 Clarification
+recommendationを大きく変えるblocking inputが1つある場合だけ。
 
-recommendationを大きく変えるblocking inputが1つある場合だけ返す。
+clarificationからAdviceProposalをcommitしない。
 
-一度に大量のプロフィール質問をしない。
+### Explanation
 
-clarification outputからAdviceProposalをcommitしない。
-
-### 9.3 Explanation
-
-activeまたはhistorical proposalのrationale / assumptions / evidence / trade-offを説明する。
+existing proposalのrationale / assumptions / evidence / trade-off。
 
 strategy contentを変更しない限りnew revisionを作らない。
 
-## 10. Consultation state model
+## 10. Consultation state
 
-consultation stateはFact Graphとは別のconversation-scoped advisory stateとして保持する。
-
-概念モデル:
+conversation-scoped advisory state:
 
 ```text
 ConsultationSessionState
@@ -410,14 +399,13 @@ ConsultationSessionState
   promotionOperations[]
   promotionReceipts[]
   pendingClarification?
-  activeInteraction
 ```
 
-consultation revisionはformal state commitごとに単調増加する。
+ActiveInteractionはこのstateへ保存しない。
+
+consultation revisionはformal commitごとに単調増加する。
 
 ### 10.1 AdviceProposal
-
-proposal revisionはimmutableに近い扱いをする。
 
 最低限:
 
@@ -428,115 +416,76 @@ proposal revisionはimmutableに近い扱いをする。
 - supersedes / supersededBy
 - structured options
 - assumptions
-- evidence refs
-- dependency refs
+- evidence/dependency refs
 - context fingerprint
 - temporal resolutions
 - material bindings
 - answer snapshot
 - createdAt
 
-修正でv1をin-place editせずv2を作る。
+revisionをin-place mutationしない。
 
-### 10.2 Active leaf invariant
+### 10.2 Active leaf
 
-review可能なのはactive leaf revisionだけ。
+review可能なのはactive leafだけ。
 
-new revision commit後、旧revisionはhistoryになり、approve / revision / alternative / promotionの対象に再利用しない。
+new revision commit後のold revisionはhistory。古いUI/別tab/reload前commandでもapprove/revision/alternative/promotion不可。
 
-古いUI、別tab、reload前commandでもside effectを起こさない。
-
-### 10.3 Status projectionをauthorityにしない
-
-formal truth:
+### 10.3 Mutable aggregate statusをauthorityにしない
 
 ```text
-user decision
-  immutable ReviewDecision ledger
-
-freshness
-  deterministic ValidityCheck
-
-promotion
-  immutable PromotionOperation / PromotionReceipt ledger
+review truth     = immutable ReviewDecision
+freshness truth  = deterministic ValidityCheck
+promotion truth  = immutable PromotionOperation / PromotionReceipt
 ```
 
-`approved/current/promoted`等のUI表示statusはprojectionとして計算してよいがauthorizationの正本にしない。
+UI statusはprojection。
 
 ## 11. Review contract
 
-### 11.1 Phase 1 review scope
+Phase 1 review scope:
 
-review scope:
+- proposal
+- one option
 
-- proposal全体
-- 1つのoption全体
+item-level partial approval不可。
 
-item-level partial approvalは不可。
-
-### 11.2 ReviewDecision
-
-最低限:
+ReviewDecisionには少なくとも:
 
 - decisionId
 - consultationId
 - targetAdviceId
 - expectedAdviceRevision
 - expectedConsultationRevision
-- target scope
+- targetScope
 - action
 - feedback
-- source turn
+- sourceTurnId
 - decidedAt
 
-formal ID / expected revision / target bindingはdeterministic applicationが付与する。
+### 11.1 Adoption terminality
 
-### 11.3 Adoption terminality
+1 revisionにつきsuccessful approveは最大1回。
 
-1 proposal revisionにつき成功する`approve`は最大1回。
+Aをapproveしたv1に後からBを追加approveしない。strategy changeとしてv2を作る。
 
-成功したapproveはそのrevisionのadoption authorityを消費する。
-
-例:
-
-```text
-Proposal v1
-  Option A
-  Option B
-
-User approves A
-  → v1のadoptionは確定・消費済み
-
-User later says Bも採用
-  → v1へ2つ目のapproveを追加しない
-  → strategy changeとしてnew revisionを作る
-```
-
-これによりsibling optionが時間差で複数promotionされることを防ぐ。
-
-### 11.4 Concurrency
-
-review command適用はexpected consultation/advice revisionを必須にする。
+### 11.2 Runtime concurrency
 
 minimum guard:
 
-- owner / conversation一致
+- owner/conversation一致
 - consultation active
-- target advice = active leaf
+- active leaf一致
 - expected revisions一致
 - target scope存在
-- adoption authority未消費
--同一operation未適用
+- adoption未消費
+- operation未適用
 
-同一runtime writer内ではapprove vs alternative、double approve等のうち1つだけをcommitする。
-
-same-browser multi-tabのserializationは §20 に従う。
+same-browser multi-tab serializationは#164 ownerへ委譲する。
 
 ## 12. Context source contract
 
 Answer AIへplain arrayだけを渡さない。
-
-各sourceは概念上:
 
 ```text
 ContextSourceEnvelope
@@ -551,92 +500,79 @@ ContextSourceEnvelope
   bounded items
 ```
 
-### 12.1 `empty`の意味
+### 12.1 Emptyはsuccessful emptyだけ
 
-loadに成功しauthoritativeに0件である場合だけ`empty`。
+load failure / timeout / permission / not-loaded / token omissionをemptyへ変換しない。
 
-load failure、permission、timeout、token/privacy budget omissionをemptyへ変換しない。
+planner-data sourcesは#269のtyped availabilityを利用し、`items.length === 0`からavailabilityを推測しない。
 
-### 12.2 Required / optional
+refresh failure後に古い値を保持する場合はstaleとして扱う。
 
-validated consultation meaningからdeterministic applicationが決める。raw text keywordで決めない。
+### 12.2 userPlanningContext
 
-required sourceがunavailable / omitted / staleなら、そのsourceが必要な確定proposalを作らない。
+prompt selection projectionをavailability/freshness authorityにしない。
 
-### 12.3 Owner snapshot first
+cloud repository state等のrevision/basisを取得できるowner portを使う。
 
-freshness / identity / source availabilityの判定はowner domain snapshot / portから行う。
+local-only stateで読込失敗とauthoritative emptyを区別できない経路は、required sourceのcurrent authorityとして扱わない。必要ならadapter側で`unavailable`へfail closedする。
 
-Stable V5 public semantic summary等のprompt用projectionをsource of truthにしない。
+### 12.3 Required / optional
 
-projectionで落ちたrevision / statusを後から推測しない。
+validated consultation meaningからapplicationが決める。raw keywordで決めない。
 
-## 13. Context fingerprint and freshness
+required source unavailable/omitted/staleなら、そのsourceを必要とする確定proposalを作らない。
 
-fingerprintは、そのproposal生成に実際に消費したdependencyだけから作る。
+## 13. Context fingerprint / freshness
 
-含めるもの:
+fingerprintは実際にconsumedしたdependencyだけから作る。
 
 - source identity
-- consumed canonical semantic digest
+- consumed canonical digest
 - source basis/revision where meaningful
 - deterministic signal + calculation version
-- temporal request context
+- request temporal context
 - evidence snapshot digest
 - material binding basis
 
-無関係なsource更新でstaleにしない。
-
-単なるupdatedAt変更ではなく、consumed canonical contentの変化を基準にできる設計を優先する。
+prompt text自体をfingerprintのSSOTにしない。
 
 ### 13.1 Commit-time freshness
 
 ```text
-F0 = answer call前のdependency fingerprint
+F0 = answer call前
 AI call
-structured validation
-F1 = commit直前の同dependency fingerprint
+strict validation
+F1 = same dependency setを再読込
 
-F0 == F1
-  commit candidate
-
-F0 != F1
-  stale AI resultをdiscard
+F0 == F1 → commit candidate
+F0 != F1 → discard
 ```
 
-source drift時の自動regenerationは最大1回。連続driftならcontrolled failure。
+自動regenerationは最大1回。
 
 ### 13.2 Approval-time freshness
 
-approve時にもcurrent fingerprintを再構成する。
+approve時にもcurrent fingerprintを再構成。
 
-stale / non_revalidatableならpromotionしない。
-
-新proposalを作った場合はfresh approvalを必要とする。
+stale / non_revalidatableならpromotion block。new proposalならfresh approval。
 
 ## 14. Explanation freshness
 
-説明はformal review stateを変更しない。
+current proposalならcurrent rationaleを説明できる。
 
-explanationを返す前にdeterministic applicationがproposal validityを確認する。
+stale proposalならhistorical rationaleは説明できるが、今も同じ推奨だとは断定しない。
 
-currentなら現在のrationaleを説明できる。
+`今もそれでいい？`はpure explanationではなくrevalidation/consultation。
 
-staleなら:
+explanationでreviewabilityを復活させない。
 
-- 「当時なぜ推奨したか」はhistorical snapshotから説明できる。
-- 「今も同じ推奨か」は断定しない。
-- `今もそれでいい？` はpure explanationではなくrevalidation / consultationとして扱う。
+## 15. Material identity
 
-explanationによってstale proposalをcurrent/reviewableへ戻さない。
+Bookshelf / StudyMaterial / #187をSSOTとする。
 
-## 15. Material identity contract
+weekly-planning内で新しいnormalize/matching policyを作らない。
 
-Bookshelf / StudyMaterialをregistered material identityとprogressのSSOTにする。
-
-weekly-planningはIssue #187側の共通identity resolver / facadeを利用し、独自normalize/matching policyを増やさない。
-
-AIはfree-text material mentionを提案できるがformal materialIdを生成しない。
+AIはMaterialMentionを返せるがformal materialIdを生成しない。
 
 resolver結果:
 
@@ -647,13 +583,13 @@ ambiguous
 unresolved_material
 ```
 
-ambiguous / unresolvedをformal planning targetとしてpromotionしない。
+ambiguous/unresolvedはpromotion不可。
 
-identity確定がproposalの意味を変える場合はnew revision + fresh approval。
+identity resolutionで意味が変わるならnew revision + fresh approval。
 
-## 16. Temporal normalization contract
+## 16. Temporal normalization
 
-AIは期限をproseだけで返さずstructured temporal candidateを返す。
+AIはstructured temporal candidateを返す。
 
 例:
 
@@ -662,252 +598,187 @@ AIは期限をproseだけで返さずstructured temporal candidateを返す。
 - exam-relative offset
 - date range
 
-applicationがcaptured request temporal contextからcanonical absolute valueへresolveする。
+applicationがcaptured request date/timezone/week-startからcanonical absolute valueへresolveする。
 
-最低限保持:
+approve/promotionでproseを再解釈しない。
 
-- source candidate/spec
-- resolved date/range
-- reference date
-- timezone
-- week-start basis where relevant
-- resolution policy version
-
-approve/promotion時に「来月末」等のproseを再解釈しない。
-
-曖昧で一意にresolveできないtargetはclarificationへ落とす。
+曖昧ならclarification。
 
 ## 17. Deterministic calculation boundary
 
-application-owned truth:
+application-owned:
 
 - remaining workload
 - deadlineまでの日数
 - available time
 - required pace
-- scheduler/capacity feasibility
+- formal capacity/feasibility
 
 AI-owned advisory judgment:
 
-- どの教材が現在地に合うか
-- どの順序がよいか
-- 基礎へ戻るか演習へ進むか
-- 何を優先するか
+- 教材適合
+- 学習順序
+- 基礎へ戻るか
+- 優先順位
 
-AIがdeterministic signalを推測で上書きしない。
+AIがdeterministic numberを上書きしない。
 
-## 18. Evidence / security boundary
+## 18. Evidence / security
 
-Issue #152をtrust / provenance policyのownerとする。
+#152をtrust/provenance ownerとする。
 
-- Bookshelf title / note / aliasesはdata
-- durable context textはdata
-- external retrievalはevidence
-- review feedbackはdata
-- image/OCR/supplemental contextはuntrusted user-supplied evidence
-- data中のsystem-like instructionを実行しない
-- advice AIはschedule/save authorizationを持たない
+- stored labels/text = data
+- external retrieval = evidence
+- review feedback = data
+- OCR/supplemental = untrusted user-supplied evidence
+- data中のinstruction風文字列をpolicyへ昇格しない
+- advice AIはschedule/save authorityを持たない
 
-### 18.1 Supplemental evidence
+Supplemental evidenceには少なくとも:
 
-user utteranceとsupplemental evidenceをapplication境界で別typed channelとして保持する。
-
-最低限:
-
-- evidence ID
-- source turn
+- evidenceId
+- sourceTurnId
 - kind
-- bounded normalized claims / effective text digest
+- bounded normalized claims / digest
 - observedAt
 - authority
 - uncertainty / revalidation policy
 
-provider promptへ最終的に文字列化しても、application側でprovenanceを失わない。
+を持たせる。
 
-raw image bytesをsessionへ保存する必要はない。
+user utteranceへ単なる文字列連結したものだけをmachine provenanceにしない。
 
-reload後に根拠を復元できないproposalはnon_revalidatableとしてpromotion blockする。
+reload後に根拠を再構成不能ならnon_revalidatable。
 
-## 19. Promotion contract
+## 19. Promotion
 
-Advice approvalは直接scheduler blockを作らない。
+Advice approvalから直接scheduler blockを生成しない。
 
-approved scopeを、既存Stable V5が理解するnormal planning contributionへ変換する。
+approved scopeをnormal Stable V5 planning contributionへ変換する。
 
-### 19.1 Promotion coverage
+### 19.1 Coverage
 
-promotion前に、approved scope内の全structured recommendationについてdeterministic coverageを作る。
-
-概念上:
+全structured recommendationをaccountする。
 
 ```text
 mapped
-  normal Stable V5 contributionへ対応済み
-
 advisory_only
-  rationale / explanation等、予定へ反映されないことが明確
-
 blocked
-  planning-relevantだがidentity / schema / capability不足で安全に反映できない
 ```
 
-ユーザーが予定へ影響すると合理的に期待する内容がblockedなら、scope全体をsilent partial promotionしない。
+planning-relevant itemがblockedならsilent partial promotionしない。
 
-clarification / revisionへ戻すか、ユーザーに何が反映されないか明示してnew reviewを行う。
+### 19.2 Operation / receipt
 
-AIはformal promotabilityを決めない。
+promotion operationはstable ID、source decision、advice revision/scope、expected consultation revision/fingerprintを持つ。
 
-### 19.2 Promotion operation / receipt
+side effect前にclaimし、retryはsame identity。
 
-review decision commitとplanning side effectを一つの曖昧な処理にしない。
+success後にimmutable receiptを残す。
 
-operationは少なくとも:
+## 20. Persistence / formal commit
 
-- promotion operation ID
-- source decision ID
-- consultation / advice revision
-- target scope
-- expected consultation revision
-- expected context fingerprint
+### 20.1 Persisted consultation state
 
-を持つ。
+persistする:
 
-side effect前にoperationをclaimする。
+- AdviceProposal
+- ReviewDecision
+- ValidityCheck evidence
+- PromotionOperation / Receipt
+- PendingConsultationClarification
 
-retryは同一operation identityを使いduplicate planning factsを作らない。
+ActiveInteraction projectionはpersistしない。
 
-成功後はimmutable receiptを残す。
-
-## 20. Persistence / multi-tab contract
-
-### 20.1 Conversation-scoped state
-
-AdviceProposal / ReviewDecision / ValidityCheck / PromotionOperation / PromotionReceipt / PendingConsultationClarification / ActiveInteractionはFact Graphとは別のconversation-scoped persisted stateとして保存する。
-
-renderer messagesだけへ保存しない。
+Fact Graphやrenderer messagesへAdviceProposalを複製しない。
 
 ### 20.2 Versioned codec
 
-persisted consultation stateはexact versioned schemaでdeep validateする。
+unknown field、malformed revision、dangling reference、lineage cycle、duplicate operation identityをdeep validateしfail closed。
 
-unknown field、malformed revision、dangling reference、lineage cycle、duplicate operation identityをfail closedする。
+v1 sessionからはempty consultation stateへidempotent migration。assistant proseからfake proposalを作らない。
 
-`is object`だけの浅いvalidationでrestoreしない。
+clear/reset/export/importもconsultation stateを同じvalidatorで扱う。
 
-PlanningState / nested intakeのvalidation authorityはIssue #164側でSSOT化し、#246専用の別validator policyを作らない。
+### 20.3 Atomic formal turn commit — #270 dependency
 
-### 20.3 Migration
+current mainの既存turn lifecycleには、conversation PlanningState/message commit後にstaged Fact Graph/userPlanningContext finalizeが失敗し得る既存consistency gapがある。これは#270がownerである。
 
-v1 sessionにconsultation stateが存在しない場合、empty consultation stateへmigrationする。
+#246でこの順序をコピーしてはならない。
 
-過去assistant proseを解析してfake AdviceProposalを作らない。
+reviewable proposalを提示するturnのformal success単位はconceptually:
 
-migrationはidempotentにする。
+```text
+prepared turn result
+  + conversation/planning state transition
+  + consultation state transition
+  + required staged owner-domain state
+  + assistant presentation derived from that result
+→ one application-level commit outcome
+```
 
-### 20.4 Clear / reset / export / import
+必須:
 
-- clear conversationでconsultation stateもclear
-- resetでnew conversationへcarryしない
-- export/importはconsultation stateも同じvalidatorを通す
-- pending async resultはcheckpoint authorityにしない
+- proposal machine stateがcommitできないのにassistantだけ「提案済み」にならない。
+- required graph/context finalize failureでconversationだけ進まない。
+- conversation CAS rejectionでdomain stateだけ残らない。
+- stale/cancelled requestの全staged contributionをdiscard。
+- retryはsame request/operation identityへ収束。
 
-### 20.5 Same-browser multi-tab
+production turn integrationは#270のatomic boundaryを利用する。現在のpost-commit callbackへconsultation ledgerを追加して済ませない。
 
-expected revisionだけでは十分ではない。
+### 20.4 Multi-tab — #164
 
-client-runtime / Issue #164が提供するsingle-writer / mutation coordinatorを利用する。
+formal mutationは#164のsingle-writer/mutation coordinatorを利用する。
 
-exact technologyはclient-runtime ADRがownerとし、weekly-planningが独自Web Locks / localStorage protocol等を決めない。
+weekly-planning独自Web Locks/localStorage protocolを作らない。
 
-formal mutationはcoordinatorを通してserializableにする。
+### 20.5 Cross-device
 
-writer権限を取得できないtabはmutationをfail closedし、必要ならread-only/stale UIを表示する。
+consultation-state syncはPhase 1非対象。
 
-### 20.6 Cross-device
+final Plan saveは#51 server authorityを通る。
 
-consultation stateのcross-device syncはPhase 1非対象。
+## 21. Post-promotion change
 
-ただしfinal Plan saveは既存Issue #51のserver-authoritative uniquenessを通る。
+ReviewDecision/PromotionReceiptはhistory。
 
-## 21. Post-promotion change contract
+Plan保存前のstrategy変更はStable V5 normal correction/lifecycleでaffected planning stateをinvalidate/recompute。
 
-ReviewDecisionとPromotionReceiptはhistoryであり、後から編集して帳尻を合わせない。
-
-### 21.1 Plan保存前
-
-promoted strategyを変更する場合、Stable V5のnormal correction / lifecycleを通し、影響するplanning facts / previewをinvalidate/recomputeする。
-
-old promotion provenanceは残す。
-
-### 21.2 Plan保存後
-
-saved Planの変更は通常Plan edit / correction domainがowner。
+Plan保存後はnormal Plan edit/correction ownerが変更する。
 
 Advice ledgerがsaved Planをsilent rewriteしない。
 
-new consultationでreplacement strategyを提案できるが、適用にはnew approvalと通常correction boundaryを必要とする。
-
 ## 22. Memory boundary
 
-Adviceはdurable memoryではない。
-
-review feedbackも自動的にdurable preferenceへ昇格しない。
+Advice/review feedbackはdurable memoryではない。
 
 `今回は`と`今後も`をsemanticに区別する。
 
-ユーザーが「今後もこのやり方にしたい」と明示した場合だけ、別のdurable-context contribution candidateとしてadaptive-memory / userPlanningContext ownerへ渡し得る。
+「今後もこのやり方にしたい」と明示された場合のみ別のdurable-context contribution candidateとしてowner policyへ渡し得る。
 
 ## 23. Failure behavior
 
-### Semantic routing failure
+- purpose routing failure → no planning mutation、必要なら1 repair/clarification
+- required source unavailable → no fabricated proposal
+- source drift → discard stale model result
+- provider/validation failure → accepted state unchanged
+- ambiguous review target → no guessed binding
+- old revision/consumed adoption → stale/no-op
+- ActiveInteraction conflict → no implicit mutation
+- writer conflict → fail closed
+- formal commit failure → no half-committed successful turn
+- streaming interruption → no reviewable partial proposal
+- dismiss → no auto regeneration
 
-planning mutationを行わない。必要なら1回のsemantic repairまたは最小clarification。legacy parserへfallbackしない。
+## 24. UX
 
-### Required context failure
-
-unavailableをemptyにしない。必要sourceなしで確定proposalを捏造しない。
-
-### Source drift
-
-commit前fingerprint mismatchならAI resultをdiscardする。
-
-### Provider / validation failure
-
-accepted planning stateを変更しない。unvalidated proseからproposal/factを抽出しない。
-
-### Ambiguous review reference
-
-勝手に一つへbindしない。
-
-### Old revision / consumed adoption
-
-controlled stale/no-op。side effectなし。
-
-### ActiveInteraction conflict
-
-implicit short replyをmutationへ使わずclarificationする。
-
-### Writer conflict
-
-second tab mutationをfail closedする。
-
-### Streaming interruption
-
-partial textをreviewable proposalとしてcommitしない。
-
-### Dismiss
-
-自動再提案を停止する。
-
-## 24. UX contract
-
-- 手動「相談モード」切替を必須にしない。
-- Advice review actionはPlan保存と誤解させない。
-- advice / preview / saved Planを視覚的に区別する。
-- stale revisionのbuttonはside effectを起こさない。
-- review buttonは表示labelではなくformal target ID / expected revisionへbindする。
-- ActiveInteractionが切り替わった場合、古い暗黙承認UIをdisabled/staleとして扱う。
-- blocked promotionがある場合、何が予定へ反映できないかをユーザーへ隠さない。
+- manual相談モード切替を必須にしない。
+- Advice reviewとPlan保存を視覚・文言上分離。
+- stale buttonはside effectなし。
+- buttonはformal target ID / expected revisionへbind。
+- ActiveInteraction conflict/transition後のold implicit actionはstale扱い。
+- blocked promotionはユーザーへ隠さない。
 
 候補:
 
@@ -917,129 +788,114 @@ partial textをreviewable proposalとしてcommitしない。
 [別の案を見る]
 ```
 
-Planの最終保存は既存approval UIを使う。
+## 25. Streaming
 
-## 25. Streaming contract
+streaming textはpresentation only。
 
-```text
-streaming text
-  presentation only
+validated final output + commit-time freshness + formal commitだけがproposalをreviewableにできる。
 
-validated final structured output
-+ commit-time context revalidation
-  proposal commit candidate
-```
+## 26. Observability
 
-formal identityはvalidation後にapplicationが付与する。
+metricsはruntime authorityではない。
 
-retry/resumeで同一turnからduplicate proposalを作らない。
+raw advice/OCR全文をdefault metric truthへ保存しない。
 
-## 26. Observability contract
+typed event/reason/IDs中心:
 
-product-observabilityはmetrics ownerでありruntime authorityではない。
-
-default metricsはtyped event / reason code / IDs / statusを中心とし、raw advice textやraw supplemental evidenceを無制限保存しない。
-
-観測候補:
-
-- consultation route rate
+- route result
 - advice generation success/failure
-- clarification rate
-- material identity resolution rate
-- review action distribution
-- stale-before-present discard
-- stale-at-approval block
+- clarification
+- identity resolution
+- review actions
+- stale discard/block
 - non-revalidatable block
-- interaction-target conflict
-- cross-proposal-namespace rejection
+- interaction conflict
 - partial-promotion block
-- writer/multi-tab conflict
-- promotion retry/idempotency
-- provider latency / token / cost
-- consultation → preview turn count
+- writer conflict
+- formal-commit rollback/failure
+- promotion retry
+- latency/token/cost
 
-trace/metricsからruntime stateを復元しない。
+trace/metricsからmachine stateを復元しない。
 
 ## 27. Deterministic regression contract
 
-### 27.1 Authority / review
+### Routing / isolation
 
-- consultationだけでFact Graph mutationなし
-- adviceだけでpreview/saveなし
+- planning turnは既存Stable V5へそのまま流れる
+- learning consultationはplanning semantic documentへ偽装されない
+- legacy `study_advice`はformal route authorityにならない
+- generic proposalがAdviceProposalへcross-bindしない
+
+### Review / authority
+
+- adviceだけでFact Graph/preview/save mutationなし
 - Option A approveがBへ漏れない
-- approve A後に同revision B approveをreject
-- item-level approvalをPhase 1でreject
-- Aの教材 + Bの期限 → new revision + fresh approval
-- mixed revision + schedule requestでnew revision auto-approveなし
+- approve A後same revision B approve reject
+- item-level review reject
+- cross-option composition → new revision
+- mixed revision + schedule → no auto approve
 
-### 27.2 Active interaction / binding
+### Active interaction
 
-- consultation review中にplanning clarification開始 → short reply誤bindなし
-- planning clarificationへの短答をconsultationへbindしない
-- consultation clarificationへの短答をplanningへbindしない
-- preview approvalがactiveなときold adviceへのimplicit short replyでmutationしない
-- generic proposal referenceがAdviceProposalへcross-bindしない
+- planning clarificationとconsultation reviewが競合したらimplicit mutationなし
+- consultation clarification short answerをplanningへbindしない
+- preview interaction中にold advice short replyを誤bindしない
+- reload後ActiveInteractionをunderlying stateから同じ結果へprojection
+- ActiveInteractionを別persisted truthとして復元しない
 
-### 27.3 Revision / concurrency
+### Revision / concurrency
 
-- v2生成後v1 approve reject
-- stale UI command no-op
-- double approveで一effect
-- approve vs alternativeで一方だけcommit
-- two-tab same-revision approveで一formal mutation
-- writer unavailable tabはfail closed
-- crash/reload後もsame operation IDでresume
+- v2後v1 command reject
+- double approve one effect
+- approve vs alternative one winner
+- two-tab same revision one formal mutation
+- retry same operation no duplicates
 
-### 27.4 Freshness / explanation
+### Context / freshness
 
-- answer生成中Bookshelf progress変更を検出
-- answer生成中goal変更を検出
-- consumedしていないsource更新で不要なstale化なし
-- approval直前source変更block
-- stale advice rationaleはhistorical explanationのみ
-- `今もそれでいい？`をpure explanationとして処理しない
+- ready+[]とunavailableを区別
+- first planner-data load failureをempty扱いしない
+- retained old planner dataはstale
+- prompt projectionをfreshness authorityにしない
+- answer中Bookshelf/goal changeを検出
+- approval直前changeをblock
+- irrelevant source changeで不要なstale化なし
 
-### 27.5 Context status / SSOT
+### Formal commit / persistence
 
-- empty vs unavailable vs omittedを区別
-- prompt projectionをfreshness authorityとして使わない
-- owner snapshot digest変更でstale検出
-- source revisionだけ変わりconsumed canonical digest同一なら不要なstale化を避けられる
-
-### 27.6 Promotion coverage
-
-- approved optionの全recommendationにdispositionがある
-- planning-relevant blocked itemがあればsilent partial promotionなし
-- advisory-only rationaleはplanning factへ変換しない
-- promotion後revisionでold factsをsilent rewriteしない
-
-### 27.7 Persistence / migration
-
+- proposal machine state commit failureでassistantだけ成功しない
+- required staged state finalize failureでconversationだけ進まない
+- CAS rejectionでorphan domain stateなし
+- stale/cancelでall stages discard
 - answer → reload → approve
-- revision → reload → latestのみreviewable
-- dismiss → reload → no regeneration
-- malformed consultation stateをpartial restoreしない
-- v1→new version migrationでproseからproposalを作らない
-- clear/reset/export/import contract
-- unknown nested field / malformed revisionをreject
+- revision → reload → latest only
+- malformed consultation state reject
+- v1 migration no prose recovery
+- clear/reset/export/import
 
-### 27.8 Supplemental / security
+### Security / evidence
 
-- OCR instruction + legitimate scoreでscoreはdata、instructionはauthorityへ昇格しない
-- supplemental provenanceをreload可能に保持
-- missing evidence snapshotはnon_revalidatable
-- user utteranceとsupplemental evidence矛盾時に文字列の後勝ちにしない
-- delimiter / role-like textをinstruction扱いしない
+- OCR instructionはauthorityへ昇格しない
+- supplemental provenance reload
+- missing evidence → non_revalidatable
+- conflicting user/supplemental evidenceをstring orderで解決しない
 
-### 27.9 Material / temporal
+### Material / temporal
 
-- registered material一意bind
+- registered material unique bind
 - alias ambiguity fail safe
-- same-name different edition混同なし
-- unresolved material promotionなし
-- display-name変更でもcatalog identity維持
-- 月跨ぎ / year boundary / timezone / exam-relative target
-- normalized targetをapproval時に再解釈しない
+- same-name/different-edition separation
+- unresolved material no promotion
+- month/year/timezone/exam-relative normalization
+- no approval-time prose reparse
+
+### Promotion
+
+- all recommendations dispositioned
+- planning-relevant blocked → no silent preview
+- rationale advisory-only
+- post-promotion change uses normal correction
 
 ## 28. Real-model Japanese evaluation
 
@@ -1065,218 +921,183 @@ trace/metricsからruntime stateを復元しない。
 「このままで間に合う？ 無理なら少し増やして」
 ```
 
-評価対象:
+評価対象: route / interaction / context status / grounding / identity / temporal normalization / review terminality / freshness / promotion coverage / preview boundary / memory scope。
 
-- route
-- active interaction
-- context status
-- grounding
-- material identity
-- temporal normalization
-- review scope / terminality
-- proposal-family binding
-- freshness
-- promotion coverage
-- preview boundary
-- memory scope
-
-## 29. Browser / E2E contract
-
-最低限:
+## 29. Browser / E2E
 
 - consultation → answer: previewなし
 - consultation → approve → preview
-- multi-option → one option approve only
-- approve A → old B action rejected
-- revision → v2 → old v1 UI action rejected
-- request_alternative → v2
-- dismiss → no regeneration
-- rationale → same proposal → approve
-- stale rationale UI
-- consultation review → planning clarification → short reply binding
-- answer生成中context変更 → stale result not presented
-- approval直前context変更 → block/regenerate
-- blocked promotion → no silent preview
+- multi-option → one option only
+- old sibling / old revision action rejected
+- alternative/revision/dismiss/rationale
+- stale explanation
+- cross-interaction short reply
+- answer生成中source change
+- approval直前source change
+- blocked promotion
 - reload continuity
-- image-derived context → reload
-- double tap approve
-- two-tab mutation conflict
+- image evidence reload
+- double tap
+- two-tab conflict
+- provider failure
+- formal commit failure UX
 - desktop/mobile
-- provider failure UX
 
-## 30. Issue #246 implementation acceptance criteria
+## 30. Issue #246 acceptance criteria
 
-Issue #246は次をすべて満たすまでruntime完了としない。
+1. high-level purpose routeをexisting Stable V5 planning semantic contractの手前でtypedに分離する。
+2. no raw-text semantic authority/fallback。
+3. legacy study_advice / existing strategy proposal / generic proposalと二重authorityなし。
+4. consultation execution resultをPlanningIntakeStateへ偽装しない。
+5. proposal / clarification / explanation strict discriminant。
+6. adviceだけでplanning/preview/save/memory mutationなし。
+7. immutable proposal lineage / active leaf guard。
+8. one revision / one adoption。
+9. ActiveInteractionはprojectionであり独立persisted SSOTではない。
+10. cross-option composition → new revision。
+11. expected revision / operation ID。
+12. #164 multi-tab coordinator利用。
+13. commit-time / approval-time freshness。
+14. stale explanationのhistorical/current分離。
+15. #269またはequivalent owner portからsource availability取得。array lengthから推測しない。
+16. owner snapshot/digestをfreshness SSOTにする。
+17. temporal canonicalization。
+18. #187 material identity resolver利用。
+19. #152 supplemental provenance/trust利用。
+20. promotion coverage / no silent partial apply。
+21. immutable review/promotion history。
+22. versioned/deep-validated consultation persistence。
+23. no prose recovery。
+24. #270 formal atomic turn commitをproduction integrationで利用。
+25. retry/reload no duplicate effect。
+26. promotion後はexisting readiness/scheduler/preview/Plan approval/saveを通る。
+27. review feedback no auto durable memory。
+28. deterministic calculations not AI authority。
+29. SOLID/SSOT architecture regressionを固定。
+30. deterministic / Real API / Browser Regression。
+31. desktop/mobile。
+32. exact current HEADでdocs/runtime同期。
 
-1. consultationをplanning operationとtyped semantic上区別する。
-2. raw-text regex/keyword routerをsemantic authorityにしない。
-3. existing `study_advice` / LearningStrategyProposal / generic proposalと二重authorityを作らない。
-4. `proposal / clarification / explanation`のstrict discriminantを持つ。
-5. advice生成だけでaccepted planning state / preview / Plan / memoryを変えない。
-6. AdviceProposalはimmutable lineageを持つ。
-7. active leaf以外review不可。
-8. one revision / one adoption terminalityを守る。
-9. ActiveInteractionを単一SSOTとしてshort replyをbindする。
-10. cross-option compositionはnew revisionを要求する。
-11. expected revision / operation IDでreview/promotionをbindする。
-12. same-browser multi-tab mutationを#164 authorityでserializeする。
-13. answer commit前とapproval時にfreshnessを検証する。
-14. stale explanationがcurrent recommendationを復活させない。
-15. context statusを区別しowner snapshotをSSOTにする。
-16. relative targetをcanonical absolute valueへnormalizeする。
-17. material identityは#187 owner resolverを利用しunresolvedをpromoteしない。
-18. supplemental provenanceは#152 trust boundaryを利用する。
-19. promotion coverageでplanning-relevant silent partial applyを禁止する。
-20. promotion/review historyをimmutableに保ちpost-promotion changeはnormal correction ownerへ渡す。
-21. versioned persisted consultation stateをdeep validateする。
-22. migrationでassistant proseからstateを復元しない。
-23. repeated request / retry / reloadでduplicate effectなし。
-24. promotion後もStable V5 readiness / scheduler / preview / Plan approval / saveを通る。
-25. review feedbackをdurable memoryへ自動昇格しない。
-26. deterministic calculationsをAIが上書きしない。
-27. SOLID requirementsをarchitecture tests/reviewで固定する。
-28. deterministic / Real API / Browser Regressionで代表flowを検証する。
-29. desktop/mobile双方で主要操作成立。
-30. trace/persistence変更時は該当trace gateを満たす。
-31. exact current HEADでcanonical docsとimplementationが同期する。
-32. current main取り込み後にauthority conflictがない。
+## 31. Implementation phases
 
-## 31. Phased evolution
+### Phase 0 — design / preflight
 
-### Phase 0: contract / research / adversarial design
+完了。
 
-完了済みの範囲:
+- requirements / prompt-evidence design
+- prior-art review
+- regression-pattern audit
+- seven-view SOLID/SSOT audit
+- current-main sync
+- exact current runtime boundary audit
+- existing-code defects separated to #269 / #270
 
-- initial requirement
-- prompt/evidence design
-- OSS/research pattern review
-- historical regression-pattern audit
-- first concurrency/persistence/freshness hardening
-- seven-view SOLID / SSOT / integration audit
+### Phase 1A — pure consultation contracts (開始可能)
 
-seven-view findingsの正仕様反映後、documentation gateを再評価する。
+既存production mutationへまだ接続せず実装可能:
 
-### Phase 1: core consultation loop
+- TurnPurpose strict semantic contract
+- ActiveInteraction projector + conflict guard
+- consultation domain types/state machine
+- AdviceAnswerDocument schema/validator
+- ReviewDecision / lineage / terminality
+- context envelope/fingerprint pure contracts
+- temporal candidate normalization contract
+- promotion coverage pure mapping contract
+- unit/property/state-machine tests
 
-- typed consultation / review / interaction routing
-- context source ports/envelopes
-- context fingerprint
-- answer purpose
-- proposal / clarification / explanation
-- AdviceProposal lineage
-- proposal/option-level review
-- adoption terminality
-- active interaction guard
-- proposal-family namespace guard
-- commit/approval freshness
-- versioned persistence
-- same-browser multi-tab coordination via #164
-- promotion coverage / operation / receipt
-- material resolver via #187
-- supplemental provenance via #152
-- temporal normalization
-- regression / Real API / Browser tests
+### Phase 1B — owner adapters (dependency-aware)
 
-item-level partial approval、cross-device consultation syncはPhase 1で行わない。
+- planner source availability → #269 contractを消費
+- material identity → #187 contractを消費
+- supplemental provenance → #152 boundaryを消費
+- multi-tab writer → #164 contractを消費
 
-### Phase 2
+ownerが未提供の能力を#246側で複製して埋めない。
 
-- item-level partial approval
-- richer option comparison
-- richer catalog integration
-- evidence detail UI
-- stronger material disambiguation UX
+### Phase 1C — production turn integration
 
-### Phase 3
+#270のatomic formal turn commit boundaryを利用して:
 
-- deterministic capacity/feasibility integration
-- goal/exam milestone modeling
-- richer Actual/Reporting evidence
-- strategy comparison / simulation
+- purpose routingをcurrent turn ingressへ接続
+- answer purpose call
+- consultation persistence
+- presentation + machine-state atomic commit
+- promotion into Stable V5
+- Real API / Browser regression
 
-### Phase 4
+#270未解決のまま、現行post-commit callbackへAdviceProposal保存を足してPhase 1Cを開始しない。
 
-- trusted external retrieval/RAG
-- fresh exam/material info
-- longitudinal consultation history
-- performance-aware recommendation
-- proactive suggestion candidate
+### Phase 2+
 
-proactive suggestionもsilent applyせず同じreview boundaryを通す。
+- item-level partial review
+- richer comparison/catalog/evidence UI
+- stronger material-disambiguation UX
+- richer feasibility/Actual/Reporting
+- trusted retrieval/RAG
+- longitudinal coaching
 
 ## 32. Open implementation choices
 
-実装時に決めてよいもの:
+open:
 
-- exact TypeScript type/file names
-- exact ID string format
-- exact persisted field names
+- exact TypeScript names/files
+- ID string format
+- persisted field names
 - digest/hash algorithm
-- streaming有無
-- context token budget値
-- historical proposal compact方式
-- client-runtimeが選ぶsingle-writer technology
-- external retrieval導入時期
+- streaming UI
+- context budget
+- historical compaction
+- #164 single-writer technology
+- external retrieval timing
 
-openではないもの:
+not open:
 
-- active leaf guard
+- high-level route before Stable V5 semantic contract
+- ActiveInteraction as projection
+- proposal namespace separation
 - one revision / one adoption
-- single active interaction target
-- proposal-family namespace separation
-- expected revision / idempotency
-- same-browser multi-tab serialization ownership
-- commit/approval freshness
+- expected revision/idempotency
+- atomic formal turn outcome
+- source availability distinction
 - owner snapshot SSOT
-- persistence deep validation
 - no prose recovery
-- context status distinction
+- persistence deep validation
 - temporal canonicalization
-- material resolver owner
-- supplemental provenance owner
+- material/security/storage owners
 - promotion coverage
-- mixed revision + approvalの再承認
+- mixed revision requires new approval
 - post-promotion correction ownership
 
 ## 33. Dependency / owner Issues
 
-- #164 client-runtime: storage codec SSOT / local durable state / multi-tab coordination
-- #152 security: stored/supplemental prompt injection / provenance
-- #187 external/material integration: material identity / catalog / Bookshelf planning context
-- #51 final Plan approval multi-device uniqueness
+- #269: planner-data load availability (`ready / unavailable / stale`) — required before #246 depends on planner arrays as authoritative current context.
+- #270: weekly-planning formal turn atomicity — required before production reviewable proposal commit/presentation wiring.
+- #164: storage/multi-tab coordination.
+- #152: stored/supplemental prompt injection and provenance.
+- #187: material identity/catalog/Bookshelf planning context.
+- #51: final Plan approval multi-device uniqueness.
 
-#246はこれらの既存ownerを利用し、duplicate Issue / authorityを作らない。
+#246 may implement pure contracts in parallel, but must not recreate these owners locally.
 
 ## 34. Adopted external patterns
 
-外部事例はStudyPlannerのsource of truthではなく設計evidenceとしてのみ利用する。
+External patterns are design evidence, not StudyPlanner SSOT.
 
-OpenAI Agents SDK等から:
+Adopted:
 
-- approval targetをstable identityへscopeする
-- managerがformal state authorityを維持する
-- streaming presentationとformal approval stateを分離する
+- stable approval target identity
+- human decision as explicit state transition
+- durable lineage / retry idempotency
+- presentation separated from formal authority
+- session/advisory state separated from long-term memory
+- learner context / evidence / strategy / planning execution separation
 
-LangGraph系から:
+Do not copy another project’s agent count, memory model, or UI as authority.
 
-- thread/session checkpointとlong-term memoryを分離する
-- human decisionをstate transitionとして扱う
-- retry side effectをidempotentにする
+## 35. Final implementation preflight — 2026-08-31
 
-教育系OSS/研究から:
-
-- learner context
-- evidence
-- strategy generation
-- planning execution
-
-の責任分離を参考にする。
-
-他repoのagent数、memory model、UIをそのままコピーしない。
-
-## 35. Seven-view audit / pre-implementation gate
-
-2026-08-31に次の7視点で、仕様とcurrent Stable V5の双方を敵対的に監査した。
+Seven-view audit:
 
 1. user-visible state transitions
 2. SOLID / responsibility ownership
@@ -1286,27 +1107,30 @@ LangGraph系から:
 6. AI / evidence / security
 7. integration / compatibility / regression / observability
 
-監査で確認した既存owner側の問題は、新Issueを作らず以下へ統合した。
+Current-main preflight was repeated after syncing `main@08c896f7e39ef655c430cdbd1dae2e755c70567d` into the existing branch.
 
-- #164: Stable V5 persisted-state validation drift、storage responsibility集中、multi-tab coordinator dependency
-- #152: user utteranceとsupplemental/OCR evidenceのtyped provenance不足
-- #187: registered material identity resolution policyのweekly-planning側への責任分散
+Confirmed:
 
-誤検知として除外したもの:
+- branch differs from that main only in Issue #246 canonical documentation before runtime implementation.
+- current Stable V5 planning semantic schema remains planning-specific and can remain unchanged for planning turns.
+- current OpenAI-compatible provider/strict response infrastructure can support a separate typed purpose/answer contract without coupling authority to UI.
+- current request temporal context is captured before Stable V5 execution and can be reused as the consultation temporal basis.
+- existing planning question state, existing learning-strategy proposal, and generic proposal namespace remain separate concepts and must not be reused as AdviceProposal.
+- current controller correctly discards late results by pending-turn identity, but its formal commit order exposes the #270 existing-code defect.
+- planner bootstrap/source state exposes the #269 existing-code availability defect.
+- prompt-facing registered-material/user-context projections are insufficient as freshness SSOT; owner ports are required as specified above.
 
-- cross-week conversation continuityは既存の意図的contractでありバグ扱いしない。
-- Stable V5 preview approvalのcurrent revisionはbound runtimeからFact Graph revisionへ解決されるため、表面的な別revision値だけではSSOT違反と判定しない。
+False positives explicitly rejected:
 
-この更新でseven-view auditの設計findingはcanonical specへ反映した。
+- cross-week conversation continuity is intentional current behavior, not a bug.
+- apparent preview revision-name mismatch does not by itself prove an authority bug because current Stable V5 approval resolves against the bound runtime graph revision.
+- `lastAssistantMessage` is not used as the current public semantic SSOT; current semantic context derives the last assistant message from the message ledger.
 
-ただしdocumentation gateはまだclosedにしない。
+Gate decision:
 
-runtime implementation開始前の必須pre-flight:
+- Product/architecture documentation gate: CLOSED.
+- Phase 1A pure consultation implementation: READY TO START.
+- Phase 1B owner integration: gated per #269/#164/#152/#187 where that owner capability is required.
+- Phase 1C production turn integration: BLOCKED until #270 atomic formal turn boundary is available.
 
-1. supporting prompt/evidence designを本specへ同期する。
-2. current mainをexisting branchへ取り込む。
-3. exact HEADでproposal-family namespace、context owner adapters、session codec、controller cancellation、#164/#152/#187 dependencyを再確認する。
-4. 新しいauthority conflictがないことを確認する。
-5. その時点でdocumentation gateをcloseする。
-
-TypeScript runtime implementationはこのgate close後に開始する。
+This distinction is intentional. A dependency blocker for production wiring must not force #246 to duplicate the missing owner, and it must not prevent safe implementation/testing of pure consultation contracts.
