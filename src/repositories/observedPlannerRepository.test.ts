@@ -172,6 +172,36 @@ describe('createObservedPlannerRepository', () => {
     expect(actions).toEqual(['plan_created', 'todo_updated']);
   });
 
+  it('does not recount recurring Actual rebinds as newly recorded activity', async () => {
+    const actions: ProductActivityAction[] = [];
+    const reboundActual = {
+      id: 'actual-rebound',
+      userId: 'user-1',
+      planId: 'plan-future',
+      occurrenceDate: '2026-09-03',
+      actualStartTime: '09:00',
+      actualEndTime: '10:00',
+      title: 'Math',
+      subject: 'Math',
+      isAlignedToPlan: true,
+      note: '',
+      updatedAt: '2026-09-03T01:00:00.000Z',
+    } as Actual;
+    const base = {
+      applyRecurringPlanMutation: vi.fn(async () => undefined),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.applyRecurringPlanMutation('user-1', {
+      planUpserts: [],
+      planDeletes: [],
+      actualUpserts: [reboundActual],
+      actualDeletes: [],
+    });
+
+    expect(actions).toEqual([]);
+  });
+
   it('preserves telemetry for aggregate Actual and material persistence', async () => {
     const actions: ProductActivityAction[] = [];
     const savedActual = {

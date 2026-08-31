@@ -40,6 +40,17 @@ export function createObservedPlannerRepository(
       todos.forEach((todo) => todoStatusById.set(todo.id, todo.status));
       return todos;
     },
+    async applyRecurringPlanMutation(userId, mutation) {
+      await repository.applyRecurringPlanMutation(userId, mutation);
+      mutation.planUpserts.forEach((plan) => {
+        recordBestEffort(
+          telemetry,
+          isNewTimestampedRecord(plan) ? 'plan_created' : 'plan_updated',
+        );
+      });
+      mutation.planDeletes.forEach(() => recordBestEffort(telemetry, 'plan_deleted'));
+      mutation.actualDeletes.forEach(() => recordBestEffort(telemetry, 'actual_deleted'));
+    },
     async upsertPlan(plan) {
       const saved = await repository.upsertPlan(plan);
       recordBestEffort(

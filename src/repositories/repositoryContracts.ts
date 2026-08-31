@@ -12,6 +12,7 @@ import type {
   User,
   UserProfileDraft,
 } from '../types/domain';
+import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 
 export interface AuthStorageGateway {
   readUsers(): Promise<User[]>;
@@ -112,6 +113,10 @@ export interface PlannerRepository {
   getScheduleTemplates(userId: string): Promise<ScheduleTemplate[]>;
   getTimetableTerms(userId: string): Promise<TimetableTerm[]>;
   getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;
+  applyRecurringPlanMutation(
+    userId: string,
+    mutation: RecurringPlanMutation,
+  ): Promise<void>;
   deletePlanWithDependents(mutation: PlanDeleteWithDependentsMutation): Promise<void>;
   restorePlanWithDependents(mutation: PlanRestoreWithDependentsMutation): Promise<void>;
   scheduleTodoPlan(mutation: TodoPlanScheduleMutation): Promise<void>;

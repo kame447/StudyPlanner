@@ -1,3 +1,4 @@
+import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type {
   PlannerRepository,
   PlannerStorageGateway,
@@ -42,6 +43,47 @@ function applyOwnedRecords<T extends OwnedRecord>(
     (record) => !(record.userId === userId && deleteIds.has(record.id)),
   );
   return upsertMany(remaining, upserts);
+}
+
+function recurringActualOccurrenceKey(
+  actual: import('../types/domain').Actual,
+): string | null {
+  return actual.planId
+    ? `${actual.planId}\u0000${actual.occurrenceDate}`
+    : null;
+}
+
+function applyRecurringActualMutation(
+  current: import('../types/domain').Actual[],
+  userId: string,
+  mutation: RecurringPlanMutation,
+): import('../types/domain').Actual[] {
+  const planDeleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+  const actualDeleteIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
+  const actualDeleteOccurrences = new Set(
+    mutation.actualDeletes
+      .map(recurringActualOccurrenceKey)
+      .filter((key): key is string => key !== null),
+  );
+  const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
+  const remaining = current.filter((actual) => {
+    if (actual.userId !== userId || reboundIds.has(actual.id)) {
+      return true;
+    }
+
+    const occurrenceKey = recurringActualOccurrenceKey(actual);
+    const matchesExplicitDelete =
+      actualDeleteIds.has(actual.id) ||
+      (occurrenceKey !== null && actualDeleteOccurrences.has(occurrenceKey));
+    const matchesDeletedPlan =
+      actual.planId !== null && planDeleteIds.has(actual.planId);
+    return !matchesExplicitDelete && !matchesDeletedPlan;
+  });
+
+  return mutation.actualUpserts.reduce(
+    (records, actual) => upsertActualRecord(records, actual),
+    remaining,
+  );
 }
 
 async function runRecoverableMutation(
@@ -119,6 +161,51 @@ export function createPlannerRepository(
     async getTimetablePeriods(userId) {
       return filterByUserId(await storageGateway.readTimetablePeriods(), userId);
     },
+    async applyRecurringPlanMutation(userId, mutation) {
+    assertOwnedRecords(
+      userId,
+      [
+        ...mutation.planUpserts,
+        ...mutation.planDeletes,
+        ...mutation.actualUpserts,
+        ...mutation.actualDeletes,
+      ],
+      '繰り返し予定更新',
+    );
+    const hasPlanChanges =
+      mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
+    const hasActualChanges =
+      mutation.actualUpserts.length > 0 ||
+      mutation.actualDeletes.length > 0 ||
+      mutation.planDeletes.length > 0;
+    if (!hasPlanChanges && !hasActualChanges) return;
+
+    const previousPlans = await storageGateway.readPlans();
+    const previousActuals = await storageGateway.readActuals();
+    const nextPlans = hasPlanChanges
+      ? applyOwnedRecords(
+previousPlans,
+userId,
+mutation.planUpserts,
+mutation.planDeletes,
+        )
+      : previousPlans;
+    const nextActuals = hasActualChanges
+      ? applyRecurringActualMutation(previousActuals, userId, mutation)
+      : previousActuals;
+
+    await runRecoverableMutation(
+      async () => {
+        if (hasPlanChanges) await storageGateway.writePlans(nextPlans);
+        if (hasActualChanges) await storageGateway.writeActuals(nextActuals);
+      },
+      async () => {
+        if (hasPlanChanges) await storageGateway.writePlans(previousPlans);
+        if (hasActualChanges) await storageGateway.writeActuals(previousActuals);
+      },
+      '繰り返し予定更新',
+    );
+  },
     async deletePlanWithDependents(mutation) {
       const ownedRecords = mutation.todo
         ? [mutation.plan, mutation.todo]
