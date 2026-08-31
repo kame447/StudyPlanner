@@ -8,6 +8,14 @@ on:
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
       - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-resumable-turn-command.json'
+      - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
+      - 'src/features/weeklyPlanning/**'
+      - 'src/features/userPlanningContext/**'
 
 permissions:
   actions: read
