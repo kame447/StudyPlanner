@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import {
   createRef,
   forwardRef,
@@ -70,6 +71,9 @@ async function renderHarness(
       id: 'plan-1',
     }),
     ...overrides,
+    plannerDataAvailability:
+      overrides.plannerDataAvailability
+      ?? createReadyPlannerDataAvailability(overrides.userId ?? 'user-1'),
   };
   let renderer!: ReactTestRenderer;
 

@@ -102,6 +102,7 @@ export default function App() {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,
@@ -168,6 +169,7 @@ export default function App() {
     timetableTermId: activeTimetableTermId,
     timetableTerm: activeTimetableTerm,
     timetableTerms,
+    plannerDataAvailability,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });

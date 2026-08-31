@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -16,6 +16,11 @@ import {
   remapTimetableTermId,
   sortTimetableTerms,
 } from '../domain/timetableDataNormalization';
+import {
+  PlannerDataReadAuthority,
+  createInitialPlannerDataAvailability,
+  type PlannerDataAvailability,
+} from '../domain/plannerDataReadAuthority';
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
@@ -167,7 +172,7 @@ function sortStudyMaterials(materials: StudyMaterial[]): StudyMaterial[] {
     );
 }
 
-interface UsePlannerDataStateResult {
+export interface UsePlannerDataStateResult {
   plans: Plan[];
   actuals: Actual[];
   dayNotes: DayNote[];
@@ -178,6 +183,7 @@ interface UsePlannerDataStateResult {
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
+  plannerDataAvailability: PlannerDataAvailability;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -252,6 +258,25 @@ export function usePlannerDataState({
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
   const [timetableTerms, setTimetableTerms] = useState<TimetableTerm[]>([]);
   const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);
+  const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
+  if (!plannerDataReadAuthorityRef.current) {
+    plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
+  }
+  const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;
+  const [plannerDataAvailability, setPlannerDataAvailability] =
+    useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());
+  const clearPlannerDataCollections = useCallback(() => {
+    setPlans([]);
+    setActuals([]);
+    setDayNotes([]);
+    setMonthEvents([]);
+    setTodos([]);
+    setStudySubjects([]);
+    setStudyMaterials([]);
+    setScheduleTemplates([]);
+    setTimetableTerms([]);
+    setTimetablePeriods([]);
+  }, []);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
@@ -320,7 +345,18 @@ export function usePlannerDataState({
   const isRecurringPlanEdit = isScopedRecurringEditCandidate(editingPlan);
 
   const loadPlannerData = useCallback(async (nextUserId: string) => {
-    const [
+    const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());
+    setPlannerDataAvailability(loadStart.availability);
+    if (loadStart.ownerChanged) {
+      clearPlannerDataCollections();
+      setEditorDraft(null);
+      setEditingPlanId(null);
+      setEditingPlan(null);
+      setPendingRecurringPlanAction(null);
+    }
+
+    try {
+      const [
       nextPlans,
       nextActuals,
       nextDayNotes,
@@ -343,6 +379,11 @@ export function usePlannerDataState({
       plannerRepository.getTimetableTerms(nextUserId),
       plannerRepository.getTimetablePeriods(nextUserId),
     ]);
+
+    if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+      return;
+    }
+
     const {
       terms: resolvedTimetableTerms,
       termIdMap,
@@ -417,6 +458,9 @@ export function usePlannerDataState({
         periodDeletes,
       });
     } catch (error) {
+      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+        return;
+      }
       console.warn('[Timetable] term canonicalization failed', error);
       committedScheduleTemplates = nextScheduleTemplates;
       committedTimetableTerms = nextTimetableTerms;
@@ -424,34 +468,48 @@ export function usePlannerDataState({
       showNotice('時間割データを整合化できませんでした。再読み込みしてください。', 'error');
     }
 
-    setPlans(sortByDateTime(nextPlans));
-    setActuals(nextActuals);
-    setDayNotes(nextDayNotes);
-    setMonthEvents(sortMonthEvents(nextMonthEvents));
-    setTodos(nextTodos);
-    setStudySubjects(sortStudySubjects(nextStudySubjects));
-    setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
-    setScheduleTemplates(committedScheduleTemplates);
-    setTimetableTerms(committedTimetableTerms);
-    setTimetablePeriods(committedTimetablePeriods);
-  }, [showNotice]);
+      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+        return;
+      }
+
+      setPlans(sortByDateTime(nextPlans));
+      setActuals(nextActuals);
+      setDayNotes(nextDayNotes);
+      setMonthEvents(sortMonthEvents(nextMonthEvents));
+      setTodos(nextTodos);
+      setStudySubjects(sortStudySubjects(nextStudySubjects));
+      setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
+      setScheduleTemplates(committedScheduleTemplates);
+      setTimetableTerms(committedTimetableTerms);
+      setTimetablePeriods(committedTimetablePeriods);
+      const readyAvailability = plannerDataReadAuthority.succeed(
+        loadStart.token,
+        new Date().toISOString(),
+      );
+      if (readyAvailability) {
+        setPlannerDataAvailability(readyAvailability);
+      }
+    } catch (error) {
+      const failedAvailability = plannerDataReadAuthority.fail(
+        loadStart.token,
+        new Date().toISOString(),
+      );
+      if (!failedAvailability) {
+        return;
+      }
+      setPlannerDataAvailability(failedAvailability);
+      throw error;
+    }
+  }, [clearPlannerDataCollections, plannerDataReadAuthority, showNotice]);
 
   const resetPlannerData = useCallback(() => {
-    setPlans([]);
-    setActuals([]);
-    setDayNotes([]);
-    setMonthEvents([]);
-    setTodos([]);
-    setStudySubjects([]);
-    setStudyMaterials([]);
-    setScheduleTemplates([]);
-    setTimetableTerms([]);
-    setTimetablePeriods([]);
+    setPlannerDataAvailability(plannerDataReadAuthority.reset());
+    clearPlannerDataCollections();
     setEditorDraft(null);
     setEditingPlanId(null);
     setEditingPlan(null);
     setPendingRecurringPlanAction(null);
-  }, []);
+  }, [clearPlannerDataCollections, plannerDataReadAuthority]);
 
   function openCreatePlan() {
     if (!userId) {
@@ -1878,6 +1936,7 @@ export function usePlannerDataState({
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,
