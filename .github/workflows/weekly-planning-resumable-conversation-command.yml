@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: weekly-planning-resumable-command
+  group: weekly-planning-resumable-command-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
