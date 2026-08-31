@@ -1,0 +1,447 @@
+name: Apply Issue 269 implementation
+
+on:
+  push:
+    branches:
+      - fix/issue-269-planner-data-availability
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore: apply Issue 269 implementation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply implementation and regressions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          path = Path('src/hooks/usePlannerDataState.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import { useCallback, useState } from 'react';",
+              "import { useCallback, useRef, useState } from 'react';",
+              'planner hook react import',
+          )
+          text = replace_once(
+              text,
+              "} from '../domain/timetableDataNormalization';\nimport { createId } from '../lib/id';",
+              "} from '../domain/timetableDataNormalization';\nimport {\n  PlannerDataReadAuthority,\n  createInitialPlannerDataAvailability,\n  type PlannerDataAvailability,\n} from '../domain/plannerDataReadAuthority';\nimport { createId } from '../lib/id';",
+              'planner authority import',
+          )
+          text = replace_once(
+              text,
+              'interface UsePlannerDataStateResult {',
+              'export interface UsePlannerDataStateResult {',
+              'planner result export',
+          )
+          text = replace_once(
+              text,
+              '  timetablePeriods: TimetablePeriod[];\n  viewMode: ViewMode;',
+              '  timetablePeriods: TimetablePeriod[];\n  plannerDataAvailability: PlannerDataAvailability;\n  viewMode: ViewMode;',
+              'planner result availability',
+          )
+          text = replace_once(
+              text,
+              "  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);\n  const [viewMode, setViewMode] = useState<ViewMode>('month');",
+              "  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);\n  const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);\n  if (!plannerDataReadAuthorityRef.current) {\n    plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();\n  }\n  const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;\n  const [plannerDataAvailability, setPlannerDataAvailability] =\n    useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());\n  const clearPlannerDataCollections = useCallback(() => {\n    setPlans([]);\n    setActuals([]);\n    setDayNotes([]);\n    setMonthEvents([]);\n    setTodos([]);\n    setStudySubjects([]);\n    setStudyMaterials([]);\n    setScheduleTemplates([]);\n    setTimetableTerms([]);\n    setTimetablePeriods([]);\n  }, []);\n  const [viewMode, setViewMode] = useState<ViewMode>('month');",
+              'planner authority state',
+          )
+          text = replace_once(
+              text,
+              '  const loadPlannerData = useCallback(async (nextUserId: string) => {\n    const [',
+              "  const loadPlannerData = useCallback(async (nextUserId: string) => {\n    const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());\n    setPlannerDataAvailability(loadStart.availability);\n    if (loadStart.ownerChanged) {\n      clearPlannerDataCollections();\n      setEditorDraft(null);\n      setEditingPlanId(null);\n      setEditingPlan(null);\n      setPendingRecurringPlanAction(null);\n    }\n\n    try {\n      const [",
+              'planner load begin',
+          )
+          text = replace_once(
+              text,
+              "      plannerRepository.getTimetableTerms(nextUserId),\n      plannerRepository.getTimetablePeriods(nextUserId),\n    ]);\n    const {",
+              "      plannerRepository.getTimetableTerms(nextUserId),\n      plannerRepository.getTimetablePeriods(nextUserId),\n    ]);\n\n    if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n      return;\n    }\n\n    const {",
+              'planner load first guard',
+          )
+          text = replace_once(
+              text,
+              "    } catch (error) {\n      console.warn('[Timetable] term canonicalization failed', error);",
+              "    } catch (error) {\n      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n        return;\n      }\n      console.warn('[Timetable] term canonicalization failed', error);",
+              'planner canonicalization stale guard',
+          )
+          text = replace_once(
+              text,
+              "    setPlans(sortByDateTime(nextPlans));\n    setActuals(nextActuals);\n    setDayNotes(nextDayNotes);\n    setMonthEvents(sortMonthEvents(nextMonthEvents));\n    setTodos(nextTodos);\n    setStudySubjects(sortStudySubjects(nextStudySubjects));\n    setStudyMaterials(sortStudyMaterials(nextStudyMaterials));\n    setScheduleTemplates(committedScheduleTemplates);\n    setTimetableTerms(committedTimetableTerms);\n    setTimetablePeriods(committedTimetablePeriods);\n  }, [showNotice]);",
+              "      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n        return;\n      }\n\n      setPlans(sortByDateTime(nextPlans));\n      setActuals(nextActuals);\n      setDayNotes(nextDayNotes);\n      setMonthEvents(sortMonthEvents(nextMonthEvents));\n      setTodos(nextTodos);\n      setStudySubjects(sortStudySubjects(nextStudySubjects));\n      setStudyMaterials(sortStudyMaterials(nextStudyMaterials));\n      setScheduleTemplates(committedScheduleTemplates);\n      setTimetableTerms(committedTimetableTerms);\n      setTimetablePeriods(committedTimetablePeriods);\n      const readyAvailability = plannerDataReadAuthority.succeed(\n        loadStart.token,\n        new Date().toISOString(),\n      );\n      if (readyAvailability) {\n        setPlannerDataAvailability(readyAvailability);\n      }\n    } catch (error) {\n      const failedAvailability = plannerDataReadAuthority.fail(\n        loadStart.token,\n        new Date().toISOString(),\n      );\n      if (!failedAvailability) {\n        return;\n      }\n      setPlannerDataAvailability(failedAvailability);\n      throw error;\n    }\n  }, [clearPlannerDataCollections, plannerDataReadAuthority, showNotice]);",
+              'planner load commit',
+          )
+          text = replace_once(
+              text,
+              "  const resetPlannerData = useCallback(() => {\n    setPlans([]);\n    setActuals([]);\n    setDayNotes([]);\n    setMonthEvents([]);\n    setTodos([]);\n    setStudySubjects([]);\n    setStudyMaterials([]);\n    setScheduleTemplates([]);\n    setTimetableTerms([]);\n    setTimetablePeriods([]);\n    setEditorDraft(null);\n    setEditingPlanId(null);\n    setEditingPlan(null);\n    setPendingRecurringPlanAction(null);\n  }, []);",
+              "  const resetPlannerData = useCallback(() => {\n    setPlannerDataAvailability(plannerDataReadAuthority.reset());\n    clearPlannerDataCollections();\n    setEditorDraft(null);\n    setEditingPlanId(null);\n    setEditingPlan(null);\n    setPendingRecurringPlanAction(null);\n  }, [clearPlannerDataCollections, plannerDataReadAuthority]);",
+              'planner reset',
+          )
+          text = replace_once(
+              text,
+              '    timetablePeriods,\n    viewMode,',
+              '    timetablePeriods,\n    plannerDataAvailability,\n    viewMode,',
+              'planner return availability',
+          )
+          path.write_text(text)
+
+          path = Path('src/hooks/usePlannerAppState.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import { createPlanFromDraft } from '../domain/planner';",
+              "import { createPlanFromDraft } from '../domain/planner';\nimport type { PlannerDataAvailability } from '../domain/plannerDataReadAuthority';",
+              'app state availability import',
+          )
+          text = replace_once(
+              text,
+              '  timetablePeriods: TimetablePeriod[];\n  viewMode: ViewMode;',
+              '  timetablePeriods: TimetablePeriod[];\n  plannerDataAvailability: PlannerDataAvailability;\n  viewMode: ViewMode;',
+              'app state availability type',
+          )
+          if text.count('    timetablePeriods,\n    viewMode,') != 2:
+              raise SystemExit('app state availability destructure/return count mismatch')
+          text = text.replace(
+              '    timetablePeriods,\n    viewMode,',
+              '    timetablePeriods,\n    plannerDataAvailability,\n    viewMode,',
+          )
+          path.write_text(text)
+
+          path = Path('src/App.tsx')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              '    timetablePeriods,\n    viewMode,',
+              '    timetablePeriods,\n    plannerDataAvailability,\n    viewMode,',
+              'app availability destructure',
+          )
+          text = replace_once(
+              text,
+              '    timetableTerm: activeTimetableTerm,\n    timetableTerms,\n    saveWeeklyApprovedPlan,',
+              '    timetableTerm: activeTimetableTerm,\n    timetableTerms,\n    plannerDataAvailability,\n    saveWeeklyApprovedPlan,',
+              'app availability weekly input',
+          )
+          path.write_text(text)
+
+          path = Path('src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import type {\n  Actual,",
+              "import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';\nimport type {\n  Actual,",
+              'weekly hook availability import',
+          )
+          text = replace_once(
+              text,
+              '  timetableTerms?: TimetableTerm[];\n  saveWeeklyApprovedPlan:',
+              '  timetableTerms?: TimetableTerm[];\n  plannerDataAvailability: PlannerDataAvailability;\n  saveWeeklyApprovedPlan:',
+              'weekly hook availability input',
+          )
+          text = replace_once(
+              text,
+              '  timetableTerm,\n  timetableTerms = [],\n  saveWeeklyApprovedPlan,',
+              '  timetableTerm,\n  timetableTerms = [],\n  plannerDataAvailability,\n  saveWeeklyApprovedPlan,',
+              'weekly hook availability destructure',
+          )
+          text = replace_once(
+              text,
+              '      timetableTerm,\n      timetableTerms,\n      weekStartsOn,',
+              '      timetableTerm,\n      timetableTerms,\n      plannerDataAvailability,\n      weekStartsOn,',
+              'weekly hook availability submit',
+          )
+          path.write_text(text)
+
+          path = Path('src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';",
+              "import {\n  isPlannerDataReadyForOwner,\n  type PlannerDataAvailability,\n} from '../../../domain/plannerDataReadAuthority';\nimport type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';",
+              'turn application availability import',
+          )
+          text = replace_once(
+              text,
+              '  timetableTerms?: TimetableTerm[];\n  weekStartsOn?: WeeklyPlanningWeekStartsOn;',
+              '  timetableTerms?: TimetableTerm[];\n  plannerDataAvailability: PlannerDataAvailability;\n  weekStartsOn?: WeeklyPlanningWeekStartsOn;',
+              'turn application availability param',
+          )
+          text = replace_once(
+              text,
+              '): Promise<WeeklyPlanningTurnSubmissionResult> {\n  return services.submitControlledTurn({',
+              "): Promise<WeeklyPlanningTurnSubmissionResult> {\n  if (!isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)) {\n    return Promise.resolve({ accepted: false, draftCandidates: [] });\n  }\n\n  return services.submitControlledTurn({",
+              'turn application availability gate',
+          )
+          path.write_text(text)
+
+          path = Path('src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import { describe, expect, it, vi } from 'vitest';",
+              "import { describe, expect, it, vi } from 'vitest';\nimport type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';",
+              'turn test availability import',
+          )
+          text = replace_once(
+              text,
+              'function baseParams() {',
+              "function readyPlannerDataAvailability(): PlannerDataAvailability {\n  return {\n    status: 'ready',\n    ownerId: 'user-1',\n    observedAt: '2026-07-27T00:00:00.000Z',\n    lastSuccessfulAt: '2026-07-27T00:00:00.000Z',\n  };\n}\n\nfunction baseParams() {",
+              'turn test ready helper',
+          )
+          text = replace_once(
+              text,
+              "      ownerId: 'user-1',\n      userText: '来週の予定を作りたい',",
+              "      ownerId: 'user-1',\n      plannerDataAvailability: readyPlannerDataAvailability(),\n      userText: '来週の予定を作りたい',",
+              'turn test base availability',
+          )
+          text = replace_once(
+              text,
+              "describe('submitWeeklyPlanningApplicationTurn', () => {\n  it('prepares authoritative state before completing a committed turn', async () => {",
+              "describe('submitWeeklyPlanningApplicationTurn', () => {\n  it('fails closed before starting a turn when planner data is unavailable, stale, or owned by another user', async () => {\n    const blockedAvailability: PlannerDataAvailability[] = [\n      {\n        status: 'unavailable',\n        ownerId: 'user-1',\n        observedAt: '2026-07-27T00:01:00.000Z',\n        lastSuccessfulAt: null,\n      },\n      {\n        status: 'stale',\n        ownerId: 'user-1',\n        observedAt: '2026-07-27T00:02:00.000Z',\n        lastSuccessfulAt: '2026-07-27T00:00:00.000Z',\n      },\n      {\n        status: 'ready',\n        ownerId: 'user-2',\n        observedAt: '2026-07-27T00:03:00.000Z',\n        lastSuccessfulAt: '2026-07-27T00:03:00.000Z',\n      },\n    ];\n\n    for (const plannerDataAvailability of blockedAvailability) {\n      const { store, params } = baseParams();\n      params.plannerDataAvailability = plannerDataAvailability;\n      const services = createServices();\n\n      const submission = await submitWeeklyPlanningApplicationTurn(params, services);\n\n      expect(submission).toEqual({ accepted: false, draftCandidates: [] });\n      expect(services.runtimeGateway.execute).not.toHaveBeenCalled();\n      expect(store.getState().messages).toEqual([]);\n      expect(store.getState().pendingTurn).toBeUndefined();\n    }\n  });\n\n  it('prepares authoritative state before completing a committed turn', async () => {",
+              'turn test fail closed',
+          )
+          path.write_text(text)
+
+          hook_test = r'''import { act, create } from 'react-test-renderer';
+          import { beforeEach, describe, expect, it, vi } from 'vitest';
+          import type { StudyMaterial } from '../types/domain';
+          import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
+
+          const repository = vi.hoisted(() => ({
+            getPlans: vi.fn(),
+            getActuals: vi.fn(),
+            getDayNotes: vi.fn(),
+            getMonthEvents: vi.fn(),
+            getTodos: vi.fn(),
+            getStudySubjects: vi.fn(),
+            getStudyMaterials: vi.fn(),
+            getScheduleTemplates: vi.fn(),
+            getTimetableTerms: vi.fn(),
+            getTimetablePeriods: vi.fn(),
+            applyTimetableMutation: vi.fn(),
+          }));
+
+          vi.mock('../repositories', () => ({ plannerRepository: repository }));
+
+          let latestState: UsePlannerDataStateResult | null = null;
+          const showNotice = vi.fn();
+
+          function Harness({ userId }: { userId: string | null }) {
+            latestState = usePlannerDataState({ userId, showNotice });
+            return null;
+          }
+
+          function readState(): UsePlannerDataStateResult {
+            if (!latestState) throw new Error('planner state is not mounted');
+            return latestState;
+          }
+
+          function studyMaterial(ownerId: string, name: string): StudyMaterial {
+            return {
+              id: `material-${ownerId}`,
+              userId: ownerId,
+              name,
+              subjectId: `subject-${ownerId}`,
+              subjectName: '数学',
+              createdAt: '2026-08-31T00:00:00.000Z',
+              updatedAt: '2026-08-31T00:00:00.000Z',
+            };
+          }
+
+          function deferred<T>() {
+            let resolve!: (value: T | PromiseLike<T>) => void;
+            let reject!: (reason?: unknown) => void;
+            const promise = new Promise<T>((nextResolve, nextReject) => {
+              resolve = nextResolve;
+              reject = nextReject;
+            });
+            return { promise, resolve, reject };
+          }
+
+          function resetRepositoryMocks() {
+            repository.getPlans.mockResolvedValue([]);
+            repository.getActuals.mockResolvedValue([]);
+            repository.getDayNotes.mockResolvedValue([]);
+            repository.getMonthEvents.mockResolvedValue([]);
+            repository.getTodos.mockResolvedValue([]);
+            repository.getStudySubjects.mockResolvedValue([]);
+            repository.getStudyMaterials.mockResolvedValue([]);
+            repository.getScheduleTemplates.mockResolvedValue([]);
+            repository.getTimetableTerms.mockResolvedValue([]);
+            repository.getTimetablePeriods.mockResolvedValue([]);
+            repository.applyTimetableMutation.mockResolvedValue(undefined);
+          }
+
+          describe('usePlannerDataState planner-data read authority', () => {
+            beforeEach(() => {
+              vi.clearAllMocks();
+              latestState = null;
+              resetRepositoryMocks();
+            });
+
+            it('marks a first failed load unavailable instead of authoritative empty', async () => {
+              const failure = new Error('plans unavailable');
+              repository.getPlans.mockRejectedValueOnce(failure);
+              const renderer = create(<Harness userId="owner-a" />);
+              let caught: unknown;
+
+              await act(async () => {
+                try {
+                  await readState().loadPlannerData('owner-a');
+                } catch (error) {
+                  caught = error;
+                }
+              });
+
+              expect(caught).toBe(failure);
+              expect(readState().plannerDataAvailability).toMatchObject({
+                status: 'unavailable',
+                ownerId: 'owner-a',
+                lastSuccessfulAt: null,
+              });
+              expect(readState().plans).toEqual([]);
+              renderer.unmount();
+            });
+
+            it('keeps the last successful snapshot but marks it stale when refresh fails', async () => {
+              const material = studyMaterial('owner-a', '数学の参考書');
+              repository.getStudyMaterials.mockResolvedValue([material]);
+              const renderer = create(<Harness userId="owner-a" />);
+
+              await act(async () => {
+                await readState().loadPlannerData('owner-a');
+              });
+              expect(readState().plannerDataAvailability).toMatchObject({
+                status: 'ready',
+                ownerId: 'owner-a',
+              });
+              expect(readState().studyMaterials).toEqual([material]);
+
+              const failure = new Error('refresh unavailable');
+              repository.getPlans.mockRejectedValueOnce(failure);
+              let caught: unknown;
+              await act(async () => {
+                try {
+                  await readState().loadPlannerData('owner-a');
+                } catch (error) {
+                  caught = error;
+                }
+              });
+
+              expect(caught).toBe(failure);
+              expect(readState().plannerDataAvailability).toMatchObject({
+                status: 'stale',
+                ownerId: 'owner-a',
+              });
+              expect(readState().studyMaterials).toEqual([material]);
+              renderer.unmount();
+            });
+
+            it('does not let an older owner load overwrite a newer owner snapshot', async () => {
+              const oldOwnerMaterials = deferred<StudyMaterial[]>();
+              const materialA = studyMaterial('owner-a', 'Aの教材');
+              const materialB = studyMaterial('owner-b', 'Bの教材');
+              repository.getStudyMaterials.mockImplementation((ownerId: string) =>
+                ownerId === 'owner-a'
+                  ? oldOwnerMaterials.promise
+                  : Promise.resolve([materialB]),
+              );
+              const renderer = create(<Harness userId="owner-a" />);
+              let oldOwnerLoad!: Promise<void>;
+
+              await act(async () => {
+                oldOwnerLoad = readState().loadPlannerData('owner-a');
+                await Promise.resolve();
+              });
+
+              await act(async () => {
+                renderer.update(<Harness userId="owner-b" />);
+                await readState().loadPlannerData('owner-b');
+              });
+              expect(readState().plannerDataAvailability).toMatchObject({
+                status: 'ready',
+                ownerId: 'owner-b',
+              });
+              expect(readState().studyMaterials).toEqual([materialB]);
+
+              await act(async () => {
+                oldOwnerMaterials.resolve([materialA]);
+                await oldOwnerLoad;
+              });
+
+              expect(readState().plannerDataAvailability).toMatchObject({
+                status: 'ready',
+                ownerId: 'owner-b',
+              });
+              expect(readState().studyMaterials).toEqual([materialB]);
+              renderer.unmount();
+            });
+
+            it('invalidates an in-flight load when planner data is reset', async () => {
+              const pendingMaterials = deferred<StudyMaterial[]>();
+              const material = studyMaterial('owner-a', '遅延教材');
+              repository.getStudyMaterials.mockReturnValueOnce(pendingMaterials.promise);
+              const renderer = create(<Harness userId="owner-a" />);
+              let pendingLoad!: Promise<void>;
+
+              await act(async () => {
+                pendingLoad = readState().loadPlannerData('owner-a');
+                await Promise.resolve();
+              });
+              await act(async () => {
+                readState().resetPlannerData();
+              });
+              expect(readState().plannerDataAvailability.status).toBe('idle');
+
+              await act(async () => {
+                pendingMaterials.resolve([material]);
+                await pendingLoad;
+              });
+
+              expect(readState().plannerDataAvailability.status).toBe('idle');
+              expect(readState().studyMaterials).toEqual([]);
+              renderer.unmount();
+            });
+          });
+          '''
+          hook_test = '\n'.join(line[10:] if line.startswith('          ') else line for line in hook_test.splitlines()) + '\n'
+          Path('src/hooks/usePlannerDataState.test.tsx').write_text(hook_test)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Focused regressions
+        run: npm run test:run -- src/domain/plannerDataReadAuthority.test.ts src/hooks/usePlannerDataState.test.tsx src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Commit verified implementation and remove one-shot workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "kame447"
+          git config user.email "76802107+kame447@users.noreply.github.com"
+          git rm .github/workflows/issue-269-apply.yml
+          git add src/App.tsx src/domain/plannerDataReadAuthority.ts src/domain/plannerDataReadAuthority.test.ts src/hooks/usePlannerDataState.ts src/hooks/usePlannerDataState.test.tsx src/hooks/usePlannerAppState.ts src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts
+          git diff --cached --check
+          git commit -m "fix: preserve planner data read availability"
+          git push origin HEAD:fix/issue-269-planner-data-availability
