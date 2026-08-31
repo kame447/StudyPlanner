@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/weekly-conversation-quality-luna-audit
+      - fix/issue136-semantic-regressions
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
       - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
