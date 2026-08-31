@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetUserPlanningContextRuntimeForTestV1 } from '../../userPlanningContext/userPlanningContextSpace';
+import {
+  exportUserPlanningContextSnapshotV1,
+  finalizeStagedUserPlanningContextV1,
+  resetUserPlanningContextRuntimeForTestV1,
+  stageUserPlanningContextFactsV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningPendingTurn } from '../types';
 import {
@@ -92,6 +97,60 @@ describe('weeklyPlanningTurnStagingLifecycle', () => {
 
     expect(services.rollbackRuntimeGraph).toHaveBeenCalledTimes(1);
     expect(services.rollbackRuntimeGraph).toHaveBeenCalledWith(graphReceipt);
+  });
+
+  it('refuses to roll an older user context preparation over a newer context commit', () => {
+    stageUserPlanningContextFactsV1({
+      ownerId: 'user-1',
+      conversationId: pending.conversationId,
+      requestId: pending.requestId,
+      observedDate: '2026-07-24',
+      now: '2026-07-24T10:00:00.000Z',
+      facts: [{
+        localId: 'context-old',
+        kind: 'concern',
+        label: '数学',
+        value: '優先',
+        dateExpression: null,
+        sourceText: '数学を優先したい',
+      }],
+    });
+    const lifecycle = createWeeklyPlanningTurnStagingLifecycle(createServices({
+      hasStagedGraph: vi.fn(() => false),
+    }));
+    const prepared = lifecycle.prepare({ ownerId: 'user-1', pending });
+
+    stageUserPlanningContextFactsV1({
+      ownerId: 'user-1',
+      conversationId: 'conversation-newer',
+      requestId: 'request-newer',
+      observedDate: '2026-07-24',
+      now: '2026-07-24T10:01:00.000Z',
+      facts: [{
+        localId: 'context-newer',
+        kind: 'concern',
+        label: '英語',
+        value: '優先',
+        dateExpression: null,
+        sourceText: '英語も優先したい',
+      }],
+    });
+    finalizeStagedUserPlanningContextV1({
+      ownerId: 'user-1',
+      conversationId: 'conversation-newer',
+      requestId: 'request-newer',
+    });
+
+    expect(() => prepared?.rollback()).toThrow(
+      'User planning context prepared commit could not be rolled back safely.',
+    );
+    expect(exportUserPlanningContextSnapshotV1({
+      ownerId: 'user-1',
+      currentDate: '2026-07-24',
+    }).records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: '数学' }),
+      expect.objectContaining({ label: '英語' }),
+    ]));
   });
 
   it('does not prepare when neither staged graph nor context exists', () => {
