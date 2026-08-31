@@ -10,26 +10,34 @@ import type {
 } from '../types';
 import {
   discardWeeklyPlanningStableV5StagedGraph,
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
+  finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt,
   hasWeeklyPlanningStableV5StagedGraphForTest,
+  rollbackWeeklyPlanningStableV5RuntimeGraphFinalize,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 export interface WeeklyPlanningTurnStagingLifecycleServices {
   hasStagedGraph: typeof hasWeeklyPlanningStableV5StagedGraphForTest;
-  finalizeRuntimeGraph: typeof finalizeWeeklyPlanningStableV5RuntimeGraph;
+  finalizeRuntimeGraph: typeof finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt;
+  rollbackRuntimeGraph: typeof rollbackWeeklyPlanningStableV5RuntimeGraphFinalize;
   discardStagedGraph: typeof discardWeeklyPlanningStableV5StagedGraph;
 }
 
 const defaultServices: WeeklyPlanningTurnStagingLifecycleServices = {
   hasStagedGraph: hasWeeklyPlanningStableV5StagedGraphForTest,
-  finalizeRuntimeGraph: finalizeWeeklyPlanningStableV5RuntimeGraph,
+  finalizeRuntimeGraph: finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt,
+  rollbackRuntimeGraph: rollbackWeeklyPlanningStableV5RuntimeGraphFinalize,
   discardStagedGraph: discardWeeklyPlanningStableV5StagedGraph,
 };
 
-function finalizeStaging(params: {
+export interface WeeklyPlanningTurnPreparedStagingCommit {
+  rollback(): void;
+  complete(): void;
+}
+
+function prepareStaging(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
-}, services: WeeklyPlanningTurnStagingLifecycleServices): void {
+}, services: WeeklyPlanningTurnStagingLifecycleServices): WeeklyPlanningTurnPreparedStagingCommit | undefined {
   const hasGraph = services.hasStagedGraph({
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
@@ -38,7 +46,7 @@ function finalizeStaging(params: {
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
   });
-  if (!hasGraph && !hasContext) return;
+  if (!hasGraph && !hasContext) return undefined;
 
   const contextReceipt = hasContext
     ? finalizeStagedUserPlanningContextV1({
@@ -47,25 +55,43 @@ function finalizeStaging(params: {
         requestId: params.pending.requestId,
       })
     : null;
+  let graphReceipt: ReturnType<
+    typeof finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt
+  >['receipt'] | null = null;
   try {
     if (hasGraph) {
-      services.finalizeRuntimeGraph({
+      graphReceipt = services.finalizeRuntimeGraph({
         ownerId: params.ownerId,
         conversationId: params.pending.conversationId,
         requestId: params.pending.requestId,
-      });
+      }).receipt;
     }
   } catch (error) {
     rollbackFinalizedUserPlanningContextV1(contextReceipt);
     throw error;
   }
 
-  if (contextReceipt?.committedRecords.length) {
-    publishUserPlanningContextCommittedV1({
-      ownerId: contextReceipt.ownerId,
-      records: contextReceipt.committedRecords,
-    });
-  }
+  let settled = false;
+  return {
+    rollback() {
+      if (settled) return;
+      if (graphReceipt && !services.rollbackRuntimeGraph(graphReceipt)) {
+        throw new Error('Stable V5 prepared graph commit could not be rolled back safely.');
+      }
+      rollbackFinalizedUserPlanningContextV1(contextReceipt);
+      settled = true;
+    },
+    complete() {
+      if (settled) return;
+      settled = true;
+      if (contextReceipt?.committedRecords.length) {
+        publishUserPlanningContextCommittedV1({
+          ownerId: contextReceipt.ownerId,
+          records: contextReceipt.committedRecords,
+        });
+      }
+    },
+  };
 }
 
 function discardStaging(
@@ -83,10 +109,10 @@ function discardStaging(
 }
 
 export interface WeeklyPlanningTurnStagingLifecycle {
-  finalize(params: {
+  prepare(params: {
     ownerId: string;
     pending: WeeklyPlanningPendingTurn;
-  }): void;
+  }): WeeklyPlanningTurnPreparedStagingCommit | undefined;
   discard(pending: WeeklyPlanningPendingTurn): void;
 }
 
@@ -94,8 +120,8 @@ export function createWeeklyPlanningTurnStagingLifecycle(
   services: WeeklyPlanningTurnStagingLifecycleServices = defaultServices,
 ): WeeklyPlanningTurnStagingLifecycle {
   return {
-    finalize(params) {
-      finalizeStaging(params, services);
+    prepare(params) {
+      return prepareStaging(params, services);
     },
     discard(pending) {
       discardStaging(pending, services);
