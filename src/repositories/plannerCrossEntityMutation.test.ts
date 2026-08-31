@@ -243,6 +243,26 @@ describe('planner cross-entity mutation consistency', () => {
     expect(await repository.getTodos('user-1')).toEqual([originalTodo]);
   });
 
+  it('rolls Plan Undo restoration back when dependent Actual persistence fails', async () => {
+    const originalPlan = plan();
+    const originalActual = actual();
+    const originalTodo = todo();
+    const deletedTodo = todo({ status: 'open', scheduledPlanId: null });
+    const memory = memoryGateway({ todos: [deletedTodo] });
+    const repository = createPlannerRepository(memory.gateway);
+    memory.failOnce('actuals');
+
+    await expect(repository.restorePlanWithDependents({
+      plan: originalPlan,
+      actuals: [originalActual],
+      todo: originalTodo,
+    })).rejects.toThrow('forced actuals failure');
+
+    expect(memory.state.plans).toEqual([]);
+    expect(memory.state.actuals).toEqual([]);
+    expect(memory.state.todos).toEqual([deletedTodo]);
+  });
+
   it('rolls Plan deletion back when dependent Actual persistence fails', async () => {
     const originalPlan = plan();
     const originalActual = actual();
