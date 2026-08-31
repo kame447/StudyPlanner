@@ -87,14 +87,8 @@ jobs:
 
           path = Path('src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx')
           text = path.read_text()
-          old = """    async update(nextOverrides) {
-              currentProps = { ...currentProps, ...nextOverrides };
-              await act(async () => {
-                renderer.update(<ApplicationHarness ref={ref} {...currentProps} />);
-              });
-            },""".replace('            ', '')
-          new = """    async update(nextOverrides) {
-              const nextUserId = nextOverrides.userId ?? currentProps.userId;
+          old = '      currentProps = { ...currentProps, ...nextOverrides };'
+          new = """      const nextUserId = nextOverrides.userId ?? currentProps.userId;
               currentProps = {
                 ...currentProps,
                 ...nextOverrides,
@@ -103,13 +97,9 @@ jobs:
                   ?? (nextOverrides.userId !== undefined
                     ? createReadyPlannerDataAvailability(nextUserId)
                     : currentProps.plannerDataAvailability),
-              };
-              await act(async () => {
-                renderer.update(<ApplicationHarness ref={ref} {...currentProps} />);
-              });
-            },""".replace('            ', '')
+              };""".replace('              ', '')
           if text.count(old) != 1:
-              raise SystemExit('useWeeklyPlanningApplication user-switch harness shape changed')
+              raise SystemExit('useWeeklyPlanningApplication user-switch line changed')
           path.write_text(text.replace(old, new, 1))
 
           path = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5SessionStorage.test.ts')
