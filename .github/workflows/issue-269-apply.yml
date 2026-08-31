@@ -85,6 +85,33 @@ jobs:
               text = add_helper_import(path, text)
               path.write_text(text)
 
+          path = Path('src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx')
+          text = path.read_text()
+          old = """    async update(nextOverrides) {
+              currentProps = { ...currentProps, ...nextOverrides };
+              await act(async () => {
+                renderer.update(<ApplicationHarness ref={ref} {...currentProps} />);
+              });
+            },""".replace('            ', '')
+          new = """    async update(nextOverrides) {
+              const nextUserId = nextOverrides.userId ?? currentProps.userId;
+              currentProps = {
+                ...currentProps,
+                ...nextOverrides,
+                plannerDataAvailability:
+                  nextOverrides.plannerDataAvailability
+                  ?? (nextOverrides.userId !== undefined
+                    ? createReadyPlannerDataAvailability(nextUserId)
+                    : currentProps.plannerDataAvailability),
+              };
+              await act(async () => {
+                renderer.update(<ApplicationHarness ref={ref} {...currentProps} />);
+              });
+            },""".replace('            ', '')
+          if text.count(old) != 1:
+              raise SystemExit('useWeeklyPlanningApplication user-switch harness shape changed')
+          path.write_text(text.replace(old, new, 1))
+
           path = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5SessionStorage.test.ts')
           text = path.read_text()
           old = '        userId: OWNER_ID,\n        selectedDate: SELECTED_DATE,'
