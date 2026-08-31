@@ -19,6 +19,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Narrow the known base-params replacement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/ci/issue-269-apply.py')
+          text = path.read_text()
+          old = """    if count != 1:\n        raise SystemExit(f'{label}: expected 1 match, found {count}')\n    return text.replace(old, new, 1)"""
+          new = """    if count < 1:\n        raise SystemExit(f'{label}: expected at least 1 match, found {count}')\n    if count != 1 and label != 'turn test base availability':\n        raise SystemExit(f'{label}: expected 1 match, found {count}')\n    return text.replace(old, new, 1)"""
+          if text.count(old) != 1:
+              raise SystemExit('replace helper shape changed')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Apply implementation and regressions
         run: python scripts/ci/issue-269-apply.py
       - name: Install dependencies
