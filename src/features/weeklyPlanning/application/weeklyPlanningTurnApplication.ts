@@ -92,8 +92,8 @@ export function submitWeeklyPlanningApplicationTurn(
         pending,
       });
     },
-    commitExecutionResult({ pending }) {
-      services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
+    prepareExecutionCommit({ pending }) {
+      return services.stagingLifecycle.prepare({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending, userText, result, reason }) {
       services.stagingLifecycle.discard(pending);
