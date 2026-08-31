@@ -937,10 +937,11 @@ export function usePlannerDataState({
       if (progress.changedMaterials.length > 0) {
         setStudyMaterials((current) =>
           sortStudyMaterials(
-            progress.nextMaterials.map((nextMaterial) => {
-              const currentMaterial = current.find((material) => material.id === nextMaterial.id);
-              return currentMaterial ? { ...currentMaterial, ...nextMaterial } : nextMaterial;
-            }),
+            progress.changedMaterials.reduce(
+              (records, nextMaterial) =>
+                upsertByKey(records, nextMaterial, (material) => material.id),
+              current,
+            ),
           ),
         );
       }
@@ -1018,10 +1019,11 @@ export function usePlannerDataState({
       if (progress.changedMaterials.length > 0) {
         setStudyMaterials((current) =>
           sortStudyMaterials(
-            progress.nextMaterials.map((nextMaterial) => {
-              const currentMaterial = current.find((material) => material.id === nextMaterial.id);
-              return currentMaterial ? { ...currentMaterial, ...nextMaterial } : nextMaterial;
-            }),
+            progress.changedMaterials.reduce(
+              (records, nextMaterial) =>
+                upsertByKey(records, nextMaterial, (material) => material.id),
+              current,
+            ),
           ),
         );
       }
