@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-08-30
+Updated: 2026-08-31
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -63,7 +63,9 @@ research / comparable OSS review
 → canonical current-contract promotion
 ```
 
-Do not begin runtime implementation by adding prompt rules or raw-text routing before the canonical requirement is reviewed. The documentation-only contract phase does not make consultation a production guarantee.
+The documentation/architecture gate is closed as of 2026-08-31. Pure consultation contracts, state machines, validators and deterministic tests may proceed on the existing Issue #246 branch without mutating production Stable V5 state. Production reviewable-proposal/promotion wiring remains dependency-aware: Issue #269 owns authoritative planner-data availability, Issue #270 owns the atomic formal turn commit boundary, and other owner-domain dependencies remain outside #246 rather than being duplicated inside it.
+
+Do not implement consultation by adding prompt rules or raw-text routing outside the canonical requirement. The closed documentation gate does not make consultation a production guarantee; runtime implementation and verification are still required.
 
 Implementation invariants:
 
@@ -86,9 +88,10 @@ This Issue is independent from Issue #152, but its implementation must consume t
 - Issue #47: personalization/cloud authority rollout.
 - Issue #51: multi-device approval uniqueness.
 - Issue #128: saved-preview migration/compatibility.
-- Issue #160: AI usage/cost observability.
 - Issue #164: client-first execution, owned by the separate [client-runtime domain](../../client-runtime/README.md).
-- Issue #246: pre-scheduling learning consultation/advice. Requirements are canonicalized first; runtime implementation remains pending until the pre-implementation gate in the consultation spec is satisfied.
+- Issue #269: preserve authoritative planner-data load availability instead of collapsing unavailable/stale state into empty arrays.
+- Issue #270: make the weekly-planning formal turn commit atomic across conversation state and staged domain state; active implementation is tracked by its existing branch/PR.
+- Issue #246: pre-scheduling learning consultation/advice. The pre-implementation documentation gate is closed; pure implementation may proceed, while production wiring consumes the owner boundaries above.
 
 ## Architecture direction
 
