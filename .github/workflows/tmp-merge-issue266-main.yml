@@ -39,54 +39,259 @@ jobs:
             exit 20
           fi
           if ! git merge-base --is-ancestor "$FEATURE_HEAD" "$BRANCH_HEAD"; then
-            echo "feature head is not an ancestor of the current branch head" >&2
+            echo "feature head is not an ancestor of current branch head" >&2
             exit 21
           fi
 
-          paths=(
+          clean_paths=(
             src/domain/recurringPlanMutation.test.ts
             src/domain/recurringPlanMutation.ts
             src/hooks/usePlannerDataState.ts
             src/repositories/firebasePlannerRepository.recurringMutation.test.ts
-            src/repositories/firebasePlannerRepository.ts
             src/repositories/observedPlannerRepository.ts
-            src/repositories/plannerRepository.ts
             src/repositories/recurringPlanMutationRepository.test.ts
-            src/repositories/repositoryContracts.ts
-            src/repositories/unavailableRepositories.ts
           )
 
-          git diff --binary "$FEATURE_BASE" "$FEATURE_HEAD" -- "${paths[@]}" > /tmp/issue266.patch
+          git diff --binary "$FEATURE_BASE" "$FEATURE_HEAD" -- "${clean_paths[@]}" > /tmp/issue266-clean.patch
           git checkout --detach "$MAIN_HEAD"
-
-          if ! git apply --3way --index /tmp/issue266.patch; then
-            echo "three-way apply left conflicts:" >&2
-            git status --short >&2 || true
-            git diff --cc >&2 || true
-            exit 22
-          fi
+          git apply --3way --index /tmp/issue266-clean.patch
 
           python <<'PY'
           from pathlib import Path
 
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one anchor, found {count}')
+              target.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'src/repositories/repositoryContracts.ts',
+              "} from '../types/domain';\n",
+              "} from '../types/domain';\nimport type { RecurringPlanMutation } from '../domain/recurringPlanMutation';\n",
+          )
+          replace_once(
+              'src/repositories/repositoryContracts.ts',
+              "  getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;\n",
+              "  getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;\n  applyRecurringPlanMutation(\n    userId: string,\n    mutation: RecurringPlanMutation,\n  ): Promise<void>;\n",
+          )
+
+          replace_once(
+              'src/repositories/unavailableRepositories.ts',
+              "    async getTimetablePeriods() {\n      return [];\n    },\n",
+              "    async getTimetablePeriods() {\n      return [];\n    },\n    async applyRecurringPlanMutation() {\n      throw createConfigurationError();\n    },\n",
+          )
+
+          replace_once(
+              'src/repositories/plannerRepository.ts',
+              "import type {\n  PlannerRepository,\n  PlannerStorageGateway,\n} from './repositoryContracts';\n",
+              "import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';\nimport type {\n  PlannerRepository,\n  PlannerStorageGateway,\n} from './repositoryContracts';\n",
+          )
+          recurring_helpers = r'''function recurringActualOccurrenceKey(
+            actual: import('../types/domain').Actual,
+          ): string | null {
+            return actual.planId
+              ? `${actual.planId}\u0000${actual.occurrenceDate}`
+              : null;
+          }
+
+          function applyRecurringActualMutation(
+            current: import('../types/domain').Actual[],
+            userId: string,
+            mutation: RecurringPlanMutation,
+          ): import('../types/domain').Actual[] {
+            const planDeleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+            const actualDeleteIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
+            const actualDeleteOccurrences = new Set(
+              mutation.actualDeletes
+                .map(recurringActualOccurrenceKey)
+                .filter((key): key is string => key !== null),
+            );
+            const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
+            const remaining = current.filter((actual) => {
+              if (actual.userId !== userId || reboundIds.has(actual.id)) {
+                return true;
+              }
+
+              const occurrenceKey = recurringActualOccurrenceKey(actual);
+              const matchesExplicitDelete =
+                actualDeleteIds.has(actual.id) ||
+                (occurrenceKey !== null && actualDeleteOccurrences.has(occurrenceKey));
+              const matchesDeletedPlan =
+                actual.planId !== null && planDeleteIds.has(actual.planId);
+              return !matchesExplicitDelete && !matchesDeletedPlan;
+            });
+
+            return mutation.actualUpserts.reduce(
+              (records, actual) => upsertActualRecord(records, actual),
+              remaining,
+            );
+          }
+
+          '''.replace('\n          ', '\n')
+          replace_once(
+              'src/repositories/plannerRepository.ts',
+              'async function runRecoverableMutation(\n',
+              recurring_helpers + 'async function runRecoverableMutation(\n',
+          )
+          recurring_local_method = r'''    async applyRecurringPlanMutation(userId, mutation) {
+              assertOwnedRecords(
+                userId,
+                [
+                  ...mutation.planUpserts,
+                  ...mutation.planDeletes,
+                  ...mutation.actualUpserts,
+                  ...mutation.actualDeletes,
+                ],
+                '繰り返し予定更新',
+              );
+              const hasPlanChanges =
+                mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
+              const hasActualChanges =
+                mutation.actualUpserts.length > 0 ||
+                mutation.actualDeletes.length > 0 ||
+                mutation.planDeletes.length > 0;
+              if (!hasPlanChanges && !hasActualChanges) return;
+
+              const previousPlans = await storageGateway.readPlans();
+              const previousActuals = await storageGateway.readActuals();
+              const nextPlans = hasPlanChanges
+                ? applyOwnedRecords(
+                    previousPlans,
+                    userId,
+                    mutation.planUpserts,
+                    mutation.planDeletes,
+                  )
+                : previousPlans;
+              const nextActuals = hasActualChanges
+                ? applyRecurringActualMutation(previousActuals, userId, mutation)
+                : previousActuals;
+
+              await runRecoverableMutation(
+                async () => {
+                  if (hasPlanChanges) await storageGateway.writePlans(nextPlans);
+                  if (hasActualChanges) await storageGateway.writeActuals(nextActuals);
+                },
+                async () => {
+                  if (hasPlanChanges) await storageGateway.writePlans(previousPlans);
+                  if (hasActualChanges) await storageGateway.writeActuals(previousActuals);
+                },
+                '繰り返し予定更新',
+              );
+            },
+          '''.replace('\n          ', '\n')
+          replace_once(
+              'src/repositories/plannerRepository.ts',
+              '    async deletePlanWithDependents(mutation) {\n',
+              recurring_local_method + '    async deletePlanWithDependents(mutation) {\n',
+          )
+
+          recurring_firebase_method = r'''    async applyRecurringPlanMutation(userId, mutation) {
+              try {
+                assertOwnedRecords(
+                  userId,
+                  [
+                    ...mutation.planUpserts,
+                    ...mutation.planDeletes,
+                    ...mutation.actualUpserts,
+                    ...mutation.actualDeletes,
+                  ],
+                  '繰り返し予定更新',
+                );
+                const reboundIds = new Set(
+                  mutation.actualUpserts.map((actual) => actual.id),
+                );
+                const [linkedActuals, duplicateOccurrenceActuals] = await Promise.all([
+                  Promise.all(
+                    mutation.planDeletes.map((plan) =>
+                      listActualsByPlanId(firestoreDb, userId, plan.id),
+                    ),
+                  ).then((groups) => groups.flat()),
+                  Promise.all(
+                    mutation.actualDeletes.map((actual) =>
+                      listActualsByPlanOccurrence(firestoreDb, actual),
+                    ),
+                  ).then((groups) => groups.flat()),
+                ]);
+                const actualDeletesById = new Map(
+                  [
+                    ...mutation.actualDeletes,
+                    ...duplicateOccurrenceActuals,
+                    ...linkedActuals,
+                  ]
+                    .filter((actual) => !reboundIds.has(actual.id))
+                    .map((actual) => [actual.id, actual]),
+                );
+                const operationCount =
+                  mutation.planUpserts.length +
+                  mutation.planDeletes.length +
+                  mutation.actualUpserts.length +
+                  actualDeletesById.size;
+
+                if (operationCount > 500) {
+                  throw new Error('Recurring plan mutation exceeds the Firestore batch limit.');
+                }
+                if (operationCount === 0) return;
+
+                const batch = writeBatch(firestoreDb);
+                mutation.planUpserts.forEach((plan) => {
+                  batch.set(
+                    doc(firestoreDb, 'plans', plan.id),
+                    stripUndefinedDeep(plan),
+                    { merge: true },
+                  );
+                });
+                mutation.planDeletes.forEach((plan) => {
+                  batch.delete(doc(firestoreDb, 'plans', plan.id));
+                });
+                mutation.actualUpserts.forEach((actual) => {
+                  batch.set(
+                    doc(firestoreDb, 'actuals', actual.id),
+                    stripUndefinedDeep(actual),
+                    { merge: true },
+                  );
+                });
+                actualDeletesById.forEach((actual) => {
+                  batch.delete(doc(firestoreDb, 'actuals', actual.id));
+                });
+                await batch.commit();
+              } catch (error) {
+                throw new Error(
+                  normalizeErrorMessage(
+                    '繰り返し予定を保存できませんでした。',
+                    error as FirebaseLikeError,
+                  ),
+                );
+              }
+            },
+          '''.replace('\n          ', '\n')
+          replace_once(
+              'src/repositories/firebasePlannerRepository.ts',
+              '    async deletePlanWithDependents(mutation) {\n',
+              recurring_firebase_method + '    async deletePlanWithDependents(mutation) {\n',
+          )
+
           observed = Path('src/repositories/observedPlannerRepository.ts')
-          text = observed.read_text()
-          needle = "      mutation.actualUpserts.forEach(() => recordBestEffort(telemetry, 'actual_recorded'));\n"
-          if text.count(needle) != 1:
-              raise SystemExit(f'expected one recurring Actual telemetry line, found {text.count(needle)}')
-          observed.write_text(text.replace(needle, '', 1))
+          observed_text = observed.read_text()
+          actual_recorded = "      mutation.actualUpserts.forEach(() => recordBestEffort(telemetry, 'actual_recorded'));\n"
+          if observed_text.count(actual_recorded) != 1:
+              raise SystemExit(
+                  f'observed recurring Actual telemetry anchor mismatch: {observed_text.count(actual_recorded)}'
+              )
+          observed.write_text(observed_text.replace(actual_recorded, '', 1))
 
           test_path = Path('src/repositories/observedPlannerRepository.test.ts')
           test_text = test_path.read_text()
           anchor = "  it('preserves telemetry for aggregate Actual and material persistence', async () => {\n"
           if test_text.count(anchor) != 1:
-              raise SystemExit(f'expected one telemetry test insertion anchor, found {test_text.count(anchor)}')
+              raise SystemExit(f'observed test insertion anchor mismatch: {test_text.count(anchor)}')
           test = """  it('does not recount recurring Actual rebinds as newly recorded activity', async () => {\n    const actions: ProductActivityAction[] = [];\n    const reboundActual = {\n      id: 'actual-rebound',\n      userId: 'user-1',\n      planId: 'plan-future',\n      occurrenceDate: '2026-09-03',\n      actualStartTime: '09:00',\n      actualEndTime: '10:00',\n      title: 'Math',\n      subject: 'Math',\n      isAlignedToPlan: true,\n      note: '',\n      updatedAt: '2026-09-03T01:00:00.000Z',\n    } as Actual;\n    const base = {\n      applyRecurringPlanMutation: vi.fn(async () => undefined),\n    } as unknown as PlannerRepository;\n    const repository = createObservedPlannerRepository(base, telemetry(actions));\n\n    await repository.applyRecurringPlanMutation('user-1', {\n      planUpserts: [],\n      planDeletes: [],\n      actualUpserts: [reboundActual],\n      actualDeletes: [],\n    });\n\n    expect(actions).toEqual([]);\n  });\n\n"""
           test_path.write_text(test_text.replace(anchor, test + anchor, 1))
           PY
 
           git add -A
-
           expected_files="$(printf '%s\n' \
             src/domain/recurringPlanMutation.test.ts \
             src/domain/recurringPlanMutation.ts \
