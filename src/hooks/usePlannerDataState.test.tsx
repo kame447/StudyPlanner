@@ -75,6 +75,21 @@ describe('usePlannerDataState planner-data read authority', () => {
     resetRepositoryMocks();
   });
 
+  it('marks a successful empty load ready instead of unavailable', async () => {
+    const renderer = create(<Harness userId="owner-a" />);
+
+    await act(async () => {
+      await readState().loadPlannerData('owner-a');
+    });
+
+    expect(readState().plannerDataAvailability).toMatchObject({
+      status: 'ready',
+      ownerId: 'owner-a',
+    });
+    expect(readState().studyMaterials).toEqual([]);
+    renderer.unmount();
+  });
+
   it('marks a first failed load unavailable instead of authoritative empty', async () => {
     const failure = new Error('plans unavailable');
     repository.getPlans.mockRejectedValueOnce(failure);
@@ -96,6 +111,27 @@ describe('usePlannerDataState planner-data read authority', () => {
       lastSuccessfulAt: null,
     });
     expect(readState().plans).toEqual([]);
+    renderer.unmount();
+  });
+
+  it('returns to ready after retrying a failed initial load', async () => {
+    const failure = new Error('temporary planner outage');
+    repository.getPlans.mockRejectedValueOnce(failure);
+    const renderer = create(<Harness userId="owner-a" />);
+
+    await act(async () => {
+      await expect(readState().loadPlannerData('owner-a')).rejects.toBe(failure);
+    });
+    expect(readState().plannerDataAvailability.status).toBe('unavailable');
+
+    await act(async () => {
+      await readState().loadPlannerData('owner-a');
+    });
+
+    expect(readState().plannerDataAvailability).toMatchObject({
+      status: 'ready',
+      ownerId: 'owner-a',
+    });
     renderer.unmount();
   });
 
@@ -130,6 +166,46 @@ describe('usePlannerDataState planner-data read authority', () => {
       ownerId: 'owner-a',
     });
     expect(readState().studyMaterials).toEqual([material]);
+    renderer.unmount();
+  });
+
+  it('does not let an older same-owner load overwrite a newer snapshot', async () => {
+    const olderMaterials = deferred<StudyMaterial[]>();
+    const olderMaterial = studyMaterial('owner-a', '古い教材');
+    const newerMaterial = {
+      ...studyMaterial('owner-a', '新しい教材'),
+      id: 'material-owner-a-newer',
+    };
+    repository.getStudyMaterials
+      .mockReturnValueOnce(olderMaterials.promise)
+      .mockResolvedValueOnce([newerMaterial]);
+    const renderer = create(<Harness userId="owner-a" />);
+    let olderLoad!: Promise<void>;
+
+    await act(async () => {
+      olderLoad = readState().loadPlannerData('owner-a');
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await readState().loadPlannerData('owner-a');
+    });
+    expect(readState().plannerDataAvailability).toMatchObject({
+      status: 'ready',
+      ownerId: 'owner-a',
+    });
+    expect(readState().studyMaterials).toEqual([newerMaterial]);
+
+    await act(async () => {
+      olderMaterials.resolve([olderMaterial]);
+      await olderLoad;
+    });
+
+    expect(readState().plannerDataAvailability).toMatchObject({
+      status: 'ready',
+      ownerId: 'owner-a',
+    });
+    expect(readState().studyMaterials).toEqual([newerMaterial]);
     renderer.unmount();
   });
 
