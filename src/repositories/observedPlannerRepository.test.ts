@@ -143,6 +143,35 @@ describe('createObservedPlannerRepository', () => {
     expect(actions).toEqual(['todo_updated']);
   });
 
+  it('does not recount restored Actuals as newly recorded activity during Plan Undo', async () => {
+    const actions: ProductActivityAction[] = [];
+    const restoredActual = {
+      id: 'actual-undo',
+      userId: 'user-1',
+      planId: 'plan-1',
+      occurrenceDate: '2026-08-28',
+      actualStartTime: '09:00',
+      actualEndTime: '10:00',
+      title: 'Math',
+      subject: 'Math',
+      isAlignedToPlan: true,
+      note: '',
+      updatedAt: '2026-08-28T01:00:00.000Z',
+    } as Actual;
+    const base = {
+      restorePlanWithDependents: vi.fn(async () => undefined),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.restorePlanWithDependents({
+      plan: plan(),
+      actuals: [restoredActual],
+      todo: todo(),
+    });
+
+    expect(actions).toEqual(['plan_created', 'todo_updated']);
+  });
+
   it('preserves telemetry for aggregate Actual and material persistence', async () => {
     const actions: ProductActivityAction[] = [];
     const savedActual = {
