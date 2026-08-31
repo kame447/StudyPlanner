@@ -1,0 +1,43 @@
+name: Fix Issue 266 One-shot Identity
+
+on:
+  push:
+    branches:
+      - refactor/issue266-recurring-plan-mutations
+    paths:
+      - .github/workflows/tmp-fix-issue266-identity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/issue266-recurring-plan-mutations
+      - name: Add commit identity to integration workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/tmp-merge-issue266-main.yml')
+          text = path.read_text()
+          old = '          TREE_SHA="$(git write-tree)"\n'
+          new = (
+              old
+              + '          git config user.name "github-actions[bot]"\n'
+              + '          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one TREE_SHA anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git add .github/workflows/tmp-merge-issue266-main.yml
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'chore: configure issue 266 merge commit identity'
+          git push origin HEAD:refs/heads/refactor/issue266-recurring-plan-mutations
