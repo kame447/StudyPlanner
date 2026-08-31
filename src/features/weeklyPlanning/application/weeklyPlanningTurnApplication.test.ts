@@ -171,7 +171,8 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(store.getState().intakeState).not.toBe(resultState);
     expect(store.getState().messages.some((message) => message.content === '成功しました。')).toBe(false);
     expect(store.getState().pendingTurn).toBeUndefined();
-    expect(store.getState().messages.at(-1)).toMatchObject({
+    const messages = store.getState().messages;
+    expect(messages[messages.length - 1]).toMatchObject({
       role: 'assistant',
       content: '週間計画の会話状態を更新できませんでした。',
     });
