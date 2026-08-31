@@ -23,21 +23,35 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply corrected exact patch
+      - name: Avoid stale material state projection
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('scripts/ci/tmp-issue268-cross-entity-patch.mjs')
+          path = Path('src/hooks/usePlannerDataState.ts')
           text = path.read_text()
-          old = "source.slice(0, startIndex) + replacement + source.slice(endIndex)"
-          new = "source.slice(0, startIndex) + replacement + source.slice(endIndex + end.length)"
-          if text.count(old) != 1:
-              raise SystemExit('replaceBetween implementation anchor mismatch')
+          old = '''        setStudyMaterials((current) =>
+          sortStudyMaterials(
+            progress.nextMaterials.map((nextMaterial) => {
+              const currentMaterial = current.find((material) => material.id === nextMaterial.id);
+              return currentMaterial ? { ...currentMaterial, ...nextMaterial } : nextMaterial;
+            }),
+          ),
+        );'''
+          new = '''        setStudyMaterials((current) =>
+          sortStudyMaterials(
+            progress.changedMaterials.reduce(
+              (records, nextMaterial) =>
+                upsertByKey(records, nextMaterial, (material) => material.id),
+              current,
+            ),
+          ),
+        );'''
+          if text.count(old) != 2:
+              raise SystemExit(f'expected 2 stale material projections, found {text.count(old)}')
           path.write_text(text.replace(old, new))
           PY
-          node scripts/ci/tmp-issue268-cross-entity-patch.mjs
       - name: Install dependencies
         run: npm ci
       - name: Focused repository tests
@@ -56,6 +70,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/hooks/usePlannerDataState.ts src/repositories/repositoryContracts.ts src/repositories/plannerRepository.ts src/repositories/firebasePlannerRepository.ts src/repositories/observedPlannerRepository.ts src/repositories/plannerCrossEntityMutation.test.ts src/repositories/observedPlannerRepository.test.ts
-          git commit -m "fix: harden planner cross-entity mutations"
+          git add src/hooks/usePlannerDataState.ts
+          git commit -m "fix: preserve concurrent material state updates"
           git push origin HEAD:fix/issue268-cross-entity-consistency
