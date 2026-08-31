@@ -78,6 +78,18 @@ function normalizeErrorMessage(
   return message || fallbackMessage;
 }
 
+type OwnedRecord = { id: string; userId: string };
+
+function assertOwnedRecords(
+  userId: string,
+  records: readonly OwnedRecord[],
+  label: string,
+): void {
+  if (records.some((record) => record.userId !== userId)) {
+    throw new Error(`${label} の所有者が一致しません。`);
+  }
+}
+
 function stripUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
     return value
@@ -167,29 +179,32 @@ async function listActualsByPlanOccurrence(
   );
 }
 
+function studyMaterialFirestorePayload(item: StudyMaterial) {
+  const sanitizedItem = stripUndefinedDeep(item);
+  return item.paceEnabled === true
+    ? sanitizedItem
+    : {
+        ...sanitizedItem,
+        progressUnit: deleteField(),
+        progressUnitLabel: deleteField(),
+        totalUnits: deleteField(),
+        currentUnit: deleteField(),
+        targetDate: deleteField(),
+        estimatedMinutesPerUnit: deleteField(),
+        maxUnitsPerDay: deleteField(),
+      };
+}
+
 async function upsertStudyMaterialDocument(
   firestoreDb: Firestore,
   item: StudyMaterial,
 ): Promise<StudyMaterial> {
   const sanitizedItem = stripUndefinedDeep(item);
-  const firestorePayload =
-    item.paceEnabled === true
-      ? sanitizedItem
-      : {
-          ...sanitizedItem,
-          progressUnit: deleteField(),
-          progressUnitLabel: deleteField(),
-          totalUnits: deleteField(),
-          currentUnit: deleteField(),
-          targetDate: deleteField(),
-          estimatedMinutesPerUnit: deleteField(),
-          maxUnitsPerDay: deleteField(),
-        };
-
-  await setDoc(doc(firestoreDb, 'study_materials', item.id), firestorePayload, {
-    merge: true,
-  });
-
+  await setDoc(
+    doc(firestoreDb, 'study_materials', item.id),
+    studyMaterialFirestorePayload(item),
+    { merge: true },
+  );
   return sanitizedItem;
 }
 
@@ -362,6 +377,207 @@ export function createFirebasePlannerRepository(
             '時間割の時限設定を取得できませんでした。',
             error as { message?: string | null },
           ),
+        );
+      }
+    },
+    async deletePlanWithDependents(mutation) {
+      try {
+        assertOwnedRecords(
+          mutation.userId,
+          mutation.todo ? [mutation.plan, mutation.todo] : [mutation.plan],
+          '予定削除',
+        );
+        const actuals = await listActualsByPlanId(
+          firestoreDb,
+          mutation.userId,
+          mutation.plan.id,
+        );
+        const batch = writeBatch(firestoreDb);
+        batch.delete(doc(firestoreDb, 'plans', mutation.plan.id));
+        actuals.forEach((actual) => {
+          batch.delete(doc(firestoreDb, 'actuals', actual.id));
+        });
+        if (mutation.todo) {
+          batch.set(
+            doc(firestoreDb, 'todos', mutation.todo.id),
+            stripUndefinedDeep(mutation.todo),
+            { merge: true },
+          );
+        }
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を削除できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+    async restorePlanWithDependents(mutation) {
+      try {
+        const userId = mutation.plan.userId;
+        assertOwnedRecords(
+          userId,
+          [mutation.plan, ...mutation.actuals, ...(mutation.todo ? [mutation.todo] : [])],
+          '予定復元',
+        );
+        const batch = writeBatch(firestoreDb);
+        batch.set(
+          doc(firestoreDb, 'plans', mutation.plan.id),
+          stripUndefinedDeep(mutation.plan),
+          { merge: true },
+        );
+        mutation.actuals.forEach((actual) => {
+          batch.set(
+            doc(firestoreDb, 'actuals', actual.id),
+            stripUndefinedDeep(actual),
+            { merge: true },
+          );
+        });
+        if (mutation.todo) {
+          batch.set(
+            doc(firestoreDb, 'todos', mutation.todo.id),
+            stripUndefinedDeep(mutation.todo),
+            { merge: true },
+          );
+        }
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を復元できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+    async scheduleTodoPlan(mutation) {
+      try {
+        assertOwnedRecords(mutation.plan.userId, [mutation.plan, mutation.todo], 'Todo予定化');
+        const batch = writeBatch(firestoreDb);
+        batch.set(
+          doc(firestoreDb, 'plans', mutation.plan.id),
+          stripUndefinedDeep(mutation.plan),
+          { merge: true },
+        );
+        batch.set(
+          doc(firestoreDb, 'todos', mutation.todo.id),
+          stripUndefinedDeep(mutation.todo),
+          { merge: true },
+        );
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('Todoを予定化できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+    async upsertActualWithMaterialProgress(mutation) {
+      try {
+        const userId = mutation.actual.userId;
+        assertOwnedRecords(userId, [mutation.actual, ...mutation.materials], '記録保存');
+        const matchingActuals = mutation.actual.planId
+          ? await listActualsByPlanOccurrence(firestoreDb, mutation.actual)
+          : [];
+        const nextActual = stripUndefinedDeep(
+          mutation.actual.planId
+            ? resolveActualForUpsert(matchingActuals, mutation.actual)
+            : mutation.actual,
+        );
+        const batch = writeBatch(firestoreDb);
+        batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, { merge: true });
+        matchingActuals
+          .filter((actual) => actual.id !== nextActual.id)
+          .forEach((actual) => {
+            batch.delete(doc(firestoreDb, 'actuals', actual.id));
+          });
+        mutation.materials.forEach((material) => {
+          batch.set(
+            doc(firestoreDb, 'study_materials', material.id),
+            studyMaterialFirestorePayload(material),
+            { merge: true },
+          );
+        });
+        await batch.commit();
+        return nextActual;
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('記録を保存できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+    async upsertStudySubjectWithMaterials(mutation) {
+      try {
+        const userId = mutation.subject.userId;
+        assertOwnedRecords(
+          userId,
+          [mutation.subject, ...mutation.materials],
+          '教科保存',
+        );
+        const batch = writeBatch(firestoreDb);
+        batch.set(
+          doc(firestoreDb, 'study_subjects', mutation.subject.id),
+          stripUndefinedDeep(mutation.subject),
+          { merge: true },
+        );
+        mutation.materials.forEach((material) => {
+          batch.set(
+            doc(firestoreDb, 'study_materials', material.id),
+            studyMaterialFirestorePayload(material),
+            { merge: true },
+          );
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('教科を保存できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+    async applyTimetableMutation(mutation) {
+      try {
+        assertOwnedRecords(
+          mutation.userId,
+          [
+            ...mutation.termUpserts,
+            ...mutation.termDeletes,
+            ...mutation.templateUpserts,
+            ...mutation.templateDeletes,
+            ...mutation.periodUpserts,
+            ...mutation.periodDeletes,
+          ],
+          '時間割更新',
+        );
+        const batch = writeBatch(firestoreDb);
+        mutation.termUpserts.forEach((term) => {
+          batch.set(
+            doc(firestoreDb, 'timetable_terms', term.id),
+            stripUndefinedDeep(term),
+            { merge: true },
+          );
+        });
+        mutation.templateUpserts.forEach((template) => {
+          batch.set(
+            doc(firestoreDb, 'schedule_templates', template.id),
+            stripUndefinedDeep(template),
+            { merge: true },
+          );
+        });
+        mutation.periodUpserts.forEach((period) => {
+          batch.set(
+            doc(firestoreDb, 'timetable_periods', period.id),
+            stripUndefinedDeep(period),
+            { merge: true },
+          );
+        });
+        mutation.termDeletes.forEach((term) => {
+          batch.delete(doc(firestoreDb, 'timetable_terms', term.id));
+        });
+        mutation.templateDeletes.forEach((template) => {
+          batch.delete(doc(firestoreDb, 'schedule_templates', template.id));
+        });
+        mutation.periodDeletes.forEach((period) => {
+          batch.delete(doc(firestoreDb, 'timetable_periods', period.id));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('時間割を更新できませんでした。', error as FirebaseLikeError),
         );
       }
     },
