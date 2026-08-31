@@ -1,90 +1,87 @@
 # Learning Consultation Prompt and Evidence Design
 
-Status: supporting design / aligned with seven-view canonical contract
+Status: supporting design / implementation preflight aligned
 Updated: 2026-08-31
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 Parent canonical: [learning-consultation-and-advice.md](learning-consultation-and-advice.md)
 
 ## 1. この文書の位置付け
 
-この文書は、Issue #246 のlearning-advice answer purposeへ何を渡し、どのauthorityで回答させ、何をstructured outputとして受け取るかを定義するsupporting designである。
+この文書は、learning-advice answer purposeへ何を渡し、どのauthorityで回答させ、何をstructured outputとして受け取るかを定義する。
 
-親の正仕様は [Learning Consultation and Advice Contract](learning-consultation-and-advice.md) であり、矛盾時は親仕様を優先する。
+親仕様が正本であり、矛盾時は親仕様を優先する。
 
 本書が所有するもの:
 
-- answer purpose固定instruction
+- answer-purpose fixed instructions
 - Source Policy
 - prompt-facing bounded context
-- deterministic signalの提示方法
-- Evidence Bundle
-- Supplemental Evidence
+- deterministic signal presentation
+- Evidence Bundle / Supplemental Evidence
 - exact current user question
-- Review Context
-- Explanation Context
+- Review / Explanation Context
 - AdviceAnswerDocument output contract
-- answer model評価条件
+- answer-model evaluation
 
 本書が所有しないもの:
 
-- formal consultation routing
-- ActiveInteraction selection
-- advice / option identity
-- ReviewDecision
-- adoption terminality
+- high-level turn-purpose routing authority
+- ActiveInteraction projection
+- formal advice/option identity
+- ReviewDecision / adoption terminality
 - expected revision / multi-tab concurrency
-- context fingerprint計算
-- validity判定
+- context fingerprint authority
+- source availability authority
+- validity
 - material canonical binding
 - temporal canonicalization
-- promotion coverage / mapping
+- promotion mapping
 - scheduler / preview / Plan approval / save
-- persistence / migration
+- formal turn commit / persistence
 - durable memory
 
-これらをpromptだけで保証してはならない。
+これらをpromptだけで保証しない。
 
-## 2. 基本原則
+## 2. Runtime placement
 
-answer modelへ巨大な一枚promptを渡さず、authorityごとに入力を分離する。
+Answer AIはcurrent Stable V5 planning semantic normalizerのreplacementではない。
 
 ```text
-A. System Instructions
-   変わりにくい役割・禁止事項
-
-B. Source Policy
-   claim typeごとのevidence優先順位
-
-C. User Question
-   current turnで実際に聞かれた内容
-
-D. Request Temporal Context
-   current date/time/timezone等のcaptured context
-
-E. Consultation Context Sources
-   owner domainから作ったbounded read model
-
-F. Deterministic Signals
-   application-owned numeric truth
-
-G. Evidence Bundle
-   内部/外部のnormalized evidence
-
-H. Supplemental Evidence
-   画像/OCR等のuser-supplied observation
-
-I. Review Context / Explanation Context
-   follow-up時のみ
-
-J. Output Contract
-   proposal / clarification / explanationのstrict schema
+turn ingress
+→ ActiveInteraction projection
+→ strict TurnPurpose interpretation
+   ├─ planning_operation → existing Stable V5 semantic/runtime
+   ├─ learning_consultation
+   ├─ consultation_review / followup
+   └─ unresolved
+→ consultation branch only
+   bounded context + evidence
+→ learning-advice answer purpose
 ```
 
-instruction、user fact、external evidence、review feedback、current questionを一つのprose blockへ混在させない。
+TurnPurpose schemaとAdviceAnswerDocument schemaを分離する。
 
-## 3. Runtime input envelope
+planning semantic documentへconsultation lifecycleを詰め込まない。
 
-概念上:
+existing OpenAI-compatible client / strict structured response infrastructureは再利用できるが、purpose/schema/version/trace identityはconsultation用に分ける。
+
+raw keyword/regex routeは作らない。
+
+## 3. ActiveInteractionとの関係
+
+`それでいい`、`はい`、`1つ目`等のshort replyでは、AIへ複数formal targetを渡して選ばせない。
+
+applicationがunderlying formal statesからActiveInteractionを投影してからsemantic callを選ぶ。
+
+ActiveInteraction自体はpersisted truthではない。
+
+conflict時はimplicit authorizationを止める。
+
+Answer AIには、applicationが既にbindしたtarget snapshotだけをReview/Explanation Contextとして渡せる。
+
+## 4. Runtime input envelope
+
+概念:
 
 ```text
 LearningConsultationAnswerInput
@@ -101,13 +98,11 @@ LearningConsultationAnswerInput
   explanationContext?
 ```
 
-formal `adviceId / optionId / consultationRevision / ReviewDecision / promotionOperationId`等をanswer AIへ生成させない。
+formal IDsやReviewDecision、promotionOperationIdをAIに生成させない。
 
-applicationが既にbind済みの対象snapshotをReview / Explanation Contextへ渡すことはできるが、AIが自然言語からformal target identityを確定するauthorityにはしない。
+## 5. Exact current user question
 
-## 4. Exact current user question
-
-current user questionをconversation全文から再推測させない。
+current questionをconversation全文から再推測させない。
 
 ```yaml
 userQuestion: >-
@@ -115,15 +110,9 @@ userQuestion: >-
   どの参考書をいつまでに仕上げればいい？
 ```
 
-過去turnが必要でも`userQuestion`とは別のbounded contextとして渡す。
+過去turnは別のbounded contextとして渡す。
 
-`それでいい`等の短答が何を指すかは、answer AI callより前にapplication側のActiveInteraction / typed semantic bindingで処理する。
-
-AIへ複数のauthorization-bearing candidateを渡して「どれを承認したか選んで」と委譲しない。
-
-## 5. Request Temporal Context
-
-相対期限を回答へ含む可能性があるため、captured temporal contextを独立させる。
+## 6. Request Temporal Context
 
 ```text
 RequestTemporalContext
@@ -134,13 +123,13 @@ RequestTemporalContext
   relevantAuthoritativeDates[]
 ```
 
-Answer AIはこのcontextを参考にstructured temporal candidateを返せるが、formal canonical dateのauthorityではない。
+Answer AIはstructured temporal candidateを返せるがformal canonical dateを決めない。
 
-## 6. ContextSourceEnvelope
+current production runtimeのrequest-clock captureをreuseし、answer時と後段で別の基準時刻を作らない。
 
-StudyPlanner contextをplain arrayだけで渡さない。
+## 7. ContextSourceEnvelope
 
-prompt-facing shape:
+plain arrayだけを渡さない。
 
 ```text
 ContextSourceEnvelope
@@ -151,107 +140,67 @@ ContextSourceEnvelope
   authority
   observedAt
   sourceBasis?
-  items
+  bounded items
 ```
 
-### 6.1 Status semantics
+### 7.1 Status
 
-`empty`:
-- loadに成功した。
-- 対象データがauthoritativeに0件だった。
+`empty` = owner read成功 + authoritative zero itemsのみ。
 
-`unavailable`:
-- load failure / permission / timeout等で取得できなかった。
+`unavailable` = read failure / permission / timeout / authoritative status不明。
 
-`omitted`:
-- relevance / token / privacy budget等で意図的に入力へ含めなかった。
+`omitted` = relevance/token/privacy budgetで意図的に非投入。
 
-`stale`:
-- applicationがcurrent requestへ使えないbasisと判定した。
+`stale` = current requestに使えない古いsnapshot。
 
-AIは`unavailable / omitted / stale`を「存在しない」と解釈してはならない。
+AIはunavailable/omitted/staleを「存在しない」と解釈しない。
 
-### 6.2 Owner snapshot / prompt projectionの分離
+### 7.2 #269 dependency
 
-このenvelopeはowner domain snapshotからapplicationが作る。
+planner arraysの`[]`を見てemptyと判定しない。
 
-Stable V5 public semantic summary等の既存prompt projectionをfreshness / availabilityのsource of truthとして再利用しない。
+planner-owned contextは#269のtyped availability、または同等のowner-side statusをinputとして受ける。
 
-AIへ渡す際にrevisionやdigestを省略できても、application側のContextSnapshotでは保持する。
+first-load failureをempty、refresh failureで残った旧値をcurrentと表現しない。
 
-## 7. Source Policy
+### 7.3 userPlanningContext
 
-claim typeによってauthorityを変える。
+prompt selection projectionをavailability/freshness authorityにしない。
 
-### 7.1 User-owned authoritative context
+repository revision/snapshot等のowner basisをapplication側で保持する。
 
-ユーザー本人について最優先する。
+local-only readで成功/失敗を区別できない場合、その経路をrequired current sourceとして偽装しない。
 
-- 明示目標
-- 志望校 / 試験
-- 現在点 / 目標点
-- 登録教材 / 進捗
+## 8. Source Policy
+
+### User-owned context
+
+最優先:
+
+- explicit goal/exam
+- current/target score
+- registered material/progress
 - Actual evidence
-- 利用可能時間
-- 明示制約 / 希望
+- available time
+- explicit constraints/preferences
 
-一般的な学習ルートがこれを上書きしない。
+一般論が上書きしない。
 
-### 7.2 Official fact sources
+### Official facts
 
-用途:
+試験日、科目・配点、制度、教材正式名/版/ISBNなどはofficial sourceを優先。
 
-- 試験日
-- 科目 / 配点 / 出題範囲
-- 募集要項
-- 資格制度
-- 教材正式名称 / 版 / ISBN
+### Analysis / strategy evidence
 
-大学・学校・試験運営団体・出版社等の公式sourceを優先する。
+exam analysis、material strategy、learning scienceはadvisory evidenceでありuser-specific truthではない。
 
-### 7.3 Exam analysis sources
+### Model general knowledge
 
-用途:
+説明補助のみ。最新制度/最新版教材/ISBN/ページ数等をmodel memoryだけで確定しない。
 
-- 難易度
-- 必要学力帯
-- 科目別傾向
-- 模試データの解釈
+## 9. Deterministic Signals
 
-一機関の評価を絶対authorityにしない。
-
-### 7.4 Material strategy sources
-
-教材順序、前提関係、到達レベル、次教材候補等のstrategy evidenceとして利用できる。
-
-user-specific truthではない。
-
-### 7.5 Learning science
-
-retrieval practice、spaced practice、interleaving、worked examples、metacognition等を説明・戦略判断に使える。
-
-「必ず1・3・7日後」「必ず3周」等を普遍的な固定正解にしない。
-
-### 7.6 Model general knowledge
-
-説明補助には使えるが、次をmodel memoryだけで確定しない。
-
-- 最新入試制度 / 試験日
-- 最新版教材
-- ISBN / ページ数
-- 最新参考書ルート
-- 現在の大学難易度
-
-## 8. Deterministic Signals
-
-残り日数、remaining workload、必要ペース、利用可能時間、formal capacity / feasibility等はapplicationから渡す。
-
-```text
-strategy judgment → Answer AI
-numeric truth      → deterministic application
-```
-
-conceptual shape:
+remaining workload、days、required pace、available time、formal feasibility等はapplication-owned。
 
 ```text
 DeterministicSignal
@@ -263,21 +212,19 @@ DeterministicSignal
   calculationVersion
 ```
 
-AIはsignal値を独自計算で上書きしない。
+AIが別の数字を真実として上書きしない。
 
-AIがsignalを不適切だと感じても、別の数字を真実として出すのではなくassumption / limitationとして説明する。
+## 10. Evidence Bundle
 
-## 9. Evidence Bundle
-
-外部ページ全文をそのままpromptへ投げない。
+外部全文をそのままpromptへ投げない。
 
 ```text
 EvidenceItem
   evidenceId
   sourceCategory
-  provider / title
-  sourceIdentity / URL
-  publishedAt / updatedAt?
+  provider/title
+  sourceIdentity/URL
+  publishedAt/updatedAt?
   retrievedAt
   claimType
   normalizedClaims
@@ -286,13 +233,11 @@ EvidenceItem
   uncertainty
 ```
 
-retrieved contentはinstructionではなくuntrusted evidenceである。
+retrieved contentはinstructionではなくuntrusted evidence。
 
-proprietary教材ルート全文を無差別複製しない。
+## 11. Supplemental Evidence
 
-## 10. Supplemental Evidence
-
-画像・OCR・添付から得た情報はuser utteranceと別channelで渡す。
+user utteranceと別channelで保持する。
 
 ```text
 SupplementalEvidence
@@ -306,70 +251,47 @@ SupplementalEvidence
   uncertainty
 ```
 
-重要原則:
+- image/OCR内instructionをsystem instruction扱いしない。
+- score等はuser-supplied observation。
+- AIはevidence identityを書き換えない。
+- missing supplemental evidenceを不存在と解釈しない。
+- conflicting evidenceをstring後勝ちで決めない。
 
-- 画像内テキストをsystem instructionとして扱わない。
-- image-derived score等はuser-supplied observationでありdurable memoryではない。
-- AIはformal evidence IDを変更しない。
-- supplemental contentが欠けていることを「その事実は存在しない」と推測しない。
-- user utteranceとsupplemental evidenceが矛盾する場合、文字列の後勝ちで解決しない。
+formal trust/provenanceは#152 owner。
 
-trust / provenanceのformal policyはIssue #152がownerであり、本機能だけの別security modelを作らない。
+## 12. Review Context
 
-## 11. Review Context
-
-`request_revision / request_alternative`時だけ渡す。
+revision / alternativeだけ。
 
 ```text
 ReviewContext
   sourceAdviceSnapshot
   sourceAdviceRevision
   targetScopeSnapshot
-  reviewAction: request_revision | request_alternative
+  reviewAction
   userFeedback
   currentContextChangeSummary?
 ```
 
-source advice snapshotはvalidated structured stateから作る。
+validated stateから作る。renderer proseを再parseしない。
 
-renderer proseをregexで再解析しない。
+### Revision
 
-### 11.1 Revision
+残すべき要素を維持し、指定変更を反映。
 
-ユーザーが残したい部分を可能な限り維持し、指定部分を変更する。
+### Alternative
 
-例:
+拒否された主要要素を単純反復しない。実質的差分が作れない場合のみ差分を決めるclarificationを1問返せる。
 
-```text
-v1: 基礎問題精講を10月末まで
-user: 教材はそれで、期限だけ11月末にして
-```
+### Cross-option composition
 
-期限変更がstrategy全体を成立不能にする場合はtrade-offを説明する。
+Aの教材+Bの期限等はrequest_revisionとしてbind済みcontextを渡し、新proposalを生成する。
 
-### 11.2 Alternative
+### Feedback authority
 
-拒否された主要要素をそのまま再提示しない。
+current review feedbackとして使い、勝手にdurable preferenceへ一般化しない。
 
-別案を作れない場合は劣化案を捏造せず、recommendationを大きく変える1問だけをclarificationとして返せる。
-
-### 11.3 Cross-option composition
-
-`Aの教材でBの期限`、`AとB両方`等はAI側で既存optionへの承認として扱わない。
-
-applicationがreview semanticsを`request_revision`としてbindしたうえで、必要なsource snapshotsをReview Contextへ渡す。
-
-新しいproposalとして返す。
-
-### 11.4 Feedback authority
-
-「重すぎる」「その教材は嫌」等をcurrent review contextとして利用する。
-
-ユーザーが明示していない恒久嗜好や教材の客観factへ一般化しない。
-
-## 12. Explanation Context
-
-`なぜ？`等のfollow-upではReview ContextではなくExplanation Contextを使う。
+## 13. Explanation Context
 
 ```text
 ExplanationContext
@@ -381,83 +303,64 @@ ExplanationContext
 
 validityはapplicationが決める。
 
-### 12.1 Current explanation
+staleならhistorical rationaleとして説明し、current recommendationと主張しない。
 
-current proposalならrationale / assumptions / evidence / trade-offを説明する。
+`今もそれでいい？`はpure explanationへ流さない。
 
-strategyを変更しない。
+## 14. System Instructions
 
-### 12.2 Historical explanation
-
-stale proposalでも「当時なぜ推奨したか」はimmutable snapshotから説明できる。
-
-ただし:
-
-- `今もおすすめ`と断定しない。
-- stale reasonを必要に応じて説明する。
-- strategyをcurrentへ復活させない。
-
-`今もそれでいい？`はpure explanationとしてanswer purposeへ渡さず、application側でrevalidation/consultationとして扱う。
-
-## 13. System Instructions
-
-System Instructionsには変わりにくい役割・禁止事項だけを置く。
+固定policyのみ置く。
 
 candidate:
 
 ```text
 あなたはStudyPlannerの学習戦略アドバイザーです。
 
-与えられたユーザー固有情報、authoritative context、
-deterministic signals、evidenceを組み合わせ、
-現実的な学習戦略を提案してください。
+与えられたuser context、authoritative sources、deterministic signals、evidenceを用い、現実的な学習戦略を提案してください。
 
-基本原則:
-- StudyPlannerが与えたユーザー固有情報を最優先する
+- user-specific contextを一般論より優先する
 - known contextを聞き直さない
-- 一般ルートをそのままコピーせず現在地へ適合させる
-- 現在の教材で十分なら継続案を含める
-- source statusを尊重し、unavailable/omitted/staleをemptyと解釈しない
+- current materialで十分なら継続案も検討する
+- unavailable/omitted/staleをemptyと解釈しない
 - source policyに従う
-- 最新性が必要な事実をmodel memoryだけで断定しない
-- 一機関の方針を唯一の正解としない
+- latest factをmodel memoryだけで断定しない
 - deterministic signalsを上書きしない
-- recommendationを大きく変える不足だけを質問する
-- 合理的仮定で回答可能なら仮定を明示して答える
-- 根拠が弱い場合は不確実性を明示する
-- 根拠のない合格確率や保証を生成しない
+- recommendationを大きく変える不足だけ質問する
+- reasonable assumptionで答えられるなら仮定を明示する
+- uncertaintyを隠さない
+- 合格保証等を捏造しない
 
-review contextがある場合:
-- prior proposalとuser feedbackを必ず考慮する
-- revisionでは残すべき要素を維持する
-- alternativeでは拒否された主要要素を反復しない
-- feedbackをdurable preferenceへ勝手に一般化しない
+review:
+- prior proposal + feedbackを考慮
+- revisionでは残す要素を維持
+- alternativeではrejected elementを反復しない
+- feedbackをdurable preferenceへ一般化しない
 
-explanation contextがある場合:
-- validity=currentならcurrent rationaleを説明する
-- validity=staleならhistorical rationaleとして説明し、current recommendationだと主張しない
-- strategy内容を変更しない
+explanation:
+- current/staleをapplication supplied validityに従って区別
+- staleはhistorical rationaleとして説明
+- strategyを勝手に変更しない
 
-境界:
-- あなたの回答はadviceである
-- user-stated factではない
-- user-approved strategyではない
-- promoted planning conditionではない
-- saved Planではない
-- durable memoryではない
-- formal ID、review state、active interaction、validity、promotion、schedule、saveを変更しない
-- material canonical IDを捏造しない
-- relative dateをformal canonical dateとして確定しない
-- recommendationのformal promotabilityを決めない
+boundary:
+- output is advice
+- not user fact
+- not approved strategy
+- not planning condition
+- not saved Plan
+- not durable memory
+- formal ID/review/validity/promotion/schedule/saveを変更しない
+- material IDを捏造しない
+- formal canonical dateを決めない
+- promotabilityを決めない
 
-出力:
-- proposal / clarification / explanationのいずれか一つ
-- 人間向け説明とvalidated structured data
+output:
+- proposal / clarification / explanation exactly one
+- human explanation + strict structured data
 ```
 
-System PromptへBookshelf全文、conversation全文、provider raw response、proposal history全文を埋め込まない。
+Bookshelf全文、conversation全文、provider raw response、proposal history全文をSystem Promptへ埋め込まない。
 
-## 14. Output Contract
+## 15. Output Contract
 
 ```text
 AdviceAnswerDocument
@@ -466,203 +369,196 @@ AdviceAnswerDocument
   ExplanationAnswer
 ```
 
-exactly one discriminant kindを返す。
+exactly one discriminant。
 
-AIがformal adviceId / optionId / review status / active interaction / promotion statusを生成しない。
-
-### 14.1 ProposalAnswer
-
-conceptual shape:
+### ProposalAnswer
 
 ```text
-ProposalAnswer
-  kind = proposal
-  userFacingAnswer
-  options[]
-    title
-    strategySummary
-    recommendations[]
-      recommendationKind
-      materialMention?
-      method?
-      sequencePosition?
-      milestone?
-      temporalTarget?
-      rationale
-      assumptionRefs[]
-      evidenceRefs[]
-      uncertainty
-    tradeoffs
-  assumptions[]
-  overallUncertainty
+kind = proposal
+userFacingAnswer
+options[]
+  title
+  strategySummary
+  recommendations[]
+    recommendationKind
+    materialMention?
+    method?
+    sequencePosition?
+    milestone?
+    temporalTarget?
+    rationale
+    assumptionRefs[]
+    evidenceRefs[]
+    uncertainty
+  tradeoffs
+assumptions[]
+overallUncertainty
 ```
 
-Phase 1ではoption内itemを個別approveしない。
+recommendation単位を保ち、applicationがpromotion coverageを全件accountできるようにする。
 
-recommendationsを十分にstructuredにする理由は、applicationがpromotion coverageを全件accountできるようにするためである。
+AIはformal dispositionを決めない。
 
-AIは`mapped / advisory_only / blocked`等のformal dispositionを決めない。
-
-### 14.2 MaterialMention
-
-AIはidentity candidateだけを返す。
+### MaterialMention
 
 ```text
-MaterialMention
-  name
-  editionHint?
-  isbnHint?
-  whyRelevant
+name
+editionHint?
+isbnHint?
+whyRelevant
 ```
 
-`materialId`を生成させない。
+formal materialIdなし。#187 resolverで解決。
 
-formal resolutionはIssue #187側のresolver / facadeをapplicationが利用して行う。
+### TemporalTarget
 
-### 14.3 TemporalTarget
+structured candidate:
 
-structured candidateを返す。
+- absolute_date
+- month_end
+- relative_to_exam
+- date_range
 
-例:
+applicationがRequest Temporal Contextからcanonical date/rangeへresolve。
+
+### ClarificationAnswer
 
 ```text
-absolute_date(date)
-month_end(year, month)
-relative_to_exam(offsetDays, direction)
-date_range(start, end)
+kind = clarification
+userFacingAnswer
+requestedMeaning
+whyItMatters
+allowedUnknown = true
 ```
 
-applicationがRequest Temporal Contextからcanonical dateへresolveする。
-
-free proseの`来月くらい`をpromotion用formal dateにしない。
-
-### 14.4 ClarificationAnswer
-
-```text
-ClarificationAnswer
-  kind = clarification
-  userFacingAnswer
-  requestedMeaning
-  whyItMatters
-  allowedUnknown = true
-```
-
-一回にblocking questionは最大1つ。
-
-formal questionIdはapplicationが付与する。
+blocking question最大1つ。formal questionIdはapplication。
 
 proposal payloadを同時に持たない。
 
-### 14.5 ExplanationAnswer
+### ExplanationAnswer
 
 ```text
-ExplanationAnswer
-  kind = explanation
-  userFacingAnswer
-  rationale
-  assumptionRefs[]
-  evidenceRefs[]
-  tradeoffs
-  historical = boolean
+kind = explanation
+userFacingAnswer
+rationale
+assumptionRefs[]
+evidenceRefs[]
+tradeoffs
+historical
 ```
 
-`historical`はapplication supplied validityに従って出力し、AIがfreshnessを推測して決めない。
+strategy mutation fieldを持たない。
 
-strategy material / deadline / sequenceを変更するstructured fieldを持たない。
+## 16. Validation
 
-## 15. Output validation
+application側で確認:
 
-application側で最低限確認する。
-
-- output contract version
+- output version
 - exactly one discriminant
-- required fields
-- unexpected formal authority fieldがない
-- evidence refsがinput bundleに存在
-- deterministic signal refsが存在
-- material mentionがformal IDでない
-- temporal candidateがschema-valid
-- explanationがstrategy mutationを含まない
-- clarificationがproposal payloadを持たない
-- structured recommendationsがpromotion coverageに必要な粒度で列挙されている
+- required/unknown fields
+- unexpected authority fieldなし
+- evidence/signal refs存在
+- formal material IDなし
+- temporal candidate schema
+- explanation no strategy mutation
+- clarification no proposal payload
+- promotion coverageに必要なrecommendation粒度
 
-validation failure時のstructured repairはcurrent Stable V5 policyの範囲で最大1回。
-
-repair後もinvalidならcontrolled failure。
+repairは最大1回。invalidならcontrolled failure。
 
 unvalidated proseからproposalを作らない。
 
-## 16. Freshnessとの関係
+## 17. Freshness
 
-Answer AI自身にfreshness authorityを持たせない。
-
-applicationがcall前ContextSnapshotとvalidation後のcurrent dependenciesを比較する。
+AIはfreshness authorityではない。
 
 ```text
-F0 = call前
-F1 = commit前
-
-F0 == F1
-  commit candidate
-
-F0 != F1
-  output discard
+F0 = call前 owner dependency snapshot
+AI call
+validation
+F1 = commit直前 same dependencies
 ```
 
-AIへ`今も最新か確認して`と依頼してfreshnessを保証したことにしない。
+F0 != F1ならdiscard。
 
-approval時にも別途deterministic revalidationする。
+approval時もdeterministic revalidation。
 
-## 17. Material / temporal resolutionとの関係
-
-MaterialMention / TemporalTargetはadvice contentでありformal planning truthではない。
+## 18. Material / temporal resolution
 
 ```text
 MaterialMention
-→ #187 owner resolver
-→ registered / verified catalog / ambiguous / unresolved
+→ #187 resolver
+→ registered / verified / ambiguous / unresolved
 
 TemporalTarget
-→ deterministic temporal resolver
+→ deterministic resolver
 → canonical date/range
 ```
 
-resolution後のcanonical valueをAIへ自由編集させない。
+resolutionでmeaningが変わるならnew revision + fresh approval。
 
-identity / temporal resolutionによってproposal意味が変わる場合はnew revision + fresh approvalを要求する。
+## 19. Promotion coverage
 
-## 18. Promotion coverageとの関係
+AIはpromotion mapperではない。
 
-Answer AIはformal promotion mapperではない。
+applicationがapproved optionの全recommendationをmapped/advisory-only/blocked相当にaccountする。
 
-applicationはapproved option内の全recommendationをaccountし、`mapped / advisory_only / blocked`相当に分類する。
+planning-relevant blocked itemがあればsilent partial promotionしない。
 
-AI output schemaはその判定に必要なrecommendation単位を失わないことだけを保証する。
-
-planning-relevant recommendationがblockedの場合、applicationはsilent partial promotionしない。
-
-AIに`反映できないものを無視して予定を作って`というhidden instructionを与えて安全性を代替しない。
-
-## 19. Question economy
+## 20. Question economy
 
 - known contextを聞き直さない
-- recommendationが大きく変わる不足だけを質問する
-- 仮定を明示して有用な案を出せるなら先に回答する
-- planning slotを相談開始時に全部聞かない
-- revision / alternativeでも大量質問へ戻らない
-- `わからない`を許容する
+- strategyを大きく変える不足だけ質問
+- assumptionsで有用な案を出せるなら先に回答
+- planning slotsを相談開始時に全部聞かない
+- revision/alternativeで大量質問へ戻らない
+- `わからない`を許容
 
-別案を有意に差別化できない場合、固定回数heuristicではなく差分を決める1問だけを返せる。
+## 21. Formal commit boundary — #270
 
-## 20. Example: initial consultation
+Answer AI successはformal turn successではない。
+
+reviewable proposalとassistant presentationは、#270のapplication-level atomic turn outcomeへ参加する。
+
+禁止:
+
+```text
+commit assistant message
+→ 後からbest-effortでAdviceProposal保存
+```
+
+必要:
+
+```text
+validated answer
++ current context revalidation
++ prepared consultation state
++ other required staged state
+→ formal commit coordinator
+→ successした結果をpresentation
+```
+
+commit failureでreviewable machine stateまたはpresentationの片側だけを成功扱いしない。
+
+Phase 1Aのpure schema/state testsでは#270を待つ必要はないが、production turn wiringでは必須。
+
+## 22. Planner availability dependency — #269
+
+context builderはplanner data arraysだけを受け取るinterfaceに固定しない。
+
+owner-side availability/basisも受け取り、authoritative emptyとunavailable/staleを区別する。
+
+#269未解決中に#246側で`[] = empty`という独自推測を追加しない。
+
+## 23. Examples
+
+### Initial consultation
 
 ```yaml
 userQuestion: "数学の点数を上げたい。どの参考書をいつまでにやればいい？"
-
 requestTemporalContext:
   currentDate: 2026-08-31
   timezone: Asia/Tokyo
-
 consultationContextSources:
   - sourceDomain: userPlanningContext
     status: available
@@ -675,111 +571,102 @@ consultationContextSources:
     items:
       - materialReference: registered material snapshot
         progress: 0.30
-
 deterministicSignals:
   - kind: remainingDays
     value: 138
 ```
 
-AIはこの入力からstrategy candidateを返すが、formal material identity / deadline / approval / promotionはapplicationが決める。
+formal identity/deadline/approval/promotionはapplicationが決める。
 
-## 21. Example: alternative
+### Alternative
 
 ```yaml
 userQuestion: "その教材は嫌。別の案にして"
-
 reviewContext:
   sourceAdviceRevision: 1
   reviewAction: request_alternative
   userFeedback: "その教材は嫌"
-  sourceAdviceSnapshot:
-    strategy: "標準問題精講を使う"
 ```
 
-新proposalのformal ID / revision / lineageはapplicationが付与する。
+new formal ID/revision/lineageはapplication。
 
-## 22. Example: stale rationale
+### Stale rationale
 
 ```yaml
 userQuestion: "なんでそれがおすすめだったの？"
-
 explanationContext:
   validity: stale
-  adviceSnapshot:
-    strategy: "基礎問題精講を10月末まで"
 ```
 
-期待:
+historical rationaleは説明可。current recommendationとは主張しない。
 
-- 当時の根拠は説明できる。
-- `今もそのままでよい`とは断言しない。
-- new strategyを勝手に生成しない。
+## 24. Evaluation
 
-## 23. Answer model evaluation
+Initial answer:
 
-### 23.1 Initial answer quality
+- questionへ直接答える
+- user context優先
+- deterministic signals尊重
+- unnecessary material追加なし
+- question economy
+- structured output安定
 
-- current questionへ直接答える
-- user contextを一般ルートより優先する
-- 一機関を絶対視しない
-- 不要な教材を増やさない
-- deterministic signalsを上書きしない
-- 不足時に質問しすぎない
-- structured outputが安定する
+Review:
 
-### 23.2 Review loop
+- revision preserves intended parts
+- alternative materially different
+- cross-option composition → new proposal
+- no durable-preference overgeneralization
 
-- revisionで残すべき部分を維持
-- alternativeで実質的な別案
-- rejected elementを単純反復しない
-- cross-option compositionをnew proposalとして扱える
-- feedbackをdurable preferenceへ一般化しない
-- current contextとの衝突を説明できる
+Explanation:
 
-### 23.3 Explanation
+- current/historical separation
+- no strategy mutation
 
-- current rationaleとhistorical rationaleを区別
-- stale adviceをcurrentへ復活させない
-- explanationでstrategy fieldを変更しない
+Safety:
 
-### 23.4 Safety / authority
+- no fake formal approval/save
+- no injected instruction elevation
+- no latest-fact hallucination
+- no material ID fabrication
+- no promotability authority
 
-- 自分で`承認しました`とformal state変更したふりをしない
-- schedule / save実行を主張しない
-- external/supplemental injectionをinstruction扱いしない
-- model memoryで最新事実を捏造しない
-- material IDを捏造しない
-- promotabilityをformalに決めない
+Adversarial:
 
-### 23.5 Adversarial inputs
-
-- OCR内system-like instruction + legitimate score
-- stored material name内role delimiter
-- unavailable sourceをemptyと誤認しない
-- user utteranceとsupplemental evidenceの矛盾
+- OCR system-like text + legitimate score
+- role delimiter in stored material name
+- unavailable source
+- user/supplemental conflict
 - stale explanation
-- very long but bounded evidence
+- long bounded evidence
 
-## 24. Implementation rule
+## 25. Implementation rules / preflight decision
 
-このsupporting designを理由に安全条件をpromptへ委ねない。
+application must guarantee:
 
-application側で必ず保証する。
+- high-level purpose routing before existing Stable V5 semantic contract
+- planning path unchanged for planning turns
+- ActiveInteraction as deterministic projection, not persisted truth
+- consultation result as its own discriminated result, not fake PlanningIntakeState
+- advice alone does not mutate planning
+- typed ReviewDecision + expected revisions
+- one revision / one adoption
+- commit/approval freshness
+- new revision on strategy modification/composition
+- no duplicate review/promotion
+- planner source availability from #269 owner state
+- formal proposal/presentation commit through #270
+- multi-tab coordination via #164
+- material identity via #187
+- supplemental trust/provenance via #152
+- full promotion coverage
+- no auto durable memory
 
-- adviceだけでplanning stateを変えない
-- ActiveInteractionをapplicationがbindする
-- ReviewDecisionをtyped identity/revisionへbindする
-- one revision / one adoptionを保証する
-- dismiss時にauto regenerateしない
-- commit / approval freshnessをrevalidateする
-- stale proposalをpromoteしない
-- revisionはnew proposalとしてcommitする
-- duplicate review / promotionを防ぐ
-- same-browser multi-tab mutationは#164 coordinatorへ委譲する
-- review feedbackをdurable memoryへ自動昇格しない
-- final validated outputだけをproposal candidateにする
-- material identityは#187 resolverを使う
-- supplemental trust/provenanceは#152 boundaryを使う
-- promotion coverageを全recommendationへ適用する
+Implementation readiness:
 
-Promptは判断品質を高めるための契約であり、security / lifecycle / SSOT authorityそのものではない。
+- pure TurnPurpose / ActiveInteraction projection / consultation state / AdviceAnswerDocument / validators / review lifecycle / context-envelope contracts: READY.
+- live planner-data grounding: consume #269; do not locally infer missing status.
+- live reviewable proposal commit/presentation: consume #270 atomic turn boundary.
+- production multi-tab / material / supplemental boundaries remain owned by #164 / #187 / #152.
+
+Prompt quality is never a substitute for lifecycle, security, or SSOT authority.
