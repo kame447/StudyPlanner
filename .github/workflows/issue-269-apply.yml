@@ -34,6 +34,87 @@ jobs:
           PY
       - name: Apply implementation and regressions
         run: python scripts/ci/issue-269-apply.py
+      - name: Update existing weekly-planning harnesses for the availability contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          helper = Path('src/features/weeklyPlanning/testUtils/plannerDataAvailabilityTest.ts')
+          helper.write_text("""import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
+
+          export function createReadyPlannerDataAvailability(
+            ownerId: string,
+          ): PlannerDataAvailability {
+            const observedAt = '2026-08-31T00:00:00.000Z';
+            return {
+              status: 'ready',
+              ownerId,
+              observedAt,
+              lastSuccessfulAt: observedAt,
+            };
+          }
+          """.replace('          ', ''))
+
+          def add_helper_import(path: Path, text: str) -> str:
+              relative = Path(os.path.relpath(helper.with_suffix(''), path.parent)).as_posix()
+              if not relative.startswith('.'):
+                  relative = './' + relative
+              statement = f"import {{ createReadyPlannerDataAvailability }} from '{relative}';\n"
+              if statement in text:
+                  return text
+              return statement + text
+
+          for name in [
+              'useWeeklyPlanningApplication.test.tsx',
+              'weeklyPlanningCrossWeekConversation.integration.test.tsx',
+          ]:
+              path = Path('src/features/weeklyPlanning/application') / name
+              text = path.read_text()
+              old = '    ...overrides,\n  };'
+              new = """    ...overrides,
+              plannerDataAvailability:
+                overrides.plannerDataAvailability
+                ?? createReadyPlannerDataAvailability(overrides.userId ?? 'user-1'),
+            };""".replace('            ', '')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: default harness shape changed')
+              text = text.replace(old, new, 1)
+              text = add_helper_import(path, text)
+              path.write_text(text)
+
+          path = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5SessionStorage.test.ts')
+          text = path.read_text()
+          old = '        userId: OWNER_ID,\n        selectedDate: SELECTED_DATE,'
+          new = "        userId: OWNER_ID,\n        plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),\n        selectedDate: SELECTED_DATE,"
+          if text.count(old) != 1:
+              raise SystemExit('stable session storage harness shape changed')
+          text = text.replace(old, new, 1)
+          text = add_helper_import(path, text)
+          path.write_text(text)
+
+          direct_call_pattern = re.compile(
+              r'(?m)^(?P<indent>\s*)userId:\s*(?P<user>[^,\n]+),\n(?P=indent)ownerId:\s*[^,\n]+,\n'
+          )
+          for path in Path('src/features/weeklyPlanning/evals').glob('*.test.ts'):
+              text = path.read_text()
+              if 'submitWeeklyPlanningApplicationTurn({' not in text:
+                  continue
+              text, count = direct_call_pattern.subn(
+                  lambda match: (
+                      match.group(0)
+                      + f"{match.group('indent')}plannerDataAvailability: "
+                      + f"createReadyPlannerDataAvailability({match.group('user')}),\n"
+                  ),
+                  text,
+              )
+              if count == 0:
+                  raise SystemExit(f'{path}: direct application call shape changed')
+              text = add_helper_import(path, text)
+              path.write_text(text)
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
@@ -50,7 +131,7 @@ jobs:
           git config user.name "kame447"
           git config user.email "76802107+kame447@users.noreply.github.com"
           git rm .github/workflows/issue-269-apply.yml scripts/ci/issue-269-apply.py
-          git add src/App.tsx src/domain/plannerDataReadAuthority.ts src/domain/plannerDataReadAuthority.test.ts src/hooks/usePlannerDataState.ts src/hooks/usePlannerDataState.test.tsx src/hooks/usePlannerAppState.ts src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts
+          git add src
           git diff --cached --check
           git commit -m "fix: preserve planner data read availability"
           git push origin HEAD:fix/issue-269-planner-data-availability
