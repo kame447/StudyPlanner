@@ -34,7 +34,7 @@ jobs:
       profile: ${{ steps.resolve.outputs.profile }}
       iterations: ${{ steps.resolve.outputs.iterations }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
@@ -95,11 +95,11 @@ jobs:
       VITE_CLOUDFLARE_AI_PROXY_URL: ''
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload observations
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: weekly-planning-real-api-${{ matrix.iteration }}
           path: artifacts/weekly-planning-real-api/
