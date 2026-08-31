@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -288,6 +289,7 @@ describe('Stable V5 persisted runtime session', () => {
     function Probe() {
       observed.current = useWeeklyPlanningApplication({
         userId: OWNER_ID,
+        plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
         selectedDate: SELECTED_DATE,
         plans: [],
         scheduleTemplates: [],

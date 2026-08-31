@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import {
   createRef,
   forwardRef,
@@ -83,6 +84,9 @@ async function renderApplicationHarness(
     scheduleTemplates: [],
     saveWeeklyApprovedPlan: async (draft) => persistedPlan(draft),
     ...overrides,
+    plannerDataAvailability:
+      overrides.plannerDataAvailability
+      ?? createReadyPlannerDataAvailability(overrides.userId ?? 'user-1'),
   };
   let renderer!: ReactTestRenderer;
 
@@ -93,7 +97,23 @@ async function renderApplicationHarness(
   return {
     ref,
     async update(nextOverrides) {
-      currentProps = { ...currentProps, ...nextOverrides };
+      const nextUserId = nextOverrides.userId ?? currentProps.userId;
+    currentProps = {
+      ...currentProps,
+      ...nextOverrides,
+      plannerDataAvailability:
+        nextOverrides.plannerDataAvailability
+        ?? (nextOverrides.userId !== undefined
+          ? (typeof nextUserId === 'string'
+            ? createReadyPlannerDataAvailability(nextUserId)
+            : {
+  status: 'idle',
+  ownerId: null,
+  observedAt: null,
+  lastSuccessfulAt: null,
+})
+          : currentProps.plannerDataAvailability),
+    };
       await act(async () => {
         renderer.update(<ApplicationHarness ref={ref} {...currentProps} />);
       });
