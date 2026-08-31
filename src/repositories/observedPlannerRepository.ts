@@ -66,7 +66,6 @@ export function createObservedPlannerRepository(
         telemetry,
         isNewTimestampedRecord(mutation.plan) ? 'plan_created' : 'plan_updated',
       );
-      mutation.actuals.forEach(() => recordBestEffort(telemetry, 'actual_recorded'));
       if (mutation.todo) {
         todoStatusById.set(mutation.todo.id, mutation.todo.status);
         recordBestEffort(telemetry, 'todo_updated');
