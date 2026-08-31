@@ -154,7 +154,7 @@ jobs:
         run: |
           git config user.name "kame447"
           git config user.email "76802107+kame447@users.noreply.github.com"
-          git rm .github/workflows/issue-269-apply.yml scripts/ci/issue-269-apply.py
+          git rm -f .github/workflows/issue-269-apply.yml scripts/ci/issue-269-apply.py
           git add src
           git diff --cached --check
           git commit -m "fix: preserve planner data read availability"
