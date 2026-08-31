@@ -1,0 +1,144 @@
+name: Sync main into Issue 269
+
+on:
+  push:
+    branches:
+      - fix/issue-269-planner-data-availability
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Merge current main and resolve the known overlapping hook
+        shell: bash
+        run: |
+          git config user.name "kame447"
+          git config user.email "76802107+kame447@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge origin/main --no-commit --no-ff
+          merge_status=$?
+          set -e
+
+          conflicts="$(git diff --name-only --diff-filter=U)"
+          if [ "$merge_status" -ne 0 ]; then
+            if [ "$conflicts" != "src/hooks/usePlannerDataState.ts" ]; then
+              echo "Unexpected merge conflicts:"
+              printf '%s\n' "$conflicts"
+              exit 1
+            fi
+            git checkout --theirs src/hooks/usePlannerDataState.ts
+          elif [ -n "$conflicts" ]; then
+            echo "Unexpected unresolved conflicts after successful merge:"
+            printf '%s\n' "$conflicts"
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          path = Path('src/hooks/usePlannerDataState.ts')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "import { useCallback, useState } from 'react';",
+              "import { useCallback, useRef, useState } from 'react';",
+              'planner hook react import',
+          )
+          text = replace_once(
+              text,
+              "} from '../domain/timetableDataNormalization';\nimport { createId } from '../lib/id';",
+              "} from '../domain/timetableDataNormalization';\nimport {\n  PlannerDataReadAuthority,\n  createInitialPlannerDataAvailability,\n  type PlannerDataAvailability,\n} from '../domain/plannerDataReadAuthority';\nimport { createId } from '../lib/id';",
+              'planner authority import',
+          )
+          text = replace_once(
+              text,
+              'interface UsePlannerDataStateResult {',
+              'export interface UsePlannerDataStateResult {',
+              'planner result export',
+          )
+          text = replace_once(
+              text,
+              '  timetablePeriods: TimetablePeriod[];\n  viewMode: ViewMode;',
+              '  timetablePeriods: TimetablePeriod[];\n  plannerDataAvailability: PlannerDataAvailability;\n  viewMode: ViewMode;',
+              'planner result availability',
+          )
+          text = replace_once(
+              text,
+              "  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);\n  const [viewMode, setViewMode] = useState<ViewMode>('month');",
+              "  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);\n  const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);\n  if (!plannerDataReadAuthorityRef.current) {\n    plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();\n  }\n  const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;\n  const [plannerDataAvailability, setPlannerDataAvailability] =\n    useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());\n  const clearPlannerDataCollections = useCallback(() => {\n    setPlans([]);\n    setActuals([]);\n    setDayNotes([]);\n    setMonthEvents([]);\n    setTodos([]);\n    setStudySubjects([]);\n    setStudyMaterials([]);\n    setScheduleTemplates([]);\n    setTimetableTerms([]);\n    setTimetablePeriods([]);\n  }, []);\n  const [viewMode, setViewMode] = useState<ViewMode>('month');",
+              'planner authority state',
+          )
+          text = replace_once(
+              text,
+              '  const loadPlannerData = useCallback(async (nextUserId: string) => {\n    const [',
+              "  const loadPlannerData = useCallback(async (nextUserId: string) => {\n    const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());\n    setPlannerDataAvailability(loadStart.availability);\n    if (loadStart.ownerChanged) {\n      clearPlannerDataCollections();\n      setEditorDraft(null);\n      setEditingPlanId(null);\n      setEditingPlan(null);\n      setPendingRecurringPlanAction(null);\n    }\n\n    try {\n      const [",
+              'planner load begin',
+          )
+          text = replace_once(
+              text,
+              "      plannerRepository.getTimetableTerms(nextUserId),\n      plannerRepository.getTimetablePeriods(nextUserId),\n    ]);\n    const {",
+              "      plannerRepository.getTimetableTerms(nextUserId),\n      plannerRepository.getTimetablePeriods(nextUserId),\n    ]);\n\n    if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n      return;\n    }\n\n    const {",
+              'planner load first guard',
+          )
+          text = replace_once(
+              text,
+              "    } catch (error) {\n      console.warn('[Timetable] term canonicalization failed', error);",
+              "    } catch (error) {\n      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n        return;\n      }\n      console.warn('[Timetable] term canonicalization failed', error);",
+              'planner canonicalization stale guard',
+          )
+          text = replace_once(
+              text,
+              "    setPlans(sortByDateTime(nextPlans));\n    setActuals(nextActuals);\n    setDayNotes(nextDayNotes);\n    setMonthEvents(sortMonthEvents(nextMonthEvents));\n    setTodos(nextTodos);\n    setStudySubjects(sortStudySubjects(nextStudySubjects));\n    setStudyMaterials(sortStudyMaterials(nextStudyMaterials));\n    setScheduleTemplates(committedScheduleTemplates);\n    setTimetableTerms(committedTimetableTerms);\n    setTimetablePeriods(committedTimetablePeriods);\n  }, [showNotice]);",
+              "      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {\n        return;\n      }\n\n      setPlans(sortByDateTime(nextPlans));\n      setActuals(nextActuals);\n      setDayNotes(nextDayNotes);\n      setMonthEvents(sortMonthEvents(nextMonthEvents));\n      setTodos(nextTodos);\n      setStudySubjects(sortStudySubjects(nextStudySubjects));\n      setStudyMaterials(sortStudyMaterials(nextStudyMaterials));\n      setScheduleTemplates(committedScheduleTemplates);\n      setTimetableTerms(committedTimetableTerms);\n      setTimetablePeriods(committedTimetablePeriods);\n      const readyAvailability = plannerDataReadAuthority.succeed(\n        loadStart.token,\n        new Date().toISOString(),\n      );\n      if (readyAvailability) {\n        setPlannerDataAvailability(readyAvailability);\n      }\n    } catch (error) {\n      const failedAvailability = plannerDataReadAuthority.fail(\n        loadStart.token,\n        new Date().toISOString(),\n      );\n      if (!failedAvailability) {\n        return;\n      }\n      setPlannerDataAvailability(failedAvailability);\n      throw error;\n    }\n  }, [clearPlannerDataCollections, plannerDataReadAuthority, showNotice]);",
+              'planner load commit',
+          )
+          text = replace_once(
+              text,
+              "  const resetPlannerData = useCallback(() => {\n    setPlans([]);\n    setActuals([]);\n    setDayNotes([]);\n    setMonthEvents([]);\n    setTodos([]);\n    setStudySubjects([]);\n    setStudyMaterials([]);\n    setScheduleTemplates([]);\n    setTimetableTerms([]);\n    setTimetablePeriods([]);\n    setEditorDraft(null);\n    setEditingPlanId(null);\n    setEditingPlan(null);\n    setPendingRecurringPlanAction(null);\n  }, []);",
+              "  const resetPlannerData = useCallback(() => {\n    setPlannerDataAvailability(plannerDataReadAuthority.reset());\n    clearPlannerDataCollections();\n    setEditorDraft(null);\n    setEditingPlanId(null);\n    setEditingPlan(null);\n    setPendingRecurringPlanAction(null);\n  }, [clearPlannerDataCollections, plannerDataReadAuthority]);",
+              'planner reset',
+          )
+          text = replace_once(
+              text,
+              '    timetablePeriods,\n    viewMode,',
+              '    timetablePeriods,\n    plannerDataAvailability,\n    viewMode,',
+              'planner return availability',
+          )
+          path.write_text(text)
+          PY
+
+          git add src/hooks/usePlannerDataState.ts
+          git rm .github/workflows/issue-269-sync-main.yml
+          git diff --cached --check
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Focused Issue 267 and 269 regressions
+        run: npm run test:run -- src/domain/plannerDataReadAuthority.test.ts src/hooks/usePlannerDataState.test.tsx src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts src/domain/recurringPlanMutation.test.ts src/repositories/recurringPlanMutationRepository.test.ts src/repositories/firebasePlannerRepository.recurringMutation.test.ts
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Commit merge and push
+        shell: bash
+        run: |
+          git commit -m "merge: integrate current main into Issue 269"
+          git push origin HEAD:fix/issue-269-planner-data-availability
