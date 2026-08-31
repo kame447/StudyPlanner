@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPlanFromDraft } from '../domain/planner';
+import type { PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
 import { upsertByKey } from '../lib/collections';
 import { minutesBetween, sortByDateTime } from '../lib/date';
 import {
@@ -50,6 +51,7 @@ interface PlannerAppState {
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
+  plannerDataAvailability: PlannerDataAvailability;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -148,6 +150,7 @@ export function usePlannerAppState(): PlannerAppState {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,
@@ -321,6 +324,7 @@ export function usePlannerAppState(): PlannerAppState {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPlanningAction } from '../types';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
@@ -48,6 +49,15 @@ function createServices(overrides: Partial<WeeklyPlanningTurnApplicationServices
   } as WeeklyPlanningTurnApplicationServices;
 }
 
+function readyPlannerDataAvailability(): PlannerDataAvailability {
+  return {
+    status: 'ready',
+    ownerId: 'user-1',
+    observedAt: '2026-07-27T00:00:00.000Z',
+    lastSuccessfulAt: '2026-07-27T00:00:00.000Z',
+  };
+}
+
 function baseParams() {
   const store = createHarness();
   return {
@@ -60,6 +70,7 @@ function baseParams() {
       ),
       userId: 'user-1',
       ownerId: 'user-1',
+      plannerDataAvailability: readyPlannerDataAvailability(),
       userText: '来週の予定を作りたい',
       selectedDate: '2026-07-27',
       plans: [],
@@ -73,6 +84,42 @@ function baseParams() {
 }
 
 describe('submitWeeklyPlanningApplicationTurn', () => {
+  it('fails closed before starting a turn when planner data is unavailable, stale, or owned by another user', async () => {
+    const blockedAvailability: PlannerDataAvailability[] = [
+      {
+        status: 'unavailable',
+        ownerId: 'user-1',
+        observedAt: '2026-07-27T00:01:00.000Z',
+        lastSuccessfulAt: null,
+      },
+      {
+        status: 'stale',
+        ownerId: 'user-1',
+        observedAt: '2026-07-27T00:02:00.000Z',
+        lastSuccessfulAt: '2026-07-27T00:00:00.000Z',
+      },
+      {
+        status: 'ready',
+        ownerId: 'user-2',
+        observedAt: '2026-07-27T00:03:00.000Z',
+        lastSuccessfulAt: '2026-07-27T00:03:00.000Z',
+      },
+    ];
+
+    for (const plannerDataAvailability of blockedAvailability) {
+      const { store, params } = baseParams();
+      params.plannerDataAvailability = plannerDataAvailability;
+      const services = createServices();
+
+      const submission = await submitWeeklyPlanningApplicationTurn(params, services);
+
+      expect(submission).toEqual({ accepted: false, draftCandidates: [] });
+      expect(services.runtimeGateway.execute).not.toHaveBeenCalled();
+      expect(store.getState().messages).toEqual([]);
+      expect(store.getState().pendingTurn).toBeUndefined();
+    }
+  });
+
   it('prepares authoritative state before completing a committed turn', async () => {
     const { store, params } = baseParams();
     const resultState = createInitialPlanningIntakeState();
