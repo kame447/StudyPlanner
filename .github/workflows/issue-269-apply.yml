@@ -96,7 +96,7 @@ jobs:
           path.write_text(text)
 
           direct_call_pattern = re.compile(
-              r'(?m)^(?P<indent>\s*)userId:\s*(?P<user>[^,\n]+),\n(?P=indent)ownerId:\s*[^,\n]+,\n'
+              r'(?m)^(?P<indent>\s*)userId:\s*(?P<user>[^,\n]+),\n(?P=indent)ownerId(?:\s*:\s*[^,\n]+)?,\n'
           )
           for path in Path('src/features/weeklyPlanning/evals').glob('*.test.ts'):
               text = path.read_text()
