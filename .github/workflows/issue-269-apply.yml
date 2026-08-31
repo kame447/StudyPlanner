@@ -95,7 +95,14 @@ jobs:
                 plannerDataAvailability:
                   nextOverrides.plannerDataAvailability
                   ?? (nextOverrides.userId !== undefined
-                    ? createReadyPlannerDataAvailability(nextUserId)
+                    ? (typeof nextUserId === 'string'
+                      ? createReadyPlannerDataAvailability(nextUserId)
+                      : {
+                          status: 'idle',
+                          ownerId: null,
+                          observedAt: null,
+                          lastSuccessfulAt: null,
+                        })
                     : currentProps.plannerDataAvailability),
               };""".replace('              ', '')
           if text.count(old) != 1:
