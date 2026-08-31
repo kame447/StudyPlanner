@@ -68,6 +68,24 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async applyRecurringPlanMutation() {
       throw createConfigurationError();
     },
+    async deletePlanWithDependents() {
+      throw createConfigurationError();
+    },
+    async restorePlanWithDependents() {
+      throw createConfigurationError();
+    },
+    async scheduleTodoPlan() {
+      throw createConfigurationError();
+    },
+    async upsertActualWithMaterialProgress() {
+      throw createConfigurationError();
+    },
+    async upsertStudySubjectWithMaterials() {
+      throw createConfigurationError();
+    },
+    async applyTimetableMutation() {
+      throw createConfigurationError();
+    },
     async upsertPlan() {
       throw createConfigurationError();
     },

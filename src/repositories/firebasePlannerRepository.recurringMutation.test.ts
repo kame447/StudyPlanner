@@ -111,7 +111,7 @@ describe('Firebase recurring mutation boundary', () => {
       planDeletes: [plan({ userId: 'user-2' })],
       actualUpserts: [],
       actualDeletes: [],
-    })).rejects.toThrow('another user');
+    })).rejects.toThrow('所有者が一致しません');
     expect(mocks.writeBatch).not.toHaveBeenCalled();
   });
 });

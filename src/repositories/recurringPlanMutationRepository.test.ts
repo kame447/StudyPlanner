@@ -140,7 +140,7 @@ describe('planner repository recurring mutation boundary', () => {
     const repository = createPlannerRepository(gateway);
     await expect(repository.applyRecurringPlanMutation('user-1', mutation({
       planDeletes: [plan({ id: 'foreign', userId: 'user-2' })],
-    }))).rejects.toThrow('another user');
+    }))).rejects.toThrow('所有者が一致しません');
     expect(state.plans).toEqual([source]);
     expect(state.actuals).toEqual([linked]);
   });

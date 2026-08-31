@@ -65,6 +65,43 @@ export interface AuthRepository {
   signOut(): Promise<void>;
 }
 
+export interface PlanDeleteWithDependentsMutation {
+  userId: string;
+  plan: Plan;
+  todo: TodoTask | null;
+}
+
+export interface PlanRestoreWithDependentsMutation {
+  plan: Plan;
+  actuals: readonly Actual[];
+  todo: TodoTask | null;
+}
+
+export interface TodoPlanScheduleMutation {
+  plan: Plan;
+  todo: TodoTask;
+}
+
+export interface ActualMaterialProgressMutation {
+  actual: Actual;
+  materials: readonly StudyMaterial[];
+}
+
+export interface StudySubjectMaterialMutation {
+  subject: StudySubject;
+  materials: readonly StudyMaterial[];
+}
+
+export interface TimetableMutation {
+  userId: string;
+  termUpserts: readonly TimetableTerm[];
+  termDeletes: readonly TimetableTerm[];
+  templateUpserts: readonly ScheduleTemplate[];
+  templateDeletes: readonly ScheduleTemplate[];
+  periodUpserts: readonly TimetablePeriod[];
+  periodDeletes: readonly TimetablePeriod[];
+}
+
 export interface PlannerRepository {
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
@@ -80,6 +117,16 @@ export interface PlannerRepository {
     userId: string,
     mutation: RecurringPlanMutation,
   ): Promise<void>;
+  deletePlanWithDependents(mutation: PlanDeleteWithDependentsMutation): Promise<void>;
+  restorePlanWithDependents(mutation: PlanRestoreWithDependentsMutation): Promise<void>;
+  scheduleTodoPlan(mutation: TodoPlanScheduleMutation): Promise<void>;
+  upsertActualWithMaterialProgress(
+    mutation: ActualMaterialProgressMutation,
+  ): Promise<Actual>;
+  upsertStudySubjectWithMaterials(
+    mutation: StudySubjectMaterialMutation,
+  ): Promise<void>;
+  applyTimetableMutation(mutation: TimetableMutation): Promise<void>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
   upsertActual(actual: Actual): Promise<Actual>;

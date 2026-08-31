@@ -1,5 +1,4 @@
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
-import type { Actual, Plan } from '../types/domain';
 import type {
   PlannerRepository,
   PlannerStorageGateway,
@@ -11,50 +10,59 @@ import {
   upsertActualRecord,
 } from './repositoryUtils';
 
+type OwnedRecord = { id: string; userId: string };
 
-function assertMutationOwner(userId: string, mutation: RecurringPlanMutation): void {
-  const records = [
-    ...mutation.planUpserts,
-    ...mutation.planDeletes,
-    ...mutation.actualUpserts,
-    ...mutation.actualDeletes,
-  ];
-
+function assertOwnedRecords(
+  userId: string,
+  records: readonly OwnedRecord[],
+  label: string,
+): void {
   if (records.some((record) => record.userId !== userId)) {
-    throw new Error('Recurring plan mutation contains records owned by another user.');
+    throw new Error(`${label} の所有者が一致しません。`);
   }
 }
 
-function applyPlanMutation(
-  current: Plan[],
-  userId: string,
-  mutation: RecurringPlanMutation,
-): Plan[] {
-  const deleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
-  return mutation.planUpserts.reduce(
-    (records, plan) => replaceById(records, plan),
-    current.filter(
-      (plan) => !(plan.userId === userId && deleteIds.has(plan.id)),
-    ),
+function upsertMany<T extends { id: string }>(
+  current: T[],
+  records: readonly T[],
+): T[] {
+  return records.reduce(
+    (items, record) => replaceById(items, record),
+    current,
   );
 }
 
-function actualOccurrenceKey(actual: Actual): string | null {
+function applyOwnedRecords<T extends OwnedRecord>(
+  current: T[],
+  userId: string,
+  upserts: readonly T[],
+  deletes: readonly T[],
+): T[] {
+  const deleteIds = new Set(deletes.map((record) => record.id));
+  const remaining = current.filter(
+    (record) => !(record.userId === userId && deleteIds.has(record.id)),
+  );
+  return upsertMany(remaining, upserts);
+}
+
+function recurringActualOccurrenceKey(
+  actual: import('../types/domain').Actual,
+): string | null {
   return actual.planId
     ? `${actual.planId}\u0000${actual.occurrenceDate}`
     : null;
 }
 
-function applyActualMutation(
-  current: Actual[],
+function applyRecurringActualMutation(
+  current: import('../types/domain').Actual[],
   userId: string,
   mutation: RecurringPlanMutation,
-): Actual[] {
+): import('../types/domain').Actual[] {
   const planDeleteIds = new Set(mutation.planDeletes.map((plan) => plan.id));
   const actualDeleteIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
   const actualDeleteOccurrences = new Set(
     mutation.actualDeletes
-      .map(actualOccurrenceKey)
+      .map(recurringActualOccurrenceKey)
       .filter((key): key is string => key !== null),
   );
   const reboundIds = new Set(mutation.actualUpserts.map((actual) => actual.id));
@@ -63,7 +71,7 @@ function applyActualMutation(
       return true;
     }
 
-    const occurrenceKey = actualOccurrenceKey(actual);
+    const occurrenceKey = recurringActualOccurrenceKey(actual);
     const matchesExplicitDelete =
       actualDeleteIds.has(actual.id) ||
       (occurrenceKey !== null && actualDeleteOccurrences.has(occurrenceKey));
@@ -71,14 +79,50 @@ function applyActualMutation(
       actual.planId !== null && planDeleteIds.has(actual.planId);
     return !matchesExplicitDelete && !matchesDeletedPlan;
   });
+
   return mutation.actualUpserts.reduce(
     (records, actual) => upsertActualRecord(records, actual),
     remaining,
   );
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+async function runRecoverableMutation(
+  apply: () => Promise<void>,
+  rollback: () => Promise<void>,
+  label: string,
+): Promise<void> {
+  try {
+    await apply();
+  } catch (error) {
+    try {
+      await rollback();
+    } catch (rollbackError) {
+      const detail = rollbackError instanceof Error
+        ? rollbackError.message
+        : String(rollbackError);
+      throw new Error(`${label}に失敗し、ロールバックにも失敗しました: ${detail}`);
+    }
+    throw error;
+  }
+}
+
+function resolveActualUpsert(
+  actuals: import('../types/domain').Actual[],
+  actual: import('../types/domain').Actual,
+): {
+  nextActuals: import('../types/domain').Actual[];
+  savedActual: import('../types/domain').Actual;
+} {
+  const nextActuals = upsertActualRecord(actuals, actual);
+  const savedActual = nextActuals.find(
+    (item) =>
+      item.userId === actual.userId &&
+      (actual.planId
+        ? item.planId === actual.planId &&
+          item.occurrenceDate === actual.occurrenceDate
+        : item.id === actual.id),
+  ) ?? actual;
+  return { nextActuals, savedActual };
 }
 
 export function createPlannerRepository(
@@ -118,44 +162,262 @@ export function createPlannerRepository(
       return filterByUserId(await storageGateway.readTimetablePeriods(), userId);
     },
     async applyRecurringPlanMutation(userId, mutation) {
-      assertMutationOwner(userId, mutation);
-      const hasPlanChanges =
-        mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
-      const hasActualChanges =
-        mutation.actualUpserts.length > 0 ||
-        mutation.actualDeletes.length > 0 ||
-        mutation.planDeletes.length > 0;
+    assertOwnedRecords(
+      userId,
+      [
+        ...mutation.planUpserts,
+        ...mutation.planDeletes,
+        ...mutation.actualUpserts,
+        ...mutation.actualDeletes,
+      ],
+      '繰り返し予定更新',
+    );
+    const hasPlanChanges =
+      mutation.planUpserts.length > 0 || mutation.planDeletes.length > 0;
+    const hasActualChanges =
+      mutation.actualUpserts.length > 0 ||
+      mutation.actualDeletes.length > 0 ||
+      mutation.planDeletes.length > 0;
+    if (!hasPlanChanges && !hasActualChanges) return;
 
-      if (!hasPlanChanges && !hasActualChanges) {
-        return;
-      }
+    const previousPlans = await storageGateway.readPlans();
+    const previousActuals = await storageGateway.readActuals();
+    const nextPlans = hasPlanChanges
+      ? applyOwnedRecords(
+previousPlans,
+userId,
+mutation.planUpserts,
+mutation.planDeletes,
+        )
+      : previousPlans;
+    const nextActuals = hasActualChanges
+      ? applyRecurringActualMutation(previousActuals, userId, mutation)
+      : previousActuals;
+
+    await runRecoverableMutation(
+      async () => {
+        if (hasPlanChanges) await storageGateway.writePlans(nextPlans);
+        if (hasActualChanges) await storageGateway.writeActuals(nextActuals);
+      },
+      async () => {
+        if (hasPlanChanges) await storageGateway.writePlans(previousPlans);
+        if (hasActualChanges) await storageGateway.writeActuals(previousActuals);
+      },
+      '繰り返し予定更新',
+    );
+  },
+    async deletePlanWithDependents(mutation) {
+      const ownedRecords = mutation.todo
+        ? [mutation.plan, mutation.todo]
+        : [mutation.plan];
+      assertOwnedRecords(mutation.userId, ownedRecords, '予定削除');
 
       const previousPlans = await storageGateway.readPlans();
       const previousActuals = await storageGateway.readActuals();
-      const nextPlans = applyPlanMutation(previousPlans, userId, mutation);
-      const nextActuals = applyActualMutation(previousActuals, userId, mutation);
-      let plansWritten = false;
+      const previousTodos = mutation.todo ? await storageGateway.readTodos() : null;
+      const nextPlans = previousPlans.filter(
+        (plan) => !(plan.userId === mutation.userId && plan.id === mutation.plan.id),
+      );
+      const nextActuals = previousActuals.filter(
+        (actual) => !(actual.userId === mutation.userId && actual.planId === mutation.plan.id),
+      );
+      const nextTodos = previousTodos && mutation.todo
+        ? replaceById(previousTodos, mutation.todo)
+        : null;
 
-      try {
-        if (hasPlanChanges) {
+      await runRecoverableMutation(
+        async () => {
           await storageGateway.writePlans(nextPlans);
-          plansWritten = true;
-        }
-        if (hasActualChanges) {
           await storageGateway.writeActuals(nextActuals);
-        }
-      } catch (error) {
-        if (plansWritten && hasActualChanges) {
-          try {
-            await storageGateway.writePlans(previousPlans);
-          } catch (rollbackError) {
-            throw new Error(
-              `Recurring plan mutation failed (${errorText(error)}) and local rollback failed (${errorText(rollbackError)}).`,
-            );
+          if (nextTodos) await storageGateway.writeTodos(nextTodos);
+        },
+        async () => {
+          await storageGateway.writePlans(previousPlans);
+          await storageGateway.writeActuals(previousActuals);
+          if (previousTodos) await storageGateway.writeTodos(previousTodos);
+        },
+        '予定削除',
+      );
+    },
+    async restorePlanWithDependents(mutation) {
+      const userId = mutation.plan.userId;
+      assertOwnedRecords(
+        userId,
+        [mutation.plan, ...mutation.actuals, ...(mutation.todo ? [mutation.todo] : [])],
+        '予定復元',
+      );
+      const previousPlans = await storageGateway.readPlans();
+      const previousActuals = await storageGateway.readActuals();
+      const previousTodos = mutation.todo ? await storageGateway.readTodos() : null;
+      const nextPlans = replaceById(previousPlans, mutation.plan);
+      const nextActuals = upsertMany(previousActuals, mutation.actuals);
+      const nextTodos = previousTodos && mutation.todo
+        ? replaceById(previousTodos, mutation.todo)
+        : null;
+
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writePlans(nextPlans);
+          await storageGateway.writeActuals(nextActuals);
+          if (nextTodos) await storageGateway.writeTodos(nextTodos);
+        },
+        async () => {
+          await storageGateway.writePlans(previousPlans);
+          await storageGateway.writeActuals(previousActuals);
+          if (previousTodos) await storageGateway.writeTodos(previousTodos);
+        },
+        '予定復元',
+      );
+    },
+    async scheduleTodoPlan(mutation) {
+      const userId = mutation.plan.userId;
+      assertOwnedRecords(userId, [mutation.plan, mutation.todo], 'Todo予定化');
+      const previousPlans = await storageGateway.readPlans();
+      const previousTodos = await storageGateway.readTodos();
+      const nextPlans = replaceById(previousPlans, mutation.plan);
+      const nextTodos = replaceById(previousTodos, mutation.todo);
+
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writePlans(nextPlans);
+          await storageGateway.writeTodos(nextTodos);
+        },
+        async () => {
+          await storageGateway.writePlans(previousPlans);
+          await storageGateway.writeTodos(previousTodos);
+        },
+        'Todo予定化',
+      );
+    },
+    async upsertActualWithMaterialProgress(mutation) {
+      const userId = mutation.actual.userId;
+      assertOwnedRecords(userId, [mutation.actual, ...mutation.materials], '記録保存');
+      const previousActuals = await storageGateway.readActuals();
+      const previousMaterials = mutation.materials.length > 0
+        ? await storageGateway.readStudyMaterials()
+        : null;
+      const { nextActuals, savedActual } = resolveActualUpsert(
+        previousActuals,
+        mutation.actual,
+      );
+      const nextMaterials = previousMaterials
+        ? upsertMany(previousMaterials, mutation.materials)
+        : null;
+
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writeActuals(nextActuals);
+          if (nextMaterials) await storageGateway.writeStudyMaterials(nextMaterials);
+        },
+        async () => {
+          await storageGateway.writeActuals(previousActuals);
+          if (previousMaterials) {
+            await storageGateway.writeStudyMaterials(previousMaterials);
           }
-        }
-        throw error;
-      }
+        },
+        '記録保存',
+      );
+      return savedActual;
+    },
+    async upsertStudySubjectWithMaterials(mutation) {
+      const userId = mutation.subject.userId;
+      assertOwnedRecords(
+        userId,
+        [mutation.subject, ...mutation.materials],
+        '教科保存',
+      );
+      const previousSubjects = await storageGateway.readStudySubjects();
+      const previousMaterials = mutation.materials.length > 0
+        ? await storageGateway.readStudyMaterials()
+        : null;
+      const nextSubjects = replaceById(previousSubjects, mutation.subject);
+      const nextMaterials = previousMaterials
+        ? upsertMany(previousMaterials, mutation.materials)
+        : null;
+
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writeStudySubjects(nextSubjects);
+          if (nextMaterials) await storageGateway.writeStudyMaterials(nextMaterials);
+        },
+        async () => {
+          await storageGateway.writeStudySubjects(previousSubjects);
+          if (previousMaterials) {
+            await storageGateway.writeStudyMaterials(previousMaterials);
+          }
+        },
+        '教科保存',
+      );
+    },
+    async applyTimetableMutation(mutation) {
+      assertOwnedRecords(
+        mutation.userId,
+        [
+          ...mutation.termUpserts,
+          ...mutation.termDeletes,
+          ...mutation.templateUpserts,
+          ...mutation.templateDeletes,
+          ...mutation.periodUpserts,
+          ...mutation.periodDeletes,
+        ],
+        '時間割更新',
+      );
+      const hasTermChanges = mutation.termUpserts.length > 0 || mutation.termDeletes.length > 0;
+      const hasTemplateChanges =
+        mutation.templateUpserts.length > 0 || mutation.templateDeletes.length > 0;
+      const hasPeriodChanges =
+        mutation.periodUpserts.length > 0 || mutation.periodDeletes.length > 0;
+      if (!hasTermChanges && !hasTemplateChanges && !hasPeriodChanges) return;
+
+      const previousTerms = hasTermChanges ? await storageGateway.readTimetableTerms() : null;
+      const previousTemplates = hasTemplateChanges
+        ? await storageGateway.readScheduleTemplates()
+        : null;
+      const previousPeriods = hasPeriodChanges
+        ? await storageGateway.readTimetablePeriods()
+        : null;
+      const nextTerms = previousTerms
+        ? applyOwnedRecords(
+            previousTerms,
+            mutation.userId,
+            mutation.termUpserts,
+            mutation.termDeletes,
+          )
+        : null;
+      const nextTemplates = previousTemplates
+        ? applyOwnedRecords(
+            previousTemplates,
+            mutation.userId,
+            mutation.templateUpserts,
+            mutation.templateDeletes,
+          )
+        : null;
+      const nextPeriods = previousPeriods
+        ? applyOwnedRecords(
+            previousPeriods,
+            mutation.userId,
+            mutation.periodUpserts,
+            mutation.periodDeletes,
+          )
+        : null;
+
+      await runRecoverableMutation(
+        async () => {
+          if (nextTerms) await storageGateway.writeTimetableTerms(nextTerms);
+          if (nextTemplates) await storageGateway.writeScheduleTemplates(nextTemplates);
+          if (nextPeriods) await storageGateway.writeTimetablePeriods(nextPeriods);
+        },
+        async () => {
+          if (previousTerms) await storageGateway.writeTimetableTerms(previousTerms);
+          if (previousTemplates) {
+            await storageGateway.writeScheduleTemplates(previousTemplates);
+          }
+          if (previousPeriods) {
+            await storageGateway.writeTimetablePeriods(previousPeriods);
+          }
+        },
+        '時間割更新',
+      );
     },
     async upsertPlan(plan) {
       const nextPlans = replaceById(await storageGateway.readPlans(), plan);
@@ -163,17 +425,26 @@ export function createPlannerRepository(
       return plan;
     },
     async deletePlan(userId, planId) {
-      const plans = (await storageGateway.readPlans()).filter(
+      const previousPlans = await storageGateway.readPlans();
+      const previousActuals = await storageGateway.readActuals();
+      const plans = previousPlans.filter(
         (plan) => !(plan.userId === userId && plan.id === planId),
       );
-      const actuals = (await storageGateway.readActuals()).filter(
+      const actuals = previousActuals.filter(
         (actual) => !(actual.userId === userId && actual.planId === planId),
       );
 
-      await Promise.all([
-        storageGateway.writePlans(plans),
-        storageGateway.writeActuals(actuals),
-      ]);
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writePlans(plans);
+          await storageGateway.writeActuals(actuals);
+        },
+        async () => {
+          await storageGateway.writePlans(previousPlans);
+          await storageGateway.writeActuals(previousActuals);
+        },
+        '予定削除',
+      );
     },
     async upsertActual(actual) {
       const actuals = await storageGateway.readActuals();
