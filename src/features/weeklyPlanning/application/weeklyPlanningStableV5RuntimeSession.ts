@@ -19,6 +19,21 @@ export interface WeeklyPlanningStableV5RuntimeSession {
   updatedAt: number;
 }
 
+export interface WeeklyPlanningStableV5RuntimeGraphFinalizeReceipt {
+  ownerId: string;
+  conversationId: string;
+  requestId: string;
+  previousGraph: WeeklyPlanningFactGraphV5;
+  previousUpdatedAt: number;
+  finalizedGraph: WeeklyPlanningFactGraphV5;
+  finalizedUpdatedAt: number;
+}
+
+export interface WeeklyPlanningStableV5RuntimeGraphFinalizeResult {
+  session: WeeklyPlanningStableV5RuntimeSession;
+  receipt: WeeklyPlanningStableV5RuntimeGraphFinalizeReceipt;
+}
+
 const MAX_RUNTIME_SESSIONS = 24;
 const sessions = new Map<string, WeeklyPlanningStableV5RuntimeSession>();
 
@@ -29,6 +44,13 @@ function cloneSession(
     ...session,
     graph: structuredClone(session.graph),
   };
+}
+
+function sameGraphSnapshot(
+  left: WeeklyPlanningFactGraphV5,
+  right: WeeklyPlanningFactGraphV5,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sameScope(
@@ -181,11 +203,11 @@ export function getWeeklyPlanningStableV5StagedGraph(params: {
   return structuredClone(staged.graph);
 }
 
-export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
+export function finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt(params: {
   ownerId: string;
   conversationId: string;
   requestId: string;
-}): WeeklyPlanningStableV5RuntimeSession {
+}): WeeklyPlanningStableV5RuntimeGraphFinalizeResult {
   const staged = readWeeklyPlanningStableV5StagedGraph(params);
   if (!staged) throw new Error('Stable V5 staged graph was not found.');
   if (staged.ownerId !== params.ownerId) {
@@ -198,12 +220,48 @@ export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
   const next: WeeklyPlanningStableV5RuntimeSession = {
     ...current,
     graph: structuredClone(staged.graph),
-    updatedAt: Date.now(),
+    updatedAt: Math.max(Date.now(), current.updatedAt + 1),
   };
   sessions.set(params.conversationId, next);
   discardWeeklyPlanningStableV5GraphStage(params);
   pruneSessions();
-  return cloneSession(next);
+  return {
+    session: cloneSession(next),
+    receipt: {
+      ownerId: params.ownerId,
+      conversationId: params.conversationId,
+      requestId: params.requestId,
+      previousGraph: structuredClone(current.graph),
+      previousUpdatedAt: current.updatedAt,
+      finalizedGraph: structuredClone(next.graph),
+      finalizedUpdatedAt: next.updatedAt,
+    },
+  };
+}
+
+export function rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(
+  receipt: WeeklyPlanningStableV5RuntimeGraphFinalizeReceipt,
+): boolean {
+  const current = sessions.get(receipt.conversationId);
+  if (!current || current.ownerId !== receipt.ownerId) return false;
+  if (current.updatedAt !== receipt.finalizedUpdatedAt
+    || !sameGraphSnapshot(current.graph, receipt.finalizedGraph)) {
+    return false;
+  }
+  sessions.set(receipt.conversationId, {
+    ...current,
+    graph: structuredClone(receipt.previousGraph),
+    updatedAt: receipt.previousUpdatedAt,
+  });
+  return true;
+}
+
+export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
+  ownerId: string;
+  conversationId: string;
+  requestId: string;
+}): WeeklyPlanningStableV5RuntimeSession {
+  return finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt(params).session;
 }
 
 export function discardWeeklyPlanningStableV5StagedGraph(params: {
