@@ -54,6 +54,32 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     expect(workloadRule?.instruction).toContain('never invent quantity or total duration');
   });
 
+  it('keeps assessment performance separate from schedulable task progress', () => {
+    const taskRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'task_structure',
+    );
+    const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'workload_quantity_effort',
+    );
+
+    expect(taskRule?.instruction).toContain(
+      'Performance-only mentions such as exam scores do not create tasks/components',
+    );
+    expect(workloadRule?.instruction).toContain(
+      'scores/grades/accuracy/rank are not progress unless explicitly task/material completion',
+    );
+  });
+
+  it('requires relation endpoints to come from emitted or explicitly bound entities', () => {
+    const taskRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'task_structure',
+    );
+
+    expect(taskRule?.instruction).toContain(
+      'Relation endpoints must be emitted or explicitly bound existing entities; never invent them',
+    );
+  });
+
   it('reserves fixed_interval for clock intervals and uses date-bound kinds for date-only periods', () => {
     const temporalRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'temporal_scope_and_deadline',
@@ -64,6 +90,39 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     );
     expect(temporalRule?.instruction).toContain(
       'Date-only from/after -> earliest_start; until/by -> latest_end or deadline',
+    );
+  });
+
+  it('keeps recurring weekday encoding separate from an unrelated date expression', () => {
+    const temporalRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'temporal_scope_and_deadline',
+    );
+
+    expect(temporalRule?.instruction).toContain(
+      'Recurring weekdays use days with null dateExpression unless separately date-scoped',
+    );
+  });
+
+  it('does not widen daily capacity into all-day clock availability', () => {
+    const availabilityRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'availability_absence',
+    );
+
+    expect(availabilityRule?.instruction).toContain(
+      'A daily total capacity without clock bounds is not all-day availability',
+    );
+    expect(availabilityRule?.instruction).toContain(
+      'if unsupported, emit uncertainty rather than widen it',
+    );
+  });
+
+  it('keeps approximate goal-event dates symbolic instead of inventing a day', () => {
+    const durableContextRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'durable_user_context',
+    );
+
+    expect(durableContextRule?.instruction).toContain(
+      'Approximate goal-event dates may use custom symbolic form; never invent an exact day',
     );
   });
 });
