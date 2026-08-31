@@ -1,5 +1,6 @@
 import {
   discardStagedUserPlanningContextV1,
+  exportUserPlanningContextSnapshotV1,
   finalizeStagedUserPlanningContextV1,
   hasStagedUserPlanningContextV1,
   rollbackFinalizedUserPlanningContextV1,
@@ -34,6 +35,10 @@ export interface WeeklyPlanningTurnPreparedStagingCommit {
   complete(): void;
 }
 
+function sameSnapshot(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function prepareStaging(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
@@ -53,6 +58,13 @@ function prepareStaging(params: {
         ownerId: params.ownerId,
         conversationId: params.pending.conversationId,
         requestId: params.pending.requestId,
+      })
+    : null;
+  const contextDate = params.pending.startedAt.slice(0, 10);
+  const finalizedContextSnapshot = contextReceipt
+    ? exportUserPlanningContextSnapshotV1({
+        ownerId: params.ownerId,
+        currentDate: contextDate,
       })
     : null;
   let graphReceipt: ReturnType<
@@ -75,6 +87,15 @@ function prepareStaging(params: {
   return {
     rollback() {
       if (settled) return;
+      if (contextReceipt && finalizedContextSnapshot) {
+        const currentContextSnapshot = exportUserPlanningContextSnapshotV1({
+          ownerId: params.ownerId,
+          currentDate: contextDate,
+        });
+        if (!sameSnapshot(currentContextSnapshot, finalizedContextSnapshot)) {
+          throw new Error('User planning context prepared commit could not be rolled back safely.');
+        }
+      }
       if (graphReceipt && !services.rollbackRuntimeGraph(graphReceipt)) {
         throw new Error('Stable V5 prepared graph commit could not be rolled back safely.');
       }
