@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-async function seedPreviewRemovalState(page) {
-  await page.addInitScript(() => {
+async function seedPreviewRemovalState(page, { phase }) {
+  await page.addInitScript(({ seededPhase }) => {
     const now = new Date().toISOString();
     const today = new Date();
     const user = {
@@ -74,13 +74,14 @@ async function seedPreviewRemovalState(page) {
       approvalStatus: 'unapproved',
       workItemKey: `gold-phrase-${index + 1}`,
     }));
+    const promoted = seededPhase === 'promoted';
     const planningState = {
       weekStartDate,
       revision: 1,
       conversationRequestSequence: 0,
-      mode: 'draft_created',
-      draftBlocks: drafts,
-      previewCandidates,
+      mode: promoted ? 'awaiting_approval' : 'draft_created',
+      draftBlocks: promoted ? drafts : [],
+      previewCandidates: promoted ? [] : previewCandidates,
       messages: [],
       updatedAt: now,
     };
@@ -109,7 +110,7 @@ async function seedPreviewRemovalState(page) {
       }),
     );
     window.__previewRemovalStorageKey = `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`;
-  });
+  }, { seededPhase: phase });
 }
 
 async function readStoredPlanningState(page) {
@@ -120,18 +121,22 @@ async function readStoredPlanningState(page) {
   });
 }
 
-test('AI planning preview removes the exact preview candidate and promoted draft block', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await seedPreviewRemovalState(page);
+async function openPreview(page) {
   await page.goto('/');
   await page.locator('.primary-bottom-nav button').first().click();
-
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(preview).toBeVisible();
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全2件');
-
   await preview.getByRole('tab', { name: '日別' }).click();
+  return preview;
+}
+
+test('AI planning preview removes the exact local preview candidate', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedPreviewRemovalState(page, { phase: 'preview' });
+  const preview = await openPreview(page);
+
   const removeCandidate = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
   await expect(removeCandidate).toBeVisible();
   await removeCandidate.click();
@@ -145,10 +150,19 @@ test('AI planning preview removes the exact preview candidate and promoted draft
     };
   }).toEqual({
     previewIds: ['candidate-b'],
-    draftIds: ['candidate-a', 'candidate-b'],
+    draftIds: [],
   });
+});
 
-  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+test('AI planning preview removes the exact promoted draft block', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedPreviewRemovalState(page, { phase: 'promoted' });
+  const preview = await openPreview(page);
+
+  const removeDraft = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  await expect(removeDraft).toBeVisible();
+  await removeDraft.click();
+
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
   await expect.poll(async () => {
     const state = await readStoredPlanningState(page);
@@ -162,10 +176,7 @@ test('AI planning preview removes the exact preview candidate and promoted draft
   });
 
   await preview.getByRole('tab', { name: '日別' }).click();
-  const removeDraft = preview.getByRole('button', { name: '金フレ Bを計画から除外' });
-  await expect(removeDraft).toBeVisible();
-  await removeDraft.click();
-
+  await preview.getByRole('button', { name: '金フレ Bを計画から除外' }).click();
   await expect(preview).toBeHidden();
   await expect.poll(async () => {
     const state = await readStoredPlanningState(page);
