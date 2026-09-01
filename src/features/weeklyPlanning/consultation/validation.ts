@@ -33,6 +33,10 @@ function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
 function isUncertainty(value: unknown): value is AdviceUncertainty {
   return value === 'low' || value === 'medium' || value === 'high';
 }
@@ -57,14 +61,14 @@ export function isTemporalCandidate(value: unknown): value is TemporalCandidate 
       return hasExactKeys(value, ['kind', 'date']) && isIsoDate(value.date);
     case 'month_end':
       return hasExactKeys(value, ['kind', 'year', 'month'])
-        && Number.isInteger(value.year)
-        && Number.isInteger(value.month)
-        && Number(value.month) >= 1
-        && Number(value.month) <= 12;
+        && isInteger(value.year)
+        && isInteger(value.month)
+        && value.month >= 1
+        && value.month <= 12;
     case 'relative_to_exam':
       return hasExactKeys(value, ['kind', 'examRef', 'offsetDays'])
         && isNonEmptyString(value.examRef)
-        && Number.isInteger(value.offsetDays);
+        && isInteger(value.offsetDays);
     case 'date_range':
       return hasExactKeys(value, ['kind', 'startDate', 'endDate'])
         && isIsoDate(value.startDate)
@@ -148,7 +152,7 @@ function validateRecommendation(
 
   if (value.materialMention !== undefined) validateMaterialMention(value.materialMention, `${path}.materialMention`, errors);
   if (value.method !== undefined && typeof value.method !== 'string') errors.push(`${path}.method must be a string`);
-  if (value.sequencePosition !== undefined && (!Number.isInteger(value.sequencePosition) || Number(value.sequencePosition) < 1)) {
+  if (value.sequencePosition !== undefined && (!isInteger(value.sequencePosition) || value.sequencePosition < 1)) {
     errors.push(`${path}.sequencePosition must be a positive integer`);
   }
   if (value.milestone !== undefined && typeof value.milestone !== 'string') errors.push(`${path}.milestone must be a string`);
