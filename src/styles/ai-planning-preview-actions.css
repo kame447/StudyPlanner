@@ -1,0 +1,57 @@
+/* AI planning preview contextual actions -----------------------------------
+   Keep normal schedule cards at full text width. The contextual control is
+   overlaid only after a stationary long press and uses the same short,
+   spring-like motion curve as the Quick Add action reveal. */
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-detail-block {
+  --ai-preview-action-size: 30px;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-remove-action {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  z-index: 4;
+  width: var(--ai-preview-action-size);
+  height: var(--ai-preview-action-size);
+  min-width: var(--ai-preview-action-size);
+  min-height: var(--ai-preview-action-size);
+  flex: 0 0 var(--ai-preview-action-size);
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(14px, -50%, 0) scale(0.86);
+  transform-origin: right center;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease-in,
+    background 160ms ease-out,
+    color 160ms ease-out;
+  will-change: transform, opacity;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-detail-block.is-action-active
+  .ai-planning-preview-remove-action {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, -50%, 0) scale(1);
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-remove-action:hover,
+.ai-planning-preview-dialog-v2 .ai-planning-preview-remove-action:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  transform: translate3d(0, -50%, 0) scale(1.045);
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-remove-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-planning-preview-dialog-v2 .ai-planning-preview-remove-action {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}
