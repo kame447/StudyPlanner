@@ -51,9 +51,9 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
       'Qualitative scope belongs in task/components',
     );
     expect(workloadRule?.instruction).toContain(
-      'User-approved material chapter/section structure resolves work_breakdown',
+      'Approved material chapter/section structure resolves work_breakdown',
     );
-    expect(workloadRule?.instruction).toContain('do not re-ask');
+    expect(workloadRule?.instruction).toContain("don't re-ask");
     expect(workloadRule?.instruction).toContain(
       'work_breakdown only for genuine structural ambiguity',
     );
