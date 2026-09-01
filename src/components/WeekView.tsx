@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -7,8 +8,13 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  createScheduleOccurrenceProjection,
+  type ScheduleOccurrence,
+} from '../domain/scheduleOccurrence';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
+  addDays,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -28,7 +34,7 @@ import {
 } from '../lib/weekPlanDrag';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import type { Actual, Plan, PlanSourceType } from '../types/domain';
+import type { Actual, MonthEvent, Plan, PlanSourceType } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import '../styles/week-plan-drag.css';
 
@@ -39,6 +45,7 @@ interface WeekViewProps {
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onOpenPlan?: (plan: Plan) => void;
@@ -129,6 +136,27 @@ function resolveActualTitle(actual: Actual, plan?: Plan): string {
 
 function resolveActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject || '記録';
+}
+
+function scheduleOccurrenceCoversDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): boolean {
+  const dayStart = `${date}T00:00`;
+  const dayEnd = `${addDays(date, 1)}T00:00`;
+  const occurrenceStart = `${occurrence.start.date}T${occurrence.start.time}`;
+  const occurrenceEnd = `${occurrence.end.date}T${occurrence.end.time}`;
+  return occurrenceEnd > dayStart && occurrenceStart < dayEnd;
+}
+
+function scheduleOccurrenceTimesForDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): { startTime: string; endTime: string } {
+  return {
+    startTime: occurrence.start.date === date ? occurrence.start.time : '00:00',
+    endTime: occurrence.end.date === date ? occurrence.end.time : '24:00',
+  };
 }
 
 function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekPreviewBlock> {
@@ -229,6 +257,7 @@ export function WeekView({
   selectedDate,
   plans,
   actuals,
+  monthEvents = [],
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
@@ -241,6 +270,21 @@ export function WeekView({
   const suppressClickUntilRef = useRef(0);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const weekDates = getWeekDates(selectedDate);
+  const weekStartDate = weekDates[0];
+  const weekEndDate = weekDates[weekDates.length - 1];
+  const scheduleProjection = useMemo(
+    () =>
+      weekStartDate && weekEndDate
+        ? createScheduleOccurrenceProjection({
+            ownerId: plans[0]?.userId ?? monthEvents[0]?.userId ?? '',
+            startDate: weekStartDate,
+            endDate: weekEndDate,
+            plans,
+            monthEvents,
+          })
+        : { occurrences: [], issues: [] },
+    [monthEvents, plans, weekEndDate, weekStartDate],
+  );
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
@@ -723,6 +767,9 @@ export function WeekView({
 
                 {weekDates.map((date) => {
                   const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
+                  const dayMonthEventOccurrences = scheduleProjection.occurrences
+                    .filter((occurrence) => occurrence.source.kind === 'month-event')
+                    .filter((occurrence) => scheduleOccurrenceCoversDate(occurrence, date));
                   const dayPlanKeys = new Set(
                     dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
                   );
@@ -761,6 +808,14 @@ export function WeekView({
                       startTime: plan.startTime,
                       endTime: plan.endTime,
                       plan,
+                    })),
+                    ...dayMonthEventOccurrences.map((occurrence) => ({
+                      id: occurrence.id,
+                      title: occurrence.title,
+                      subject: occurrence.subject,
+                      type: 'other' as const,
+                      sourceType: 'manual' as const,
+                      ...scheduleOccurrenceTimesForDate(occurrence, date),
                     })),
                     ...dayDraftBlocks.map((block) => ({
                       id: block.id,
