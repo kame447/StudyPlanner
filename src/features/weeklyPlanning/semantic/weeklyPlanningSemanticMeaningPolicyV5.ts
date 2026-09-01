@@ -18,7 +18,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat requested learning work as study tasks with meaningful task/component structure. Attach work, effort, constraints and context to targets. Performance-only mentions such as exam scores do not create tasks/components. Relation endpoints must be emitted or explicitly bound existing entities; never invent them. Minimal existingPublicId shells need no breakdown; emit work_breakdown uncertainty only for genuine current-turn structural ambiguity.',
+    instruction: 'Represent learning work as study tasks/components. Attach work, effort, constraints, context. Performance-only mentions such as exam scores do not create tasks/components. Relation endpoints must be emitted or explicitly bound existing entities; never invent them. Minimal existingPublicId shells need no breakdown; work_breakdown only for genuine current-turn structural ambiguity.',
   },
   {
     id: 'study_activity_kind',
@@ -36,7 +36,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing fixed total scope, plan target, current progress, performance metrics, time-boxed work, duration cost, and per-unit effort requires semantic interpretation.',
-    instruction: "scope_total needs bounded total; target is plan amount, never derived. Qualitative scope belongs in task/components, not amount=1 custom workload. Approved material chapter/section structure resolves work_breakdown without exact names/counts; don't re-ask. Otherwise work_breakdown only for genuine structural ambiguity; never invent quantity or total duration. All-remaining omits target; code derives remaining. completed/remaining are progress; scores/grades/accuracy/rank are not unless explicit task/material completion. Scheduled time is target minute/hour workload; do not ask content progress. Align perOccurrence/recurrence. Separate workload cost: total_duration/duration_per_unit; session_duration only for one session.",
+    instruction: "scope_total needs bounded total; target is plan amount, never derived. Qualitative scope belongs in task/components, not amount=1 custom workload. Approved material chapter/section structure resolves work_breakdown without exact names/counts; don't re-ask. Otherwise work_breakdown only for genuine structural ambiguity; never invent quantity or total duration. All-remaining omits target; code derives remaining. completed/remaining are progress. Explicit not-started = completed 0 custom % for each exact target. scores/grades/accuracy/rank are not unless explicit task/material completion. Scheduled time is target minute/hour workload; do not ask content progress. Align perOccurrence/recurrence. Separate workload cost: total_duration/duration_per_unit; session_duration only for one session.",
   },
   {
     id: 'temporal_scope_and_deadline',
