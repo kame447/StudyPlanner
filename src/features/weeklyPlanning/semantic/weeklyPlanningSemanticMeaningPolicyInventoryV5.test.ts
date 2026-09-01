@@ -42,15 +42,21 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     }
   });
 
-  it('keeps qualitative scope boundaries structural instead of inventing one custom workload', () => {
+  it('keeps qualitative scope structural and does not reopen an approved material breakdown', () => {
     const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'workload_quantity_effort',
     );
 
     expect(workloadRule?.instruction).toContain(
-      'Uncounted qualitative scope belongs in task/component structure',
+      'Qualitative scope belongs in task/components',
     );
-    expect(workloadRule?.instruction).toContain('emit work_breakdown uncertainty');
+    expect(workloadRule?.instruction).toContain(
+      'User-approved material chapter/section structure resolves work_breakdown',
+    );
+    expect(workloadRule?.instruction).toContain('do not re-ask');
+    expect(workloadRule?.instruction).toContain(
+      'work_breakdown only for genuine structural ambiguity',
+    );
     expect(workloadRule?.instruction).toContain('never invent quantity or total duration');
   });
 
@@ -66,7 +72,7 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
       'Performance-only mentions such as exam scores do not create tasks/components',
     );
     expect(workloadRule?.instruction).toContain(
-      'scores/grades/accuracy/rank are not progress unless explicitly task/material completion',
+      'scores/grades/accuracy/rank are not unless explicit task/material completion',
     );
   });
 
