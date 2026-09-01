@@ -84,4 +84,34 @@ describe('month view projection', () => {
     });
     expect(targetCell?.monthEvents.map((event) => event.id)).toEqual(['early', 'late']);
   });
+
+  it('shows non-study Plan occurrences as calendar events without turning study plans into event pills', () => {
+    const appointment: Plan = {
+      ...plan,
+      id: 'appointment-1',
+      seriesId: 'appointment-1',
+      title: '美容院',
+      subject: '予定',
+      startTime: '18:00',
+      endTime: '19:00',
+      type: 'other',
+    };
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-08-01',
+      plans: [plan, appointment],
+      actuals: [],
+      monthEvents: [],
+    });
+    const targetCell = projection.cells.find((cell) => cell.date === '2026-08-14');
+
+    expect(targetCell?.targetMinutes).toBe(90);
+    expect(targetCell?.monthEvents).toMatchObject([
+      {
+        id: 'plan-occurrence:appointment-1:2026-08-14',
+        title: '美容院',
+        startTime: '18:00',
+        endTime: '19:00',
+      },
+    ]);
+  });
 });
