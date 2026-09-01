@@ -83,10 +83,7 @@ describe('month view projection', () => {
       targetMinutes: 90,
       actualMinutes: 60,
     });
-    expect(targetCell?.monthEvents.map((event) => event.id)).toEqual([
-      'month-event:early:2026-08-14T08:00',
-      'month-event:late:2026-08-14T17:00',
-    ]);
+    expect(targetCell?.monthEvents.map((event) => event.title)).toEqual(['early', 'late']);
   });
 
   it('shows non-study Plan occurrences as calendar events without turning study plans into event pills', () => {
@@ -112,7 +109,6 @@ describe('month view projection', () => {
     expect(targetCell?.targetMinutes).toBe(90);
     expect(targetCell?.monthEvents).toMatchObject([
       {
-        id: 'plan:appointment-1:2026-08-14T18:00',
         title: '美容院',
         startTime: '18:00',
         endTime: '19:00',
@@ -144,11 +140,57 @@ describe('month view projection', () => {
       .find((cell) => cell.date === '2026-08-14')
       ?.monthEvents[0];
     expect(occurrence).toMatchObject({
-      id: 'month-event:trip:2026-08-14T18:00',
       date: '2026-08-14',
       endDate: '2026-08-16',
       startTime: '18:00',
       endTime: '10:00',
     });
+  });
+
+  it('renders resolved recurrence override values instead of stored Plan defaults', () => {
+    const appointment: Plan = {
+      ...plan,
+      id: 'appointment-override',
+      seriesId: 'appointment-override',
+      title: '元の予定',
+      subject: '予定',
+      startTime: '18:00',
+      endTime: '19:00',
+      type: 'other',
+      recurrenceRules: [
+        {
+          id: 'override-1',
+          kind: 'date',
+          startDate: '2026-08-14',
+          until: null,
+          dates: ['2026-08-14'],
+          weekdays: [],
+          dayType: null,
+          startTime: '20:00',
+          endTime: '21:30',
+          title: '変更後の予定',
+          subject: '予定',
+          type: 'other',
+          memo: '',
+          isOverride: true,
+        },
+      ],
+    };
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-08-01',
+      userId: 'user-1',
+      plans: [appointment],
+      actuals: [],
+      monthEvents: [],
+    });
+    const targetCell = projection.cells.find((cell) => cell.date === '2026-08-14');
+
+    expect(targetCell?.monthEvents).toMatchObject([
+      {
+        title: '変更後の予定',
+        startTime: '20:00',
+        endTime: '21:30',
+      },
+    ]);
   });
 });
