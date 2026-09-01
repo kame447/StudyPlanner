@@ -1,7 +1,7 @@
 # Repository regression patterns
 
 Status: current repository-wide regression knowledge
-Updated: 2026-08-30
+Updated: 2026-09-01
 
 この文書は、StudyPlanner で過去に発生したバグや回帰を、個別症状の一覧ではなく、再発する原因クラス、責任境界、守るべき不変条件、検証方法として形式知化するための正本です。
 
@@ -9,7 +9,7 @@ Updated: 2026-08-30
 
 ## 監査範囲と読み方
 
-2026-08-30 時点でリポジトリから取得できる PR 履歴を、作成順と逆順の両方向から横断監査しました。対象母集団には feature、refactor、test、docs、Dependabot も含め、PR #1 から #241 までの履歴に現れる defect、regression、post-merge audit finding、real-device finding、harness failure を確認しました。純粋な機能追加や依存更新は、それ自体をバグ知識として昇格していません。
+2026-08-30 に、リポジトリから取得できる PR #1 から #241 までを作成順と逆順の両方向から横断監査しました。2026-09-01 にはその後の merged defect / corrective refactor を追加監査し、特に #249, #252, #255, #258, #262, #267, #271, #272, #274 の root cause と verification を既存パターンへ照合しました。対象母集団には feature、refactor、test、docs、Dependabot も含めますが、純粋な機能追加や依存更新は、それ自体をバグ知識として昇格していません。
 
 再発性は厳密な件数統計ではなく、PR 横断で同じ根本原因がどれだけ独立に再出現したかを表す定性的な指標です。一つの PR が複数のバグを直す場合も、一つの logical task が複数の follow-up PR にまたがる場合もあるため、PR 件数をそのまま発生率として解釈しません。`非常に高い` は複数サブシステムや多数の follow-up で繰り返したもの、`高い` は複数 PR で明確に再発したもの、`反復あり` は少なくとも二つ以上の独立した証拠があるものです。
 
@@ -19,11 +19,13 @@ Updated: 2026-08-30
 
 重要度: Critical。再発性: 非常に高い。
 
-代表 evidence: [#3](https://github.com/kame447/StudyPlanner/pull/3), [#68](https://github.com/kame447/StudyPlanner/pull/68), [#107](https://github.com/kame447/StudyPlanner/pull/107), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#154](https://github.com/kame447/StudyPlanner/pull/154), [#157](https://github.com/kame447/StudyPlanner/pull/157), [#196](https://github.com/kame447/StudyPlanner/pull/196), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#225](https://github.com/kame447/StudyPlanner/pull/225), [#235](https://github.com/kame447/StudyPlanner/pull/235)。
+代表 evidence: [#3](https://github.com/kame447/StudyPlanner/pull/3), [#68](https://github.com/kame447/StudyPlanner/pull/68), [#107](https://github.com/kame447/StudyPlanner/pull/107), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#154](https://github.com/kame447/StudyPlanner/pull/154), [#157](https://github.com/kame447/StudyPlanner/pull/157), [#196](https://github.com/kame447/StudyPlanner/pull/196), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#225](https://github.com/kame447/StudyPlanner/pull/225), [#235](https://github.com/kame447/StudyPlanner/pull/235), [#249](https://github.com/kame447/StudyPlanner/pull/249), [#252](https://github.com/kame447/StudyPlanner/pull/252), [#258](https://github.com/kame447/StudyPlanner/pull/258), [#262](https://github.com/kame447/StudyPlanner/pull/262), [#267](https://github.com/kame447/StudyPlanner/pull/267)。
 
 最も危険な再発パターンは、同じ意味や状態を複数の層がそれぞれ「正しいもの」として再構成することです。過去には、AI が解釈した期間を deterministic parser が再解釈する、renderer が出した日本語から pending question を逆算する、semantic/compiler が解決した temporal facts を scheduler placement が raw graph から再解釈する、全期間の preview model より現在表示中の 7 日だけを保存対象として扱う、active timetable term を downstream へ渡さず別の文脈で候補を作る、といった形で現れました。
 
 根本原因は、source of truth と projection、interpretation と execution、machine state と presentation の境界が曖昧になることです。表示上は同じ値に見えても、再解釈可能な raw input と canonical state は同じ責任を持ちません。
+
+2026-08-30〜31 の follow-up では、同じ drift が、rendered text を machine routing に使う、同じ compatibility slot を複数 reader が別々に decode する、module-global runtime state が current turn の bookshelf / personalization snapshot を上書きする、recurring mutation scope を hook と repository が別々に解釈する、という形でも再確認されました。現在値を明示入力にせず ambient state や別 decoder から再構成する経路も second authority として扱います。
 
 不変条件は、一つの概念には一つの authoritative owner を置き、下流はその owner が生成した typed/canonical representation を消費するだけにすることです。Stable V5 では raw language の意味解釈は AI、formal binding / lifecycle / readiness / scheduler / preview / approval / persistence は deterministic code が owner です。renderer の日本語、現在表示している page、read model、cache は projection であり、authoritative state へ逆流させません。
 
@@ -59,11 +61,11 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 重要度: Critical。再発性: 高い。
 
-代表 evidence: [#24](https://github.com/kame447/StudyPlanner/pull/24), [#26](https://github.com/kame447/StudyPlanner/pull/26), [#99](https://github.com/kame447/StudyPlanner/pull/99), [#120](https://github.com/kame447/StudyPlanner/pull/120), [#199](https://github.com/kame447/StudyPlanner/pull/199), [#202](https://github.com/kame447/StudyPlanner/pull/202), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#225](https://github.com/kame447/StudyPlanner/pull/225)。
+代表 evidence: [#24](https://github.com/kame447/StudyPlanner/pull/24), [#26](https://github.com/kame447/StudyPlanner/pull/26), [#99](https://github.com/kame447/StudyPlanner/pull/99), [#120](https://github.com/kame447/StudyPlanner/pull/120), [#199](https://github.com/kame447/StudyPlanner/pull/199), [#202](https://github.com/kame447/StudyPlanner/pull/202), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#225](https://github.com/kame447/StudyPlanner/pull/225), [#255](https://github.com/kame447/StudyPlanner/pull/255)。
 
 `today`、`tomorrow`、`this_week`、`next_week`、曜日、計画 horizon、ユーザー設定の週開始曜日は、基準時刻を失うと下流で別の日付へ化けます。#202 では request date で一度正しく解決した hard bound を recurrence / final placement が horizon start を基準に再解決したため、一日ずれや week-start の喪失が起こりました。#204 では temporal meaning が horizon、distribution、placement に分散していたため、removed / superseded constraint の復活や sibling leakage まで生じ得る状態でした。
 
-不変条件は、relative temporal semantics を owning boundary で一度だけ解決し、request clock、request date、timezone、weekStartsOn、target scope、hard/soft の区別を typed context として保持することです。scheduler は absolute/compiled constraint を実行し、raw temporal expression を再解釈しません。task-level constraint の component 継承と component-level constraint の sibling isolation は同じ target policy で扱います。hard bounds が矛盾するときは fail closed にします。
+不変条件は、relative temporal semantics を owning boundary で一度だけ解決し、request clock、request date、timezone、weekStartsOn、target scope、hard/soft の区別を typed context として保持することです。scheduler は absolute/compiled constraint を実行し、raw temporal expression を再解釈しません。upstream で capture 済みの request context は通常 runtime の必須入力として下流へ渡し、`selectedDate`、system timezone、既定の Monday などから暗黙に再生成しません。fallback は migration / compatibility の明示境界だけに閉じ込めます。task-level constraint の component 継承と component-level constraint の sibling isolation は同じ target policy で扱います。hard bounds が矛盾するときは fail closed にします。
 
 検証では、request date と horizon start が異なるケース、日曜開始など weekStartsOn が既定値と異なるケース、removed / superseded temporal fact、task→component inheritance、component sibling isolation、deadline と earliest/latest の矛盾、planning term 外の timetable event を必須にします。
 
@@ -71,11 +73,11 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 重要度: Critical。再発性: 高い。
 
-代表 evidence: [#82](https://github.com/kame447/StudyPlanner/pull/82), [#88](https://github.com/kame447/StudyPlanner/pull/88), [#94](https://github.com/kame447/StudyPlanner/pull/94), [#96](https://github.com/kame447/StudyPlanner/pull/96), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#119](https://github.com/kame447/StudyPlanner/pull/119), [#121](https://github.com/kame447/StudyPlanner/pull/121), [#220](https://github.com/kame447/StudyPlanner/pull/220), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#235](https://github.com/kame447/StudyPlanner/pull/235)。
+代表 evidence: [#82](https://github.com/kame447/StudyPlanner/pull/82), [#88](https://github.com/kame447/StudyPlanner/pull/88), [#94](https://github.com/kame447/StudyPlanner/pull/94), [#96](https://github.com/kame447/StudyPlanner/pull/96), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#119](https://github.com/kame447/StudyPlanner/pull/119), [#121](https://github.com/kame447/StudyPlanner/pull/121), [#220](https://github.com/kame447/StudyPlanner/pull/220), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#235](https://github.com/kame447/StudyPlanner/pull/235), [#272](https://github.com/kame447/StudyPlanner/pull/272), [#274](https://github.com/kame447/StudyPlanner/pull/274)。
 
 同じ request ID の再処理で AI、canonicalizer、scheduler、preview を再実行する、no-op turn で semantic revision を増やす一方 idempotency history は消える、reload 後に logical conversation の physical session が変わる、古い repair job が新しい dirty revision を clear する、archive 中に entry が増えたのに旧件数まで export 済みとして隠す、といったバグは、処理の「一回性」と「どの version に対する結果か」が machine contract に含まれていないときに発生します。
 
-不変条件は、side effect より前に idempotency key を確認し、mutation / async result / repair / archive / approval を expected revision または expected count と結びつけることです。stale result は現在状態へ commit せず、duplicate request は expensive core executor を再実行しません。no-op は意味 state の revision を増やさなくても、dedupe history や authorization など別軸の durable workflow state を失わないようにします。
+不変条件は、side effect より前に idempotency key を確認し、mutation / async result / repair / archive / approval を expected revision、expected count、owner、または request generation と結びつけることです。stale result は現在状態へ commit せず、duplicate request は expensive core executor を再実行しません。prepared state の rollback も write と同じく versioned operation であり、準備後に新しい graph / user context が入ったなら古い rollback receipt で巻き戻してはいけません。同様に、同一 owner の重複 load や account switch 前の load が遅れて完了しても、現在 generation と一致しなければ state を上書きしません。no-op は意味 state の revision を増やさなくても、dedupe history や authorization など別軸の durable workflow state を失わないようにします。
 
 検証は double submit、retry、reload、repository/runtime recreation、cancel 後の遅延結果、stale expected revision、archive 中の追加 entry、same request ID を含む sequence test で行います。単発 unit test より、ordering を変えた stateful test が有効なパターンです。
 
@@ -83,11 +85,11 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 重要度: Critical。再発性: 非常に高い。
 
-代表 evidence: [#68](https://github.com/kame447/StudyPlanner/pull/68), [#70](https://github.com/kame447/StudyPlanner/pull/70), [#72](https://github.com/kame447/StudyPlanner/pull/72), [#82](https://github.com/kame447/StudyPlanner/pull/82), [#94](https://github.com/kame447/StudyPlanner/pull/94), [#95](https://github.com/kame447/StudyPlanner/pull/95), [#96](https://github.com/kame447/StudyPlanner/pull/96), [#104](https://github.com/kame447/StudyPlanner/pull/104), [#106](https://github.com/kame447/StudyPlanner/pull/106), [#110](https://github.com/kame447/StudyPlanner/pull/110), [#121](https://github.com/kame447/StudyPlanner/pull/121), [#122](https://github.com/kame447/StudyPlanner/pull/122), [#222](https://github.com/kame447/StudyPlanner/pull/222)。
+代表 evidence: [#68](https://github.com/kame447/StudyPlanner/pull/68), [#70](https://github.com/kame447/StudyPlanner/pull/70), [#72](https://github.com/kame447/StudyPlanner/pull/72), [#82](https://github.com/kame447/StudyPlanner/pull/82), [#94](https://github.com/kame447/StudyPlanner/pull/94), [#95](https://github.com/kame447/StudyPlanner/pull/95), [#96](https://github.com/kame447/StudyPlanner/pull/96), [#104](https://github.com/kame447/StudyPlanner/pull/104), [#106](https://github.com/kame447/StudyPlanner/pull/106), [#110](https://github.com/kame447/StudyPlanner/pull/110), [#121](https://github.com/kame447/StudyPlanner/pull/121), [#122](https://github.com/kame447/StudyPlanner/pull/122), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#267](https://github.com/kame447/StudyPlanner/pull/267), [#271](https://github.com/kame447/StudyPlanner/pull/271), [#272](https://github.com/kame447/StudyPlanner/pull/272)。
 
 「producer には field がある」「単体では save できる」だけでは persistence contract は成立しません。過去には renderer prompt context を AI request へ追加したのに turn diagnostic へ伝播する field がなく trace から欠落した、query が mixed old/new format の entry を取りこぼした、module memory にしか continuity state がなく reload で session が分裂した、network failure を admin UI が正常な 0 件として表示した、複数 bootstrap owner が同じ Planner data を二重 hydrate した、といった形で現れました。
 
-不変条件は、write schema、storage key/document ID、transaction、outbox/retry、read/query、redaction、restore、projection/export までを一つの contract chain として考えることです。構造 ID と user content の redaction 責任を分け、server/path が authority の ID は client payload より path を正本にします。新 field は request producer の unit test だけでなく、persistent outbox や server preparation を通って read/export 側まで残ることを確認します。
+不変条件は、write schema、storage key/document ID、transaction、outbox/retry、read/query、redaction、restore、projection/export までを一つの contract chain として考えることです。複数 entity が一つのユーザー操作として変わる場合は、その aggregate mutation 全体を一つの persistence contract とし、Firestore では batch/transaction、local storage では snapshot + compensating rollback などで途中成功を外へ見せません。会話状態と authoritative graph / user context のように保存先が分かれる場合も、ユーザーへ success を公開する commit point は authoritative preparation/commit が成立した後に置きます。構造 ID と user content の redaction 責任を分け、server/path が authority の ID は client payload より path を正本にします。新 field は request producer の unit test だけでなく、persistent outbox や server preparation を通って read/export 側まで残ることを確認します。
 
 検証では、実際の repository boundary を含む integration test を優先します。初回 append failure→reload→retry、large entry pagination、legacy/current mixed data、malformed schema、ownership mismatch、duplicate sequence、reload after save を通し、partial success や transport error を正常な empty state として扱わないことを固定します。
 
@@ -109,11 +111,11 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 重要度: High。再発性: 非常に高い。
 
-代表 evidence: [#78](https://github.com/kame447/StudyPlanner/pull/78), [#81](https://github.com/kame447/StudyPlanner/pull/81), [#185](https://github.com/kame447/StudyPlanner/pull/185), [#191](https://github.com/kame447/StudyPlanner/pull/191), [#192](https://github.com/kame447/StudyPlanner/pull/192), [#194](https://github.com/kame447/StudyPlanner/pull/194), [#197](https://github.com/kame447/StudyPlanner/pull/197), [#206](https://github.com/kame447/StudyPlanner/pull/206), [#211](https://github.com/kame447/StudyPlanner/pull/211), [#228](https://github.com/kame447/StudyPlanner/pull/228), [#240](https://github.com/kame447/StudyPlanner/pull/240)。
+代表 evidence: [#78](https://github.com/kame447/StudyPlanner/pull/78), [#81](https://github.com/kame447/StudyPlanner/pull/81), [#185](https://github.com/kame447/StudyPlanner/pull/185), [#191](https://github.com/kame447/StudyPlanner/pull/191), [#192](https://github.com/kame447/StudyPlanner/pull/192), [#194](https://github.com/kame447/StudyPlanner/pull/194), [#197](https://github.com/kame447/StudyPlanner/pull/197), [#206](https://github.com/kame447/StudyPlanner/pull/206), [#211](https://github.com/kame447/StudyPlanner/pull/211), [#228](https://github.com/kame447/StudyPlanner/pull/228), [#240](https://github.com/kame447/StudyPlanner/pull/240), [#274](https://github.com/kame447/StudyPlanner/pull/274)。
 
 green test と実機正常は同義ではなく、red test と product defect も同義ではありません。#194 では focus 後だけ 16px を測る browser regression が green でも、iOS は focus acquisition 前に zoom 判定するため実機では失敗しました。#192、#197、#208 でも Chromium が通った後に iPhone が viewport/scroll 問題を再現しました。一方 #191、#197、#211 では stale locator、scrollbar gutter の誤測定、既知の Schedule sheet 自体を dismiss できない新規 mouse harness など、production を変えるべきではない harness defect が見つかっています。
 
-不変条件は、失敗した gate を production defect、stale/incorrect contract、harness/environment defect、infrastructure/transient failure に分類してから編集することです。新しい harness が疑わしい場合は、既知の reference control に同じ操作を適用して harness 自体を検証します。GitHub Actions が step 0 件で終了した場合は code failure でも success でもなく missing evidence とします。threshold、timeout、assertion を根拠なく緩めて green にしてはいけません。
+不変条件は、失敗した gate を production defect、stale/incorrect contract、harness/environment defect、infrastructure/transient failure に分類してから編集することです。新しい harness が疑わしい場合は、既知の reference control に同じ操作を適用して harness 自体を検証します。#274 では新しい planner-data availability 契約に E2E harness が追従しておらず、fail-closed した production ingress を緩めるのではなく harness 側へ authoritative `ready` を明示して回帰を復旧しました。required contract の追加直後に一群の E2E が入口で同時に止まる場合は、production guard を弱める前に harness が新契約を表現しているかを確認します。GitHub Actions が step 0 件で終了した場合は code failure でも success でもなく missing evidence とします。threshold、timeout、assertion を根拠なく緩めて green にしてはいけません。
 
 実機が automation の仮定を反証した場合、その観測を一回限りの手動確認で終わらせず、可能な範囲で geometry、hit testing、pre-focus state、WebKit behavior、scroll ownership の deterministic regression へ昇格します。iOS/WebKit 固有の gap が既知になった領域では Chromium-only を merge evidence として十分とみなしません。
 
@@ -145,13 +147,13 @@ Worker/API/deploy tooling の具体的な failure signature と workaround は [
 
 重要度: High。再発性: 高い。
 
-代表 evidence: [#96](https://github.com/kame447/StudyPlanner/pull/96), [#220](https://github.com/kame447/StudyPlanner/pull/220), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#234](https://github.com/kame447/StudyPlanner/pull/234)。
+代表 evidence: [#96](https://github.com/kame447/StudyPlanner/pull/96), [#220](https://github.com/kame447/StudyPlanner/pull/220), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#234](https://github.com/kame447/StudyPlanner/pull/234), [#274](https://github.com/kame447/StudyPlanner/pull/274)。
 
-取得失敗、部分取得、stale snapshot、canonical timestamp 未 backfill を `[]` や `0` として表示すると、障害が「データが存在しない」という正常状態に見えます。#96 では大量 trace entry の fetch failure が空 timeline/Raw JSON として見える問題があり、#222 では stale active-user snapshot や registration timestamp 不完全時に誤った current metric を出さないよう fail-closed / unknown 表現へ修正されています。
+取得失敗、部分取得、stale snapshot、canonical timestamp 未 backfill を `[]` や `0` として表示すると、障害が「データが存在しない」という正常状態に見えます。#96 では大量 trace entry の fetch failure が空 timeline/Raw JSON として見える問題があり、#222 では stale active-user snapshot や registration timestamp 不完全時に誤った current metric を出さないよう fail-closed / unknown 表現へ修正されています。#274 では planner bootstrap の `Promise.all` が失敗しても consumer-facing arrays が初期 `[]` または過去 snapshot のまま残り、weekly planning が「正常に0件」と「未取得/取得不能/古い値」を区別できない問題が同じ class として再発しました。
 
-不変条件は、empty、zero、unknown、stale、partial、error を machine state と UI で区別することです。bounded read が途中で欠落した場合は部分 timeline を正常結果にせず、read model revision/date が current request と一致しない場合は stale として隠すか明示します。集計の source of truth と read model を混同しません。
+不変条件は、empty、zero、unknown、stale、partial、error を machine state と UI で区別することです。collection の内容だけでは read authority を表現できないため、必要な consumer には owner-scoped の typed availability / completeness を source owner から渡します。`ready + []` だけを authoritative empty とし、初回失敗は unavailable、成功後の refresh 失敗は retained snapshot + stale、owner switch/reset は前 owner の authority を無効化します。consumer は `items.length` から availability を再推論せず、required source が current/ready でなければ fail closed にします。bounded read が途中で欠落した場合は部分 timeline を正常結果にせず、read model revision/date が current request と一致しない場合は stale として隠すか明示します。集計の source of truth と read model を混同しません。
 
-検証では、途中 page 欠落、cursor 非進行、total count 変化、stale revision、legacy incomplete data、server error を注入し、正常な 0 件と異なる UI/typed result になることを確認します。
+検証では、途中 page 欠落、cursor 非進行、total count 変化、stale revision、legacy incomplete data、server error に加え、正常な空取得、初回取得失敗、成功後の refresh 失敗、retry 成功、同一 owner の古い load 完了、owner switch 中の遅延 load、reset 中の遅延 loadを注入します。正常な 0 件と unavailable/stale が異なる typed result になり、required consumer が unavailable/stale/wrong-owner を正常 empty として処理しないことを確認します。
 
 ## R12. Accessibility semantics と visual DOM の乖離
 
