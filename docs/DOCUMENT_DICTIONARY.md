@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-08-30
+Updated: 2026-09-02
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -11,6 +11,7 @@ Updated: 2026-08-30
 
 最初に、その文書がどの責務の変更理由を所有するかを決める。
 
+- `domains/scheduling/`: app-wide scheduled-event authority、occurrence projection、Plan / MonthEvent persistence migration
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
@@ -58,6 +59,17 @@ Updated: 2026-08-30
 archiveは現在の実装命令にならない。
 
 ## 3. Canonical path rules
+
+### Scheduling
+
+入口: `docs/domains/scheduling/README.md`
+
+正本:
+
+- scheduled-event authority、ScheduleOccurrence identity/time/busy semantics、Plan / MonthEvent / timetable projection境界: `architecture/scheduled-event-authority.md`
+- current migration order / Phase 3 checkpoint: `roadmap/current.md`
+
+current implementation ownerはIssue #278。`src/domain/scheduleOccurrence.ts`はcompatibility read modelであり、canonical persistenceそのものではない。
 
 ### Weekly planning
 
