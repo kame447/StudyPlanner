@@ -75,6 +75,17 @@ describe('Stable V5 dense-turn semantic completeness audit', () => {
     expect(messages[1]?.content).toContain('candidateDocument');
   });
 
+  it('treats an explicit daily total as supported capacity without inventing clocks', () => {
+    const messages = createDenseTurnCompletenessAuditMessagesV5({
+      userText: '土日は基本的に1日8時間勉強できます。'.repeat(40),
+      candidateDocument: candidateDocument(),
+    });
+    expect(messages[0]?.content).toContain('daily capacity');
+    expect(messages[0]?.content).toContain('kind=capacity');
+    expect(messages[0]?.content).toContain('capacityMinutes');
+    expect(messages[0]?.content).toContain('without inventing a clock window');
+  });
+
   it('asks a retry to regenerate the whole semantic document instead of patching', () => {
     const retry = createDenseTurnCompletenessRetryMessagesV5({
       baseMessages: [{ role: 'system', content: 'base' }],
