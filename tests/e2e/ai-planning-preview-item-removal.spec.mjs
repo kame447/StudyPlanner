@@ -259,6 +259,10 @@ test('AI planning preview touch long press reveals action without showing drag f
   await expect(removeAction).toBeVisible();
   await page.waitForTimeout(100);
   await expect(removeAction).toBeVisible();
+  await page.screenshot({
+    path: 'artifacts/ai-planning-preview-longpress-action-mobile.png',
+    fullPage: true,
+  });
 
   await context.close();
 });
