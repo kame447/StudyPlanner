@@ -131,8 +131,22 @@ export function useScheduleItemActionPress<TItem>() {
   useEffect(() => {
     if (!activeAction) return;
     const dismissOnScroll = () => setActiveAction(null);
+    const dismissOnPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('[data-schedule-item-delete-action="true"]')
+      ) {
+        return;
+      }
+      setActiveAction(null);
+    };
     window.addEventListener('scroll', dismissOnScroll, true);
-    return () => window.removeEventListener('scroll', dismissOnScroll, true);
+    document.addEventListener('pointerdown', dismissOnPointerDown);
+    return () => {
+      window.removeEventListener('scroll', dismissOnScroll, true);
+      document.removeEventListener('pointerdown', dismissOnPointerDown);
+    };
   }, [activeAction]);
 
   useEffect(() => () => clearPress(), []);
