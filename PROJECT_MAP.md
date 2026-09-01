@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-30
+Updated: 2026-09-02
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -15,6 +15,14 @@ Repository work:
 4. 対象 domain の `README.md`
 5. domain canonical contract / current Issue / active work record
 6. current code and tests
+
+Scheduling / scheduled-event work:
+
+1. `docs/domains/scheduling/README.md`
+2. `docs/domains/scheduling/architecture/scheduled-event-authority.md`
+3. `docs/domains/scheduling/roadmap/current.md`
+4. Issue #278
+5. `src/domain/scheduleOccurrence.ts`
 
 Weekly planning:
 
@@ -94,6 +102,8 @@ React-level orchestration and state composition. Use for view/application lifecy
 ### `src/domain/`
 
 General deterministic domain rules that are not specific to weekly-planning internals.
+
+`src/domain/scheduleOccurrence.ts` owns the current compatibility read boundary for app-wide scheduled occurrences. Plan / MonthEvent / timetable source data may feed this resolver, but month/week/day/AI consumers must not recreate recurrence, occurrence identity or occupied-time semantics independently. The canonical contract is `docs/domains/scheduling/architecture/scheduled-event-authority.md` and the migration owner is Issue #278.
 
 ### `src/repositories/`
 
@@ -250,7 +260,7 @@ Issue #246's future consultation context assembly, advice lifecycle binding, sta
 
 Weekly-planning diagnostic observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
 
-Service-wide product analytics does not move into this directory. Product-observability consumes trace through a diagnostic adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
+Service-wide product analytics does not move into this directory. Product-observability consumes trace through a restricted adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
 
 If Issue #246 changes prompt/request/response/session/trace fields, the feature-local `AGENTS.md` trace persistence gate applies in the same implementation PR.
 
@@ -325,6 +335,7 @@ If consultation later consumes report aggregates, those deterministic values rem
 ## 9. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
+- scheduled-event occurrence / identity: `src/domain/scheduleOccurrence*.test.ts` under the scheduling domain contract
 - material metadata adapter/client: `workers/ai-proxy/src/materialMetadataApi.test.ts` / `src/services/materialMetadataService.test.ts`
 - material search manual fallback: `tests/e2e/bookshelf-material-search-fallback.spec.mjs`
 - reporting aggregation: `src/lib/learningReport.test.ts`
@@ -361,6 +372,8 @@ Choose the directory by change reason, not by current caller:
 
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
+- scheduled-event occurrence identity / recurrence expansion / busy projection → `src/domain/scheduleOccurrence.ts` under the scheduling domain contract
+- canonical scheduled-event persistence migration → repository persistence boundary under Issue #278 / scheduling domain contract
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
