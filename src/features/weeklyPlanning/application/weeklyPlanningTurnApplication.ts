@@ -2,7 +2,14 @@ import {
   isPlannerDataReadyForOwner,
   type PlannerDataAvailability,
 } from '../../../domain/plannerDataReadAuthority';
-import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  StudyMaterial,
+  TimetableTerm,
+} from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -47,6 +54,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   supplementalContext?: string;
   selectedDate: string;
   plans: Plan[];
+  monthEvents?: MonthEvent[];
   actuals?: Actual[];
   studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
@@ -85,6 +93,7 @@ export function submitWeeklyPlanningApplicationTurn(
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,
+        monthEvents: params.monthEvents,
         actuals: params.actuals,
         studyMaterials: params.studyMaterials,
         scheduleTemplates: params.scheduleTemplates,
