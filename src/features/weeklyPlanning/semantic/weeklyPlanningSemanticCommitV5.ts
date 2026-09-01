@@ -85,6 +85,7 @@ function removeResolvedWorkBreakdownUncertaintiesV5(params: {
   const uncertaintyIds = graph.uncertainties
     .filter((uncertainty) =>
       uncertainty.field === 'work_breakdown'
+      && typeof uncertainty.targetFactId === 'string'
       && resolvedTargetIds.has(uncertainty.targetFactId))
     .map((uncertainty) => uncertainty.id)
     .sort();
