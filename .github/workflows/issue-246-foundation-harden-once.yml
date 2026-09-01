@@ -1,0 +1,258 @@
+name: Harden Issue 246 foundation once
+
+on:
+  push:
+    branches:
+      - feat/issue-246-learning-consultation
+    paths:
+      - .github/workflows/issue-246-foundation-harden-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Sync current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge --no-edit origin/main
+      - name: Harden pure consultation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new))
+
+          replace_once(
+              'src/features/weeklyPlanning/consultation/contracts.ts',
+              "export interface ContextFingerprint {\n  version: typeof LEARNING_CONSULTATION_FINGERPRINT_VERSION;\n  digest: string;\n}",
+              "export interface ContextFingerprint {\n  version: typeof LEARNING_CONSULTATION_FINGERPRINT_VERSION;\n  digest: string;\n  canonicalBasis: string;\n}",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/contracts.ts',
+              '  weekStartsOn: number;',
+              '  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6;',
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/context.ts',
+              "  return {\n    version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,\n    digest: fnv1a32(stableSerialize(payload)),\n  };",
+              "  const canonicalBasis = stableSerialize(payload);\n  return {\n    version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,\n    digest: fnv1a32(canonicalBasis),\n    canonicalBasis,\n  };",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/context.ts',
+              '  return left.version === right.version && left.digest === right.digest;',
+              '  return left.version === right.version && left.canonicalBasis === right.canonicalBasis;',
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/state.test.ts',
+              "const fingerprint: ContextFingerprint = {\n  version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,\n  digest: 'abc12345',\n};",
+              "const fingerprint: ContextFingerprint = {\n  version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,\n  digest: 'abc12345',\n  canonicalBasis: 'fixture-basis',\n};",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/state.ts',
+              "  if (state.reviewDecisions.some(\n    (candidate) => candidate.targetAdviceId === proposal.adviceId\n      && candidate.expectedAdviceRevision === proposal.revision\n      && candidate.action === 'approve',\n  )) {\n    return { accepted: false, state, reason: 'adoption_already_consumed' };\n  }",
+              "  if (state.reviewDecisions.some(\n    (candidate) => candidate.targetAdviceId === proposal.adviceId\n      && candidate.expectedAdviceRevision === proposal.revision,\n  )) {\n    return { accepted: false, state, reason: 'review_already_consumed' };\n  }",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/state.ts',
+              "  return !state.reviewDecisions.some(\n    (decision) => decision.targetAdviceId === adviceId\n      && decision.expectedAdviceRevision === adviceRevision\n      && decision.action === 'approve',\n  );",
+              "  return !state.reviewDecisions.some(\n    (decision) => decision.targetAdviceId === adviceId\n      && decision.expectedAdviceRevision === adviceRevision,\n  );",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/state.test.ts',
+              "    expect(secondApprove).toMatchObject({ accepted: false, reason: 'adoption_already_consumed' });",
+              "    expect(secondApprove).toMatchObject({ accepted: false, reason: 'review_already_consumed' });",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/validation.ts',
+              "function isInteger(value: unknown): value is number {\n  return typeof value === 'number' && Number.isInteger(value);\n}",
+              "function isInteger(value: unknown): value is number {\n  return typeof value === 'number' && Number.isSafeInteger(value);\n}",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/validation.ts',
+              "        && isInteger(value.year)\n        && isInteger(value.month)\n        && value.month >= 1",
+              "        && isInteger(value.year)\n        && value.year >= 1\n        && value.year <= 9999\n        && isInteger(value.month)\n        && value.month >= 1",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/temporal.ts',
+              "    if (!Number.isInteger(candidate.year)\n        || !Number.isInteger(candidate.month)\n        || candidate.month < 1",
+              "    if (!Number.isSafeInteger(candidate.year)\n        || candidate.year < 1\n        || candidate.year > 9999\n        || !Number.isSafeInteger(candidate.month)\n        || candidate.month < 1",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/temporal.ts',
+              "    if (!Number.isInteger(candidate.offsetDays)) return { resolved: false, reason: 'invalid_exam_offset' };",
+              "    if (!Number.isSafeInteger(candidate.offsetDays)) return { resolved: false, reason: 'invalid_exam_offset' };",
+          )
+          replace_once(
+              'src/features/weeklyPlanning/consultation/temporal.ts',
+              "    const resolvedDate = formatIsoDate(addDays(examDate, candidate.offsetDays));\n    return {",
+              "    const resolved = addDays(examDate, candidate.offsetDays);\n    if (!Number.isFinite(resolved.getTime())) return { resolved: false, reason: 'resolved_date_out_of_range' };\n    const resolvedYear = resolved.getUTCFullYear();\n    if (resolvedYear < 1 || resolvedYear > 9999) return { resolved: false, reason: 'resolved_date_out_of_range' };\n    const resolvedDate = formatIsoDate(resolved);\n    return {",
+          )
+          PY
+
+          cat > src/features/weeklyPlanning/consultation/foundationSafety.test.ts <<'EOF'
+          import { describe, expect, it } from 'vitest';
+          import { readdirSync, readFileSync } from 'node:fs';
+          import { dirname, join } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          import {
+            LEARNING_CONSULTATION_ANSWER_VERSION,
+            LEARNING_CONSULTATION_FINGERPRINT_VERSION,
+            applyReviewDecision,
+            buildContextFingerprint,
+            commitAdviceProposal,
+            createConsultationSession,
+            isAdviceReviewable,
+            isTemporalCandidate,
+            resolveTemporalCandidate,
+            sameContextFingerprint,
+            type ContextFingerprint,
+            type ProposalAnswer,
+            type ReviewDecision,
+          } from './index';
+
+          const answer: ProposalAnswer = {
+            schemaVersion: LEARNING_CONSULTATION_ANSWER_VERSION,
+            kind: 'proposal',
+            userFacingAnswer: '案です。',
+            options: [{
+              title: '案',
+              strategySummary: '戦略',
+              recommendations: [{ recommendationKind: 'study_method', rationale: '理由', assumptionRefs: [], evidenceRefs: [], uncertainty: 'low' }],
+              tradeoffs: [],
+            }],
+            assumptions: [],
+            overallUncertainty: 'low',
+          };
+
+          const fingerprint: ContextFingerprint = {
+            version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,
+            digest: 'fixture',
+            canonicalBasis: 'fixture-basis',
+          };
+
+          function review(action: ReviewDecision['action'], revision: number, id: string): ReviewDecision {
+            return {
+              decisionId: id,
+              consultationId: 'consultation-1',
+              targetAdviceId: 'advice-1',
+              expectedAdviceRevision: 1,
+              expectedConsultationRevision: revision,
+              targetScope: { kind: 'proposal' },
+              action,
+              feedback: null,
+              sourceTurnId: `turn-${id}`,
+              decidedAt: '2026-09-02T01:00:00+09:00',
+            };
+          }
+
+          function proposalState() {
+            const initial = createConsultationSession({ consultationId: 'consultation-1', ownerId: 'owner-1', conversationId: 'conversation-1' });
+            const result = commitAdviceProposal(initial, {
+              adviceId: 'advice-1',
+              expectedConsultationRevision: 0,
+              sourceQuestionTurnId: 'turn-1',
+              answer,
+              contextFingerprint: fingerprint,
+              createdAt: '2026-09-02T01:00:00+09:00',
+            });
+            if (!result.accepted) throw new Error('fixture failed');
+            return result.state;
+          }
+
+          describe('learning consultation foundation hardening', () => {
+            it.each(['request_revision', 'request_alternative'] as const)(
+              'consumes the old reviewable leaf after %s',
+              (action) => {
+                const state = proposalState();
+                const first = applyReviewDecision(state, {
+                  ownerId: 'owner-1',
+                  conversationId: 'conversation-1',
+                  decision: review(action, state.revision, 'first'),
+                });
+                expect(first.accepted).toBe(true);
+                if (!first.accepted) return;
+                expect(isAdviceReviewable(first.state, 'advice-1', 1)).toBe(false);
+                const approve = applyReviewDecision(first.state, {
+                  ownerId: 'owner-1',
+                  conversationId: 'conversation-1',
+                  decision: review('approve', first.state.revision, 'approve'),
+                });
+                expect(approve).toMatchObject({ accepted: false, reason: 'review_already_consumed' });
+              },
+            );
+
+            it('uses exact canonical basis rather than the short display digest as freshness authority', () => {
+              const left = { version: LEARNING_CONSULTATION_FINGERPRINT_VERSION, digest: 'same-short-hash', canonicalBasis: 'basis-a' };
+              const right = { version: LEARNING_CONSULTATION_FINGERPRINT_VERSION, digest: 'same-short-hash', canonicalBasis: 'basis-b' };
+              expect(sameContextFingerprint(left, right)).toBe(false);
+
+              const built = buildContextFingerprint({
+                requestTemporalContext: { currentDate: '2026-09-02', currentDateTime: '2026-09-02T01:00:00+09:00', timezone: 'Asia/Tokyo', weekStartsOn: 1, authoritativeDates: {} },
+                sources: [], deterministicSignals: [], evidenceDigests: [], materialBindingBasis: [],
+              });
+              expect(built.canonicalBasis.length).toBeGreaterThan(0);
+            });
+
+            it('rejects temporal values that cannot fit the canonical four-digit date contract', () => {
+              expect(isTemporalCandidate({ kind: 'month_end', year: 10000, month: 1 })).toBe(false);
+              expect(resolveTemporalCandidate(
+                { kind: 'relative_to_exam', examRef: 'exam', offsetDays: Number.MAX_SAFE_INTEGER },
+                { currentDate: '2026-09-02', currentDateTime: '2026-09-02T01:00:00+09:00', timezone: 'Asia/Tokyo', weekStartsOn: 1, authoritativeDates: { exam: '2027-01-16' } },
+              )).toMatchObject({ resolved: false, reason: 'resolved_date_out_of_range' });
+            });
+
+            it('remains a dormant pure foundation with no production-runtime imports', () => {
+              const directory = dirname(fileURLToPath(import.meta.url));
+              const files = readdirSync(directory).filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'));
+              for (const name of files) {
+                const source = readFileSync(join(directory, name), 'utf8');
+                const imports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1]);
+                expect(imports.every((specifier) => specifier.startsWith('./'))).toBe(true);
+                expect(source).not.toContain('weeklyPlanningTurnController');
+                expect(source).not.toContain('useWeeklyPlanningApplication');
+                expect(source).not.toContain('firebase');
+                expect(source).not.toContain('OpenAI');
+              }
+            });
+          });
+          EOF
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Focused foundation tests
+        run: npm run test:run -- src/features/weeklyPlanning/consultation
+      - name: Full regression suite
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Commit hardened foundation and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/issue-246-foundation-harden-once.yml
+          git add src/features/weeklyPlanning/consultation
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: harden learning consultation foundation contracts"
+          git push origin HEAD:feat/issue-246-learning-consultation
