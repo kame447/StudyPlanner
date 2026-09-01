@@ -1,0 +1,26 @@
+name: Cleanup merged branches once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cleanup-merged-branches-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete explicitly verified merged branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete -- docs/concurrent-work-guard
+          git push origin --delete -- fix/issue-269-planner-data-availability
+          git push origin --delete -- fix/issue-270-weekly-turn-atomic-commit
