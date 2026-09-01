@@ -450,6 +450,7 @@ export default function App() {
                 selectedDate={selectedDate}
                 plans={plans}
                 actuals={actuals}
+                monthEvents={monthEvents}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
                 onRemoveWeeklyDraftBlock={
                   weeklyPlanning.canEditDraftBlocks
