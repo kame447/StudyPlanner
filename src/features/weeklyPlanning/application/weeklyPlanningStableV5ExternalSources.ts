@@ -1,94 +1,83 @@
-import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
-import { resolveTimetableTermForDate } from '../../../lib/timetableCalendar';
-import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
-import type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
-import { listCalendarDatesInclusive } from '../semantic/weeklyPlanningCalendarResolver';
+import {
+  createScheduleOccurrenceProjection,
+  type ScheduleOccurrenceProjection,
+  type ScheduleOccurrenceSourceKind,
+} from '../../../domain/scheduleOccurrence';
+import type {
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../../../types/domain';
+import type {
+  ExternalConstraintSourceSnapshot,
+} from '../semantic/weeklyPlanningAvailabilityResolver';
 
-function existingPlanSource(params: {
+function hasProjectionIssue(
+  projection: ScheduleOccurrenceProjection,
+  sourceKinds: readonly ScheduleOccurrenceSourceKind[],
+): boolean {
+  return projection.issues.some(
+    (issue) =>
+      issue.sourceKind === null ||
+      sourceKinds.includes(issue.sourceKind),
+  );
+}
+
+function failedSource(
+  kind: 'existing_plans' | 'timetable',
+  ownerId: string,
+): ExternalConstraintSourceSnapshot {
+  return {
+    kind,
+    status: 'failure',
+    ownerId,
+    activeSourceId: null,
+    failureKind: 'invalid_response',
+    attemptCount: 1,
+  };
+}
+
+function sourceFromProjection(params: {
+  kind: 'existing_plans' | 'timetable';
   ownerId: string;
-  plans: readonly Plan[];
-  horizon: { startDate: string; endDate: string } | null;
+  activeSourceId: string;
+  projection: ScheduleOccurrenceProjection;
+  sourceKinds: readonly ScheduleOccurrenceSourceKind[];
   timeZone: string;
 }): ExternalConstraintSourceSnapshot {
-  const dates = params.horizon
-    ? new Set(listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? [])
-    : new Set<string>();
+  if (hasProjectionIssue(params.projection, params.sourceKinds)) {
+    return failedSource(params.kind, params.ownerId);
+  }
+
   return {
-    kind: 'existing_plans',
+    kind: params.kind,
     status: 'success',
     ownerId: params.ownerId,
-    activeSourceId: 'studyplanner-existing-plans',
+    activeSourceId: params.activeSourceId,
     attemptCount: 1,
-    events: params.plans
-      .filter((plan) => dates.has(plan.date))
-      .map((plan) => ({
-        eventId: plan.id,
-        ownerId: params.ownerId,
-        start: { date: plan.date, time: plan.startTime },
-        end: { date: plan.date, time: plan.endTime },
+    events: params.projection.occurrences
+      .filter(
+        (occurrence) =>
+          occurrence.busy && params.sourceKinds.includes(occurrence.source.kind),
+      )
+      .map((occurrence) => ({
+        // Keep the source entity identity stable for downstream diagnostics. The
+        // occurrence itself remains uniquely identified inside the projection.
+        eventId: occurrence.source.id,
+        ownerId: occurrence.ownerId,
+        start: occurrence.start,
+        end: occurrence.end,
         timeZone: params.timeZone,
         constraintLevel: 'hard' as const,
       })),
   };
 }
 
-function timetableSource(params: {
-  ownerId: string;
-  templates: readonly ScheduleTemplate[];
-  timetableTermId?: string;
-  timetableTerm?: TimetableTerm | null;
-  timetableTerms?: readonly TimetableTerm[];
-  horizon: { startDate: string; endDate: string } | null;
-  timeZone: string;
-}): ExternalConstraintSourceSnapshot {
-  const dates = params.horizon
-    ? listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? []
-    : [];
-  const terms = params.timetableTerms ?? (params.timetableTerm ? [params.timetableTerm] : []);
-  const sourceTermId = params.timetableTermId ?? params.timetableTerm?.id ?? 'auto';
-
-  return {
-    kind: 'timetable',
-    status: 'success',
-    ownerId: params.ownerId,
-    activeSourceId: `studyplanner-timetable:${sourceTermId}`,
-    attemptCount: 1,
-    events: dates.flatMap((date) => {
-      const term = terms.length > 0
-        ? resolveTimetableTermForDate(date, terms, params.timetableTermId)
-        : params.timetableTerm ?? null;
-      const termId = term?.id ?? (terms.length === 0 ? params.timetableTermId ?? 'default' : null);
-
-      if (!termId) {
-        return [];
-      }
-
-      const templates = params.templates.filter(
-        (template) => (template.termId || 'default') === termId,
-      );
-
-      return buildTimetableImportCandidates({
-        templates,
-        date,
-        weekday: getRecurrenceWeekday(date),
-        termId,
-        term,
-      }).map((candidate) => ({
-        eventId: candidate.sourceId,
-        ownerId: params.ownerId,
-        start: { date, time: candidate.startTime },
-        end: { date, time: candidate.endTime },
-        timeZone: params.timeZone,
-        constraintLevel: 'hard' as const,
-      }));
-    }),
-  };
-}
-
 export function createStableV5ExternalConstraintSources(params: {
   ownerId: string;
   plans: readonly Plan[];
+  monthEvents?: readonly MonthEvent[];
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -96,20 +85,37 @@ export function createStableV5ExternalConstraintSources(params: {
   horizon: { startDate: string; endDate: string } | null;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot[] {
+  const projection = params.horizon
+    ? createScheduleOccurrenceProjection({
+        ownerId: params.ownerId,
+        startDate: params.horizon.startDate,
+        endDate: params.horizon.endDate,
+        plans: params.plans,
+        monthEvents: params.monthEvents,
+        scheduleTemplates: params.templates,
+        timetableTermId: params.timetableTermId,
+        timetableTerm: params.timetableTerm,
+        timetableTerms: params.timetableTerms,
+      })
+    : { occurrences: [], issues: [] };
+  const sourceTermId =
+    params.timetableTermId ?? params.timetableTerm?.id ?? 'auto';
+
   return [
-    existingPlanSource({
+    sourceFromProjection({
+      kind: 'existing_plans',
       ownerId: params.ownerId,
-      plans: params.plans,
-      horizon: params.horizon,
+      activeSourceId: 'studyplanner-existing-plans',
+      projection,
+      sourceKinds: ['plan', 'month-event'],
       timeZone: params.timeZone,
     }),
-    timetableSource({
+    sourceFromProjection({
+      kind: 'timetable',
       ownerId: params.ownerId,
-      templates: params.templates,
-      timetableTermId: params.timetableTermId,
-      timetableTerm: params.timetableTerm,
-      timetableTerms: params.timetableTerms,
-      horizon: params.horizon,
+      activeSourceId: `studyplanner-timetable:${sourceTermId}`,
+      projection,
+      sourceKinds: ['timetable'],
       timeZone: params.timeZone,
     }),
     {
