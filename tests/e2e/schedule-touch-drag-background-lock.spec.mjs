@@ -203,7 +203,7 @@ test('day long press drag locks background scrolling until release', async ({ br
   await context.close();
 });
 
-test('AI preview long press drag does not move the bottom sheet behind the draft', async ({ browser }) => {
+test('AI preview stationary long press waits for action while movement starts drag', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -227,14 +227,19 @@ test('AI preview long press drag does not move the bottom sheet behind the draft
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
-    .toBe(true);
+    .toBe(false);
 
   await dispatchTouch(session, 'touchMove', x, y + 80);
   await page.waitForTimeout(50);
 
+  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
+    .toBe(true);
   await expect(preview).not.toHaveClass(/is-bottom-sheet-dragging/);
   expect(
     await preview.evaluate((element) => element.style.getPropertyValue('--planner-bottom-sheet-drag-y')),
