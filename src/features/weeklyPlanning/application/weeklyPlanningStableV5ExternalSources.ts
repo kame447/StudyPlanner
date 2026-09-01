@@ -1,7 +1,7 @@
 import {
   createScheduleOccurrenceProjection,
+  type ScheduleOccurrence,
   type ScheduleOccurrenceProjection,
-  type ScheduleOccurrenceSourceKind,
 } from '../../../domain/scheduleOccurrence';
 import type {
   MonthEvent,
@@ -12,17 +12,6 @@ import type {
 import type {
   ExternalConstraintSourceSnapshot,
 } from '../semantic/weeklyPlanningAvailabilityResolver';
-
-function hasProjectionIssue(
-  projection: ScheduleOccurrenceProjection,
-  sourceKinds: readonly ScheduleOccurrenceSourceKind[],
-): boolean {
-  return projection.issues.some(
-    (issue) =>
-      issue.sourceKind === null ||
-      sourceKinds.includes(issue.sourceKind),
-  );
-}
 
 function failedSource(
   kind: 'existing_plans' | 'timetable',
@@ -43,10 +32,13 @@ function sourceFromProjection(params: {
   ownerId: string;
   activeSourceId: string;
   projection: ScheduleOccurrenceProjection;
-  sourceKinds: readonly ScheduleOccurrenceSourceKind[];
+  includeOccurrence: (occurrence: ScheduleOccurrence) => boolean;
   timeZone: string;
 }): ExternalConstraintSourceSnapshot {
-  if (hasProjectionIssue(params.projection, params.sourceKinds)) {
+  // Projection issues are ownership/range integrity failures. Fail both local
+  // schedule sources closed rather than guessing which downstream source can
+  // safely ignore a malformed mixed projection.
+  if (params.projection.issues.length > 0) {
     return failedSource(params.kind, params.ownerId);
   }
 
@@ -58,8 +50,7 @@ function sourceFromProjection(params: {
     attemptCount: 1,
     events: params.projection.occurrences
       .filter(
-        (occurrence) =>
-          occurrence.busy && params.sourceKinds.includes(occurrence.source.kind),
+        (occurrence) => occurrence.busy && params.includeOccurrence(occurrence),
       )
       .map((occurrence) => ({
         // Keep the source entity identity stable for downstream diagnostics. The
@@ -72,6 +63,17 @@ function sourceFromProjection(params: {
         constraintLevel: 'hard' as const,
       })),
   };
+}
+
+function isPersistedScheduleOccurrence(occurrence: ScheduleOccurrence): boolean {
+  return (
+    occurrence.source.backingKind === 'plan' ||
+    occurrence.source.backingKind === 'month-event'
+  );
+}
+
+function isTimetableTemplateOccurrence(occurrence: ScheduleOccurrence): boolean {
+  return occurrence.source.backingKind === 'timetable-template';
 }
 
 export function createStableV5ExternalConstraintSources(params: {
@@ -107,7 +109,7 @@ export function createStableV5ExternalConstraintSources(params: {
       ownerId: params.ownerId,
       activeSourceId: 'studyplanner-existing-plans',
       projection,
-      sourceKinds: ['plan', 'month-event'],
+      includeOccurrence: isPersistedScheduleOccurrence,
       timeZone: params.timeZone,
     }),
     sourceFromProjection({
@@ -115,7 +117,7 @@ export function createStableV5ExternalConstraintSources(params: {
       ownerId: params.ownerId,
       activeSourceId: `studyplanner-timetable:${sourceTermId}`,
       projection,
-      sourceKinds: ['timetable'],
+      includeOccurrence: isTimetableTemplateOccurrence,
       timeZone: params.timeZone,
     }),
     {
