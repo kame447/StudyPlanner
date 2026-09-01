@@ -34,7 +34,7 @@ function isStringArray(value: unknown): value is readonly string[] {
 }
 
 function isInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value);
+  return typeof value === 'number' && Number.isSafeInteger(value);
 }
 
 function isUncertainty(value: unknown): value is AdviceUncertainty {
@@ -62,6 +62,8 @@ export function isTemporalCandidate(value: unknown): value is TemporalCandidate 
     case 'month_end':
       return hasExactKeys(value, ['kind', 'year', 'month'])
         && isInteger(value.year)
+        && value.year >= 1
+        && value.year <= 9999
         && isInteger(value.month)
         && value.month >= 1
         && value.month <= 12;

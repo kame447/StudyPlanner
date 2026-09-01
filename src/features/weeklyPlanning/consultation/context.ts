@@ -114,9 +114,11 @@ export function buildContextFingerprint(input: ContextFingerprintInput): Context
     materialBindingBasis: [...input.materialBindingBasis].sort(),
   };
 
+  const canonicalBasis = stableSerialize(payload);
   return {
     version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,
-    digest: fnv1a32(stableSerialize(payload)),
+    digest: fnv1a32(canonicalBasis),
+    canonicalBasis,
   };
 }
 
@@ -124,5 +126,5 @@ export function sameContextFingerprint(
   left: ContextFingerprint,
   right: ContextFingerprint,
 ): boolean {
-  return left.version === right.version && left.digest === right.digest;
+  return left.version === right.version && left.canonicalBasis === right.canonicalBasis;
 }

@@ -143,10 +143,9 @@ export function applyReviewDecision(
   }
   if (state.reviewDecisions.some(
     (candidate) => candidate.targetAdviceId === proposal.adviceId
-      && candidate.expectedAdviceRevision === proposal.revision
-      && candidate.action === 'approve',
+      && candidate.expectedAdviceRevision === proposal.revision,
   )) {
-    return { accepted: false, state, reason: 'adoption_already_consumed' };
+    return { accepted: false, state, reason: 'review_already_consumed' };
   }
 
   const nextLifecycle = decision.action === 'dismiss' ? 'closed' : state.lifecycle;
@@ -195,7 +194,6 @@ export function isAdviceReviewable(
   if (state.activeAdviceId !== adviceId || state.activeAdviceRevision !== adviceRevision) return false;
   return !state.reviewDecisions.some(
     (decision) => decision.targetAdviceId === adviceId
-      && decision.expectedAdviceRevision === adviceRevision
-      && decision.action === 'approve',
+      && decision.expectedAdviceRevision === adviceRevision,
   );
 }

@@ -55,8 +55,10 @@ export function resolveTemporalCandidate(
   }
 
   if (candidate.kind === 'month_end') {
-    if (!Number.isInteger(candidate.year)
-        || !Number.isInteger(candidate.month)
+    if (!Number.isSafeInteger(candidate.year)
+        || candidate.year < 1
+        || candidate.year > 9999
+        || !Number.isSafeInteger(candidate.month)
         || candidate.month < 1
         || candidate.month > 12) {
       return { resolved: false, reason: 'invalid_month_end' };
@@ -76,12 +78,16 @@ export function resolveTemporalCandidate(
   }
 
   if (candidate.kind === 'relative_to_exam') {
-    if (!Number.isInteger(candidate.offsetDays)) return { resolved: false, reason: 'invalid_exam_offset' };
+    if (!Number.isSafeInteger(candidate.offsetDays)) return { resolved: false, reason: 'invalid_exam_offset' };
     const authoritativeDate = context.authoritativeDates[candidate.examRef];
     if (!authoritativeDate) return { resolved: false, reason: 'missing_authoritative_exam_date' };
     const examDate = parseIsoDate(authoritativeDate);
     if (!examDate) return { resolved: false, reason: 'invalid_authoritative_exam_date' };
-    const resolvedDate = formatIsoDate(addDays(examDate, candidate.offsetDays));
+    const resolved = addDays(examDate, candidate.offsetDays);
+    if (!Number.isFinite(resolved.getTime())) return { resolved: false, reason: 'resolved_date_out_of_range' };
+    const resolvedYear = resolved.getUTCFullYear();
+    if (resolvedYear < 1 || resolvedYear > 9999) return { resolved: false, reason: 'resolved_date_out_of_range' };
+    const resolvedDate = formatIsoDate(resolved);
     return {
       resolved: true,
       value: {

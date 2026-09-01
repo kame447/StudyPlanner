@@ -66,13 +66,14 @@ export interface ContextFingerprintInput {
 export interface ContextFingerprint {
   version: typeof LEARNING_CONSULTATION_FINGERPRINT_VERSION;
   digest: string;
+  canonicalBasis: string;
 }
 
 export interface RequestTemporalContext {
   currentDate: string;
   currentDateTime: string;
   timezone: string;
-  weekStartsOn: number;
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   authoritativeDates: Readonly<Record<string, string>>;
 }
 

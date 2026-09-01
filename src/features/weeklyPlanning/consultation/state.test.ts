@@ -18,6 +18,7 @@ import {
 const fingerprint: ContextFingerprint = {
   version: LEARNING_CONSULTATION_FINGERPRINT_VERSION,
   digest: 'abc12345',
+  canonicalBasis: 'fixture-basis',
 };
 
 function answer(title: string): ProposalAnswer {
@@ -211,7 +212,7 @@ describe('learning consultation state foundation', () => {
         consultationRevision: 2,
       }),
     });
-    expect(secondApprove).toMatchObject({ accepted: false, reason: 'adoption_already_consumed' });
+    expect(secondApprove).toMatchObject({ accepted: false, reason: 'review_already_consumed' });
   });
 
   it('never accepts more than one approve in an arbitrary retry sequence', () => {
