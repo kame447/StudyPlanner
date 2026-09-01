@@ -2,7 +2,7 @@ import {
   createScheduleOccurrenceProjection,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
-import { addDays, getMonthWeeks, minutesBetween } from './date';
+import { addDays, getMonthGrid, minutesBetween } from './date';
 import { sortMonthEvents } from './monthEvents';
 import {
   isStudyRecordForDisplay,
@@ -16,6 +16,14 @@ export interface MonthGridCell {
   inCurrentMonth: boolean;
 }
 
+export interface MonthCalendarWeek {
+  index: number;
+  startDate: string;
+  endDate: string;
+  label: string;
+  dates: string[];
+}
+
 export interface MonthCellProjection extends MonthGridCell {
   targetMinutes: number;
   actualMinutes: number;
@@ -23,25 +31,34 @@ export interface MonthCellProjection extends MonthGridCell {
 }
 
 export interface MonthPanelProjection {
-  weeks: ReturnType<typeof getMonthWeeks>;
+  weeks: MonthCalendarWeek[];
   cells: MonthCellProjection[];
 }
 
 export function buildMonthGrid(monthDate: string): {
-  weeks: ReturnType<typeof getMonthWeeks>;
+  weeks: MonthCalendarWeek[];
   cells: MonthGridCell[];
 } {
-  const weeks = getMonthWeeks(monthDate);
+  // The month calendar is a stable 6 x 7 ARIA grid. `getMonthWeeks` is
+  // intentionally variable-width for reporting/week pickers, so the calendar
+  // must derive its rows from the fixed 42-cell grid instead of reusing that
+  // reporting-oriented helper.
+  const cells = getMonthGrid(monthDate);
+  const weeks = Array.from({ length: 6 }, (_, index): MonthCalendarWeek => {
+    const dates = cells
+      .slice(index * 7, index * 7 + 7)
+      .map((cell) => cell.date);
 
-  return {
-    weeks,
-    cells: weeks.flatMap((week) =>
-      week.dates.map((date) => ({
-        date,
-        inCurrentMonth: date.startsWith(monthDate.slice(0, 7)),
-      })),
-    ),
-  };
+    return {
+      index,
+      startDate: dates[0] ?? '',
+      endDate: dates[6] ?? '',
+      label: `第${index + 1}週`,
+      dates,
+    };
+  });
+
+  return { weeks, cells };
 }
 
 function occurrenceEndForMonthEvent(occurrence: ScheduleOccurrence): {
