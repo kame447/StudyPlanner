@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
 import { addDays, formatDateLabel, sortByDateTime } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
@@ -7,7 +8,7 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
-import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import { sortMonthEvents } from '../lib/monthEvents';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -133,18 +134,59 @@ export function DayView({
     onNext: () => onChangeDay(addDays(selectedDate, 1)),
     disabled: modalState.type !== 'closed',
   });
+  const dayScheduleProjection = useMemo(
+    () =>
+      createScheduleOccurrenceProjection({
+        ownerId: userId,
+        startDate: selectedDate,
+        endDate: selectedDate,
+        plans,
+        monthEvents,
+      }),
+    [monthEvents, plans, selectedDate, userId],
+  );
   const dayPlans = useMemo(
     () => sortByDateTime(expandPlansForDate(plans, selectedDate)),
     [plans, selectedDate],
   );
+  const monthEventById = useMemo(
+    () => new Map(monthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
+    [monthEvents],
+  );
+  const dayMonthEventOccurrences = useMemo(
+    () =>
+      dayScheduleProjection.occurrences.filter(
+        (occurrence) => occurrence.source.backingKind === 'month-event',
+      ),
+    [dayScheduleProjection.occurrences],
+  );
   const dayMonthEvents = useMemo(
     () =>
       sortMonthEvents(
-        monthEvents.filter((monthEvent) =>
-          doesMonthEventOccurOnDate(monthEvent, selectedDate),
-        ),
+        dayMonthEventOccurrences.flatMap((occurrence) => {
+          const monthEvent = monthEventById.get(occurrence.source.backingId);
+          if (!monthEvent) return [];
+          return [
+            {
+              ...monthEvent,
+              date: selectedDate,
+              endDate: selectedDate,
+              startTime:
+                occurrence.start.date === selectedDate
+                  ? occurrence.start.time
+                  : '00:00',
+              endTime:
+                occurrence.end.date === selectedDate
+                  ? occurrence.end.time
+                  : '24:00',
+              repeat: 'none' as const,
+              repeatUntil: null,
+              excludedDates: [],
+            },
+          ];
+        }),
       ),
-    [monthEvents, selectedDate],
+    [dayMonthEventOccurrences, monthEventById, selectedDate],
   );
   const dayMonthEventPlans = useMemo(
     () =>
@@ -180,8 +222,14 @@ export function DayView({
     [actuals, dayOccurrenceKeys, selectedDate],
   );
   const dayMonthEventMap = useMemo(
-    () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
-    [dayMonthEvents],
+    () =>
+      new Map(
+        dayMonthEventOccurrences.flatMap((occurrence) => {
+          const monthEvent = monthEventById.get(occurrence.source.backingId);
+          return monthEvent ? [[monthEvent.id, monthEvent] as const] : [];
+        }),
+      ),
+    [dayMonthEventOccurrences, monthEventById],
   );
   const selectedWeekday = getRecurrenceWeekday(selectedDate);
   const resolvedTimetableTerm = useMemo(
