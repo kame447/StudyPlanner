@@ -1,7 +1,9 @@
-import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
-import { getMonthWeeks, minutesBetween } from './date';
-import { doesMonthEventOccurOnDate, sortMonthEvents } from './monthEvents';
-import { expandPlansForDateRange } from './planRecurrence';
+import {
+  createScheduleOccurrenceProjection,
+  type ScheduleOccurrence,
+} from '../domain/scheduleOccurrence';
+import { addDays, getMonthWeeks, minutesBetween } from './date';
+import { sortMonthEvents } from './monthEvents';
 import {
   isStudyRecordForDisplay,
   normalizeStudyRecordsForDisplay,
@@ -42,36 +44,91 @@ export function buildMonthGrid(monthDate: string): {
   };
 }
 
-function projectNonStudyPlanAsMonthEvent(
-  plan: Plan,
-  occurrenceDate: string,
-): MonthEvent {
+function occurrenceEndForMonthEvent(occurrence: ScheduleOccurrence): {
+  endDate: string;
+  endTime: string;
+} {
+  if (
+    occurrence.end.time === '00:00' &&
+    occurrence.end.date.localeCompare(occurrence.start.date) > 0
+  ) {
+    return {
+      endDate: addDays(occurrence.end.date, -1),
+      endTime: '24:00',
+    };
+  }
+
   return {
-    id: `plan-occurrence:${plan.id}:${occurrenceDate}`,
-    userId: plan.userId,
-    date: occurrenceDate,
-    title: plan.title,
-    startTime: plan.startTime,
-    endTime: plan.endTime,
-    repeat: 'none',
-    repeatUntil: null,
-    excludedDates: [],
-    url: '',
-    memo: plan.memo,
-    checklist: [],
-    locationTags: [],
-    createdAt: plan.createdAt,
-    updatedAt: plan.updatedAt,
+    endDate: occurrence.end.date,
+    endTime: occurrence.end.time,
   };
+}
+
+function projectOccurrenceAsMonthEvent(params: {
+  occurrence: ScheduleOccurrence;
+  planById: Map<string, Plan>;
+  monthEventById: Map<string, MonthEvent>;
+}): MonthEvent | null {
+  const { occurrence, planById, monthEventById } = params;
+  if (occurrence.category === 'study') {
+    return null;
+  }
+
+  const end = occurrenceEndForMonthEvent(occurrence);
+
+  if (occurrence.source.backingKind === 'plan') {
+    const plan = planById.get(occurrence.source.backingId);
+    if (!plan) return null;
+
+    return {
+      id: occurrence.id,
+      userId: occurrence.ownerId,
+      date: occurrence.start.date,
+      endDate: end.endDate,
+      title: occurrence.title,
+      startTime: occurrence.start.time,
+      endTime: end.endTime,
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      url: '',
+      memo: plan.memo,
+      checklist: [],
+      locationTags: [],
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+    };
+  }
+
+  if (occurrence.source.backingKind === 'month-event') {
+    const monthEvent = monthEventById.get(occurrence.source.backingId);
+    if (!monthEvent) return null;
+
+    return {
+      ...monthEvent,
+      id: occurrence.id,
+      date: occurrence.start.date,
+      endDate: end.endDate,
+      startTime: occurrence.start.time,
+      endTime: end.endTime,
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+    };
+  }
+
+  return null;
 }
 
 export function buildMonthPanelProjection({
   monthDate,
+  userId,
   plans,
   actuals,
   monthEvents,
 }: {
   monthDate: string;
+  userId?: string;
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
@@ -79,25 +136,7 @@ export function buildMonthPanelProjection({
   const { weeks, cells } = buildMonthGrid(monthDate);
   const firstDate = cells[0]?.date;
   const lastDate = cells[cells.length - 1]?.date;
-  const planOccurrences =
-    firstDate && lastDate
-      ? expandPlansForDateRange(plans, firstDate, lastDate)
-      : [];
-  const studyPlanMinutesByDate = new Map<string, number>();
-
-  planOccurrences.forEach((plan) => {
-    if (plan.type !== 'study') {
-      return;
-    }
-
-    studyPlanMinutesByDate.set(
-      plan.date,
-      (studyPlanMinutesByDate.get(plan.date) ?? 0) +
-        minutesBetween(plan.startTime, plan.endTime),
-    );
-  });
-
-  const ownerId = plans[0]?.userId ?? monthEvents[0]?.userId ?? '';
+  const ownerId = userId ?? plans[0]?.userId ?? monthEvents[0]?.userId ?? '';
   const scheduleProjection =
     firstDate && lastDate && ownerId
       ? createScheduleOccurrenceProjection({
@@ -108,21 +147,32 @@ export function buildMonthPanelProjection({
           monthEvents,
         })
       : { occurrences: [], issues: [] };
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const projectedPlanEvents = scheduleProjection.occurrences.flatMap((occurrence) => {
+  const studyPlanMinutesByDate = new Map<string, number>();
+
+  scheduleProjection.occurrences.forEach((occurrence) => {
     if (
-      occurrence.category === 'study' ||
+      occurrence.category !== 'study' ||
       occurrence.source.backingKind !== 'plan'
     ) {
-      return [];
+      return;
     }
 
-    const plan = planById.get(occurrence.source.backingId);
-    if (!plan) {
-      return [];
-    }
+    studyPlanMinutesByDate.set(
+      occurrence.start.date,
+      (studyPlanMinutesByDate.get(occurrence.start.date) ?? 0) +
+        minutesBetween(occurrence.start.time, occurrence.end.time),
+    );
+  });
 
-    return [projectNonStudyPlanAsMonthEvent(plan, occurrence.start.date)];
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const monthEventById = new Map(monthEvents.map((monthEvent) => [monthEvent.id, monthEvent]));
+  const projectedMonthEvents = scheduleProjection.occurrences.flatMap((occurrence) => {
+    const projected = projectOccurrenceAsMonthEvent({
+      occurrence,
+      planById,
+      monthEventById,
+    });
+    return projected ? [projected] : [];
   });
 
   const actualStudyRecords =
@@ -143,12 +193,12 @@ export function buildMonthPanelProjection({
       actualMinutes: sumStudyRecordMinutes(
         actualStudyRecords.filter((record) => record.date === cell.date),
       ),
-      monthEvents: sortMonthEvents([
-        ...monthEvents.filter((monthEvent) =>
-          doesMonthEventOccurOnDate(monthEvent, cell.date),
-        ),
-        ...projectedPlanEvents.filter((event) => event.date === cell.date),
-      ]),
+      monthEvents: sortMonthEvents(
+        projectedMonthEvents.filter((event) => {
+          const endDate = event.endDate ?? event.date;
+          return event.date <= cell.date && cell.date <= endDate;
+        }),
+      ),
     })),
   };
 }
