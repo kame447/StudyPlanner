@@ -765,13 +765,33 @@ export function AiPlanningPreviewDialog({
                           <strong>{block.title}</strong>
                           <small>{block.startTime}-{block.endTime}</small>
                           <button
-                            className="quick-add-option-icon ai-planning-preview-remove-action"
+                            className="quick-add-option-icon"
                             type="button"
                             aria-label={`${block.title}を計画から除外`}
                             aria-hidden={!isActionActive}
                             tabIndex={isActionActive ? 0 : -1}
                             title="この予定を除外"
                             disabled={isBusy}
+                            style={{
+                              position: 'absolute',
+                              top: '3px',
+                              right: '3px',
+                              zIndex: 4,
+                              width: '30px',
+                              height: '30px',
+                              minWidth: '30px',
+                              minHeight: '30px',
+                              flex: '0 0 30px',
+                              padding: 0,
+                              opacity: isActionActive ? 1 : 0,
+                              pointerEvents: isActionActive ? 'auto' : 'none',
+                              transform: isActionActive
+                                ? 'translate3d(0, 0, 0) scale(1)'
+                                : 'translate3d(14px, 0, 0) scale(0.86)',
+                              transformOrigin: 'right center',
+                              transition:
+                                'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease-in',
+                            }}
                             onPointerDown={(event) => event.stopPropagation()}
                             onTouchStart={(event) => event.stopPropagation()}
                             onClick={(event) => {
