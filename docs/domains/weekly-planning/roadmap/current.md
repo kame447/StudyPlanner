@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-01
+Updated: 2026-09-02
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -67,9 +67,11 @@ research / comparable OSS review
 → canonical current-contract promotion
 ```
 
-The documentation/architecture gate is closed as of 2026-08-31. Pure consultation contracts, state machines, validators and deterministic tests may proceed on the existing Issue #246 branch without mutating production Stable V5 state. The owner boundaries previously tracked by Issue #269 and Issue #270 are now merged on main: #246 must consume the planner-data availability contract from PR #274 and the atomic formal-turn boundary from PR #272 rather than recreating them. Other owner-domain dependencies such as #152, #164, #187 and #51 remain outside #246 and must likewise be consumed instead of duplicated.
+The documentation/architecture gate is closed. Phase 1A pure foundation is implemented in PR #280 as dormant domain code only: typed turn-purpose and active-interaction contracts, consultation state/revision/review boundaries, strict answer validation, source availability/freshness fingerprinting, structured temporal normalization, promotion-coverage checking, and deterministic/property regressions. The foundation has an architecture guard that forbids production weekly-planning runtime, provider, Firebase, scheduler, save, or UI imports from this directory. Merging Phase 1A therefore does not route any production turn into consultation and does not call an advice model.
 
-Do not implement consultation by adding prompt rules or raw-text routing outside the canonical requirement. The closed documentation gate does not make consultation a production guarantee; runtime implementation and verification are still required.
+The owner boundaries previously tracked by Issue #269 and Issue #270 are already merged on main. A later integration phase must consume the planner-data availability contract from PR #274 and the atomic formal-turn boundary from PR #272 rather than recreating them. Other owner-domain dependencies such as #152, #164, #187 and #51 remain outside #246 and must likewise be consumed instead of duplicated. Runtime routing, answer-provider execution, consultation persistence, live material/provenance resolution, promotion into Stable V5, scheduler/preview/Plan save, and UI wiring remain explicitly deferred after Phase 1A.
+
+Do not implement consultation by adding prompt rules or raw-text routing outside the canonical requirement. A completed pure foundation does not make consultation a production guarantee; later runtime integration and verification are still required.
 
 Implementation invariants:
 
@@ -93,7 +95,7 @@ This Issue is independent from Issue #152, but its implementation must consume t
 - Issue #51: multi-device approval uniqueness.
 - Issue #128: saved-preview migration/compatibility.
 - Issue #164: client-first execution, owned by the separate [client-runtime domain](../../client-runtime/README.md).
-- Issue #246: pre-scheduling learning consultation/advice. The pre-implementation documentation gate is closed; pure implementation may proceed and production wiring consumes the merged #269/#270 owner contracts plus the remaining owner-domain dependencies above.
+- Issue #246: pre-scheduling learning consultation/advice. Phase 1A is isolated foundation-only work in PR #280; production integration remains deferred and must consume the merged #269/#270 owner contracts plus the remaining owner-domain dependencies above.
 
 ## Architecture direction
 
