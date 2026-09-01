@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { useTimelineDragController } from '../hooks/useTimelineDragController';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
@@ -40,27 +40,22 @@ interface PreviewGroup {
   existingPlans: Plan[];
 }
 
+interface PreviewActionPress {
+  blockId: string;
+  inputKind: 'pointer' | 'touch';
+  startX: number;
+  startY: number;
+  startedAt: number;
+  moved: boolean;
+  timerId: number | null;
+}
+
 const HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 const MINUTES_PER_DAY = 24 * 60;
 const DAY_DETAIL_HOUR_HEIGHT = 38;
-const REMOVE_BLOCK_BUTTON_STYLE: CSSProperties = {
-  position: 'absolute',
-  top: '3px',
-  right: '3px',
-  zIndex: 3,
-  width: '28px',
-  height: '28px',
-  display: 'grid',
-  placeItems: 'center',
-  padding: 0,
-  border: '1px solid var(--border)',
-  borderRadius: '999px',
-  background: 'var(--surface-strong)',
-  color: 'var(--text-primary)',
-  cursor: 'pointer',
-  touchAction: 'manipulation',
-};
+const PREVIEW_ACTION_LONG_PRESS_MS = 240;
+const PREVIEW_ACTION_MOVE_TOLERANCE_PX = 9;
 
 function formatDateLabel(date: string): string {
   const value = new Date(`${date}T00:00:00`);
@@ -126,6 +121,8 @@ export function AiPlanningPreviewDialog({
   const [pageIndex, setPageIndex] = useState(0);
   const [selectedDate, setSelectedDate] = useState('');
   const [editableBlocks, setEditableBlocks] = useState<WeeklyPlanDraftBlock[]>(blocks);
+  const [activeActionBlockId, setActiveActionBlockId] = useState<string | null>(null);
+  const actionPressRef = useRef<PreviewActionPress | null>(null);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const sourceSignature = useMemo(
     () =>
@@ -173,6 +170,71 @@ export function AiPlanningPreviewDialog({
   } satisfies CSSProperties;
   const detailTimelineHeight = 24 * DAY_DETAIL_HOUR_HEIGHT;
 
+  function clearActionPress() {
+    const press = actionPressRef.current;
+    if (press?.timerId !== null && press?.timerId !== undefined) {
+      window.clearTimeout(press.timerId);
+    }
+    actionPressRef.current = null;
+  }
+
+  function startActionPress(
+    blockId: string,
+    inputKind: PreviewActionPress['inputKind'],
+    x: number,
+    y: number,
+    revealWhileHeld: boolean,
+  ) {
+    clearActionPress();
+    const press: PreviewActionPress = {
+      blockId,
+      inputKind,
+      startX: x,
+      startY: y,
+      startedAt: Date.now(),
+      moved: false,
+      timerId: null,
+    };
+    actionPressRef.current = press;
+
+    if (!revealWhileHeld) return;
+    press.timerId = window.setTimeout(() => {
+      if (actionPressRef.current !== press || press.moved) return;
+      setActiveActionBlockId(blockId);
+    }, PREVIEW_ACTION_LONG_PRESS_MS);
+  }
+
+  function updateActionPress(x: number, y: number) {
+    const press = actionPressRef.current;
+    if (!press || press.moved) return;
+    if (
+      Math.hypot(x - press.startX, y - press.startY) <=
+      PREVIEW_ACTION_MOVE_TOLERANCE_PX
+    ) {
+      return;
+    }
+
+    press.moved = true;
+    if (press.timerId !== null) {
+      window.clearTimeout(press.timerId);
+      press.timerId = null;
+    }
+    if (activeActionBlockId === press.blockId) {
+      setActiveActionBlockId(null);
+    }
+  }
+
+  function finishTouchActionPress(blockId: string): boolean {
+    const press = actionPressRef.current;
+    const shouldReveal =
+      press?.inputKind === 'touch' &&
+      press.blockId === blockId &&
+      !press.moved &&
+      Date.now() - press.startedAt >= PREVIEW_ACTION_LONG_PRESS_MS;
+    clearActionPress();
+    return shouldReveal;
+  }
+
   function applyBlockTarget(blockId: string, target: WeekPlanMoveTarget) {
     const updatedAt = new Date().toISOString();
     setEditableBlocks((current) =>
@@ -208,7 +270,19 @@ export function AiPlanningPreviewDialog({
     setMode('overview');
     setPageIndex(0);
     setSelectedDate('');
+    setActiveActionBlockId(null);
+    clearActionPress();
   }, [sourceSignature]);
+
+  useEffect(
+    () => () => {
+      const press = actionPressRef.current;
+      if (press?.timerId !== null && press?.timerId !== undefined) {
+        window.clearTimeout(press.timerId);
+      }
+    },
+    [],
+  );
 
   function openDay(date: string) {
     setSelectedDate(date);
@@ -250,6 +324,13 @@ export function AiPlanningPreviewDialog({
           aria-modal="true"
           aria-label="計画プレビュー"
           onClick={(event) => event.stopPropagation()}
+          onPointerDownCapture={(event) => {
+            if (!activeActionBlockId) return;
+            const target = event.target as HTMLElement;
+            const actionBlock = target.closest<HTMLElement>('[data-ai-preview-action-block]');
+            if (actionBlock?.dataset.aiPreviewActionBlock === activeActionBlockId) return;
+            setActiveActionBlockId(null);
+          }}
         >
           <header className="ai-planning-preview-header">
             <button type="button" onClick={onClose}>
@@ -327,7 +408,7 @@ export function AiPlanningPreviewDialog({
                 </button>
               </div>
 
-              <p className="ai-planning-preview-hint">予定をドラッグして日時を調整できます。日付をタップすると、その日を大きく表示します。日別表示では予定ごとに除外できます。</p>
+              <p className="ai-planning-preview-hint">予定をドラッグして日時を調整できます。日付をタップすると、その日を大きく表示します。日別表示では予定を長押しして操作できます。</p>
 
               <div className="ai-planning-preview-scroll ai-planning-preview-overview-scroll">
                 <div className="ai-planning-week-grid ai-planning-preview-overview-grid">
@@ -566,6 +647,7 @@ export function AiPlanningPreviewDialog({
                             dayColumnSelector: '.ai-planning-preview-day-column-detail',
                           }
                         : null;
+                      const isActionActive = activeActionBlockId === block.id;
 
                       return (
                         <div
@@ -577,32 +659,104 @@ export function AiPlanningPreviewDialog({
                             dragController.isDragging(`day:${block.id}`)
                               ? 'is-drag-source'
                               : '',
+                            isActionActive ? 'is-action-active' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
+                          data-ai-preview-action-block={block.id}
                           key={block.id}
-                          style={{
-                            ...detailBlockStyle(block.startTime, block.endTime),
-                            paddingRight: '38px',
-                          }}
+                          style={detailBlockStyle(block.startTime, block.endTime)}
                           title={`${block.title} ${block.startTime}-${block.endTime}`}
-                          aria-label={`${block.title} ${block.startTime}から${block.endTime}。長押しまたはドラッグで移動`}
+                          aria-label={`${block.title} ${block.startTime}から${block.endTime}。長押しで操作、長押しして動かすと移動`}
                           onPointerDown={
                             dragDescriptor
-                              ? (event) => dragController.handlePointerDown(event, dragDescriptor)
+                              ? (event) => {
+                                  if (
+                                    event.pointerType !== 'touch' &&
+                                    event.button === 0 &&
+                                    event.isPrimary
+                                  ) {
+                                    startActionPress(
+                                      block.id,
+                                      'pointer',
+                                      event.clientX,
+                                      event.clientY,
+                                      true,
+                                    );
+                                  }
+                                  dragController.handlePointerDown(event, dragDescriptor);
+                                }
                               : undefined
                           }
-                          onPointerMove={dragDescriptor ? dragController.handlePointerMove : undefined}
-                          onPointerUp={dragDescriptor ? dragController.handlePointerUp : undefined}
-                          onPointerCancel={dragDescriptor ? dragController.handlePointerCancel : undefined}
+                          onPointerMove={
+                            dragDescriptor
+                              ? (event) => {
+                                  if (event.pointerType !== 'touch') {
+                                    updateActionPress(event.clientX, event.clientY);
+                                  }
+                                  dragController.handlePointerMove(event);
+                                }
+                              : undefined
+                          }
+                          onPointerUp={
+                            dragDescriptor
+                              ? (event) => {
+                                  if (event.pointerType !== 'touch') clearActionPress();
+                                  dragController.handlePointerUp(event);
+                                }
+                              : undefined
+                          }
+                          onPointerCancel={
+                            dragDescriptor
+                              ? () => {
+                                  clearActionPress();
+                                  dragController.handlePointerCancel();
+                                }
+                              : undefined
+                          }
                           onTouchStart={
                             dragDescriptor
-                              ? (event) => dragController.handleTouchStart(event, dragDescriptor)
+                              ? (event) => {
+                                  const touch = event.touches[0];
+                                  if (touch) {
+                                    startActionPress(
+                                      block.id,
+                                      'touch',
+                                      touch.clientX,
+                                      touch.clientY,
+                                      false,
+                                    );
+                                  }
+                                  dragController.handleTouchStart(event, dragDescriptor);
+                                }
                               : undefined
                           }
-                          onTouchMove={dragDescriptor ? dragController.handleTouchMove : undefined}
-                          onTouchEnd={dragDescriptor ? dragController.handleTouchEnd : undefined}
-                          onTouchCancel={dragDescriptor ? dragController.handleTouchCancel : undefined}
+                          onTouchMove={
+                            dragDescriptor
+                              ? (event) => {
+                                  const touch = event.touches[0];
+                                  if (touch) updateActionPress(touch.clientX, touch.clientY);
+                                  dragController.handleTouchMove(event);
+                                }
+                              : undefined
+                          }
+                          onTouchEnd={
+                            dragDescriptor
+                              ? (event) => {
+                                  const shouldReveal = finishTouchActionPress(block.id);
+                                  dragController.handleTouchEnd(event);
+                                  if (shouldReveal) setActiveActionBlockId(block.id);
+                                }
+                              : undefined
+                          }
+                          onTouchCancel={
+                            dragDescriptor
+                              ? () => {
+                                  clearActionPress();
+                                  dragController.handleTouchCancel();
+                                }
+                              : undefined
+                          }
                           onContextMenu={
                             dragDescriptor ? (event) => event.preventDefault() : undefined
                           }
@@ -610,23 +764,22 @@ export function AiPlanningPreviewDialog({
                           <strong>{block.title}</strong>
                           <small>{block.startTime}-{block.endTime}</small>
                           <button
+                            className="quick-add-option-icon ai-planning-preview-remove-action"
                             type="button"
                             aria-label={`${block.title}を計画から除外`}
+                            aria-hidden={!isActionActive}
+                            tabIndex={isActionActive ? 0 : -1}
                             title="この予定を除外"
                             disabled={isBusy}
-                            style={{
-                              ...REMOVE_BLOCK_BUTTON_STYLE,
-                              cursor: isBusy ? 'default' : 'pointer',
-                              opacity: isBusy ? 0.45 : 1,
-                            }}
                             onPointerDown={(event) => event.stopPropagation()}
                             onTouchStart={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
+                              setActiveActionBlockId(null);
                               onRemove(block.id);
                             }}
                           >
-                            <X size={15} aria-hidden="true" />
+                            <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
                           </button>
                         </div>
                       );
