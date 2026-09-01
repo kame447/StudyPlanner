@@ -448,6 +448,7 @@ export default function App() {
             {viewMode === 'week' ? (
               <WeekView
                 selectedDate={selectedDate}
+                userId={user.id}
                 plans={plans}
                 actuals={actuals}
                 monthEvents={monthEvents}
@@ -459,6 +460,8 @@ export default function App() {
                 }
                 onOpenPlan={openEditPlan}
                 onMovePlan={movePlanOccurrence}
+                onDeletePlan={deletePlan}
+                onDeleteMonthEvent={deleteMonthEvent}
                 onOpenDay={openDay}
               />
             ) : null}
@@ -486,6 +489,7 @@ export default function App() {
                 onEditPlan={openEditPlan}
                 onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
+                onDeleteMonthEvent={deleteMonthEvent}
                 onSavePlan={savePlanDraft}
                 onSaveActual={saveActual}
                 onSaveStandaloneActual={saveStandaloneActual}
