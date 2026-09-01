@@ -163,6 +163,7 @@ export default function App() {
     userId: user?.id,
     selectedDate,
     plans,
+    monthEvents,
     actuals,
     studyMaterials,
     scheduleTemplates,
