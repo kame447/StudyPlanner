@@ -37,9 +37,9 @@ Phase 1/2では既存persistenceを破壊しない。
 
 ## Identity
 
-Occurrence identityは「source entity + occurrence start」に基づく。
+Occurrence identityは、compatibility期間では「logical source entity + occurrence date」を基準にする。開始時刻は編集可能な属性でありidentityへ含めない。
 
-重要な例外として、時間割templateからimport済みのPlanは、templateと別予定として二重計上しない。同じ`sourceId`と同じ発生日を同じlogical occurrenceとして扱い、保存済みPlanを優先する。
+特に、時間割templateからimport済みのPlanはtemplateと別予定として二重計上しない。同じ`sourceId`と同じ発生日を同じlogical occurrenceとして扱い、保存済みPlanを優先する。これによりimport後に時刻を編集してもtemplate occurrenceが別件として復活しない。
 
 表示surfaceが独自IDを再生成してはならない。
 
