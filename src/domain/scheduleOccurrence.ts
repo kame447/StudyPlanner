@@ -144,10 +144,11 @@ function categoryForPlan(plan: Plan): ScheduleOccurrenceCategory {
 }
 
 function sourceForPlan(plan: Plan): ScheduleOccurrenceSource {
-  if (plan.sourceType === 'timetable' && plan.sourceId?.trim()) {
+  const timetableSourceId = plan.sourceId?.trim();
+  if (plan.sourceType === 'timetable' && timetableSourceId) {
     return {
       kind: 'timetable',
-      id: plan.sourceId,
+      id: timetableSourceId,
       backingKind: 'plan',
       backingId: plan.id,
     };
@@ -164,7 +165,9 @@ function occurrenceId(
   source: Pick<ScheduleOccurrenceSource, 'kind' | 'id'>,
   start: ScheduleOccurrencePoint,
 ): string {
-  return `${source.kind}:${source.id}:${start.date}T${start.time}`;
+  // Identity is the logical source occurrence, not its mutable clock time. This lets
+  // an imported timetable Plan replace its template occurrence after a time edit.
+  return `${source.kind}:${source.id}:${start.date}`;
 }
 
 function planOccurrences(params: {
@@ -271,6 +274,31 @@ function monthEventOccurrences(params: {
   return occurrences;
 }
 
+function ownedTimetableTerms(params: {
+  ownerId: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: readonly TimetableTerm[];
+  issues: ScheduleOccurrenceProjectionIssue[];
+}): TimetableTerm[] {
+  const candidates = params.timetableTerms ??
+    (params.timetableTerm ? [params.timetableTerm] : []);
+  const owned: TimetableTerm[] = [];
+
+  for (const term of candidates) {
+    if (term.userId !== params.ownerId) {
+      params.issues.push({
+        code: 'owner_mismatch',
+        sourceKind: 'timetable',
+        sourceId: term.id,
+      });
+      continue;
+    }
+    owned.push(term);
+  }
+
+  return owned;
+}
+
 function timetableOccurrences(params: {
   ownerId: string;
   templates: readonly ScheduleTemplate[];
@@ -294,15 +322,25 @@ function timetableOccurrences(params: {
     templates.push(template);
   }
 
-  const terms = params.timetableTerms ?? (params.timetableTerm ? [params.timetableTerm] : []);
+  const terms = ownedTimetableTerms({
+    ownerId: params.ownerId,
+    timetableTerm: params.timetableTerm,
+    timetableTerms: params.timetableTerms,
+    issues: params.issues,
+  });
   const occurrences: ScheduleOccurrence[] = [];
   let date = params.startDate;
 
   while (date <= params.endDate) {
     const term = terms.length > 0
-      ? resolveTimetableTermForDate(date, [...terms], params.timetableTermId)
-      : params.timetableTerm ?? null;
-    const termId = term?.id ?? (terms.length === 0 ? params.timetableTermId ?? 'default' : null);
+      ? resolveTimetableTermForDate(date, terms, params.timetableTermId)
+      : params.timetableTerm && params.timetableTerm.userId === params.ownerId
+        ? params.timetableTerm
+        : null;
+    const termId = term?.id ??
+      (terms.length === 0 && !params.timetableTerm
+        ? params.timetableTermId ?? 'default'
+        : null);
 
     if (termId) {
       const candidates = buildTimetableImportCandidates({
