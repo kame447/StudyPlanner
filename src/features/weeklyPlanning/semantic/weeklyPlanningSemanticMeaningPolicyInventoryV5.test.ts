@@ -60,6 +60,16 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     expect(workloadRule?.instruction).toContain('never invent quantity or total duration');
   });
 
+  it('canonicalizes explicit not-started progress without inventing material quantity', () => {
+    const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'workload_quantity_effort',
+    );
+
+    expect(workloadRule?.instruction).toContain(
+      'Explicit not-started = completed 0 custom % for each exact target',
+    );
+  });
+
   it('keeps assessment performance separate from schedulable task progress', () => {
     const taskRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'task_structure',
