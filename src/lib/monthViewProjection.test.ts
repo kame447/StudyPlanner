@@ -66,9 +66,10 @@ describe('month view projection', () => {
     expect(grid.cells.some((cell) => !cell.inCurrentMonth)).toBe(true);
   });
 
-  it('projects planned minutes, normalized study records, and sorted month events per day', () => {
+  it('projects planned minutes, normalized study records, and sorted schedule occurrences per day', () => {
     const projection = buildMonthPanelProjection({
       monthDate: '2026-08-01',
+      userId: 'user-1',
       plans: [plan],
       actuals: [actual],
       monthEvents: [
@@ -82,7 +83,10 @@ describe('month view projection', () => {
       targetMinutes: 90,
       actualMinutes: 60,
     });
-    expect(targetCell?.monthEvents.map((event) => event.id)).toEqual(['early', 'late']);
+    expect(targetCell?.monthEvents.map((event) => event.id)).toEqual([
+      'month-event:early:2026-08-14T08:00',
+      'month-event:late:2026-08-14T17:00',
+    ]);
   });
 
   it('shows non-study Plan occurrences as calendar events without turning study plans into event pills', () => {
@@ -98,6 +102,7 @@ describe('month view projection', () => {
     };
     const projection = buildMonthPanelProjection({
       monthDate: '2026-08-01',
+      userId: 'user-1',
       plans: [plan, appointment],
       actuals: [],
       monthEvents: [],
@@ -107,11 +112,43 @@ describe('month view projection', () => {
     expect(targetCell?.targetMinutes).toBe(90);
     expect(targetCell?.monthEvents).toMatchObject([
       {
-        id: 'plan-occurrence:appointment-1:2026-08-14',
+        id: 'plan:appointment-1:2026-08-14T18:00',
         title: '美容院',
         startTime: '18:00',
         endTime: '19:00',
       },
     ]);
+  });
+
+  it('uses the same multi-day occurrence semantics for month event lanes', () => {
+    const trip: MonthEvent = {
+      ...createMonthEvent('trip', '18:00'),
+      date: '2026-08-14',
+      endDate: '2026-08-16',
+      endTime: '10:00',
+    };
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-08-01',
+      userId: 'user-1',
+      plans: [],
+      actuals: [],
+      monthEvents: [trip],
+    });
+
+    const visibleDates = projection.cells
+      .filter((cell) => cell.monthEvents.some((event) => event.title === 'trip'))
+      .map((cell) => cell.date);
+
+    expect(visibleDates).toEqual(['2026-08-14', '2026-08-15', '2026-08-16']);
+    const occurrence = projection.cells
+      .find((cell) => cell.date === '2026-08-14')
+      ?.monthEvents[0];
+    expect(occurrence).toMatchObject({
+      id: 'month-event:trip:2026-08-14T18:00',
+      date: '2026-08-14',
+      endDate: '2026-08-16',
+      startTime: '18:00',
+      endTime: '10:00',
+    });
   });
 });
