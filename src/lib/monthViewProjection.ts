@@ -120,6 +120,15 @@ function projectOccurrenceAsMonthEvent(params: {
   return null;
 }
 
+function inferSingleOwnerId(plans: readonly Plan[], monthEvents: readonly MonthEvent[]): string {
+  const ownerIds = new Set([
+    ...plans.map((plan) => plan.userId),
+    ...monthEvents.map((event) => event.userId),
+  ]);
+
+  return ownerIds.size === 1 ? [...ownerIds][0] ?? '' : '';
+}
+
 export function buildMonthPanelProjection({
   monthDate,
   userId,
@@ -136,7 +145,7 @@ export function buildMonthPanelProjection({
   const { weeks, cells } = buildMonthGrid(monthDate);
   const firstDate = cells[0]?.date;
   const lastDate = cells[cells.length - 1]?.date;
-  const ownerId = userId ?? plans[0]?.userId ?? monthEvents[0]?.userId ?? '';
+  const ownerId = userId ?? inferSingleOwnerId(plans, monthEvents);
   const scheduleProjection =
     firstDate && lastDate && ownerId
       ? createScheduleOccurrenceProjection({
