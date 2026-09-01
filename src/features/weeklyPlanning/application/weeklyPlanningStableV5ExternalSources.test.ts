@@ -229,7 +229,7 @@ describe('Stable V5 timetable external constraints', () => {
     ]);
   });
 
-  it('does not double-project an imported timetable Plan and its source template', () => {
+  it('keeps an imported timetable Plan in existing_plans and removes the duplicate template occurrence', () => {
     const sources = createStableV5ExternalConstraintSources({
       ownerId: 'user-1',
       plans: [
@@ -238,8 +238,8 @@ describe('Stable V5 timetable external constraints', () => {
           seriesId: 'imported-class-plan',
           title: 'class-1',
           date: '2026-04-06',
-          startTime: '09:00',
-          endTime: '10:00',
+          startTime: '09:15',
+          endTime: '10:15',
           sourceType: 'timetable',
           sourceId: 'class-1',
         }),
@@ -264,12 +264,17 @@ describe('Stable V5 timetable external constraints', () => {
     ) {
       throw new Error('expected successful schedule sources');
     }
-    expect(existing.events).toEqual([]);
-    expect(timetable.events).toHaveLength(1);
-    expect(timetable.events[0]?.eventId).toBe('class-1');
+    expect(existing.events).toMatchObject([
+      {
+        eventId: 'class-1',
+        start: { date: '2026-04-06', time: '09:15' },
+        end: { date: '2026-04-06', time: '10:15' },
+      },
+    ]);
+    expect(timetable.events).toEqual([]);
   });
 
-  it('fails the affected source closed when an owner mismatch reaches the projection boundary', () => {
+  it('fails the local schedule sources closed when an owner mismatch reaches the projection boundary', () => {
     const sources = createStableV5ExternalConstraintSources({
       ownerId: 'user-1',
       plans: [],
@@ -279,9 +284,15 @@ describe('Stable V5 timetable external constraints', () => {
       timeZone: 'Asia/Tokyo',
     });
     const existing = sources.find((source) => source.kind === 'existing_plans');
+    const timetable = sources.find((source) => source.kind === 'timetable');
 
     expect(existing).toMatchObject({
       kind: 'existing_plans',
+      status: 'failure',
+      failureKind: 'invalid_response',
+    });
+    expect(timetable).toMatchObject({
+      kind: 'timetable',
       status: 'failure',
       failureKind: 'invalid_response',
     });
