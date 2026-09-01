@@ -13,6 +13,8 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 月・週・日単位で予定を確認し、作成、編集、削除、実績記録を行えます。予定と実績は別データとして扱い、計画どおりに進んだかを後から確認できます。
 
+学習予定と一般予定を表示surfaceごとの別truthへ分けないため、app-wide scheduled-event authorityをIssue #278で再編しています。現在は既存`Plan` / `MonthEvent` / timetable sourceを共通`ScheduleOccurrence`へ展開し、月・週・日・AI計画が同じoccurrence identity / time semanticsを参照する移行を進めています。正仕様は [`docs/domains/scheduling/`](./docs/domains/scheduling/README.md) にあります。
+
 ### AI 計画
 
 チャット形式で学習対象、進捗、期限、利用できない時間、希望時間帯などを伝えると、既存予定や時間割を考慮して週間計画を作成します。生成結果はプレビューとして表示され、修正または承認した後に予定へ保存されます。
@@ -64,6 +66,8 @@ Issue #246 のplanned consultation extensionでもこの責任境界を維持し
 ## 技術構成
 
 フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
+
+時間が確定した予定のread modelは、移行期間中 `src/domain/scheduleOccurrence.ts` の共通projectionを使用します。これは永続化正本ではなく、既存`Plan` / `MonthEvent` / timetable sourceのrecurrence・identity・occupied-time解釈をconsumerごとに分散させないためのcompatibility boundaryです。最終的なcanonical `ScheduleEvent` persistenceへの移行条件は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
 
 管理・分析consoleは、UIからplanner collectionを都度全件scanする構造を最終形にせず、lightweight telemetry、集計read model、restricted diagnostic traceを分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
 
@@ -148,6 +152,8 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 文書の配置ルールは [`docs/DOCUMENT_DICTIONARY.md`](./docs/DOCUMENT_DICTIONARY.md) が正本です。文書は agent 名や用途ではなく、責務・文書種別・lifecycle で配置します。
 
 リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
+
+予定のapp-wide authority / occurrence projection / Plan・MonthEvent統合移行は [`docs/domains/scheduling/README.md`](./docs/domains/scheduling/README.md) を入口とし、正仕様は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
 
 週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation requirement は [`docs/domains/weekly-planning/spec/learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
 
