@@ -150,6 +150,35 @@ async function revealRemoveAction(page, preview, title) {
   return { block, removeAction };
 }
 
+async function enableTouch(page) {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  return session;
+}
+
+async function dispatchTouch(session, type, x, y) {
+  await session.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints:
+      type === 'touchEnd' || type === 'touchCancel'
+        ? []
+        : [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }],
+  });
+}
+
+async function locatorCenter(locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Preview block is not measurable');
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
 test('AI planning preview removes the exact local preview candidate', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedPreviewRemovalState(page, { phase: 'preview' });
@@ -202,4 +231,34 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await page.goto('/');
   await page.locator('.primary-bottom-nav button').first().click();
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
+});
+
+test('AI planning preview touch long press reveals action without showing drag first', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await seedPreviewRemovalState(page, { phase: 'preview' });
+  const preview = await openPreview(page);
+  const block = preview
+    .locator('.ai-planning-preview-day-column-detail .ai-planning-draft-block')
+    .filter({ hasText: '金フレ A' });
+  const removeAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  const { x, y } = await locatorCenter(block);
+  const session = await enableTouch(page);
+
+  await expect(removeAction).toHaveCount(0);
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(removeAction).toHaveCount(0);
+
+  await dispatchTouch(session, 'touchEnd', x, y);
+  await expect(removeAction).toBeVisible();
+  await page.waitForTimeout(100);
+  await expect(removeAction).toBeVisible();
+
+  await context.close();
 });
