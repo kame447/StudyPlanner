@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-08-31
+Updated: 2026-09-01
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -21,6 +21,10 @@ PR #166 merged cross-cutting browser, visual, accessibility, runtime and test-in
 PR #199 hardened preview-sheet interactions and scheduler date-bound behavior, including multiweek fallback horizons and hard date clipping for recurring and ordinary movable work.
 
 PR #204 completed Issue #203 by centralizing accepted temporal-constraint resolution before scheduler placement. Active lifecycle, task/component applicability, resolved hard date bounds and preferred placements now have an explicit scheduler-facing compilation boundary instead of being independently re-derived by downstream placement paths.
+
+PR #267 centralized recurring-plan mutation ownership, and PR #271 hardened cross-entity persistence so one user operation cannot expose a half-updated Plan / Actual / Todo state.
+
+PR #272 completed Issue #270 by making the weekly-planning formal turn boundary atomic across conversation state and authoritative graph/context preparation. PR #274 completed Issue #269 by adding owner-scoped planner-data availability so unavailable/stale reads cannot be mistaken for authoritative empty data.
 
 ## Current priority: Issue #152
 
@@ -63,7 +67,7 @@ research / comparable OSS review
 → canonical current-contract promotion
 ```
 
-The documentation/architecture gate is closed as of 2026-08-31. Pure consultation contracts, state machines, validators and deterministic tests may proceed on the existing Issue #246 branch without mutating production Stable V5 state. Production reviewable-proposal/promotion wiring remains dependency-aware: Issue #269 owns authoritative planner-data availability, Issue #270 owns the atomic formal turn commit boundary, and other owner-domain dependencies remain outside #246 rather than being duplicated inside it.
+The documentation/architecture gate is closed as of 2026-08-31. Pure consultation contracts, state machines, validators and deterministic tests may proceed on the existing Issue #246 branch without mutating production Stable V5 state. The owner boundaries previously tracked by Issue #269 and Issue #270 are now merged on main: #246 must consume the planner-data availability contract from PR #274 and the atomic formal-turn boundary from PR #272 rather than recreating them. Other owner-domain dependencies such as #152, #164, #187 and #51 remain outside #246 and must likewise be consumed instead of duplicated.
 
 Do not implement consultation by adding prompt rules or raw-text routing outside the canonical requirement. The closed documentation gate does not make consultation a production guarantee; runtime implementation and verification are still required.
 
@@ -89,9 +93,7 @@ This Issue is independent from Issue #152, but its implementation must consume t
 - Issue #51: multi-device approval uniqueness.
 - Issue #128: saved-preview migration/compatibility.
 - Issue #164: client-first execution, owned by the separate [client-runtime domain](../../client-runtime/README.md).
-- Issue #269: preserve authoritative planner-data load availability instead of collapsing unavailable/stale state into empty arrays.
-- Issue #270: make the weekly-planning formal turn commit atomic across conversation state and staged domain state; active implementation is tracked by its existing branch/PR.
-- Issue #246: pre-scheduling learning consultation/advice. The pre-implementation documentation gate is closed; pure implementation may proceed, while production wiring consumes the owner boundaries above.
+- Issue #246: pre-scheduling learning consultation/advice. The pre-implementation documentation gate is closed; pure implementation may proceed and production wiring consumes the merged #269/#270 owner contracts plus the remaining owner-domain dependencies above.
 
 ## Architecture direction
 
