@@ -47,8 +47,8 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'availability_absence',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Distinguishing explicit absence of constraints from omitted information or positive availability depends on what the user actually asserted.',
-    instruction: 'Use no_additional_constraint only when explicit; omission is not absence. available is positive availability. A daily total capacity without clock bounds is not all-day availability; if unsupported, emit uncertainty rather than widen it.',
+    retentionReason: 'Distinguishing explicit absence of constraints, clock-window availability, and a daily total study capacity depends on what the user actually asserted.',
+    instruction: 'Use no_additional_constraint only when explicit; omission is not absence. available is positive clock-window availability. A daily total study capacity without clock bounds uses kind=capacity with capacityMinutes and a date/recurrence scope; keep namedTimePeriod/startTime/endTime null and never widen capacity into an all-day clock window. Capacity is a hard plan-wide daily allocation ceiling.',
   },
   {
     id: 'contextual_reference_binding',

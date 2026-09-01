@@ -192,6 +192,8 @@ export interface AvailabilityDeclarationFactV5 {
   recurrenceKind: SemanticAvailabilityRecurrenceKindV5 | null;
   days: string[];
   constraintLevel: SemanticConstraintLevelV5;
+  /** Daily allocation ceiling for kind=capacity; absent on legacy graph snapshots. */
+  capacityMinutes?: number | null;
   resolutionStatus: 'unresolved';
   source: PlanningFactSourceV5;
   createdRevision: number;

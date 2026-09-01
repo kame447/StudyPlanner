@@ -32,6 +32,11 @@ import {
 import {
   createWeeklyPlanningAvailabilityResolverGraphV5,
 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
+import {
+  resolveWeeklyPlanningDailyCapacitiesV5,
+  type WeeklyPlanningDailyCapacityIssueV5,
+  type WeeklyPlanningDailyCapacityLimitV5,
+} from './weeklyPlanningDailyCapacityResolverV5';
 import type {
   TaskCommitmentReservation,
   TaskCommitmentResolutionIssue,
@@ -116,6 +121,7 @@ export interface GenericSchedulerInput {
   fixedTaskReservations: TaskCommitmentReservation[];
   taskDateEligibilities: ResolvedTaskDateEligibility[];
   availabilityWindows: AvailabilityWindowFact[];
+  dailyCapacityLimits?: WeeklyPlanningDailyCapacityLimitV5[];
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
@@ -173,7 +179,7 @@ export type GenericSchedulerInputIssue =
     }
   | {
       domain: 'availability';
-      code: AvailabilityResolutionIssue['code'];
+      code: AvailabilityResolutionIssue['code'] | WeeklyPlanningDailyCapacityIssueV5['code'];
       blocking: boolean;
       factId: string;
       details?: Record<string, string | number | boolean | null>;
@@ -316,6 +322,7 @@ function collectSourceFactRefs(params: {
   reservations: TaskCommitmentReservation[];
   taskDateEligibilities: ResolvedTaskDateEligibility[];
   windows: AvailabilityWindowFact[];
+  dailyCapacityLimits: WeeklyPlanningDailyCapacityLimitV5[];
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
@@ -335,6 +342,9 @@ function collectSourceFactRefs(params: {
     for (const ref of eligibility.sourceFactIds) refs.add(ref);
   }
   for (const window of params.windows) refs.add(window.sourceRef);
+  for (const limit of params.dailyCapacityLimits) {
+    for (const ref of limit.sourceFactIds) refs.add(ref);
+  }
   for (const selection of params.selections) refs.add(selection.requestFactId);
   for (const relation of params.relations) refs.add(relation.factId);
   for (const bound of params.hardDateBounds) {
@@ -496,6 +506,10 @@ export function compileGenericSchedulerInput(params: {
     ...semanticUncertaintyIssues(params.graph),
     ...validateHorizon(params),
   ];
+  const planningDates = listCalendarDatesInclusive(
+    params.context.planningStartDate,
+    params.context.planningEndDate,
+  ) ?? [];
   const resolvedDateExpressions = params.resolvedDateExpressions
     ?? resolveWeeklyPlanningDateExpressionsV5({
       graph: params.graph,
@@ -597,6 +611,19 @@ export function compileGenericSchedulerInput(params: {
     details: issue.details,
   })));
 
+  const dailyCapacity = resolveWeeklyPlanningDailyCapacitiesV5({
+    availabilityDeclarations: params.graph.availabilityDeclarations,
+    planningDates,
+    resolvedDateExpressions,
+  });
+  issues.push(...dailyCapacity.issues.map((issue): GenericSchedulerInputIssue => ({
+    domain: 'availability',
+    code: issue.code,
+    blocking: true,
+    factId: issue.sourceFactId,
+    details: issue.details,
+  })));
+
   const resolvedTemporalConstraints = params.resolvedTemporalConstraints
     ?? resolveWeeklyPlanningTemporalConstraintsV5({
       graph: params.graph,
@@ -632,13 +659,9 @@ export function compileGenericSchedulerInput(params: {
     ...bound,
     sourceFactIds: [...bound.sourceFactIds],
   }));
-  const horizonDates = listCalendarDatesInclusive(
-    params.context.planningStartDate,
-    params.context.planningEndDate,
-  ) ?? [];
   const preferredPlacements = materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
     resolved: resolvedTemporalConstraints,
-    dates: horizonDates,
+    dates: planningDates,
   });
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
@@ -668,6 +691,7 @@ export function compileGenericSchedulerInput(params: {
     fixedTaskReservations: commitments.reservations,
     taskDateEligibilities: taskDateRules.eligibilities,
     availabilityWindows: availability.windows,
+    dailyCapacityLimits: dailyCapacity.limits,
     sourceSelections: availability.sourceSelections,
     relations,
     hardDateBounds,
@@ -678,6 +702,7 @@ export function compileGenericSchedulerInput(params: {
       reservations: commitments.reservations,
       taskDateEligibilities: taskDateRules.eligibilities,
       windows: availability.windows,
+      dailyCapacityLimits: dailyCapacity.limits,
       selections: availability.sourceSelections,
       relations,
       hardDateBounds,

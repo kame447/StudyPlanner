@@ -124,6 +124,7 @@ export const SEMANTIC_AVAILABILITY_KINDS_V5 = [
   'unavailable',
   'preferred',
   'avoided',
+  'capacity',
   'no_additional_constraint',
 ] as const;
 export type SemanticAvailabilityKindV5 =
@@ -315,6 +316,11 @@ export interface SemanticAvailabilityDeclarationV5 extends SemanticSourceEvidenc
   recurrenceKind: SemanticAvailabilityRecurrenceKindV5 | null;
   days: string[];
   constraintLevel: SemanticConstraintLevelV5;
+  /**
+   * Daily study-allocation ceiling for kind=capacity. New provider responses
+   * always include this field; optionality preserves older fixtures/checkpoints.
+   */
+  capacityMinutes?: number | null;
 }
 
 export interface SemanticConstraintSourceRequestV5 extends SemanticSourceEvidenceV5 {

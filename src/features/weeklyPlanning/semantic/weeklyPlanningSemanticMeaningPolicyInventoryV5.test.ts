@@ -103,16 +103,18 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     );
   });
 
-  it('does not widen daily capacity into all-day clock availability', () => {
+  it('represents daily capacity without widening it into all-day clock availability', () => {
     const availabilityRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'availability_absence',
     );
 
+    expect(availabilityRule?.instruction).toContain('kind=capacity');
+    expect(availabilityRule?.instruction).toContain('capacityMinutes');
     expect(availabilityRule?.instruction).toContain(
-      'A daily total capacity without clock bounds is not all-day availability',
+      'never widen capacity into an all-day clock window',
     );
     expect(availabilityRule?.instruction).toContain(
-      'if unsupported, emit uncertainty rather than widen it',
+      'hard plan-wide daily allocation ceiling',
     );
   });
 

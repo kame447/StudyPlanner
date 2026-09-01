@@ -465,6 +465,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
       recurrenceKind: declaration.recurrenceKind,
       days: [...declaration.days],
       constraintLevel: declaration.constraintLevel,
+      capacityMinutes: declaration.capacityMinutes ?? null,
       resolutionStatus: 'unresolved' as const,
       source: createSource({
         context: params.context,
