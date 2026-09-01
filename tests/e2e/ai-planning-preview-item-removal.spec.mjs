@@ -116,21 +116,31 @@ async function seedPreviewRemovalState(page, { phase }) {
   }, { seededPhase: phase });
 }
 
-async function openPreview(page, expectedCount = 2) {
+async function openPreview(page, expectedCount = 2, { mode = 'day' } = {}) {
   await page.goto('/');
   await page.locator('.primary-bottom-nav button').first().click();
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(preview).toBeVisible();
   await expect(preview.locator('.ai-planning-preview-total')).toContainText(`全${expectedCount}件`);
-  await preview.getByRole('tab', { name: '日別' }).click();
+  if (mode === 'day') {
+    await preview.getByRole('tab', { name: '日別' }).click();
+  } else {
+    await expect(preview.getByRole('tab', { name: '全体' })).toHaveAttribute('aria-selected', 'true');
+  }
   return preview;
 }
 
-async function longPressPreviewBlock(page, preview, title) {
-  const block = preview
-    .locator('.ai-planning-preview-day-column-detail .ai-planning-draft-block')
-    .filter({ hasText: title });
+function previewBlock(preview, title, mode = 'day') {
+  const selector =
+    mode === 'overview'
+      ? '.ai-planning-preview-overview-day .ai-planning-draft-block'
+      : '.ai-planning-preview-day-column-detail .ai-planning-draft-block';
+  return preview.locator(selector).filter({ hasText: title });
+}
+
+async function longPressPreviewBlock(page, preview, title, mode = 'day') {
+  const block = previewBlock(preview, title, mode);
   await expect(block).toBeVisible();
   const box = await block.boundingBox();
   if (!box) throw new Error(`Preview block is not measurable: ${title}`);
@@ -142,10 +152,10 @@ async function longPressPreviewBlock(page, preview, title) {
   return block;
 }
 
-async function revealRemoveAction(page, preview, title) {
+async function revealRemoveAction(page, preview, title, mode = 'day') {
   const removeAction = preview.getByRole('button', { name: `${title}を計画から除外` });
   await expect(removeAction).toHaveCount(0);
-  const block = await longPressPreviewBlock(page, preview, title);
+  const block = await longPressPreviewBlock(page, preview, title, mode);
   await expect(removeAction).toBeVisible();
   return { block, removeAction };
 }
@@ -233,7 +243,7 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
 });
 
-test('AI planning preview touch long press reveals action without showing drag first', async ({ browser }) => {
+test('AI planning day preview touch long press reveals action while still held', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -242,9 +252,7 @@ test('AI planning preview touch long press reveals action without showing drag f
   const page = await context.newPage();
   await seedPreviewRemovalState(page, { phase: 'preview' });
   const preview = await openPreview(page);
-  const block = preview
-    .locator('.ai-planning-preview-day-column-detail .ai-planning-draft-block')
-    .filter({ hasText: '金フレ A' });
+  const block = previewBlock(preview, '金フレ A');
   const removeAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
   const { x, y } = await locatorCenter(block);
   const session = await enableTouch(page);
@@ -253,16 +261,60 @@ test('AI planning preview touch long press reveals action without showing drag f
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect(removeAction).toHaveCount(0);
+  await expect(removeAction).toBeVisible();
 
   await dispatchTouch(session, 'touchEnd', x, y);
-  await expect(removeAction).toBeVisible();
   await page.waitForTimeout(100);
   await expect(removeAction).toBeVisible();
+
+  await context.close();
+});
+
+test('AI planning default overview touch long press reveals, removes, and still hands movement to drag', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await seedPreviewRemovalState(page, { phase: 'preview' });
+  const preview = await openPreview(page, 2, { mode: 'overview' });
+  const firstBlock = previewBlock(preview, '金フレ A', 'overview');
+  const firstRemoveAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  const firstCenter = await locatorCenter(firstBlock);
+  const session = await enableTouch(page);
+
+  await expect(firstRemoveAction).toHaveCount(0);
+  await dispatchTouch(session, 'touchStart', firstCenter.x, firstCenter.y);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(firstRemoveAction).toBeVisible();
   await page.screenshot({
-    path: 'artifacts/ai-planning-preview-longpress-action-mobile.png',
+    path: 'artifacts/ai-planning-preview-overview-longpress-action-mobile.png',
     fullPage: true,
   });
+
+  await dispatchTouch(session, 'touchEnd', firstCenter.x, firstCenter.y);
+  await expect(firstRemoveAction).toBeVisible();
+  await firstRemoveAction.click();
+  await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
+  await expect(preview.getByRole('tab', { name: '全体' })).toHaveAttribute('aria-selected', 'true');
+
+  const remainingBlock = previewBlock(preview, '金フレ B', 'overview');
+  const remainingRemoveAction = preview.getByRole('button', { name: '金フレ Bを計画から除外' });
+  const remainingCenter = await locatorCenter(remainingBlock);
+  await dispatchTouch(session, 'touchStart', remainingCenter.x, remainingCenter.y);
+  await page.waitForTimeout(300);
+  await expect(remainingRemoveAction).toBeVisible();
+  await dispatchTouch(session, 'touchMove', remainingCenter.x, remainingCenter.y + 36);
+  await expect(remainingRemoveAction).toHaveCount(0);
+  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await dispatchTouch(session, 'touchEnd', remainingCenter.x, remainingCenter.y + 36);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+
+  const restoredPreview = await openPreview(page, 1, { mode: 'overview' });
+  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(previewBlock(restoredPreview, '金フレ B', 'overview')).toBeVisible();
 
   await context.close();
 });
