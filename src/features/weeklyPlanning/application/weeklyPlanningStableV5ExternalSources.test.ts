@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { ScheduleTemplate, TimetableTerm } from '../../../types/domain';
+import type {
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../../../types/domain';
 import { createStableV5ExternalConstraintSources } from './weeklyPlanningStableV5ExternalSources';
+
+const CREATED_AT = '2026-04-01T00:00:00.000Z';
 
 const TERM: TimetableTerm = {
   id: 'term-spring',
@@ -13,8 +20,8 @@ const TERM: TimetableTerm = {
   usesAlternatingWeeks: true,
   alternatingWeekAnchorDate: '2026-04-06',
   isActive: true,
-  createdAt: '2026-04-01T00:00:00.000Z',
-  updatedAt: '2026-04-01T00:00:00.000Z',
+  createdAt: CREATED_AT,
+  updatedAt: CREATED_AT,
 };
 
 function template(
@@ -37,8 +44,51 @@ function template(
     classroom: '',
     memo: '',
     active: true,
-    createdAt: '2026-04-01T00:00:00.000Z',
-    updatedAt: '2026-04-01T00:00:00.000Z',
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    ...overrides,
+  };
+}
+
+function plan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'plan-1',
+    seriesId: 'plan-1',
+    userId: 'user-1',
+    title: '既存予定',
+    subject: '',
+    date: '2026-04-06',
+    startTime: '18:00',
+    endTime: '19:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'other',
+    memo: '',
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    ...overrides,
+  };
+}
+
+function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
+  return {
+    id: 'month-event-1',
+    userId: 'user-1',
+    date: '2026-04-06',
+    title: '美容院',
+    startTime: '15:00',
+    endTime: '16:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    url: '',
+    memo: '',
+    checklist: [],
+    locationTags: [],
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
     ...overrides,
   };
 }
@@ -124,5 +174,116 @@ describe('Stable V5 timetable external constraints', () => {
       ['class-4', '2026-04-27'],
       ['class-4', '2026-05-04'],
     ]);
+  });
+
+  it('includes MonthEvent-only commitments in the authoritative existing-plan source', () => {
+    const sources = createStableV5ExternalConstraintSources({
+      ownerId: 'user-1',
+      plans: [],
+      monthEvents: [monthEvent()],
+      templates: [],
+      horizon: { startDate: '2026-04-06', endDate: '2026-04-06' },
+      timeZone: 'Asia/Tokyo',
+    });
+    const existing = sources.find((source) => source.kind === 'existing_plans');
+
+    expect(existing?.status).toBe('success');
+    if (!existing || existing.status !== 'success') {
+      throw new Error('expected a successful existing-plan source');
+    }
+    expect(existing.events).toEqual([
+      {
+        eventId: 'month-event-1',
+        ownerId: 'user-1',
+        start: { date: '2026-04-06', time: '15:00' },
+        end: { date: '2026-04-06', time: '16:00' },
+        timeZone: 'Asia/Tokyo',
+        constraintLevel: 'hard',
+      },
+    ]);
+  });
+
+  it('expands recurring Plans before projecting occupied time', () => {
+    const sources = createStableV5ExternalConstraintSources({
+      ownerId: 'user-1',
+      plans: [
+        plan({
+          repeat: 'daily',
+          repeatUntil: '2026-04-08',
+        }),
+      ],
+      templates: [],
+      horizon: { startDate: '2026-04-06', endDate: '2026-04-08' },
+      timeZone: 'Asia/Tokyo',
+    });
+    const existing = sources.find((source) => source.kind === 'existing_plans');
+
+    expect(existing?.status).toBe('success');
+    if (!existing || existing.status !== 'success') {
+      throw new Error('expected a successful existing-plan source');
+    }
+    expect(existing.events.map((event) => event.start.date)).toEqual([
+      '2026-04-06',
+      '2026-04-07',
+      '2026-04-08',
+    ]);
+  });
+
+  it('does not double-project an imported timetable Plan and its source template', () => {
+    const sources = createStableV5ExternalConstraintSources({
+      ownerId: 'user-1',
+      plans: [
+        plan({
+          id: 'imported-class-plan',
+          seriesId: 'imported-class-plan',
+          title: 'class-1',
+          date: '2026-04-06',
+          startTime: '09:00',
+          endTime: '10:00',
+          sourceType: 'timetable',
+          sourceId: 'class-1',
+        }),
+      ],
+      templates: [template('class-1', '09:00', '10:00')],
+      timetableTermId: TERM.id,
+      timetableTerm: TERM,
+      timetableTerms: [TERM],
+      horizon: { startDate: '2026-04-06', endDate: '2026-04-06' },
+      timeZone: 'Asia/Tokyo',
+    });
+    const existing = sources.find((source) => source.kind === 'existing_plans');
+    const timetable = sources.find((source) => source.kind === 'timetable');
+
+    expect(existing?.status).toBe('success');
+    expect(timetable?.status).toBe('success');
+    if (
+      !existing ||
+      existing.status !== 'success' ||
+      !timetable ||
+      timetable.status !== 'success'
+    ) {
+      throw new Error('expected successful schedule sources');
+    }
+    expect(existing.events).toEqual([]);
+    expect(timetable.events).toHaveLength(1);
+    expect(timetable.events[0]?.eventId).toBe('class-1');
+  });
+
+  it('fails the affected source closed when an owner mismatch reaches the projection boundary', () => {
+    const sources = createStableV5ExternalConstraintSources({
+      ownerId: 'user-1',
+      plans: [],
+      monthEvents: [monthEvent({ userId: 'user-2' })],
+      templates: [],
+      horizon: { startDate: '2026-04-06', endDate: '2026-04-06' },
+      timeZone: 'Asia/Tokyo',
+    });
+    const existing = sources.find((source) => source.kind === 'existing_plans');
+
+    expect(existing).toMatchObject({
+      kind: 'existing_plans',
+      status: 'failure',
+      failureKind: 'invalid_response',
+    });
   });
 });
