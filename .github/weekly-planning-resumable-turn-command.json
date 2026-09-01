@@ -1,7 +1,7 @@
 {
   "scenario": "exam-student-heavy-input-20260828-shared-memory",
   "turn": 8,
-  "attempt": 44,
+  "attempt": 45,
   "action": "submit_turn",
   "user_text": "数学IA・IIBC、物理の力学・電磁気、化学の理論化学は、いずれも未着手として扱ってください。具体的な問題数や総時間は分からないままです。",
   "previous_run_id": "33536046918",
