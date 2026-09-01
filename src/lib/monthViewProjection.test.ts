@@ -55,12 +55,15 @@ function createMonthEvent(id: string, startTime: string): MonthEvent {
 }
 
 describe('month view projection', () => {
-  it('builds the month grid with adjacent dates marked outside the active month', () => {
-    const grid = buildMonthGrid('2026-08-01');
+  it('builds a stable six-week calendar grid even when the month fits in five weeks', () => {
+    const grid = buildMonthGrid('2026-09-01');
 
-    expect(grid.cells).toHaveLength(grid.weeks.length * 7);
-    expect(grid.cells.find((cell) => cell.date === '2026-08-01')).toEqual({
-      date: '2026-08-01',
+    expect(grid.weeks).toHaveLength(6);
+    expect(grid.cells).toHaveLength(42);
+    expect(grid.cells[0]?.date).toBe('2026-08-31');
+    expect(grid.cells.at(-1)?.date).toBe('2026-10-11');
+    expect(grid.cells.find((cell) => cell.date === '2026-09-01')).toEqual({
+      date: '2026-09-01',
       inCurrentMonth: true,
     });
     expect(grid.cells.some((cell) => !cell.inCurrentMonth)).toBe(true);
