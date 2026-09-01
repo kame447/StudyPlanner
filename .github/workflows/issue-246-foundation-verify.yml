@@ -1,0 +1,53 @@
+name: Verify Issue 246 foundation once
+
+on:
+  push:
+    branches:
+      - feat/issue-246-learning-consultation
+    paths:
+      - .github/workflows/issue-246-foundation-verify.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Merge latest main and remove temporary local markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git rm -f --ignore-unmatch \
+            src/features/weeklyPlanning/consultation/.noop \
+            src/features/weeklyPlanning/consultation/.tool-route-check \
+            src/features/weeklyPlanning/consultation/.last-temp \
+            src/features/weeklyPlanning/consultation/.foundation-sync-marker \
+            src/features/weeklyPlanning/consultation/.do-not-use \
+            src/features/weeklyPlanning/consultation/.sync-placeholder
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Focused consultation foundation tests
+        run: npm run test:run -- src/features/weeklyPlanning/consultation
+      - run: npm run test:run
+      - run: npm run build
+      - name: Commit verified foundation and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/issue-246-foundation-verify.yml
+          git add src/features/weeklyPlanning/consultation docs/domains/weekly-planning/spec/learning-consultation-and-advice.md docs/domains/weekly-planning/spec/learning-consultation-prompt-and-evidence.md
+          git diff --cached --check
+          git commit -m "feat: establish learning consultation foundation"
+          git push origin HEAD:feat/issue-246-learning-consultation
