@@ -46,6 +46,7 @@ interface DragSession<TItem> {
   scrollElement: HTMLElement | null;
   active: boolean;
   canceled: boolean;
+  longPressArmed: boolean;
   longPressTimer: number | null;
   releaseInteractionLock: (() => void) | null;
   target: WeekPlanMoveTarget;
@@ -71,6 +72,7 @@ interface UseTimelineDragControllerOptions<TItem> {
     before: WeekPlanMoveTarget,
     after: WeekPlanMoveTarget,
   ) => void | Promise<void>;
+  deferTouchDragUntilMoveAfterLongPress?: boolean;
 }
 
 const TOUCH_LONG_PRESS_MS = 240;
@@ -86,12 +88,15 @@ function getDistance(startX: number, startY: number, x: number, y: number): numb
 
 export function useTimelineDragController<TItem>({
   onCommit,
+  deferTouchDragUntilMoveAfterLongPress = false,
 }: UseTimelineDragControllerOptions<TItem>) {
   const [dragVisual, setDragVisual] = useState<TimelineDragVisualState | null>(null);
   const dragSessionRef = useRef<DragSession<TItem> | null>(null);
   const suppressClickUntilRef = useRef(0);
   const onCommitRef = useRef(onCommit);
+  const deferTouchDragRef = useRef(deferTouchDragUntilMoveAfterLongPress);
   onCommitRef.current = onCommit;
+  deferTouchDragRef.current = deferTouchDragUntilMoveAfterLongPress;
 
   function clearLongPressTimer(session: DragSession<TItem> | null) {
     if (session?.longPressTimer !== null && session?.longPressTimer !== undefined) {
@@ -155,6 +160,7 @@ export function useTimelineDragController<TItem>({
       scrollElement,
       active: false,
       canceled: false,
+      longPressArmed: false,
       longPressTimer: null,
       releaseInteractionLock: null,
       target: descriptor.original,
@@ -338,6 +344,10 @@ export function useTimelineDragController<TItem>({
 
     dragSessionRef.current = session;
     session.longPressTimer = window.setTimeout(() => {
+      if (deferTouchDragRef.current) {
+        session.longPressArmed = true;
+        return;
+      }
       activateDrag(session, session.startX, session.startY);
     }, TOUCH_LONG_PRESS_MS);
   }
@@ -348,14 +358,16 @@ export function useTimelineDragController<TItem>({
 
     const touch = event.touches[0];
     if (!session.active) {
-      if (
-        getDistance(session.startX, session.startY, touch.clientX, touch.clientY) >
-        TOUCH_MOVE_TOLERANCE_PX
-      ) {
+      const distance = getDistance(session.startX, session.startY, touch.clientX, touch.clientY);
+      if (distance <= TOUCH_MOVE_TOLERANCE_PX) return;
+
+      if (deferTouchDragRef.current && session.longPressArmed) {
+        activateDrag(session, touch.clientX, touch.clientY);
+      } else {
         session.canceled = true;
         clearLongPressTimer(session);
+        return;
       }
-      return;
     }
 
     event.preventDefault();
@@ -375,6 +387,11 @@ export function useTimelineDragController<TItem>({
       return;
     }
 
+    if (deferTouchDragRef.current && session.longPressArmed && !session.canceled) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
+    }
     clearDragSession();
   }
 
