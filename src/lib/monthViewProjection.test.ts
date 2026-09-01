@@ -61,7 +61,7 @@ describe('month view projection', () => {
     expect(grid.weeks).toHaveLength(6);
     expect(grid.cells).toHaveLength(42);
     expect(grid.cells[0]?.date).toBe('2026-08-31');
-    expect(grid.cells.at(-1)?.date).toBe('2026-10-11');
+    expect(grid.cells[grid.cells.length - 1]?.date).toBe('2026-10-11');
     expect(grid.cells.find((cell) => cell.date === '2026-09-01')).toEqual({
       date: '2026-09-01',
       inCurrentMonth: true,
