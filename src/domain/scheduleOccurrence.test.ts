@@ -231,4 +231,24 @@ describe('schedule occurrence projection', () => {
       },
     ]);
   });
+
+  it('fails closed on a timetable term owned by another user', () => {
+    const projection = createScheduleOccurrenceProjection({
+      ownerId: 'user-1',
+      startDate: '2026-04-06',
+      endDate: '2026-04-06',
+      plans: [],
+      scheduleTemplates: [template()],
+      timetableTermId: TERM.id,
+      timetableTerm: { ...TERM, userId: 'user-2' },
+      timetableTerms: [{ ...TERM, userId: 'user-2' }],
+    });
+
+    expect(projection.occurrences).toEqual([]);
+    expect(projection.issues).toContainEqual({
+      code: 'owner_mismatch',
+      sourceKind: 'timetable',
+      sourceId: TERM.id,
+    });
+  });
 });
