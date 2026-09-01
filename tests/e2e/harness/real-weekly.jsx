@@ -62,14 +62,23 @@ async function saveApprovedPlan(draft) {
   };
 }
 
+const REAL_WEEKLY_USER_ID = 'browser-real-weekly-user';
+const REAL_WEEKLY_PLANNER_DATA_AVAILABILITY = {
+  status: 'ready',
+  ownerId: REAL_WEEKLY_USER_ID,
+  observedAt: '2026-08-13T00:00:00.000Z',
+  lastSuccessfulAt: '2026-08-13T00:00:00.000Z',
+};
+
 function RealWeeklyApplicationHarness() {
   const [open, setOpen] = useState(true);
   const application = useWeeklyPlanningApplication({
-    userId: 'browser-real-weekly-user',
+    userId: REAL_WEEKLY_USER_ID,
     selectedDate: '2026-08-13',
     plans: [],
     actuals: [],
     scheduleTemplates: [],
+    plannerDataAvailability: REAL_WEEKLY_PLANNER_DATA_AVAILABILITY,
     saveWeeklyApprovedPlan: saveApprovedPlan,
   });
   const { state, approvalAvailability, pendingDraftBlocks } = application;
@@ -113,7 +122,7 @@ function RealWeeklyApplicationHarness() {
 
   return (
     <QuickEntryModal
-      userId="browser-real-weekly-user"
+      userId={REAL_WEEKLY_USER_ID}
       selectedDate="2026-08-13"
       plans={[]}
       actuals={[]}

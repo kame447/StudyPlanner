@@ -29,6 +29,7 @@ interface AiPlanningPreviewDialogProps {
   canSave: boolean;
   onClose: () => void;
   onAdjust: () => void;
+  onRemove: (blockId: string) => void;
   onPromote: (blocks: WeeklyPlanDraftBlock[]) => void;
   onSave: (blocks: WeeklyPlanDraftBlock[]) => void;
 }
@@ -43,6 +44,23 @@ const HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 const MINUTES_PER_DAY = 24 * 60;
 const DAY_DETAIL_HOUR_HEIGHT = 38;
+const REMOVE_BLOCK_BUTTON_STYLE: CSSProperties = {
+  position: 'absolute',
+  top: '3px',
+  right: '3px',
+  zIndex: 3,
+  width: '28px',
+  height: '28px',
+  display: 'grid',
+  placeItems: 'center',
+  padding: 0,
+  border: '1px solid var(--border)',
+  borderRadius: '999px',
+  background: 'var(--surface-strong)',
+  color: 'var(--text-primary)',
+  cursor: 'pointer',
+  touchAction: 'manipulation',
+};
 
 function formatDateLabel(date: string): string {
   const value = new Date(`${date}T00:00:00`);
@@ -100,6 +118,7 @@ export function AiPlanningPreviewDialog({
   canSave,
   onClose,
   onAdjust,
+  onRemove,
   onPromote,
   onSave,
 }: AiPlanningPreviewDialogProps) {
@@ -308,7 +327,7 @@ export function AiPlanningPreviewDialog({
                 </button>
               </div>
 
-              <p className="ai-planning-preview-hint">予定をドラッグして日時を調整できます。日付をタップすると、その日を大きく表示します。</p>
+              <p className="ai-planning-preview-hint">予定をドラッグして日時を調整できます。日付をタップすると、その日を大きく表示します。日別表示では予定ごとに除外できます。</p>
 
               <div className="ai-planning-preview-scroll ai-planning-preview-overview-scroll">
                 <div className="ai-planning-week-grid ai-planning-preview-overview-grid">
@@ -562,7 +581,10 @@ export function AiPlanningPreviewDialog({
                             .filter(Boolean)
                             .join(' ')}
                           key={block.id}
-                          style={detailBlockStyle(block.startTime, block.endTime)}
+                          style={{
+                            ...detailBlockStyle(block.startTime, block.endTime),
+                            paddingRight: '38px',
+                          }}
                           title={`${block.title} ${block.startTime}-${block.endTime}`}
                           aria-label={`${block.title} ${block.startTime}から${block.endTime}。長押しまたはドラッグで移動`}
                           onPointerDown={
@@ -587,6 +609,25 @@ export function AiPlanningPreviewDialog({
                         >
                           <strong>{block.title}</strong>
                           <small>{block.startTime}-{block.endTime}</small>
+                          <button
+                            type="button"
+                            aria-label={`${block.title}を計画から除外`}
+                            title="この予定を除外"
+                            disabled={isBusy}
+                            style={{
+                              ...REMOVE_BLOCK_BUTTON_STYLE,
+                              cursor: isBusy ? 'default' : 'pointer',
+                              opacity: isBusy ? 0.45 : 1,
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onTouchStart={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onRemove(block.id);
+                            }}
+                          >
+                            <X size={15} aria-hidden="true" />
+                          </button>
                         </div>
                       );
                     })}

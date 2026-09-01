@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import type {
   Actual,
   Plan,
@@ -62,6 +63,7 @@ export interface UseWeeklyPlanningApplicationInput {
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
+  plannerDataAvailability: PlannerDataAvailability;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
@@ -104,6 +106,7 @@ export function useWeeklyPlanningApplication({
   timetableTermId,
   timetableTerm,
   timetableTerms = [],
+  plannerDataAvailability,
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
@@ -197,6 +200,7 @@ export function useWeeklyPlanningApplication({
       timetableTermId,
       timetableTerm,
       timetableTerms,
+      plannerDataAvailability,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -16,17 +16,21 @@ import {
   remapTimetableTermId,
   sortTimetableTerms,
 } from '../domain/timetableDataNormalization';
+import {
+  PlannerDataReadAuthority,
+  createInitialPlannerDataAvailability,
+  type PlannerDataAvailability,
+} from '../domain/plannerDataReadAuthority';
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
 import { applyMaterialProgressUpdates } from '../lib/materialPace';
 import { plannerRepository } from '../repositories';
+import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
-  applyRecurringPlanDeleteScope,
-  applyRecurringPlanEditScope,
-  applyRecurringPlanSeriesEdit,
-  supportsScopedRecurringPlanEdits,
-} from '../domain/recurringPlan';
+  buildRecurringPlanDeleteMutation,
+  buildRecurringPlanEditMutation,
+} from '../domain/recurringPlanMutation';
 import {
   createActualFromDraft,
   createDayNoteFromDraft,
@@ -136,16 +140,6 @@ function summarizePlanForLog(plan: Plan) {
   };
 }
 
-function summarizeActualForLog(actual: Actual) {
-  return {
-    id: actual.id,
-    userId: actual.userId,
-    planId: actual.planId,
-    occurrenceDate: actual.occurrenceDate,
-    title: actual.title,
-  };
-}
-
 function sortStudySubjects(subjects: StudySubject[]): StudySubject[] {
   return subjects
     .slice()
@@ -167,7 +161,7 @@ function sortStudyMaterials(materials: StudyMaterial[]): StudyMaterial[] {
     );
 }
 
-interface UsePlannerDataStateResult {
+export interface UsePlannerDataStateResult {
   plans: Plan[];
   actuals: Actual[];
   dayNotes: DayNote[];
@@ -178,6 +172,7 @@ interface UsePlannerDataStateResult {
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
+  plannerDataAvailability: PlannerDataAvailability;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -252,6 +247,25 @@ export function usePlannerDataState({
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
   const [timetableTerms, setTimetableTerms] = useState<TimetableTerm[]>([]);
   const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);
+  const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
+  if (!plannerDataReadAuthorityRef.current) {
+    plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
+  }
+  const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;
+  const [plannerDataAvailability, setPlannerDataAvailability] =
+    useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());
+  const clearPlannerDataCollections = useCallback(() => {
+    setPlans([]);
+    setActuals([]);
+    setDayNotes([]);
+    setMonthEvents([]);
+    setTodos([]);
+    setStudySubjects([]);
+    setStudyMaterials([]);
+    setScheduleTemplates([]);
+    setTimetableTerms([]);
+    setTimetablePeriods([]);
+  }, []);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
@@ -272,11 +286,6 @@ export function usePlannerDataState({
         current,
       ),
     );
-  }
-
-  function removePlansByIds(current: Plan[], planIds: string[]): Plan[] {
-    const idSet = new Set(planIds);
-    return current.filter((plan) => !idSet.has(plan.id));
   }
 
   function upsertActualsById(current: Actual[], nextActuals: Actual[]): Actual[] {
@@ -300,15 +309,6 @@ export function usePlannerDataState({
     );
   }
 
-  async function runSequentially<T>(
-    items: T[],
-    handler: (item: T) => Promise<void>,
-  ): Promise<void> {
-    for (const item of items) {
-      await handler(item);
-    }
-  }
-
   function isScopedRecurringEditCandidate(plan: Plan | null): boolean {
     if (!plan) {
       return false;
@@ -320,7 +320,18 @@ export function usePlannerDataState({
   const isRecurringPlanEdit = isScopedRecurringEditCandidate(editingPlan);
 
   const loadPlannerData = useCallback(async (nextUserId: string) => {
-    const [
+    const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());
+    setPlannerDataAvailability(loadStart.availability);
+    if (loadStart.ownerChanged) {
+      clearPlannerDataCollections();
+      setEditorDraft(null);
+      setEditingPlanId(null);
+      setEditingPlan(null);
+      setPendingRecurringPlanAction(null);
+    }
+
+    try {
+      const [
       nextPlans,
       nextActuals,
       nextDayNotes,
@@ -343,6 +354,11 @@ export function usePlannerDataState({
       plannerRepository.getTimetableTerms(nextUserId),
       plannerRepository.getTimetablePeriods(nextUserId),
     ]);
+
+    if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+      return;
+    }
+
     const {
       terms: resolvedTimetableTerms,
       termIdMap,
@@ -376,82 +392,99 @@ export function usePlannerDataState({
       }),
     );
 
+    const termUpserts = resolvedTimetableTerms.filter((term) => {
+      const previousTerm = nextTimetableTerms.find((item) => item.id === term.id);
+      return !(
+        previousTerm &&
+        previousTerm.year === term.year &&
+        previousTerm.kind === term.kind &&
+        previousTerm.label === term.label &&
+        previousTerm.startDate === term.startDate &&
+        previousTerm.endDate === term.endDate &&
+        previousTerm.usesAlternatingWeeks === term.usesAlternatingWeeks &&
+        previousTerm.alternatingWeekAnchorDate === term.alternatingWeekAnchorDate &&
+        previousTerm.isActive === term.isActive
+      );
+    });
+    const templateUpserts = remappedScheduleTemplates.filter((template) => {
+      const previousTemplate = nextScheduleTemplates.find((item) => item.id === template.id);
+      return previousTemplate?.termId !== template.termId;
+    });
+    const periodUpserts = resolvedTimetablePeriods.filter((period) => {
+      const previousPeriod = nextTimetablePeriods.find((item) => item.id === period.id);
+      return previousPeriod?.termId !== period.termId;
+    });
+    const termDeletes = nextTimetableTerms.filter((term) => obsoleteTermIds.includes(term.id));
+    const periodDeletes = nextTimetablePeriods.filter((period) =>
+      obsoletePeriodIds.includes(period.id),
+    );
+    let committedScheduleTemplates = remappedScheduleTemplates;
+    let committedTimetableTerms = resolvedTimetableTerms;
+    let committedTimetablePeriods = resolvedTimetablePeriods;
+
     try {
-      await runSequentially(resolvedTimetableTerms, async (term) => {
-        const previousTerm = nextTimetableTerms.find((item) => item.id === term.id);
-
-        if (
-          previousTerm &&
-          previousTerm.year === term.year &&
-          previousTerm.kind === term.kind &&
-          previousTerm.label === term.label &&
-          previousTerm.startDate === term.startDate &&
-          previousTerm.endDate === term.endDate &&
-          previousTerm.usesAlternatingWeeks === term.usesAlternatingWeeks &&
-          previousTerm.alternatingWeekAnchorDate === term.alternatingWeekAnchorDate &&
-          previousTerm.isActive === term.isActive
-        ) {
-          return;
-        }
-
-        await plannerRepository.upsertTimetableTerm(term);
-      });
-      await runSequentially(remappedScheduleTemplates, async (template) => {
-        const previousTemplate = nextScheduleTemplates.find((item) => item.id === template.id);
-
-        if (previousTemplate?.termId === template.termId) {
-          return;
-        }
-
-        await plannerRepository.upsertScheduleTemplate(template);
-      });
-      await runSequentially(resolvedTimetablePeriods, async (period) => {
-        const previousPeriod = nextTimetablePeriods.find((item) => item.id === period.id);
-
-        if (previousPeriod?.termId === period.termId) {
-          return;
-        }
-
-        await plannerRepository.upsertTimetablePeriod(period);
-      });
-      await runSequentially(obsoletePeriodIds, async (periodId) => {
-        await plannerRepository.deleteTimetablePeriod(nextUserId, periodId);
-      });
-      await runSequentially(obsoleteTermIds, async (termId) => {
-        await plannerRepository.deleteTimetableTerm(nextUserId, termId);
+      await plannerRepository.applyTimetableMutation({
+        userId: nextUserId,
+        termUpserts,
+        termDeletes,
+        templateUpserts,
+        templateDeletes: [],
+        periodUpserts,
+        periodDeletes,
       });
     } catch (error) {
+      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+        return;
+      }
       console.warn('[Timetable] term canonicalization failed', error);
+      committedScheduleTemplates = nextScheduleTemplates;
+      committedTimetableTerms = nextTimetableTerms;
+      committedTimetablePeriods = nextTimetablePeriods;
+      showNotice('時間割データを整合化できませんでした。再読み込みしてください。', 'error');
     }
 
-    setPlans(sortByDateTime(nextPlans));
-    setActuals(nextActuals);
-    setDayNotes(nextDayNotes);
-    setMonthEvents(sortMonthEvents(nextMonthEvents));
-    setTodos(nextTodos);
-    setStudySubjects(sortStudySubjects(nextStudySubjects));
-    setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
-    setScheduleTemplates(remappedScheduleTemplates);
-    setTimetableTerms(resolvedTimetableTerms);
-    setTimetablePeriods(resolvedTimetablePeriods);
-  }, []);
+      if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
+        return;
+      }
+
+      setPlans(sortByDateTime(nextPlans));
+      setActuals(nextActuals);
+      setDayNotes(nextDayNotes);
+      setMonthEvents(sortMonthEvents(nextMonthEvents));
+      setTodos(nextTodos);
+      setStudySubjects(sortStudySubjects(nextStudySubjects));
+      setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
+      setScheduleTemplates(committedScheduleTemplates);
+      setTimetableTerms(committedTimetableTerms);
+      setTimetablePeriods(committedTimetablePeriods);
+      const readyAvailability = plannerDataReadAuthority.succeed(
+        loadStart.token,
+        new Date().toISOString(),
+      );
+      if (readyAvailability) {
+        setPlannerDataAvailability(readyAvailability);
+      }
+    } catch (error) {
+      const failedAvailability = plannerDataReadAuthority.fail(
+        loadStart.token,
+        new Date().toISOString(),
+      );
+      if (!failedAvailability) {
+        return;
+      }
+      setPlannerDataAvailability(failedAvailability);
+      throw error;
+    }
+  }, [clearPlannerDataCollections, plannerDataReadAuthority, showNotice]);
 
   const resetPlannerData = useCallback(() => {
-    setPlans([]);
-    setActuals([]);
-    setDayNotes([]);
-    setMonthEvents([]);
-    setTodos([]);
-    setStudySubjects([]);
-    setStudyMaterials([]);
-    setScheduleTemplates([]);
-    setTimetableTerms([]);
-    setTimetablePeriods([]);
+    setPlannerDataAvailability(plannerDataReadAuthority.reset());
+    clearPlannerDataCollections();
     setEditorDraft(null);
     setEditingPlanId(null);
     setEditingPlan(null);
     setPendingRecurringPlanAction(null);
-  }, []);
+  }, [clearPlannerDataCollections, plannerDataReadAuthority]);
 
   function openCreatePlan() {
     if (!userId) {
@@ -490,188 +523,65 @@ export function usePlannerDataState({
     const occurrenceDate = occurrencePlan.occurrenceDate ?? occurrencePlan.date;
 
     try {
-      if (pendingRecurringPlanAction.kind === 'edit') {
-        const draft = pendingRecurringPlanAction.draft;
-
-        if (!draft) {
-          return;
-        }
-
-        if (scope === 'all') {
-          const seriesPlans = plans.filter(
-            (plan) => plan.seriesId === sourcePlan.seriesId,
-          );
-          const updatedPlans = seriesPlans.map((plan) =>
-            applyRecurringPlanSeriesEdit(plan, draft),
-          );
-
-          await runSequentially(updatedPlans, async (plan) => {
-            await plannerRepository.upsertPlan(plan);
-          });
-          setPlans((current) => sortAndUpsertPlans(current, updatedPlans));
-          setSelectedDate(occurrenceDate);
-          setMonthDate(startOfMonth(occurrenceDate));
-          setPendingRecurringPlanAction(null);
-          closePlanEditor();
-          showNotice('繰り返し予定を更新しました。', 'success');
-          return;
-        }
-
-        const editResult = applyRecurringPlanEditScope(
-          sourcePlan,
-          occurrenceDate,
-          draft,
-          scope,
-        );
-        const migratedActuals =
-          scope === 'future' && editResult.createdPlan
-            ? actuals
-                .filter(
-                  (actual) =>
-                    actual.planId === sourcePlan.id &&
-                    actual.occurrenceDate.localeCompare(occurrenceDate) >= 0,
-                )
-                .map((actual) => ({
-                  ...actual,
-                  planId: editResult.createdPlan?.id ?? actual.planId,
-                }))
-            : [];
-        const deletedPlanIds =
-          editResult.updatedPlan === null ? [sourcePlan.id] : [];
-
-        if (editResult.createdPlan) {
-          await plannerRepository.upsertPlan(editResult.createdPlan);
-        }
-
-        if (editResult.updatedPlan) {
-          await plannerRepository.upsertPlan(editResult.updatedPlan);
-        }
-
-        const savedMigratedActuals: Actual[] = [];
-
-        if (migratedActuals.length > 0) {
-          await runSequentially(migratedActuals, async (actual) => {
-            savedMigratedActuals.push(await plannerRepository.upsertActual(actual));
-          });
-        }
-
-        if (editResult.updatedPlan === null) {
-          await plannerRepository.deletePlan(userId, sourcePlan.id);
-        }
-
-        setPlans((current) => {
-          const withoutDeleted = removePlansByIds(current, deletedPlanIds);
-          const nextPlans = [
-            ...(editResult.updatedPlan ? [editResult.updatedPlan] : []),
-            ...(editResult.createdPlan ? [editResult.createdPlan] : []),
-          ];
-          return sortAndUpsertPlans(withoutDeleted, nextPlans);
-        });
-        setActuals((current) => upsertActualsById(current, savedMigratedActuals));
-        setSelectedDate(occurrenceDate);
-        setMonthDate(startOfMonth(occurrenceDate));
-        setPendingRecurringPlanAction(null);
-        closePlanEditor();
-        showNotice('繰り返し予定を更新しました。', 'success');
-        return;
-      }
-
-      if (scope === 'all') {
-        const seriesPlans = plans.filter(
-          (plan) =>
-            plan.seriesId === sourcePlan.seriesId && plan.userId === userId,
-        );
-        const skippedPlans = plans.filter(
-          (plan) =>
-            plan.seriesId === sourcePlan.seriesId && plan.userId !== userId,
-        );
-        const seriesPlanIds = seriesPlans.map((plan) => plan.id);
-        const seriesActuals = actuals.filter(
-          (actual) =>
-            actual.userId === userId &&
-            typeof actual.planId === 'string' &&
-            seriesPlanIds.includes(actual.planId),
-        );
-
-        console.info('[RecurringPlanScope] delete-all targets', {
-          source:
-            editingPlanId && editingPlanId === sourcePlan.id
-              ? 'plan-editor'
-              : 'plan-card',
-          action: 'delete',
-          scope,
-          userId,
-          sourcePlanId: sourcePlan.id,
-          sourceSeriesId: sourcePlan.seriesId,
-          plans: seriesPlans.map(summarizePlanForLog),
-          actuals: seriesActuals.map(summarizeActualForLog),
-          skippedPlans: skippedPlans.map(summarizePlanForLog),
-        });
-
-        await runSequentially(seriesPlanIds, async (planId) => {
-          console.info('[RecurringPlanScope] delete-all operation', {
-            collection: 'plans',
-            operation: 'delete-series-plan',
-            planId,
-            scope,
-            seriesId: sourcePlan.seriesId,
-          });
-          try {
-            await plannerRepository.deletePlan(userId, planId);
-          } catch (error) {
-            console.error('[RecurringPlanScope] delete-all operation failed', {
-              collection: 'plans',
-              operation: 'delete-series-plan',
-              planId,
+      const mutation =
+        pendingRecurringPlanAction.kind === 'edit'
+          ? pendingRecurringPlanAction.draft
+            ? buildRecurringPlanEditMutation(
+                plans,
+                actuals,
+                sourcePlan,
+                occurrenceDate,
+                pendingRecurringPlanAction.draft,
+                scope,
+              )
+            : null
+          : buildRecurringPlanDeleteMutation(
+              plans,
+              actuals,
+              sourcePlan,
+              occurrenceDate,
               scope,
-              seriesId: sourcePlan.seriesId,
-              error: getErrorDiagnostics(error),
-            });
-            throw error;
-          }
-        });
-        setPlans((current) => removePlansByIds(current, seriesPlanIds));
-        setActuals((current) =>
-          current.filter(
-            (actual) => !actual.planId || !seriesPlanIds.includes(actual.planId),
-          ),
-        );
-        setPendingRecurringPlanAction(null);
-        closePlanEditor();
-        showNotice('繰り返し予定を削除しました。');
+            );
+
+      if (!mutation) {
         return;
       }
 
-      const nextPlan = applyRecurringPlanDeleteScope(sourcePlan, occurrenceDate, scope);
-      const actualsToDelete = actuals.filter(
-        (actual) =>
-          actual.planId === sourcePlan.id &&
-          (scope === 'single'
-            ? actual.occurrenceDate === occurrenceDate
-            : actual.occurrenceDate.localeCompare(occurrenceDate) >= 0),
+      await plannerRepository.applyRecurringPlanMutation(userId, mutation);
+      const deletedPlanIds = new Set(
+        mutation.planDeletes.map((plan) => plan.id),
       );
-
-      if (nextPlan) {
-        await plannerRepository.upsertPlan(nextPlan);
-        await runSequentially(actualsToDelete, async (actual) => {
-          await plannerRepository.deleteActual(userId, actual.id);
-        });
-        setPlans((current) => sortAndUpsertPlans(current, [nextPlan]));
-      } else {
-        await plannerRepository.deletePlan(userId, sourcePlan.id);
-        setPlans((current) => removePlansByIds(current, [sourcePlan.id]));
-      }
-
-      setActuals((current) =>
-        current.filter(
-          (actual) =>
-            !actualsToDelete.some((candidate) => candidate.id === actual.id) &&
-            !(nextPlan === null && actual.planId === sourcePlan.id),
+      const deletedActualIds = new Set(
+        mutation.actualDeletes.map((actual) => actual.id),
+      );
+      setPlans((current) =>
+        sortAndUpsertPlans(
+          current.filter((plan) => !deletedPlanIds.has(plan.id)),
+          mutation.planUpserts,
         ),
       );
+      setActuals((current) =>
+        upsertActualsById(
+          current.filter(
+            (actual) =>
+              !deletedActualIds.has(actual.id) &&
+              (!actual.planId || !deletedPlanIds.has(actual.planId)),
+          ),
+          mutation.actualUpserts,
+        ),
+      );
+
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        setSelectedDate(occurrenceDate);
+        setMonthDate(startOfMonth(occurrenceDate));
+      }
       setPendingRecurringPlanAction(null);
       closePlanEditor();
-      showNotice('繰り返し予定を削除しました。');
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        showNotice('繰り返し予定を更新しました。', 'success');
+      } else {
+        showNotice('繰り返し予定を削除しました。');
+      }
     } catch (error) {
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
@@ -823,19 +733,15 @@ export function usePlannerDataState({
     }
 
     if (isScopedRecurringEditCandidate(plan)) {
-      setPendingRecurringPlanAction({
-        kind: 'delete',
-        plan,
-      });
+      setPendingRecurringPlanAction({ kind: 'delete', plan });
       return;
     }
 
     const linkedTodo =
       plan.sourceType === 'todo' && plan.sourceId
         ? todos.find(
-            (todo) =>
-              todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
-          )
+            (todo) => todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
+          ) ?? null
         : null;
     const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
     const previousPlans = plans;
@@ -854,22 +760,20 @@ export function usePlannerDataState({
       setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
       setActuals((current) => current.filter((actual) => actual.planId !== plan.id));
       if (nextLinkedTodo) {
-        setTodos((current) =>
-          upsertByKey(current, nextLinkedTodo, (todo) => todo.id),
-        );
+        setTodos((current) => upsertByKey(current, nextLinkedTodo, (todo) => todo.id));
       }
       closePlanEditor();
-      if (nextLinkedTodo) {
-        await plannerRepository.upsertTodo(nextLinkedTodo);
-      }
-      await plannerRepository.deletePlan(userId, plan.id);
+      await plannerRepository.deletePlanWithDependents({
+        userId,
+        plan,
+        todo: nextLinkedTodo,
+      });
       showDeleteUndoNotice(async () => {
-        await plannerRepository.upsertPlan(plan);
-
-        if (linkedTodo) {
-          await plannerRepository.upsertTodo(linkedTodo);
-        }
-
+        await plannerRepository.restorePlanWithDependents({
+          plan,
+          actuals: linkedActuals,
+          todo: linkedTodo,
+        });
         setPlans((current) => sortAndUpsertPlans(current, [plan]));
         if (linkedActuals.length > 0) {
           setActuals((current) => upsertActualsById(current, linkedActuals));
@@ -879,153 +783,21 @@ export function usePlannerDataState({
         }
       });
     } catch (error) {
-      if (nextLinkedTodo && linkedTodo) {
-        try {
-          await plannerRepository.upsertTodo(linkedTodo);
-        } catch (rollbackError) {
-          console.error('[PlanDelete] failed to rollback linked todo', {
-            todoId: linkedTodo.id,
-            error: getErrorDiagnostics(rollbackError),
-          });
-        }
-      }
       setPlans(previousPlans);
       setActuals(previousActuals);
       setTodos(previousTodos);
-      showNotice(
-        resolveErrorMessage(error, '予定を削除できませんでした。'),
-        'error',
-      );
+      showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
       throw error;
     }
   }
 
-  async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+  function resolveActualMaterialProgress(actual: Actual): {
+    nextMaterials: StudyMaterial[];
+    changedMaterials: StudyMaterial[];
+  } {
+    if (!actual.materialProgressUpdates?.length) {
+      return { nextMaterials: studyMaterials, changedMaterials: [] };
     }
-
-    const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
-    const existingActual = targetActualId
-      ? actuals.find((actual) => actual.id === targetActualId)
-      : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
-    const nextActual = createActualFromDraft(userId, draft, existingActual);
-    const rollbackActual = existingActual;
-
-    setActuals((current) =>
-      upsertActualByOccurrenceKey(
-        targetActualId
-          ? current.filter((actual) => actual.id !== targetActualId)
-          : current,
-        nextActual,
-      ),
-    );
-
-    try {
-      const savedActual = await plannerRepository.upsertActual(nextActual);
-      setActuals((current) =>
-        upsertActualByOccurrenceKey(
-          current,
-          savedActual,
-          targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
-        ),
-      );
-      showNotice('記録を保存しました。', 'success');
-      if (!existingActual) {
-        await applySavedActualMaterialProgress(savedActual);
-      }
-    } catch (error) {
-      setActuals((current) => {
-        const rolledBackActuals = current.filter(
-          (actual) =>
-            actual.id !== nextActual.id &&
-            (!targetActualId || actual.id !== targetActualId) &&
-            getActualOccurrenceKey(actual) !== occurrenceKey,
-        );
-
-        return rollbackActual
-          ? upsertActualByOccurrenceKey(rolledBackActuals, rollbackActual)
-          : rolledBackActuals;
-      });
-      showNotice(
-        resolveErrorMessage(error, '記録を保存できませんでした。'),
-        'error',
-      );
-      throw error;
-    }
-  }
-
-  async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
-    if (!draft.title.trim()) {
-      showNotice('記録のタイトルを入力してください。', 'error');
-      throw new Error('記録のタイトルを入力してください。');
-    }
-
-    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
-    }
-
-    const existingActual = targetActualId
-      ? actuals.find((actual) => actual.id === targetActualId && !actual.planId)
-      : undefined;
-
-    if (targetActualId && !existingActual) {
-      showNotice('記録が見つかりませんでした。', 'error');
-      throw new Error('記録が見つかりませんでした。');
-    }
-
-    const nextActual = createActualFromDraft(userId, {
-      ...draft,
-      planId: null,
-      title: draft.title.trim(),
-      subject: draft.subject.trim(),
-      isAlignedToPlan: false,
-      note: draft.note.trim(),
-    }, existingActual);
-    const previousActuals = actuals;
-
-    try {
-      setActuals((current) =>
-        upsertByKey(
-          targetActualId
-            ? current.filter((actual) => actual.id !== targetActualId)
-            : current,
-          nextActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
-      const savedActual = await plannerRepository.upsertActual(nextActual);
-      setActuals((current) =>
-        upsertByKey(
-          current.filter((actual) => actual.id !== nextActual.id),
-          savedActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
-      showNotice('記録を保存しました。', 'success');
-      if (!existingActual) {
-        await applySavedActualMaterialProgress(savedActual);
-      }
-    } catch (error) {
-      setActuals(previousActuals);
-      showNotice(
-        resolveErrorMessage(error, '記録を保存できませんでした。'),
-        'error',
-      );
-      throw error;
-    }
-  }
-
-  async function applySavedActualMaterialProgress(actual: Actual) {
-    if (!userId || !actual.materialProgressUpdates?.length) {
-      return;
-    }
-
     const nextMaterials = applyMaterialProgressUpdates(
       studyMaterials,
       actual.materialProgressUpdates,
@@ -1034,38 +806,142 @@ export function usePlannerDataState({
       const currentMaterial = studyMaterials.find(
         (material) => material.id === nextMaterial.id,
       );
-
-      return (
-        currentMaterial &&
-        currentMaterial.currentUnit !== nextMaterial.currentUnit
+      return Boolean(
+        currentMaterial && currentMaterial.currentUnit !== nextMaterial.currentUnit,
       );
     });
+    return { nextMaterials, changedMaterials };
+  }
 
-    if (changedMaterials.length === 0) {
-      return;
-    }
+  async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
+    const existingActual = targetActualId
+      ? actuals.find((actual) => actual.id === targetActualId)
+      : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
+    const nextActual = createActualFromDraft(userId, draft, existingActual);
+    const rollbackActual = existingActual;
+    const progress = existingActual
+      ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
+      : resolveActualMaterialProgress(nextActual);
+
+    setActuals((current) =>
+      upsertActualByOccurrenceKey(
+        targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
+        nextActual,
+      ),
+    );
 
     try {
-      await runSequentially(changedMaterials, async (material) => {
-        await plannerRepository.updateStudyMaterialProgress(
-          userId,
-          material.id,
-          material.currentUnit ?? 0,
-        );
+      const savedActual = await plannerRepository.upsertActualWithMaterialProgress({
+        actual: nextActual,
+        materials: progress.changedMaterials,
       });
-      setStudyMaterials((current) =>
-        sortStudyMaterials(
-          nextMaterials.map((nextMaterial) => {
-            const currentMaterial = current.find(
-              (material) => material.id === nextMaterial.id,
-            );
-
-            return currentMaterial ? { ...currentMaterial, ...nextMaterial } : nextMaterial;
-          }),
+      setActuals((current) =>
+        upsertActualByOccurrenceKey(
+          current,
+          savedActual,
+          targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
         ),
       );
+      if (progress.changedMaterials.length > 0) {
+        setStudyMaterials((current) =>
+          sortStudyMaterials(
+            progress.changedMaterials.reduce(
+              (records, nextMaterial) =>
+                upsertByKey(records, nextMaterial, (material) => material.id),
+              current,
+            ),
+          ),
+        );
+      }
+      showNotice('記録を保存しました。', 'success');
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '教材の進捗を保存できませんでした。'), 'error');
+      setActuals((current) => {
+        const rolledBackActuals = current.filter(
+          (actual) =>
+            actual.id !== nextActual.id &&
+            (!targetActualId || actual.id !== targetActualId) &&
+            getActualOccurrenceKey(actual) !== occurrenceKey,
+        );
+        return rollbackActual
+          ? upsertActualByOccurrenceKey(rolledBackActuals, rollbackActual)
+          : rolledBackActuals;
+      });
+      showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!draft.title.trim()) {
+      showNotice('記録のタイトルを入力してください。', 'error');
+      throw new Error('記録のタイトルを入力してください。');
+    }
+    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+    const existingActual = targetActualId
+      ? actuals.find((actual) => actual.id === targetActualId && !actual.planId)
+      : undefined;
+    if (targetActualId && !existingActual) {
+      showNotice('記録が見つかりませんでした。', 'error');
+      throw new Error('記録が見つかりませんでした。');
+    }
+    const nextActual = createActualFromDraft(
+      userId,
+      {
+        ...draft,
+        planId: null,
+        title: draft.title.trim(),
+        subject: draft.subject.trim(),
+        isAlignedToPlan: false,
+        note: draft.note.trim(),
+      },
+      existingActual,
+    );
+    const previousActuals = actuals;
+    const progress = existingActual
+      ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
+      : resolveActualMaterialProgress(nextActual);
+
+    try {
+      setActuals((current) =>
+        upsertByKey(
+          targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
+          nextActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
+      );
+      const savedActual = await plannerRepository.upsertActualWithMaterialProgress({
+        actual: nextActual,
+        materials: progress.changedMaterials,
+      });
+      setActuals((current) =>
+        upsertByKey(
+          current.filter((actual) => actual.id !== nextActual.id),
+          savedActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
+      );
+      if (progress.changedMaterials.length > 0) {
+        setStudyMaterials((current) =>
+          sortStudyMaterials(
+            progress.changedMaterials.reduce(
+              (records, nextMaterial) =>
+                upsertByKey(records, nextMaterial, (material) => material.id),
+              current,
+            ),
+          ),
+        );
+      }
+      showNotice('記録を保存しました。', 'success');
+    } catch (error) {
+      setActuals(previousActuals);
+      showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
+      throw error;
     }
   }
 
@@ -1298,23 +1174,12 @@ export function usePlannerDataState({
   }
 
   async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
       showNotice('終了時刻は開始時刻より後にしてください。', 'error');
       throw new Error('終了時刻は開始時刻より後にしてください。');
     }
-
-    const nextPlan = createPlanFromDraft(
-      {
-        ...draft,
-        sourceType: 'todo',
-        sourceId: todo.id,
-      },
-    );
-
+    const nextPlan = createPlanFromDraft({ ...draft, sourceType: 'todo', sourceId: todo.id });
     const dueDate = todo.dueDate || null;
     const nextTodo: TodoTask = {
       ...todo,
@@ -1324,23 +1189,17 @@ export function usePlannerDataState({
       dueTime: dueDate ? todo.dueTime ?? null : null,
       updatedAt: new Date().toISOString(),
     };
-
-    let didCreatePlan = false;
     const previousPlans = plans;
     const previousTodos = todos;
     const previousSelectedDate = selectedDate;
     const previousMonthDate = monthDate;
 
     try {
-      setPlans((current) =>
-        sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
-      );
+      setPlans((current) => sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)));
       setTodos((current) => upsertByKey(current, nextTodo, (item) => item.id));
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
-      await plannerRepository.upsertPlan(nextPlan);
-      didCreatePlan = true;
-      await plannerRepository.upsertTodo(nextTodo);
+      await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
       showNotice('Todoを予定化しました。', 'success');
       return nextPlan;
     } catch (error) {
@@ -1348,17 +1207,6 @@ export function usePlannerDataState({
       setTodos(previousTodos);
       setSelectedDate(previousSelectedDate);
       setMonthDate(previousMonthDate);
-      if (didCreatePlan) {
-        try {
-          await plannerRepository.deletePlan(userId, nextPlan.id);
-        } catch (rollbackError) {
-          console.error('[TodoSchedule] failed to rollback created plan', {
-            planId: nextPlan.id,
-            error: getErrorDiagnostics(rollbackError),
-          });
-        }
-      }
-
       showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
       throw error;
     }
@@ -1389,19 +1237,13 @@ export function usePlannerDataState({
     draft: StudySubjectDraft,
     targetSubjectId?: string,
   ): Promise<StudySubject> {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const name = draft.name.trim();
     if (!name) {
       showNotice('教科名を入れてください。', 'error');
       throw new Error('教科名を入れてください。');
     }
-
-    const currentSubject = studySubjects.find(
-      (subject) => subject.id === targetSubjectId,
-    );
+    const currentSubject = studySubjects.find((subject) => subject.id === targetSubjectId);
     const now = new Date().toISOString();
     const nextSubject: StudySubject = {
       id: currentSubject?.id ?? createId('study-subject'),
@@ -1423,10 +1265,10 @@ export function usePlannerDataState({
       : [];
 
     try {
-      await plannerRepository.upsertStudySubject(nextSubject);
-      for (const material of updatedMaterials) {
-        await plannerRepository.upsertStudyMaterial(material);
-      }
+      await plannerRepository.upsertStudySubjectWithMaterials({
+        subject: nextSubject,
+        materials: updatedMaterials,
+      });
       setStudySubjects((current) =>
         sortStudySubjects(upsertByKey(current, nextSubject, (subject) => subject.id)),
       );
@@ -1434,17 +1276,13 @@ export function usePlannerDataState({
         setStudyMaterials((current) =>
           sortStudyMaterials(
             updatedMaterials.reduce(
-              (records, material) =>
-                upsertByKey(records, material, (item) => item.id),
+              (records, material) => upsertByKey(records, material, (item) => item.id),
               current,
             ),
           ),
         );
       }
-      showNotice(
-        currentSubject ? '教科を更新しました。' : '教科を追加しました。',
-        'success',
-      );
+      showNotice(currentSubject ? '教科を更新しました。' : '教科を追加しました。', 'success');
       return nextSubject;
     } catch (error) {
       showNotice(resolveErrorMessage(error, '教科を保存できませんでした。'), 'error');
@@ -1681,28 +1519,21 @@ export function usePlannerDataState({
   }
 
   async function activateTimetableTerm(draft: TimetableTermDraft): Promise<TimetableTerm> {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const startDate = normalizeTimetableDate(draft.startDate);
     const endDate = normalizeTimetableDate(draft.endDate);
-
     if (startDate && endDate && endDate < startDate) {
       showNotice('時間割の終了日は開始日以降にしてください。', 'error');
       throw new Error('時間割の終了日は開始日以降にしてください。');
     }
-
     const usesAlternatingWeeks = draft.usesAlternatingWeeks === true;
     const alternatingWeekAnchorDate = usesAlternatingWeeks
       ? normalizeTimetableDate(draft.alternatingWeekAnchorDate) ?? startDate
       : null;
-
     if (usesAlternatingWeeks && !alternatingWeekAnchorDate) {
       showNotice('交互週を使う場合はA週の基準日を設定してください。', 'error');
       throw new Error('交互週を使う場合はA週の基準日を設定してください。');
     }
-
     const yearFromStartDate = startDate ? Number(startDate.slice(0, 4)) : null;
     const year = Number.isFinite(yearFromStartDate)
       ? Number(yearFromStartDate)
@@ -1735,177 +1566,104 @@ export function usePlannerDataState({
     };
     const inactiveTerms = timetableTerms
       .filter((term) => term.id !== nextActiveTerm.id)
-      .map((term) => ({
-        ...term,
-        isActive: false,
-        updatedAt: now,
-      }));
+      .map((term) => ({ ...term, isActive: false, updatedAt: now }));
 
     try {
-      for (const term of inactiveTerms) {
-        await plannerRepository.upsertTimetableTerm(term);
-      }
-      await plannerRepository.upsertTimetableTerm(nextActiveTerm);
-      setTimetableTerms((current) => {
-        const withInactive = current
-          .filter((term) => term.id !== nextActiveTerm.id)
-          .map((term) => ({ ...term, isActive: false, updatedAt: now }));
-        return sortTimetableTerms([...withInactive, nextActiveTerm]);
+      await plannerRepository.applyTimetableMutation({
+        userId,
+        termUpserts: [...inactiveTerms, nextActiveTerm],
+        termDeletes: [],
+        templateUpserts: [],
+        templateDeletes: [],
+        periodUpserts: [],
+        periodDeletes: [],
       });
+      setTimetableTerms(sortTimetableTerms([...inactiveTerms, nextActiveTerm]));
       showNotice('時間割の期間を保存しました。', 'success');
       return nextActiveTerm;
     } catch (error) {
-      showNotice(
-        resolveErrorMessage(error, '時間割の期間を保存できませんでした。'),
-        'error',
-      );
+      showNotice(resolveErrorMessage(error, '時間割の期間を保存できませんでした。'), 'error');
       throw error;
     }
   }
 
   async function deleteTimetableTerm(term: TimetableTerm) {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const targetTerm = timetableTerms.find((item) => item.id === term.id) ?? term;
     if (timetableTerms.length <= 1) {
-      showNotice(
-        '最後の期間は削除できません。新しい期間を追加してから削除してください。',
-        'error',
-      );
+      showNotice('最後の期間は削除できません。新しい期間を追加してから削除してください。', 'error');
       throw new Error('最後の期間は削除できません。');
     }
-
     const targetTermId = targetTerm.id;
     const targetTemplates = scheduleTemplates.filter(
       (template) => (template.termId || 'default') === targetTermId,
     );
-    const targetPeriods = timetablePeriods.filter(
-      (period) => period.termId === targetTermId,
-    );
+    const targetPeriods = timetablePeriods.filter((period) => period.termId === targetTermId);
     const remainingTerms = timetableTerms.filter((item) => item.id !== targetTermId);
-    const fallbackTerm = targetTerm.isActive
-      ? sortTimetableTerms(remainingTerms)[0] ?? null
-      : null;
+    const fallbackTerm = targetTerm.isActive ? sortTimetableTerms(remainingTerms)[0] ?? null : null;
     const nextFallbackTerm = fallbackTerm
-      ? {
-          ...fallbackTerm,
-          isActive: true,
-          updatedAt: new Date().toISOString(),
-        }
+      ? { ...fallbackTerm, isActive: true, updatedAt: new Date().toISOString() }
       : null;
-    const deletedTemplates: ScheduleTemplate[] = [];
-    const deletedPeriods: TimetablePeriod[] = [];
-    let fallbackActivated = false;
 
     try {
-      await runSequentially(targetTemplates, async (template) => {
-        await plannerRepository.deleteScheduleTemplate(userId, template.id);
-        deletedTemplates.push(template);
+      await plannerRepository.applyTimetableMutation({
+        userId,
+        termUpserts: nextFallbackTerm ? [nextFallbackTerm] : [],
+        termDeletes: [targetTerm],
+        templateUpserts: [],
+        templateDeletes: targetTemplates,
+        periodUpserts: [],
+        periodDeletes: targetPeriods,
       });
-      await runSequentially(targetPeriods, async (period) => {
-        await plannerRepository.deleteTimetablePeriod(userId, period.id);
-        deletedPeriods.push(period);
-      });
-
-      if (nextFallbackTerm) {
-        await plannerRepository.upsertTimetableTerm(nextFallbackTerm);
-        fallbackActivated = true;
-      }
-
-      await plannerRepository.deleteTimetableTerm(userId, targetTermId);
-
       setScheduleTemplates((current) =>
-        current.filter(
-          (template) => (template.termId || 'default') !== targetTermId,
-        ),
+        current.filter((template) => (template.termId || 'default') !== targetTermId),
       );
-      setTimetablePeriods((current) =>
-        current.filter((period) => period.termId !== targetTermId),
-      );
+      setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
       setTimetableTerms((current) =>
         sortTimetableTerms(
           current
             .filter((item) => item.id !== targetTermId)
             .map((item) =>
-              nextFallbackTerm && item.id === nextFallbackTerm.id
-                ? nextFallbackTerm
-                : item,
+              nextFallbackTerm && item.id === nextFallbackTerm.id ? nextFallbackTerm : item,
             ),
         ),
       );
       showNotice('期間を削除しました。', 'success');
     } catch (error) {
-      try {
-        await runSequentially(deletedPeriods, async (period) => {
-          await plannerRepository.upsertTimetablePeriod(period);
-        });
-        await runSequentially(deletedTemplates, async (template) => {
-          await plannerRepository.upsertScheduleTemplate(template);
-        });
-        if (fallbackActivated && fallbackTerm) {
-          await plannerRepository.upsertTimetableTerm(fallbackTerm);
-        }
-      } catch (rollbackError) {
-        console.error('[TimetableTermDelete] rollback failed', {
-          termId: targetTermId,
-          error: getErrorDiagnostics(rollbackError),
-        });
-      }
-
-      showNotice(
-        resolveErrorMessage(error, '期間を削除できませんでした。'),
-        'error',
-      );
+      showNotice(resolveErrorMessage(error, '期間を削除できませんでした。'), 'error');
       throw error;
     }
   }
 
   async function clearTimetableTermData(term: TimetableTerm) {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const targetTermId = term.id;
     const targetTemplates = scheduleTemplates.filter(
       (template) => (template.termId || 'default') === targetTermId,
     );
-    const targetPeriods = timetablePeriods.filter(
-      (period) => period.termId === targetTermId,
-    );
-    const now = new Date().toISOString();
-    const nextTerm: TimetableTerm = {
-      ...term,
-      updatedAt: now,
-    };
+    const targetPeriods = timetablePeriods.filter((period) => period.termId === targetTermId);
+    const nextTerm: TimetableTerm = { ...term, updatedAt: new Date().toISOString() };
 
     try {
-      await runSequentially(targetTemplates, async (template) => {
-        await plannerRepository.deleteScheduleTemplate(userId, template.id);
+      await plannerRepository.applyTimetableMutation({
+        userId,
+        termUpserts: [nextTerm],
+        termDeletes: [],
+        templateUpserts: [],
+        templateDeletes: targetTemplates,
+        periodUpserts: [],
+        periodDeletes: targetPeriods,
       });
-      await runSequentially(targetPeriods, async (period) => {
-        await plannerRepository.deleteTimetablePeriod(userId, period.id);
-      });
-      await plannerRepository.upsertTimetableTerm(nextTerm);
-
       setScheduleTemplates((current) =>
         current.filter((template) => (template.termId || 'default') !== targetTermId),
       );
-      setTimetablePeriods((current) =>
-        current.filter((period) => period.termId !== targetTermId),
-      );
+      setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
       setTimetableTerms((current) =>
-        sortTimetableTerms(
-          current.map((item) => (item.id === targetTermId ? nextTerm : item)),
-        ),
+        sortTimetableTerms(current.map((item) => (item.id === targetTermId ? nextTerm : item))),
       );
       showNotice('この期間の授業をすべて削除しました。', 'success');
     } catch (error) {
-      showNotice(
-        resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'),
-        'error',
-      );
+      showNotice(resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'), 'error');
       throw error;
     }
   }
@@ -2030,6 +1788,7 @@ export function usePlannerDataState({
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,

@@ -1,3 +1,7 @@
+import {
+  isPlannerDataReadyForOwner,
+  type PlannerDataAvailability,
+} from '../../../domain/plannerDataReadAuthority';
 import type { Actual, Plan, ScheduleTemplate, StudyMaterial, TimetableTerm } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
@@ -49,6 +53,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
+  plannerDataAvailability: PlannerDataAvailability;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
@@ -60,6 +65,10 @@ export function submitWeeklyPlanningApplicationTurn(
   params: SubmitWeeklyPlanningApplicationTurnParams,
   services: WeeklyPlanningTurnApplicationServices = defaultServices,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
+  if (!isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)) {
+    return Promise.resolve({ accepted: false, draftCandidates: [] });
+  }
+
   return services.submitControlledTurn({
     session: params.session,
     ownerId: params.userId,
@@ -92,8 +101,8 @@ export function submitWeeklyPlanningApplicationTurn(
         pending,
       });
     },
-    commitExecutionResult({ pending }) {
-      services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
+    prepareExecutionCommit({ pending }) {
+      return services.stagingLifecycle.prepare({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending, userText, result, reason }) {
       services.stagingLifecycle.discard(pending);
