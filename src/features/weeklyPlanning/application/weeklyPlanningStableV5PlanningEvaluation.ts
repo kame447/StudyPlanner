@@ -177,6 +177,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const externalSources = createStableV5ExternalConstraintSources({
     ownerId: input.userId,
     plans: input.plans,
+    monthEvents: input.monthEvents,
     templates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
     timetableTerm: input.timetableTerm,
