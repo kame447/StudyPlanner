@@ -127,20 +127,85 @@ async function openPreview(page, expectedCount = 2) {
   return preview;
 }
 
+async function longPressPreviewBlock(page, preview, title) {
+  const block = preview
+    .locator('.ai-planning-preview-day-column-detail .ai-planning-draft-block')
+    .filter({ hasText: title });
+  await expect(block).toBeVisible();
+  const box = await block.boundingBox();
+  if (!box) throw new Error(`Preview block is not measurable: ${title}`);
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  return block;
+}
+
+async function revealRemoveAction(page, preview, title) {
+  const removeAction = preview.getByRole('button', { name: `${title}を計画から除外` });
+  await expect(removeAction).toHaveCount(0);
+  const block = await longPressPreviewBlock(page, preview, title);
+  await expect(removeAction).toBeVisible();
+  return { block, removeAction };
+}
+
+async function enableTouch(page) {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  return session;
+}
+
+async function dispatchTouch(session, type, x, y) {
+  await session.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints:
+      type === 'touchEnd' || type === 'touchCancel'
+        ? []
+        : [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }],
+  });
+}
+
+async function locatorCenter(locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Preview block is not measurable');
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
 test('AI planning preview removes the exact local preview candidate', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedPreviewRemovalState(page, { phase: 'preview' });
   const preview = await openPreview(page);
 
-  const removeCandidate = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
-  await expect(removeCandidate).toBeVisible();
+  const firstReveal = await revealRemoveAction(page, preview, '金フレ A');
+  await expect(firstReveal.block).toHaveCSS('padding-right', '7px');
+  await page.waitForTimeout(100);
+  await expect(firstReveal.removeAction).toBeVisible();
+
+  await preview.getByRole('tab', { name: '全体' }).click();
+  await preview.getByRole('tab', { name: '日別' }).click();
+  await expect(preview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+
+  const { removeAction: removeCandidate } = await revealRemoveAction(page, preview, '金フレ A');
   await removeCandidate.click();
 
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
 
   const restoredPreview = await openPreview(page, 1);
   await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
-  await expect(restoredPreview.getByRole('button', { name: '金フレ Bを計画から除外' })).toBeVisible();
+  const { removeAction: remainingCandidate } = await revealRemoveAction(
+    page,
+    restoredPreview,
+    '金フレ B',
+  );
+  await expect(remainingCandidate).toBeVisible();
 });
 
 test('AI planning preview removes the exact promoted draft block', async ({ page }) => {
@@ -148,20 +213,56 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await seedPreviewRemovalState(page, { phase: 'promoted' });
   const preview = await openPreview(page);
 
-  const removeDraft = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
-  await expect(removeDraft).toBeVisible();
+  const { removeAction: removeDraft } = await revealRemoveAction(page, preview, '金フレ A');
   await removeDraft.click();
 
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
 
   const restoredPreview = await openPreview(page, 1);
   await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
-  const remainingDraft = restoredPreview.getByRole('button', { name: '金フレ Bを計画から除外' });
-  await expect(remainingDraft).toBeVisible();
+  const { removeAction: remainingDraft } = await revealRemoveAction(
+    page,
+    restoredPreview,
+    '金フレ B',
+  );
   await remainingDraft.click();
   await expect(restoredPreview).toBeHidden();
 
   await page.goto('/');
   await page.locator('.primary-bottom-nav button').first().click();
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
+});
+
+test('AI planning preview touch long press reveals action without showing drag first', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await seedPreviewRemovalState(page, { phase: 'preview' });
+  const preview = await openPreview(page);
+  const block = preview
+    .locator('.ai-planning-preview-day-column-detail .ai-planning-draft-block')
+    .filter({ hasText: '金フレ A' });
+  const removeAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  const { x, y } = await locatorCenter(block);
+  const session = await enableTouch(page);
+
+  await expect(removeAction).toHaveCount(0);
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(removeAction).toHaveCount(0);
+
+  await dispatchTouch(session, 'touchEnd', x, y);
+  await expect(removeAction).toBeVisible();
+  await page.waitForTimeout(100);
+  await expect(removeAction).toBeVisible();
+  await page.screenshot({
+    path: 'artifacts/ai-planning-preview-longpress-action-mobile.png',
+    fullPage: true,
+  });
+
+  await context.close();
 });
