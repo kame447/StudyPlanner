@@ -262,6 +262,7 @@ export function AiPlanningPreviewDialog({
         after,
       });
     },
+    deferTouchDragUntilMoveAfterLongPress: true,
   });
 
   useEffect(() => {
