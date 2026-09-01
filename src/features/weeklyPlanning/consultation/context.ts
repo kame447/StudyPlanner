@@ -70,7 +70,7 @@ function stableRecord(value: unknown): unknown {
 }
 
 function stableSerialize(value: unknown): string {
-  return JSON.stringify(stableRecord(value));
+  return JSON.stringify(stableRecord(value)) ?? 'null';
 }
 
 function fnv1a32(value: string): string {
