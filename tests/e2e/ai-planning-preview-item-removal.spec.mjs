@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 
 async function seedPreviewRemovalState(page, { phase }) {
   await page.addInitScript(({ seededPhase }) => {
+    const seedMarker = 'studyplanner.e2e.previewRemovalSeeded';
+    if (localStorage.getItem(seedMarker) === seededPhase) return;
+
     const now = new Date().toISOString();
     const today = new Date();
     const user = {
@@ -109,25 +112,17 @@ async function seedPreviewRemovalState(page, { phase }) {
         conversationId: null,
       }),
     );
-    window.__previewRemovalStorageKey = `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`;
+    localStorage.setItem(seedMarker, seededPhase);
   }, { seededPhase: phase });
 }
 
-async function readStoredPlanningState(page) {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem(window.__previewRemovalStorageKey);
-    if (!raw) return null;
-    return JSON.parse(raw).payload.state;
-  });
-}
-
-async function openPreview(page) {
+async function openPreview(page, expectedCount = 2) {
   await page.goto('/');
   await page.locator('.primary-bottom-nav button').first().click();
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(preview).toBeVisible();
-  await expect(preview.locator('.ai-planning-preview-total')).toContainText('全2件');
+  await expect(preview.locator('.ai-planning-preview-total')).toContainText(`全${expectedCount}件`);
   await preview.getByRole('tab', { name: '日別' }).click();
   return preview;
 }
@@ -142,16 +137,10 @@ test('AI planning preview removes the exact local preview candidate', async ({ p
   await removeCandidate.click();
 
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
-  await expect.poll(async () => {
-    const state = await readStoredPlanningState(page);
-    return {
-      previewIds: state?.previewCandidates?.map((candidate) => candidate.stableKey) ?? [],
-      draftIds: state?.draftBlocks?.map((block) => block.id) ?? [],
-    };
-  }).toEqual({
-    previewIds: ['candidate-b'],
-    draftIds: [],
-  });
+
+  const restoredPreview = await openPreview(page, 1);
+  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(restoredPreview.getByRole('button', { name: '金フレ Bを計画から除外' })).toBeVisible();
 });
 
 test('AI planning preview removes the exact promoted draft block', async ({ page }) => {
@@ -164,28 +153,15 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await removeDraft.click();
 
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
-  await expect.poll(async () => {
-    const state = await readStoredPlanningState(page);
-    return {
-      previewIds: state?.previewCandidates?.map((candidate) => candidate.stableKey) ?? [],
-      draftIds: state?.draftBlocks?.map((block) => block.id) ?? [],
-    };
-  }).toEqual({
-    previewIds: [],
-    draftIds: ['candidate-b'],
-  });
 
-  await preview.getByRole('tab', { name: '日別' }).click();
-  await preview.getByRole('button', { name: '金フレ Bを計画から除外' }).click();
-  await expect(preview).toBeHidden();
-  await expect.poll(async () => {
-    const state = await readStoredPlanningState(page);
-    return {
-      previewIds: state?.previewCandidates?.map((candidate) => candidate.stableKey) ?? [],
-      draftIds: state?.draftBlocks?.map((block) => block.id) ?? [],
-    };
-  }).toEqual({
-    previewIds: [],
-    draftIds: [],
-  });
+  const restoredPreview = await openPreview(page, 1);
+  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  const remainingDraft = restoredPreview.getByRole('button', { name: '金フレ Bを計画から除外' });
+  await expect(remainingDraft).toBeVisible();
+  await remainingDraft.click();
+  await expect(restoredPreview).toBeHidden();
+
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+  await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
 });
