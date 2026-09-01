@@ -9,7 +9,7 @@ Updated: 2026-09-01
 
 ## 監査範囲と読み方
 
-2026-08-30 に、リポジトリから取得できる PR #1 から #241 までを作成順と逆順の両方向から横断監査しました。2026-09-01 にはその後の merged defect / corrective refactor を追加監査し、特に #249, #252, #255, #258, #262, #267, #271, #272, #274 の root cause と verification を既存パターンへ照合しました。対象母集団には feature、refactor、test、docs、Dependabot も含めますが、純粋な機能追加や依存更新は、それ自体をバグ知識として昇格していません。
+2026-08-30 に、リポジトリから取得できる PR #1 から #241 までを作成順と逆順の両方向から横断監査しました。2026-09-01 にはその後の merged defect / corrective refactor を追加監査し、特に #249, #252, #255, #258, #262, #267, #271, #272, #274, #276 の root cause と verification を既存パターンへ照合しました。対象母集団には feature、refactor、test、docs、Dependabot も含めますが、純粋な機能追加や依存更新は、それ自体をバグ知識として昇格していません。
 
 再発性は厳密な件数統計ではなく、PR 横断で同じ根本原因がどれだけ独立に再出現したかを表す定性的な指標です。一つの PR が複数のバグを直す場合も、一つの logical task が複数の follow-up PR にまたがる場合もあるため、PR 件数をそのまま発生率として解釈しません。`非常に高い` は複数サブシステムや多数の follow-up で繰り返したもの、`高い` は複数 PR で明確に再発したもの、`反復あり` は少なくとも二つ以上の独立した証拠があるものです。
 
@@ -19,17 +19,17 @@ Updated: 2026-09-01
 
 重要度: Critical。再発性: 非常に高い。
 
-代表 evidence: [#3](https://github.com/kame447/StudyPlanner/pull/3), [#68](https://github.com/kame447/StudyPlanner/pull/68), [#107](https://github.com/kame447/StudyPlanner/pull/107), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#154](https://github.com/kame447/StudyPlanner/pull/154), [#157](https://github.com/kame447/StudyPlanner/pull/157), [#196](https://github.com/kame447/StudyPlanner/pull/196), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#225](https://github.com/kame447/StudyPlanner/pull/225), [#235](https://github.com/kame447/StudyPlanner/pull/235), [#249](https://github.com/kame447/StudyPlanner/pull/249), [#252](https://github.com/kame447/StudyPlanner/pull/252), [#258](https://github.com/kame447/StudyPlanner/pull/258), [#262](https://github.com/kame447/StudyPlanner/pull/262), [#267](https://github.com/kame447/StudyPlanner/pull/267)。
+代表 evidence: [#3](https://github.com/kame447/StudyPlanner/pull/3), [#68](https://github.com/kame447/StudyPlanner/pull/68), [#107](https://github.com/kame447/StudyPlanner/pull/107), [#109](https://github.com/kame447/StudyPlanner/pull/109), [#154](https://github.com/kame447/StudyPlanner/pull/154), [#157](https://github.com/kame447/StudyPlanner/pull/157), [#196](https://github.com/kame447/StudyPlanner/pull/196), [#204](https://github.com/kame447/StudyPlanner/pull/204), [#222](https://github.com/kame447/StudyPlanner/pull/222), [#225](https://github.com/kame447/StudyPlanner/pull/225), [#235](https://github.com/kame447/StudyPlanner/pull/235), [#249](https://github.com/kame447/StudyPlanner/pull/249), [#252](https://github.com/kame447/StudyPlanner/pull/252), [#258](https://github.com/kame447/StudyPlanner/pull/258), [#262](https://github.com/kame447/StudyPlanner/pull/262), [#267](https://github.com/kame447/StudyPlanner/pull/267), [#276](https://github.com/kame447/StudyPlanner/pull/276)。
 
 最も危険な再発パターンは、同じ意味や状態を複数の層がそれぞれ「正しいもの」として再構成することです。過去には、AI が解釈した期間を deterministic parser が再解釈する、renderer が出した日本語から pending question を逆算する、semantic/compiler が解決した temporal facts を scheduler placement が raw graph から再解釈する、全期間の preview model より現在表示中の 7 日だけを保存対象として扱う、active timetable term を downstream へ渡さず別の文脈で候補を作る、といった形で現れました。
 
 根本原因は、source of truth と projection、interpretation と execution、machine state と presentation の境界が曖昧になることです。表示上は同じ値に見えても、再解釈可能な raw input と canonical state は同じ責任を持ちません。
 
-2026-08-30〜31 の follow-up では、同じ drift が、rendered text を machine routing に使う、同じ compatibility slot を複数 reader が別々に decode する、module-global runtime state が current turn の bookshelf / personalization snapshot を上書きする、recurring mutation scope を hook と repository が別々に解釈する、という形でも再確認されました。現在値を明示入力にせず ambient state や別 decoder から再構成する経路も second authority として扱います。
+2026-08-30〜09-01 の follow-up では、同じ drift が、rendered text を machine routing に使う、同じ compatibility slot を複数 reader が別々に decode する、module-global runtime state が current turn の bookshelf / personalization snapshot を上書きする、recurring mutation scope を hook と repository が別々に解釈する、という形でも再確認されました。#276 では、画面上は同じ preview item ID でも、promotion 前は preview candidate、promotion 後は promoted draft が mutation owner であり、見た目の identity だけから削除先を決めると片方の lifecycle で操作不能になることが確認されました。現在値を明示入力にせず ambient state や別 decoder から再構成する経路、また presentation identity から mutation owner を推測する経路も second authority として扱います。
 
 不変条件は、一つの概念には一つの authoritative owner を置き、下流はその owner が生成した typed/canonical representation を消費するだけにすることです。Stable V5 では raw language の意味解釈は AI、formal binding / lifecycle / readiness / scheduler / preview / approval / persistence は deterministic code が owner です。renderer の日本語、現在表示している page、read model、cache は projection であり、authoritative state へ逆流させません。
 
-回帰テストでは、単一関数の出力だけでなく、owner が作った typed state が downstream で再解釈されず保持されることを検証します。architecture guard で raw semantic expression や rendered text が禁止された層へ入らないことも固定します。移行時に旧経路を削除するときは、旧経路が暗黙に担っていた semantic invariant を同等の typed contract が完全に引き継いだことを確認してから削除します。
+回帰テストでは、単一関数の出力だけでなく、owner が作った typed state が downstream で再解釈されず保持されることを検証します。同じ表示 identity が lifecycle transition 前後で別 owner に属する場合は、両 phase の mutation routing と reload 後の persisted identity まで確認します。architecture guard で raw semantic expression や rendered text が禁止された層へ入らないことも固定します。移行時に旧経路を削除するときは、旧経路が暗黙に担っていた semantic invariant を同等の typed contract が完全に引き継いだことを確認してから削除します。
 
 ## R2. Correction lifecycle と dependent state の残留
 
