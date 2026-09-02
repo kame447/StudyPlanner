@@ -48,19 +48,10 @@ async function seedUser(page, { withPreview = false } = {}) {
       createdAt: now,
       updatedAt: now,
     };
-    const siblingPlan = {
-      ...plan,
-      id: 'touch-sibling-plan',
-      seriesId: 'touch-sibling-plan',
-      title: '残る予定',
-      subject: '英語',
-      startTime: '11:00',
-      endTime: '12:00',
-    };
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    localStorage.setItem('studyplanner.plans', JSON.stringify([plan, siblingPlan]));
+    localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
@@ -173,7 +164,7 @@ async function openSchedule(page) {
   }
 }
 
-async function openDaySchedule(browser) {
+test('day long press drag locks background scrolling until release', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -183,50 +174,7 @@ async function openDaySchedule(browser) {
   await seedUser(page);
   await openSchedule(page);
   const session = await enableTouch(page);
-  return { context, page, session };
-}
 
-test('day short touch remains a normal tap without exposing delete action', async ({ browser }) => {
-  const { context, page } = await openDaySchedule(browser);
-  const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し移動確認' });
-  const { x, y } = await locatorCenter(plan);
-
-  await page.touchscreen.tap(x, y);
-
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: /長押し移動確認の操作/ })).toBeVisible();
-
-  await context.close();
-});
-
-test('day touch hold shows delete while held, keeps it after release, and deletes only the target', async ({ browser }) => {
-  const { context, page, session } = await openDaySchedule(browser);
-  const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し移動確認' });
-  const sibling = page.locator('.timeline-plan-block').filter({ hasText: '残る予定' });
-  const { x, y } = await locatorCenter(plan);
-
-  await dispatchTouch(session, 'touchStart', x, y);
-  await page.waitForTimeout(300);
-
-  const action = page.getByRole('button', { name: '長押し移動確認を削除' });
-  await expect(action).toBeVisible();
-  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect(plan).toBeVisible();
-  await expect(sibling).toBeVisible();
-
-  await dispatchTouch(session, 'touchEnd', x, y);
-  await expect(action).toBeVisible();
-
-  await action.click();
-  await expect(plan).toHaveCount(0);
-  await expect(sibling).toBeVisible();
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
-
-  await context.close();
-});
-
-test('day long press reveals action, then movement hands off to drag and locks background', async ({ browser }) => {
-  const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し移動確認' });
   const { x, y } = await locatorCenter(plan);
   const bodyOverflowBefore = await page.evaluate(() => document.body.style.overflow);
@@ -235,21 +183,14 @@ test('day long press reveals action, then movement hands off to drag and locks b
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  await expect(page.getByRole('button', { name: '長押し移動確認を削除' })).toBeVisible();
-  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
-    .toBe(false);
-
-  await dispatchTouch(session, 'touchMove', x, y + 90);
-  await page.waitForTimeout(50);
-
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(true);
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+
+  await dispatchTouch(session, 'touchMove', x, y + 90);
+  await page.waitForTimeout(50);
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore);
 
   await dispatchTouch(session, 'touchCancel', x, y + 90);

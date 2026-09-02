@@ -358,8 +358,8 @@ export function useTimelineDragController<TItem>({
 
     const touch = event.touches[0];
     if (!session.active) {
-      const movement = getDistance(session.startX, session.startY, touch.clientX, touch.clientY);
-      if (movement <= TOUCH_MOVE_TOLERANCE_PX) return;
+      const distance = getDistance(session.startX, session.startY, touch.clientX, touch.clientY);
+      if (distance <= TOUCH_MOVE_TOLERANCE_PX) return;
 
       if (deferTouchDragRef.current && session.longPressArmed) {
         activateDrag(session, touch.clientX, touch.clientY);
