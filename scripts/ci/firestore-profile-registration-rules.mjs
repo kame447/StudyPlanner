@@ -74,6 +74,35 @@ function baseProfile(userId, email) {
   };
 }
 
+function migrationLease(userId, startedAt) {
+  return {
+    schemaVersion: 1,
+    migrationVersion: 1,
+    userId,
+    status: 'migrating',
+    operationId: `schedule-event-migration-v1:${userId}`,
+    revision: 1,
+    startedAt,
+    completedAt: null,
+  };
+}
+
+function scheduleEvent(userId, legacyId = 'legacy-plan') {
+  return {
+    schemaVersion: 1,
+    id: `plan:${legacyId}`,
+    userId,
+    kind: 'study',
+    busy: true,
+    provenance: {
+      legacy: {
+        kind: 'plan',
+        id: legacyId,
+      },
+    },
+  };
+}
+
 const contexts = [];
 try {
   const owner = await createContext('owner');
@@ -120,6 +149,55 @@ try {
     { merge: true },
   ));
 
+  const legacyPlanRef = doc(owner.db, 'plans', 'legacy-plan');
+  await setDoc(legacyPlanRef, {
+    id: 'legacy-plan',
+    userId: owner.user.uid,
+    title: 'Legacy plan before cutover',
+  });
+
+  const startedAt = new Date().toISOString();
+  const migrationRef = doc(
+    owner.db,
+    'schedule_event_migrations',
+    owner.user.uid,
+  );
+  await setDoc(migrationRef, migrationLease(owner.user.uid, startedAt));
+
+  const legacyReadableAfterLease = await getDoc(legacyPlanRef);
+  if (!legacyReadableAfterLease.exists()) {
+    throw new Error('legacy plan must remain readable while migration is in progress');
+  }
+
+  await expectPermissionDenied('legacy Plan write after migration lease', () => setDoc(
+    legacyPlanRef,
+    { title: 'must not fork authority' },
+    { merge: true },
+  ));
+
+  await expectPermissionDenied('legacy MonthEvent create after migration lease', () => setDoc(
+    doc(owner.db, 'month_events', 'late-month-event'),
+    { id: 'late-month-event', userId: owner.user.uid, title: 'late legacy write' },
+  ));
+
+  const scheduleEventRef = doc(owner.db, 'schedule_events', 'plan:legacy-plan');
+  await setDoc(scheduleEventRef, scheduleEvent(owner.user.uid));
+  await setDoc(scheduleEventRef, { busy: false }, { merge: true });
+
+  await setDoc(migrationRef, {
+    ...migrationLease(owner.user.uid, startedAt),
+    status: 'completed',
+    sourcePlanCount: 1,
+    sourceMonthEventCount: 0,
+    eventCount: 1,
+    completedAt: new Date().toISOString(),
+  });
+
+  await expectPermissionDenied('completed migration cannot return to migrating', () => setDoc(
+    migrationRef,
+    migrationLease(owner.user.uid, startedAt),
+  ));
+
   const intruder = await createContext('intruder');
   contexts.push(intruder);
   await expectPermissionDenied('cross-user profile update', () => setDoc(
@@ -127,8 +205,12 @@ try {
     { username: 'Intruder' },
     { merge: true },
   ));
+  await expectPermissionDenied('cross-user ScheduleEvent create', () => setDoc(
+    doc(intruder.db, 'schedule_events', 'plan:foreign'),
+    scheduleEvent(owner.user.uid, 'foreign'),
+  ));
 
-  console.log('Firestore profile registration rules regression passed.');
+  console.log('Firestore profile and ScheduleEvent authority rules regression passed.');
 } finally {
   await Promise.all(contexts.map(({ app }) => deleteApp(app)));
 }
