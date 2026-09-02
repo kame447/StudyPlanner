@@ -137,6 +137,10 @@ export function useScheduleItemActionPress<TItem>() {
         target instanceof Element &&
         target.closest('[data-schedule-item-delete-action="true"]')
       ) {
+        // A long press suppresses the synthetic click that would otherwise open the
+        // schedule item. The contextual action is a different intent and must be
+        // allowed through even when it is rendered through a React portal.
+        suppressClickUntilRef.current = 0;
         return;
       }
       setActiveAction(null);
