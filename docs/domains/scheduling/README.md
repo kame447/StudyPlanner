@@ -1,25 +1,26 @@
 # Scheduling domain
 
 Status: canonical domain entry point
-Updated: 2026-09-02
+Updated: 2026-09-03
 
 このdomainは、StudyPlanner内の「時間が確定した予定」のapp-wide ownershipを扱う。
 
 ## Canonical contract
 
-- scheduled-event authority / occurrence projection: [`architecture/scheduled-event-authority.md`](architecture/scheduled-event-authority.md)
-- current migration order: [`roadmap/current.md`](roadmap/current.md)
+- scheduled-event persistence / occurrence projection: [`architecture/scheduled-event-authority.md`](architecture/scheduled-event-authority.md)
+- current implementation / verification state: [`roadmap/current.md`](roadmap/current.md)
 
-Current implementation work is tracked by Issue #278 and PR #279.
+Current implementation work is tracked by Issue #278 and PR #282.
 
 ## Responsibility boundary
 
 このdomainが所有するもの:
 
-- 時間が確定した予定を一つの概念として扱う責任境界
+- 時間が確定した予定を一つのconcept / persistence authorityとして扱う責任境界
+- canonical `ScheduleEvent` の共通予定情報、`busy`、recurrence、source provenance
 - `ScheduleOccurrence` のidentity / time semantics / busy semantics
 - month / week / day / AI availability が同じ occurrence truth を読むためのprojection contract
-- `Plan` / `MonthEvent` から canonical `ScheduleEvent` persistence へ移行する際の不変条件
+- legacy `Plan` / `MonthEvent` から canonical persistence へ移行する際のcutover / recovery invariants
 
 このdomainが所有しないもの:
 
@@ -29,4 +30,4 @@ Current implementation work is tracked by Issue #278 and PR #279.
 - Actual の学習実績集計
 - client/server authorityそのもの
 
-それらは各owning domainを維持し、scheduled occurrence が必要な場所だけこのdomain boundaryへ接続する。
+それらは各owning domainを維持し、scheduled occurrence または確定予定の保存が必要な場所だけこのdomain boundaryへ接続する。
