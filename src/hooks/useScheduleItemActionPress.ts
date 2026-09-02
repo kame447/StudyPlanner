@@ -131,6 +131,8 @@ export function useScheduleItemActionPress<TItem>() {
   }
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const allowContextActionClick = () => {
       // Long-press suppression exists only to block the synthetic tap/open after
       // revealing an action. The contextual action itself is a new explicit intent.
