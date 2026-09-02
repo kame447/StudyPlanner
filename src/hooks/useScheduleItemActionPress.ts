@@ -21,6 +21,8 @@ export interface ActiveScheduleItemAction<TItem> {
   left: number;
 }
 
+export const SCHEDULE_ITEM_ACTION_INTENT_EVENT = 'studyplanner:schedule-item-action-intent';
+
 const ACTION_LONG_PRESS_MS = 240;
 const TOUCH_MOVE_TOLERANCE_PX = 9;
 const POINTER_MOVE_TOLERANCE_PX = 4;
@@ -129,6 +131,18 @@ export function useScheduleItemActionPress<TItem>() {
   }
 
   useEffect(() => {
+    const allowContextActionClick = () => {
+      // Long-press suppression exists only to block the synthetic tap/open after
+      // revealing an action. The contextual action itself is a new explicit intent.
+      suppressClickUntilRef.current = 0;
+    };
+    window.addEventListener(SCHEDULE_ITEM_ACTION_INTENT_EVENT, allowContextActionClick);
+    return () => {
+      window.removeEventListener(SCHEDULE_ITEM_ACTION_INTENT_EVENT, allowContextActionClick);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!activeAction) return;
     const dismissOnScroll = () => setActiveAction(null);
     const dismissOnPointerDown = (event: PointerEvent) => {
@@ -137,10 +151,6 @@ export function useScheduleItemActionPress<TItem>() {
         target instanceof Element &&
         target.closest('[data-schedule-item-delete-action="true"]')
       ) {
-        // A long press suppresses the synthetic click that would otherwise open the
-        // schedule item. The contextual action is a different intent and must be
-        // allowed through even when it is rendered through a React portal.
-        suppressClickUntilRef.current = 0;
         return;
       }
       setActiveAction(null);
