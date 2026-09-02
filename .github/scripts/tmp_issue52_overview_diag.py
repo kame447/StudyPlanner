@@ -10,9 +10,25 @@ old = """  const firstCenter = await locatorCenter(firstBlock);
   await page.waitForTimeout(300);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(firstRemoveAction).toBeVisible();"""
-new = """  const firstCenter = await locatorCenter(firstBlock);
-  const session = await enableTouch(page);
+new = """  const session = await enableTouch(page);
+  const firstCenter = await locatorCenter(firstBlock);
 
+  await page.evaluate(() => {
+    window.__overviewTouchEvents = [];
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        const actionBlock = target?.closest?.('[data-ai-preview-action-block]');
+        window.__overviewTouchEvents.push({
+          type,
+          targetTag: target?.tagName ?? null,
+          targetClass: target?.getAttribute?.('class') ?? null,
+          actionBlockId: actionBlock?.getAttribute('data-ai-preview-action-block') ?? null,
+          time: Math.round(performance.now()),
+        });
+      }, true);
+    }
+  });
   console.log('OVERVIEW_HIT_BEFORE', await page.evaluate(({ x, y }) => {
     const hit = document.elementFromPoint(x, y);
     const actionBlock = hit?.closest?.('[data-ai-preview-action-block]');
@@ -27,21 +43,13 @@ new = """  const firstCenter = await locatorCenter(firstBlock);
   await expect(firstRemoveAction).toHaveCount(0);
   await dispatchTouch(session, 'touchStart', firstCenter.x, firstCenter.y);
   await page.waitForTimeout(300);
+  console.log('OVERVIEW_TOUCH_EVENTS', await page.evaluate(() => window.__overviewTouchEvents));
   console.log('OVERVIEW_STATE_AFTER_HOLD', await firstBlock.evaluate((element) => ({
     className: element.className,
     pointerEvents: getComputedStyle(element).pointerEvents,
     touchAction: getComputedStyle(element).touchAction,
-    activeId: element.getAttribute('data-ai-preview-action-block'),
+    actionBlockId: element.getAttribute('data-ai-preview-action-block'),
   })));
-  console.log('OVERVIEW_HIT_AFTER', await page.evaluate(({ x, y }) => {
-    const hit = document.elementFromPoint(x, y);
-    const actionBlock = hit?.closest?.('[data-ai-preview-action-block]');
-    return {
-      hitTag: hit?.tagName ?? null,
-      hitClass: hit?.getAttribute?.('class') ?? null,
-      actionBlockId: actionBlock?.getAttribute('data-ai-preview-action-block') ?? null,
-    };
-  }, firstCenter));
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(firstRemoveAction).toBeVisible();"""
 if text.count(old) != 1:
