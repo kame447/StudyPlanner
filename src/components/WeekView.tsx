@@ -1,14 +1,22 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  createScheduleOccurrenceProjection,
+  type ScheduleOccurrence,
+} from '../domain/scheduleOccurrence';
+import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
+  addDays,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -26,10 +34,12 @@ import {
   resolveWeekPlanDragTarget,
   type WeekPlanMoveTarget,
 } from '../lib/weekPlanDrag';
+import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import type { Actual, Plan, PlanSourceType } from '../types/domain';
+import type { Actual, MonthEvent, Plan, PlanSourceType } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
+import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -37,12 +47,16 @@ type DragInputKind = 'pointer' | 'touch';
 
 interface WeekViewProps {
   selectedDate: string;
+  userId?: string;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onOpenPlan?: (plan: Plan) => void;
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
+  onDeletePlan?: (plan: Plan) => Promise<void>;
+  onDeleteMonthEvent?: (monthEvent: MonthEvent) => Promise<void>;
   onOpenDay: (date: string) => void;
 }
 
@@ -56,6 +70,7 @@ interface WeekPreviewBaseBlock {
   endTime: string;
   draft?: boolean;
   plan?: Plan;
+  occurrence?: ScheduleOccurrence;
 }
 
 interface WeekPreviewBlock extends WeekPreviewBaseBlock {
@@ -88,6 +103,7 @@ interface DragSession {
   title: string;
   active: boolean;
   canceled: boolean;
+  longPressArmed: boolean;
   longPressTimer: number | null;
   releaseInteractionLock: (() => void) | null;
   target: WeekPlanMoveTarget;
@@ -129,6 +145,27 @@ function resolveActualTitle(actual: Actual, plan?: Plan): string {
 
 function resolveActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject || '記録';
+}
+
+function scheduleOccurrenceCoversDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): boolean {
+  const dayStart = `${date}T00:00`;
+  const dayEnd = `${addDays(date, 1)}T00:00`;
+  const occurrenceStart = `${occurrence.start.date}T${occurrence.start.time}`;
+  const occurrenceEnd = `${occurrence.end.date}T${occurrence.end.time}`;
+  return occurrenceEnd > dayStart && occurrenceStart < dayEnd;
+}
+
+function scheduleOccurrenceTimesForDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): { startTime: string; endTime: string } {
+  return {
+    startTime: occurrence.start.date === date ? occurrence.start.time : '00:00',
+    endTime: occurrence.end.date === date ? occurrence.end.time : '24:00',
+  };
 }
 
 function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekPreviewBlock> {
@@ -227,12 +264,16 @@ function getDistance(startX: number, startY: number, x: number, y: number): numb
 
 export function WeekView({
   selectedDate,
+  userId,
   plans,
   actuals,
+  monthEvents = [],
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
   onMovePlan,
+  onDeletePlan,
+  onDeleteMonthEvent,
   onOpenDay,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
@@ -240,7 +281,39 @@ export function WeekView({
   const dragSessionRef = useRef<DragSession | null>(null);
   const suppressClickUntilRef = useRef(0);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
   const weekDates = getWeekDates(selectedDate);
+  const weekStartDate = weekDates[0];
+  const weekEndDate = weekDates[weekDates.length - 1];
+  const scheduleProjection = useMemo(
+    () =>
+      weekStartDate && weekEndDate
+        ? createScheduleOccurrenceProjection({
+            ownerId: userId ?? plans[0]?.userId ?? monthEvents[0]?.userId ?? '',
+            startDate: weekStartDate,
+            endDate: weekEndDate,
+            plans,
+            monthEvents,
+          })
+        : { occurrences: [], issues: [] },
+    [monthEvents, plans, userId, weekEndDate, weekStartDate],
+  );
+  const occurrenceById = useMemo(
+    () => new Map(scheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
+    [scheduleProjection.occurrences],
+  );
+  const occurrenceByPlanDate = useMemo(
+    () =>
+      new Map(
+        scheduleProjection.occurrences
+          .filter((occurrence) => occurrence.source.backingKind === 'plan')
+          .map((occurrence) => [
+            `${occurrence.source.backingId}:${occurrence.start.date}`,
+            occurrence,
+          ]),
+      ),
+    [scheduleProjection.occurrences],
+  );
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
@@ -330,6 +403,7 @@ export function WeekView({
       title: entry.title,
       active: false,
       canceled: false,
+      longPressArmed: false,
       longPressTimer: null,
       releaseInteractionLock: null,
       target,
@@ -575,7 +649,8 @@ export function WeekView({
 
     dragSessionRef.current = session;
     session.longPressTimer = window.setTimeout(() => {
-      activateDrag(session, session.startX, session.startY);
+      if (dragSessionRef.current !== session || session.canceled) return;
+      session.longPressArmed = true;
     }, TOUCH_LONG_PRESS_MS);
   }
 
@@ -587,14 +662,18 @@ export function WeekView({
 
     const touch = event.touches[0];
     if (!session.active) {
-      if (
-        getDistance(session.startX, session.startY, touch.clientX, touch.clientY) >
-        TOUCH_MOVE_TOLERANCE_PX
-      ) {
+      const movement = getDistance(session.startX, session.startY, touch.clientX, touch.clientY);
+      if (movement <= TOUCH_MOVE_TOLERANCE_PX) {
+        return;
+      }
+
+      if (session.longPressArmed) {
+        activateDrag(session, touch.clientX, touch.clientY);
+      } else {
         session.canceled = true;
         clearLongPressTimer(session);
+        return;
       }
-      return;
     }
 
     event.preventDefault();
@@ -616,6 +695,11 @@ export function WeekView({
       return;
     }
 
+    if (session.longPressArmed && !session.canceled) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
+    }
     clearDragSession();
   }
 
@@ -626,7 +710,7 @@ export function WeekView({
     }
   }
 
-  function handlePlanClick(event: React.MouseEvent<HTMLButtonElement>, plan: Plan) {
+  function handlePlanClick(event: ReactMouseEvent<HTMLButtonElement>, plan: Plan) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -635,6 +719,95 @@ export function WeekView({
     }
 
     onOpenPlan?.(plan);
+  }
+
+  function resolveScheduleActionTarget(target: EventTarget | null): {
+    element: HTMLElement;
+    occurrence: ScheduleOccurrence;
+  } | null {
+    if (!(target instanceof Element)) return null;
+    const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
+    const occurrenceId = element?.dataset.scheduleOccurrenceId;
+    const occurrence = occurrenceId ? occurrenceById.get(occurrenceId) : undefined;
+    return element && occurrence ? { element, occurrence } : null;
+  }
+
+  function handleActionPointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (!target) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'pointer',
+      target.element,
+      event.clientX,
+      event.clientY,
+    );
+  }
+
+  function handleActionPointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch') return;
+    scheduleAction.move(event.clientX, event.clientY);
+  }
+
+  function handleActionPointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch') return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleActionTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (event.touches.length !== 1) return;
+    const target = resolveScheduleActionTarget(event.target);
+    const touch = event.touches[0];
+    if (!target || !touch) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'touch',
+      target.element,
+      touch.clientX,
+      touch.clientY,
+    );
+  }
+
+  function handleActionTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    if (touch) scheduleAction.move(touch.clientX, touch.clientY);
+  }
+
+  function handleActionTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (!scheduleAction.shouldSuppressClick()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  async function handleDeleteOccurrence(occurrence: ScheduleOccurrence) {
+    if (!onDeletePlan || !onDeleteMonthEvent) {
+      throw new Error('予定削除の操作境界を確認できませんでした。');
+    }
+
+    await deleteScheduleOccurrence({
+      occurrence,
+      plans,
+      monthEvents,
+      deletePlan: onDeletePlan,
+      deleteMonthEvent: onDeleteMonthEvent,
+      confirmRecurringMonthEventSeries: (monthEvent) =>
+        window.confirm(
+          `「${monthEvent.title}」は繰り返し予定です。予定全体を削除しますか？`,
+        ),
+    });
   }
 
   const dragOverlay =
@@ -665,7 +838,18 @@ export function WeekView({
 
   return (
     <>
-      <section className="panel schedule-week-view">
+      <section
+        className="panel schedule-week-view"
+        onPointerDownCapture={handleActionPointerDownCapture}
+        onPointerMoveCapture={handleActionPointerMoveCapture}
+        onPointerUpCapture={handleActionPointerUpCapture}
+        onPointerCancelCapture={scheduleAction.cancel}
+        onTouchStartCapture={handleActionTouchStartCapture}
+        onTouchMoveCapture={handleActionTouchMoveCapture}
+        onTouchEndCapture={handleActionTouchEndCapture}
+        onTouchCancelCapture={scheduleAction.cancel}
+        onClickCapture={handleActionClickCapture}
+      >
         <div className="week-timeline-toolbar print-hide">
           <div className="segmented-control week-timeline-mode-control">
             <button
@@ -723,6 +907,9 @@ export function WeekView({
 
                 {weekDates.map((date) => {
                   const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
+                  const dayMonthEventOccurrences = scheduleProjection.occurrences
+                    .filter((occurrence) => occurrence.source.kind === 'month-event')
+                    .filter((occurrence) => scheduleOccurrenceCoversDate(occurrence, date));
                   const dayPlanKeys = new Set(
                     dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
                   );
@@ -761,6 +948,16 @@ export function WeekView({
                       startTime: plan.startTime,
                       endTime: plan.endTime,
                       plan,
+                      occurrence: occurrenceByPlanDate.get(`${plan.id}:${date}`),
+                    })),
+                    ...dayMonthEventOccurrences.map((occurrence) => ({
+                      id: occurrence.id,
+                      title: occurrence.title,
+                      subject: occurrence.subject,
+                      type: 'other' as const,
+                      sourceType: 'manual' as const,
+                      occurrence,
+                      ...scheduleOccurrenceTimesForDate(occurrence, date),
                     })),
                     ...dayDraftBlocks.map((block) => ({
                       id: block.id,
@@ -837,10 +1034,11 @@ export function WeekView({
                                 dragVisual?.blockId === entry.id ? ' is-drag-source' : ''
                               }`}
                               key={entry.id}
+                              data-schedule-occurrence-id={entry.occurrence?.id}
                               style={buildBlockStyle(entry)}
                               title={`${entry.title} / ${entry.startTime}-${entry.endTime}`}
                               type="button"
-                              aria-label={`${entry.title} ${entry.startTime}から${entry.endTime}。タップで編集、長押しで移動`}
+                              aria-label={`${entry.title} ${entry.startTime}から${entry.endTime}。タップで編集、長押しで操作、長押しして動かすと移動`}
                               onClick={(event) => handlePlanClick(event, entry.plan!)}
                               onDoubleClick={(event) => event.stopPropagation()}
                               onPointerDown={(event) => handlePlanPointerDown(event, entry)}
@@ -863,8 +1061,12 @@ export function WeekView({
                           <span
                             className={blockClassName}
                             key={entry.id}
+                            data-schedule-occurrence-id={entry.occurrence?.id}
                             style={buildBlockStyle(entry)}
                             title={`${entry.title} / ${entry.startTime}-${entry.endTime}${entry.draft ? ' / 仮予定' : ''}`}
+                            onContextMenu={
+                              entry.occurrence ? (event) => event.preventDefault() : undefined
+                            }
                           >
                             <strong>{entry.title}</strong>
                             <small>{entry.startTime}-{entry.endTime}</small>
@@ -901,6 +1103,11 @@ export function WeekView({
         </div>
       </section>
       {dragOverlay}
+      <ScheduleItemDeleteAction
+        action={scheduleAction.activeAction}
+        onDelete={handleDeleteOccurrence}
+        onDismiss={scheduleAction.dismiss}
+      />
       <DragUndoRedoControls
         visible={moveHistory.hasHistory}
         canUndo={moveHistory.canUndo}

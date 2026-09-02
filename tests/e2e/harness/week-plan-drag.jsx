@@ -68,6 +68,7 @@ function Harness() {
     <main style={{ width: '100%', height: '100%' }}>
       <WeekView
         selectedDate="2026-08-24"
+        userId="browser-test-user"
         plans={plans}
         actuals={[]}
         onOpenPlan={(plan) => record('open-plan', { id: plan.id })}
@@ -86,6 +87,14 @@ function Harness() {
             ),
           );
         }}
+        onDeletePlan={async (plan) => {
+          record('delete-plan', {
+            id: plan.id,
+            occurrenceDate: plan.occurrenceDate ?? plan.date,
+          });
+          setPlans((current) => current.filter((item) => item.id !== plan.id));
+        }}
+        onDeleteMonthEvent={async () => undefined}
         onOpenDay={(date) => record('open-day', { date })}
       />
     </main>

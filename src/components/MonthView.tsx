@@ -19,6 +19,7 @@ interface MonthViewProps {
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
+  onOpenDay?: (date: string) => void;
   onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
@@ -32,6 +33,8 @@ export function MonthView({
   monthEvents,
   createRequestId = 0,
   onSelectDate,
+  onOpenWeek,
+  onOpenDay,
   onSaveMonthEvent,
   onDeleteMonthEvent,
 }: MonthViewProps) {
@@ -236,9 +239,15 @@ export function MonthView({
 
       <MonthDaySheet
         openDate={daySheetDate}
+        userId={userId}
+        plans={plans}
         monthEvents={monthEvents}
         onCreate={(date) => openMonthEventEditor(date)}
         onEdit={(event) => openMonthEventEditor(daySheetDate ?? event.date, event.id)}
+        onOpenDay={(date) => {
+          setDaySheetDate(null);
+          (onOpenDay ?? onOpenWeek)(date);
+        }}
         onClose={() => setDaySheetDate(null)}
       />
 

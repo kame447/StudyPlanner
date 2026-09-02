@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import type {
   Actual,
+  MonthEvent,
   Plan,
   PlanDraft,
   ScheduleTemplate,
@@ -57,6 +58,7 @@ export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
   selectedDate: string;
   plans: Plan[];
+  monthEvents?: MonthEvent[];
   actuals?: Actual[];
   studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
@@ -100,6 +102,7 @@ export function useWeeklyPlanningApplication({
   userId,
   selectedDate,
   plans,
+  monthEvents = [],
   actuals = [],
   studyMaterials = [],
   scheduleTemplates,
@@ -194,6 +197,7 @@ export function useWeeklyPlanningApplication({
       supplementalContext,
       selectedDate,
       plans,
+      monthEvents,
       actuals,
       studyMaterials,
       scheduleTemplates,

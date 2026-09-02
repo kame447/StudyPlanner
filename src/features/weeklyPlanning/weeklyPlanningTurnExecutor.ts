@@ -37,6 +37,7 @@ export async function executeWeeklyPlanningTurn(
     selectedDate: input.selectedDate,
     userId: input.userId,
     plans: input.plans,
+    monthEvents: input.monthEvents,
     actuals: input.actuals,
     studyMaterials: input.studyMaterials,
     scheduleTemplates: input.scheduleTemplates,

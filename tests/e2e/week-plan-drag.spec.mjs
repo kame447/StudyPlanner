@@ -78,6 +78,34 @@ test('mouse drag changes weekday and time while preserving duration', async ({ p
   expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
 });
 
+test('pointer hold reveals delete action and removes only the held plan', async ({ page }) => {
+  await page.goto(HARNESS_URL);
+
+  const { plan, x, y } = await planCenter(page, /数学の復習.*タップで編集/);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(300);
+
+  const action = page.getByRole('button', { name: '数学の復習を削除' });
+  await expect(action).toBeVisible();
+  await expect(plan).toBeVisible();
+  await page.mouse.up();
+  await expect(action).toBeVisible();
+
+  await action.click();
+  await expect(page.getByRole('button', { name: /数学の復習.*タップで編集/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /英単語.*タップで編集/ })).toBeVisible();
+
+  const events = await readEvents(page);
+  expect(events.filter((entry) => entry.type === 'delete-plan')).toEqual([
+    {
+      type: 'delete-plan',
+      payload: { id: 'drag-plan-once', occurrenceDate: '2026-08-24' },
+    },
+  ]);
+  expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
+});
+
 test('short touch remains a tap and opens the plan', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
@@ -93,6 +121,38 @@ test('short touch remains a tap and opens the plan', async ({ browser }) => {
   await expect.poll(async () => (await readEvents(page)).filter((entry) => entry.type === 'open-plan').length)
     .toBe(1);
   expect((await readEvents(page)).filter((entry) => entry.type === 'move-plan')).toHaveLength(0);
+
+  await context.close();
+});
+
+test('touch hold shows delete while held and keeps it after release until exact deletion', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 320, height: 780 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await page.goto(HARNESS_URL);
+  const session = await enableTouch(page);
+
+  const { x, y } = await planCenter(page, /数学の復習.*タップで編集/);
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(300);
+
+  const action = page.getByRole('button', { name: '数学の復習を削除' });
+  await expect(action).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+
+  await dispatchTouch(session, 'touchEnd', x, y);
+  await expect(action).toBeVisible();
+  await action.click();
+
+  await expect(page.getByRole('button', { name: /数学の復習.*タップで編集/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /英単語.*タップで編集/ })).toBeVisible();
+  const events = await readEvents(page);
+  expect(events.filter((entry) => entry.type === 'delete-plan')).toHaveLength(1);
+  expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
+  expect(events.filter((entry) => entry.type === 'move-plan')).toHaveLength(0);
 
   await context.close();
 });
@@ -113,13 +173,14 @@ test('touch movement before long press cancels drag activation', async ({ browse
   await page.waitForTimeout(300);
 
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
   expect((await readEvents(page)).filter((entry) => entry.type === 'move-plan')).toHaveLength(0);
 
   await dispatchTouch(session, 'touchEnd', x - 40, y);
   await context.close();
 });
 
-test('long press activates touch drag and drop without opening the editor', async ({ browser }) => {
+test('long press reveals action, then movement hands off to touch drag without opening editor', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
     hasTouch: true,
@@ -135,9 +196,12 @@ test('long press activates touch drag and drop without opening the editor', asyn
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect(page.getByRole('button', { name: '数学の復習を削除' })).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', x + dayBox.width + 6, y + 55);
+  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await page.waitForTimeout(30);
   await dispatchTouch(session, 'touchEnd', x + dayBox.width + 6, y + 55);
 
@@ -145,6 +209,7 @@ test('long press activates touch drag and drop without opening the editor', asyn
     .toBe(1);
   const events = await readEvents(page);
   expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
+  expect(events.filter((entry) => entry.type === 'delete-plan')).toHaveLength(0);
 
   await context.close();
 });
@@ -173,10 +238,13 @@ test('active long press touch drag keeps the background completely stationary', 
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await expect(page.getByRole('button', { name: '数学の復習を削除' })).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', scrollBox.x + 2, y + 45);
+  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
   await page.waitForTimeout(50);
 
   expect(await scroll.evaluate((element) => element.scrollLeft)).toBe(scrollMetrics.scrollLeft);

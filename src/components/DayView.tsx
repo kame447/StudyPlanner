@@ -1,4 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+} from 'react';
+import {
+  createScheduleOccurrenceProjection,
+  type ScheduleOccurrence,
+} from '../domain/scheduleOccurrence';
+import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { addDays, formatDateLabel, sortByDateTime } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
@@ -7,15 +19,17 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
-import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import { sortMonthEvents } from '../lib/monthEvents';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
+import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { DailyMaterialShelf } from './DailyMaterialShelf';
 import { DayDetailModal } from './DayDetailModal';
 import { DayTimeline } from './DayTimeline';
 import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { MaterialQuickCreateModal } from './MaterialQuickCreateModal';
+import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
@@ -47,6 +61,7 @@ interface DayViewProps {
   onEditPlan: (plan: Plan) => void;
   onMovePlan: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan: (plan: Plan) => Promise<void>;
+  onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -116,6 +131,7 @@ export function DayView({
   onEditPlan,
   onMovePlan,
   onDeletePlan,
+  onDeleteMonthEvent,
   onSavePlan,
   onSaveActual,
   onSaveStandaloneActual,
@@ -127,24 +143,70 @@ export function DayView({
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
+  const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
   const dayRangeLabel = formatDateLabel(selectedDate);
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeDay(addDays(selectedDate, -1)),
     onNext: () => onChangeDay(addDays(selectedDate, 1)),
     disabled: modalState.type !== 'closed',
   });
+  const dayScheduleProjection = useMemo(
+    () =>
+      createScheduleOccurrenceProjection({
+        ownerId: userId,
+        startDate: selectedDate,
+        endDate: selectedDate,
+        plans,
+        monthEvents,
+      }),
+    [monthEvents, plans, selectedDate, userId],
+  );
+  const dayOccurrenceById = useMemo(
+    () => new Map(dayScheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
+    [dayScheduleProjection.occurrences],
+  );
   const dayPlans = useMemo(
     () => sortByDateTime(expandPlansForDate(plans, selectedDate)),
     [plans, selectedDate],
   );
+  const monthEventById = useMemo(
+    () => new Map(monthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
+    [monthEvents],
+  );
+  const dayMonthEventOccurrences = useMemo(
+    () =>
+      dayScheduleProjection.occurrences.filter(
+        (occurrence) => occurrence.source.backingKind === 'month-event',
+      ),
+    [dayScheduleProjection.occurrences],
+  );
   const dayMonthEvents = useMemo(
     () =>
       sortMonthEvents(
-        monthEvents.filter((monthEvent) =>
-          doesMonthEventOccurOnDate(monthEvent, selectedDate),
-        ),
+        dayMonthEventOccurrences.flatMap((occurrence) => {
+          const monthEvent = monthEventById.get(occurrence.source.backingId);
+          if (!monthEvent) return [];
+          return [
+            {
+              ...monthEvent,
+              date: selectedDate,
+              endDate: selectedDate,
+              startTime:
+                occurrence.start.date === selectedDate
+                  ? occurrence.start.time
+                  : '00:00',
+              endTime:
+                occurrence.end.date === selectedDate
+                  ? occurrence.end.time
+                  : '24:00',
+              repeat: 'none' as const,
+              repeatUntil: null,
+              excludedDates: [],
+            },
+          ];
+        }),
       ),
-    [monthEvents, selectedDate],
+    [dayMonthEventOccurrences, monthEventById, selectedDate],
   );
   const dayMonthEventPlans = useMemo(
     () =>
@@ -180,8 +242,14 @@ export function DayView({
     [actuals, dayOccurrenceKeys, selectedDate],
   );
   const dayMonthEventMap = useMemo(
-    () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
-    [dayMonthEvents],
+    () =>
+      new Map(
+        dayMonthEventOccurrences.flatMap((occurrence) => {
+          const monthEvent = monthEventById.get(occurrence.source.backingId);
+          return monthEvent ? [[monthEvent.id, monthEvent] as const] : [];
+        }),
+      ),
+    [dayMonthEventOccurrences, monthEventById],
   );
   const selectedWeekday = getRecurrenceWeekday(selectedDate);
   const resolvedTimetableTerm = useMemo(
@@ -279,14 +347,112 @@ export function DayView({
   useEffect(() => {
     setModalState({ type: 'closed' });
     setQuickMaterial(null);
+    scheduleAction.dismiss();
   }, [selectedDate]);
 
   function closeModal() {
     setModalState({ type: 'closed' });
   }
 
+  function resolveScheduleActionTarget(target: EventTarget | null): {
+    element: HTMLElement;
+    occurrence: ScheduleOccurrence;
+  } | null {
+    if (!(target instanceof Element)) return null;
+    const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
+    const occurrenceId = element?.dataset.scheduleOccurrenceId;
+    const occurrence = occurrenceId ? dayOccurrenceById.get(occurrenceId) : undefined;
+    return element && occurrence ? { element, occurrence } : null;
+  }
+
+  function handlePointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (!target) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'pointer',
+      target.element,
+      event.clientX,
+      event.clientY,
+    );
+  }
+
+  function handlePointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch') return;
+    scheduleAction.move(event.clientX, event.clientY);
+  }
+
+  function handlePointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch') return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (event.touches.length !== 1) return;
+    const target = resolveScheduleActionTarget(event.target);
+    const touch = event.touches[0];
+    if (!target || !touch) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'touch',
+      target.element,
+      touch.clientX,
+      touch.clientY,
+    );
+  }
+
+  function handleTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    if (touch) scheduleAction.move(touch.clientX, touch.clientY);
+  }
+
+  function handleTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (!scheduleAction.shouldSuppressClick()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  async function handleDeleteOccurrence(occurrence: ScheduleOccurrence) {
+    await deleteScheduleOccurrence({
+      occurrence,
+      plans,
+      monthEvents,
+      deletePlan: onDeletePlan,
+      deleteMonthEvent: onDeleteMonthEvent,
+      confirmRecurringMonthEventSeries: (monthEvent) =>
+        window.confirm(
+          `「${monthEvent.title}」は繰り返し予定です。予定全体を削除しますか？`,
+        ),
+    });
+  }
+
   return (
-    <section className="section-stack swipe-view" {...swipeNavigation}>
+    <section
+      className="section-stack swipe-view"
+      {...swipeNavigation}
+      onPointerDownCapture={handlePointerDownCapture}
+      onPointerMoveCapture={handlePointerMoveCapture}
+      onPointerUpCapture={handlePointerUpCapture}
+      onPointerCancelCapture={scheduleAction.cancel}
+      onTouchStartCapture={handleTouchStartCapture}
+      onTouchMoveCapture={handleTouchMoveCapture}
+      onTouchEndCapture={handleTouchEndCapture}
+      onTouchCancelCapture={scheduleAction.cancel}
+      onClickCapture={handleClickCapture}
+    >
       <DayDetailModal
         detailPlan={selectedDetailPlan}
         monthEvent={selectedMonthEvent}
@@ -329,6 +495,7 @@ export function DayView({
         dateLabel={dayRangeLabel}
         plans={dayPlans}
         monthEvents={dayMonthEvents}
+        scheduleOccurrences={dayScheduleProjection.occurrences}
         actuals={dayActuals}
         weeklyDraftBlocks={weeklyDraftBlocks.filter(
           (block) => block.date === selectedDate && block.status === 'draft',
@@ -367,6 +534,12 @@ export function DayView({
         onOpenBookshelf={onOpenBookshelf}
         onOpenAddMaterial={onOpenAddMaterial}
         onSelectMaterial={setQuickMaterial}
+      />
+
+      <ScheduleItemDeleteAction
+        action={scheduleAction.activeAction}
+        onDelete={handleDeleteOccurrence}
+        onDismiss={scheduleAction.dismiss}
       />
     </section>
   );
