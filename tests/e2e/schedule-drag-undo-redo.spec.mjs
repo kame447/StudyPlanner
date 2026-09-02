@@ -140,9 +140,15 @@ async function dragBy(locator, page, deltaX, deltaY) {
 
 async function readSeededPlanTime(page) {
   return page.evaluate(() => {
-    const plans = JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]');
-    const plan = plans.find((candidate) => candidate.id === 'day-drag-plan');
-    return plan ? `${plan.startTime}-${plan.endTime}` : null;
+    const events = JSON.parse(
+      localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]',
+    );
+    const event = events.find(
+      (candidate) =>
+        candidate.provenance?.legacy?.kind === 'plan' &&
+        candidate.provenance?.legacy?.id === 'day-drag-plan',
+    );
+    return event ? `${event.startTime}-${event.endTime}` : null;
   });
 }
 
@@ -194,6 +200,13 @@ test('day drag exposes icon history controls and undo/redo reapply the saved mov
   await expect.poll(() => readSeededPlanTime(page)).toBe('09:00-10:00');
   await redo.click();
   await expect.poll(() => readSeededPlanTime(page)).toBe('10:00-11:00');
+
+  const legacyPlanTime = await page.evaluate(() => {
+    const plans = JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]');
+    const legacy = plans.find((candidate) => candidate.id === 'day-drag-plan');
+    return legacy ? `${legacy.startTime}-${legacy.endTime}` : null;
+  });
+  expect(legacyPlanTime).toBe('09:00-10:00');
 
   await page.getByRole('tab', { name: '月', exact: true }).click();
   await expect(page.getByRole('button', { name: '変更を元に戻す' })).toHaveCount(0);
