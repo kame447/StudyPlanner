@@ -24,14 +24,14 @@ dialog = replace_once(
     """                        <div
                           className=\"ai-planning-day-column ai-planning-preview-overview-day\"
                           key={group.date}
-                        >""",
-    'overview body column interaction',
-)
-dialog = replace_once(
-    dialog,
-    '予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。',
-    '予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。上の日付をタップすると日別表示します。',
-    'overview navigation hint',
+                        >
+                          <button
+                            type=\"button\"
+                            className=\"ai-planning-preview-overview-day-hit-target\"
+                            aria-label={`${formatDateLabel(group.date)}の予定を日別表示`}
+                            onClick={() => openDay(group.date)}
+                          />""",
+    'overview day background target',
 )
 overview_marker = "const dragDescriptor = !isBusy\n                              ? {\n                                  key: `overview:${block.id}`"
 overview_start = dialog.index(overview_marker)
@@ -49,14 +49,40 @@ css = replace_once(
   overflow: hidden;
   cursor: pointer;
   outline: 0;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day:focus-visible,
+.ai-planning-preview-dialog-v2 .ai-planning-week-header > div:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(8, 120, 249, 0.32);
 }""",
     """.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day {
   overflow: hidden;
   cursor: default;
   outline: 0;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day-hit-target {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day > .ai-planning-hour-line,
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day > .ai-planning-existing-block {
   pointer-events: none;
+}
+
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-day-hit-target:focus-visible,
+.ai-planning-preview-dialog-v2 .ai-planning-week-header > div:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(8, 120, 249, 0.32);
 }""",
-    'overview body hit target',
+    'overview explicit hit target styles',
 )
 css_path.write_text(css)
 
@@ -94,7 +120,6 @@ test = replace_once(
   console.log('OVERVIEW_GEOMETRY', await page.evaluate(({ x, y }) => {
     const hit = document.elementFromPoint(x, y);
     const block = hit?.closest?.('[data-ai-preview-action-block]');
-    const day = hit?.closest?.('.ai-planning-preview-overview-day');
     return {
       x,
       y,
@@ -102,7 +127,6 @@ test = replace_once(
       hitClass: hit?.getAttribute?.('class') ?? null,
       blockId: block?.getAttribute('data-ai-preview-action-block') ?? null,
       blockPointerEvents: block ? getComputedStyle(block).pointerEvents : null,
-      dayPointerEvents: day ? getComputedStyle(day).pointerEvents : null,
       blockRect: block ? block.getBoundingClientRect().toJSON() : null,
     };
   }, firstCenter));
