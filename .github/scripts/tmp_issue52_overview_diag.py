@@ -147,3 +147,5 @@ test = replace_once(
     'overview native touch target trace',
 )
 test_path.write_text(test)
+
+# Keep the active diagnostic run from publishing its instrumented test as the final product commit.
