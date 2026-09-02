@@ -1,4 +1,4 @@
-import type { Firestore, WriteBatch } from 'firebase/firestore';
+import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
 import {
   collection,
   deleteDoc,
@@ -238,17 +238,58 @@ function applyBatchOperation(
   batch.set(reference, stripUndefinedDeep(operation.value));
 }
 
-async function commitOperations(
+function applyTransactionOperation(
   firestoreDb: Firestore,
-  operations: readonly BatchOperation[],
-): Promise<void> {
-  for (let index = 0; index < operations.length; index += MIGRATION_BATCH_SIZE) {
-    const batch = writeBatch(firestoreDb);
-    operations
-      .slice(index, index + MIGRATION_BATCH_SIZE)
-      .forEach((operation) => applyBatchOperation(firestoreDb, batch, operation));
-    await batch.commit();
+  transaction: Transaction,
+  operation: BatchOperation,
+): void {
+  const reference = doc(firestoreDb, operation.collectionName, operation.id);
+  if (operation.kind === 'delete') {
+    transaction.delete(reference);
+    return;
   }
+  transaction.set(reference, stripUndefinedDeep(operation.value));
+}
+
+async function commitMigrationOperations(
+  firestoreDb: Firestore,
+  userId: string,
+  operations: readonly BatchOperation[],
+): Promise<boolean> {
+  const migrationReference = doc(
+    firestoreDb,
+    SCHEDULE_EVENT_MIGRATIONS_COLLECTION,
+    userId,
+  );
+
+  for (let index = 0; index < operations.length; index += MIGRATION_BATCH_SIZE) {
+    const chunk = operations.slice(index, index + MIGRATION_BATCH_SIZE);
+    const migrationStillActive = await runTransaction(
+      firestoreDb,
+      async (transaction) => {
+        const migrationSnapshot = await transaction.get(migrationReference);
+        if (!migrationSnapshot.exists()) {
+          throw new Error('ScheduleEvent migration marker is missing.');
+        }
+        const current = {
+          ...migrationSnapshot.data(),
+          userId,
+        } as ScheduleEventMigrationCandidate & Partial<MigrationLeaseDocument>;
+        if (isCurrentScheduleEventMigration(current)) {
+          return false;
+        }
+        if (!isCurrentMigrationLease(current, userId)) {
+          throw new Error('Unsupported ScheduleEvent migration marker.');
+        }
+        chunk.forEach((operation) =>
+          applyTransactionOperation(firestoreDb, transaction, operation),
+        );
+        return true;
+      },
+    );
+    if (!migrationStillActive) return false;
+  }
+  return true;
 }
 
 function stableEventSnapshot(events: readonly ScheduleEvent[]): string {
@@ -265,7 +306,7 @@ async function replaceCanonicalSnapshot(
   firestoreDb: Firestore,
   userId: string,
   desiredEvents: readonly ScheduleEvent[],
-): Promise<void> {
+): Promise<boolean> {
   assertOwnedRecords(userId, desiredEvents, '予定移行');
   const currentEvents = await listByUserId<ScheduleEvent>(
     firestoreDb,
@@ -288,7 +329,12 @@ async function replaceCanonicalSnapshot(
         id: event.id,
       })),
   ];
-  await commitOperations(firestoreDb, operations);
+  const migrationStillActive = await commitMigrationOperations(
+    firestoreDb,
+    userId,
+    operations,
+  );
+  if (!migrationStillActive) return false;
 
   const persisted = await listByUserId<ScheduleEvent>(
     firestoreDb,
@@ -296,8 +342,11 @@ async function replaceCanonicalSnapshot(
     userId,
   );
   if (stableEventSnapshot(persisted) !== stableEventSnapshot(desiredEvents)) {
+    const state = await acquireMigrationDocument(firestoreDb, userId);
+    if (isCurrentScheduleEventMigration(state)) return false;
     throw new Error('ScheduleEvent migration verification failed.');
   }
+  return true;
 }
 
 function planEventDeleteOperation(planId: string): BatchOperation {
@@ -339,7 +388,12 @@ export function createFirebaseScheduleEventAuthority(
         const legacy = await loadLegacy();
         assertOwnedRecords(userId, [...legacy.plans, ...legacy.monthEvents], '予定移行');
         const migration = migrateLegacyScheduleRecords(legacy);
-        await replaceCanonicalSnapshot(firestoreDb, userId, migration.events);
+        const shouldComplete = await replaceCanonicalSnapshot(
+          firestoreDb,
+          userId,
+          migration.events,
+        );
+        if (!shouldComplete) return;
 
         const completed = createScheduleEventMigrationState({
           userId,
