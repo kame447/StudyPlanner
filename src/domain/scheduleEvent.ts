@@ -185,9 +185,10 @@ export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
       rules: copyRecurrenceRules(plan.recurrenceRules),
     },
     category: categoryForPlan(plan),
-    // Legacy Plan has no explicit busy/free field. Preserve its historical occupied
-    // semantics during migration instead of inferring from category or title.
-    busy: true,
+    // Legacy records omit busy and therefore preserve their historical occupied
+    // behavior. Once projected from canonical ScheduleEvent, explicit false must
+    // survive edits instead of being inferred back to true from the category.
+    busy: plan.busy ?? true,
     memo: plan.memo,
     provenance: {
       legacy,
@@ -221,8 +222,9 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
       rules: [],
     },
     category: 'other',
-    // Legacy MonthEvent likewise had no explicit busy/free field.
-    busy: true,
+    // Existing MonthEvent data has no busy/free distinction, so absent means busy.
+    // Explicit false is compatibility metadata sourced from canonical ScheduleEvent.
+    busy: event.busy ?? true,
     memo: event.memo,
     provenance: {
       legacy,
@@ -275,6 +277,7 @@ export function scheduleEventToPlan(event: ScheduleEvent): Plan | null {
     materialId: event.plan.materialId,
     materialName: event.plan.materialName,
     weeklyPlanningObservationSource: event.plan.weeklyPlanningObservationSource,
+    ...(event.busy === false ? { busy: false } : {}),
   };
 }
 
@@ -300,6 +303,7 @@ export function scheduleEventToMonthEvent(event: ScheduleEvent): MonthEvent | nu
     locationTags: [...event.general.locationTags],
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
+    ...(event.busy === false ? { busy: false } : {}),
   };
 }
 
