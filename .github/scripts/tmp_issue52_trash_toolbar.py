@@ -1,0 +1,162 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly one match, found {count}')
+    return text.replace(old, new, 1)
+
+
+controls_path = Path('src/components/DragUndoRedoControls.tsx')
+controls = controls_path.read_text()
+controls = replace_once(
+    controls,
+    "import { Redo2, Undo2 } from 'lucide-react';\nimport { createPortal } from 'react-dom';",
+    "import { Redo2, Undo2 } from 'lucide-react';\nimport type { ReactNode } from 'react';\nimport { createPortal } from 'react-dom';",
+    'controls ReactNode import',
+)
+controls = replace_once(
+    controls,
+    "  placement?: 'schedule' | 'preview';\n  onUndo: () => void;",
+    "  placement?: 'schedule' | 'preview';\n  centerAction?: ReactNode;\n  ariaLabel?: string;\n  onUndo: () => void;",
+    'controls optional props',
+)
+controls = replace_once(
+    controls,
+    "  isBusy = false,\n  placement = 'schedule',\n  onUndo,",
+    "  isBusy = false,\n  placement = 'schedule',\n  centerAction = null,\n  ariaLabel = '予定移動の履歴操作',\n  onUndo,",
+    'controls destructuring',
+)
+controls = replace_once(
+    controls,
+    '      aria-label="予定移動の履歴操作"',
+    '      aria-label={ariaLabel}',
+    'controls group aria label',
+)
+controls = replace_once(
+    controls,
+    "        <Undo2 size={20} strokeWidth={2.2} aria-hidden=\"true\" />\n      </button>\n      <button",
+    "        <Undo2 size={20} strokeWidth={2.2} aria-hidden=\"true\" />\n      </button>\n      {centerAction}\n      <button",
+    'controls center action insertion',
+)
+controls_path.write_text(controls)
+
+css_path = Path('src/styles/drag-undo-redo.css')
+css = css_path.read_text()
+css = replace_once(
+    css,
+    ".drag-undo-redo-controls button:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--accent) 10%, transparent 90%);\n}\n",
+    ".drag-undo-redo-controls button:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--accent) 10%, transparent 90%);\n}\n\n.drag-undo-redo-controls .drag-undo-redo-delete {\n  color: var(--danger);\n}\n\n.drag-undo-redo-controls .drag-undo-redo-delete:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--danger) 10%, transparent 90%);\n}\n",
+    'delete action styling',
+)
+css_path.write_text(css)
+
+dialog_path = Path('src/components/AiPlanningPreviewDialog.tsx')
+dialog = dialog_path.read_text()
+dialog = replace_once(
+    dialog,
+    "  const overviewGridStyle = {\n",
+    "  const activeActionBlock = useMemo(\n    () =>\n      activeActionBlockId\n        ? editableBlocks.find((block) => block.id === activeActionBlockId) ?? null\n        : null,\n    [activeActionBlockId, editableBlocks],\n  );\n  const overviewGridStyle = {\n",
+    'active action block derivation',
+)
+helper_start = dialog.index('  function renderRemoveAction(')
+helper_end = dialog.index('\n  return (\n', helper_start)
+dialog = dialog[:helper_start] + dialog[helper_end + 1:]
+dialog = replace_once(
+    dialog,
+    '<p className="ai-planning-preview-hint">予定を長押しすると操作できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>',
+    '<p className="ai-planning-preview-hint">予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>',
+    'preview hint',
+)
+dialog = replace_once(
+    dialog,
+    "                                  overflow: isActionActive ? 'visible' : 'hidden',",
+    "                                  overflow: 'hidden',",
+    'overview overflow containment',
+)
+dialog = replace_once(
+    dialog,
+    "                                {renderRemoveAction(block, isActionActive, true)}\n",
+    "",
+    'overview inline remove action',
+)
+dialog = replace_once(
+    dialog,
+    "                          {renderRemoveAction(block, isActionActive)}\n",
+    "",
+    'day inline remove action',
+)
+old_controls = """      <DragUndoRedoControls
+        visible={moveHistory.hasHistory}
+        canUndo={moveHistory.canUndo}
+        canRedo={moveHistory.canRedo}
+        isBusy={moveHistory.isBusy}
+        placement=\"preview\"
+        onUndo={handleUndoMove}
+        onRedo={handleRedoMove}
+      />"""
+new_controls = """      <DragUndoRedoControls
+        visible={moveHistory.hasHistory || Boolean(activeActionBlock)}
+        canUndo={moveHistory.canUndo}
+        canRedo={moveHistory.canRedo}
+        isBusy={moveHistory.isBusy}
+        placement=\"preview\"
+        ariaLabel=\"予定の編集操作\"
+        centerAction={
+          activeActionBlock ? (
+            <button
+              className=\"drag-undo-redo-delete\"
+              type=\"button\"
+              aria-label={`${activeActionBlock.title}を計画から除外`}
+              title=\"この予定を除外\"
+              disabled={isBusy}
+              onClick={() => {
+                const blockId = activeActionBlock.id;
+                setActiveActionBlockId(null);
+                onRemove(blockId);
+              }}
+            >
+              <Trash2 size={20} strokeWidth={2.2} aria-hidden=\"true\" />
+            </button>
+          ) : null
+        }
+        onUndo={handleUndoMove}
+        onRedo={handleRedoMove}
+      />"""
+dialog = replace_once(dialog, old_controls, new_controls, 'preview edit controls')
+dialog_path.write_text(dialog)
+
+test_path = Path('tests/e2e/ai-planning-preview-item-removal.spec.mjs')
+test = test_path.read_text()
+test = replace_once(
+    test,
+    "  const removeAction = preview.getByRole('button', { name: `${title}を計画から除外` });",
+    "  const removeAction = page.getByRole('button', { name: `${title}を計画から除外` });",
+    'helper portal action lookup',
+)
+test = test.replace(
+    "preview.getByRole('button', { name: '金フレ Aを計画から除外' })",
+    "page.getByRole('button', { name: '金フレ Aを計画から除外' })",
+)
+test = test.replace(
+    "restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })",
+    "page.getByRole('button', { name: '金フレ Aを計画から除外' })",
+)
+test = test.replace(
+    "preview.getByRole('button', { name: '金フレ Bを計画から除外' })",
+    "page.getByRole('button', { name: '金フレ Bを計画から除外' })",
+)
+test = replace_once(
+    test,
+    "  await expect(removeAction).toBeVisible();\n  return { block, removeAction };",
+    "  await expect(removeAction).toBeVisible();\n  await expect(block.getByRole('button')).toHaveCount(0);\n  return { block, removeAction };",
+    'inline action regression assertion',
+)
+test = replace_once(
+    test,
+    "  await expect(firstRemoveAction).toBeVisible();\n  await page.screenshot({",
+    "  await expect(firstRemoveAction).toBeVisible();\n  const editControls = page.locator('.drag-undo-redo-controls--preview');\n  await expect(editControls).toBeVisible();\n  await expect(editControls.locator('button')).toHaveCount(3);\n  await expect(editControls.locator('button').nth(0)).toHaveAttribute('aria-label', '変更を元に戻す');\n  await expect(editControls.locator('button').nth(1)).toHaveAttribute('aria-label', '金フレ Aを計画から除外');\n  await expect(editControls.locator('button').nth(2)).toHaveAttribute('aria-label', '変更をやり直す');\n  await expect(firstBlock.getByRole('button')).toHaveCount(0);\n  await page.screenshot({",
+    'toolbar order assertion',
+)
+test_path.write_text(test)
