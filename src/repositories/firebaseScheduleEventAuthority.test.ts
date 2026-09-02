@@ -8,9 +8,11 @@ const mocks = vi.hoisted(() => ({
   batchDelete: vi.fn(),
   batchCommit: vi.fn(),
   deleteDoc: vi.fn(),
-  getDoc: vi.fn(),
   getDocs: vi.fn(),
   setDoc: vi.fn(),
+  transactionGet: vi.fn(),
+  transactionSet: vi.fn(),
+  runTransaction: vi.fn(),
   writeBatch: vi.fn(),
 }));
 
@@ -18,9 +20,9 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, name) => ({ name })),
   deleteDoc: mocks.deleteDoc,
   doc: vi.fn((_db, collectionName, id) => ({ collectionName, id })),
-  getDoc: mocks.getDoc,
   getDocs: mocks.getDocs,
   query: vi.fn((...parts) => ({ parts })),
+  runTransaction: mocks.runTransaction,
   setDoc: mocks.setDoc,
   where: vi.fn((...parts) => ({ parts })),
   writeBatch: mocks.writeBatch,
@@ -83,7 +85,7 @@ function firestoreDoc(id: string, value: object) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getDoc.mockResolvedValue({ exists: () => false });
+  mocks.transactionGet.mockResolvedValue({ exists: () => false });
   mocks.getDocs.mockResolvedValue({ docs: [] });
   mocks.setDoc.mockResolvedValue(undefined);
   mocks.deleteDoc.mockResolvedValue(undefined);
@@ -93,10 +95,16 @@ beforeEach(() => {
     delete: mocks.batchDelete,
     commit: mocks.batchCommit,
   });
+  mocks.runTransaction.mockImplementation(async (_db, handler) =>
+    handler({
+      get: mocks.transactionGet,
+      set: mocks.transactionSet,
+    }),
+  );
 });
 
 describe('Firebase ScheduleEvent authority', () => {
-  it('freezes with a migration lease, backfills canonical events, verifies them, then completes', async () => {
+  it('freezes with a transactional migration lease, backfills canonical events, verifies them, then completes', async () => {
     const sourcePlan = plan();
     const sourceEvent = monthEvent();
     const canonicalPlan = scheduleEventFromPlan(sourcePlan);
@@ -145,14 +153,19 @@ describe('Firebase ScheduleEvent authority', () => {
 
     await authority.ensureMigrated('user-1', loadLegacy);
 
+    expect(mocks.runTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.transactionSet).toHaveBeenCalledWith(
+      expect.objectContaining({ collectionName: 'schedule_event_migrations', id: 'user-1' }),
+      expect.objectContaining({
+        status: 'migrating',
+        userId: 'user-1',
+        migrationVersion: 1,
+      }),
+      { merge: false },
+    );
     expect(loadLegacy).toHaveBeenCalledTimes(1);
-    expect(mocks.setDoc).toHaveBeenCalledTimes(2);
+    expect(mocks.setDoc).toHaveBeenCalledTimes(1);
     expect(mocks.setDoc.mock.calls[0][1]).toMatchObject({
-      status: 'migrating',
-      userId: 'user-1',
-      migrationVersion: 1,
-    });
-    expect(mocks.setDoc.mock.calls[1][1]).toMatchObject({
       status: 'completed',
       sourcePlanCount: 1,
       sourceMonthEventCount: 1,
@@ -169,7 +182,7 @@ describe('Firebase ScheduleEvent authority', () => {
   });
 
   it('does not load frozen legacy records when the current migration marker already exists', async () => {
-    mocks.getDoc.mockResolvedValue({
+    mocks.transactionGet.mockResolvedValue({
       exists: () => true,
       data: () => ({
         schemaVersion: 1,
@@ -191,8 +204,39 @@ describe('Firebase ScheduleEvent authority', () => {
     await authority.ensureMigrated('user-1', loadLegacy);
 
     expect(loadLegacy).not.toHaveBeenCalled();
+    expect(mocks.transactionSet).not.toHaveBeenCalled();
     expect(mocks.setDoc).not.toHaveBeenCalled();
     expect(mocks.writeBatch).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing migration lease so repeated migration attempts stay idempotent', async () => {
+    mocks.transactionGet.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        schemaVersion: 1,
+        migrationVersion: 1,
+        userId: 'user-1',
+        status: 'migrating',
+        operationId: 'schedule-event-migration-v1:user-1',
+        revision: 1,
+        startedAt: CREATED_AT,
+        completedAt: null,
+      }),
+    });
+    mocks.getDocs
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [] });
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    const loadLegacy = vi.fn().mockResolvedValue({ plans: [], monthEvents: [] });
+
+    await authority.ensureMigrated('user-1', loadLegacy);
+
+    expect(mocks.transactionSet).not.toHaveBeenCalled();
+    expect(loadLegacy).toHaveBeenCalledTimes(1);
+    expect(mocks.setDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ collectionName: 'schedule_event_migrations', id: 'user-1' }),
+      expect.objectContaining({ status: 'completed', eventCount: 0 }),
+    );
   });
 
   it('writes recurring Plan changes to schedule_events, not the legacy plans collection', async () => {
