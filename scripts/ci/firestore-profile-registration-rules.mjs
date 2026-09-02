@@ -167,6 +167,13 @@ try {
     'schedule_event_migrations',
     owner.user.uid,
   );
+  await expectPermissionDenied('forged migration operation identity', () => setDoc(
+    migrationRef,
+    {
+      ...migrationLease(owner.user.uid, startedAt),
+      operationId: 'forged-operation',
+    },
+  ));
   await setDoc(migrationRef, migrationLease(owner.user.uid, startedAt));
 
   const legacyReadableAfterLease = await getDoc(legacyPlanRef);
