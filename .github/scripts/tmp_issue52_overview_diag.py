@@ -48,8 +48,9 @@ css = replace_once(
   overflow: hidden;
   cursor: default;
   outline: 0;
+  pointer-events: none;
 }""",
-    'overview body cursor',
+    'overview body hit target',
 )
 css_path.write_text(css)
 
@@ -64,6 +65,7 @@ test = replace_once(
     """  const session = await enableTouch(page);
   const firstCenter = await locatorCenter(firstBlock);
 
+  await expect(firstBlock).toHaveCSS('pointer-events', 'auto');
   await expect(firstRemoveAction).toHaveCount(0);""",
     'overview touch coordinate ordering',
 )
