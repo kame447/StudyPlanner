@@ -112,12 +112,15 @@ service cloud.firestore {
     match /schedule_events/{eventId} {
       allow read: if canReadOwnedResource();
       allow create: if canCreateOwnedResource()
+        && hasScheduleEventMigration(request.resource.data.userId)
         && isValidScheduleEventDocument(eventId);
       allow update: if canUpdateOwnedResource()
+        && hasScheduleEventMigration(resource.data.userId)
         && isValidScheduleEventDocument(eventId)
         && request.resource.data.schemaVersion == resource.data.schemaVersion
         && request.resource.data.id == resource.data.id;
-      allow delete: if isOwner(resource.data.userId);
+      allow delete: if isOwner(resource.data.userId)
+        && hasScheduleEventMigration(resource.data.userId);
     }
 
     match /schedule_event_migrations/{userId} {
@@ -141,19 +144,32 @@ service cloud.firestore {
         && request.resource.data.operationId == resource.data.operationId
         && request.resource.data.revision == resource.data.revision
         && request.resource.data.startedAt == resource.data.startedAt
-        && resource.data.status == 'migrating'
         && request.resource.data.status == 'completed'
         && request.resource.data.completedAt is string
         && request.resource.data.sourcePlanCount is int
         && request.resource.data.sourceMonthEventCount is int
         && request.resource.data.eventCount is int
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status',
-          'sourcePlanCount',
-          'sourceMonthEventCount',
-          'eventCount',
-          'completedAt'
-        ]);
+        && (
+          (
+            resource.data.status == 'migrating'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'sourcePlanCount',
+              'sourceMonthEventCount',
+              'eventCount',
+              'completedAt'
+            ])
+          )
+          || (
+            resource.data.status == 'completed'
+            && request.resource.data.sourcePlanCount == resource.data.sourcePlanCount
+            && request.resource.data.sourceMonthEventCount == resource.data.sourceMonthEventCount
+            && request.resource.data.eventCount == resource.data.eventCount
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'completedAt'
+            ])
+          )
+        );
       allow delete: if false;
     }
 
