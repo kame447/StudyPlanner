@@ -156,6 +156,11 @@ try {
     title: 'Legacy plan before cutover',
   });
 
+  await expectPermissionDenied('ScheduleEvent create before migration lease', () => setDoc(
+    doc(owner.db, 'schedule_events', 'plan:pre-migration'),
+    scheduleEvent(owner.user.uid, 'pre-migration'),
+  ));
+
   const startedAt = new Date().toISOString();
   const migrationRef = doc(
     owner.db,
@@ -184,14 +189,29 @@ try {
   await setDoc(scheduleEventRef, scheduleEvent(owner.user.uid));
   await setDoc(scheduleEventRef, { busy: false }, { merge: true });
 
-  await setDoc(migrationRef, {
+  const completedMigration = {
     ...migrationLease(owner.user.uid, startedAt),
     status: 'completed',
     sourcePlanCount: 1,
     sourceMonthEventCount: 0,
     eventCount: 1,
     completedAt: new Date().toISOString(),
+  };
+  await setDoc(migrationRef, completedMigration);
+
+  await setDoc(migrationRef, {
+    ...completedMigration,
+    completedAt: new Date(Date.now() + 1).toISOString(),
   });
+
+  await expectPermissionDenied('completed migration cannot change verified counts', () => setDoc(
+    migrationRef,
+    {
+      ...completedMigration,
+      eventCount: 2,
+      completedAt: new Date(Date.now() + 2).toISOString(),
+    },
+  ));
 
   await expectPermissionDenied('completed migration cannot return to migrating', () => setDoc(
     migrationRef,
