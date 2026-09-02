@@ -33,7 +33,7 @@ export interface ScheduleEventLegacyIdentity {
 
 export interface ScheduleEventProvenance {
   legacy: ScheduleEventLegacyIdentity;
-  sourceType: PlanSourceType | 'month-event';
+  sourceType: PlanSourceType | 'month-event' | null;
   sourceId: string | null;
 }
 
@@ -69,6 +69,7 @@ interface ScheduleEventBase {
   userId: string;
   title: string;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
   recurrence: ScheduleEventRecurrence;
@@ -105,6 +106,12 @@ export interface ScheduleEventMigrationState {
   completedAt: string;
 }
 
+export interface ScheduleEventMigrationCandidate {
+  schemaVersion?: unknown;
+  migrationVersion?: unknown;
+  status?: unknown;
+}
+
 export interface LegacyScheduleMigrationResult {
   events: ScheduleEvent[];
   sourcePlanCount: number;
@@ -131,6 +138,11 @@ function categoryForPlan(plan: Plan): ScheduleEventCategory {
   if (plan.type === 'cram-school') return 'cram-school';
   if (plan.type === 'deadline') return 'deadline';
   return 'other';
+}
+
+function normalizedMonthEventEndDate(event: MonthEvent): string {
+  const endDate = event.endDate?.trim();
+  return endDate && endDate.localeCompare(event.date) >= 0 ? endDate : event.date;
 }
 
 function planDetails(plan: Plan): ScheduleEventPlanDetails {
@@ -163,6 +175,7 @@ export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
     userId: plan.userId,
     title: plan.title,
     date: plan.date,
+    endDate: plan.date,
     startTime: plan.startTime,
     endTime: plan.endTime,
     recurrence: {
@@ -178,7 +191,7 @@ export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
     memo: plan.memo,
     provenance: {
       legacy,
-      sourceType: plan.sourceType ?? 'manual',
+      sourceType: plan.sourceType ?? null,
       sourceId: plan.sourceId?.trim() || null,
     },
     createdAt: plan.createdAt,
@@ -198,6 +211,7 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
     userId: event.userId,
     title: event.title,
     date: event.date,
+    endDate: normalizedMonthEventEndDate(event),
     startTime: event.startTime,
     endTime: event.endTime,
     recurrence: {
@@ -250,8 +264,9 @@ export function scheduleEventToPlan(event: ScheduleEvent): Plan | null {
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
     sourceType:
+      event.provenance.sourceType === null ||
       event.provenance.sourceType === 'month-event'
-        ? 'manual'
+        ? undefined
         : event.provenance.sourceType,
     sourceId: event.provenance.sourceId,
     sourceDate: event.plan.sourceDate,
@@ -272,6 +287,7 @@ export function scheduleEventToMonthEvent(event: ScheduleEvent): MonthEvent | nu
     id: event.provenance.legacy.id,
     userId: event.userId,
     date: event.date,
+    endDate: event.endDate,
     title: event.title,
     startTime: event.startTime,
     endTime: event.endTime,
@@ -329,7 +345,7 @@ export function createScheduleEventMigrationState(params: {
 }
 
 export function isCurrentScheduleEventMigration(
-  state: ScheduleEventMigrationState | null | undefined,
+  state: ScheduleEventMigrationCandidate | null | undefined,
 ): state is ScheduleEventMigrationState {
   return (
     state?.status === 'completed' &&
