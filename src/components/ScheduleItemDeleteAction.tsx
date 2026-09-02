@@ -1,11 +1,18 @@
 import { Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import type { ActiveScheduleItemAction } from '../hooks/useScheduleItemActionPress';
+import {
+  SCHEDULE_ITEM_ACTION_INTENT_EVENT,
+  type ActiveScheduleItemAction,
+} from '../hooks/useScheduleItemActionPress';
 
 interface ScheduleItemDeleteActionProps<TItem> {
   action: ActiveScheduleItemAction<TItem> | null;
   onDelete: (item: TItem) => void | Promise<void>;
   onDismiss: () => void;
+}
+
+function signalScheduleActionIntent() {
+  window.dispatchEvent(new Event(SCHEDULE_ITEM_ACTION_INTENT_EVENT));
 }
 
 export function ScheduleItemDeleteAction<TItem>({
@@ -35,8 +42,14 @@ export function ScheduleItemDeleteAction<TItem>({
         padding: 0,
         animation: 'quick-add-option-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both',
       }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onTouchStart={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        signalScheduleActionIntent();
+        event.stopPropagation();
+      }}
+      onTouchStart={(event) => {
+        signalScheduleActionIntent();
+        event.stopPropagation();
+      }}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
