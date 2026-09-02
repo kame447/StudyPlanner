@@ -205,9 +205,9 @@ function planOccurrences(params: {
         title: plan.title,
         subject: plan.subject,
         category: categoryForPlan(plan),
-        // Existing Plan records have always been hard occupied time. Preserve that
-        // behavior until canonical ScheduleEvent persistence owns an explicit busy field.
-        busy: true,
+        // Legacy Plan omits busy and therefore remains occupied. Canonical
+        // ScheduleEvent can explicitly project busy=false through this adapter.
+        busy: plan.busy ?? true,
         start,
         end: normalizePlanEndPoint(plan.date, plan.startTime, plan.endTime),
         source,
@@ -255,9 +255,9 @@ function monthEventOccurrences(params: {
           title: event.title,
           subject: '主要予定',
           category: 'other',
-          // MonthEvent had no busy/free distinction. Treat existing records as busy
-          // during the compatibility phase rather than inferring from their title.
-          busy: true,
+          // Legacy MonthEvent omits busy and therefore remains occupied. Canonical
+          // ScheduleEvent can explicitly project busy=false through this adapter.
+          busy: event.busy ?? true,
           start,
           end: normalizeMonthEventEndPoint(candidateDate, spanDays, event.endTime),
           source,
