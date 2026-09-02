@@ -3,6 +3,7 @@ import type { Actual, MonthEvent, Plan } from '../types/domain';
 import { createLocalPlannerStorageGateway } from './localStorageGateway';
 import { createLocalScheduleEventAuthority } from './localScheduleEventAuthority';
 import { createPlannerRepository } from './plannerRepository';
+import { normalizePlanRecord } from './repositoryUtils';
 import { createScheduleEventBackedPlannerRepository } from './scheduleEventAuthorityRepository';
 
 const CREATED_AT = '2026-09-01T00:00:00.000Z';
@@ -96,6 +97,10 @@ function actual(overrides: Partial<Actual> = {}): Actual {
   };
 }
 
+function persistedShape(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function createRepository(storage: Storage) {
   const gateway = createLocalPlannerStorageGateway(storage);
   const legacy = createPlannerRepository(gateway);
@@ -115,7 +120,9 @@ describe('local ScheduleEvent authority', () => {
     await gateway.writePlans([plan()]);
     await gateway.writeMonthEvents([monthEvent()]);
 
-    expect(await repository.getPlans('user-1')).toEqual([plan()]);
+    expect(persistedShape(await repository.getPlans('user-1'))).toEqual(
+      persistedShape([normalizePlanRecord(plan())]),
+    );
     expect(await repository.getMonthEvents('user-1')).toEqual([monthEvent()]);
 
     const stored = JSON.parse(storage.getItem('studyplanner.scheduleEvents.v1') ?? '[]');
@@ -133,15 +140,26 @@ describe('local ScheduleEvent authority', () => {
     await first.gateway.writeMonthEvents([]);
 
     await first.repository.getPlans('user-1');
-    const updatedPlan = plan({ title: 'canonical edit', updatedAt: '2026-09-02T00:00:00.000Z' });
+    const updatedPlan = plan({
+      title: 'canonical edit',
+      updatedAt: '2026-09-02T00:00:00.000Z',
+    });
     await first.repository.upsertPlan(updatedPlan);
 
-    expect(await first.gateway.readPlans()).toEqual([legacyPlan]);
-    expect(await first.repository.getPlans('user-1')).toEqual([updatedPlan]);
+    expect(persistedShape(await first.gateway.readPlans())).toEqual(
+      persistedShape([normalizePlanRecord(legacyPlan)]),
+    );
+    expect(persistedShape(await first.repository.getPlans('user-1'))).toEqual(
+      persistedShape([normalizePlanRecord(updatedPlan)]),
+    );
 
     const second = createRepository(storage);
-    expect(await second.repository.getPlans('user-1')).toEqual([updatedPlan]);
-    expect(await second.gateway.readPlans()).toEqual([legacyPlan]);
+    expect(persistedShape(await second.repository.getPlans('user-1'))).toEqual(
+      persistedShape([normalizePlanRecord(updatedPlan)]),
+    );
+    expect(persistedShape(await second.gateway.readPlans())).toEqual(
+      persistedShape([normalizePlanRecord(legacyPlan)]),
+    );
   });
 
   it('deletes linked Actual records with the canonical Plan without mutating frozen legacy Plans', async () => {
@@ -157,7 +175,9 @@ describe('local ScheduleEvent authority', () => {
 
     expect(await repository.getPlans('user-1')).toEqual([]);
     expect(await repository.getActuals('user-1')).toEqual([]);
-    expect(await gateway.readPlans()).toEqual([legacyPlan]);
+    expect(persistedShape(await gateway.readPlans())).toEqual(
+      persistedShape([normalizePlanRecord(legacyPlan)]),
+    );
   });
 
   it('preserves multi-day MonthEvent range through canonical updates', async () => {
