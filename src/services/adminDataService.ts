@@ -8,6 +8,12 @@ import {
   where,
 } from 'firebase/firestore';
 import {
+  isCurrentScheduleEventMigration,
+  scheduleEventToPlan,
+  type ScheduleEvent,
+  type ScheduleEventMigrationCandidate,
+} from '../domain/scheduleEvent';
+import {
   buildAdminDashboardStats,
   buildMaterialSummaries,
   calculateWeekPlannedMinutes,
@@ -38,6 +44,8 @@ import type {
 
 type AdminCollectionName =
   | 'plans'
+  | 'schedule_events'
+  | 'schedule_event_migrations'
   | 'actuals'
   | 'todos'
   | 'day_notes'
@@ -106,21 +114,54 @@ function groupByUserId<T extends { userId: string }>(items: T[]): Map<string, T[
   return grouped;
 }
 
+function canonicalPlans(events: readonly ScheduleEvent[]): Plan[] {
+  return events
+    .map(scheduleEventToPlan)
+    .filter((plan): plan is Plan => plan !== null)
+    .map(normalizePlanRecord);
+}
+
+function planSourceForUser(params: {
+  userId: string;
+  migration: ScheduleEventMigrationCandidate | null | undefined;
+  legacyPlans: readonly Plan[];
+  scheduleEvents: readonly ScheduleEvent[];
+}): Plan[] {
+  return isCurrentScheduleEventMigration(params.migration)
+    ? canonicalPlans(params.scheduleEvents)
+    : params.legacyPlans.map(normalizePlanRecord);
+}
+
 export async function getAdminUserSummaries(): Promise<AdminUserSummary[]> {
   const firestoreDb = getRequiredFirestoreDb();
-  const [profileSnapshots, rawPlans, rawActuals, rawTodos, dayNotes] =
-    await Promise.all([
-      getDocs(collection(firestoreDb, 'profiles')),
-      listCollection<Plan>(firestoreDb, 'plans'),
-      listCollection<Actual>(firestoreDb, 'actuals'),
-      listCollection<TodoTask>(firestoreDb, 'todos'),
-      listCollection<DayNote>(firestoreDb, 'day_notes'),
-    ]);
+  const [
+    profileSnapshots,
+    rawPlans,
+    rawScheduleEvents,
+    migrationStates,
+    rawActuals,
+    rawTodos,
+    dayNotes,
+  ] = await Promise.all([
+    getDocs(collection(firestoreDb, 'profiles')),
+    listCollection<Plan>(firestoreDb, 'plans'),
+    listCollection<ScheduleEvent>(firestoreDb, 'schedule_events'),
+    listCollection<ScheduleEventMigrationCandidate & { userId: string }>(
+      firestoreDb,
+      'schedule_event_migrations',
+    ),
+    listCollection<Actual>(firestoreDb, 'actuals'),
+    listCollection<TodoTask>(firestoreDb, 'todos'),
+    listCollection<DayNote>(firestoreDb, 'day_notes'),
+  ]);
   const profiles = profileSnapshots.docs.map(normalizeProfile);
-  const plans = rawPlans.map(normalizePlanRecord);
+  const legacyPlansByUserId = groupByUserId(rawPlans);
+  const scheduleEventsByUserId = groupByUserId(rawScheduleEvents);
+  const migrationByUserId = new Map(
+    migrationStates.map((state) => [state.userId, state]),
+  );
   const actuals = dedupeLinkedActualRecords(rawActuals.map(normalizeActualRecord));
   const todos = rawTodos.map(normalizeTodoRecord);
-  const plansByUserId = groupByUserId(plans);
   const actualsByUserId = groupByUserId(actuals);
   const todosByUserId = groupByUserId(todos);
   const dayNotesByUserId = groupByUserId(dayNotes);
@@ -129,7 +170,12 @@ export async function getAdminUserSummaries(): Promise<AdminUserSummary[]> {
     .map((profile) => ({
       profile,
       stats: buildAdminDashboardStats({
-        plans: plansByUserId.get(profile.id) ?? [],
+        plans: planSourceForUser({
+          userId: profile.id,
+          migration: migrationByUserId.get(profile.id),
+          legacyPlans: legacyPlansByUserId.get(profile.id) ?? [],
+          scheduleEvents: scheduleEventsByUserId.get(profile.id) ?? [],
+        }),
         actuals: actualsByUserId.get(profile.id) ?? [],
         todos: todosByUserId.get(profile.id) ?? [],
         dayNotes: dayNotesByUserId.get(profile.id) ?? [],
@@ -145,28 +191,45 @@ export async function getAdminUserDetail(
   userId: string,
 ): Promise<AdminUserDetailData | null> {
   const firestoreDb = getRequiredFirestoreDb();
-  const profileSnapshot = await getDoc(doc(firestoreDb, 'profiles', userId));
+  const [profileSnapshot, migrationSnapshot] = await Promise.all([
+    getDoc(doc(firestoreDb, 'profiles', userId)),
+    getDoc(doc(firestoreDb, 'schedule_event_migrations', userId)),
+  ]);
 
   if (!profileSnapshot.exists()) {
     return null;
   }
 
   const profile = normalizeProfile(profileSnapshot);
+  const migration = migrationSnapshot.exists()
+    ? (migrationSnapshot.data() as ScheduleEventMigrationCandidate)
+    : null;
   const [
-    rawPlans,
+    rawLegacyPlans,
+    rawScheduleEvents,
     rawActuals,
     rawTodos,
     dayNotes,
     studyMaterials,
   ] = await Promise.all([
-    listByUserId<Plan>(firestoreDb, 'plans', userId),
+    isCurrentScheduleEventMigration(migration)
+      ? Promise.resolve<Plan[]>([])
+      : listByUserId<Plan>(firestoreDb, 'plans', userId),
+    isCurrentScheduleEventMigration(migration)
+      ? listByUserId<ScheduleEvent>(firestoreDb, 'schedule_events', userId)
+      : Promise.resolve<ScheduleEvent[]>([]),
     listByUserId<Actual>(firestoreDb, 'actuals', userId),
     listByUserId<TodoTask>(firestoreDb, 'todos', userId),
     listByUserId<DayNote>(firestoreDb, 'day_notes', userId),
     listByUserId<StudyMaterial>(firestoreDb, 'study_materials', userId),
   ]);
   const referenceDate = todayIsoDate();
-  const plans = rawPlans.map(normalizePlanRecord);
+  const plans = planSourceForUser({
+    userId,
+    migration,
+    legacyPlans: rawLegacyPlans,
+    scheduleEvents: rawScheduleEvents,
+  });
   const actuals = dedupeLinkedActualRecords(rawActuals.map(normalizeActualRecord));
   const todos = rawTodos.map(normalizeTodoRecord);
   const stats = buildAdminDashboardStats({
