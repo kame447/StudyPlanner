@@ -51,6 +51,6 @@ jobs:
           git rm .github/workflows/tmp-issue52-trash-toolbar.yml .github/scripts/tmp_issue52_trash_toolbar.py .github/scripts/tmp_issue52_overview_diag.py
           git config user.name 'chatgpt-codex-connector[bot]'
           git config user.email '14957082+chatgpt-codex-connector[bot]@users.noreply.github.com'
-          git add src/components/DragUndoRedoControls.tsx src/components/AiPlanningPreviewDialog.tsx src/styles/drag-undo-redo.css tests/e2e/ai-planning-preview-item-removal.spec.mjs
+          git add src/components/DragUndoRedoControls.tsx src/components/AiPlanningPreviewDialog.tsx src/components/AiPlanningPreviewDialog.css src/styles/drag-undo-redo.css tests/e2e/ai-planning-preview-item-removal.spec.mjs
           git commit -m 'fix: move preview delete action to edit toolbar'
           git push origin HEAD:fix/issue52-preview-overview-longpress
