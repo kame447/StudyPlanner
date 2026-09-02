@@ -43,7 +43,7 @@ jobs:
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Run isolated overview hit target regression
+      - name: Trace isolated overview touch target
         run: ./tests/e2e/node_modules/.bin/playwright test tests/e2e/ai-planning-preview-item-removal.spec.mjs --config=tests/e2e/playwright.config.mjs --project=chromium
 
       - name: Commit verified patch
