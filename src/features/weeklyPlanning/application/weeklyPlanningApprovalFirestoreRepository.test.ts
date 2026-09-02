@@ -20,6 +20,12 @@ import { createFirestoreWeeklyPlanningApprovalPlanRepository } from './weeklyPla
 const USER_ID = 'user-1';
 const OPERATION_ID = 'operation-1';
 
+type MockSnapshot = {
+  id: string;
+  exists: () => boolean;
+  data: () => unknown;
+};
+
 function draft(): PlanDraft {
   return {
     userId: USER_ID,
@@ -42,7 +48,7 @@ function draft(): PlanDraft {
   };
 }
 
-function missingSnapshot(id = 'missing') {
+function missingSnapshot(id = 'missing'): MockSnapshot {
   return {
     id,
     exists: () => false,
@@ -50,7 +56,7 @@ function missingSnapshot(id = 'missing') {
   };
 }
 
-function existingSnapshot(id: string, data: object) {
+function existingSnapshot(id: string, data: object): MockSnapshot {
   return {
     id,
     exists: () => true,
@@ -58,7 +64,7 @@ function existingSnapshot(id: string, data: object) {
   };
 }
 
-function installTransaction(migrationSnapshot: ReturnType<typeof missingSnapshot>) {
+function installTransaction(migrationSnapshot: MockSnapshot) {
   mocks.transactionGet.mockImplementation(async (reference) => {
     if (reference.collectionName === 'schedule_event_migrations') {
       return migrationSnapshot;
