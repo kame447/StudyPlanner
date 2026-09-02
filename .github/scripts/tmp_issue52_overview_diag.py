@@ -61,12 +61,57 @@ test = replace_once(
     """  const firstCenter = await locatorCenter(firstBlock);
   const session = await enableTouch(page);
 
-  await expect(firstRemoveAction).toHaveCount(0);""",
+  await expect(firstRemoveAction).toHaveCount(0);
+  await dispatchTouch(session, 'touchStart', firstCenter.x, firstCenter.y);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(firstRemoveAction).toBeVisible();""",
     """  const session = await enableTouch(page);
   const firstCenter = await locatorCenter(firstBlock);
 
+  await page.evaluate(() => {
+    window.__overviewTouchEvents = [];
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        const actionBlock = target?.closest?.('[data-ai-preview-action-block]');
+        window.__overviewTouchEvents.push({
+          type,
+          targetTag: target?.tagName ?? null,
+          targetClass: target?.getAttribute?.('class') ?? null,
+          actionBlockId: actionBlock?.getAttribute('data-ai-preview-action-block') ?? null,
+          time: Math.round(performance.now()),
+        });
+      }, true);
+    }
+  });
+  console.log('OVERVIEW_GEOMETRY', await page.evaluate(({ x, y }) => {
+    const hit = document.elementFromPoint(x, y);
+    const block = hit?.closest?.('[data-ai-preview-action-block]');
+    const day = hit?.closest?.('.ai-planning-preview-overview-day');
+    return {
+      x,
+      y,
+      hitTag: hit?.tagName ?? null,
+      hitClass: hit?.getAttribute?.('class') ?? null,
+      blockId: block?.getAttribute('data-ai-preview-action-block') ?? null,
+      blockPointerEvents: block ? getComputedStyle(block).pointerEvents : null,
+      dayPointerEvents: day ? getComputedStyle(day).pointerEvents : null,
+      blockRect: block ? block.getBoundingClientRect().toJSON() : null,
+    };
+  }, firstCenter));
   await expect(firstBlock).toHaveCSS('pointer-events', 'auto');
-  await expect(firstRemoveAction).toHaveCount(0);""",
-    'overview touch coordinate ordering',
+  await expect(firstRemoveAction).toHaveCount(0);
+  await dispatchTouch(session, 'touchStart', firstCenter.x, firstCenter.y);
+  await page.waitForTimeout(300);
+  console.log('OVERVIEW_TOUCH_EVENTS', await page.evaluate(() => window.__overviewTouchEvents));
+  console.log('OVERVIEW_BLOCK_STATE', await firstBlock.evaluate((element) => ({
+    className: element.className,
+    pointerEvents: getComputedStyle(element).pointerEvents,
+    touchAction: getComputedStyle(element).touchAction,
+  })));
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(firstRemoveAction).toBeVisible();""",
+    'overview touch trace',
 )
 test_path.write_text(test)
