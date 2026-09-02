@@ -130,7 +130,7 @@ service cloud.firestore {
         && request.resource.data.schemaVersion == 1
         && request.resource.data.migrationVersion == 1
         && request.resource.data.status == 'migrating'
-        && request.resource.data.operationId is string
+        && request.resource.data.operationId == 'schedule-event-migration-v1:' + userId
         && request.resource.data.revision == 1
         && request.resource.data.startedAt is string
         && request.resource.data.completedAt == null;
@@ -141,6 +141,7 @@ service cloud.firestore {
         && request.resource.data.schemaVersion == resource.data.schemaVersion
         && resource.data.migrationVersion == 1
         && request.resource.data.migrationVersion == resource.data.migrationVersion
+        && resource.data.operationId == 'schedule-event-migration-v1:' + userId
         && request.resource.data.operationId == resource.data.operationId
         && request.resource.data.revision == resource.data.revision
         && request.resource.data.startedAt == resource.data.startedAt
