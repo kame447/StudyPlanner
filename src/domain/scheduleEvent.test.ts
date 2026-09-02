@@ -74,7 +74,8 @@ function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
     id: 'shared-id',
     userId: 'user-1',
     date: '2026-09-02',
-    title: '美容院',
+    endDate: '2026-09-04',
+    title: '旅行',
     startTime: '18:00',
     endTime: '19:00',
     repeat: 'monthly',
@@ -100,6 +101,8 @@ describe('canonical ScheduleEvent migration model', () => {
       kind: 'study',
       category: 'study',
       busy: true,
+      date: '2026-09-01',
+      endDate: '2026-09-01',
       provenance: {
         legacy: { kind: 'plan', id: 'shared-id' },
         sourceType: 'weekly-planning',
@@ -109,7 +112,7 @@ describe('canonical ScheduleEvent migration model', () => {
     expect(scheduleEventToPlan(event)).toEqual(source);
   });
 
-  it('round-trips a rich MonthEvent without losing general-event metadata', () => {
+  it('round-trips a rich multi-day MonthEvent without losing range or metadata', () => {
     const source = monthEvent();
     const event = scheduleEventFromMonthEvent(source);
 
@@ -118,12 +121,22 @@ describe('canonical ScheduleEvent migration model', () => {
       kind: 'general',
       category: 'other',
       busy: true,
+      date: '2026-09-02',
+      endDate: '2026-09-04',
       general: {
         url: 'https://example.com/reservation',
         locationTags: ['浜松', '駅前'],
       },
     });
     expect(scheduleEventToMonthEvent(event)).toEqual(source);
+  });
+
+  it('normalizes a legacy MonthEvent without endDate to a same-day canonical range', () => {
+    const source = monthEvent({ endDate: undefined });
+    const migrated = scheduleEventFromMonthEvent(source);
+
+    expect(migrated.endDate).toBe(source.date);
+    expect(scheduleEventToMonthEvent(migrated)?.endDate).toBe(source.date);
   });
 
   it('uses source-prefixed canonical ids so Plan and MonthEvent ids cannot collide', () => {
@@ -159,6 +172,11 @@ describe('canonical ScheduleEvent migration model', () => {
     expect(scheduleEventFromMonthEvent(monthEvent()).busy).toBe(true);
   });
 
+  it('preserves an absent Plan sourceType instead of inventing provenance', () => {
+    const source = plan({ sourceType: undefined, sourceId: null });
+    expect(scheduleEventToPlan(scheduleEventFromPlan(source))).toEqual(source);
+  });
+
   it('recognizes only the current completed migration marker as cut over', () => {
     const state = createScheduleEventMigrationState({
       userId: 'user-1',
@@ -170,7 +188,10 @@ describe('canonical ScheduleEvent migration model', () => {
 
     expect(isCurrentScheduleEventMigration(state)).toBe(true);
     expect(
-      isCurrentScheduleEventMigration({ ...state, migrationVersion: 0 as 1 }),
+      isCurrentScheduleEventMigration({ ...state, migrationVersion: 0 }),
+    ).toBe(false);
+    expect(
+      isCurrentScheduleEventMigration({ ...state, status: 'migrating' }),
     ).toBe(false);
   });
 });
