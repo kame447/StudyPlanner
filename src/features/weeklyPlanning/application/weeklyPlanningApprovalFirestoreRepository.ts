@@ -1,8 +1,18 @@
 import {
   doc,
   runTransaction,
+  type DocumentSnapshot,
   type Firestore,
+  type Transaction,
 } from 'firebase/firestore';
+import {
+  isCurrentScheduleEventMigration,
+  scheduleEventFromPlan,
+  scheduleEventIdForLegacy,
+  scheduleEventToPlan,
+  type ScheduleEvent,
+  type ScheduleEventMigrationCandidate,
+} from '../../../domain/scheduleEvent';
 import { normalizePlanRecord } from '../../../repositories/repositoryUtils';
 import type { Plan } from '../../../types/domain';
 import {
@@ -18,6 +28,7 @@ import {
   validateApprovalItemOwnership,
   validateApprovalPlanIdentity,
   WeeklyPlanningApprovalPersistenceError,
+  type ResolvedApprovalIdentity,
 } from './weeklyPlanningApprovalPersistencePolicy';
 import type {
   WeeklyPlanningApprovalPlanRepository,
@@ -25,6 +36,77 @@ import type {
 
 const OPERATION_COLLECTION = 'weekly_planning_approval_operations';
 const ITEM_COLLECTION = 'weekly_planning_approval_items';
+const SCHEDULE_EVENT_COLLECTION = 'schedule_events';
+const SCHEDULE_EVENT_MIGRATION_COLLECTION = 'schedule_event_migrations';
+
+type ScheduleWriteMode = 'legacy' | 'canonical';
+
+function resolveScheduleWriteMode(
+  snapshot: DocumentSnapshot,
+): ScheduleWriteMode {
+  if (!snapshot.exists()) return 'legacy';
+
+  const migration = snapshot.data() as ScheduleEventMigrationCandidate;
+  if (isCurrentScheduleEventMigration(migration)) return 'canonical';
+
+  throw new WeeklyPlanningApprovalPersistenceError(
+    'transaction_failed',
+    '予定データの移行完了後に週間計画を保存してください。',
+    true,
+  );
+}
+
+function planReference(
+  firestore: Firestore,
+  identity: ResolvedApprovalIdentity,
+  mode: ScheduleWriteMode,
+) {
+  return mode === 'canonical'
+    ? doc(
+        firestore,
+        SCHEDULE_EVENT_COLLECTION,
+        scheduleEventIdForLegacy({ kind: 'plan', id: identity.planId }),
+      )
+    : doc(firestore, 'plans', identity.planId);
+}
+
+function parseStoredPlan(
+  snapshot: DocumentSnapshot,
+  mode: ScheduleWriteMode,
+): Plan | null {
+  if (!snapshot.exists()) return null;
+
+  if (mode === 'legacy') {
+    return normalizePlanRecord({
+      ...snapshot.data(),
+      id: snapshot.id,
+    } as Plan);
+  }
+
+  const plan = scheduleEventToPlan({
+    ...snapshot.data(),
+    id: snapshot.id,
+  } as ScheduleEvent);
+  if (!plan) {
+    throw malformedApprovalRecord(
+      '保存済み週間計画に対応するScheduleEventの形式が不正です。',
+    );
+  }
+  return normalizePlanRecord(plan);
+}
+
+function writeResolvedPlan(
+  transaction: Transaction,
+  reference: ReturnType<typeof doc>,
+  plan: Plan,
+  mode: ScheduleWriteMode,
+): void {
+  transaction.set(
+    reference,
+    mode === 'canonical' ? scheduleEventFromPlan(plan) : plan,
+    { merge: false },
+  );
+}
 
 export function createFirestoreWeeklyPlanningApprovalPlanRepository(
   firestore: Firestore,
@@ -38,15 +120,22 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
         identity.operationDocumentId,
       );
       const itemRef = doc(operationRef, ITEM_COLLECTION, identity.itemDocumentId);
-      const planRef = doc(firestore, 'plans', identity.planId);
+      const migrationRef = doc(
+        firestore,
+        SCHEDULE_EVENT_MIGRATION_COLLECTION,
+        identity.userId,
+      );
 
       try {
         return await runTransaction(firestore, async (transaction) => {
-          const [operationSnapshot, itemSnapshot, planSnapshot] = await Promise.all([
+          const [operationSnapshot, itemSnapshot, migrationSnapshot] = await Promise.all([
             transaction.get(operationRef),
             transaction.get(itemRef),
-            transaction.get(planRef),
+            transaction.get(migrationRef),
           ]);
+          const mode = resolveScheduleWriteMode(migrationSnapshot);
+          const planRef = planReference(firestore, identity, mode);
+          const planSnapshot = await transaction.get(planRef);
           const operation = operationSnapshot.exists()
             ? parseStoredApprovalOperation(operationSnapshot.data())
             : null;
@@ -59,12 +148,7 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
           if (itemSnapshot.exists() && !item) {
             throw malformedApprovalRecord('承認項目の保存形式が不正です。');
           }
-          const plan = planSnapshot.exists()
-            ? normalizePlanRecord({
-                ...planSnapshot.data(),
-                id: planSnapshot.id,
-              } as Plan)
-            : null;
+          const plan = parseStoredPlan(planSnapshot, mode);
           const resolution = resolveAtomicApprovalSave({
             draft,
             identity,
@@ -74,7 +158,7 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
           transaction.set(operationRef, resolution.operation, { merge: false });
           transaction.set(itemRef, resolution.item, { merge: false });
           if (resolution.writePlan) {
-            transaction.set(planRef, resolution.plan, { merge: false });
+            writeResolvedPlan(transaction, planRef, resolution.plan, mode);
           }
           return resolution.plan;
         });
@@ -94,15 +178,22 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
       const itemRefs = identities.map((identity) =>
         doc(operationRef, ITEM_COLLECTION, identity.itemDocumentId),
       );
-      const planRefs = identities.map((identity) =>
-        doc(firestore, 'plans', identity.planId),
+      const migrationRef = doc(
+        firestore,
+        SCHEDULE_EVENT_MIGRATION_COLLECTION,
+        identities[0].userId,
       );
 
       try {
         await runTransaction(firestore, async (transaction) => {
-          const operationSnapshot = await transaction.get(operationRef);
-          const itemSnapshots = await Promise.all(
-            itemRefs.map((itemRef) => transaction.get(itemRef)),
+          const [operationSnapshot, migrationSnapshot, itemSnapshots] = await Promise.all([
+            transaction.get(operationRef),
+            transaction.get(migrationRef),
+            Promise.all(itemRefs.map((itemRef) => transaction.get(itemRef))),
+          ]);
+          const mode = resolveScheduleWriteMode(migrationSnapshot);
+          const planRefs = identities.map((identity) =>
+            planReference(firestore, identity, mode),
           );
           const planSnapshots = await Promise.all(
             planRefs.map((planRef) => transaction.get(planRef)),
@@ -124,16 +215,13 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
             return item;
           });
           planSnapshots.forEach((snapshot, index) => {
-            if (!snapshot.exists()) {
+            const plan = parseStoredPlan(snapshot, mode);
+            if (!plan) {
               throw new WeeklyPlanningApprovalPersistenceError(
                 'saved_plan_missing',
                 '保存済み承認項目に対応する予定が見つかりません。',
               );
             }
-            const plan = normalizePlanRecord({
-              ...snapshot.data(),
-              id: snapshot.id,
-            } as Plan);
             validateApprovalPlanIdentity(plan, identities[index]);
             if (storedItems[index].savedPlanId !== plan.id) {
               throw new WeeklyPlanningApprovalPersistenceError(
