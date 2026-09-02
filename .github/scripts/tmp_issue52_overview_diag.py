@@ -33,6 +33,12 @@ dialog = replace_once(
     '予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。上の日付をタップすると日別表示します。',
     'overview navigation hint',
 )
+overview_marker = "const dragDescriptor = !isBusy\n                              ? {\n                                  key: `overview:${block.id}`"
+overview_start = dialog.index(overview_marker)
+open_tag = dialog.index('<div\n', overview_start)
+dialog = dialog[:open_tag] + '<button\n                                type="button"\n' + dialog[open_tag + len('<div\n'):]
+close_tag = dialog.index('</div>', open_tag)
+dialog = dialog[:close_tag] + '</button>' + dialog[close_tag + len('</div>'):]
 dialog_path.write_text(dialog)
 
 css_path = Path('src/components/AiPlanningPreviewDialog.css')
@@ -100,18 +106,20 @@ test = replace_once(
       blockRect: block ? block.getBoundingClientRect().toJSON() : null,
     };
   }, firstCenter));
+  await expect(firstBlock).toHaveJSProperty('tagName', 'BUTTON');
   await expect(firstBlock).toHaveCSS('pointer-events', 'auto');
   await expect(firstRemoveAction).toHaveCount(0);
   await dispatchTouch(session, 'touchStart', firstCenter.x, firstCenter.y);
   await page.waitForTimeout(300);
   console.log('OVERVIEW_TOUCH_EVENTS', await page.evaluate(() => window.__overviewTouchEvents));
   console.log('OVERVIEW_BLOCK_STATE', await firstBlock.evaluate((element) => ({
+    tagName: element.tagName,
     className: element.className,
     pointerEvents: getComputedStyle(element).pointerEvents,
     touchAction: getComputedStyle(element).touchAction,
   })));
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(firstRemoveAction).toBeVisible();""",
-    'overview touch trace',
+    'overview native touch target trace',
 )
 test_path.write_text(test)
