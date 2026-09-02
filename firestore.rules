@@ -35,6 +35,50 @@ service cloud.firestore {
         && isOwner(request.resource.data.userId);
     }
 
+    function hasScheduleEventMigration(userId) {
+      return exists(
+        /databases/$(database)/documents/schedule_event_migrations/$(userId)
+      );
+    }
+
+    function canCreateLegacyScheduleResource() {
+      return canCreateOwnedResource()
+        && !hasScheduleEventMigration(request.resource.data.userId);
+    }
+
+    function canUpdateLegacyScheduleResource() {
+      return canUpdateOwnedResource()
+        && !hasScheduleEventMigration(resource.data.userId);
+    }
+
+    function canDeleteLegacyScheduleResource() {
+      return isOwner(resource.data.userId)
+        && !hasScheduleEventMigration(resource.data.userId);
+    }
+
+    function isValidScheduleEventDocument(eventId) {
+      return request.resource.data.keys().hasAll([
+          'schemaVersion',
+          'id',
+          'userId',
+          'kind',
+          'busy',
+          'provenance'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.id == eventId
+        && request.resource.data.busy is bool
+        && (
+          request.resource.data.kind == 'study'
+          || request.resource.data.kind == 'general'
+        )
+        && (
+          request.resource.data.provenance.legacy.kind == 'plan'
+          || request.resource.data.provenance.legacy.kind == 'month-event'
+        )
+        && request.resource.data.provenance.legacy.id is string;
+    }
+
     match /admins/{adminId} {
       allow get: if isOwner(adminId) || isAdmin();
       allow list: if isAdmin();
@@ -60,9 +104,57 @@ service cloud.firestore {
 
     match /plans/{planId} {
       allow read: if canReadOwnedResource();
-      allow create: if canCreateOwnedResource();
-      allow update: if canUpdateOwnedResource();
+      allow create: if canCreateLegacyScheduleResource();
+      allow update: if canUpdateLegacyScheduleResource();
+      allow delete: if canDeleteLegacyScheduleResource();
+    }
+
+    match /schedule_events/{eventId} {
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource()
+        && isValidScheduleEventDocument(eventId);
+      allow update: if canUpdateOwnedResource()
+        && isValidScheduleEventDocument(eventId)
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && request.resource.data.id == resource.data.id;
       allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /schedule_event_migrations/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.userId == userId
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.migrationVersion == 1
+        && request.resource.data.status == 'migrating'
+        && request.resource.data.operationId is string
+        && request.resource.data.revision == 1
+        && request.resource.data.startedAt is string
+        && request.resource.data.completedAt == null;
+      allow update: if isOwner(userId)
+        && resource.data.userId == userId
+        && request.resource.data.userId == userId
+        && resource.data.schemaVersion == 1
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && resource.data.migrationVersion == 1
+        && request.resource.data.migrationVersion == resource.data.migrationVersion
+        && request.resource.data.operationId == resource.data.operationId
+        && request.resource.data.revision == resource.data.revision
+        && request.resource.data.startedAt == resource.data.startedAt
+        && resource.data.status == 'migrating'
+        && request.resource.data.status == 'completed'
+        && request.resource.data.completedAt is string
+        && request.resource.data.sourcePlanCount is int
+        && request.resource.data.sourceMonthEventCount is int
+        && request.resource.data.eventCount is int
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'sourcePlanCount',
+          'sourceMonthEventCount',
+          'eventCount',
+          'completedAt'
+        ]);
+      allow delete: if false;
     }
 
     match /actuals/{actualId} {
@@ -81,9 +173,9 @@ service cloud.firestore {
 
     match /month_events/{monthEventId} {
       allow read: if canReadOwnedResource();
-      allow create: if canCreateOwnedResource();
-      allow update: if canUpdateOwnedResource();
-      allow delete: if isOwner(resource.data.userId);
+      allow create: if canCreateLegacyScheduleResource();
+      allow update: if canUpdateLegacyScheduleResource();
+      allow delete: if canDeleteLegacyScheduleResource();
     }
 
     match /todos/{todoId} {
