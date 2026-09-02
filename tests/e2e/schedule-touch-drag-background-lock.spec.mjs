@@ -164,7 +164,7 @@ async function openSchedule(page) {
   }
 }
 
-test('day long press drag locks background scrolling until release', async ({ browser }) => {
+test('day long press waits for action, then movement locks background scrolling for drag', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -183,14 +183,21 @@ test('day long press drag locks background scrolling until release', async ({ br
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
+  await expect(page.getByRole('button', { name: '長押し移動確認を削除' })).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
+    .toBe(false);
+
+  await dispatchTouch(session, 'touchMove', x, y + 90);
+  await page.waitForTimeout(50);
+
+  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(true);
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
-
-  await dispatchTouch(session, 'touchMove', x, y + 90);
-  await page.waitForTimeout(50);
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore);
 
   await dispatchTouch(session, 'touchCancel', x, y + 90);
