@@ -72,7 +72,7 @@ function occurrence(
 
 describe('scheduled occurrence deletion routing', () => {
   it('passes the exact recurring Plan occurrence to the existing scoped deletion lifecycle', async () => {
-    const deletePlan = vi.fn(async () => undefined);
+    const deletePlan = vi.fn(async (_plan: Plan) => undefined);
     const sourcePlan = plan();
 
     await deleteScheduleOccurrence({
@@ -80,8 +80,8 @@ describe('scheduled occurrence deletion routing', () => {
       plans: [sourcePlan],
       monthEvents: [],
       deletePlan,
-      deleteMonthEvent: vi.fn(async () => undefined),
-      confirmRecurringMonthEventSeries: vi.fn(() => true),
+      deleteMonthEvent: vi.fn(async (_event: MonthEvent) => undefined),
+      confirmRecurringMonthEventSeries: vi.fn((_event: MonthEvent) => true),
     });
 
     expect(deletePlan).toHaveBeenCalledTimes(1);
@@ -93,24 +93,24 @@ describe('scheduled occurrence deletion routing', () => {
   });
 
   it('deletes a non-recurring MonthEvent by backing identity', async () => {
-    const deleteMonthEvent = vi.fn(async () => undefined);
+    const deleteMonthEvent = vi.fn(async (_event: MonthEvent) => undefined);
     const sourceEvent = monthEvent();
 
     await deleteScheduleOccurrence({
       occurrence: occurrence('month-event', sourceEvent.id),
       plans: [],
       monthEvents: [sourceEvent],
-      deletePlan: vi.fn(async () => undefined),
+      deletePlan: vi.fn(async (_plan: Plan) => undefined),
       deleteMonthEvent,
-      confirmRecurringMonthEventSeries: vi.fn(() => true),
+      confirmRecurringMonthEventSeries: vi.fn((_event: MonthEvent) => true),
     });
 
     expect(deleteMonthEvent).toHaveBeenCalledWith(sourceEvent);
   });
 
   it('never silently widens a recurring MonthEvent occurrence delete into a series delete', async () => {
-    const deleteMonthEvent = vi.fn(async () => undefined);
-    const confirmRecurringMonthEventSeries = vi.fn(() => false);
+    const deleteMonthEvent = vi.fn(async (_event: MonthEvent) => undefined);
+    const confirmRecurringMonthEventSeries = vi.fn((_event: MonthEvent) => false);
     const sourceEvent = monthEvent({
       repeat: 'weekly',
       repeatUntil: '2026-09-30',
@@ -120,7 +120,7 @@ describe('scheduled occurrence deletion routing', () => {
       occurrence: occurrence('month-event', sourceEvent.id),
       plans: [],
       monthEvents: [sourceEvent],
-      deletePlan: vi.fn(async () => undefined),
+      deletePlan: vi.fn(async (_plan: Plan) => undefined),
       deleteMonthEvent,
       confirmRecurringMonthEventSeries,
     });
@@ -136,9 +136,9 @@ describe('scheduled occurrence deletion routing', () => {
         occurrence: occurrence('timetable-template', 'template-1'),
         plans: [],
         monthEvents: [],
-        deletePlan: vi.fn(async () => undefined),
-        deleteMonthEvent: vi.fn(async () => undefined),
-        confirmRecurringMonthEventSeries: vi.fn(() => true),
+        deletePlan: vi.fn(async (_plan: Plan) => undefined),
+        deleteMonthEvent: vi.fn(async (_event: MonthEvent) => undefined),
+        confirmRecurringMonthEventSeries: vi.fn((_event: MonthEvent) => true),
       }),
     ).rejects.toThrow('時間割テンプレート由来の予定');
   });
