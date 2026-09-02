@@ -34,8 +34,8 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
-      - name: Typecheck focused patch
-        run: npm run typecheck
+      - name: Build focused patch
+        run: npm run build
 
       - name: Install isolated Playwright test runner
         run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
