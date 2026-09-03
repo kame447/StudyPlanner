@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Apply hit-test diagnostic patch
+      - name: Apply settled-touch candidate
         run: |
           python .github/scripts/tmp_issue52_trash_toolbar.py
           python .github/scripts/tmp_issue52_overview_diag.py
@@ -36,7 +36,7 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
-      - name: Build diagnostic candidate
+      - name: Build candidate
         run: npm run build
 
       - name: Install isolated Playwright test runner
@@ -45,14 +45,14 @@ jobs:
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Diagnose overview hit-test layers
+      - name: Verify settled overview touch
         run: ./tests/e2e/node_modules/.bin/playwright test tests/e2e/ai-planning-preview-item-removal.spec.mjs --config=tests/e2e/playwright.config.mjs --project=chromium --grep "default overview touch long press"
 
-      - name: Upload diagnostic browser artifacts
+      - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue52-overview-hit-test-${{ github.sha }}
+          name: issue52-settled-overview-touch-${{ github.sha }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 7
