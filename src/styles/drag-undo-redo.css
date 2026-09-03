@@ -39,6 +39,7 @@
   background: color-mix(in srgb, var(--accent) 10%, transparent 90%);
 }
 
+/* Preview long-press deletion uses the center action in this transient edit toolbar. */
 .drag-undo-redo-controls .drag-undo-redo-delete {
   color: var(--danger);
 }
