@@ -118,8 +118,8 @@ export interface LegacyScheduleMigrationResult {
   sourceMonthEventCount: number;
 }
 
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))];
+function uniqueStrings(values: readonly string[] | null | undefined): string[] {
+  return [...new Set((values ?? []).filter((value) => value.length > 0))];
 }
 
 function copyRecurrenceRules(rules: readonly RecurrenceRule[]): RecurrenceRule[] {
@@ -206,6 +206,9 @@ export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
 
 export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
   const legacy = { kind: 'month-event' as const, id: event.id };
+  const checklist = Array.isArray(event.checklist) ? event.checklist : [];
+  const createdAt = event.createdAt ?? event.updatedAt ?? '';
+  const updatedAt = event.updatedAt ?? createdAt;
   return {
     schemaVersion: SCHEDULE_EVENT_SCHEMA_VERSION,
     id: scheduleEventIdForLegacy(legacy),
@@ -216,8 +219,8 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
     startTime: event.startTime,
     endTime: event.endTime,
     recurrence: {
-      repeat: event.repeat,
-      repeatUntil: event.repeatUntil,
+      repeat: event.repeat ?? 'none',
+      repeatUntil: event.repeatUntil ?? null,
       excludedDates: uniqueStrings(event.excludedDates),
       rules: [],
     },
@@ -225,19 +228,19 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
     // Existing MonthEvent data has no busy/free distinction, so absent means busy.
     // Explicit false is compatibility metadata sourced from canonical ScheduleEvent.
     busy: event.busy ?? true,
-    memo: event.memo,
+    memo: event.memo ?? '',
     provenance: {
       legacy,
       sourceType: 'month-event',
       sourceId: null,
     },
-    createdAt: event.createdAt,
-    updatedAt: event.updatedAt,
+    createdAt,
+    updatedAt,
     kind: 'general',
     plan: null,
     general: {
-      url: event.url,
-      checklist: event.checklist.map((item) => ({ ...item })),
+      url: event.url ?? '',
+      checklist: checklist.map((item) => ({ ...item })),
       locationTags: uniqueStrings(event.locationTags),
     },
   };
