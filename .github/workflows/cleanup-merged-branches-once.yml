@@ -36,11 +36,11 @@ jobs:
       - name: Verify accidental branch is disposable
         run: |
           set -euo pipefail
-          main_sha="$(git rev-parse origin/main)"
+          expected_sha='4cbf7d7b18e337ff8c6903bc37211c544bf01c55'
           noop_sha="$(git ls-remote origin 'refs/heads/__noop' | awk '{print $1}')"
           test -n "$noop_sha"
-          test "$noop_sha" = "$main_sha" || {
-            echo "__noop no longer points at the cleanup baseline; refusing deletion." >&2
+          test "$noop_sha" = "$expected_sha" || {
+            echo "__noop no longer points at its accidental creation SHA; refusing deletion." >&2
             exit 1
           }
 
