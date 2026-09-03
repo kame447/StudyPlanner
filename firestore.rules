@@ -56,6 +56,42 @@ service cloud.firestore {
         && !hasScheduleEventMigration(resource.data.userId);
     }
 
+    function isNullableString(value) {
+      return value == null || value is string;
+    }
+
+    function hasValidScheduleEventRecurrence() {
+      return request.resource.data.recurrence is map
+        && request.resource.data.recurrence.keys().hasAll([
+          'repeat',
+          'repeatUntil',
+          'excludedDates',
+          'rules'
+        ])
+        && request.resource.data.recurrence.repeat is string
+        && isNullableString(request.resource.data.recurrence.repeatUntil)
+        && request.resource.data.recurrence.excludedDates is list
+        && request.resource.data.recurrence.rules is list;
+    }
+
+    function hasValidScheduleEventProvenance() {
+      return request.resource.data.provenance is map
+        && request.resource.data.provenance.keys().hasAll([
+          'legacy',
+          'sourceType',
+          'sourceId'
+        ])
+        && request.resource.data.provenance.legacy is map
+        && request.resource.data.provenance.legacy.keys().hasAll(['kind', 'id'])
+        && (
+          request.resource.data.provenance.legacy.kind == 'plan'
+          || request.resource.data.provenance.legacy.kind == 'month-event'
+        )
+        && request.resource.data.provenance.legacy.id is string
+        && isNullableString(request.resource.data.provenance.sourceType)
+        && isNullableString(request.resource.data.provenance.sourceId);
+    }
+
     function hasCanonicalScheduleEventIdentity(eventId) {
       return (
           request.resource.data.provenance.legacy.kind == 'plan'
@@ -67,28 +103,89 @@ service cloud.firestore {
         );
     }
 
+    function hasValidScheduleEventDetails() {
+      return (
+          request.resource.data.provenance.legacy.kind == 'plan'
+          && request.resource.data.plan is map
+          && request.resource.data.plan.keys().hasAll([
+            'legacyPlanId',
+            'seriesId',
+            'subject',
+            'planType'
+          ])
+          && request.resource.data.plan.legacyPlanId
+            == request.resource.data.provenance.legacy.id
+          && request.resource.data.plan.seriesId is string
+          && request.resource.data.plan.subject is string
+          && request.resource.data.plan.planType is string
+          && request.resource.data.general == null
+        )
+        || (
+          request.resource.data.provenance.legacy.kind == 'month-event'
+          && request.resource.data.kind == 'general'
+          && request.resource.data.plan == null
+          && request.resource.data.general is map
+          && request.resource.data.general.keys().hasAll([
+            'url',
+            'checklist',
+            'locationTags'
+          ])
+          && request.resource.data.general.url is string
+          && request.resource.data.general.checklist is list
+          && request.resource.data.general.locationTags is list
+        );
+    }
+
     function isValidScheduleEventDocument(eventId) {
       return request.resource.data.keys().hasAll([
           'schemaVersion',
           'id',
           'userId',
-          'kind',
+          'title',
+          'date',
+          'endDate',
+          'startTime',
+          'endTime',
+          'recurrence',
+          'category',
           'busy',
-          'provenance'
+          'memo',
+          'provenance',
+          'createdAt',
+          'updatedAt',
+          'kind',
+          'plan',
+          'general'
         ])
         && request.resource.data.schemaVersion == 1
         && request.resource.data.id == eventId
+        && request.resource.data.userId is string
+        && request.resource.data.title is string
+        && request.resource.data.date is string
+        && request.resource.data.endDate is string
+        && request.resource.data.startTime is string
+        && request.resource.data.endTime is string
+        && request.resource.data.category in [
+          'study',
+          'class',
+          'exam',
+          'school',
+          'cram-school',
+          'deadline',
+          'other'
+        ]
         && request.resource.data.busy is bool
+        && request.resource.data.memo is string
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
         && (
           request.resource.data.kind == 'study'
           || request.resource.data.kind == 'general'
         )
-        && (
-          request.resource.data.provenance.legacy.kind == 'plan'
-          || request.resource.data.provenance.legacy.kind == 'month-event'
-        )
-        && request.resource.data.provenance.legacy.id is string
-        && hasCanonicalScheduleEventIdentity(eventId);
+        && hasValidScheduleEventRecurrence()
+        && hasValidScheduleEventProvenance()
+        && hasCanonicalScheduleEventIdentity(eventId)
+        && hasValidScheduleEventDetails();
     }
 
     match /admins/{adminId} {
