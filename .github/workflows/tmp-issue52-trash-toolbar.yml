@@ -8,23 +8,21 @@ on:
       - '.github/workflows/tmp-issue52-trash-toolbar.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   patch-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/issue52-preview-overview-longpress
-          fetch-depth: 1
-          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Apply settled-touch candidate
+      - name: Apply minimal final candidate
         run: |
           python .github/scripts/tmp_issue52_trash_toolbar.py
-          python .github/scripts/tmp_issue52_overview_diag.py
           python .github/scripts/tmp_issue52_followup.py
           git diff --check
 
@@ -36,8 +34,8 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
-      - name: Build candidate
-        run: npm run build
+      - name: Verify application
+        run: npm run verify
 
       - name: Install isolated Playwright test runner
         run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
@@ -45,14 +43,23 @@ jobs:
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Verify settled overview touch
-        run: ./tests/e2e/node_modules/.bin/playwright test tests/e2e/ai-planning-preview-item-removal.spec.mjs --config=tests/e2e/playwright.config.mjs --project=chromium --grep "default overview touch long press"
+      - name: Run focused preview removal regression
+        run: ./tests/e2e/node_modules/.bin/playwright test tests/e2e/ai-planning-preview-item-removal.spec.mjs --config=tests/e2e/playwright.config.mjs --project=chromium
 
-      - name: Upload browser artifacts
+      - name: Upload focused browser artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue52-settled-overview-touch-${{ github.sha }}
+          name: issue52-minimal-final-${{ github.sha }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Commit verified minimal patch
+        run: |
+          git rm .github/workflows/tmp-issue52-trash-toolbar.yml .github/scripts/tmp_issue52_trash_toolbar.py .github/scripts/tmp_issue52_overview_diag.py .github/scripts/tmp_issue52_followup.py
+          git config user.name 'chatgpt-codex-connector[bot]'
+          git config user.email '14957082+chatgpt-codex-connector[bot]@users.noreply.github.com'
+          git add src/components/DragUndoRedoControls.tsx src/components/AiPlanningPreviewDialog.tsx src/styles/drag-undo-redo.css tests/e2e/ai-planning-preview-item-removal.spec.mjs
+          git commit -m 'fix: move preview delete action to edit toolbar'
+          git push origin HEAD:fix/issue52-preview-overview-longpress
