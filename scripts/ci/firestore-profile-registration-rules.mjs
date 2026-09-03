@@ -103,6 +103,22 @@ function scheduleEvent(userId, legacyId = 'legacy-plan') {
   };
 }
 
+function monthScheduleEvent(userId, legacyId = 'legacy-month-event') {
+  return {
+    schemaVersion: 1,
+    id: `month-event:${legacyId}`,
+    userId,
+    kind: 'general',
+    busy: true,
+    provenance: {
+      legacy: {
+        kind: 'month-event',
+        id: legacyId,
+      },
+    },
+  };
+}
+
 const contexts = [];
 try {
   const owner = await createContext('owner');
@@ -207,6 +223,13 @@ try {
   ));
   await setDoc(scheduleEventRef, scheduleEvent(owner.user.uid));
   await setDoc(scheduleEventRef, { busy: false }, { merge: true });
+
+  const monthScheduleEventRef = doc(
+    owner.db,
+    'schedule_events',
+    'month-event:legacy-month-event',
+  );
+  await setDoc(monthScheduleEventRef, monthScheduleEvent(owner.user.uid));
 
   const completedMigration = {
     ...migrationLease(owner.user.uid, startedAt),
