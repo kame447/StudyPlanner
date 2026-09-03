@@ -56,6 +56,17 @@ service cloud.firestore {
         && !hasScheduleEventMigration(resource.data.userId);
     }
 
+    function hasCanonicalScheduleEventIdentity(eventId) {
+      return (
+          request.resource.data.provenance.legacy.kind == 'plan'
+          && eventId == 'plan:' + request.resource.data.provenance.legacy.id
+        )
+        || (
+          request.resource.data.provenance.legacy.kind == 'month-event'
+          && eventId == 'month-event:' + request.resource.data.provenance.legacy.id
+        );
+    }
+
     function isValidScheduleEventDocument(eventId) {
       return request.resource.data.keys().hasAll([
           'schemaVersion',
@@ -76,7 +87,8 @@ service cloud.firestore {
           request.resource.data.provenance.legacy.kind == 'plan'
           || request.resource.data.provenance.legacy.kind == 'month-event'
         )
-        && request.resource.data.provenance.legacy.id is string;
+        && request.resource.data.provenance.legacy.id is string
+        && hasCanonicalScheduleEventIdentity(eventId);
     }
 
     match /admins/{adminId} {
