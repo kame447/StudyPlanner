@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Apply diagnostic UI patch
+      - name: Apply hit-test diagnostic patch
         run: |
           python .github/scripts/tmp_issue52_trash_toolbar.py
           python .github/scripts/tmp_issue52_overview_diag.py
@@ -45,14 +45,14 @@ jobs:
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Diagnose overview touch routing
+      - name: Diagnose overview hit-test layers
         run: ./tests/e2e/node_modules/.bin/playwright test tests/e2e/ai-planning-preview-item-removal.spec.mjs --config=tests/e2e/playwright.config.mjs --project=chromium --grep "default overview touch long press"
 
       - name: Upload diagnostic browser artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue52-overview-diagnostics-${{ github.sha }}
+          name: issue52-overview-hit-test-${{ github.sha }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 7
