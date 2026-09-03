@@ -48,6 +48,22 @@ function isPermissionDenied(error: unknown): boolean {
   return code.includes('permission-denied');
 }
 
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => stripUndefinedDeep(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefinedDeep(entryValue)]),
+    ) as T;
+  }
+  return value;
+}
+
 async function hasScheduleMigrationCapability(
   migrationRef: ReturnType<typeof doc>,
 ): Promise<boolean> {
@@ -122,7 +138,9 @@ function writeResolvedPlan(
 ): void {
   transaction.set(
     reference,
-    mode === 'canonical' ? scheduleEventFromPlan(plan) : plan,
+    mode === 'canonical'
+      ? stripUndefinedDeep(scheduleEventFromPlan(plan))
+      : stripUndefinedDeep(plan),
     { merge: false },
   );
 }
