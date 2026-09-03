@@ -162,6 +162,9 @@ describe('weekly planning Firestore approval schedule authority', () => {
         sourceType: 'weekly-planning',
       },
     });
+    expect(canonicalWrite?.[1]).toEqual(
+      JSON.parse(JSON.stringify(canonicalWrite?.[1])),
+    );
     expect(
       mocks.transactionSet.mock.calls.some(
         ([reference]) => reference.collectionName === 'plans',
