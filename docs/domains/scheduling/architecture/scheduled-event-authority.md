@@ -185,6 +185,18 @@ completed
 6. migration markerなしのcanonical writeは禁止する。marker作成後のlegacy writeも禁止する。
 7. completed markerの削除、`completed → migrating`、migration version / operation identityの書換えは禁止する。
 
+### Firestore Rules / client deploy-order compatibility
+
+Firestore RulesとWeb clientは独立したdeploy pipelineを持つため、どちらが先にproductionへ到達しても予定データを壊してはならない。
+
+- clientはmigration開始前に `schedule_event_migrations/{userId}` のread capabilityをprobeする。
+- 旧Rulesがまだproductionにあり、このcollection自体が `permission-denied` の場合、その操作だけはlegacy repositoryを唯一のauthorityとして継続する。canonicalへは書かない。
+- rollout compatibilityはcacheしない。次の予定操作でcapabilityを再確認し、新Rulesが見えた時点で通常のmarker-first migrationへ進む。
+- marker capabilityが読めた後に発生したmigration / verification / canonical write failureをlegacy fallbackで隠してはならない。そこはfail closedする。
+- markerが作成された後はRulesがlegacy writeを拒否するため、旧clientと新clientが別truthへ同時書込みすることはない。cutover後に残った旧clientのlegacy write failureは意図したfail-closed behaviorである。
+
+このcompatibilityはdeploy順序を吸収する一時的なcapability gateであり、migration state machineの新しい永続状態でもdual-writeでもない。
+
 ## Recovery / rollback strategy
 
 rollbackは「cutover後に旧collectionを再びwrite authorityへ戻す」という意味ではない。それを行うとcanonicalで行われた編集・削除と旧snapshotが直ちにdriftするため禁止する。
@@ -211,5 +223,6 @@ Phase 3 migrationは以下を必須とする。
 7. create/edit/deleteが旧truthと新truthへ分裂しない。
 8. concurrent migrationがcutover後のcanonical editをstale legacy snapshotで上書きしない。
 9. explicit busy semanticsをcategoryから再推論しない。
+10. Rules/clientのdeploy順序だけを理由にavailabilityを落としたり、legacyとcanonicalへdual-writeしたりしない。
 
 legacy collectionsの物理削除は本Phaseの必須条件ではない。write authority撤去と復旧証拠の保持を優先し、削除は保存期間・運用方針を別途決定してから行う。
