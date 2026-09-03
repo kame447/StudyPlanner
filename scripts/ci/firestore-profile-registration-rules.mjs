@@ -193,6 +193,18 @@ try {
   ));
 
   const scheduleEventRef = doc(owner.db, 'schedule_events', 'plan:legacy-plan');
+  await expectPermissionDenied('ScheduleEvent document/provenance identity mismatch', () => setDoc(
+    scheduleEventRef,
+    {
+      ...scheduleEvent(owner.user.uid),
+      provenance: {
+        legacy: {
+          kind: 'plan',
+          id: 'different-plan',
+        },
+      },
+    },
+  ));
   await setDoc(scheduleEventRef, scheduleEvent(owner.user.uid));
   await setDoc(scheduleEventRef, { busy: false }, { merge: true });
 
