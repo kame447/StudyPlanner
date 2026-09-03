@@ -1,4 +1,5 @@
 import { Redo2, Undo2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import '../styles/drag-undo-redo.css';
 
@@ -8,6 +9,8 @@ interface DragUndoRedoControlsProps {
   canRedo: boolean;
   isBusy?: boolean;
   placement?: 'schedule' | 'preview';
+  centerAction?: ReactNode;
+  ariaLabel?: string;
   onUndo: () => void;
   onRedo: () => void;
 }
@@ -18,6 +21,8 @@ export function DragUndoRedoControls({
   canRedo,
   isBusy = false,
   placement = 'schedule',
+  centerAction = null,
+  ariaLabel = '予定移動の履歴操作',
   onUndo,
   onRedo,
 }: DragUndoRedoControlsProps) {
@@ -29,7 +34,7 @@ export function DragUndoRedoControls({
     <div
       className={`drag-undo-redo-controls drag-undo-redo-controls--${placement}`}
       role="group"
-      aria-label="予定移動の履歴操作"
+      aria-label={ariaLabel}
     >
       <button
         type="button"
@@ -40,6 +45,9 @@ export function DragUndoRedoControls({
       >
         <Undo2 size={20} strokeWidth={2.2} aria-hidden="true" />
       </button>
+      {centerAction ? (
+        <span style={{ display: 'contents', color: 'var(--danger)' }}>{centerAction}</span>
+      ) : null}
       <button
         type="button"
         aria-label="変更をやり直す"

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
@@ -30,6 +31,7 @@ interface DayTimelineProps {
   dateLabel: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
+  scheduleOccurrences: ScheduleOccurrence[];
   actuals: Actual[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
@@ -64,6 +66,7 @@ interface TimelineEntry {
   alignedToPlan?: boolean;
   standalone?: boolean;
   plan?: Plan;
+  occurrence?: ScheduleOccurrence;
 }
 
 const HOUR_HEIGHT = 54;
@@ -127,6 +130,7 @@ export function DayTimeline({
   dateLabel,
   plans,
   monthEvents,
+  scheduleOccurrences,
   actuals,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
@@ -154,7 +158,18 @@ export function DayTimeline({
         });
       }
     },
+    deferTouchDragUntilMoveAfterLongPress: true,
   });
+  const occurrenceByPlanId = new Map(
+    scheduleOccurrences
+      .filter((occurrence) => occurrence.source.backingKind === "plan")
+      .map((occurrence) => [occurrence.source.backingId, occurrence])
+  );
+  const occurrenceByMonthEventId = new Map(
+    scheduleOccurrences
+      .filter((occurrence) => occurrence.source.backingKind === "month-event")
+      .map((occurrence) => [occurrence.source.backingId, occurrence])
+  );
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
   );
@@ -171,6 +186,7 @@ export function DayTimeline({
       startTime: plan.startTime,
       endTime: plan.endTime,
       plan,
+      occurrence: occurrenceByPlanId.get(plan.id),
     })),
     ...monthEvents.map((monthEvent) => ({
       id: monthEvent.id,
@@ -183,6 +199,7 @@ export function DayTimeline({
       sourceType: "manual" as const,
       startTime: monthEvent.startTime,
       endTime: monthEvent.endTime,
+      occurrence: occurrenceByMonthEventId.get(monthEvent.id),
     })),
   ]);
   const draftEntries = buildTimelineEntries(
@@ -449,6 +466,7 @@ export function DayTimeline({
                         ]
                           .filter(Boolean)
                           .join(" ")}
+                        data-schedule-occurrence-id={entry.occurrence?.id}
                         style={buildColumnBlockStyle(
                           minutesFromTime(entry.startTime),
                           duration,
@@ -485,10 +503,12 @@ export function DayTimeline({
                         onTouchEnd={dragDescriptor ? dragController.handleTouchEnd : undefined}
                         onTouchCancel={dragDescriptor ? dragController.handleTouchCancel : undefined}
                         onContextMenu={
-                          dragDescriptor ? (event) => event.preventDefault() : undefined
+                          entry.occurrence || dragDescriptor
+                            ? (event) => event.preventDefault()
+                            : undefined
                         }
                         title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
-                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + (draggablePlan ? "。長押しまたはドラッグで移動" : "")}
+                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + (entry.occurrence ? "。長押しで操作" : "") + (draggablePlan ? "、長押しして動かすと移動" : "")}
                         type="button"
                       >
                         <div className="timeline-entry-line">

@@ -18,6 +18,7 @@ import {
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-studyplanner';
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const FIXED_AT = '2026-09-03T00:00:00.000Z';
 
 function emulatorUrl(host) {
   return host.startsWith('http://') || host.startsWith('https://') ? host : `http://${host}`;
@@ -74,6 +75,87 @@ function baseProfile(userId, email) {
   };
 }
 
+function migrationLease(userId, startedAt) {
+  return {
+    schemaVersion: 1,
+    migrationVersion: 1,
+    userId,
+    status: 'migrating',
+    operationId: `schedule-event-migration-v1:${userId}`,
+    revision: 1,
+    startedAt,
+    completedAt: null,
+  };
+}
+
+function baseScheduleEvent(userId, id) {
+  return {
+    schemaVersion: 1,
+    id,
+    userId,
+    title: 'Rules schedule event',
+    date: '2026-09-03',
+    endDate: '2026-09-03',
+    startTime: '09:00',
+    endTime: '10:00',
+    recurrence: {
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      rules: [],
+    },
+    busy: true,
+    memo: '',
+    createdAt: FIXED_AT,
+    updatedAt: FIXED_AT,
+  };
+}
+
+function scheduleEvent(userId, legacyId = 'legacy-plan') {
+  return {
+    ...baseScheduleEvent(userId, `plan:${legacyId}`),
+    category: 'study',
+    kind: 'study',
+    provenance: {
+      legacy: {
+        kind: 'plan',
+        id: legacyId,
+      },
+      sourceType: null,
+      sourceId: null,
+    },
+    plan: {
+      legacyPlanId: legacyId,
+      seriesId: legacyId,
+      subject: 'Math',
+      planType: 'study',
+    },
+    general: null,
+  };
+}
+
+function monthScheduleEvent(userId, legacyId = 'legacy-month-event') {
+  return {
+    ...baseScheduleEvent(userId, `month-event:${legacyId}`),
+    category: 'other',
+    kind: 'general',
+    provenance: {
+      legacy: {
+        kind: 'month-event',
+        id: legacyId,
+      },
+      sourceType: 'month-event',
+      sourceId: null,
+    },
+    plan: null,
+    general: {
+      url: '',
+      checklist: [],
+      locationTags: [],
+    },
+  };
+}
+
 const contexts = [];
 try {
   const owner = await createContext('owner');
@@ -120,6 +202,119 @@ try {
     { merge: true },
   ));
 
+  const legacyPlanRef = doc(owner.db, 'plans', 'legacy-plan');
+  await setDoc(legacyPlanRef, {
+    id: 'legacy-plan',
+    userId: owner.user.uid,
+    title: 'Legacy plan before cutover',
+  });
+
+  await expectPermissionDenied('ScheduleEvent create before migration lease', () => setDoc(
+    doc(owner.db, 'schedule_events', 'plan:pre-migration'),
+    scheduleEvent(owner.user.uid, 'pre-migration'),
+  ));
+
+  const startedAt = new Date().toISOString();
+  const migrationRef = doc(
+    owner.db,
+    'schedule_event_migrations',
+    owner.user.uid,
+  );
+  await expectPermissionDenied('forged migration operation identity', () => setDoc(
+    migrationRef,
+    {
+      ...migrationLease(owner.user.uid, startedAt),
+      operationId: 'forged-operation',
+    },
+  ));
+  await setDoc(migrationRef, migrationLease(owner.user.uid, startedAt));
+
+  const legacyReadableAfterLease = await getDoc(legacyPlanRef);
+  if (!legacyReadableAfterLease.exists()) {
+    throw new Error('legacy plan must remain readable while migration is in progress');
+  }
+
+  await expectPermissionDenied('legacy Plan write after migration lease', () => setDoc(
+    legacyPlanRef,
+    { title: 'must not fork authority' },
+    { merge: true },
+  ));
+
+  await expectPermissionDenied('legacy MonthEvent create after migration lease', () => setDoc(
+    doc(owner.db, 'month_events', 'late-month-event'),
+    { id: 'late-month-event', userId: owner.user.uid, title: 'late legacy write' },
+  ));
+
+  await expectPermissionDenied('incomplete canonical ScheduleEvent schema', () => setDoc(
+    doc(owner.db, 'schedule_events', 'plan:incomplete'),
+    {
+      schemaVersion: 1,
+      id: 'plan:incomplete',
+      userId: owner.user.uid,
+      kind: 'study',
+      busy: true,
+      provenance: {
+        legacy: { kind: 'plan', id: 'incomplete' },
+        sourceType: null,
+        sourceId: null,
+      },
+    },
+  ));
+
+  const scheduleEventRef = doc(owner.db, 'schedule_events', 'plan:legacy-plan');
+  await expectPermissionDenied('ScheduleEvent document/provenance identity mismatch', () => setDoc(
+    scheduleEventRef,
+    {
+      ...scheduleEvent(owner.user.uid),
+      provenance: {
+        legacy: {
+          kind: 'plan',
+          id: 'different-plan',
+        },
+        sourceType: null,
+        sourceId: null,
+      },
+    },
+  ));
+  await setDoc(scheduleEventRef, scheduleEvent(owner.user.uid));
+  await setDoc(scheduleEventRef, { busy: false }, { merge: true });
+
+  const monthScheduleEventRef = doc(
+    owner.db,
+    'schedule_events',
+    'month-event:legacy-month-event',
+  );
+  await setDoc(monthScheduleEventRef, monthScheduleEvent(owner.user.uid));
+
+  const completedMigration = {
+    ...migrationLease(owner.user.uid, startedAt),
+    status: 'completed',
+    sourcePlanCount: 1,
+    sourceMonthEventCount: 0,
+    eventCount: 1,
+    completedAt: new Date().toISOString(),
+  };
+  await setDoc(migrationRef, completedMigration);
+
+  await setDoc(migrationRef, {
+    ...completedMigration,
+    completedAt: new Date(Date.now() + 1).toISOString(),
+  });
+
+  await expectPermissionDenied('completed migration cannot change verified counts', () => setDoc(
+    migrationRef,
+    {
+      ...completedMigration,
+      eventCount: 2,
+      completedAt: new Date(Date.now() + 2).toISOString(),
+    },
+  ));
+
+  await expectPermissionDenied('completed migration cannot return to migrating', () => setDoc(
+    migrationRef,
+    migrationLease(owner.user.uid, startedAt),
+  ));
+
   const intruder = await createContext('intruder');
   contexts.push(intruder);
   await expectPermissionDenied('cross-user profile update', () => setDoc(
@@ -127,8 +322,12 @@ try {
     { username: 'Intruder' },
     { merge: true },
   ));
+  await expectPermissionDenied('cross-user ScheduleEvent create', () => setDoc(
+    doc(intruder.db, 'schedule_events', 'plan:foreign'),
+    scheduleEvent(owner.user.uid, 'foreign'),
+  ));
 
-  console.log('Firestore profile registration rules regression passed.');
+  console.log('Firestore profile and ScheduleEvent authority rules regression passed.');
 } finally {
   await Promise.all(contexts.map(({ app }) => deleteApp(app)));
 }

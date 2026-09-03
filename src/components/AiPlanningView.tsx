@@ -158,6 +158,16 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     setIsPreviewOpen(true);
   }
 
+  function removePreviewBlock(blockId: string) {
+    if (isBusy) return;
+    if (hasLocalPreview) {
+      application.removePreviewCandidate(blockId);
+    } else {
+      application.removeDraftBlock(blockId);
+    }
+    window.requestAnimationFrame(persistActiveChatSnapshot);
+  }
+
   function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
     if (previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
     const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
@@ -236,6 +246,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
             canSave={approvalAvailability.kind === 'eligible'}
             onClose={() => requestClosePreview()}
             onAdjust={closePreviewForAdjustment}
+            onRemove={removePreviewBlock}
             onPromote={promotePreview}
             onSave={(blocks) => void saveDrafts(blocks)}
           />
