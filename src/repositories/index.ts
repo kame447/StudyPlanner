@@ -5,6 +5,8 @@ import {
   createLocalPlannerStorageGateway,
 } from './localStorageGateway';
 import { createFirebaseRepositories } from './firebaseRepositories';
+import { createLocalScheduleEventAuthority } from './localScheduleEventAuthority';
+import { createScheduleEventBackedPlannerRepository } from './scheduleEventAuthorityRepository';
 import {
   createUnavailableAuthRepository,
   createUnavailablePlannerRepository,
@@ -29,10 +31,19 @@ function canUseLocalFallback(): boolean {
 }
 
 function createLocalRepositoryBundle() {
-  return createRepositories({
+  const plannerStorageGateway = createLocalPlannerStorageGateway();
+  const bundle = createRepositories({
     authStorageGateway: createLocalAuthStorageGateway(),
-    plannerStorageGateway: createLocalPlannerStorageGateway(),
+    plannerStorageGateway,
   });
+
+  return {
+    ...bundle,
+    plannerRepository: createScheduleEventBackedPlannerRepository(
+      bundle.plannerRepository,
+      createLocalScheduleEventAuthority(plannerStorageGateway),
+    ),
+  };
 }
 
 const repositoryBundle = isFirebaseEnabled()
