@@ -448,6 +448,13 @@ Before the first implementation write, and again whenever interrupted work is re
 - The currently verified one-shot GitHub Actions fallback for the observed Ready mutation requires `pull-requests: write` and `contents: write`, must be scoped to the exact intended PR, and must be removed immediately after `draft=false` is verified.
 - Treat this fallback as an integration workaround, not as the default PR flow; re-check current GitHub/tool behavior before assuming the historical failure still applies.
 
+### Firestore Rules deployment capability
+
+- Production Firestore Rules deployment is already automated by `.github/workflows/deploy-firestore-rules.yml` using GitHub OIDC, Google Cloud Workload Identity Federation, short-lived credentials, and the Firebase Rules API. Do not introduce a static service-account JSON key or `FIREBASE_TOKEN` workaround.
+- Before asking the user to create Google Cloud credentials, GitHub secrets, or manual Firebase deployment steps, inspect the current workflow, `docs/work/tooling-operations-runbook.md`, and recent `Deploy Firestore Rules` runs. Treat the existing WIF path as the default supported deployment mechanism unless current evidence proves it is broken.
+- When `firestore.rules` changes on `main`, follow the deployment workflow to a terminal state and verify the WIF authentication step, Rules API deployment, production ruleset read-back, and repository SHA-256 match. A queued or partially successful run is not completion.
+- Only stop for user action when the current WIF/IAM configuration genuinely requires permissions or account changes that cannot be completed through the available repository/tooling path. Report the exact failing step and the minimum manual action required.
+
 ### Required reporting
 
 When finishing GitHub-related work, report:
