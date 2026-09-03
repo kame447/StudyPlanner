@@ -29,6 +29,35 @@ dialog = replace_once(
 """,
     """    const touch = event.touches[0];
     const hit = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+    const stack = document.elementsFromPoint(touch.clientX, touch.clientY).slice(0, 8).map((element) => {
+      const node = element as HTMLElement;
+      return {
+        tag: node.tagName,
+        className: node.className,
+        blockId: node.closest<HTMLElement>('[data-ai-preview-action-block]')?.dataset.aiPreviewActionBlock ?? null,
+        pointerEvents: getComputedStyle(node).pointerEvents,
+        zIndex: getComputedStyle(node).zIndex,
+      };
+    });
+    const blockGeometry = Array.from(
+      document.querySelectorAll<HTMLElement>('.ai-planning-preview-overview-body [data-ai-preview-action-block]'),
+    ).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        blockId: element.dataset.aiPreviewActionBlock ?? null,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        },
+        inlinePointerEvents: element.style.pointerEvents,
+        pointerEvents: getComputedStyle(element).pointerEvents,
+        zIndex: getComputedStyle(element).zIndex,
+      };
+    });
     console.info(
       '[issue52-overview-touch] start',
       JSON.stringify({
@@ -39,6 +68,8 @@ dialog = replace_once(
         hitTag: hit?.tagName ?? null,
         hitClass: hit?.className ?? null,
         hitBlockId: hit?.closest<HTMLElement>('[data-ai-preview-action-block]')?.dataset.aiPreviewActionBlock ?? null,
+        stack,
+        blockGeometry,
       }),
     );
     const resolved = resolveOverviewTouchBlock(touch.clientX, touch.clientY);
@@ -54,32 +85,7 @@ dialog = replace_once(
     );
     if (!descriptor) return;
 """,
-    'overview touch coordinate diagnostics',
-)
-dialog = replace_once(
-    dialog,
-    """    press.timerId = window.setTimeout(() => {
-      if (actionPressRef.current !== press || press.moved) return;
-      setActiveActionBlockId(blockId);
-    }, PREVIEW_ACTION_LONG_PRESS_MS);""",
-    """    press.timerId = window.setTimeout(() => {
-      console.info(
-        '[issue52-overview-touch] action-timer',
-        JSON.stringify({
-          blockId,
-          currentBlockId: actionPressRef.current?.blockId ?? null,
-          moved: press.moved,
-          isCurrent: actionPressRef.current === press,
-        }),
-      );
-      if (actionPressRef.current !== press || press.moved) return;
-      setActiveActionBlockId(blockId);
-      console.info(
-        '[issue52-overview-touch] action-revealed',
-        JSON.stringify({ blockId }),
-      );
-    }, PREVIEW_ACTION_LONG_PRESS_MS);""",
-    'long press timer diagnostics',
+    'overview hit-test diagnostics',
 )
 dialog_path.write_text(dialog)
 
