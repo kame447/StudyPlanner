@@ -1,19 +1,17 @@
 # Scheduling roadmap
 
-Status: Phase 3 canonical persistence implemented
-Updated: 2026-09-03
-Owner Issue: #278
-Implementation PR: #282
+Status: completed canonical baseline
+Updated: 2026-09-04
+Owner Issue: #278 — completed
+Implementation PRs: #279 / #282 — merged
 
 ## Current state
 
-Phase 1 unified occurrence boundary and Phase 2 consumer migration were completed and merged through PR #279. Phase 3 implements the persistence cutover from separate Plan / MonthEvent stores to canonical `ScheduleEvent` while keeping existing UI/domain compatibility shapes behind the repository boundary.
-
-Target flow:
+The scheduled-event authority migration is complete.
 
 ```text
 legacy Plan / MonthEvent
-   └─ one-time deterministic migration input
+   └─ deterministic one-time migration input
                  ↓
         canonical ScheduleEvent
                  ↓
@@ -24,117 +22,105 @@ legacy Plan / MonthEvent
         └─ AI occupied time
 ```
 
-TimetableTemplate remains a separate template lifecycle and joins only at occurrence projection.
+`TimetableTemplate` remains a separate template lifecycle and joins at occurrence projection. `Todo` remains unscheduled work until a concrete time is assigned. `Actual` remains the record of what was actually done.
 
-## Phase 1/2 completed baseline
+## Completed phases
 
-Merged main checkpoint: `2292a760dec47a5398c7ac88e6bdc98c1441aa54`.
+### Phase 1 — unified occurrence boundary
 
-Established invariants:
+Merged by PR #279.
 
-- AI occupied-time projection consumes shared `ScheduleOccurrence` semantics.
-- Month / Week / Day share occurrence identity and time semantics.
-- MonthEvent-only commitments are not omitted from occupied-time projection.
-- timetable template and imported Plan occurrences are deduplicated by logical source occurrence identity.
-- owner mismatch and invalid projection state fail closed.
-- title / memo prose is not promoted into scheduler instructions.
+- Plan / MonthEvent / timetable are projected through shared `ScheduleOccurrence` semantics.
+- recurrence, exclusions, multi-day existence, owner checks and source identity are resolved once instead of separately by each consumer.
+- MonthEvent-only commitments reach AI occupied-time projection.
+- imported timetable Plans are deduplicated against the originating template occurrence.
+- arbitrary stored title/memo prose is not promoted into scheduler instructions.
 
-## Phase 3 implemented scope
+### Phase 2 — consumer migration
 
-PR #282 is the single implementation path for Phase 3.
+Merged by PR #279.
 
-Implemented:
+- Month / Week / Day / AI planning consume the common occurrence boundary.
+- the same scheduled item keeps consistent identity and time semantics across views.
+- `busy=false` remains a displayable event without becoming occupied time.
 
-1. persisted `ScheduleEvent` schema v1 with study/general discriminated details, recurrence, multi-day range, provenance, category and explicit busy.
-2. deterministic Plan / MonthEvent migration with source-prefixed canonical IDs.
-3. compatibility projection back to legacy Plan / MonthEvent shapes so Actual, Todo, calendar editing and weekly-planning provenance retain stable legacy identifiers while persistence authority changes underneath.
-4. localStorage and Firestore ScheduleEvent authorities behind the existing PlannerRepository facade.
-5. Firestore user-level migration marker with `migrating → completed` state and legacy-write freeze from marker creation onward.
-6. canonical write routing for ordinary Plan / MonthEvent writes, recurring Plan + Actual mutation, Plan delete/restore and Todo scheduling.
-7. weekly-planning approval persistence switches by migration state: legacy before migration, canonical after completion, retryable failure while migrating.
-8. admin scheduling reads use canonical data after completed cutover instead of treating frozen legacy Plans as current truth.
-9. explicit `busy=false` survives canonical → compatibility → edit → occurrence projection and is excluded from Stable V5 occupied-time constraints. Legacy records without busy remain busy by default.
-10. Browser E2E assertions verify canonical local persistence and separately verify that legacy localStorage remains frozen.
-11. Firebase production startup probes migration-marker read capability so client/Rules deploy ordering cannot make schedule access fail merely because the previous Rules version is still live. During that narrow window only legacy authority is used; the next operation retries canonical migration.
+### Phase 3 — canonical persistence
 
-## Adversarial cutover findings resolved
+Merged by PR #282 as `4cbf7d7b18e337ff8c6903bc37211c544bf01c55`.
 
-### Canonical write before cutover
+- persisted `ScheduleEvent` schema v1 owns scheduled persistence.
+- study/general details are represented as discriminated details rather than separate persistence authorities.
+- Plan / MonthEvent remain compatibility shapes for existing callers, not independent post-cutover truths.
+- canonical ids use source-prefixed identity (`plan:<id>` / `month-event:<id>`) while compatibility keeps legacy Plan identity where Actual/Todo/provenance require it.
+- ordinary CRUD, recurring Plan + Actual mutation, Plan delete/restore, Todo scheduling, weekly-planning approval and admin reads route through the canonical authority after cutover.
+- legacy records without explicit `busy` default to busy; explicit `busy=false` survives compatibility and occurrence projection.
 
-A ScheduleEvent document could previously be written before any migration marker existed. Firestore Rules now require a migration marker for canonical writes while legacy writes are allowed only before the marker exists.
+## Migration / recovery contract
 
-### Concurrent completion
-
-Two clients can reach completion from the same deterministic snapshot. Repeating `completed` with the same migration identity and verified counts is treated as idempotent; a completion with different counts fails closed. `completed → migrating` remains forbidden.
-
-### Delayed stale backfill after cutover
-
-The more dangerous race is:
+Migration is marker-first and roll-forward.
 
 ```text
-A and B load the same frozen legacy snapshot
-A backfills and completes
-user edits canonical data
-B resumes its delayed legacy backfill
+create/reuse migrating marker
+→ freeze legacy writes
+→ read frozen legacy snapshot
+→ deterministic canonical backfill
+→ verify canonical snapshot
+→ completed marker
+→ ScheduleEvent is authoritative
 ```
 
-A marker check performed before a normal batch would not prevent B from overwriting the post-cutover edit. Migration backfill is therefore guarded per chunk by a Firestore transaction that reads the migration marker and writes the chunk in the same transaction.
+Safety invariants:
 
-- if the marker is still `migrating`, the deterministic chunk may commit.
-- if another client has already completed, the delayed client writes nothing and exits successfully.
-- if the marker changes while the transaction is committing, Firestore retries the transaction against the new marker state.
-- snapshot mismatch while migration is still active fails verification; mismatch after a concurrent completed cutover is not allowed to trigger stale overwrite.
+- no indefinite dual-write.
+- canonical writes require the migration boundary to be active.
+- legacy writes are frozen after marker creation.
+- concurrent clients may repeat the same deterministic migration safely.
+- delayed clients cannot overwrite post-cutover canonical edits with a stale legacy snapshot; each backfill chunk is guarded by the migration marker in the same Firestore transaction.
+- an identical concurrent completion is idempotent; mismatched completion fails closed.
+- legacy data retained after cutover is recovery/forensic evidence, not a second write authority.
+- rollback must remain ScheduleEvent-aware; returning a cutover user to a legacy-writing client is not a supported rollback.
 
-### Rules / client deploy order
+## Rules / client rollout
 
-Firestore Rules and the web client deploy independently. If a new client attempted migration while the old Rules were still live, access to `schedule_event_migrations` would be denied before normal schedule reads could complete.
+Client and Firestore Rules deployment do not depend on a lucky ordering.
 
-The production Firebase bundle now probes that capability before migration.
+- while the previous Rules version cannot read the migration-marker collection, the client uses only legacy authority for that operation and retries capability later.
+- once migration capability is available, failures remain fail closed rather than silently falling back.
+- once a marker exists, Rules freeze legacy writes.
 
-- marker collection unavailable with `permission-denied`: use only the legacy authority for that operation and retry the capability on the next schedule operation.
-- marker collection readable: enter the normal marker-first migration path.
-- any failure after migration capability is available remains fail closed and is not hidden behind legacy fallback.
-- once a marker exists, Rules freeze legacy writes, so an old client cannot fork the schedule truth after cutover.
+The repository-owned production Rules path uses GitHub OIDC + Google Cloud Workload Identity Federation and no static Firebase credential.
 
-This is deployment compatibility, not dual-write and not a new persistent migration state.
+Post-merge production evidence for PR #282:
 
-The repository-owned Firestore Rules deployment path is already production-proven. It runs from `main` with GitHub OIDC + Google Cloud Workload Identity Federation, uses a short-lived access token with the Firebase Rules API, and performs a production read-back/hash comparison after deployment. The successful production proof is workflow run `33202203050` from merge commit `b434acb716dd384c1335a1e81aba76d9834ae9a4`; no service-account JSON key, `FIREBASE_TOKEN`, or other static credential is required. PR #282 changes `firestore.rules`, so its post-merge `main` push must trigger that workflow and terminal-success deployment/read-back is part of the Phase 3 completion evidence.
+- Firestore deploy workflow: `33747201456` — success
+- WIF authentication: success
+- Rules regression: success
+- production deploy: success
+- deployed ruleset read-back/hash verification: success
+- deployed ruleset: `01430a43-a4a1-44c4-b8d5-43dd53d04cff`
+- verified SHA-256: `a6881721ade2f8a47f218826edc91df0822e8d87693fddfcb1c698ab0640ade9`
 
-### Rollback / recovery meaning
+## Completion evidence
 
-Legacy data is retained as frozen recovery evidence, not as a second write authority.
+Pre-merge final PR #282 head:
 
-- interrupted `migrating` work resumes the same deterministic migration and rolls forward.
-- completed cutover never re-enables legacy writes.
-- a deployment rollback must remain ScheduleEvent-aware; returning a cutover user to an old binary that writes legacy collections is not a supported rollback because it would recreate split truth.
+`3ae534fd6e888b9d56404bc045c0549aa5dfc37d`
 
-This is the rollback strategy required by Issue #278: preserve recoverability without allowing edit/delete drift between old and new authorities.
+Post-merge main checkpoint:
 
-## Compatibility intentionally retained after persistence cutover
+`4cbf7d7b18e337ff8c6903bc37211c544bf01c55`
 
-These are compatibility shapes, not persistence authorities:
+Post-merge verification:
 
-- Plan-shaped objects remain useful for existing study editing, Actual linkage, Todo linkage and weekly-planning provenance.
-- MonthEvent-shaped objects remain useful for URL, memo, checklist, location and existing general-event editors.
-- Day/Week presentation may clip an already-expanded multi-day occurrence to visible day geometry.
-- `ScheduleOccurrence` remains the single read-model owner for recurrence expansion, source identity, multi-day existence and busy semantics.
+- CI `33747201405`: success
+- Browser Regression `33747201413`: 209/209 passed
+- Admin Overview Render `33747201448`: success
+- UI Regression Matrix `33747201454`: success, including Chromium / Firefox / WebKit smoke
+- UI Quality Automation `33747201491`: success
+- Deploy Firestore Rules `33747201456`: success
 
-Physical deletion of frozen legacy collections is not required in this Phase. Their write authority is removed; retention/deletion policy can be decided separately after operational confidence is established.
+Issue #278 was closed as completed after these gates reached terminal success.
 
-## Pre-merge verification contract
+## Future work boundary
 
-The merge decision for PR #282 requires all of the following on the exact final HEAD and latest-main synthetic merge:
-
-1. TypeScript checks.
-2. full unit/integration test suite.
-3. Firestore Rules emulator regression, including migration cutover restrictions.
-4. production build and PR diff check.
-5. Browser Regression.
-6. UI Quality Automation.
-7. Admin Overview Render.
-8. UI Regression Matrix.
-9. exact diff/current-main integration audit and zero unresolved review threads.
-10. repository seven-view audit with BLOCKER/MAJOR = 0 across responsibility, contracts/callers, data invariants, UI/browser, tests/harness, security/dependencies/observability, and Git/operations/docs.
-11. after merge, the `Deploy Firestore Rules` workflow must deploy the merged Rules to production and verify the live ruleset source matches the merged repository file.
-
-Exact run IDs, final HEAD, seven-view findings, merge state, production Rules deployment evidence and post-merge main verification belong in the durable Issue #278 checkpoint rather than being hard-coded into this roadmap.
+There is no active Issue #278 implementation branch. Future scheduling changes should start from the current `ScheduleEvent → ScheduleOccurrence` contract and belong to the Issue that owns the new product requirement. Do not revive the former Phase 1/2 or Phase 3 branches as parallel authorities.

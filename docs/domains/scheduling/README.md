@@ -1,16 +1,18 @@
 # Scheduling domain
 
 Status: canonical domain entry point
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 このdomainは、StudyPlanner内の「時間が確定した予定」のapp-wide ownershipを扱う。
 
 ## Canonical contract
 
 - scheduled-event persistence / occurrence projection: [`architecture/scheduled-event-authority.md`](architecture/scheduled-event-authority.md)
-- current implementation / verification state: [`roadmap/current.md`](roadmap/current.md)
+- current operational baseline: [`roadmap/current.md`](roadmap/current.md)
 
-Current implementation work is tracked by Issue #278 and PR #282.
+Issue #278 は完了・close済み。Phase 1/2 は PR #279、Phase 3 canonical persistence は PR #282 で `main` へ統合された。Phase 3 merge commit は `4cbf7d7b18e337ff8c6903bc37211c544bf01c55`。
+
+Firestore Rules も同merge後に repository-owned WIF workflow から本番へdeployされ、live ruleset read-backまで成功している。scheduled-event migration用のactive implementation branchは現在存在しない。
 
 ## Responsibility boundary
 
