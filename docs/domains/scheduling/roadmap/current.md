@@ -98,6 +98,8 @@ The production Firebase bundle now probes that capability before migration.
 
 This is deployment compatibility, not dual-write and not a new persistent migration state.
 
+The repository-owned Firestore Rules deployment path is already production-proven. It runs from `main` with GitHub OIDC + Google Cloud Workload Identity Federation, uses a short-lived access token with the Firebase Rules API, and performs a production read-back/hash comparison after deployment. The successful production proof is workflow run `33202203050` from merge commit `b434acb716dd384c1335a1e81aba76d9834ae9a4`; no service-account JSON key, `FIREBASE_TOKEN`, or other static credential is required. PR #282 changes `firestore.rules`, so its post-merge `main` push must trigger that workflow and terminal-success deployment/read-back is part of the Phase 3 completion evidence.
+
 ### Rollback / recovery meaning
 
 Legacy data is retained as frozen recovery evidence, not as a second write authority.
@@ -133,5 +135,6 @@ The merge decision for PR #282 requires all of the following on the exact final 
 8. UI Regression Matrix.
 9. exact diff/current-main integration audit and zero unresolved review threads.
 10. repository seven-view audit with BLOCKER/MAJOR = 0 across responsibility, contracts/callers, data invariants, UI/browser, tests/harness, security/dependencies/observability, and Git/operations/docs.
+11. after merge, the `Deploy Firestore Rules` workflow must deploy the merged Rules to production and verify the live ruleset source matches the merged repository file.
 
 Exact run IDs, final HEAD, seven-view findings, merge state, production Rules deployment evidence and post-merge main verification belong in the durable Issue #278 checkpoint rather than being hard-coded into this roadmap.
