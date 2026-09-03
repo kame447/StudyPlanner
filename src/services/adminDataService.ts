@@ -102,6 +102,51 @@ async function listByUserId<T>(
   return snapshot.docs.map((document) => mapDocument<T>(document));
 }
 
+function isPermissionDenied(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = String((error as { code?: unknown }).code ?? '');
+  return code.includes('permission-denied');
+}
+
+async function listCanonicalScheduleAdminData(firestoreDb: Firestore): Promise<{
+  scheduleEvents: ScheduleEvent[];
+  migrationStates: Array<ScheduleEventMigrationCandidate & { userId: string }>;
+}> {
+  try {
+    const [scheduleEvents, migrationStates] = await Promise.all([
+      listCollection<ScheduleEvent>(firestoreDb, 'schedule_events'),
+      listCollection<ScheduleEventMigrationCandidate & { userId: string }>(
+        firestoreDb,
+        'schedule_event_migrations',
+      ),
+    ]);
+    return { scheduleEvents, migrationStates };
+  } catch (error) {
+    // The admin client can deploy before the Firestore Rules that introduce the
+    // canonical collections. Only that old-Rules permission boundary falls back
+    // to legacy reads; other failures remain visible.
+    if (isPermissionDenied(error)) {
+      return { scheduleEvents: [], migrationStates: [] };
+    }
+    throw error;
+  }
+}
+
+async function getMigrationStateWithRolloutCompatibility(
+  firestoreDb: Firestore,
+  userId: string,
+): Promise<ScheduleEventMigrationCandidate | null> {
+  try {
+    const snapshot = await getDoc(doc(firestoreDb, 'schedule_event_migrations', userId));
+    return snapshot.exists()
+      ? (snapshot.data() as ScheduleEventMigrationCandidate)
+      : null;
+  } catch (error) {
+    if (isPermissionDenied(error)) return null;
+    throw error;
+  }
+}
+
 function groupByUserId<T extends { userId: string }>(items: T[]): Map<string, T[]> {
   const grouped = new Map<string, T[]>();
 
@@ -137,23 +182,18 @@ export async function getAdminUserSummaries(): Promise<AdminUserSummary[]> {
   const [
     profileSnapshots,
     rawPlans,
-    rawScheduleEvents,
-    migrationStates,
     rawActuals,
     rawTodos,
     dayNotes,
   ] = await Promise.all([
     getDocs(collection(firestoreDb, 'profiles')),
     listCollection<Plan>(firestoreDb, 'plans'),
-    listCollection<ScheduleEvent>(firestoreDb, 'schedule_events'),
-    listCollection<ScheduleEventMigrationCandidate & { userId: string }>(
-      firestoreDb,
-      'schedule_event_migrations',
-    ),
     listCollection<Actual>(firestoreDb, 'actuals'),
     listCollection<TodoTask>(firestoreDb, 'todos'),
     listCollection<DayNote>(firestoreDb, 'day_notes'),
   ]);
+  const { scheduleEvents: rawScheduleEvents, migrationStates } =
+    await listCanonicalScheduleAdminData(firestoreDb);
   const profiles = profileSnapshots.docs.map(normalizeProfile);
   const legacyPlansByUserId = groupByUserId(rawPlans);
   const scheduleEventsByUserId = groupByUserId(rawScheduleEvents);
@@ -191,19 +231,17 @@ export async function getAdminUserDetail(
   userId: string,
 ): Promise<AdminUserDetailData | null> {
   const firestoreDb = getRequiredFirestoreDb();
-  const [profileSnapshot, migrationSnapshot] = await Promise.all([
-    getDoc(doc(firestoreDb, 'profiles', userId)),
-    getDoc(doc(firestoreDb, 'schedule_event_migrations', userId)),
-  ]);
+  const profileSnapshot = await getDoc(doc(firestoreDb, 'profiles', userId));
 
   if (!profileSnapshot.exists()) {
     return null;
   }
 
   const profile = normalizeProfile(profileSnapshot);
-  const migration = migrationSnapshot.exists()
-    ? (migrationSnapshot.data() as ScheduleEventMigrationCandidate)
-    : null;
+  const migration = await getMigrationStateWithRolloutCompatibility(
+    firestoreDb,
+    userId,
+  );
   const [
     rawLegacyPlans,
     rawScheduleEvents,
