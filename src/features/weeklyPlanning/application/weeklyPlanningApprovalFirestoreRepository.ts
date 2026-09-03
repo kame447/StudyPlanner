@@ -1,5 +1,6 @@
 import {
   doc,
+  getDoc,
   runTransaction,
   type DocumentSnapshot,
   type Firestore,
@@ -40,6 +41,24 @@ const SCHEDULE_EVENT_COLLECTION = 'schedule_events';
 const SCHEDULE_EVENT_MIGRATION_COLLECTION = 'schedule_event_migrations';
 
 type ScheduleWriteMode = 'legacy' | 'canonical';
+
+function isPermissionDenied(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = String((error as { code?: unknown }).code ?? '');
+  return code.includes('permission-denied');
+}
+
+async function hasScheduleMigrationCapability(
+  migrationRef: ReturnType<typeof doc>,
+): Promise<boolean> {
+  try {
+    await getDoc(migrationRef);
+    return true;
+  } catch (error) {
+    if (isPermissionDenied(error)) return false;
+    throw error;
+  }
+}
 
 function resolveScheduleWriteMode(
   snapshot: DocumentSnapshot,
@@ -127,13 +146,21 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
       );
 
       try {
+        // Firestore Rules and the web client deploy independently. When the old
+        // Rules version still denies the migration collection, preserve the old
+        // approval transaction for this operation only. Once the capability is
+        // available, migration state is read inside the same transaction that
+        // writes the plan so cutover cannot split the authority.
+        const migrationCapability = await hasScheduleMigrationCapability(migrationRef);
         return await runTransaction(firestore, async (transaction) => {
           const [operationSnapshot, itemSnapshot, migrationSnapshot] = await Promise.all([
             transaction.get(operationRef),
             transaction.get(itemRef),
-            transaction.get(migrationRef),
+            migrationCapability ? transaction.get(migrationRef) : Promise.resolve(null),
           ]);
-          const mode = resolveScheduleWriteMode(migrationSnapshot);
+          const mode = migrationSnapshot
+            ? resolveScheduleWriteMode(migrationSnapshot)
+            : 'legacy';
           const planRef = planReference(firestore, identity, mode);
           const planSnapshot = await transaction.get(planRef);
           const operation = operationSnapshot.exists()
@@ -185,13 +212,16 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
       );
 
       try {
+        const migrationCapability = await hasScheduleMigrationCapability(migrationRef);
         await runTransaction(firestore, async (transaction) => {
           const [operationSnapshot, migrationSnapshot, itemSnapshots] = await Promise.all([
             transaction.get(operationRef),
-            transaction.get(migrationRef),
+            migrationCapability ? transaction.get(migrationRef) : Promise.resolve(null),
             Promise.all(itemRefs.map((itemRef) => transaction.get(itemRef))),
           ]);
-          const mode = resolveScheduleWriteMode(migrationSnapshot);
+          const mode = migrationSnapshot
+            ? resolveScheduleWriteMode(migrationSnapshot)
+            : 'legacy';
           const planRefs = identities.map((identity) =>
             planReference(firestore, identity, mode),
           );
