@@ -18,6 +18,7 @@ import {
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-studyplanner';
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const FIXED_AT = '2026-09-03T00:00:00.000Z';
 
 function emulatorUrl(host) {
   return host.startsWith('http://') || host.startsWith('https://') ? host : `http://${host}`;
@@ -87,34 +88,70 @@ function migrationLease(userId, startedAt) {
   };
 }
 
-function scheduleEvent(userId, legacyId = 'legacy-plan') {
+function baseScheduleEvent(userId, id) {
   return {
     schemaVersion: 1,
-    id: `plan:${legacyId}`,
+    id,
     userId,
-    kind: 'study',
+    title: 'Rules schedule event',
+    date: '2026-09-03',
+    endDate: '2026-09-03',
+    startTime: '09:00',
+    endTime: '10:00',
+    recurrence: {
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      rules: [],
+    },
     busy: true,
+    memo: '',
+    createdAt: FIXED_AT,
+    updatedAt: FIXED_AT,
+  };
+}
+
+function scheduleEvent(userId, legacyId = 'legacy-plan') {
+  return {
+    ...baseScheduleEvent(userId, `plan:${legacyId}`),
+    category: 'study',
+    kind: 'study',
     provenance: {
       legacy: {
         kind: 'plan',
         id: legacyId,
       },
+      sourceType: null,
+      sourceId: null,
     },
+    plan: {
+      legacyPlanId: legacyId,
+      seriesId: legacyId,
+      subject: 'Math',
+      planType: 'study',
+    },
+    general: null,
   };
 }
 
 function monthScheduleEvent(userId, legacyId = 'legacy-month-event') {
   return {
-    schemaVersion: 1,
-    id: `month-event:${legacyId}`,
-    userId,
+    ...baseScheduleEvent(userId, `month-event:${legacyId}`),
+    category: 'other',
     kind: 'general',
-    busy: true,
     provenance: {
       legacy: {
         kind: 'month-event',
         id: legacyId,
       },
+      sourceType: 'month-event',
+      sourceId: null,
+    },
+    plan: null,
+    general: {
+      url: '',
+      checklist: [],
+      locationTags: [],
     },
   };
 }
@@ -208,6 +245,22 @@ try {
     { id: 'late-month-event', userId: owner.user.uid, title: 'late legacy write' },
   ));
 
+  await expectPermissionDenied('incomplete canonical ScheduleEvent schema', () => setDoc(
+    doc(owner.db, 'schedule_events', 'plan:incomplete'),
+    {
+      schemaVersion: 1,
+      id: 'plan:incomplete',
+      userId: owner.user.uid,
+      kind: 'study',
+      busy: true,
+      provenance: {
+        legacy: { kind: 'plan', id: 'incomplete' },
+        sourceType: null,
+        sourceId: null,
+      },
+    },
+  ));
+
   const scheduleEventRef = doc(owner.db, 'schedule_events', 'plan:legacy-plan');
   await expectPermissionDenied('ScheduleEvent document/provenance identity mismatch', () => setDoc(
     scheduleEventRef,
@@ -218,6 +271,8 @@ try {
           kind: 'plan',
           id: 'different-plan',
         },
+        sourceType: null,
+        sourceId: null,
       },
     },
   ));
