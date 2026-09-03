@@ -19,74 +19,6 @@ dialog = replace_once(
     "",
     'delegate every overview touch through coordinate hit testing',
 )
-dialog = replace_once(
-    dialog,
-    """    const touch = event.touches[0];
-    const resolved = resolveOverviewTouchBlock(touch.clientX, touch.clientY);
-    if (!resolved) return;
-    const descriptor = buildOverviewDragDescriptor(resolved.block);
-    if (!descriptor) return;
-""",
-    """    const touch = event.touches[0];
-    const hit = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
-    const stack = document.elementsFromPoint(touch.clientX, touch.clientY).slice(0, 8).map((element) => {
-      const node = element as HTMLElement;
-      return {
-        tag: node.tagName,
-        className: node.className,
-        blockId: node.closest<HTMLElement>('[data-ai-preview-action-block]')?.dataset.aiPreviewActionBlock ?? null,
-        pointerEvents: getComputedStyle(node).pointerEvents,
-        zIndex: getComputedStyle(node).zIndex,
-      };
-    });
-    const blockGeometry = Array.from(
-      document.querySelectorAll<HTMLElement>('.ai-planning-preview-overview-body [data-ai-preview-action-block]'),
-    ).map((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        blockId: element.dataset.aiPreviewActionBlock ?? null,
-        rect: {
-          left: rect.left,
-          top: rect.top,
-          right: rect.right,
-          bottom: rect.bottom,
-          width: rect.width,
-          height: rect.height,
-        },
-        inlinePointerEvents: element.style.pointerEvents,
-        pointerEvents: getComputedStyle(element).pointerEvents,
-        zIndex: getComputedStyle(element).zIndex,
-      };
-    });
-    console.info(
-      '[issue52-overview-touch] start',
-      JSON.stringify({
-        targetTag: (event.target as HTMLElement | null)?.tagName ?? null,
-        targetClass: (event.target as HTMLElement | null)?.className ?? null,
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        hitTag: hit?.tagName ?? null,
-        hitClass: hit?.className ?? null,
-        hitBlockId: hit?.closest<HTMLElement>('[data-ai-preview-action-block]')?.dataset.aiPreviewActionBlock ?? null,
-        stack,
-        blockGeometry,
-      }),
-    );
-    const resolved = resolveOverviewTouchBlock(touch.clientX, touch.clientY);
-    console.info(
-      '[issue52-overview-touch] resolved',
-      JSON.stringify({ blockId: resolved?.block.id ?? null }),
-    );
-    if (!resolved) return;
-    const descriptor = buildOverviewDragDescriptor(resolved.block);
-    console.info(
-      '[issue52-overview-touch] descriptor',
-      JSON.stringify({ blockId: resolved.block.id, available: Boolean(descriptor) }),
-    );
-    if (!descriptor) return;
-""",
-    'overview hit-test diagnostics',
-)
 dialog_path.write_text(dialog)
 
 
@@ -94,17 +26,14 @@ test_path = Path('tests/e2e/ai-planning-preview-item-removal.spec.mjs')
 test = test_path.read_text()
 test = replace_once(
     test,
-    """  const page = await context.newPage();
-  await seedPreviewRemovalState(page, { phase: 'preview' });
-  const preview = await openPreview(page, 2, { mode: 'overview' });""",
-    """  const page = await context.newPage();
-  page.on('console', (message) => {
-    if (message.text().startsWith('[issue52-overview-touch]')) {
-      console.log(message.text());
-    }
+    """  const preview = await openPreview(page, 2, { mode: 'overview' });
+  const firstBlock = previewBlock(preview, '金フレ A', 'overview');""",
+    """  const preview = await openPreview(page, 2, { mode: 'overview' });
+  await preview.evaluate(async (element) => {
+    const animations = element.getAnimations();
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
   });
-  await seedPreviewRemovalState(page, { phase: 'preview' });
-  const preview = await openPreview(page, 2, { mode: 'overview' });""",
-    'surface overview browser diagnostics in CI log',
+  const firstBlock = previewBlock(preview, '金フレ A', 'overview');""",
+    'wait for preview entrance animation before touch coordinates',
 )
 test_path.write_text(test)
