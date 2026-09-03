@@ -8,20 +8,6 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-dialog_path = Path('src/components/AiPlanningPreviewDialog.tsx')
-dialog = dialog_path.read_text()
-dialog = replace_once(
-    dialog,
-    """    const dispatchedTarget = event.target as HTMLElement;
-    if (dispatchedTarget.closest?.('[data-ai-preview-action-block]')) return;
-
-""",
-    "",
-    'delegate every overview touch through coordinate hit testing',
-)
-dialog_path.write_text(dialog)
-
-
 test_path = Path('tests/e2e/ai-planning-preview-item-removal.spec.mjs')
 test = test_path.read_text()
 test = replace_once(
