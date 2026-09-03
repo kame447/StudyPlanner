@@ -12,6 +12,13 @@ export interface LegacyScheduleSnapshot {
   monthEvents: MonthEvent[];
 }
 
+export class ScheduleEventMigrationCapabilityUnavailableError extends Error {
+  constructor(message = 'ScheduleEvent migration capability is unavailable.') {
+    super(message);
+    this.name = 'ScheduleEventMigrationCapabilityUnavailableError';
+  }
+}
+
 export interface ScheduleEventAuthorityRepository {
   ensureMigrated(
     userId: string,
@@ -36,13 +43,17 @@ export interface ScheduleEventAuthorityRepository {
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
 }
 
+type SchedulePersistenceMode = 'canonical' | 'legacy-rollout-compatibility';
+
 export function createScheduleEventBackedPlannerRepository(
   legacyRepository: PlannerRepository,
   authorityRepository: ScheduleEventAuthorityRepository,
 ): PlannerRepository {
-  const migrations = new Map<string, Promise<void>>();
+  const migrations = new Map<string, Promise<SchedulePersistenceMode>>();
 
-  const ensureMigrated = (userId: string): Promise<void> => {
+  const resolveSchedulePersistenceMode = (
+    userId: string,
+  ): Promise<SchedulePersistenceMode> => {
     const current = migrations.get(userId);
     if (current) return current;
 
@@ -54,8 +65,12 @@ export function createScheduleEventBackedPlannerRepository(
         ]);
         return { plans, monthEvents };
       })
-      .catch((error) => {
+      .then(() => 'canonical' as const)
+      .catch((error: unknown) => {
         migrations.delete(userId);
+        if (error instanceof ScheduleEventMigrationCapabilityUnavailableError) {
+          return 'legacy-rollout-compatibility' as const;
+        }
         throw error;
       });
     migrations.set(userId, migration);
@@ -65,44 +80,76 @@ export function createScheduleEventBackedPlannerRepository(
   return {
     ...legacyRepository,
     async getPlans(userId) {
-      await ensureMigrated(userId);
-      return authorityRepository.getPlans(userId);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      return mode === 'canonical'
+        ? authorityRepository.getPlans(userId)
+        : legacyRepository.getPlans(userId);
     },
     async getMonthEvents(userId) {
-      await ensureMigrated(userId);
-      return authorityRepository.getMonthEvents(userId);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      return mode === 'canonical'
+        ? authorityRepository.getMonthEvents(userId)
+        : legacyRepository.getMonthEvents(userId);
     },
     async applyRecurringPlanMutation(userId, mutation) {
-      await ensureMigrated(userId);
-      await authorityRepository.applyRecurringPlanMutation(userId, mutation);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      if (mode === 'canonical') {
+        await authorityRepository.applyRecurringPlanMutation(userId, mutation);
+        return;
+      }
+      await legacyRepository.applyRecurringPlanMutation(userId, mutation);
     },
     async deletePlanWithDependents(mutation) {
-      await ensureMigrated(mutation.userId);
-      await authorityRepository.deletePlanWithDependents(mutation);
+      const mode = await resolveSchedulePersistenceMode(mutation.userId);
+      if (mode === 'canonical') {
+        await authorityRepository.deletePlanWithDependents(mutation);
+        return;
+      }
+      await legacyRepository.deletePlanWithDependents(mutation);
     },
     async restorePlanWithDependents(mutation) {
-      await ensureMigrated(mutation.plan.userId);
-      await authorityRepository.restorePlanWithDependents(mutation);
+      const mode = await resolveSchedulePersistenceMode(mutation.plan.userId);
+      if (mode === 'canonical') {
+        await authorityRepository.restorePlanWithDependents(mutation);
+        return;
+      }
+      await legacyRepository.restorePlanWithDependents(mutation);
     },
     async scheduleTodoPlan(mutation) {
-      await ensureMigrated(mutation.plan.userId);
-      await authorityRepository.scheduleTodoPlan(mutation);
+      const mode = await resolveSchedulePersistenceMode(mutation.plan.userId);
+      if (mode === 'canonical') {
+        await authorityRepository.scheduleTodoPlan(mutation);
+        return;
+      }
+      await legacyRepository.scheduleTodoPlan(mutation);
     },
     async upsertPlan(plan) {
-      await ensureMigrated(plan.userId);
-      return authorityRepository.upsertPlan(plan);
+      const mode = await resolveSchedulePersistenceMode(plan.userId);
+      return mode === 'canonical'
+        ? authorityRepository.upsertPlan(plan)
+        : legacyRepository.upsertPlan(plan);
     },
     async deletePlan(userId, planId) {
-      await ensureMigrated(userId);
-      await authorityRepository.deletePlan(userId, planId);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      if (mode === 'canonical') {
+        await authorityRepository.deletePlan(userId, planId);
+        return;
+      }
+      await legacyRepository.deletePlan(userId, planId);
     },
     async upsertMonthEvent(monthEvent) {
-      await ensureMigrated(monthEvent.userId);
-      return authorityRepository.upsertMonthEvent(monthEvent);
+      const mode = await resolveSchedulePersistenceMode(monthEvent.userId);
+      return mode === 'canonical'
+        ? authorityRepository.upsertMonthEvent(monthEvent)
+        : legacyRepository.upsertMonthEvent(monthEvent);
     },
     async deleteMonthEvent(userId, monthEventId) {
-      await ensureMigrated(userId);
-      await authorityRepository.deleteMonthEvent(userId, monthEventId);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      if (mode === 'canonical') {
+        await authorityRepository.deleteMonthEvent(userId, monthEventId);
+        return;
+      }
+      await legacyRepository.deleteMonthEvent(userId, monthEventId);
     },
   };
 }
