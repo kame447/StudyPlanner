@@ -1,15 +1,15 @@
 # Scheduling roadmap
 
-Status: Phase 3 implementation / verification
+Status: Phase 3 canonical persistence implemented
 Updated: 2026-09-03
 Owner Issue: #278
-Active PR: #282
+Implementation PR: #282
 
 ## Current state
 
-Phase 1 unified occurrence boundary and Phase 2 consumer migration were completed and merged through PR #279. Phase 3 now moves persistence authority from separate Plan / MonthEvent stores to canonical `ScheduleEvent` while keeping existing UI/domain compatibility shapes behind the repository boundary.
+Phase 1 unified occurrence boundary and Phase 2 consumer migration were completed and merged through PR #279. Phase 3 implements the persistence cutover from separate Plan / MonthEvent stores to canonical `ScheduleEvent` while keeping existing UI/domain compatibility shapes behind the repository boundary.
 
-Current target flow:
+Target flow:
 
 ```text
 legacy Plan / MonthEvent
@@ -55,6 +55,7 @@ Implemented:
 8. admin scheduling reads use canonical data after completed cutover instead of treating frozen legacy Plans as current truth.
 9. explicit `busy=false` survives canonical → compatibility → edit → occurrence projection and is excluded from Stable V5 occupied-time constraints. Legacy records without busy remain busy by default.
 10. Browser E2E assertions verify canonical local persistence and separately verify that legacy localStorage remains frozen.
+11. Firebase production startup probes migration-marker read capability so client/Rules deploy ordering cannot make schedule access fail merely because the previous Rules version is still live. During that narrow window only legacy authority is used; the next operation retries canonical migration.
 
 ## Adversarial cutover findings resolved
 
@@ -84,6 +85,19 @@ A marker check performed before a normal batch would not prevent B from overwrit
 - if the marker changes while the transaction is committing, Firestore retries the transaction against the new marker state.
 - snapshot mismatch while migration is still active fails verification; mismatch after a concurrent completed cutover is not allowed to trigger stale overwrite.
 
+### Rules / client deploy order
+
+Firestore Rules and the web client deploy independently. If a new client attempted migration while the old Rules were still live, access to `schedule_event_migrations` would be denied before normal schedule reads could complete.
+
+The production Firebase bundle now probes that capability before migration.
+
+- marker collection unavailable with `permission-denied`: use only the legacy authority for that operation and retry the capability on the next schedule operation.
+- marker collection readable: enter the normal marker-first migration path.
+- any failure after migration capability is available remains fail closed and is not hidden behind legacy fallback.
+- once a marker exists, Rules freeze legacy writes, so an old client cannot fork the schedule truth after cutover.
+
+This is deployment compatibility, not dual-write and not a new persistent migration state.
+
 ### Rollback / recovery meaning
 
 Legacy data is retained as frozen recovery evidence, not as a second write authority.
@@ -105,9 +119,9 @@ These are compatibility shapes, not persistence authorities:
 
 Physical deletion of frozen legacy collections is not required in this Phase. Their write authority is removed; retention/deletion policy can be decided separately after operational confidence is established.
 
-## Verification gate before Ready
+## Pre-merge verification contract
 
-PR #282 remains Draft until all of the following are terminal-success on the exact final HEAD:
+The merge decision for PR #282 requires all of the following on the exact final HEAD and latest-main synthetic merge:
 
 1. TypeScript checks.
 2. full unit/integration test suite.
@@ -117,6 +131,7 @@ PR #282 remains Draft until all of the following are terminal-success on the exa
 6. UI Quality Automation.
 7. Admin Overview Render.
 8. UI Regression Matrix.
-9. exact diff / current-main integration audit and zero unresolved review threads.
+9. exact diff/current-main integration audit and zero unresolved review threads.
+10. repository seven-view audit with BLOCKER/MAJOR = 0 across responsibility, contracts/callers, data invariants, UI/browser, tests/harness, security/dependencies/observability, and Git/operations/docs.
 
-After these pass, update the durable checkpoint in Issue #278 and move PR #282 out of Draft. Merge is a separate explicit action and is not part of this verification loop.
+Exact run IDs, final HEAD, seven-view findings, merge state, production Rules deployment evidence and post-merge main verification belong in the durable Issue #278 checkpoint rather than being hard-coded into this roadmap.
