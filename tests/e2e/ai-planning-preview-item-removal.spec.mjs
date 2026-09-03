@@ -153,10 +153,11 @@ async function longPressPreviewBlock(page, preview, title, mode = 'day') {
 }
 
 async function revealRemoveAction(page, preview, title, mode = 'day') {
-  const removeAction = preview.getByRole('button', { name: `${title}を計画から除外` });
+  const removeAction = page.getByRole('button', { name: `${title}を計画から除外` });
   await expect(removeAction).toHaveCount(0);
   const block = await longPressPreviewBlock(page, preview, title, mode);
   await expect(removeAction).toBeVisible();
+  await expect(block.getByRole('button')).toHaveCount(0);
   return { block, removeAction };
 }
 
@@ -201,7 +202,7 @@ test('AI planning preview removes the exact local preview candidate', async ({ p
 
   await preview.getByRole('tab', { name: '全体' }).click();
   await preview.getByRole('tab', { name: '日別' }).click();
-  await expect(preview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
 
   const { removeAction: removeCandidate } = await revealRemoveAction(page, preview, '金フレ A');
   await removeCandidate.click();
@@ -209,7 +210,7 @@ test('AI planning preview removes the exact local preview candidate', async ({ p
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
 
   const restoredPreview = await openPreview(page, 1);
-  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
   const { removeAction: remainingCandidate } = await revealRemoveAction(
     page,
     restoredPreview,
@@ -229,7 +230,7 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
 
   const restoredPreview = await openPreview(page, 1);
-  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
   const { removeAction: remainingDraft } = await revealRemoveAction(
     page,
     restoredPreview,
@@ -253,7 +254,7 @@ test('AI planning day preview touch long press reveals action while still held',
   await seedPreviewRemovalState(page, { phase: 'preview' });
   const preview = await openPreview(page);
   const block = previewBlock(preview, '金フレ A');
-  const removeAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  const removeAction = page.getByRole('button', { name: '金フレ Aを計画から除外' });
   const { x, y } = await locatorCenter(block);
   const session = await enableTouch(page);
 
@@ -279,8 +280,12 @@ test('AI planning default overview touch long press reveals, removes, and still 
   const page = await context.newPage();
   await seedPreviewRemovalState(page, { phase: 'preview' });
   const preview = await openPreview(page, 2, { mode: 'overview' });
+  await preview.evaluate(async (element) => {
+    const animations = element.getAnimations();
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+  });
   const firstBlock = previewBlock(preview, '金フレ A', 'overview');
-  const firstRemoveAction = preview.getByRole('button', { name: '金フレ Aを計画から除外' });
+  const firstRemoveAction = page.getByRole('button', { name: '金フレ Aを計画から除外' });
   const firstCenter = await locatorCenter(firstBlock);
   const session = await enableTouch(page);
 
@@ -289,6 +294,13 @@ test('AI planning default overview touch long press reveals, removes, and still 
   await page.waitForTimeout(300);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(firstRemoveAction).toBeVisible();
+  const editControls = page.locator('.drag-undo-redo-controls--preview');
+  await expect(editControls).toBeVisible();
+  await expect(editControls.locator('button')).toHaveCount(3);
+  await expect(editControls.locator('button').nth(0)).toHaveAttribute('aria-label', '変更を元に戻す');
+  await expect(editControls.locator('button').nth(1)).toHaveAttribute('aria-label', '金フレ Aを計画から除外');
+  await expect(editControls.locator('button').nth(2)).toHaveAttribute('aria-label', '変更をやり直す');
+  await expect(firstBlock.getByRole('button')).toHaveCount(0);
   await page.screenshot({
     path: 'artifacts/ai-planning-preview-overview-longpress-action-mobile.png',
     fullPage: true,
@@ -301,7 +313,7 @@ test('AI planning default overview touch long press reveals, removes, and still 
   await expect(preview.getByRole('tab', { name: '全体' })).toHaveAttribute('aria-selected', 'true');
 
   const remainingBlock = previewBlock(preview, '金フレ B', 'overview');
-  const remainingRemoveAction = preview.getByRole('button', { name: '金フレ Bを計画から除外' });
+  const remainingRemoveAction = page.getByRole('button', { name: '金フレ Bを計画から除外' });
   const remainingCenter = await locatorCenter(remainingBlock);
   await dispatchTouch(session, 'touchStart', remainingCenter.x, remainingCenter.y);
   await page.waitForTimeout(300);
@@ -313,7 +325,7 @@ test('AI planning default overview touch long press reveals, removes, and still 
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   const restoredPreview = await openPreview(page, 1, { mode: 'overview' });
-  await expect(restoredPreview.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '金フレ Aを計画から除外' })).toHaveCount(0);
   await expect(previewBlock(restoredPreview, '金フレ B', 'overview')).toBeVisible();
 
   await context.close();

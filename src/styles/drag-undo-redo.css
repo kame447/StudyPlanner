@@ -39,6 +39,14 @@
   background: color-mix(in srgb, var(--accent) 10%, transparent 90%);
 }
 
+.drag-undo-redo-controls .drag-undo-redo-delete {
+  color: var(--danger);
+}
+
+.drag-undo-redo-controls .drag-undo-redo-delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent 90%);
+}
+
 .drag-undo-redo-controls button:active:not(:disabled) {
   transform: scale(0.94);
 }

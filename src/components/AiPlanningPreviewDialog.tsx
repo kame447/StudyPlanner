@@ -165,6 +165,13 @@ export function AiPlanningPreviewDialog({
       existingPlans: sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
     };
   }, [editableBlocks, plans, selectedDate]);
+  const activeActionBlock = useMemo(
+    () =>
+      activeActionBlockId
+        ? editableBlocks.find((block) => block.id === activeActionBlockId) ?? null
+        : null,
+    [activeActionBlockId, editableBlocks],
+  );
   const overviewGridStyle = {
     gridTemplateColumns: `46px repeat(${Math.max(groups.length, 1)}, minmax(0, 1fr))`,
   } satisfies CSSProperties;
@@ -316,58 +323,6 @@ export function AiPlanningPreviewDialog({
     void moveHistory.redo((entry, target) => applyBlockTarget(entry.key, target));
   }
 
-  function renderRemoveAction(
-    block: WeeklyPlanDraftBlock,
-    isActionActive: boolean,
-    compact = false,
-  ) {
-    const size = compact ? 24 : 30;
-    return (
-      <button
-        className="quick-add-option-icon"
-        type="button"
-        aria-label={`${block.title}を計画から除外`}
-        aria-hidden={!isActionActive}
-        tabIndex={isActionActive ? 0 : -1}
-        title="この予定を除外"
-        disabled={isBusy}
-        style={{
-          position: 'absolute',
-          top: compact ? '50%' : '3px',
-          right: compact ? '2px' : '3px',
-          zIndex: 7,
-          width: `${size}px`,
-          height: `${size}px`,
-          minWidth: `${size}px`,
-          minHeight: `${size}px`,
-          flex: `0 0 ${size}px`,
-          padding: 0,
-          opacity: isActionActive ? 1 : 0,
-          pointerEvents: isActionActive ? 'auto' : 'none',
-          transform: compact
-            ? isActionActive
-              ? 'translate3d(0, -50%, 0) scale(1)'
-              : 'translate3d(8px, -50%, 0) scale(0.84)'
-            : isActionActive
-              ? 'translate3d(0, 0, 0) scale(1)'
-              : 'translate3d(14px, 0, 0) scale(0.86)',
-          transformOrigin: 'right center',
-          transition:
-            'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease-in',
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onTouchStart={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          setActiveActionBlockId(null);
-          onRemove(block.id);
-        }}
-      >
-        <Trash2 size={compact ? 13 : 15} strokeWidth={2.2} aria-hidden="true" />
-      </button>
-    );
-  }
-
   return (
     <>
       <div className="ai-planning-preview-overlay ai-planning-preview-overlay-v2" onClick={onClose}>
@@ -461,7 +416,7 @@ export function AiPlanningPreviewDialog({
                 </button>
               </div>
 
-              <p className="ai-planning-preview-hint">予定を長押しすると操作できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>
+              <p className="ai-planning-preview-hint">予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>
 
               <div className="ai-planning-preview-scroll ai-planning-preview-overview-scroll">
                 <div className="ai-planning-week-grid ai-planning-preview-overview-grid">
@@ -577,7 +532,7 @@ export function AiPlanningPreviewDialog({
                                 style={{
                                   ...overviewBlockStyle(block.startTime, block.endTime),
                                   pointerEvents: dragDescriptor ? 'auto' : 'none',
-                                  overflow: isActionActive ? 'visible' : 'hidden',
+                                  overflow: 'hidden',
                                   zIndex: isActionActive ? 6 : undefined,
                                 }}
                                 title={`${block.title} ${block.startTime}-${block.endTime}`}
@@ -682,7 +637,6 @@ export function AiPlanningPreviewDialog({
                               >
                                 <strong>{block.title}</strong>
                                 <small>{block.startTime}-{block.endTime}</small>
-                                {renderRemoveAction(block, isActionActive, true)}
                               </div>
                             );
                           })}
@@ -898,7 +852,6 @@ export function AiPlanningPreviewDialog({
                         >
                           <strong>{block.title}</strong>
                           <small>{block.startTime}-{block.endTime}</small>
-                          {renderRemoveAction(block, isActionActive)}
                         </div>
                       );
                     })}
@@ -943,11 +896,30 @@ export function AiPlanningPreviewDialog({
       </div>
       <TimelineDragOverlay visual={dragController.dragVisual} placement="preview" />
       <DragUndoRedoControls
-        visible={moveHistory.hasHistory}
+        visible={moveHistory.hasHistory || Boolean(activeActionBlock)}
         canUndo={moveHistory.canUndo}
         canRedo={moveHistory.canRedo}
         isBusy={moveHistory.isBusy}
         placement="preview"
+        ariaLabel="予定の編集操作"
+        centerAction={
+          activeActionBlock ? (
+            <button
+              className="drag-undo-redo-delete"
+              type="button"
+              aria-label={`${activeActionBlock.title}を計画から除外`}
+              title="この予定を除外"
+              disabled={isBusy}
+              onClick={() => {
+                const blockId = activeActionBlock.id;
+                setActiveActionBlockId(null);
+                onRemove(blockId);
+              }}
+            >
+              <Trash2 size={20} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          ) : null
+        }
         onUndo={handleUndoMove}
         onRedo={handleRedoMove}
       />
