@@ -45,7 +45,9 @@ export function DragUndoRedoControls({
       >
         <Undo2 size={20} strokeWidth={2.2} aria-hidden="true" />
       </button>
-      {centerAction}
+      {centerAction ? (
+        <span style={{ display: 'contents', color: 'var(--danger)' }}>{centerAction}</span>
+      ) : null}
       <button
         type="button"
         aria-label="変更をやり直す"
