@@ -139,6 +139,50 @@ describe('canonical ScheduleEvent migration model', () => {
     expect(scheduleEventToMonthEvent(migrated)?.endDate).toBe(source.date);
   });
 
+  it('deterministically fills fields missing from historical MonthEvent records', () => {
+    const historical = {
+      id: 'old-month-event',
+      userId: 'user-1',
+      date: '2026-09-02',
+      title: '古い予定',
+      startTime: '18:00',
+      endTime: '19:00',
+    } as unknown as MonthEvent;
+
+    const migrated = scheduleEventFromMonthEvent(historical);
+
+    expect(migrated).toMatchObject({
+      id: 'month-event:old-month-event',
+      endDate: '2026-09-02',
+      recurrence: {
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+        rules: [],
+      },
+      memo: '',
+      createdAt: '',
+      updatedAt: '',
+      general: {
+        url: '',
+        checklist: [],
+        locationTags: [],
+      },
+    });
+    expect(scheduleEventToMonthEvent(migrated)).toMatchObject({
+      id: 'old-month-event',
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      url: '',
+      memo: '',
+      checklist: [],
+      locationTags: [],
+      createdAt: '',
+      updatedAt: '',
+    });
+  });
+
   it('uses source-prefixed canonical ids so Plan and MonthEvent ids cannot collide', () => {
     expect(scheduleEventIdForLegacy({ kind: 'plan', id: 'same' })).toBe('plan:same');
     expect(scheduleEventIdForLegacy({ kind: 'month-event', id: 'same' })).toBe(
