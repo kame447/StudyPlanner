@@ -5,6 +5,7 @@ import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanP
 import { WeeklyPlanningApprovalPersistenceError } from './weeklyPlanningApprovalPersistencePolicy';
 
 const mocks = vi.hoisted(() => ({
+  getDoc: vi.fn(),
   transactionGet: vi.fn(),
   transactionSet: vi.fn(),
   runTransaction: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((parent, collectionName, id) => ({ parent, collectionName, id })),
+  getDoc: mocks.getDoc,
   runTransaction: mocks.runTransaction,
 }));
 
@@ -81,6 +83,7 @@ function installTransaction(migrationSnapshot: MockSnapshot) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getDoc.mockResolvedValue(missingSnapshot('user-1'));
   installTransaction(missingSnapshot('user-1'));
 });
 
@@ -98,6 +101,32 @@ describe('weekly planning Firestore approval schedule authority', () => {
     expect(
       mocks.transactionSet.mock.calls.some(
         ([reference]) => reference.collectionName === 'schedule_events',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps the approval transaction on legacy authority while old Rules hide migration state', async () => {
+    mocks.getDoc.mockRejectedValueOnce({
+      code: 'permission-denied',
+      message: 'Missing or insufficient permissions.',
+    });
+    const repository = createFirestoreWeeklyPlanningApprovalPlanRepository({} as Firestore);
+
+    await repository.saveApprovedPlan(draft());
+
+    expect(
+      mocks.transactionSet.mock.calls.some(
+        ([reference]) => reference.collectionName === 'plans',
+      ),
+    ).toBe(true);
+    expect(
+      mocks.transactionSet.mock.calls.some(
+        ([reference]) => reference.collectionName === 'schedule_events',
+      ),
+    ).toBe(false);
+    expect(
+      mocks.transactionGet.mock.calls.some(
+        ([reference]) => reference.collectionName === 'schedule_event_migrations',
       ),
     ).toBe(false);
   });
