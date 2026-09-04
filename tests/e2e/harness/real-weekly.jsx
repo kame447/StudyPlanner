@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { QuickEntryModal } from '../../../src/components/QuickEntryModal';
+import { NaturalLanguageAssistant } from '../../../src/components/NaturalLanguageAssistant';
 import { useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import '../../../src/styles.css';
 
@@ -121,40 +121,44 @@ function RealWeeklyApplicationHarness() {
   }
 
   return (
-    <QuickEntryModal
-      userId={REAL_WEEKLY_USER_ID}
-      selectedDate="2026-08-13"
-      plans={[]}
-      actuals={[]}
-      materials={[]}
-      subjects={[]}
-      weeklyDraftBlocks={pendingDraftBlocks}
-      weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
-      weeklyPlanningMessages={weeklyPlanningMessages}
-      weeklyPlanningIntakeState={state.intakeState ?? null}
-      weeklyPlanningWeekStartDate={state.weekStartDate}
-      weeklyPlanningRevision={state.revision}
-      weeklyPlanningPendingTurn={state.pendingTurn}
-      weeklyPlanningPendingApproval={state.pendingApproval}
-      onSubmitWeeklyPlanningTurn={application.submitTurn}
-      onCancelWeeklyPlanningTurn={application.cancelTurn}
-      onClearWeeklyPlanningConversation={application.clearConversation}
-      onAppendWeeklyPlanningMessage={application.appendMessage}
-      onResetWeeklyPlanningSession={application.resetSession}
-      onCreateWeeklyDraftBlocks={application.createDraftBlocks}
-      onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
-      onRemoveWeeklyDraftBlock={application.removeDraftBlock}
-      onClearWeeklyDraftBlocks={application.clearDraftBlocks}
-      onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
-      onClose={() => {
-        record('real-close');
-        setOpen(false);
-      }}
-      onSaveTodo={async (draft) => record('real-save-todo', draft)}
-      onSavePlan={async (draft) => record('real-save-plan', draft)}
-      onSaveStandaloneActual={async (draft) => record('real-save-actual', draft)}
-      onSaveLinkedActual={async (plan, draft) => record('real-save-linked-actual', { plan, draft })}
-    />
+    <main data-testid="real-weekly-application-harness">
+      <button
+        type="button"
+        onClick={() => {
+          record('real-close');
+          setOpen(false);
+        }}
+      >
+        閉じる
+      </button>
+      <NaturalLanguageAssistant
+        selectedDate="2026-08-13"
+        userId={REAL_WEEKLY_USER_ID}
+        plans={[]}
+        materials={[]}
+        subjects={[]}
+        onApplyDraft={async (draft) => record('real-save-plan', draft)}
+        weeklyDraftBlocks={pendingDraftBlocks}
+        weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
+        weeklyPlanningMessages={weeklyPlanningMessages}
+        weeklyPlanningIntakeState={state.intakeState ?? null}
+        weeklyPlanningWeekStartDate={state.weekStartDate}
+        weeklyPlanningRevision={state.revision}
+        weeklyPlanningPendingTurn={state.pendingTurn}
+        weeklyPlanningPendingApproval={state.pendingApproval}
+        onSubmitWeeklyPlanningTurn={application.submitTurn}
+        onCancelWeeklyPlanningTurn={application.cancelTurn}
+        onClearWeeklyPlanningConversation={application.clearConversation}
+        onAppendWeeklyPlanningMessage={application.appendMessage}
+        onResetWeeklyPlanningSession={application.resetSession}
+        onCreateWeeklyDraftBlocks={application.createDraftBlocks}
+        onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
+        onRemoveWeeklyDraftBlock={application.removeDraftBlock}
+        onClearWeeklyDraftBlocks={application.clearDraftBlocks}
+        onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
+        embedded
+      />
+    </main>
   );
 }
 
