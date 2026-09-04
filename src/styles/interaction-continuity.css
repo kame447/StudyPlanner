@@ -1,5 +1,25 @@
 /* Focused interaction fixes that must load after the primary theme/style bundles. */
 
+.ai-planning-pending-turn-actions {
+  position: fixed;
+  left: 50%;
+  bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+  z-index: 918;
+  transform: translateX(-50%);
+}
+
+.ai-planning-pending-turn-actions .ghost-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border) 66%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent 6%);
+  color: var(--danger);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
 /* Make month transitions explicit inside the continuously extending day carousel. */
 .schedule-day-month-boundary {
   flex: 0 0 64px;
@@ -43,6 +63,10 @@
 
   .schedule-day-month-boundary strong {
     font-size: 0.8rem;
+  }
+
+  .ai-planning-pending-turn-actions {
+    bottom: calc(122px + env(safe-area-inset-bottom, 0px));
   }
 }
 
