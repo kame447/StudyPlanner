@@ -18,6 +18,7 @@ export function executeWeeklyPlanningStableV5Preview(params: {
   graph: WeeklyPlanningPlacementGraphViewV5;
   schedulerInput: GenericSchedulerInput;
   requestContext: WeeklyPlanningTurnRequestContext;
+  retainPartialCapacityEvidence?: boolean;
 }) {
   const previewInput = {
     input: params.schedulerInput,
@@ -29,6 +30,7 @@ export function executeWeeklyPlanningStableV5Preview(params: {
       date: params.requestContext.notBeforeDate,
       time: params.requestContext.notBeforeTime,
     },
+    retainPartialCandidates: params.retainPartialCapacityEvidence === true,
   };
   const preview = scheduleWeeklyPlanningStableV5Preview(previewInput);
   recordWeeklyPlanningStableV5DebugTrace({
@@ -46,7 +48,7 @@ export function executeWeeklyPlanningStableV5Preview(params: {
         existingPlanBufferMinutes: 10,
         splittableThresholdMinutes: 120,
         todayNotBefore: `${params.requestContext.notBeforeDate} ${params.requestContext.notBeforeTime}`,
-        allOrNothing: 'any unscheduled work item returns insufficient_capacity with no partial candidates',
+        allOrNothing: 'unscheduled work returns insufficient_capacity; ordinary planning does not expose retained partial candidates as a preview',
       },
       result: {
         ...preview,

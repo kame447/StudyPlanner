@@ -15,6 +15,9 @@ import {
   executeWeeklyPlanningStableV5Preview,
 } from './weeklyPlanningStableV5PreviewExecution';
 import {
+  projectWeeklyPlanningProvisionalCapacityPreviewV5,
+} from './weeklyPlanningStableV5ProvisionalCapacityPreview';
+import {
   weeklyPlanningStableV5ResponseRouter,
 } from './weeklyPlanningStableV5ResponseRouting';
 import type {
@@ -88,14 +91,21 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph),
     schedulerInput: responseRoute.schedulerInput,
     requestContext,
+    retainPartialCapacityEvidence: Boolean(evaluation.provisionalTimeboxProjection.source),
   });
 
-  const routedOutput = weeklyPlanningStableV5ResponseRouter.afterPreview({
+  const provisionalCapacityOutput = projectWeeklyPlanningProvisionalCapacityPreviewV5({
     input,
-    semanticTurn,
     evaluation,
     preview,
   });
+  const routedOutput = provisionalCapacityOutput
+    ?? weeklyPlanningStableV5ResponseRouter.afterPreview({
+      input,
+      semanticTurn,
+      evaluation,
+      preview,
+    });
   const output = withProvisionalTimeboxState({
     output: routedOutput,
     evaluation,

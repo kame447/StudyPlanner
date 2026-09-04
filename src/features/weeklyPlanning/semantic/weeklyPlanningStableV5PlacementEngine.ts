@@ -67,6 +67,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   breakMinutes?: number;
   namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
+  retainPartialCandidates?: boolean;
 }): WeeklyPlanningStableV5PreviewSchedulerResult {
   const dates = listCalendarDatesInclusive(
     params.input.horizon.startDate,
@@ -155,7 +156,9 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     return {
       schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
       status: 'insufficient_capacity',
-      candidates: [],
+      candidates: params.retainPartialCandidates
+        ? sortPlacementCandidates(candidates)
+        : [],
       unscheduledWorkItemIds,
     };
   }
