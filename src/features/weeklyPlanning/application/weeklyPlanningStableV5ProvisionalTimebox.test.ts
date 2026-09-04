@@ -160,6 +160,55 @@ describe('Stable V5 provisional timebox scheduler projection', () => {
     expect(projected.effortEstimates).toEqual([]);
   });
 
+  it('adds a scheduler-only timebox for an existing task with no workload without changing the Fact Graph', () => {
+    const base = workGraph(['workload-physics']);
+    const graph = {
+      ...base,
+      tasks: [
+        ...base.tasks,
+        {
+          id: 'task-mock-prep', category: 'study', title: '共通テスト模試対策',
+          source, createdRevision: 5,
+        },
+        {
+          id: 'task-added-later', category: 'study', title: '後から追加した作業',
+          source, createdRevision: 12,
+        },
+      ],
+      revision: 12,
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      planningWindows: [],
+      relations: [],
+      uncertainties: [],
+      temporalConstraints: [],
+      recurrences: [],
+    } as unknown as WeeklyPlanningGenericSchedulerGraphView;
+    const resolution = {
+      policyVersion: 'weekly-planning-provisional-timebox-v1' as const,
+      source: 'session_state' as const,
+      workloadFactIds: ['workload-physics'],
+      minutesPerWorkload: 60,
+      state: authorizedState(['workload-physics']),
+    };
+
+    const projected = projectWeeklyPlanningProvisionalTimeboxGraphV5({ graph, resolution });
+
+    expect(projected.workloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'wptb_task-mock-prep',
+        taskId: 'task-mock-prep',
+        quantityRole: 'target',
+        amount: 60,
+        unitCode: 'minute',
+        unitLabel: '分',
+      }),
+    ]));
+    expect(projected.workloads.some((workload) => workload.taskId === 'task-added-later')).toBe(false);
+    expect(graph.workloads.some((workload) => workload.taskId === 'task-mock-prep')).toBe(false);
+    expect(graph.effortEstimates).toEqual([]);
+  });
+
   it('uses the real estimate target rather than a historical question target', () => {
     const resolution = resolveWeeklyPlanningProvisionalTimeboxV5({
       directive: {

@@ -131,6 +131,38 @@ function provisionalTraceEvents(rawResponse = PROVISIONAL_RESPONSE) {
   ];
 }
 
+function provisionalPreviewEvent() {
+  return {
+    schemaVersion: 2 as const,
+    sequence: 2,
+    stage: 'runtime_preview_scheduler_evaluated',
+    occurredAt: '2026-09-04T00:00:00.010Z',
+    severity: 'info' as const,
+    data: {
+      schedulerVersion: 'weekly-planning-stable-v5-preview-scheduler-v1',
+      candidateCount: 1,
+      unscheduledCount: 0,
+      result: {
+        status: 'ready',
+        candidates: [{
+          stableKey: 'stable-v5:11:wpwi-provisional-mock:0',
+          date: '2026-09-10',
+          startTime: '18:30',
+          endTime: '19:30',
+          durationMinutes: 60,
+          title: '共通テスト模試対策 60分',
+          field: '共通テスト模試対策',
+          stableV5Metadata: {
+            taskId: 'task-mock-prep',
+            sourceFactRefs: ['task-mock-prep', 'wptb_task-mock-prep'],
+          },
+        }],
+        unscheduledWorkItems: [],
+      },
+    },
+  };
+}
+
 const subject = {
   token: `wpt_${'c'.repeat(43)}`,
   epoch: '102',
@@ -155,13 +187,13 @@ afterEach(() => {
 });
 
 describe('provisional timebox trace persistence gate', () => {
-  it('survives outbox retry and Worker preparation with the actual focused provider request and response', async () => {
+  it('survives outbox retry and Worker preparation with the focused request, response, and provisional preview evidence', async () => {
     const harness = repositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const first = traceInput(
       `${CONVERSATION_ID}:request:1`,
-      provisionalTraceEvents(),
+      [...provisionalTraceEvents(), provisionalPreviewEvent()],
     );
 
     await recordWeeklyPlanningStableV5TurnTrace(first);
@@ -187,6 +219,8 @@ describe('provisional timebox trace persistence gate', () => {
     expect(serialized).toContain('focused_contextual_answer');
     expect(serialized).toContain('provisional_timebox');
     expect(serialized).toContain('scheduler permission only');
+    expect(serialized).toContain('wptb_task-mock-prep');
+    expect(serialized).toContain('共通テスト模試対策');
     expect(measureWeeklyPlanningTraceJsonBytes(replayedEntry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
@@ -203,6 +237,7 @@ describe('provisional timebox trace persistence gate', () => {
     const preparedSerialized = JSON.stringify(prepared.entries[0]);
     expect(preparedSerialized).toContain('weekly_planning_focused_contextual_answer_v5');
     expect(preparedSerialized).toContain('provisional_timebox');
+    expect(preparedSerialized).toContain('wptb_task-mock-prep');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );

@@ -104,6 +104,52 @@ export function resolveWeeklyPlanningProvisionalTimeboxV5(params: {
   };
 }
 
+function taskHasAnyWorkload(
+  graph: WeeklyPlanningGenericSchedulerGraphView,
+  taskId: string,
+): boolean {
+  return graph.workloads.some((workload) => workload.taskId === taskId);
+}
+
+function taskHasHardFixedInterval(
+  graph: WeeklyPlanningGenericSchedulerGraphView,
+  taskId: string,
+): boolean {
+  return graph.temporalConstraints.some((constraint) =>
+    constraint.taskId === taskId
+    && constraint.targetFactId === taskId
+    && constraint.kind === 'fixed_interval'
+    && constraint.constraintLevel === 'hard');
+}
+
+function provisionalTaskWorkloads(params: {
+  graph: WeeklyPlanningGenericSchedulerGraphView;
+  resolution: WeeklyPlanningProvisionalTimeboxResolutionV5;
+}) {
+  const authorizedRevision = params.resolution.state?.authorizedAtGraphRevision;
+  if (!params.resolution.source || authorizedRevision === undefined) return [];
+
+  return params.graph.tasks
+    .filter((task) => task.createdRevision <= authorizedRevision)
+    .filter((task) => !taskHasAnyWorkload(params.graph, task.id))
+    .filter((task) => !taskHasHardFixedInterval(params.graph, task.id))
+    .map((task) => ({
+      id: `wptb_${task.id}`,
+      taskId: task.id,
+      componentId: null,
+      quantityRole: 'target' as const,
+      amount: params.resolution.minutesPerWorkload,
+      unitCode: 'minute' as const,
+      unitLabel: '分',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      source: task.source,
+      createdRevision: task.createdRevision,
+    }));
+}
+
 export function projectWeeklyPlanningProvisionalTimeboxGraphV5(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   resolution: WeeklyPlanningProvisionalTimeboxResolutionV5;
@@ -112,20 +158,24 @@ export function projectWeeklyPlanningProvisionalTimeboxGraphV5(params: {
     return params.graph;
   }
   const projectedIds = new Set(params.resolution.workloadFactIds);
+  const workloads = params.graph.workloads.map((workload) =>
+    projectedIds.has(workload.id)
+      ? {
+          ...workload,
+          amount: params.resolution.minutesPerWorkload,
+          unitCode: 'minute' as const,
+          unitLabel: '分',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+        }
+      : workload);
   return {
     ...params.graph,
-    workloads: params.graph.workloads.map((workload) =>
-      projectedIds.has(workload.id)
-        ? {
-            ...workload,
-            amount: params.resolution.minutesPerWorkload,
-            unitCode: 'minute',
-            unitLabel: '分',
-            rangeStart: null,
-            rangeEnd: null,
-            perOccurrence: false,
-            periodExpression: null,
-          }
-        : workload),
+    workloads: [
+      ...workloads,
+      ...provisionalTaskWorkloads(params),
+    ],
   };
 }
