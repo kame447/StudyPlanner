@@ -48,6 +48,10 @@ import {
 import {
   evaluateWeeklyPlanningLearningStrategyProposalsV5,
 } from './weeklyPlanningStableV5LearningStrategyProposal';
+import {
+  projectWeeklyPlanningProvisionalTimeboxGraphV5,
+  resolveWeeklyPlanningProvisionalTimeboxV5,
+} from './weeklyPlanningStableV5ProvisionalTimebox';
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
@@ -70,7 +74,9 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
   semanticChanged: boolean;
   hadMachinePendingQuestion?: boolean;
+  provisionalTimeboxRequested?: boolean;
 }): boolean {
+  if (params.provisionalTimeboxRequested) return true;
   if (params.planningIntent === 'create_plan' && !params.hadMachinePendingQuestion) return true;
   if (params.previousStatus === 'draft_ready') {
     return params.planningIntent === 'update_plan' && params.semanticChanged;
@@ -132,6 +138,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const previousActiveGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(runtimeSession.graph);
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,
@@ -198,7 +205,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     localToFactId: semantic.canonicalization?.localToFactId ?? {},
     previousRecords: input.previousState?.learningStrategyProposalRecords ?? [],
   });
-  const baselineCompilation = compileGenericSchedulerInput({
+  const rawBaselineCompilation = compileGenericSchedulerInput({
     graph: activeGraph,
     context: schedulerContext,
     externalSources,
@@ -207,6 +214,27 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     resolvedDateExpressions,
     resolvedTemporalConstraints,
   });
+  const provisionalTimeboxProjection = resolveWeeklyPlanningProvisionalTimeboxV5({
+    directive: semantic.normalization.contextualDirective,
+    previousStatus: input.previousState?.status ?? null,
+    previousGraph: previousActiveGraph,
+    currentCompilation: rawBaselineCompilation,
+  });
+  const provisionalSchedulerGraph = projectWeeklyPlanningProvisionalTimeboxGraphV5({
+    graph: activeGraph,
+    resolution: provisionalTimeboxProjection,
+  });
+  const baselineCompilation = provisionalTimeboxProjection.source
+    ? compileGenericSchedulerInput({
+        graph: provisionalSchedulerGraph,
+        context: schedulerContext,
+        externalSources,
+        estimateCalibrationMultiplier: estimateCalibration.multiplier,
+        observedEstimateOverrides: observedPaceProjection.estimateOverrides,
+        resolvedDateExpressions,
+        resolvedTemporalConstraints,
+      })
+    : rawBaselineCompilation;
   const learningStrategyProposals = semantic.normalization.document
     ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
         previousState: input.previousState,
@@ -244,7 +272,9 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     acceptedSpacedProposal: learningStrategyProposals.acceptedSpacedProposal,
     acceptedCalibrationProposal: acceptedCalibration,
   });
-  const compilation = calibrationCompilation ?? acceptedMemorySessionCompilation;
+  const compilation = provisionalTimeboxProjection.source
+    ? acceptedMemorySessionCompilation
+    : calibrationCompilation ?? acceptedMemorySessionCompilation;
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
     compilation,
@@ -289,12 +319,15 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
       || semanticDiff.removed.length > 0),
   );
   const previousDraftGenerationIntent = input.previousState?.draftGenerationIntent ?? null;
+  const provisionalTimeboxRequested =
+    semantic.normalization.contextualDirective?.kind === 'provisional_timebox';
   const authorized = isWeeklyPlanningStableV5PreviewAuthorized({
     previousStatus: input.previousState?.status ?? null,
     previousDraftGenerationIntent,
     planningIntent,
     semanticChanged,
     hadMachinePendingQuestion: hadMachinePendingQuestion(input.previousState),
+    provisionalTimeboxRequested,
   });
 
   return {
@@ -309,6 +342,8 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     resolvedTemporalConstraints,
     estimateCalibration,
     observedPaceProjection,
+    rawBaselineCompilation,
+    provisionalTimeboxProjection,
     baselineCompilation,
     acceptedMemorySessionCompilation,
     compilation,

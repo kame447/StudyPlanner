@@ -161,6 +161,12 @@ export function createStableV5SemanticPublicStateSummary(params: {
       perOccurrence: workload.perOccurrence,
       periodExpression: workload.periodExpression,
     })),
+    relations: active.relations.map((relation) => ({
+      publicId: relation.id,
+      kind: relation.kind,
+      fromTaskPublicId: relation.fromTaskId,
+      toTaskPublicId: relation.toTaskId,
+    })),
     uncertainties: active.uncertainties.map((uncertainty) => ({
       publicId: uncertainty.id,
       targetPublicId: uncertainty.targetFactId,
