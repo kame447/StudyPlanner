@@ -128,6 +128,30 @@ Spanning text:
 2. grid/span計算は正しいが、padding / gap / max-widthがタイトル領域を過剰に削っている。
 3. DOM側で固定の短縮文字列を生成しており、CSS ellipsis以前に文字が切られている。
 
-まずproduction codeとfocused testを照合し、各仮説を反証してから最小修正する。
+### 2026-09-05 diagnosis and fix
 
-Next action: WeekViewのlane/width計算とspanning laneのCSS/DOMを調査し、失敗するfocused regressionを先に固定する。
+- timed width hypothesis 1 confirmed:
+  - existing `buildLanes` correctly expired `end <= next.start`, so boundary-touching intervals were already non-overlapping
+  - however the maximum lane count observed anywhere in a day was copied to every event in that day
+  - result: one overlap pair could make unrelated morning / afternoon events remain half-width
+- timed width hypotheses 2 and 3 rejected as primary causes
+- `buildLanes` now finalizes lane count per overlap-connected cluster instead of per whole day
+  - overlapping cluster keeps split width
+  - a later non-overlapping cluster starts again at full width
+  - `end === next.start` creates a new cluster and therefore remains full width
+- spanning text hypothesis 3 rejected: the DOM already retains the complete `occurrence.title`; truncation was CSS overflow, not pre-shortened data
+- spanning text hypotheses 1 and 2 confirmed:
+  - dedicated card used different typography and larger horizontal inset than normal timed cards
+  - card title font is aligned to the normal timed-card title (`0.5rem`, weight `850`)
+  - horizontal margin/padding reduced to `2px 1px` / `2px 2px` so the title uses substantially more of the available grid span
+  - `終日` label font size is aligned as well
+- regression-first sequence:
+  - commit `a659660fa7df66fcef219cb36dad2413d3c8af95` added focused unit regressions before production fix and correctly made CI fail in `Run tests`
+  - production fixes then made TypeScript and full unit tests pass on head `3bf70552bfc417e1958777da4b414a9be22d9df6`
+- browser harness `week-layout-readability` added to verify at 390px viewport:
+  - real overlapping events are narrow
+  - unrelated / boundary-touching events use normal full width
+  - spanning-card computed title size equals normal timed-card title size
+  - a four-character Japanese title fits without overflow after using the available card width
+
+Next action: this checkpoint commit is documentation-only. Require a fresh exact-HEAD run of CI / Browser Regression / UI Regression Matrix / UI Quality Automation / Admin Overview Render, audit the final PR diff, then Ready + squash merge if every gate is terminal green.
