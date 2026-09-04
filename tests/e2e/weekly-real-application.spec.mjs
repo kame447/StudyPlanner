@@ -15,6 +15,10 @@ async function releaseRuntime(page) {
   expect(released).toBe(true);
 }
 
+function conversation(page) {
+  return page.locator('.ai-planning-conversation');
+}
+
 async function composer(page) {
   const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
@@ -68,8 +72,8 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await submitWeekly(page, '最初の条件');
 
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
-    await expect(page.getByText('最初の条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('テスト応答: 最初の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('最初の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 最初の条件', { exact: true })).toHaveCount(1);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(1);
   });
 
@@ -77,14 +81,14 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await page.goto(REAL_WEEKLY_URL);
 
     await submitWeekly(page, '1つ目の条件');
-    await expect(page.getByText('テスト応答: 1つ目の条件', { exact: true })).toBeVisible();
+    await expect(conversation(page).getByText('テスト応答: 1つ目の条件', { exact: true })).toBeVisible();
     await submitWeekly(page, '2つ目の条件');
-    await expect(page.getByText('テスト応答: 2つ目の条件', { exact: true })).toBeVisible();
+    await expect(conversation(page).getByText('テスト応答: 2つ目の条件', { exact: true })).toBeVisible();
 
-    await expect(page.getByText('1つ目の条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('2つ目の条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('テスト応答: 1つ目の条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('テスト応答: 2つ目の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('1つ目の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('2つ目の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 1つ目の条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 2つ目の条件', { exact: true })).toHaveCount(1);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(2);
     expect(await events(page, 'real-runtime-complete')).toHaveLength(2);
 
@@ -103,7 +107,7 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await releaseRuntime(page);
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
-    await expect(page.getByText('テスト応答: キャンセルする条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('テスト応答: キャンセルする条件', { exact: true })).toHaveCount(0);
     await expect(await composer(page)).toBeEnabled();
   });
 
@@ -125,7 +129,7 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     const completions = await events(page, 'real-runtime-complete');
     expect(completions[0].payload.graphRevision).toBe(1);
     expect(completions[1].payload.graphRevision).toBe(1);
-    await expect(page.getByText('テスト応答: 採用される条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 採用される条件', { exact: true })).toHaveCount(1);
   });
 
   test('closing the AI planning surface during a real in-flight turn does not lose the committed result', async ({ page }) => {
@@ -139,8 +143,8 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
     await page.getByRole('button', { name: 'AI計画を再度開く' }).click();
-    await expect(page.getByText('閉じても残る条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('テスト応答: 閉じても残る条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('閉じても残る条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 閉じても残る条件', { exact: true })).toHaveCount(1);
   });
 
   test('a preview returned while the AI planning surface is closed survives through real application state', async ({ page }) => {
@@ -166,8 +170,8 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     const cleared = await page.evaluate(() => window.__realWeeklyActions.clearConversation());
     expect(cleared).toBe(true);
 
-    await expect(page.getByText('履歴だけ消す条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('テスト応答: 履歴だけ消す条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('履歴だけ消す条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('テスト応答: 履歴だけ消す条件', { exact: true })).toHaveCount(0);
     await expect(preview.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
     await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
   });
@@ -178,14 +182,14 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
 
     await page.evaluate(() => window.__realWeeklyActions.resetSession());
 
-    await expect(page.getByText('リセットする条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('リセットする条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
-    await expect(page.getByText('数学のワーク', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('数学のワーク', { exact: true })).toHaveCount(0);
 
     await page.reload();
 
-    await expect(page.getByText('リセットする条件', { exact: true })).toHaveCount(0);
+    await expect(conversation(page).getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
   });
@@ -207,12 +211,12 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
   test('a completed conversation is restored after a full browser reload', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
     await submitWeekly(page, '再読み込み後も残る条件');
-    await expect(page.getByText('テスト応答: 再読み込み後も残る条件', { exact: true })).toBeVisible();
+    await expect(conversation(page).getByText('テスト応答: 再読み込み後も残る条件', { exact: true })).toBeVisible();
 
     await page.reload();
 
-    await expect(page.getByText('再読み込み後も残る条件', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('テスト応答: 再読み込み後も残る条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('再読み込み後も残る条件', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('テスト応答: 再読み込み後も残る条件', { exact: true })).toHaveCount(1);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
   });
 
