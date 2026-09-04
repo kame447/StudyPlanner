@@ -15,30 +15,16 @@ async function releaseRuntime(page) {
   expect(released).toBe(true);
 }
 
-async function enterWeeklyMode(page) {
-  const input = page.getByLabel('週間計画にしたいこと');
-  if (await input.isVisible().catch(() => false)) {
-    return input;
-  }
-
-  const aiInput = page.getByRole('button', { name: 'AI入力', exact: true });
-  if (await aiInput.count() && await aiInput.isVisible()) {
-    await aiInput.click();
-  }
-
-  const weeklyMode = page.getByRole('button', { name: '週間計画', exact: true });
-  if (await weeklyMode.count() && await weeklyMode.isVisible()) {
-    await weeklyMode.click();
-  }
-
+async function composer(page) {
+  const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
   return input;
 }
 
 async function submitWeekly(page, text) {
-  const input = await enterWeeklyMode(page);
+  const input = await composer(page);
   await input.fill(text);
-  await input.press('Control+Enter');
+  await input.press('Enter');
 }
 
 async function waitForRuntimePending(page) {
@@ -47,25 +33,36 @@ async function waitForRuntimePending(page) {
   ).toBe(1);
 }
 
+async function openPreview(page) {
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+  return preview;
+}
+
 async function createPreview(page, text = 'previewを作る条件') {
   await submitWeekly(page, text);
-  await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-  await expect(page.getByText('数学のワーク', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
+  const preview = await openPreview(page);
+  await expect(preview.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
+  await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
+  return preview;
 }
 
 async function promoteAndApprovePreview(page) {
   expect(await events(page, 'real-save-approved-plan')).toHaveLength(0);
 
-  await page.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await expect(page.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await expect(preview.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
   expect(await events(page, 'real-save-approved-plan')).toHaveLength(0);
 
-  await page.getByRole('button', { name: '一括承認して保存' }).click();
+  await preview.getByRole('button', { name: 'この内容で保存' }).click();
   await expect.poll(async () => (await events(page, 'real-save-approved-plan')).length).toBe(1);
-  await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
 }
 
-test.describe('real weekly application browser lifecycle', () => {
+test.describe('real weekly application browser lifecycle through AiPlanningView', () => {
   test('a completed turn crosses the real application/controller/reducer boundary once', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
     await submitWeekly(page, '最初の条件');
@@ -91,7 +88,9 @@ test.describe('real weekly application browser lifecycle', () => {
     expect(await events(page, 'real-runtime-execute')).toHaveLength(2);
     expect(await events(page, 'real-runtime-complete')).toHaveLength(2);
 
-    const roles = await page.getByLabel('週間計画の会話履歴').locator('strong').allTextContents();
+    const roles = await page.locator('.ai-planning-message-row').evaluateAll((rows) =>
+      rows.map((row) => row.classList.contains('user') ? 'あなた' : 'アプリ'),
+    );
     expect(roles).toEqual(['あなた', 'アプリ', 'あなた', 'アプリ']);
   });
 
@@ -105,7 +104,7 @@ test.describe('real weekly application browser lifecycle', () => {
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
     await expect(page.getByText('テスト応答: キャンセルする条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel('週間計画にしたいこと')).toBeVisible();
+    await expect(await composer(page)).toBeEnabled();
   });
 
   test('a canceled staged graph does not advance the next accepted runtime revision', async ({ page }) => {
@@ -129,46 +128,48 @@ test.describe('real weekly application browser lifecycle', () => {
     await expect(page.getByText('テスト応答: 採用される条件', { exact: true })).toHaveCount(1);
   });
 
-  test('closing the modal during a real in-flight turn does not lose the committed result', async ({ page }) => {
+  test('closing the AI planning surface during a real in-flight turn does not lose the committed result', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?gate=real-weekly`);
     await submitWeekly(page, '閉じても残る条件');
     await waitForRuntimePending(page);
 
-    await page.getByRole('button', { name: '閉じる' }).click();
-    await expect(page.getByRole('button', { name: 'モーダルを再度開く' })).toBeVisible();
+    await page.getByRole('button', { name: 'テスト用にAI計画を閉じる' }).click();
+    await expect(page.getByRole('button', { name: 'AI計画を再度開く' })).toBeVisible();
     await releaseRuntime(page);
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
-    await page.getByRole('button', { name: 'モーダルを再度開く' }).click();
+    await page.getByRole('button', { name: 'AI計画を再度開く' }).click();
     await expect(page.getByText('閉じても残る条件', { exact: true })).toHaveCount(1);
     await expect(page.getByText('テスト応答: 閉じても残る条件', { exact: true })).toHaveCount(1);
   });
 
-  test('a preview returned while the modal is closed survives through the real application state', async ({ page }) => {
+  test('a preview returned while the AI planning surface is closed survives through real application state', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?gate=real-weekly&preview=1`);
     await submitWeekly(page, 'previewを作る条件');
     await waitForRuntimePending(page);
 
-    await page.getByRole('button', { name: '閉じる' }).click();
+    await page.getByRole('button', { name: 'テスト用にAI計画を閉じる' }).click();
     await releaseRuntime(page);
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
-    await page.getByRole('button', { name: 'モーダルを再度開く' }).click();
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-    await expect(page.getByText('数学のワーク', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'AI計画を再度開く' }).click();
+    await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
+    const preview = await openPreview(page);
+    await expect(preview.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
+    await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
   });
 
   test('clearing conversation history preserves an already-created preview', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?preview=1`);
-    await createPreview(page, '履歴だけ消す条件');
+    const preview = await createPreview(page, '履歴だけ消す条件');
 
     const cleared = await page.evaluate(() => window.__realWeeklyActions.clearConversation());
     expect(cleared).toBe(true);
 
     await expect(page.getByText('履歴だけ消す条件', { exact: true })).toHaveCount(0);
     await expect(page.getByText('テスト応答: 履歴だけ消す条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-    await expect(page.getByText('数学のワーク', { exact: true })).toBeVisible();
+    await expect(preview.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
+    await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
   });
 
   test('reset clears conversation and preview state and the cleared state stays cleared after reload', async ({ page }) => {
@@ -179,13 +180,13 @@ test.describe('real weekly application browser lifecycle', () => {
 
     await expect(page.getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
     await expect(page.getByText('数学のワーク', { exact: true })).toHaveCount(0);
 
     await page.reload();
 
     await expect(page.getByText('リセットする条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
   });
 
@@ -221,8 +222,10 @@ test.describe('real weekly application browser lifecycle', () => {
 
     await page.reload();
 
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-    await expect(page.getByText('数学のワーク', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
+    const preview = await openPreview(page);
+    await expect(preview.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
+    await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
     expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
 
     await promoteAndApprovePreview(page);
