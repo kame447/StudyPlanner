@@ -36,12 +36,16 @@ test('two Enter events in the same browser task start only one real controlled t
     () => page.evaluate(() => window.__realWeeklyRuntime.pending()),
   ).toBe(1);
   expect(await events(page, 'real-runtime-execute')).toHaveLength(1);
-  await expect(page.getByText('二重送信しない条件', { exact: true })).toHaveCount(1);
+  await expect(
+    page.locator('.ai-planning-conversation').getByText('二重送信しない条件', { exact: true }),
+  ).toHaveCount(1);
 
   const released = await page.evaluate(() => window.__realWeeklyRuntime.release());
   expect(released).toBe(true);
   await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 
   expect(await events(page, 'real-runtime-execute')).toHaveLength(1);
-  await expect(page.getByText('テスト応答: 二重送信しない条件', { exact: true })).toHaveCount(1);
+  await expect(
+    page.locator('.ai-planning-conversation').getByText('テスト応答: 二重送信しない条件', { exact: true }),
+  ).toHaveCount(1);
 });
