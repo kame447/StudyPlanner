@@ -1,5 +1,5 @@
 import { Redo2, Undo2 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import '../styles/drag-undo-redo.css';
 
@@ -26,21 +26,39 @@ export function DragUndoRedoControls({
   onUndo,
   onRedo,
 }: DragUndoRedoControlsProps) {
+  const centerSlotRef = useRef<HTMLSpanElement | null>(null);
+  const [hasCenterAction, setHasCenterAction] = useState(Boolean(centerAction));
+
+  useEffect(() => {
+    const centerSlot = centerSlotRef.current;
+    if (!centerSlot || typeof MutationObserver === 'undefined') return;
+
+    const syncCenterActionState = () => {
+      setHasCenterAction(Boolean(centerAction) || centerSlot.childElementCount > 0);
+    };
+    syncCenterActionState();
+
+    const observer = new MutationObserver(syncCenterActionState);
+    observer.observe(centerSlot, { childList: true });
+    return () => observer.disconnect();
+  }, [centerAction]);
+
   if (typeof document === 'undefined') {
     return null;
   }
 
+  const shouldHide = !visible && !hasCenterAction;
+
   return createPortal(
     <div
-      className={[
-        'drag-undo-redo-controls',
-        `drag-undo-redo-controls--${placement}`,
-        visible ? '' : 'drag-undo-redo-controls--history-hidden',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={`drag-undo-redo-controls drag-undo-redo-controls--${placement}`}
       role="group"
       aria-label={ariaLabel}
+      style={
+        shouldHide
+          ? { visibility: 'hidden', pointerEvents: 'none', opacity: 0 }
+          : undefined
+      }
     >
       <button
         type="button"
@@ -52,7 +70,8 @@ export function DragUndoRedoControls({
         <Undo2 size={20} strokeWidth={2.2} aria-hidden="true" />
       </button>
       <span
-        className="drag-undo-redo-center-slot"
+        ref={centerSlotRef}
+        style={{ display: 'contents', color: 'var(--danger)' }}
         data-drag-undo-redo-center-slot="true"
       >
         {centerAction}
