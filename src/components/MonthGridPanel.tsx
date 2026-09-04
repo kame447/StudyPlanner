@@ -12,7 +12,13 @@ import {
   getMonthEventEndDate,
 } from '../lib/monthEvents';
 import { buildMonthPanelProjection } from '../lib/monthViewProjection';
-import type { Actual, MonthEvent, Plan } from '../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 
 const MAX_MONTH_EVENT_LANES = 3;
 
@@ -180,9 +186,14 @@ interface MonthGridPanelProps {
   isCurrent: boolean;
   selectedDate: string;
   todayDate: string;
+  userId: string;
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   registerCellRef: (date: string, node: HTMLButtonElement | null) => void;
   onCellClick: (date: string) => void;
   onMoveSelection: (date: string, offset: number) => void;
@@ -194,9 +205,14 @@ export function MonthGridPanel({
   isCurrent,
   selectedDate,
   todayDate,
+  userId,
   plans,
   actuals,
   monthEvents,
+  scheduleTemplates = [],
+  timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   registerCellRef,
   onCellClick,
   onMoveSelection,
@@ -206,11 +222,26 @@ export function MonthGridPanel({
     () =>
       buildMonthPanelProjection({
         monthDate,
+        userId,
         plans,
         actuals,
         monthEvents,
+        scheduleTemplates,
+        timetableTermId,
+        timetableTerm,
+        timetableTerms,
       }),
-    [actuals, monthDate, monthEvents, plans],
+    [
+      actuals,
+      monthDate,
+      monthEvents,
+      plans,
+      scheduleTemplates,
+      timetableTerm,
+      timetableTermId,
+      timetableTerms,
+      userId,
+    ],
   );
   const weekRows = useMemo(
     () =>

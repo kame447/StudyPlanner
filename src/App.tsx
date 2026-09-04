@@ -434,6 +434,10 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            scheduleTemplates={scheduleTemplates}
+            timetableTermId={activeTimetableTermId}
+            timetableTerm={activeTimetableTerm}
+            timetableTerms={timetableTerms}
             createRequestId={monthCreateRequestId}
             onSelectDate={selectDate}
             onChangeMonth={changeMonth}
