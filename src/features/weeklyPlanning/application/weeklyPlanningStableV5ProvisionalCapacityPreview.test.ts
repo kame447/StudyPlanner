@@ -158,6 +158,7 @@ describe('Stable V5 provisional capacity preview policy', () => {
     expect(output?.message).toContain('英語');
     expect(output?.message).toContain('容量不足');
     expect(output?.message).toContain('優先順位');
+    expect(output?.responseSource).toBe('system');
   });
 
   it('does not weaken the ordinary all-or-nothing contract without provisional permission', () => {
