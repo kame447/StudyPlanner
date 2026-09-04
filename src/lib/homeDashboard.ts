@@ -1,5 +1,21 @@
-import { addDays, getWeekDates, getWeekdayLabel, minutesBetween, sortByDateTime, toIsoDate } from './date';
-import { buildPlanOccurrenceKey, expandPlansForDate, getActualOccurrenceKey } from './planRecurrence';
+import {
+  addDays,
+  getWeekDates,
+  getWeekdayLabel,
+  minutesBetween,
+  sortByDateTime,
+  toIsoDate,
+} from './date';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  getActualOccurrenceKey,
+} from './planRecurrence';
+import { isStudyTimePlan } from './studyAnalytics';
+import {
+  isStudyRecordForDisplay,
+  normalizeStudyRecordsForDisplay,
+} from './studyRecords';
 import type { Actual, Plan, TodoTask } from '../types/domain';
 
 export interface HomeDayProgress {
@@ -106,6 +122,16 @@ function buildUpcomingPlans(plans: Plan[], today: string): Plan[] {
   return sortByDateTime(projected).slice(0, 6);
 }
 
+function resolveStudyActuals(plans: Plan[], actuals: Actual[]): Actual[] {
+  const studyActualIds = new Set(
+    normalizeStudyRecordsForDisplay({ actuals, plans })
+      .filter(isStudyRecordForDisplay)
+      .map((record) => record.actualId),
+  );
+
+  return actuals.filter((actual) => studyActualIds.has(actual.id));
+}
+
 export function buildHomeDashboardModel({
   plans,
   actuals,
@@ -120,12 +146,14 @@ export function buildHomeDashboardModel({
   const today = toIsoDate(now);
   const nowTime = timeNowLabel(now);
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
+  const todayStudyPlans = todayPlans.filter(isStudyTimePlan);
   const upcomingPlans = buildUpcomingPlans(plans, today);
+  const studyActuals = resolveStudyActuals(plans, actuals);
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
   const nextPlan = todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
-  const missingActualPlans = todayPlans.filter((plan) => {
+  const missingActualPlans = todayStudyPlans.filter((plan) => {
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, plan.date);
     return plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
   });
@@ -144,8 +172,8 @@ export function buildHomeDashboardModel({
   let weekExpectedMinutesByNow = 0;
   let weekActualMinutesByNow = 0;
   const weekDays = getWeekDates(today).map((date) => {
-    const dayPlans = expandPlansForDate(plans, date);
-    const dayActuals = actuals.filter((actual) => actual.occurrenceDate === date);
+    const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
+    const dayActuals = studyActuals.filter((actual) => actual.occurrenceDate === date);
 
     weekExpectedMinutesByNow += dayPlans.reduce(
       (sum, plan) => sum + plannedMinutesByNow(plan, date, today, nowTime),
@@ -175,7 +203,7 @@ export function buildHomeDashboardModel({
       : weekActualMinutes > 0
         ? 100
         : 0;
-  const streaks = calculateStreaks(actuals, today);
+  const streaks = calculateStreaks(studyActuals, today);
 
   return {
     today,
