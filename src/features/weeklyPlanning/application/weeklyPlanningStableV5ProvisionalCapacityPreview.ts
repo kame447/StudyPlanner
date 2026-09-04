@@ -116,7 +116,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     records: params.evaluation.groundingRecords,
     currentTurnId: params.input.traceRequestId,
   });
-  const output = projectStableV5CompatibilityOutput({
+  const compatibilityOutput = projectStableV5CompatibilityOutput({
     previousState: params.input.previousState,
     userText: params.input.userText,
     message,
@@ -126,6 +126,12 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     repairAgenda: params.evaluation.repairDecision.agenda,
     learningStrategyProposalRecords: params.evaluation.learningStrategyProposals.records,
   });
+  const output: WeeklyPlanningTurnExecutionResult = {
+    ...compatibilityOutput,
+    // This disclosure is application-owned: omitting lower-priority work is a
+    // deterministic scheduling decision, not wording the dialogue model may hide.
+    responseSource: 'system',
+  };
 
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
