@@ -1,5 +1,6 @@
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
+import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
@@ -39,6 +40,22 @@ export interface WeeklyPlanningStableV5PreviewSchedulerResult {
 
 const DEFAULT_BREAK_MINUTES = 10;
 
+function isPastRecurringOccurrence(params: {
+  item: GenericPlanningWorkItem;
+  graph: WeeklyPlanningPlacementGraphViewV5;
+  notBefore?: WeeklyPlanningPlacementNotBeforeV5;
+}): boolean {
+  if (
+    !params.notBefore
+    || !params.item.requiredDate
+    || params.item.requiredDate >= params.notBefore.date
+  ) {
+    return false;
+  }
+  return params.graph.workloads.some((workload) =>
+    workload.id === params.item.workloadFactId && workload.perOccurrence === true);
+}
+
 export function scheduleWeeklyPlanningStableV5Preview(params: {
   input: GenericSchedulerInput;
   graph: WeeklyPlanningPlacementGraphViewV5;
@@ -55,7 +72,13 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     params.input.horizon.startDate,
     params.input.horizon.endDate,
   ) ?? [];
-  if (params.input.movableWorkItems.length === 0) {
+  const movableWorkItems = params.input.movableWorkItems.filter((item) =>
+    !isPastRecurringOccurrence({
+      item,
+      graph: params.graph,
+      notBefore: params.notBefore,
+    }));
+  if (movableWorkItems.length === 0) {
     return {
       schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
       status: 'empty',
@@ -89,24 +112,24 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     }),
     dayLoads: new Map(dates.map((date) => [date, 0])),
     breakMinutes: params.breakMinutes ?? DEFAULT_BREAK_MINUTES,
-    totalMovableMinutes: params.input.movableWorkItems.reduce(
+    totalMovableMinutes: movableWorkItems.reduce(
       (sum, item) => sum + Math.max(0, item.estimatedMinutes ?? 0),
       0,
     ),
     namedTimePeriods: params.namedTimePeriods,
   };
   const taskPositions = workItemGroupPositions(
-    params.input.movableWorkItems,
+    movableWorkItems,
     (item) => item.taskId,
   );
   const taskOrdinals = taskOrdinalMapV5(
-    params.input.movableWorkItems.map((item) => item.taskId),
+    movableWorkItems.map((item) => item.taskId),
   );
   const fixedEnds = fixedTaskPlacementEnds(params.input);
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledWorkItemIds: string[] = [];
 
-  for (const item of params.input.movableWorkItems) {
+  for (const item of movableWorkItems) {
     const scheduled = scheduleWeeklyPlanningWorkItemV5({
       context,
       item,
