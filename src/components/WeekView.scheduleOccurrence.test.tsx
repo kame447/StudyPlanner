@@ -25,7 +25,7 @@ function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
 }
 
 describe('WeekView schedule occurrence projection', () => {
-  it('shows MonthEvent-only commitments on the weekly plan timeline', () => {
+  it('shows same-day MonthEvent-only commitments on the hourly plan timeline', () => {
     let renderer!: ReactTestRenderer;
 
     act(() => {
@@ -44,9 +44,14 @@ describe('WeekView schedule occurrence projection', () => {
     expect(serialized).toContain('美容院');
     expect(serialized).toContain('18:00');
     expect(serialized).toContain('19:00');
+    expect(
+      renderer.root.findAll(
+        (node) => node.props['data-schedule-week-spanning-events'] === 'true',
+      ),
+    ).toHaveLength(0);
   });
 
-  it('clips multi-day MonthEvents to each visible day without creating Plan mutations', () => {
+  it('moves multi-day MonthEvents into one spanning lane above the hourly grid', () => {
     let renderer!: ReactTestRenderer;
     const onMovePlan = vi.fn();
 
@@ -70,12 +75,20 @@ describe('WeekView schedule occurrence projection', () => {
       );
     });
 
-    const serialized = JSON.stringify(renderer.toJSON());
-    expect(serialized).toContain('美容院');
-    expect(serialized).toContain('18:00');
-    expect(serialized).toContain('24:00');
-    expect(serialized).toContain('00:00');
-    expect(serialized).toContain('10:00');
+    const spanningLane = renderer.root.find(
+      (node) => node.props['data-schedule-week-spanning-events'] === 'true',
+    );
+    const spanningEvent = renderer.root.find(
+      (node) => node.props['data-week-spanning-event'] === 'true',
+    );
+    const occurrenceNodes = renderer.root.findAll(
+      (node) => node.props['data-schedule-occurrence-id'] === 'month-event:appointment-1:2026-08-24',
+    );
+
+    expect(spanningLane).toBeTruthy();
+    expect(spanningEvent.props.style.gridColumn).toBe('2 / 5');
+    expect(occurrenceNodes).toHaveLength(1);
+    expect(occurrenceNodes[0].props['data-week-spanning-event']).toBe('true');
     expect(onMovePlan).not.toHaveBeenCalled();
   });
 });
