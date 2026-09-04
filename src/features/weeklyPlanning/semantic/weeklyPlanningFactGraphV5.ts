@@ -159,6 +159,7 @@ export interface CanonicalSemanticReferenceV5 {
     | 'temporal_constraint'
     | 'recurrence'
     | 'relation'
+    | 'availability_declaration'
     | 'proposal';
   publicId: string | null;
   factId: string | null;
