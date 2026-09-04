@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { NaturalLanguageAssistant } from '../../../src/components/NaturalLanguageAssistant';
+import { AiPlanningView } from '../../../src/components/AiPlanningView';
 import { useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import '../../../src/styles.css';
 
@@ -81,23 +81,7 @@ function RealWeeklyApplicationHarness() {
     plannerDataAvailability: REAL_WEEKLY_PLANNER_DATA_AVAILABILITY,
     saveWeeklyApprovedPlan: saveApprovedPlan,
   });
-  const { state, approvalAvailability, pendingDraftBlocks } = application;
-  const unavailableApproval =
-    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
-      ? approvalAvailability
-      : null;
-  const lastMessage = state.messages[state.messages.length - 1];
-  const weeklyPlanningMessages = unavailableApproval
-    ? [
-        ...state.messages,
-        {
-          id: 'weekly-planning-approval-unavailable',
-          role: 'assistant',
-          content: unavailableApproval.message,
-          createdAt: lastMessage?.createdAt ?? '1970-01-01T00:00:00.000Z',
-        },
-      ]
-    : state.messages;
+  const { state } = application;
 
   useEffect(() => {
     window.__realWeeklyState = state;
@@ -107,14 +91,15 @@ function RealWeeklyApplicationHarness() {
     window.__realWeeklyActions = {
       clearConversation: () => application.clearConversation(),
       resetSession: () => application.resetSession(),
+      cancelTurn: () => application.cancelTurn(),
     };
-  }, [application.clearConversation, application.resetSession]);
+  }, [application.cancelTurn, application.clearConversation, application.resetSession]);
 
   if (!open) {
     return (
       <main>
         <button type="button" onClick={() => setOpen(true)}>
-          モーダルを再度開く
+          AI計画を再度開く
         </button>
       </main>
     );
@@ -124,39 +109,19 @@ function RealWeeklyApplicationHarness() {
     <main data-testid="real-weekly-application-harness">
       <button
         type="button"
+        aria-label="テスト用にAI計画を閉じる"
         onClick={() => {
           record('real-close');
           setOpen(false);
         }}
       >
-        閉じる
+        テスト用に閉じる
       </button>
-      <NaturalLanguageAssistant
-        selectedDate="2026-08-13"
+      <AiPlanningView
+        application={application}
         userId={REAL_WEEKLY_USER_ID}
+        selectedDate="2026-08-13"
         plans={[]}
-        materials={[]}
-        subjects={[]}
-        onApplyDraft={async (draft) => record('real-save-plan', draft)}
-        weeklyDraftBlocks={pendingDraftBlocks}
-        weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
-        weeklyPlanningMessages={weeklyPlanningMessages}
-        weeklyPlanningIntakeState={state.intakeState ?? null}
-        weeklyPlanningWeekStartDate={state.weekStartDate}
-        weeklyPlanningRevision={state.revision}
-        weeklyPlanningPendingTurn={state.pendingTurn}
-        weeklyPlanningPendingApproval={state.pendingApproval}
-        onSubmitWeeklyPlanningTurn={application.submitTurn}
-        onCancelWeeklyPlanningTurn={application.cancelTurn}
-        onClearWeeklyPlanningConversation={application.clearConversation}
-        onAppendWeeklyPlanningMessage={application.appendMessage}
-        onResetWeeklyPlanningSession={application.resetSession}
-        onCreateWeeklyDraftBlocks={application.createDraftBlocks}
-        onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
-        onRemoveWeeklyDraftBlock={application.removeDraftBlock}
-        onClearWeeklyDraftBlocks={application.clearDraftBlocks}
-        onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
-        embedded
       />
     </main>
   );
