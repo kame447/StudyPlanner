@@ -176,22 +176,32 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await expect(preview.getByText('数学のワーク', { exact: true })).toBeVisible();
   });
 
-  test('reset clears conversation and preview state and the cleared state stays cleared after reload', async ({ page }) => {
+  test('weekly reset starts a clean active chat while preserving history across reload', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?preview=1`);
-    await createPreview(page, 'リセットする条件');
+    const preview = await createPreview(page, 'リセットする条件');
+    await preview.getByRole('button', { name: '閉じる' }).click();
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
 
-    await page.evaluate(() => window.__realWeeklyActions.resetSession());
+    await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
+    await page.getByRole('button', { name: /週間計画をリセット/ }).click();
+    const confirmation = page.getByRole('dialog', { name: '今週の計画をリセットしますか？' });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole('button', { name: 'リセット' }).click();
 
     await expect(conversation(page).getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(conversation(page).getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
-    await expect(conversation(page).getByText('数学のワーク', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
+    await expect(page.locator('.ai-planning-starters')).toBeVisible();
 
     await page.reload();
 
     await expect(conversation(page).getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
+
+    await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
+    await expect(page.locator('.ai-chat-row')).toHaveCount(2);
+    await expect(page.locator('.ai-chat-delete')).toHaveCount(2);
   });
 
   test('preview promotion and approval cross the real application save boundary once', async ({ page }) => {
