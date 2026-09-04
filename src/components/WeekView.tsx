@@ -27,6 +27,10 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
+import {
+  isScheduleOccurrenceOutsideHourlyGrid,
+  layoutWeekSpanningOccurrences,
+} from '../lib/scheduleOccurrencePresentation';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
 import {
   calculateWeekPlanVelocityTilt,
@@ -40,6 +44,7 @@ import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type { Actual, MonthEvent, Plan, PlanSourceType } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
+import { WeekSpanningEventsLane } from './WeekSpanningEventsLane';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -298,6 +303,11 @@ export function WeekView({
         : { occurrences: [], issues: [] },
     [monthEvents, plans, userId, weekEndDate, weekStartDate],
   );
+  const spanningLayout = layoutWeekSpanningOccurrences(
+    scheduleProjection.occurrences,
+    weekDates,
+  );
+  const showSpanningLane = timelineMode === 'plan' && spanningLayout.items.length > 0;
   const occurrenceById = useMemo(
     () => new Map(scheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
     [scheduleProjection.occurrences],
@@ -320,6 +330,11 @@ export function WeekView({
   );
   const gridStyle = {
     gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
+  } as CSSProperties;
+  const previewGridStyle = {
+    gridTemplateRows: showSpanningLane
+      ? 'auto auto minmax(0, 1fr)'
+      : 'auto minmax(0, 1fr)',
   } as CSSProperties;
   const timelineStyle = { height: '100%' } as CSSProperties;
 
@@ -871,7 +886,10 @@ export function WeekView({
 
         <div className="weekly-draft-preview schedule-week-preview">
           <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
-            <div className="weekly-draft-preview-grid schedule-week-preview-grid">
+            <div
+              className="weekly-draft-preview-grid schedule-week-preview-grid"
+              style={previewGridStyle}
+            >
               <div className="weekly-draft-preview-header" style={gridStyle}>
                 <div className="weekly-draft-preview-corner">時間</div>
                 {weekDates.map((date) => (
@@ -885,6 +903,14 @@ export function WeekView({
                   </button>
                 ))}
               </div>
+
+              {showSpanningLane ? (
+                <WeekSpanningEventsLane
+                  layout={spanningLayout}
+                  plans={plans}
+                  onOpenPlan={onOpenPlan}
+                />
+              ) : null}
 
               <div className="weekly-draft-preview-body schedule-week-preview-body" style={gridStyle}>
                 <div className="weekly-draft-preview-time-axis" style={timelineStyle} aria-hidden="true">
@@ -907,9 +933,16 @@ export function WeekView({
 
                 {weekDates.map((date) => {
                   const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
+                  const timedDayPlans = dayPlans.filter((plan) => {
+                    const occurrence = occurrenceByPlanDate.get(`${plan.id}:${date}`);
+                    return !occurrence || !isScheduleOccurrenceOutsideHourlyGrid(occurrence);
+                  });
                   const dayMonthEventOccurrences = scheduleProjection.occurrences
                     .filter((occurrence) => occurrence.source.kind === 'month-event')
                     .filter((occurrence) => scheduleOccurrenceCoversDate(occurrence, date));
+                  const timedDayMonthEventOccurrences = dayMonthEventOccurrences.filter(
+                    (occurrence) => !isScheduleOccurrenceOutsideHourlyGrid(occurrence),
+                  );
                   const dayPlanKeys = new Set(
                     dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
                   );
@@ -939,7 +972,7 @@ export function WeekView({
                   );
 
                   const planBlocks = buildLanes<WeekPreviewBaseBlock>([
-                    ...dayPlans.map((plan) => ({
+                    ...timedDayPlans.map((plan) => ({
                       id: buildPlanOccurrenceKey(plan.id, plan.date),
                       title: plan.title,
                       subject: plan.subject,
@@ -950,7 +983,7 @@ export function WeekView({
                       plan,
                       occurrence: occurrenceByPlanDate.get(`${plan.id}:${date}`),
                     })),
-                    ...dayMonthEventOccurrences.map((occurrence) => ({
+                    ...timedDayMonthEventOccurrences.map((occurrence) => ({
                       id: occurrence.id,
                       title: occurrence.title,
                       subject: occurrence.subject,
