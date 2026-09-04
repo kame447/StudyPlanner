@@ -48,7 +48,10 @@ export function executeWeeklyPlanningStableV5Preview(params: {
         todayNotBefore: `${params.requestContext.notBeforeDate} ${params.requestContext.notBeforeTime}`,
         allOrNothing: 'any unscheduled work item returns insufficient_capacity with no partial candidates',
       },
-      result: preview,
+      result: {
+        ...preview,
+        unscheduledWorkItems: preview.unscheduledWorkItemIds,
+      },
     },
   });
   return preview;
