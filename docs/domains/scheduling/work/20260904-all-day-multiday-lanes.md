@@ -5,7 +5,7 @@ Owner: Issue #284
 Branch: `fix/issue284-all-day-multiday-lanes`
 PR: #285
 Base: `697b3d1b11c7d533c019fdedcc5daf5ca1caaeba`
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 ## Goal
 
@@ -108,4 +108,15 @@ Focused regressionで最低限固定する。
 - DayView selection map now resolves backing Plans on continuation days
 - focused tests added for classification, week span placement and day all-day separation
 - initial PR run reached TypeScript success, full unit-test success and bundle-budget success before this checkpoint commit superseded that head
-- next: validate the final PR head through CI, Browser Regression, UI Regression Matrix and UI Quality Automation; fix any failure before Ready
+
+2026-09-05 resumed verification:
+
+- exact PR head before resume: `e16d010e136062f5d54b264c9a2504e26275ab19`
+- that head had CI / UI Regression Matrix / UI Quality Automation green, but Browser Regression run `33827192995` failed only in the stationary touch-drag regression: nested week scroll changed from `56` to `78`
+- the failing `week-plan-drag` harness contains only same-day timed plans, so the new all-day / multi-day lane is not rendered in that scenario
+- #284 does not change touch-drag scrolling behavior; the branch was created before PR #283 merged
+- PR #283 subsequently added `touch-action: pan-y` to week plan buttons, which prevents the native horizontal pan that produced the observed scroll movement
+- current main `7d69f850d2343e08549c67b92f1bf19e3a2215ee` contains #283, and Browser Regression run `33894381335` is terminal green on that exact main
+- failure classification: stale-base integration gap, not evidence of a #284 spanning-event production defect and not a transient infrastructure failure
+- this checkpoint commit intentionally triggers fresh PR verification so GitHub tests the #284 diff against the current main integration state
+- next: require all PR gates terminal green on the fresh head, exact-diff audit, Ready transition, squash merge, then post-merge main verification
