@@ -287,6 +287,7 @@ export interface SemanticReferenceV5 {
     | 'temporal_constraint'
     | 'recurrence'
     | 'relation'
+    | 'availability_declaration'
     | 'proposal';
   publicId: string | null;
   localId: string | null;
