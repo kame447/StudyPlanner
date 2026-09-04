@@ -9,7 +9,13 @@ import {
   normalizeStudyRecordsForDisplay,
   sumStudyRecordMinutes,
 } from './studyRecords';
-import type { Actual, MonthEvent, Plan } from '../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 
 export interface MonthGridCell {
   date: string;
@@ -134,13 +140,39 @@ function projectOccurrenceAsMonthEvent(params: {
     };
   }
 
+  if (occurrence.source.backingKind === 'timetable-template') {
+    return {
+      id: occurrence.id,
+      userId: occurrence.ownerId,
+      date: occurrence.start.date,
+      endDate: end.endDate,
+      title: occurrence.title,
+      startTime: occurrence.start.time,
+      endTime: end.endTime,
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      url: '',
+      memo: '',
+      checklist: [],
+      locationTags: [],
+      createdAt: '',
+      updatedAt: '',
+    };
+  }
+
   return null;
 }
 
-function inferSingleOwnerId(plans: readonly Plan[], monthEvents: readonly MonthEvent[]): string {
+function inferSingleOwnerId(
+  plans: readonly Plan[],
+  monthEvents: readonly MonthEvent[],
+  scheduleTemplates: readonly ScheduleTemplate[],
+): string {
   const ownerIds = new Set([
     ...plans.map((plan) => plan.userId),
     ...monthEvents.map((event) => event.userId),
+    ...scheduleTemplates.map((template) => template.userId),
   ]);
 
   return ownerIds.size === 1 ? [...ownerIds][0] ?? '' : '';
@@ -152,17 +184,25 @@ export function buildMonthPanelProjection({
   plans,
   actuals,
   monthEvents,
+  scheduleTemplates = [],
+  timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
 }: {
   monthDate: string;
   userId?: string;
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
 }): MonthPanelProjection {
   const { weeks, cells } = buildMonthGrid(monthDate);
   const firstDate = cells[0]?.date;
   const lastDate = cells[cells.length - 1]?.date;
-  const ownerId = userId ?? inferSingleOwnerId(plans, monthEvents);
+  const ownerId = userId ?? inferSingleOwnerId(plans, monthEvents, scheduleTemplates);
   const scheduleProjection =
     firstDate && lastDate && ownerId
       ? createScheduleOccurrenceProjection({
@@ -171,6 +211,10 @@ export function buildMonthPanelProjection({
           endDate: lastDate,
           plans,
           monthEvents,
+          scheduleTemplates,
+          timetableTermId,
+          timetableTerm,
+          timetableTerms,
         })
       : { occurrences: [], issues: [] };
   const studyPlanMinutesByDate = new Map<string, number>();

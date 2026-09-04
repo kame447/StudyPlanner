@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildMonthGrid, buildMonthPanelProjection } from './monthViewProjection';
-import type { Actual, MonthEvent, Plan } from '../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 
 const plan: Plan = {
   id: 'plan-1',
@@ -49,6 +55,41 @@ function createMonthEvent(id: string, startTime: string): MonthEvent {
     memo: '',
     checklist: [],
     locationTags: [],
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+function createTimetableTerm(): TimetableTerm {
+  return {
+    id: 'term-1',
+    userId: 'user-1',
+    year: 2026,
+    kind: 'custom',
+    label: '前期',
+    startDate: '2026-08-01',
+    endDate: '2026-08-31',
+    isActive: true,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+function createScheduleTemplate(): ScheduleTemplate {
+  return {
+    id: 'class-1',
+    userId: 'user-1',
+    title: '情報学演習',
+    subject: '情報学',
+    type: 'school-event',
+    weekday: 'mon',
+    startTime: '13:00',
+    endTime: '14:30',
+    termId: 'term-1',
+    periodNumber: 3,
+    classroom: '情報学部棟',
+    memo: '',
+    active: true,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
   };
@@ -119,6 +160,32 @@ describe('month view projection', () => {
         title: '美容院',
         startTime: '18:00',
         endTime: '19:00',
+      },
+    ]);
+  });
+
+  it('projects timetable templates as read-only calendar events without counting them as study targets', () => {
+    const term = createTimetableTerm();
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-08-01',
+      userId: 'user-1',
+      plans: [],
+      actuals: [],
+      monthEvents: [],
+      scheduleTemplates: [createScheduleTemplate()],
+      timetableTermId: term.id,
+      timetableTerm: term,
+      timetableTerms: [term],
+    });
+    const mondayCell = projection.cells.find((cell) => cell.date === '2026-08-17');
+
+    expect(mondayCell?.targetMinutes).toBe(0);
+    expect(mondayCell?.monthEvents).toMatchObject([
+      {
+        id: 'timetable:class-1:2026-08-17',
+        title: '情報学演習',
+        startTime: '13:00',
+        endTime: '14:30',
       },
     ]);
   });
