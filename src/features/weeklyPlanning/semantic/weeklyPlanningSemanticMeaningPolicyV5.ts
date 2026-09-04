@@ -76,7 +76,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   },
 ] as const satisfies readonly {
   id: string;
-  retentionBasis: WeeklyPlanningSemanticRuleRetentionBasis_V5;
+  retentionBasis: WeeklyPlanningSemanticRuleRetentionBasisV5;
   retentionReason: string;
   instruction: string;
 }[];
