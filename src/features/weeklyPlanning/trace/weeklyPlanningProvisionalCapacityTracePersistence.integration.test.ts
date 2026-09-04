@@ -130,7 +130,7 @@ afterEach(() => {
 });
 
 describe('provisional capacity preview trace persistence gate', () => {
-  it('survives outbox retry and Worker preparation with retained candidates and omitted low-priority work', async () => {
+  it('survives outbox retry and Worker preparation while minimizing transient scheduler identifiers', async () => {
     const harness = repositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
@@ -156,12 +156,17 @@ describe('provisional capacity preview trace persistence gate', () => {
     const serialized = JSON.stringify(replayedEntry);
     expect(replayedEntry.requestId).toBe(first.requestId);
     expect(serialized).toContain('insufficient_capacity');
-    expect(serialized).toContain('item-english-daily');
+    expect(serialized).toContain('"unscheduledCount":1');
+    expect(serialized).toContain('英語の一部を外した仮予定');
     expect(serialized).toContain('task-math');
     expect(serialized).toContain('keep-provisional-capacity-sentinel');
-    expect(serialized).toContain('ordinary planning does not expose retained partial candidates');
-    expect(serialized).toContain('[trace truncated]');
+    expect(serialized).toContain('"traceTruncated":true');
+    expect(serialized).toContain('-TAIL');
     expect(serialized).not.toContain(oversizedTitle);
+    // Durable diagnostics intentionally omit transient work-item IDs and verbose scheduler criteria.
+    // The persisted alternative is the bounded count, representative candidate, and user-visible omission label.
+    expect(serialized).not.toContain('item-english-daily');
+    expect(serialized).not.toContain('ordinary planning does not expose retained partial candidates');
     expect(measureWeeklyPlanningTraceJsonBytes(replayedEntry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
@@ -176,9 +181,11 @@ describe('provisional capacity preview trace persistence gate', () => {
     }, subject, canonicalIds, '2026-09-05T00:00:00.000Z');
     expect(prepared.entries).toHaveLength(1);
     const preparedSerialized = JSON.stringify(prepared.entries[0]);
-    expect(preparedSerialized).toContain('item-english-daily');
+    expect(preparedSerialized).toContain('"unscheduledCount":1');
+    expect(preparedSerialized).toContain('英語の一部を外した仮予定');
     expect(preparedSerialized).toContain('keep-provisional-capacity-sentinel');
-    expect(preparedSerialized).toContain('[trace truncated]');
+    expect(preparedSerialized).toContain('"traceTruncated":true');
+    expect(preparedSerialized).not.toContain('item-english-daily');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
