@@ -10,29 +10,21 @@ async function events(page, type) {
   ), type);
 }
 
-async function enterWeeklyMode(page) {
-  const input = page.getByLabel('週間計画にしたいこと');
-  if (await input.isVisible().catch(() => false)) return input;
-
-  const aiInput = page.getByRole('button', { name: 'AI入力', exact: true });
-  if (await aiInput.count() && await aiInput.isVisible()) await aiInput.click();
-  const weeklyMode = page.getByRole('button', { name: '週間計画', exact: true });
-  if (await weeklyMode.count() && await weeklyMode.isVisible()) await weeklyMode.click();
-
+async function composer(page) {
+  const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
   return input;
 }
 
-test('two Ctrl+Enter events in the same browser task start only one real controlled turn', async ({ page }) => {
+test('two Enter events in the same browser task start only one real controlled turn', async ({ page }) => {
   await page.goto(REAL_WEEKLY_URL);
-  const input = await enterWeeklyMode(page);
+  const input = await composer(page);
   await input.fill('二重送信しない条件');
 
   await input.evaluate((element) => {
     const dispatch = () => element.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'Enter',
       code: 'Enter',
-      ctrlKey: true,
       bubbles: true,
       cancelable: true,
     }));
