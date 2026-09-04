@@ -331,7 +331,7 @@ const constraintSourceRequestSchema = objectSchema(
   ['localId', 'kind', 'selector', 'requestedAction', 'sourceText'],
   {
     localId: stringSchema,
-    kind: enumSchema(SEMANTIC_CONSTRAINT_SOURCE_KINDS_V1),
+    kind: enumSchema(SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5),
     selector: { type: 'string', enum: ['active'] },
     requestedAction: enumSchema(['use', 'stop_using']),
     ...sourceTextProperty,
