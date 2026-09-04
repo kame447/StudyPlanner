@@ -4,16 +4,25 @@ on:
   push:
     branches:
       - agent/weekly-conversation-quality-luna-audit
+      - fix/issue136-semantic-regressions
     paths:
       - '.github/weekly-planning-resumable-turn-command.json'
       - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-resumable-turn-command.json'
+      - '.github/workflows/weekly-planning-resumable-conversation-command.yml'
+      - 'src/features/weeklyPlanning/**'
+      - 'src/features/userPlanningContext/**'
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: weekly-planning-resumable-command
+  group: weekly-planning-resumable-command-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,12 +51,13 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$COMMAND_FILE"
-          echo "USER_TEXT=$(jq -r '.user_text' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "ACTION=$(jq -r '.action // "submit_turn"' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "USER_TEXT=$(jq -r '.user_text // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
           echo "PREVIOUS_RUN_ID=$(jq -r '.previous_run_id // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
-          echo "CONVERSATION_ID=$(jq -r '.conversation_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
-          echo "OWNER_ID=$(jq -r '.owner_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
-          echo "WEEK_START_DATE=$(jq -r '.week_start_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
-          echo "SELECTED_DATE=$(jq -r '.selected_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "CONVERSATION_ID=$(jq -r '.conversation_id // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "OWNER_ID=$(jq -r '.owner_id // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "WEEK_START_DATE=$(jq -r '.week_start_date // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "SELECTED_DATE=$(jq -r '.selected_date // ""' "$COMMAND_FILE")" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -64,6 +74,7 @@ jobs:
           src/features/weeklyPlanning/semantic/weeklyPlanningDateOnlyTemporalBoundValidationV5.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningRecurrenceCalendarV5.test.ts
 
       - name: Run complete unit and integration suite
         run: npm run test:run
@@ -81,21 +92,37 @@ jobs:
           test -f previous-artifact/checkpoint.json
 
       - name: Validate command
+        shell: bash
         run: |
-          test -n "$USER_TEXT"
+          set -euo pipefail
+          case "$ACTION" in
+            submit_turn)
+              test -n "$USER_TEXT"
+              ;;
+            promote_preview|approve_drafts)
+              test -n "$PREVIOUS_RUN_ID"
+              ;;
+            *)
+              echo "Unsupported action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
           test -n "$CONVERSATION_ID"
           test -n "$OWNER_ID"
           echo "$WEEK_START_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
           echo "$SELECTED_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
 
       - name: Verify API credential
+        if: ${{ env.ACTION == 'submit_turn' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: test -n "$OPENAI_API_KEY"
 
-      - name: Observe exactly one human-supplied real API turn
+      - name: Advance exactly one completion-based action
         env:
-          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_EVALUATION_ACTION: '1'
+          WEEKLY_PLANNING_RESUMABLE_ACTION: ${{ env.ACTION }}
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: ${{ env.ACTION == 'submit_turn' && '1' || '0' }}
           WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ env.USER_TEXT }}
           WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ${{ env.PREVIOUS_RUN_ID != '' && 'previous-artifact/checkpoint.json' || '' }}
           WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation

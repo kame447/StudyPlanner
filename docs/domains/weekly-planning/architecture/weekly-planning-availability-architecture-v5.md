@@ -1,7 +1,7 @@
 # weeklyPlanning availability / commitment architecture v5
 
 Status: canonical subordinate contract
-Updated: 2026-08-27
+Updated: 2026-09-01
 
 Parent: [weekly-planning-dialogue-architecture-v5.md](weekly-planning-dialogue-architecture-v5.md)
 Semantic schema: [weekly-planning-semantic-schema-v5.md](weekly-planning-semantic-schema-v5.md)
@@ -11,7 +11,7 @@ Semantic ownership: [weekly-planning-semantic-ownership-boundary-v5.md](weekly-p
 
 ## Responsibility
 
-Availability is a deterministic scheduling boundary after user meaning has been represented. It answers where candidate work may safely fit around occupied/unavailable time; it is not the owner of every temporal placement constraint.
+Availability is a deterministic scheduling boundary after user meaning has been represented. It answers where candidate work may safely fit around occupied/unavailable time; it is not the owner of every temporal placement constraint or of daily study-allocation limits.
 
 Current scheduler input is conceptually compiled through separate typed paths:
 
@@ -21,33 +21,50 @@ accepted Fact Graph
 ├─ task/component temporal facts
 │  → resolved temporal constraints
 │  → hard date bounds / preferred placements
+├─ daily capacity facts
+│  → resolve weekday/date scope
+│  → per-date hard allocation ceilings
 └─ availability / commitment inputs
-   ├─ user-declared plan-wide availability
+   ├─ user-declared plan-wide clock availability
    ├─ accepted life / buffer constraints
    └─ authoritative occupied sources
       ├─ existing StudyPlanner plans
       └─ timetable
    → resolved availability
 
-resolved work + resolved temporal placement constraints + resolved availability
+resolved work + temporal placement + daily capacity + resolved availability
 → scheduler
 ```
 
-Availability answers where work may safely fit. Scheduler-facing temporal compilation answers which accepted date bounds/preferences apply to a work target and materializes those already interpreted meanings into absolute placement inputs. Neither layer decides what the user's raw language means, and neither may manufacture missing free time.
+Availability answers where work may safely fit. Daily capacity answers how many minutes of newly generated weekly-planning work may be allocated on a scoped date. Scheduler-facing temporal compilation answers which accepted date bounds/preferences apply to a work target. None of these layers decides what the user's raw language means, and none may manufacture missing free time.
 
 Do not route task/component deadline, earliest-start, latest-end or preferred-window meaning back through a second raw Fact Graph interpretation inside availability or downstream placement. Their current ownership is defined by [Semantic Ownership](weekly-planning-semantic-ownership-boundary-v5.md) and [Scheduling Policy](../policies/scheduling.md).
 
 ## Hard availability invariants
 
 - workload is work demand, not availability.
-- task temporal constraints are separate from plan-wide availability and from occupied-time resolution.
-- user language such as unavailable/preferred periods is interpreted semantically by AI; calendar arithmetic is deterministic.
+- task temporal constraints are separate from plan-wide availability, daily capacity, and occupied-time resolution.
+- user language such as unavailable/preferred periods or daily total capacity is interpreted semantically by AI; calendar arithmetic is deterministic.
+- a daily total capacity is not an all-day clock window and must never be widened into one.
 - existing plan IDs, timetable records, owner identity and concrete intervals are authoritative application data; AI does not invent or reinterpret them.
 - scheduler never creates free time by ignoring a hard occupied interval.
 - accepted unavailable interval, sleep/life constraint, travel/buffer or equivalent hard boundary must actually reduce or bound candidate availability across its represented date/recurrence scope.
 - a required authoritative source that failed to load is not equivalent to an empty source.
 - a known-but-unresolved required constraint is not interpreted as free capacity merely because its final interval is unavailable.
-- preference, annotation, personalization score or renderer wording cannot widen hard availability.
+- preference, annotation, personalization score or renderer wording cannot widen hard availability or daily capacity.
+
+## Daily study capacity
+
+A statement such as `土日は1日8時間勉強できる` describes a total daily allocation ceiling, not a start/end clock interval.
+
+- semantic interpretation represents the asserted total and its date/weekday/recurrence scope as typed state
+- deterministic calendar resolution expands that scope into per-date limits
+- `8時間` becomes 480 minutes; no start/end time is invented
+- if multiple hard capacity facts apply to one date, the stricter limit wins
+- scheduler rejects a candidate date when adding the new session would make newly generated weekly-planning work exceed that date's limit
+- if no eligible date can satisfy the hard limit, the scheduler fails closed instead of weakening the capacity
+
+Existing StudyPlanner plans, timetable entries, cram-school commitments and other fixed events remain occupied-time evidence. They reduce the clock slots where new work may be placed, but they are not silently reclassified as part of the user's asserted daily-study total. If product requirements later need total capacity to include particular existing-plan categories, that must be represented explicitly rather than inferred downstream.
 
 ## Request-time lower bound
 
@@ -75,15 +92,16 @@ Historical parser-specific representations of this idea are not current semantic
 
 ## Recurrence and scope
 
-A recurring or date-less accepted life/availability constraint must be expanded over the planning dates defined by its typed scope. A dated exception applies only where represented.
+A recurring or date-less accepted life/availability/capacity constraint must be expanded over the planning dates defined by its typed scope. A dated exception applies only where represented.
 
-Task/component temporal-placement recurrence and applicability are compiled by the scheduler-facing temporal-constraint boundary rather than being independently re-derived by availability. Shared recurrence utilities may be reused, but the same semantic decision must not gain two owners.
+Task/component temporal-placement recurrence and applicability are compiled by the scheduler-facing temporal-constraint boundary rather than being independently re-derived by availability. Shared recurrence utilities may be reused for calendar expansion, but the same semantic decision must not gain two owners.
 
 Knowing one dimension does not silently resolve another. For example:
 
 - known sleep does not imply known meal/bath/travel state
 - known timetable does not imply all other fixed plans have been loaded
 - one available interval does not cancel a separate hard busy interval
+- known daily capacity does not imply any particular clock interval is free
 
 Missing/unknown state should remain dimension-specific.
 
@@ -98,7 +116,7 @@ Examples:
 - `before_sleep` preference does not override sleep itself
 - a life annotation does not increase free minutes
 
-Scheduler-facing preferred placements are applied only within safe candidate space; they do not widen hard availability.
+Scheduler-facing preferred placements are applied only within safe candidate space; they do not widen hard availability or daily capacity.
 
 ## Source integrity
 

@@ -17,7 +17,12 @@ export type SchedulerAvailabilityDeclarationFactV5 = AvailabilityDeclarationFact
 export function isSchedulerAvailabilityDeclarationV5(
   declaration: AvailabilityDeclarationFactV5,
 ): declaration is SchedulerAvailabilityDeclarationFactV5 {
-  if (declaration.kind === 'no_additional_constraint') return false;
+  if (
+    declaration.kind !== 'available'
+    && declaration.kind !== 'unavailable'
+    && declaration.kind !== 'preferred'
+    && declaration.kind !== 'avoided'
+  ) return false;
 
   if (
     declaration.kind === 'available'
