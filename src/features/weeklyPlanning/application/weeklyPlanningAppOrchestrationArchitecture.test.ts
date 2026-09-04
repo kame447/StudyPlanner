@@ -39,6 +39,7 @@ describe('weekly planning application boundary', () => {
     const aiPlanningLegacy = source('../../../components/AiPlanningViewLegacy.tsx');
 
     expect(aiPlanningView).toContain('WeeklyPlanningApplication');
+    expect(aiPlanningView).toContain('application.cancelTurn');
     expect(aiPlanningView).toContain('application.approveDraftBlocks');
     expect(aiPlanningView).toContain('application.removePreviewCandidate');
     expect(aiPlanningLegacy).toContain('application.submitTurn');
