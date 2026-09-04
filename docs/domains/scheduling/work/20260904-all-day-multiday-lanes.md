@@ -2,35 +2,23 @@
 
 Status: active
 Owner: Issue #284
-Branch: `fix/issue284-all-day-multiday-lanes`
-PR: #285
-Base: `697b3d1b11c7d533c019fdedcc5daf5ca1caaeba`
+Branch: `fix/issue284-week-layout-readability`
+PR: pending
+Base: `897282a892f4ef720b5f3d56cadf48dce0c6b366`
 Updated: 2026-09-05
 
 ## Goal
 
-週表示・日表示で、終日または日付境界を跨ぐ予定だけを時間グリッド上部の専用領域へ分離する。
+週表示・日表示で終日 / 日跨ぎ予定を時間グリッド上部へ分離しつつ、通常の時間指定予定の幅と、上部レーンの可読性を壊さない。
 
-通常の時間指定予定は現在の時間グリッド表示を維持する。
+PR #285 で分離自体は実装済みだが、実機相当の週表示で次の未達が確認されたため #284 を再オープンした。
 
-## Current behavior
+1. 同一日の通常予定が、時間的に重複していない場合でも不必要に横幅を分割されることがある。
+2. 終日 / 日跨ぎカードの文字が通常予定より小さく、利用可能幅を使い切る前にタイトルが省略される。
 
-`ScheduleOccurrence` 自体は app-wide の正しい time semantics を持っているが、presentation layer が長い occurrence を通常blockと同じ時間軸へ投影している。
+## Current product contract
 
-WeekView:
-
-- `scheduleOccurrenceCoversDate` で対象日を抽出する
-- 日を跨ぐ occurrence は `scheduleOccurrenceTimesForDate` で当日の `00:00` / `24:00` へ切り出す
-- その結果を通常の plan block と同じ `buildLanes` / `buildBlockStyle` へ渡す
-
-DayView / DayTimeline:
-
-- MonthEvent occurrence を選択日に `00:00` / `24:00` へ切り出す
-- `DayTimeline` は plan / month-event を区別せず時間軸blockとして描画する
-
-このため終日・複数日予定が巨大な縦長面となり、通常予定の視認性を落とす。
-
-## Decision
+### Spanning occurrence classification
 
 presentation classification は canonical `ScheduleOccurrence.start/end` だけから決める。
 
@@ -38,85 +26,107 @@ presentation classification は canonical `ScheduleOccurrence.start/end` だけ�
 
 この条件には次が含まれる。
 
-- 00:00〜24:00 が翌日00:00へ正規化された終日予定
+- 00:00〜翌日00:00として正規化された終日予定
 - 23:00〜翌01:00などの日跨ぎ予定
 - 複数日 MonthEvent
 
-同一日内で完結する予定は現在の hourly layout をそのまま使う。
+同一日内で完結する通常予定は hourly grid に残す。
 
-## Week presentation
+### Week timed-event width
 
-日付headerと00:00時間軸の間に dedicated span lane を置く。
+- 同一日の timed event は、実際に時間区間が重なる場合だけ横幅を分割する。
+- `end === other.start` の境界接触は重複ではない。
+- 非重複予定は、その日の通常イベント領域の幅を利用する。
+- spanning lane の存在や同日の別時刻予定によって lane count / width を引きずらない。
 
-- 左端に `終日` label
-- occurrence の start/end を week boundary へ clip して対象曜日のcolumn spanを計算する
-- 同時に複数の span が重なる場合だけ lane rowを追加する
-- blockは既存のtone classを再利用する
-- click / long-press delete の `data-schedule-occurrence-id` を維持する
-- hourly plan blocksから対象 occurrence を除外する
+### Week spanning lane readability
 
-通常 plan / actual / weekly draft の hourly layoutは変更しない。
+- 日付headerと00:00時間軸の間に専用レーンを置く。
+- 左端に `終日` labelを置く。
+- 複数日 occurrence は week boundary へ clip して対象曜日をspanする。
+- 同時に複数のspanが重なる場合だけ row を追加する。
+- 通常予定セルと同等の文字サイズ・文字密度を使う。
+- カード内の利用可能幅をタイトル表示へ最大限使い、本当に収まらない場合だけ ellipsis を使う。
+- 複数日カードはspan全体の幅をタイトル表示へ利用する。
+- `data-schedule-occurrence-id` を維持して既存のclick / long-press delete境界を再利用する。
 
-## Day presentation
+### Day spanning strip
 
-`DayTimeline` のhourly grid直前に compact dedicated stripを置く。
-
-- `終日` labelと該当予定chipを表示する
-- clickで既存detail selectionへ遷移する
-- `data-schedule-occurrence-id` を維持して長押し削除を利用可能にする
-- hourly plan entriesから対象 occurrenceを除外する
-- Actualは現在どおり hourly gridに残す
+- hourly grid直前に compact stripを置く。
+- clickで既存detail selectionへ遷移する。
+- `data-schedule-occurrence-id` を維持する。
+- spanning occurrenceをhourly plan entriesから除外する。
+- Actualはhourly gridに残す。
 
 ## Non-goals
 
 - ScheduleEvent / ScheduleOccurrence persistence変更
 - recurrence semantics変更
 - MonthView変更
-- 通常timed blockの見た目変更
-- Actualの表示方式変更
+- Actual表示方式変更
+- 週表示全体のデザイン刷新
 
-## Verification
+## Verification contract
 
 Focused regressionで最低限固定する。
 
-- week: 00:00-24:00 occurrence がhourly gridに存在せず上部laneに存在する
-- week: multi-day occurrence が対象columnをspanする
-- week: normal timed occurrence はhourly gridに残る
-- day: all-day / cross-date occurrence がtop stripに存在しhourly blockから除外される
+- week: all-day / cross-date occurrence は hourly grid ではなく上部laneに存在する
+- week: multi-day occurrence は対象columnをspanする
+- week: non-overlapping timed events は full normal width を使う
+- week: overlapping timed eventsだけがwidthを分割する
+- week: touching intervals (`end === next.start`) はwidthを分割しない
+- week: spanning cardの文字サイズが通常timed cardと同等の可読性を持つ
+- week: spanning cardが利用可能幅を使う前に不要なellipsisを発生させない
+- day: all-day / cross-date occurrence はtop stripに存在しhourly blockから除外される
 - day: normal timed occurrence / actual はhourly gridに残る
 - long-press delete target attributeをtop blockでも維持する
 - mobile viewportでoverflowしない
 
-その後 TypeScript / full tests / production build / Browser Regression / UI regressionをterminal greenまで追う。
+その後 TypeScript / full tests / production build / Browser Regression / UI Regression Matrix / UI Quality Automation を exact HEAD で terminal greenまで追う。
 
 ## Checkpoint
 
-2026-09-04 initial:
+### 2026-09-04 initial implementation
 
 - Issue #284 created
-- branch `fix/issue284-all-day-multiday-lanes` created from exact main `697b3d1b11c7d533c019fdedcc5daf5ca1caaeba`
-- same-task active Issue / PR / branchなし
+- branch `fix/issue284-all-day-multiday-lanes`
+- PR #285
+- canonical `ScheduleOccurrence.start/end` based classification helper追加
+- week: spanning eventをcompact date-spanning laneへ分離
+- day: spanning eventをcompact top stripへ分離
+- focused classification / week / day regression追加
 
-2026-09-04 implementation:
+### 2026-09-05 first merge
 
-- PR #285 opened as Draft
-- canonical `ScheduleOccurrence.start/end` based classification helper added
-- week: spanning events are removed from hourly blocks and rendered in a compact date-spanning lane under the date header
-- day: spanning events are removed from planned hourly blocks and rendered in a compact top strip
-- normal timed plans, weekly draft blocks and Actual hourly layout remain unchanged
-- top cards preserve `data-schedule-occurrence-id` for the existing long-press action boundary
-- DayView selection map now resolves backing Plans on continuation days
-- focused tests added for classification, week span placement and day all-day separation
-- initial PR run reached TypeScript success, full unit-test success and bundle-budget success before this checkpoint commit superseded that head
+- PR #285 squash merged to main as `897282a892f4ef720b5f3d56cadf48dce0c6b366`
+- Issue #284は一度completedとしてclosed
+- source treeとしてはPR検証treeとsquash merge treeが一致
 
-2026-09-05 resumed verification:
+### 2026-09-05 reopen
 
-- exact PR head before resume: `e16d010e136062f5d54b264c9a2504e26275ab19`
-- that head had CI / UI Regression Matrix / UI Quality Automation green, but Browser Regression run `33827192995` failed only in the stationary touch-drag regression: nested week scroll changed from `56` to `78`
-- the failing `week-plan-drag` harness contains only same-day timed plans, so the new all-day / multi-day lane is not rendered in that scenario
-- #284 does not change touch-drag scrolling behavior; the branch was created before PR #283 merged
-- PR #283 subsequently added `touch-action: pan-y` to week plan buttons, which prevents the native horizontal pan that produced the observed scroll movement
-- current main `7d69f850d2343e08549c67b92f1bf19e3a2215ee` contains #283, and Browser Regression run `33894381335` is terminal green on that exact main
-- failure classification: stale-base integration gap, not evidence of a #284 spanning-event production defect and not a transient infrastructure failure
-- this checkpoint commit intentionally triggers fresh PR verification so GitHub tests the #284 diff against the current main integration state
-- next: require all PR gates terminal green on the fresh head, exact-diff audit, Ready transition, squash merge, then post-merge main verification
+- 実機相当スクリーンショットで以下を確認
+  - 8/24の通常timed eventが非重複でも部分幅になっている
+  - 上部laneのタイトルが通常セルより小さく、早すぎるellipsisが発生している
+- Issue #284をreopen
+- same-task active Issue / PRなしを再確認
+- old branch `fix/issue284-all-day-multiday-lanes` は squash merge 後に main と divergedしており、新しいreview diffのheadとしては使わない
+- new active branch `fix/issue284-week-layout-readability` を exact main `897282a892f4ef720b5f3d56cadf48dce0c6b366` から作成
+- old branchはhistorical merged branch。明示許可なしでは削除しない
+
+### Competing hypotheses before code edit
+
+Timed width:
+
+1. overlap lane builderが日全体の最大lane数を各イベントへ誤って適用している。
+2. overlap判定が境界接触や別時刻イベントを重複として扱っている。
+3. CSS / block style側に固定width・max-widthがあり、lane計算とは無関係に狭くなっている。
+
+Spanning text:
+
+1. spanning card専用CSSのfont-sizeが通常timed cardより小さい。
+2. grid/span計算は正しいが、padding / gap / max-widthがタイトル領域を過剰に削っている。
+3. DOM側で固定の短縮文字列を生成しており、CSS ellipsis以前に文字が切られている。
+
+まずproduction codeとfocused testを照合し、各仮説を反証してから最小修正する。
+
+Next action: PRをこのactive work recordと結び付けた後、WeekViewのlane/width計算とspanning laneのCSS/DOMを調査し、失敗するfocused regressionを先に固定する。
