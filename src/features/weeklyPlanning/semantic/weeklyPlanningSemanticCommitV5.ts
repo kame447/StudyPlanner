@@ -1,6 +1,6 @@
 import {
-  applyWeeklyPlanningCanonicalCorrectionsV5,
-} from './weeklyPlanningCanonicalCorrectionApplicationV5';
+  applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
+} from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
 import {
   projectWeeklyPlanningBoundedProgressV5,
 } from './weeklyPlanningBoundedProgressProjectionV5';

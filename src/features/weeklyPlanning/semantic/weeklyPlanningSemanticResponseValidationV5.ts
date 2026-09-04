@@ -30,8 +30,8 @@ import {
   canonicalizeWeeklyPlanningSemanticRepresentationV5,
 } from './weeklyPlanningSemanticRepresentationCanonicalizationV5';
 import {
-  parseWeeklyPlanningSemanticDocumentV5,
-} from './weeklyPlanningSemanticValidatorV5';
+  parseWeeklyPlanningSemanticDocumentWithAvailabilityCorrectionsV5 as parseWeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningAvailabilityCorrectionCompatibilityV5';
 import {
   validateWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
