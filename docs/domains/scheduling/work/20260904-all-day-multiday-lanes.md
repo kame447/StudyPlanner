@@ -3,6 +3,7 @@
 Status: active
 Owner: Issue #284
 Branch: `fix/issue284-all-day-multiday-lanes`
+PR: #285
 Base: `697b3d1b11c7d533c019fdedcc5daf5ca1caaeba`
 Updated: 2026-09-04
 
@@ -95,5 +96,16 @@ Focused regressionで最低限固定する。
 - Issue #284 created
 - branch `fix/issue284-all-day-multiday-lanes` created from exact main `697b3d1b11c7d533c019fdedcc5daf5ca1caaeba`
 - same-task active Issue / PR / branchなし
-- implementation not started yet
-- next: extract display classification helper and update WeekView / DayTimeline with focused tests
+
+2026-09-04 implementation:
+
+- PR #285 opened as Draft
+- canonical `ScheduleOccurrence.start/end` based classification helper added
+- week: spanning events are removed from hourly blocks and rendered in a compact date-spanning lane under the date header
+- day: spanning events are removed from planned hourly blocks and rendered in a compact top strip
+- normal timed plans, weekly draft blocks and Actual hourly layout remain unchanged
+- top cards preserve `data-schedule-occurrence-id` for the existing long-press action boundary
+- DayView selection map now resolves backing Plans on continuation days
+- focused tests added for classification, week span placement and day all-day separation
+- initial PR run reached TypeScript success, full unit-test success and bundle-budget success before this checkpoint commit superseded that head
+- next: validate the final PR head through CI, Browser Regression, UI Regression Matrix and UI Quality Automation; fix any failure before Ready
