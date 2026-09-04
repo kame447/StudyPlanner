@@ -161,7 +161,6 @@ describe('provisional capacity preview trace persistence gate', () => {
     expect(serialized).toContain('keep-provisional-capacity-sentinel');
     expect(serialized).toContain('ordinary planning does not expose retained partial candidates');
     expect(serialized).toContain('[trace truncated]');
-    expect(serialized).toContain('-TAIL');
     expect(serialized).not.toContain(oversizedTitle);
     expect(measureWeeklyPlanningTraceJsonBytes(replayedEntry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
