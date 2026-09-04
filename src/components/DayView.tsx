@@ -224,10 +224,18 @@ export function DayView({
       ),
     [dayMonthEventPlans, dayPlans],
   );
-  const dayPlanMap = useMemo(
-    () => new Map(dayPlans.map((plan) => [plan.id, plan])),
-    [dayPlans],
-  );
+  const dayPlanMap = useMemo(() => {
+    const map = new Map(dayPlans.map((plan) => [plan.id, plan]));
+    const visibleBackingPlanIds = new Set(
+      dayScheduleProjection.occurrences
+        .filter((occurrence) => occurrence.source.backingKind === 'plan')
+        .map((occurrence) => occurrence.source.backingId),
+    );
+    plans.forEach((plan) => {
+      if (visibleBackingPlanIds.has(plan.id)) map.set(plan.id, plan);
+    });
+    return map;
+  }, [dayPlans, dayScheduleProjection.occurrences, plans]);
   const dayMonthEventPlanMap = useMemo(
     () => new Map(dayMonthEventPlans.map((plan) => [plan.id, plan])),
     [dayMonthEventPlans],
