@@ -26,13 +26,19 @@ export function DragUndoRedoControls({
   onUndo,
   onRedo,
 }: DragUndoRedoControlsProps) {
-  if (!visible || typeof document === 'undefined') {
+  if (typeof document === 'undefined') {
     return null;
   }
 
   return createPortal(
     <div
-      className={`drag-undo-redo-controls drag-undo-redo-controls--${placement}`}
+      className={[
+        'drag-undo-redo-controls',
+        `drag-undo-redo-controls--${placement}`,
+        visible ? '' : 'drag-undo-redo-controls--history-hidden',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role="group"
       aria-label={ariaLabel}
     >
@@ -45,9 +51,12 @@ export function DragUndoRedoControls({
       >
         <Undo2 size={20} strokeWidth={2.2} aria-hidden="true" />
       </button>
-      {centerAction ? (
-        <span style={{ display: 'contents', color: 'var(--danger)' }}>{centerAction}</span>
-      ) : null}
+      <span
+        className="drag-undo-redo-center-slot"
+        data-drag-undo-redo-center-slot="true"
+      >
+        {centerAction}
+      </span>
       <button
         type="button"
         aria-label="変更をやり直す"

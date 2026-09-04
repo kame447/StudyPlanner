@@ -17,6 +17,23 @@
   transform: translateX(-50%);
 }
 
+.drag-undo-redo-controls--history-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.drag-undo-redo-controls--history-hidden:has(.drag-undo-redo-center-slot > *) {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.drag-undo-redo-center-slot {
+  display: contents;
+  color: var(--danger);
+}
+
 .drag-undo-redo-controls--preview {
   bottom: calc(88px + env(safe-area-inset-bottom));
   z-index: 980;
@@ -38,6 +55,14 @@
 
 .drag-undo-redo-controls button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 10%, transparent 90%);
+}
+
+.drag-undo-redo-controls .schedule-item-delete-action {
+  color: var(--danger);
+}
+
+.drag-undo-redo-controls .schedule-item-delete-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent 90%);
 }
 
 .drag-undo-redo-controls button:active:not(:disabled) {
