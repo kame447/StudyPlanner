@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+  WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_STATE_VERSION_V5,
+  type WeeklyPlanningProvisionalTimeboxStateV5,
+} from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import type {
   GenericSchedulerInputCompilationResult,
   WeeklyPlanningGenericSchedulerGraphView,
@@ -70,6 +74,16 @@ function missingCompilation(
   };
 }
 
+function authorizedState(workloadFactIds: string[]): WeeklyPlanningProvisionalTimeboxStateV5 {
+  return {
+    version: WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_STATE_VERSION_V5,
+    workloadFactIds,
+    minutesPerWorkload: WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5,
+    authorizedAtGraphRevision: 11,
+    authorizedAtTurnId: 'turn-9',
+  };
+}
+
 describe('Stable V5 provisional timebox scheduler projection', () => {
   it('projects only current missing-effort workloads into scheduler minutes without mutating facts', () => {
     const graph = {
@@ -89,18 +103,23 @@ describe('Stable V5 provisional timebox scheduler projection', () => {
         kind: 'provisional_timebox',
         scope: 'current_missing_effort',
       },
-      previousStatus: 'revision_pending',
-      previousGraph: workGraph(['workload-math', 'workload-physics']),
+      previousState: null,
       currentCompilation: missingCompilation([
         { questionFactId: 'workload-math' },
         { questionFactId: 'workload-physics' },
       ]),
+      graphRevision: 11,
+      turnId: 'turn-9',
     });
 
     expect(resolution).toMatchObject({
       source: 'current_directive',
       workloadFactIds: ['workload-math', 'workload-physics'],
       minutesPerWorkload: WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5,
+      state: {
+        authorizedAtGraphRevision: 11,
+        authorizedAtTurnId: 'turn-9',
+      },
     });
 
     const projected = projectWeeklyPlanningProvisionalTimeboxGraphV5({
@@ -147,47 +166,58 @@ describe('Stable V5 provisional timebox scheduler projection', () => {
         kind: 'provisional_timebox',
         scope: 'current_missing_effort',
       },
-      previousStatus: 'revision_pending',
-      previousGraph: workGraph(['workload-remaining']),
+      previousState: null,
       currentCompilation: missingCompilation([
         {
           questionFactId: 'workload-completed',
           estimateForWorkloadFactId: 'workload-remaining',
         },
       ]),
+      graphRevision: 11,
+      turnId: 'turn-9',
     });
 
     expect(resolution.workloadFactIds).toEqual(['workload-remaining']);
   });
 
-  it('carries forward only workload ids that were already provisionally schedulable in a draft-ready graph', () => {
+  it('carries forward only workload ids explicitly authorized in session state', () => {
     const resolution = resolveWeeklyPlanningProvisionalTimeboxV5({
       directive: null,
-      previousStatus: 'draft_ready',
-      previousGraph: workGraph(['workload-existing']),
+      previousState: authorizedState(['workload-existing']),
       currentCompilation: missingCompilation([
         { questionFactId: 'workload-existing' },
         { questionFactId: 'workload-new' },
       ]),
+      graphRevision: 12,
+      turnId: 'turn-10',
     });
 
     expect(resolution).toMatchObject({
-      source: 'draft_ready_carry_forward',
+      source: 'session_state',
       workloadFactIds: ['workload-existing'],
+      state: {
+        workloadFactIds: ['workload-existing'],
+        authorizedAtTurnId: 'turn-9',
+      },
     });
   });
 
-  it('does not invent a timebox without explicit current authorization or a draft-ready carry-forward', () => {
+  it('rejects malformed persisted state instead of treating draft status as authorization', () => {
     const resolution = resolveWeeklyPlanningProvisionalTimeboxV5({
       directive: null,
-      previousStatus: 'revision_pending',
-      previousGraph: workGraph(['workload-existing']),
+      previousState: {
+        ...authorizedState(['workload-existing']),
+        minutesPerWorkload: 999,
+      },
       currentCompilation: missingCompilation([
         { questionFactId: 'workload-existing' },
       ]),
+      graphRevision: 12,
+      turnId: 'turn-10',
     });
 
     expect(resolution.source).toBeNull();
     expect(resolution.workloadFactIds).toEqual([]);
+    expect(resolution.state).toBeNull();
   });
 });

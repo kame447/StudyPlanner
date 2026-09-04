@@ -1,9 +1,6 @@
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
-  tryFocusedProvisionalTimeboxRouteV5,
-} from './weeklyPlanningFocusedProvisionalTimeboxV5';
-import {
   tryWeeklyPlanningDenseTurnCompletenessRetryV5,
 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
@@ -72,9 +69,6 @@ export function createWeeklyPlanningSemanticNormalizerV5(
 
       const contextualResult = await tryFocusedContextualAnswerRouteV5(run);
       if (contextualResult) return contextualResult;
-
-      const provisionalTimeboxResult = await tryFocusedProvisionalTimeboxRouteV5(run);
-      if (provisionalTimeboxResult) return provisionalTimeboxResult;
 
       const authorization = await tryFocusedAuthorizationRouteV5(run);
       if (authorization.result) return authorization.result;

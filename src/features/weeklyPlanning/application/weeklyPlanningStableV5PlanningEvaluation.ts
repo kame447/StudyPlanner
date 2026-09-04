@@ -138,7 +138,6 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const previousActiveGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(runtimeSession.graph);
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,
@@ -216,9 +215,10 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   });
   const provisionalTimeboxProjection = resolveWeeklyPlanningProvisionalTimeboxV5({
     directive: semantic.normalization.contextualDirective,
-    previousStatus: input.previousState?.status ?? null,
-    previousGraph: previousActiveGraph,
+    previousState: input.previousState?.provisionalTimebox ?? null,
     currentCompilation: rawBaselineCompilation,
+    graphRevision: semantic.graph.revision,
+    turnId: input.traceRequestId,
   });
   const provisionalSchedulerGraph = projectWeeklyPlanningProvisionalTimeboxGraphV5({
     graph: activeGraph,

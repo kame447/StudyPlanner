@@ -1,7 +1,13 @@
+import {
+  withWeeklyPlanningProvisionalTimeboxStateV5,
+} from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
   createWeeklyPlanningPlacementGraphViewV5,
 } from '../semantic/weeklyPlanningPlacementGraphViewV5';
+import type {
+  WeeklyPlanningStableV5PlanningEvaluation,
+} from './weeklyPlanningStableV5PlanningEvaluation';
 import {
   runWeeklyPlanningStableV5PlanningStage,
 } from './weeklyPlanningStableV5PlanningStage';
@@ -27,6 +33,19 @@ export type {
 export {
   isWeeklyPlanningStableV5PreviewAuthorized,
 } from './weeklyPlanningStableV5PlanningEvaluation';
+
+function withProvisionalTimeboxState(params: {
+  output: WeeklyPlanningTurnExecutionResult;
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+}): WeeklyPlanningTurnExecutionResult {
+  return {
+    ...params.output,
+    state: withWeeklyPlanningProvisionalTimeboxStateV5(
+      params.output.state,
+      params.evaluation.provisionalTimeboxProjection.state,
+    ),
+  };
+}
 
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -54,8 +73,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     evaluation,
   });
   if (responseRoute.kind === 'respond') {
+    const output = withProvisionalTimeboxState({
+      output: responseRoute.output,
+      evaluation,
+    });
     return {
-      ...responseRoute.output,
+      ...output,
       observability: semanticObservability,
     };
   }
@@ -67,11 +90,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     requestContext,
   });
 
-  const output = weeklyPlanningStableV5ResponseRouter.afterPreview({
+  const routedOutput = weeklyPlanningStableV5ResponseRouter.afterPreview({
     input,
     semanticTurn,
     evaluation,
     preview,
+  });
+  const output = withProvisionalTimeboxState({
+    output: routedOutput,
+    evaluation,
   });
   return {
     ...output,

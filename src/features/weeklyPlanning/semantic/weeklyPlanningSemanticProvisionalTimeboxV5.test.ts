@@ -62,22 +62,16 @@ function publicStateSummary() {
 }
 
 describe('Stable V5 provisional timebox focused semantic route', () => {
-  it('keeps unknown completion effort unknown and authorizes scheduler-only provisional allocation', async () => {
+  it('keeps unknown completion effort unknown and authorizes scheduler-only provisional allocation in one focused call', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn()
-        .mockResolvedValueOnce(JSON.stringify({
-          decision: 'fallback',
-          effortTarget: null,
-          effortMeasurement: null,
-          minutes: null,
-          precision: null,
-          quantityRole: null,
-        }))
-        .mockResolvedValueOnce(JSON.stringify({
-          decision: 'provisional_timebox',
-          effortDisposition: 'unavailable',
-          allocationMode: 'available_capacity',
-        })),
+      createChatCompletion: vi.fn().mockResolvedValueOnce(JSON.stringify({
+        decision: 'provisional_timebox',
+        effortTarget: null,
+        effortMeasurement: null,
+        minutes: null,
+        precision: null,
+        quantityRole: null,
+      })),
     };
 
     const userText =
@@ -102,15 +96,16 @@ describe('Stable V5 provisional timebox focused semantic route', () => {
       corrections: [],
       decisions: [],
     });
-    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
 
-    const provisionalRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
-    expect(provisionalRequest.responseFormat).toMatchObject({
-      json_schema: { name: 'weekly_planning_focused_provisional_timebox_v5' },
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    expect(request.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
     });
-    const serializedRequest = JSON.stringify(provisionalRequest.messages);
+    const serializedRequest = JSON.stringify(request.messages);
     expect(serializedRequest).toContain('relation-math-over-english');
     expect(serializedRequest).toContain('relation-physics-over-english');
-    expect(serializedRequest).toContain('must never be expanded into new relation endpoints');
+    expect(serializedRequest).toContain('do not expand that wording into additional binary relation endpoints');
+    expect(serializedRequest).toContain('scheduler permission only');
   });
 });

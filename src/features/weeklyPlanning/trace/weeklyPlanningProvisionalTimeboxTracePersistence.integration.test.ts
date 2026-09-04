@@ -26,7 +26,16 @@ import type {
 const USER_ID = 'owner-provisional-timebox-trace';
 const CONVERSATION_ID =
   'weekly-conversation-323e4567-e89b-52d3-a456-426614174000';
-const FUTURE_FIELD_SENTINEL = 'future-provisional-timebox-field';
+const USER_TEXT =
+  '総時間は分かりません。今ある空き時間の中で暫定的に配分してください。';
+const PROVISIONAL_RESPONSE = JSON.stringify({
+  decision: 'provisional_timebox',
+  effortTarget: null,
+  effortMeasurement: null,
+  minutes: null,
+  precision: null,
+  quantityRole: null,
+});
 
 function repositoryHarness() {
   const writes: Array<{
@@ -68,8 +77,7 @@ function traceInput(requestId: string, debugTraceEvents: Array<{
     userId: USER_ID,
     conversationId: CONVERSATION_ID,
     requestId,
-    userText:
-      '総時間は分かりません。今ある空き時間の中で暫定的に配分してください。',
+    userText: USER_TEXT,
     assistantMessage: '暫定的な時間枠で仮予定を作成します。',
     responseSource: 'ai' as const,
     outcome: 'preview_ready',
@@ -78,7 +86,7 @@ function traceInput(requestId: string, debugTraceEvents: Array<{
   };
 }
 
-function provisionalTraceEvents(oversized?: string) {
+function provisionalTraceEvents(rawResponse = PROVISIONAL_RESPONSE) {
   return [
     {
       schemaVersion: 2 as const,
@@ -87,48 +95,37 @@ function provisionalTraceEvents(oversized?: string) {
       occurredAt: '2026-09-04T00:00:00.000Z',
       severity: 'debug' as const,
       data: {
-        attempt: 'focused_provisional_timebox',
+        attempt: 'focused_contextual_answer',
+        requestBytes: 512,
         request: {
           purpose: 'weekly_planning_semantic_normalizer',
-          messages: [{
-            role: 'user',
-            content:
-              '総時間は分かりません。今ある空き時間の中で暫定的に配分してください。',
-          }],
+          messages: [
+            {
+              role: 'system',
+              content: 'provisional_timebox is scheduler permission only and must not become a completion estimate.',
+            },
+            { role: 'user', content: USER_TEXT },
+          ],
           responseFormat: {
             type: 'json_schema',
             json_schema: {
-              name: 'weekly_planning_focused_provisional_timebox_v5',
+              name: 'weekly_planning_focused_contextual_answer_v5',
             },
           },
+          maxCompletionTokens: 320,
         },
-        futureProvisionalTimeboxField: FUTURE_FIELD_SENTINEL,
-        ...(oversized ? { oversizedProvisionalField: oversized } : {}),
       },
     },
     {
       schemaVersion: 2 as const,
       sequence: 1,
-      stage: 'runtime_scheduler_dialogue_evaluated',
-      occurredAt: '2026-09-04T00:00:00.010Z',
-      severity: 'info' as const,
+      stage: 'semantic_provider_response',
+      occurredAt: '2026-09-04T00:00:00.005Z',
+      severity: 'debug' as const,
       data: {
-        provisionalTimeboxProjection: {
-          policyVersion: 'weekly-planning-provisional-timebox-v1',
-          source: 'current_directive',
-          workloadFactIds: [
-            'workload-math-ia',
-            'workload-math-iibc',
-            'workload-physics-mechanics',
-            'workload-physics-electromagnetism',
-            'workload-chemistry-theory',
-          ],
-          minutesPerWorkload: 60,
-        },
-        contextualDirective: {
-          kind: 'provisional_timebox',
-          scope: 'current_missing_effort',
-        },
+        attempt: 'focused_contextual_answer',
+        responseLength: rawResponse.length,
+        rawResponse,
       },
     },
   ];
@@ -158,7 +155,7 @@ afterEach(() => {
 });
 
 describe('provisional timebox trace persistence gate', () => {
-  it('survives outbox retry and Worker preparation without dropping request or future fields', async () => {
+  it('survives outbox retry and Worker preparation with the actual focused provider request and response', async () => {
     const harness = repositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
@@ -186,10 +183,10 @@ describe('provisional timebox trace persistence gate', () => {
     const replayedEntry = replayed.entries[0];
     const serialized = JSON.stringify(replayedEntry);
     expect(replayedEntry.requestId).toBe(first.requestId);
-    expect(serialized).toContain('weekly_planning_focused_provisional_timebox_v5');
-    expect(serialized).toContain('weekly-planning-provisional-timebox-v1');
-    expect(serialized).toContain('current_missing_effort');
-    expect(serialized).toContain(FUTURE_FIELD_SENTINEL);
+    expect(serialized).toContain('weekly_planning_focused_contextual_answer_v5');
+    expect(serialized).toContain('focused_contextual_answer');
+    expect(serialized).toContain('provisional_timebox');
+    expect(serialized).toContain('scheduler permission only');
     expect(measureWeeklyPlanningTraceJsonBytes(replayedEntry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
@@ -203,16 +200,18 @@ describe('provisional timebox trace persistence gate', () => {
       entries: replayed.entries as unknown as Record<string, unknown>[],
     }, subject, canonicalIds, '2026-09-04T00:00:00.000Z');
     expect(prepared.entries).toHaveLength(1);
-    expect(JSON.stringify(prepared.entries[0])).toContain(FUTURE_FIELD_SENTINEL);
+    const preparedSerialized = JSON.stringify(prepared.entries[0]);
+    expect(preparedSerialized).toContain('weekly_planning_focused_contextual_answer_v5');
+    expect(preparedSerialized).toContain('provisional_timebox');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
   });
 
-  it('truncates oversized provisional diagnostics without discarding the turn', async () => {
+  it('compacts an oversized focused raw response while preserving bounded diagnostics', async () => {
     const harness = repositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const oversized = 'oversized-provisional-timebox-field-'.repeat(4_000);
+    const oversized = `HEAD-${'あ'.repeat(10_000)}-TAIL`;
 
     await recordWeeklyPlanningStableV5TurnTrace(traceInput(
       `${CONVERSATION_ID}:request:oversized`,
@@ -221,9 +220,15 @@ describe('provisional timebox trace persistence gate', () => {
 
     expect(harness.writes).toHaveLength(1);
     const entry = harness.writes[0].entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('expected turn diagnostic');
+    const response = entry.aiInterpreter.rawResponses[0];
     const serialized = JSON.stringify(entry);
-    expect(serialized).toContain('"traceTruncated":true');
-    expect(serialized).toContain('"truncation":{"applied":true');
+    expect(response.attempt).toBe('focused_contextual_answer');
+    expect(response.truncated).toBe(true);
+    expect(response.originalBytes).toBe(new TextEncoder().encode(oversized).byteLength);
+    expect(response.text).toContain('HEAD-');
+    expect(response.text).toContain('-TAIL');
+    expect(response.text).not.toBe(oversized);
     expect(serialized).not.toContain(oversized);
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
