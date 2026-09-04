@@ -95,6 +95,18 @@ function RealWeeklyApplicationHarness() {
     };
   }, [application.cancelTurn, application.clearConversation, application.resetSession]);
 
+  useEffect(() => {
+    window.__realWeeklySurface = {
+      close() {
+        record('real-close');
+        setOpen(false);
+      },
+      open() {
+        setOpen(true);
+      },
+    };
+  }, []);
+
   if (!open) {
     return (
       <main>
@@ -110,10 +122,7 @@ function RealWeeklyApplicationHarness() {
       <button
         type="button"
         aria-label="テスト用にAI計画を閉じる"
-        onClick={() => {
-          record('real-close');
-          setOpen(false);
-        }}
+        onClick={() => window.__realWeeklySurface.close()}
       >
         テスト用に閉じる
       </button>
