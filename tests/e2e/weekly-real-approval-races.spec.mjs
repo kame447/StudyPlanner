@@ -88,9 +88,10 @@ test.describe('real weekly approval race lifecycle through AiPlanningView', () =
     await preview.getByRole('button', { name: 'この内容で保存' }).click({ noWaitAfter: true });
     await waitForApprovalSavePending(page);
 
-    await page.getByRole('button', { name: 'テスト用にAI計画を閉じる' }).click({ force: true });
+    await page.evaluate(() => window.__realWeeklySurface.close());
     await expect(page.getByRole('button', { name: 'AI計画を再度開く' })).toBeVisible();
-    await page.getByRole('button', { name: 'AI計画を再度開く' }).click();
+    await page.evaluate(() => window.__realWeeklySurface.open());
+    await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
 
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
     await releaseApprovalSave(page);
