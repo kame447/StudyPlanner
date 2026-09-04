@@ -29,9 +29,3 @@ export function resolveInitialAiInputMode(
 ): AiInputMode {
   return hasWeeklyPlanningSession(params) ? 'weekly_planning' : 'chat';
 }
-
-export function resolveInitialQuickEntryInputMethod(
-  params: WeeklyPlanningSessionPresence,
-): 'ai' | 'manual' {
-  return hasWeeklyPlanningSession(params) ? 'ai' : 'manual';
-}
