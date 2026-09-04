@@ -3,7 +3,7 @@
 Status: active
 Owner: Issue #284
 Branch: `fix/issue284-week-layout-readability`
-PR: pending
+PR: #289
 Base: `897282a892f4ef720b5f3d56cadf48dce0c6b366`
 Updated: 2026-09-05
 
@@ -111,6 +111,7 @@ Focused regressionで最低限固定する。
 - same-task active Issue / PRなしを再確認
 - old branch `fix/issue284-all-day-multiday-lanes` は squash merge 後に main と divergedしており、新しいreview diffのheadとしては使わない
 - new active branch `fix/issue284-week-layout-readability` を exact main `897282a892f4ef720b5f3d56cadf48dce0c6b366` から作成
+- Draft PR #289 を同branchから作成し、Issue / MD / PRを同じfollow-up scopeへ統一
 - old branchはhistorical merged branch。明示許可なしでは削除しない
 
 ### Competing hypotheses before code edit
@@ -129,4 +130,4 @@ Spanning text:
 
 まずproduction codeとfocused testを照合し、各仮説を反証してから最小修正する。
 
-Next action: PRをこのactive work recordと結び付けた後、WeekViewのlane/width計算とspanning laneのCSS/DOMを調査し、失敗するfocused regressionを先に固定する。
+Next action: WeekViewのlane/width計算とspanning laneのCSS/DOMを調査し、失敗するfocused regressionを先に固定する。
