@@ -44,9 +44,9 @@ const DayView = lazy(() =>
     default: module.DayView,
   })),
 );
-const WeeklyPlanningQuickEntryModal = lazy(() =>
-  import('./components/WeeklyPlanningQuickEntryModal').then((module) => ({
-    default: module.WeeklyPlanningQuickEntryModal,
+const QuickEntryModal = lazy(() =>
+  import('./components/QuickEntryModal').then((module) => ({
+    default: module.QuickEntryModal,
   })),
 );
 const ReportView = lazy(() =>
@@ -603,8 +603,7 @@ export default function App() {
 
       {isQuickEntryOpen ? (
         <Suspense fallback={null}>
-          <WeeklyPlanningQuickEntryModal
-            application={weeklyPlanning}
+          <QuickEntryModal
             userId={user.id}
             selectedDate={selectedDate}
             plans={plans}

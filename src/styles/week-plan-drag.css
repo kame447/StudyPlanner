@@ -10,6 +10,10 @@
   cursor: grab;
 }
 
+.schedule-week-view .schedule-week-plan-button {
+  touch-action: pan-y;
+}
+
 .schedule-week-plan-button:active {
   cursor: grabbing;
 }

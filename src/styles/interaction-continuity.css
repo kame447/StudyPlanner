@@ -1,9 +1,11 @@
 /* Focused interaction fixes that must load after the primary theme/style bundles. */
 
-/* Quick add is for direct study/record entry. AI planning lives on the AI planning surface. */
-[data-quick-entry-manual-only='true'] .quick-entry-switch-card,
-[data-quick-entry-manual-only='true'] .quick-entry-ai-panel {
-  display: none !important;
+.ai-planning-pending-turn-actions {
+  position: fixed;
+  left: 50%;
+  bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+  z-index: 918;
+  transform: translateX(-50%);
 }
 
 /* Make month transitions explicit inside the continuously extending day carousel. */

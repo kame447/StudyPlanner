@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-09-02
+Updated: 2026-09-04
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -81,12 +81,11 @@ Do not move feature-specific domain decisions into `App.tsx`; keep it primarily 
 
 UI components and interaction surfaces. Examples:
 
-- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
+- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface。weekly-planning conversation / preview / approval のユーザー向け入口はここに一本化する
 - calendar / home / bookshelf / timetable views
 - `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
-- `QuickEntryModal.tsx`: generic quick/manual entry surface
-- `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
+- `QuickEntryModal.tsx`: generic quick/manual entry surface。weekly-planning state / callbacks / persistence plumbingを受け取らない
 - admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
 UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.

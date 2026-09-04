@@ -17,17 +17,6 @@ import {
   type QuickEntryRepeatKind,
 } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
-import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
-import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
-import type {
-  WeeklyPlanDraftBlock,
-  WeeklyPlanningMessage,
-  WeeklyPlanningPendingApproval,
-  WeeklyPlanningPendingTurn,
-} from '../features/weeklyPlanning/types';
-import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
-import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
-import { resolveInitialQuickEntryInputMethod } from './weeklyPlanningConversationMode';
 import type {
   Actual,
   ActualDraft,
@@ -41,7 +30,6 @@ import type {
 } from '../types/domain';
 
 type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
-type QuickEntryInputMethod = 'ai' | 'manual';
 type QuickEntryKind = 'plan' | 'actual';
 type DurationOptionValue = number | null | 'custom';
 type SubjectSource = 'none' | 'title' | 'material' | 'user';
@@ -54,24 +42,6 @@ interface QuickEntryModalProps {
   actuals: Actual[];
   materials: StudyMaterial[];
   subjects: StudySubject[];
-  weeklyDraftBlocks: WeeklyPlanDraftBlock[];
-  weeklyPlanningPreviewCandidates?: WeeklyDraftCandidate[];
-  weeklyPlanningMessages: WeeklyPlanningMessage[];
-  weeklyPlanningIntakeState: PlanningIntakeState | null;
-  weeklyPlanningWeekStartDate: string;
-  weeklyPlanningRevision: number;
-  weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
-  weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
-  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
-  onCancelWeeklyPlanningTurn: () => boolean;
-  onClearWeeklyPlanningConversation: () => boolean;
-  onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
-  onResetWeeklyPlanningSession: () => void;
-  onCreateWeeklyDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
-  onRemoveWeeklyPlanningPreviewCandidate?: (candidateId: string) => void;
-  onRemoveWeeklyDraftBlock: (blockId: string) => void;
-  onClearWeeklyDraftBlocks: () => void;
-  onApproveWeeklyDraftBlocks: () => Promise<void>;
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -114,7 +84,6 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
   }
 
   const endMinutes = (minutesFromTime(startTime) + durationMinutes) % (24 * 60);
-
   return timeFromMinutes(endMinutes);
 }
 
@@ -125,24 +94,6 @@ export function QuickEntryModal({
   actuals,
   materials,
   subjects,
-  weeklyDraftBlocks,
-  weeklyPlanningPreviewCandidates = [],
-  weeklyPlanningMessages,
-  weeklyPlanningIntakeState,
-  weeklyPlanningWeekStartDate,
-  weeklyPlanningRevision,
-  weeklyPlanningPendingTurn,
-  weeklyPlanningPendingApproval,
-  onSubmitWeeklyPlanningTurn,
-  onCancelWeeklyPlanningTurn,
-  onClearWeeklyPlanningConversation,
-  onAppendWeeklyPlanningMessage,
-  onResetWeeklyPlanningSession,
-  onCreateWeeklyDraftBlocks,
-  onRemoveWeeklyPlanningPreviewCandidate,
-  onRemoveWeeklyDraftBlock,
-  onClearWeeklyDraftBlocks,
-  onApproveWeeklyDraftBlocks,
   onClose,
   onSaveTodo,
   onSavePlan,
@@ -150,15 +101,6 @@ export function QuickEntryModal({
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
-  const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>(() =>
-    resolveInitialQuickEntryInputMethod({
-      messages: weeklyPlanningMessages,
-      intakeState: weeklyPlanningIntakeState,
-      draftBlockCount: weeklyDraftBlocks.length,
-      pendingTurn: weeklyPlanningPendingTurn,
-      pendingApproval: weeklyPlanningPendingApproval,
-    }),
-  );
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
@@ -220,18 +162,17 @@ export function QuickEntryModal({
     !isSubmitting &&
     (entryKind === 'actual'
       ? estimatedMinutes !== null && actualEndTime !== null
-      : inputMethod === 'manual' &&
-        (mode === 'later' ||
-          (mode === 'scheduled' &&
-            isValidQuickEntryDate(date) &&
-            isValidQuickEntryStartTime(startTime) &&
-            isValidQuickEntryDuration(estimatedMinutes)) ||
-          (mode === 'repeat' &&
-            isValidQuickEntryDate(date) &&
-            isValidQuickEntryStartTime(startTime) &&
-            isValidQuickEntryDuration(estimatedMinutes) &&
-            isSupportedRepeatKind &&
-            (repeatKind !== 'weekly' || weekdays.length > 0))));
+      : mode === 'later' ||
+        (mode === 'scheduled' &&
+          isValidQuickEntryDate(date) &&
+          isValidQuickEntryStartTime(startTime) &&
+          isValidQuickEntryDuration(estimatedMinutes)) ||
+        (mode === 'repeat' &&
+          isValidQuickEntryDate(date) &&
+          isValidQuickEntryStartTime(startTime) &&
+          isValidQuickEntryDuration(estimatedMinutes) &&
+          isSupportedRepeatKind &&
+          (repeatKind !== 'weekly' || weekdays.length > 0)));
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
@@ -249,12 +190,9 @@ export function QuickEntryModal({
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
       setIsCustomDuration(true);
-
       const nextMinutes = Number(customDurationInput);
       setEstimatedMinutes(
-        Number.isInteger(nextMinutes) && nextMinutes > 0
-          ? nextMinutes
-          : null,
+        Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
       );
       return;
     }
@@ -266,12 +204,9 @@ export function QuickEntryModal({
 
   function updateCustomDuration(value: string) {
     setCustomDurationInput(value);
-
     const nextMinutes = Number(value);
     setEstimatedMinutes(
-      Number.isInteger(nextMinutes) && nextMinutes > 0
-        ? nextMinutes
-        : null,
+      Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
     );
   }
 
@@ -348,7 +283,6 @@ export function QuickEntryModal({
       }
 
       const didClearTitleMaterial = materialSource === 'title';
-
       if (didClearTitleMaterial) {
         setSelectedMaterialId('');
         setMaterialSource('none');
@@ -385,7 +319,6 @@ export function QuickEntryModal({
     if (!material) {
       if (subjectSource === 'material') {
         const inferredSubject = inferSubjectFromTitle(title);
-
         setSubject(inferredSubject ?? '');
         setSubjectSource(inferredSubject ? 'title' : 'none');
       }
@@ -589,10 +522,7 @@ export function QuickEntryModal({
                 role="tab"
                 aria-selected={entryKind === 'actual'}
                 aria-pressed={entryKind === 'actual'}
-                onClick={() => {
-                  setEntryKind('actual');
-                  setInputMethod('manual');
-                }}
+                onClick={() => setEntryKind('actual')}
               >
                 記録
               </button>
@@ -600,8 +530,6 @@ export function QuickEntryModal({
             <p>
               {entryKind === 'actual'
                 ? 'あとから記録'
-                : inputMethod === 'ai'
-                ? 'AI入力'
                 : MODE_OPTIONS.find((option) => option.value === mode)?.label}
             </p>
           </div>
@@ -616,71 +544,17 @@ export function QuickEntryModal({
 
         <div className="quick-entry-modal-body">
           {entryKind === 'plan' ? (
-            <>
-          <section className="quick-entry-card quick-entry-switch-card">
-            <div className="segmented-control quick-entry-input-method-tabs">
-              {(
-                [
-                  ['manual', '手動入力'],
-                  ['ai', 'AI入力'],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  className={inputMethod === value ? 'segment active' : 'segment'}
-                  key={value}
-                  onClick={() => setInputMethod(value)}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {inputMethod === 'ai' ? (
-            <section className="quick-entry-ai-panel">
-              <NaturalLanguageAssistant
-                selectedDate={selectedDate}
-                userId={userId}
-                plans={plans}
-                materials={availableMaterials}
-                subjects={availableSubjects}
-                onApplyDraft={onSavePlan}
-                 weeklyDraftBlocks={weeklyDraftBlocks}
-                 weeklyPlanningPreviewCandidates={weeklyPlanningPreviewCandidates}
-                 weeklyPlanningMessages={weeklyPlanningMessages}
-
-                 weeklyPlanningIntakeState={weeklyPlanningIntakeState}
-                 weeklyPlanningWeekStartDate={weeklyPlanningWeekStartDate}
-                 weeklyPlanningRevision={weeklyPlanningRevision}
-                 weeklyPlanningPendingTurn={weeklyPlanningPendingTurn}
-                 weeklyPlanningPendingApproval={weeklyPlanningPendingApproval}
-                 onSubmitWeeklyPlanningTurn={onSubmitWeeklyPlanningTurn}
-                 onCancelWeeklyPlanningTurn={onCancelWeeklyPlanningTurn}
-                 onClearWeeklyPlanningConversation={onClearWeeklyPlanningConversation}
-                 onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
-                 onResetWeeklyPlanningSession={onResetWeeklyPlanningSession}
-                  onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
-                 onRemoveWeeklyPlanningPreviewCandidate={onRemoveWeeklyPlanningPreviewCandidate}
-                 onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
-
-                onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}
-                onApproveWeeklyDraftBlocks={onApproveWeeklyDraftBlocks}
-                embedded
-              />
-            </section>
-          ) : (
             <div className="quick-entry-manual-panel">
               <section className="quick-entry-card quick-entry-title-card">
                 <label className="quick-entry-title-field">
                   <span>
                     {MODE_OPTIONS.find((option) => option.value === mode)?.label}
                   </span>
-                    <input
-                      value={title}
-                      onChange={(event) => updateTitle(event.target.value)}
-                      placeholder="例: 英語課題 / 面接準備"
-                    />
+                  <input
+                    value={title}
+                    onChange={(event) => updateTitle(event.target.value)}
+                    placeholder="例: 英語課題 / 面接準備"
+                  />
                 </label>
               </section>
 
@@ -744,7 +618,6 @@ export function QuickEntryModal({
                             value={dueDate}
                             onChange={(event) => {
                               setDueDate(event.target.value);
-
                               if (!event.target.value) {
                                 setDueTime('');
                               }
@@ -906,18 +779,16 @@ export function QuickEntryModal({
                 </section>
               </div>
             </div>
-              )}
-            </>
           ) : (
             <div className="quick-entry-manual-panel">
               <section className="quick-entry-card quick-entry-title-card">
                 <label className="quick-entry-title-field">
                   <span>タイトル</span>
-                    <input
-                      value={title}
-                      onChange={(event) => updateTitle(event.target.value)}
-                      placeholder="例: 英語の復習"
-                    />
+                  <input
+                    value={title}
+                    onChange={(event) => updateTitle(event.target.value)}
+                    placeholder="例: 英語の復習"
+                  />
                 </label>
               </section>
 
@@ -982,7 +853,8 @@ export function QuickEntryModal({
                           <div>
                             <div className="label-row">
                               <strong>
-                                {candidate.plan.startTime}-{candidate.plan.endTime} {candidate.plan.title}
+                                {candidate.plan.startTime}-{candidate.plan.endTime}{' '}
+                                {candidate.plan.title}
                               </strong>
                               {index === 0 && candidate.score >= 70 ? (
                                 <span className="type-badge">おすすめ</span>

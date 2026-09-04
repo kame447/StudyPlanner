@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthScreen } from '../../../src/components/AuthScreen';
+import { NaturalLanguageAssistant } from '../../../src/components/NaturalLanguageAssistant';
 import { QuickEntryModal } from '../../../src/components/QuickEntryModal';
 import '../../../src/styles.css';
 
@@ -269,12 +270,93 @@ function Harness() {
     record('complete-approval', { requestId });
   }
 
+  function closeHarness() {
+    record('close');
+    setOpen(false);
+  }
+
   if (!open) {
     return (
       <main>
         <button type="button" onClick={() => setOpen(true)}>
           モーダルを再度開く
         </button>
+      </main>
+    );
+  }
+
+  if (hasWeeklySession) {
+    return (
+      <main data-testid="weekly-planning-harness">
+        <button type="button" onClick={closeHarness}>
+          閉じる
+        </button>
+        <NaturalLanguageAssistant
+          selectedDate="2026-08-13"
+          userId="browser-test-user"
+          plans={scenarioPlans}
+          materials={[]}
+          subjects={[]}
+          onApplyDraft={async (draft) => {
+            record('save-plan', draft);
+            await waitForGate('save-plan');
+            record('complete-save-plan');
+          }}
+          weeklyDraftBlocks={draftBlocks}
+          weeklyPlanningPreviewCandidates={previewCandidates}
+          weeklyPlanningMessages={weeklyMessages}
+          weeklyPlanningIntakeState={null}
+          weeklyPlanningWeekStartDate="2026-08-10"
+          weeklyPlanningRevision={revision}
+          weeklyPlanningPendingTurn={pendingTurn}
+          weeklyPlanningPendingApproval={pendingApproval}
+          onSubmitWeeklyPlanningTurn={submitWeeklyTurn}
+          onCancelWeeklyPlanningTurn={() => {
+            record('cancel-weekly-turn');
+            activeWeeklyRequestRef.current = null;
+            setPendingTurn(undefined);
+            return true;
+          }}
+          onClearWeeklyPlanningConversation={() => {
+            record('clear-weekly-conversation');
+            setWeeklyMessages([]);
+            return true;
+          }}
+          onAppendWeeklyPlanningMessage={(message) => {
+            record('append-weekly-message', message);
+            setWeeklyMessages((current) => [...current, message]);
+          }}
+          onResetWeeklyPlanningSession={() => {
+            record('reset-weekly-session');
+            activeWeeklyRequestRef.current = null;
+            activeApprovalRef.current = null;
+            setPendingTurn(undefined);
+            setPendingApproval(undefined);
+            setPreviewCandidates([]);
+            setDraftBlocks([]);
+            setWeeklyMessages([]);
+          }}
+          onCreateWeeklyDraftBlocks={(blocks) => {
+            record('create-weekly-draft-blocks', blocks);
+            setDraftBlocks(blocks);
+            setPreviewCandidates([]);
+          }}
+          onRemoveWeeklyPlanningPreviewCandidate={(candidateId) => {
+            record('remove-preview', candidateId);
+            setPreviewCandidates((current) => current.filter((candidate) => candidate.stableKey !== candidateId));
+          }}
+          onRemoveWeeklyDraftBlock={(blockId) => {
+            record('remove-draft', blockId);
+            setDraftBlocks((current) => current.filter((block) => block.id !== blockId));
+          }}
+          onClearWeeklyDraftBlocks={() => {
+            record('clear-drafts');
+            setDraftBlocks([]);
+            setPreviewCandidates([]);
+          }}
+          onApproveWeeklyDraftBlocks={approveDrafts}
+          embedded
+        />
       </main>
     );
   }
@@ -287,63 +369,7 @@ function Harness() {
       actuals={scenarioActuals}
       materials={[]}
       subjects={[]}
-      weeklyDraftBlocks={draftBlocks}
-      weeklyPlanningPreviewCandidates={previewCandidates}
-      weeklyPlanningMessages={weeklyMessages}
-      weeklyPlanningIntakeState={null}
-      weeklyPlanningWeekStartDate="2026-08-10"
-      weeklyPlanningRevision={revision}
-      weeklyPlanningPendingTurn={pendingTurn}
-      weeklyPlanningPendingApproval={pendingApproval}
-      onSubmitWeeklyPlanningTurn={submitWeeklyTurn}
-      onCancelWeeklyPlanningTurn={() => {
-        record('cancel-weekly-turn');
-        activeWeeklyRequestRef.current = null;
-        setPendingTurn(undefined);
-        return true;
-      }}
-      onClearWeeklyPlanningConversation={() => {
-        record('clear-weekly-conversation');
-        setWeeklyMessages([]);
-        return true;
-      }}
-      onAppendWeeklyPlanningMessage={(message) => {
-        record('append-weekly-message', message);
-        setWeeklyMessages((current) => [...current, message]);
-      }}
-      onResetWeeklyPlanningSession={() => {
-        record('reset-weekly-session');
-        activeWeeklyRequestRef.current = null;
-        activeApprovalRef.current = null;
-        setPendingTurn(undefined);
-        setPendingApproval(undefined);
-        setPreviewCandidates([]);
-        setDraftBlocks([]);
-        setWeeklyMessages([]);
-      }}
-      onCreateWeeklyDraftBlocks={(blocks) => {
-        record('create-weekly-draft-blocks', blocks);
-        setDraftBlocks(blocks);
-        setPreviewCandidates([]);
-      }}
-      onRemoveWeeklyPlanningPreviewCandidate={(candidateId) => {
-        record('remove-preview', candidateId);
-        setPreviewCandidates((current) => current.filter((candidate) => candidate.stableKey !== candidateId));
-      }}
-      onRemoveWeeklyDraftBlock={(blockId) => {
-        record('remove-draft', blockId);
-        setDraftBlocks((current) => current.filter((block) => block.id !== blockId));
-      }}
-      onClearWeeklyDraftBlocks={() => {
-        record('clear-drafts');
-        setDraftBlocks([]);
-        setPreviewCandidates([]);
-      }}
-      onApproveWeeklyDraftBlocks={approveDrafts}
-      onClose={() => {
-        record('close');
-        setOpen(false);
-      }}
+      onClose={closeHarness}
       onSaveTodo={async (draft) => {
         record('save-todo', draft);
         await waitForGate('save-todo');
