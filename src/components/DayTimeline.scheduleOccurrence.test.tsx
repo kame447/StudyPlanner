@@ -100,9 +100,9 @@ describe('DayTimeline schedule occurrence presentation', () => {
       'plan:all-day-plan:2026-08-25',
     );
     expect(hourlyScheduleBlocks).toHaveLength(1);
-    expect(JSON.stringify(hourlyScheduleBlocks[0].toJSON?.() ?? hourlyScheduleBlocks[0].props)).toContain(
-      '通常予定',
-    );
+    expect(
+      hourlyScheduleBlocks[0].findByProps({ className: 'timeline-entry-title' }).children,
+    ).toContain('通常予定');
 
     act(() => {
       allDayButton.props.onClick();
