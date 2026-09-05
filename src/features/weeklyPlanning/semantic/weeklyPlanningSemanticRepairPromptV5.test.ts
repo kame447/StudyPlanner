@@ -18,7 +18,7 @@ function repairPayload(messages: Array<{ role: string; content: string }>): {
 }
 
 describe('Stable V5 semantic repair prompt', () => {
-  it('keeps dangling-correction repair local, bound, compact, and preservation-safe', () => {
+  it('keeps dangling-correction repair local, bound, bounded, and preservation-safe', () => {
     const invalidResponse = JSON.stringify({
       tasks: [{
         localId: 'task-1',
@@ -53,6 +53,7 @@ describe('Stable V5 semantic repair prompt', () => {
     ]);
     expect(payload.requiredChanges).toHaveLength(1);
     expect(directive).toContain('missing replacement facts');
+    expect(directive).toContain('currentUserText');
     expect(directive).toContain('schema-valid task/component');
     expect(directive).toContain('keep valid fields');
     expect(directive).toContain('correction.replacementLocalId');
@@ -60,7 +61,7 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(directive).toContain('exact existingPublicIds');
     expect(directive).toContain('Preserve unrelated supported current-turn facts');
     expect(directive).toContain('schema-valid fields from the invalid response');
-    expect(bytes(directive)).toBeLessThanOrEqual(450);
+    expect(bytes(directive)).toBeLessThanOrEqual(1024);
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
@@ -118,5 +119,38 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(payload.requiredChanges?.join('\n')).not.toContain(
       'Use a fresh localId declared in this response as targetLocalId',
     );
+  });
+
+  it('repairs rejected sourceText from exact current-turn evidence or removes the unsupported fact', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.tasks[0].workloads[0].sourceText:not-grounded-in-current-user-text',
+      ],
+    });
+    const directive = repairPayload(messages).requiredChanges?.join('\n') ?? '';
+
+    expect(directive).toContain('exact contiguous substring from current userText');
+    expect(directive).toContain('do not paraphrase');
+    expect(directive).toContain('remove only that unsupported fact');
+    expect(directive).toContain('Preserve unrelated supported current-turn facts');
+  });
+
+  it('repairs weekday date expressions into canonical Stable V5 syntax without inventing dates', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.tasks[0].taskDateRules[0].dateExpression:canonical-expression',
+      ],
+    });
+    const directive = repairPayload(messages).requiredChanges?.join('\n') ?? '';
+
+    expect(directive).toContain('weekday:sunday through weekday:saturday');
+    expect(directive).toContain('weekday:<english-weekday>');
+    expect(directive).toContain('never emit a bare localized weekday');
+    expect(directive).toContain('never invent an absolute date');
+    expect(directive).toContain('Preserve unrelated supported current-turn facts');
   });
 });

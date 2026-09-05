@@ -93,6 +93,14 @@ function correctionTargetPublicFacts(
         count: fact.count,
         days: fact.days,
       })),
+    relations: graph.relations
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        kind: fact.kind,
+        fromTaskPublicId: fact.fromTaskId,
+        toTaskPublicId: fact.toTaskId,
+      })),
   };
 }
 
