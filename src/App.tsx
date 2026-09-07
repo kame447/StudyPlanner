@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
-import { HomeView } from './components/HomeView';
+import { HomeScheduleView } from './components/HomeScheduleView';
 import { SplashScreen } from './components/SplashScreen';
 import { StudySessionProvider } from './components/StudySessionView';
 import { LegalPage } from './components/LegalPage';
@@ -392,11 +392,17 @@ export default function App() {
       >
         {isHomeSurface ? (
           <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
-            <HomeView
+            <HomeScheduleView
+              userId={user.id}
               plans={plans}
               actuals={actuals}
+              monthEvents={monthEvents}
               todos={todos}
               studyMaterials={studyMaterials}
+              scheduleTemplates={scheduleTemplates}
+              timetableTermId={activeTimetableTermId}
+              timetableTerm={activeTimetableTerm}
+              timetableTerms={timetableTerms}
               primaryHeaderRef={primaryHeaderRef}
               primaryBottomNavRef={primaryBottomNavRef}
               onOpenAiPlanning={openAiPlanningSurface}
