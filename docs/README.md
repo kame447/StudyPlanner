@@ -16,6 +16,7 @@ Repository work:
 
 - [Scheduling](domains/scheduling/README.md) — app-wide scheduled-event authority / `ScheduleOccurrence` projection / Plan・MonthEvent統合移行。Current owner: Issue #278
 - [Weekly planning](domains/weekly-planning/README.md) — Issue #246 の「学習相談 → AI助言 → user adoption → 既存planning」planned requirement は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が正本。runtime implementation は未完了
+- [User context](domains/user-context/README.md) — app-wide durable user context、semantic / episodic memory、retrieval、lifecycle / forget、conversation surfacing。Current owner: Issue #294
 - [Client runtime](domains/client-runtime/README.md)
 - [Reporting](domains/reporting/README.md)
 - [Product observability](domains/product-observability/README.md)
