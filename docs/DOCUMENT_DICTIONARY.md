@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-09-02
+Updated: 2026-09-08
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -13,6 +13,7 @@ Updated: 2026-09-02
 
 - `domains/scheduling/`: app-wide scheduled-event authority、occurrence projection、Plan / MonthEvent persistence migration
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
+- `domains/user-context/`: app-wide durable user context、semantic/episodic memory、memory retrieval、lifecycle/forget、conversation surfacing
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
 - `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
@@ -91,6 +92,21 @@ current implementation ownerはIssue #278。`src/domain/scheduleOccurrence.ts`�
 - execution order: `roadmap/current.md`
 
 `spec/learning-consultation-and-advice.md` はIssue #246の正本であり、相談→助言→採用→既存Stable V5へのpromotionに関するproduct requirement、planned runtime boundary、state/lifecycle、failure、test、future evolutionを所有する。production codeが未実装の間は`architecture/current-contract-v5.md`のcurrent runtime baselineを上書きしない。
+
+### User context
+
+入口: `docs/domains/user-context/README.md`
+
+正本:
+
+- Structured Stateとの責務境界、semantic/profile memory、episodic memory、retrieval、temporal/authority conflict resolution、Surface Planner、conversation realization: `architecture/memory-and-conversation.md`
+- durable write、authority、supersede/revoke/forget、retrieval eligibility、surfacing/repetition/privacy policy: `policies/memory-lifecycle-and-surfacing.md`
+- longitudinal/adversarial/cross-session regression scenarios: `quality/regression-scenarios.md`
+- execution order: `roadmap/current.md`
+
+current parent ownerはIssue #294。`src/features/userPlanningContext/`はIssue #232 / PR #235で確立したcurrent production foundationだが、Issue #294のtarget architecture全体が既にproduction実装済みという意味ではない。
+
+週間計画固有のmemory利用・学習heuristicは`domains/weekly-planning/policies/adaptive-memory.md`がownerであり、app-wide retrieval / episodic memory / forget / surfacingを再定義しない。Issue #47は週間計画personalization / cloud conversation session rolloutのownerとして維持する。
 
 ### Client runtime
 
