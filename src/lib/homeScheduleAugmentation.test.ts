@@ -101,20 +101,21 @@ describe('home schedule augmentation', () => {
       timetableTerms: [term],
       startDate: '2026-09-05',
     });
+    const todayPlans = augmented.filter((item) => item.date === '2026-09-05');
 
-    expect(augmented.map((item) => item.title)).toEqual([
+    expect(todayPlans.map((item) => item.title)).toEqual([
       '英単語',
       '美容院',
       '情報学演習',
     ]);
-    expect(augmented.find((item) => item.title === '美容院')).toMatchObject({
+    expect(todayPlans.find((item) => item.title === '美容院')).toMatchObject({
       date: '2026-09-05',
       startTime: '12:30',
       endTime: '13:00',
       type: 'other',
       sourceType: 'manual',
     });
-    expect(augmented.find((item) => item.title === '情報学演習')).toMatchObject({
+    expect(todayPlans.find((item) => item.title === '情報学演習')).toMatchObject({
       date: '2026-09-05',
       startTime: '13:00',
       endTime: '14:30',
@@ -122,6 +123,11 @@ describe('home schedule augmentation', () => {
       sourceType: 'timetable',
       sourceId: 'class-1',
     });
+    expect(
+      augmented.filter(
+        (item) => item.title === '情報学演習' && item.date === '2026-09-12',
+      ),
+    ).toHaveLength(1);
   });
 
   it('feeds general and timetable items into Home display without counting them as study progress', () => {
@@ -150,7 +156,7 @@ describe('home schedule augmentation', () => {
     ]);
     expect(dashboard.nextPlan?.title).toBe('美容院');
     expect(dashboard.weekPlannedMinutes).toBe(60);
-    expect(dashboard.missingActualPlans).toEqual([]);
+    expect(dashboard.missingActualPlans.map((item) => item.id)).toEqual(['plan-1']);
   });
 
   it('does not resurrect a template occurrence already represented by an imported Plan', () => {
@@ -177,9 +183,15 @@ describe('home schedule augmentation', () => {
       timetableTerms: [term],
       startDate: '2026-09-05',
     });
+    const todayPlans = augmented.filter((item) => item.date === '2026-09-05');
 
-    expect(augmented).toHaveLength(1);
-    expect(augmented[0]?.id).toBe('imported-class');
+    expect(todayPlans).toHaveLength(1);
+    expect(todayPlans[0]?.id).toBe('imported-class');
+    expect(
+      augmented.filter(
+        (item) => item.title === '情報学演習' && item.date === '2026-09-12',
+      ),
+    ).toHaveLength(1);
   });
 
   it('projects a multi-day MonthEvent into each covered home date without changing study type', () => {
