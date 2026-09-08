@@ -156,7 +156,7 @@ describe('WeekView schedule occurrence projection', () => {
     );
 
     expect(spanningEvent.props.children).toBe('旅行計画表');
-    expect(spanningEvent.props.style.fontSize).toBe('0.5rem');
+    expect(spanningEvent.props.style.fontSize).toBe('0.47rem');
     expect(spanningEvent.props.style.fontWeight).toBe(850);
     expect(spanningEvent.props.style.margin).toBe('2px 1px');
     expect(spanningEvent.props.style.padding).toBe('2px 2px');
