@@ -5,7 +5,7 @@ Owner: Issue #284
 Branch: `fix/issue284-week-layout-readability`
 PR: #289
 Base: `897282a892f4ef720b5f3d56cadf48dce0c6b366`
-Updated: 2026-09-05
+Updated: 2026-09-09
 
 ## Goal
 
@@ -142,9 +142,7 @@ Spanning text:
 - spanning text hypothesis 3 rejected: the DOM already retains the complete `occurrence.title`; truncation was CSS overflow, not pre-shortened data
 - spanning text hypotheses 1 and 2 confirmed:
   - dedicated card used different typography and larger horizontal inset than normal timed cards
-  - card title font is aligned to the normal timed-card title (`0.5rem`, weight `850`)
   - horizontal margin/padding reduced to `2px 1px` / `2px 2px` so the title uses substantially more of the available grid span
-  - `終日` label font size is aligned as well
 - regression-first sequence:
   - commit `a659660fa7df66fcef219cb36dad2413d3c8af95` added focused unit regressions before production fix and correctly made CI fail in `Run tests`
   - production fixes then made TypeScript and full unit tests pass on head `3bf70552bfc417e1958777da4b414a9be22d9df6`
@@ -154,4 +152,15 @@ Spanning text:
   - spanning-card computed title size equals normal timed-card title size
   - a four-character Japanese title fits without overflow after using the available card width
 
-Next action: this checkpoint commit is documentation-only. Require a fresh exact-HEAD run of CI / Browser Regression / UI Regression Matrix / UI Quality Automation / Admin Overview Render, audit the final PR diff, then Ready + squash merge if every gate is terminal green.
+### 2026-09-09 resumed completion
+
+- current main re-fetched as `d4126511a6f5cb1c7a1c734498062ef2ec9f91a6`; PR #289 remains the active #284 owner and has no unresolved review threads
+- previous Browser Regression run `33914971706` was inspected via its uploaded Playwright artifact instead of treating the failure summary as sufficient evidence
+- failure was deterministic in `week spanning cards use normal title typography and available width before ellipsis`
+  - normal timed title computed to `7.52px`, matching the current `0.47rem` CSS contract
+  - spanning card was `8px` because the branch used `0.5rem`
+- failure classification: production typography mismatch plus stale focused-test literal, not infrastructure flake
+- production spanning card and `終日` label now use `0.47rem`; focused unit expectation was updated to the same current contract
+- PR branch is intentionally not force-rebased; fresh pull-request workflows test GitHub's synthetic merge against the latest main, which is stronger than relying on the old branch base metadata
+
+Next action: require fresh exact-head CI / Browser Regression / UI Regression Matrix / UI Quality Automation / Admin Overview Render to be terminal green on the latest PR head and current-main synthetic merge, then exact-diff audit, Ready transition, squash merge, post-merge main verification, and close Issue #284 if all gates remain green.
