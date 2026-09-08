@@ -180,8 +180,18 @@ function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekP
     return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
   });
   const active: Array<{ lane: number; endMinutes: number }> = [];
-  const laneById = new Map<string, number>();
-  let laneCount = 0;
+  const laidOut: Array<T & WeekPreviewBlock> = [];
+  let clusterStartIndex = 0;
+  let clusterLaneCount = 0;
+
+  const finalizeCluster = () => {
+    const laneCount = Math.max(clusterLaneCount, 1);
+    for (let index = clusterStartIndex; index < laidOut.length; index += 1) {
+      laidOut[index].laneCount = laneCount;
+    }
+    clusterStartIndex = laidOut.length;
+    clusterLaneCount = 0;
+  };
 
   sorted.forEach((item) => {
     const startMinutes = minutesFromTime(item.startTime);
@@ -194,20 +204,28 @@ function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekP
       if (active[index].endMinutes <= startMinutes) active.splice(index, 1);
     }
 
+    if (active.length === 0 && laidOut.length > clusterStartIndex) {
+      finalizeCluster();
+    }
+
     const used = new Set(active.map((entry) => entry.lane));
     let lane = 0;
     while (used.has(lane)) lane += 1;
 
-    laneById.set(item.id, lane);
-    laneCount = Math.max(laneCount, lane + 1);
+    clusterLaneCount = Math.max(clusterLaneCount, lane + 1);
+    laidOut.push({
+      ...item,
+      lane,
+      laneCount: 1,
+    });
     active.push({ lane, endMinutes });
   });
 
-  return sorted.map((item) => ({
-    ...item,
-    lane: laneById.get(item.id) ?? 0,
-    laneCount: Math.max(laneCount, 1),
-  }));
+  if (laidOut.length > clusterStartIndex) {
+    finalizeCluster();
+  }
+
+  return laidOut;
 }
 
 function buildMarkerStyle(hour: number): CSSProperties {
