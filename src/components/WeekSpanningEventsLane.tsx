@@ -34,7 +34,7 @@ function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProp
     background: 'var(--weekly-draft-tone-bg)',
     color: 'var(--text)',
     font: 'inherit',
-    fontSize: '0.5rem',
+    fontSize: '0.47rem',
     fontWeight: 850,
     lineHeight: 1.1,
     textAlign: 'center',
@@ -71,7 +71,7 @@ export function WeekSpanningEventsLane({
           paddingRight: '5px',
           borderRight: '1px solid var(--border)',
           color: 'var(--text-muted)',
-          fontSize: '0.5rem',
+          fontSize: '0.47rem',
           fontWeight: 850,
         }}
       >
