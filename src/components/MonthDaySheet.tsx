@@ -10,7 +10,12 @@ import {
   formatMonthEventTimeRangeForDate,
   sortMonthEvents,
 } from '../lib/monthEvents';
-import type { MonthEvent, Plan } from '../types/domain';
+import type {
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 
 const ACCENT_CLASSES = ['mint', 'violet', 'blue', 'amber', 'pink'];
 const WEEKDAY_LABELS = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
@@ -27,6 +32,10 @@ interface MonthDaySheetProps {
   userId?: string;
   plans?: Plan[];
   monthEvents: MonthEvent[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   onCreate: (date: string) => void;
   onEdit: (event: MonthEvent) => void;
   onOpenDay?: (date: string) => void;
@@ -38,7 +47,7 @@ interface MonthDaySheetEntry {
   title: string;
   timeLabel: string;
   monthEvent: MonthEvent | null;
-  planBacked: boolean;
+  openDayBacked: boolean;
 }
 
 function formatOccurrenceTimeForDate(
@@ -67,6 +76,10 @@ function buildEntries(params: {
   userId?: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
+  scheduleTemplates: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms: TimetableTerm[];
 }): MonthDaySheetEntry[] {
   const ownerId = params.userId?.trim();
   if (!ownerId) {
@@ -79,7 +92,7 @@ function buildEntries(params: {
       title: event.title,
       timeLabel: formatMonthEventTimeRangeForDate(event, params.renderedDate),
       monthEvent: event,
-      planBacked: false,
+      openDayBacked: false,
     }));
   }
 
@@ -92,6 +105,10 @@ function buildEntries(params: {
     endDate: params.renderedDate,
     plans: params.plans,
     monthEvents: params.monthEvents,
+    scheduleTemplates: params.scheduleTemplates,
+    timetableTermId: params.timetableTermId,
+    timetableTerm: params.timetableTerm,
+    timetableTerms: params.timetableTerms,
   });
 
   return projection.occurrences
@@ -105,17 +122,20 @@ function buildEntries(params: {
           title: occurrence.title,
           timeLabel: formatOccurrenceTimeForDate(occurrence, params.renderedDate),
           monthEvent,
-          planBacked: false,
+          openDayBacked: false,
         };
       }
 
-      if (occurrence.source.backingKind === 'plan') {
+      if (
+        occurrence.source.backingKind === 'plan' ||
+        occurrence.source.backingKind === 'timetable-template'
+      ) {
         return {
           id: occurrence.id,
           title: occurrence.title,
           timeLabel: formatOccurrenceTimeForDate(occurrence, params.renderedDate),
           monthEvent: null,
-          planBacked: true,
+          openDayBacked: true,
         };
       }
 
@@ -133,6 +153,10 @@ export function MonthDaySheet({
   userId,
   plans = [],
   monthEvents,
+  scheduleTemplates = [],
+  timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   onCreate,
   onEdit,
   onOpenDay,
@@ -167,9 +191,22 @@ export function MonthDaySheet({
             userId,
             plans,
             monthEvents,
+            scheduleTemplates,
+            timetableTermId,
+            timetableTerm,
+            timetableTerms,
           })
         : [],
-    [monthEvents, plans, renderedDate, userId],
+    [
+      monthEvents,
+      plans,
+      renderedDate,
+      scheduleTemplates,
+      timetableTerm,
+      timetableTermId,
+      timetableTerms,
+      userId,
+    ],
   );
 
   if (!renderedDate) return null;
@@ -223,7 +260,7 @@ export function MonthDaySheet({
                     onEdit(entry.monthEvent);
                     return;
                   }
-                  if (entry.planBacked) {
+                  if (entry.openDayBacked) {
                     onOpenDay?.(renderedDate);
                   }
                 }}

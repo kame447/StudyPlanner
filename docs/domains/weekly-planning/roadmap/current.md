@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -16,29 +16,28 @@ PR #109, #112, #113, #120, #127, #129, #130, #132, #140–#151, #154, #155 and #
 
 PR #162 established the dedicated AI-planning surface. PR #166 established cross-product browser/visual/accessibility/runtime QA. PR #199 hardened preview interactions and date bounds. PR #204 completed Issue #203 temporal-constraint ownership centralization. PR #267/#271 hardened recurring and cross-entity mutation. PR #272 completed Issue #270 atomic formal turns. PR #274 completed Issue #269 planner-data availability.
 
-Scheduling Issue #278 is now complete. PR #279 unified `ScheduleOccurrence` reads across calendar/AI consumers and PR #282 moved scheduled persistence to canonical `ScheduleEvent`. Weekly planning must treat that scheduling-domain contract as current main baseline rather than reintroducing Plan/MonthEvent persistence ownership.
+Scheduling Issue #278 is complete. PR #279 unified `ScheduleOccurrence` reads across calendar/AI consumers and PR #282 moved scheduled persistence to canonical `ScheduleEvent`. Weekly planning must treat that scheduling-domain contract as current main baseline rather than reintroducing Plan/MonthEvent persistence ownership.
 
-## Immediate resume checkpoint: Issue #136 / PR #275
+Issue #52 is complete. PR #283 removed the obsolete `WeeklyPlanningQuickEntryModal` compatibility wrapper, reduced generic `QuickEntryModal` to manual entry, and made `AiPlanningView` the user-facing owner for weekly-planning conversation, cancellation, preview and approval behavior. Generic QuickEntry must not regain weekly-planning state/callback plumbing.
 
-The weekly-planning work that was left mid-execution when the scheduled-event refactor took priority is Issue #136.
+## Immediate active path: Issue #136 / PR #275
+
+Issue #136 owns the active Stable V5 semantic-regression implementation path.
 
 - Issue: #136 `P1: Real Luna completion-based E2E regression tracker`
-- existing branch: `fix/issue136-semantic-regressions`
-- existing Draft PR: #275
-- current branch HEAD at this cleanup: `d395e1eb30798e651594d49592b4cdbedee66adf`
-- last verified Real Luna checkpoint: Turn 5 run `33535304318`
-- completion state at that checkpoint: `conversation_in_progress`; no Plan save yet
+- branch: `fix/issue136-semantic-regressions`
+- Draft PR: #275
 
-The branch is now diverged from current main and its old green checks are stale. Resume only on the existing Issue/branch/PR; do not create a replacement branch or PR.
+Exact branch HEAD, current-main divergence, Real Luna continuation state, verification evidence, and next action are owned by Issue #136 / PR #275. Re-fetch those mutable sources before resuming instead of copying their changing values into this roadmap.
 
-Resume order:
+Resume order remains:
 
 ```text
 re-fetch Issue #136 / PR #275 / current main
-→ reconcile current main into existing branch
+→ reconcile current main into the existing branch when the active owner reaches that step
 → classify conflicts by owner; preserve #278 ScheduleEvent authority
-→ rerun deterministic checks on reconciled HEAD
-→ continue the same persisted Real Luna checkpoint
+→ rerun deterministic checks on the reconciled HEAD
+→ continue the persisted Real Luna checkpoint
 → resolve remaining effort questions without inventing unknown quantities
 → reach preview
 → perform one correction
@@ -49,7 +48,7 @@ re-fetch Issue #136 / PR #275 / current main
 → merge/close decision for #136
 ```
 
-Known progress already verified before the pause:
+Known durable behavior already established in this work includes:
 
 - canonical weekday recurrence tokens are accepted by deterministic recurrence resolution while legacy aliases remain compatible.
 - weekend `1日8時間` is represented as a 480-minute daily capacity, not invented full-day clock availability.
@@ -92,7 +91,6 @@ Do not treat the completed foundation as a production guarantee and do not recre
 
 ## Independent scopes
 
-- Issue #52: remove the remaining weekly-planning compatibility wrapper/plumbing from generic QuickEntry. Dedicated AI surface and preview removal UX are already merged; the wrapper still exists on current main, so the Issue remains open.
 - Issue #45/#89: trace privacy/lifecycle and production recovery.
 - Issue #47: personalization/cloud authority rollout.
 - Issue #51: multi-device approval uniqueness.

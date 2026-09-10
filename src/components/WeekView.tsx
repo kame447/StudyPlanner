@@ -27,6 +27,10 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
+import {
+  isScheduleOccurrenceOutsideHourlyGrid,
+  layoutWeekSpanningOccurrences,
+} from '../lib/scheduleOccurrencePresentation';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
 import {
   calculateWeekPlanVelocityTilt,
@@ -37,9 +41,17 @@ import {
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import type { Actual, MonthEvent, Plan, PlanSourceType } from '../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  PlanSourceType,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
+import { WeekSpanningEventsLane } from './WeekSpanningEventsLane';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -51,6 +63,10 @@ interface WeekViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents?: MonthEvent[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onOpenPlan?: (plan: Plan) => void;
@@ -168,6 +184,12 @@ function scheduleOccurrenceTimesForDate(
   };
 }
 
+function isReadOnlyTimetableOccurrence(
+  occurrence: ScheduleOccurrence | undefined,
+): boolean {
+  return occurrence?.source.backingKind === 'timetable-template';
+}
+
 function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekPreviewBlock> {
   const sorted = [...items].sort((left, right) => {
     const startDelta = minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
@@ -175,8 +197,18 @@ function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekP
     return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
   });
   const active: Array<{ lane: number; endMinutes: number }> = [];
-  const laneById = new Map<string, number>();
-  let laneCount = 0;
+  const laidOut: Array<T & WeekPreviewBlock> = [];
+  let clusterStartIndex = 0;
+  let clusterLaneCount = 0;
+
+  const finalizeCluster = () => {
+    const laneCount = Math.max(clusterLaneCount, 1);
+    for (let index = clusterStartIndex; index < laidOut.length; index += 1) {
+      laidOut[index].laneCount = laneCount;
+    }
+    clusterStartIndex = laidOut.length;
+    clusterLaneCount = 0;
+  };
 
   sorted.forEach((item) => {
     const startMinutes = minutesFromTime(item.startTime);
@@ -189,20 +221,28 @@ function buildLanes<T extends WeekPreviewBaseBlock>(items: T[]): Array<T & WeekP
       if (active[index].endMinutes <= startMinutes) active.splice(index, 1);
     }
 
+    if (active.length === 0 && laidOut.length > clusterStartIndex) {
+      finalizeCluster();
+    }
+
     const used = new Set(active.map((entry) => entry.lane));
     let lane = 0;
     while (used.has(lane)) lane += 1;
 
-    laneById.set(item.id, lane);
-    laneCount = Math.max(laneCount, lane + 1);
+    clusterLaneCount = Math.max(clusterLaneCount, lane + 1);
+    laidOut.push({
+      ...item,
+      lane,
+      laneCount: 1,
+    });
     active.push({ lane, endMinutes });
   });
 
-  return sorted.map((item) => ({
-    ...item,
-    lane: laneById.get(item.id) ?? 0,
-    laneCount: Math.max(laneCount, 1),
-  }));
+  if (laidOut.length > clusterStartIndex) {
+    finalizeCluster();
+  }
+
+  return laidOut;
 }
 
 function buildMarkerStyle(hour: number): CSSProperties {
@@ -268,6 +308,10 @@ export function WeekView({
   plans,
   actuals,
   monthEvents = [],
+  scheduleTemplates = [],
+  timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
@@ -289,15 +333,41 @@ export function WeekView({
     () =>
       weekStartDate && weekEndDate
         ? createScheduleOccurrenceProjection({
-            ownerId: userId ?? plans[0]?.userId ?? monthEvents[0]?.userId ?? '',
+            ownerId:
+              userId ??
+              plans[0]?.userId ??
+              monthEvents[0]?.userId ??
+              scheduleTemplates[0]?.userId ??
+              timetableTerm?.userId ??
+              timetableTerms[0]?.userId ??
+              '',
             startDate: weekStartDate,
             endDate: weekEndDate,
             plans,
             monthEvents,
+            scheduleTemplates,
+            timetableTermId,
+            timetableTerm,
+            timetableTerms,
           })
         : { occurrences: [], issues: [] },
-    [monthEvents, plans, userId, weekEndDate, weekStartDate],
+    [
+      monthEvents,
+      plans,
+      scheduleTemplates,
+      timetableTerm,
+      timetableTermId,
+      timetableTerms,
+      userId,
+      weekEndDate,
+      weekStartDate,
+    ],
   );
+  const spanningLayout = layoutWeekSpanningOccurrences(
+    scheduleProjection.occurrences,
+    weekDates,
+  );
+  const showSpanningLane = timelineMode === 'plan' && spanningLayout.items.length > 0;
   const occurrenceById = useMemo(
     () => new Map(scheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
     [scheduleProjection.occurrences],
@@ -320,6 +390,11 @@ export function WeekView({
   );
   const gridStyle = {
     gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
+  } as CSSProperties;
+  const previewGridStyle = {
+    gridTemplateRows: showSpanningLane
+      ? 'auto auto minmax(0, 1fr)'
+      : 'auto minmax(0, 1fr)',
   } as CSSProperties;
   const timelineStyle = { height: '100%' } as CSSProperties;
 
@@ -729,7 +804,10 @@ export function WeekView({
     const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
     const occurrenceId = element?.dataset.scheduleOccurrenceId;
     const occurrence = occurrenceId ? occurrenceById.get(occurrenceId) : undefined;
-    return element && occurrence ? { element, occurrence } : null;
+    if (!element || !occurrence || isReadOnlyTimetableOccurrence(occurrence)) {
+      return null;
+    }
+    return { element, occurrence };
   }
 
   function handleActionPointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
@@ -871,7 +949,10 @@ export function WeekView({
 
         <div className="weekly-draft-preview schedule-week-preview">
           <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
-            <div className="weekly-draft-preview-grid schedule-week-preview-grid">
+            <div
+              className="weekly-draft-preview-grid schedule-week-preview-grid"
+              style={previewGridStyle}
+            >
               <div className="weekly-draft-preview-header" style={gridStyle}>
                 <div className="weekly-draft-preview-corner">時間</div>
                 {weekDates.map((date) => (
@@ -885,6 +966,14 @@ export function WeekView({
                   </button>
                 ))}
               </div>
+
+              {showSpanningLane ? (
+                <WeekSpanningEventsLane
+                  layout={spanningLayout}
+                  plans={plans}
+                  onOpenPlan={onOpenPlan}
+                />
+              ) : null}
 
               <div className="weekly-draft-preview-body schedule-week-preview-body" style={gridStyle}>
                 <div className="weekly-draft-preview-time-axis" style={timelineStyle} aria-hidden="true">
@@ -907,9 +996,16 @@ export function WeekView({
 
                 {weekDates.map((date) => {
                   const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
-                  const dayMonthEventOccurrences = scheduleProjection.occurrences
-                    .filter((occurrence) => occurrence.source.kind === 'month-event')
+                  const timedDayPlans = dayPlans.filter((plan) => {
+                    const occurrence = occurrenceByPlanDate.get(`${plan.id}:${date}`);
+                    return !occurrence || !isScheduleOccurrenceOutsideHourlyGrid(occurrence);
+                  });
+                  const dayNonPlanOccurrences = scheduleProjection.occurrences
+                    .filter((occurrence) => occurrence.source.backingKind !== 'plan')
                     .filter((occurrence) => scheduleOccurrenceCoversDate(occurrence, date));
+                  const timedDayNonPlanOccurrences = dayNonPlanOccurrences.filter(
+                    (occurrence) => !isScheduleOccurrenceOutsideHourlyGrid(occurrence),
+                  );
                   const dayPlanKeys = new Set(
                     dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
                   );
@@ -939,7 +1035,7 @@ export function WeekView({
                   );
 
                   const planBlocks = buildLanes<WeekPreviewBaseBlock>([
-                    ...dayPlans.map((plan) => ({
+                    ...timedDayPlans.map((plan) => ({
                       id: buildPlanOccurrenceKey(plan.id, plan.date),
                       title: plan.title,
                       subject: plan.subject,
@@ -950,12 +1046,18 @@ export function WeekView({
                       plan,
                       occurrence: occurrenceByPlanDate.get(`${plan.id}:${date}`),
                     })),
-                    ...dayMonthEventOccurrences.map((occurrence) => ({
+                    ...timedDayNonPlanOccurrences.map((occurrence) => ({
                       id: occurrence.id,
                       title: occurrence.title,
                       subject: occurrence.subject,
-                      type: 'other' as const,
-                      sourceType: 'manual' as const,
+                      type:
+                        occurrence.source.backingKind === 'timetable-template'
+                          ? ('school-event' as const)
+                          : ('other' as const),
+                      sourceType:
+                        occurrence.source.kind === 'timetable'
+                          ? ('timetable' as const)
+                          : ('manual' as const),
                       occurrence,
                       ...scheduleOccurrenceTimesForDate(occurrence, date),
                     })),
@@ -1026,6 +1128,9 @@ export function WeekView({
                           .filter(Boolean)
                           .join(' ');
                         const isSavedPlan = Boolean(entry.plan && !entry.draft);
+                        const isReadOnlyTimetable = isReadOnlyTimetableOccurrence(
+                          entry.occurrence,
+                        );
 
                         if (isSavedPlan && entry.plan) {
                           return (
@@ -1061,11 +1166,20 @@ export function WeekView({
                           <span
                             className={blockClassName}
                             key={entry.id}
-                            data-schedule-occurrence-id={entry.occurrence?.id}
+                            data-schedule-occurrence-id={
+                              isReadOnlyTimetable ? undefined : entry.occurrence?.id
+                            }
                             style={buildBlockStyle(entry)}
                             title={`${entry.title} / ${entry.startTime}-${entry.endTime}${entry.draft ? ' / 仮予定' : ''}`}
+                            aria-label={
+                              isReadOnlyTimetable
+                                ? `${entry.title} ${entry.startTime}から${entry.endTime}。時間割`
+                                : undefined
+                            }
                             onContextMenu={
-                              entry.occurrence ? (event) => event.preventDefault() : undefined
+                              entry.occurrence && !isReadOnlyTimetable
+                                ? (event) => event.preventDefault()
+                                : undefined
                             }
                           >
                             <strong>{entry.title}</strong>

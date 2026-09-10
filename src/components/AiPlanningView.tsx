@@ -225,6 +225,14 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     requestClosePreview();
   }
 
+  function cancelPendingTurn() {
+    if (!state.pendingTurn) return;
+    const cancelled = application.cancelTurn();
+    if (cancelled) {
+      window.requestAnimationFrame(persistActiveChatSnapshot);
+    }
+  }
+
   return (
     <div
       ref={shellRef}
@@ -232,6 +240,17 @@ export function AiPlanningView(props: AiPlanningViewProps) {
       onClickCapture={openPreviewFromLegacySurface}
     >
       <AiPlanningViewLegacy {...props} />
+      {state.pendingTurn ? (
+        <div className="ai-planning-pending-turn-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={cancelPendingTurn}
+          >
+            処理をキャンセル
+          </button>
+        </div>
+      ) : null}
       {isPreviewOpen && allPreviewBlocks.length > 0 ? (
         <div
           className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}

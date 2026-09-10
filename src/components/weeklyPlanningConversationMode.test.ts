@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
-import {
-  resolveInitialAiInputMode,
-  resolveInitialQuickEntryInputMethod,
-} from './weeklyPlanningConversationMode';
+import { resolveInitialAiInputMode } from './weeklyPlanningConversationMode';
 
 const pendingTurn = {
   conversationId: 'conversation-1',
@@ -20,14 +17,11 @@ describe('weekly planning session resume mode', () => {
     { messages: [], intakeState: createInitialPlanningIntakeState() },
     { messages: [], intakeState: null, draftBlockCount: 1 },
     { messages: [], intakeState: null, pendingTurn },
-  ])('reopens both outer and inner AI views for an active session', (session) => {
-    expect(resolveInitialQuickEntryInputMethod(session)).toBe('ai');
+  ])('reopens the weekly AI view for an active session', (session) => {
     expect(resolveInitialAiInputMode(session)).toBe('weekly_planning');
   });
 
-  it('keeps manual/chat defaults without a saved session', () => {
-    const empty = { messages: [], intakeState: null };
-    expect(resolveInitialQuickEntryInputMethod(empty)).toBe('manual');
-    expect(resolveInitialAiInputMode(empty)).toBe('chat');
+  it('keeps the chat default without a saved weekly session', () => {
+    expect(resolveInitialAiInputMode({ messages: [], intakeState: null })).toBe('chat');
   });
 });

@@ -1,5 +1,5 @@
 import { Redo2, Undo2 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import '../styles/drag-undo-redo.css';
 
@@ -26,15 +26,39 @@ export function DragUndoRedoControls({
   onUndo,
   onRedo,
 }: DragUndoRedoControlsProps) {
-  if (!visible || typeof document === 'undefined') {
+  const centerSlotRef = useRef<HTMLSpanElement | null>(null);
+  const [hasCenterAction, setHasCenterAction] = useState(Boolean(centerAction));
+
+  useEffect(() => {
+    const centerSlot = centerSlotRef.current;
+    if (!centerSlot || typeof MutationObserver === 'undefined') return;
+
+    const syncCenterActionState = () => {
+      setHasCenterAction(Boolean(centerAction) || centerSlot.childElementCount > 0);
+    };
+    syncCenterActionState();
+
+    const observer = new MutationObserver(syncCenterActionState);
+    observer.observe(centerSlot, { childList: true });
+    return () => observer.disconnect();
+  }, [centerAction]);
+
+  if (typeof document === 'undefined') {
     return null;
   }
+
+  const shouldHide = !visible && !hasCenterAction;
 
   return createPortal(
     <div
       className={`drag-undo-redo-controls drag-undo-redo-controls--${placement}`}
       role="group"
       aria-label={ariaLabel}
+      style={
+        shouldHide
+          ? { visibility: 'hidden', pointerEvents: 'none', opacity: 0 }
+          : undefined
+      }
     >
       <button
         type="button"
@@ -45,9 +69,13 @@ export function DragUndoRedoControls({
       >
         <Undo2 size={20} strokeWidth={2.2} aria-hidden="true" />
       </button>
-      {centerAction ? (
-        <span style={{ display: 'contents', color: 'var(--danger)' }}>{centerAction}</span>
-      ) : null}
+      <span
+        ref={centerSlotRef}
+        style={{ display: 'contents', color: 'var(--danger)' }}
+        data-drag-undo-redo-center-slot="true"
+      >
+        {centerAction}
+      </span>
       <button
         type="button"
         aria-label="変更をやり直す"

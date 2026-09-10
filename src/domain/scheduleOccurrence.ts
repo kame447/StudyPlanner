@@ -166,8 +166,49 @@ function occurrenceId(
   start: ScheduleOccurrencePoint,
 ): string {
   // Identity is the logical source occurrence, not its mutable clock time. This lets
-  // an imported timetable Plan replace its template occurrence after a time edit.
+  // an imported timetable Plan replace its template occurrence after an edit.
   return `${source.kind}:${source.id}:${start.date}`;
+}
+
+function timetablePlanOriginDate(plan: Plan): string {
+  return plan.sourceDate?.trim() || plan.date;
+}
+
+function occurrenceIdentityStartForPlan(
+  plan: Plan,
+  source: ScheduleOccurrenceSource,
+  start: ScheduleOccurrencePoint,
+): ScheduleOccurrencePoint {
+  return source.kind === 'timetable'
+    ? { ...start, date: timetablePlanOriginDate(plan) }
+    : start;
+}
+
+function timetableOverrideOccurrenceIds(
+  ownerId: string,
+  plans: readonly Plan[],
+): Set<string> {
+  const ids = new Set<string>();
+
+  for (const plan of plans) {
+    if (
+      plan.userId !== ownerId ||
+      plan.sourceType !== 'timetable' ||
+      !plan.sourceId?.trim()
+    ) {
+      continue;
+    }
+
+    const source = sourceForPlan(plan);
+    ids.add(
+      occurrenceId(source, {
+        date: timetablePlanOriginDate(plan),
+        time: plan.startTime,
+      }),
+    );
+  }
+
+  return ids;
 }
 
 function planOccurrences(params: {
@@ -200,7 +241,10 @@ function planOccurrences(params: {
       const source = sourceForPlan(plan);
       const start = { date: plan.date, time: plan.startTime };
       return {
-        id: occurrenceId(source, start),
+        id: occurrenceId(
+          source,
+          occurrenceIdentityStartForPlan(plan, source, start),
+        ),
         ownerId: params.ownerId,
         title: plan.title,
         subject: plan.subject,
@@ -423,6 +467,20 @@ export function createScheduleOccurrenceProjection(
   }
 
   const issues: ScheduleOccurrenceProjectionIssue[] = [];
+  const timetableOverrideIds = timetableOverrideOccurrenceIds(
+    input.ownerId,
+    input.plans,
+  );
+  const projectedTimetableOccurrences = timetableOccurrences({
+    ownerId: input.ownerId,
+    templates: input.scheduleTemplates ?? [],
+    timetableTermId: input.timetableTermId,
+    timetableTerm: input.timetableTerm,
+    timetableTerms: input.timetableTerms,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    issues,
+  }).filter((occurrence) => !timetableOverrideIds.has(occurrence.id));
   const allOccurrences = [
     ...planOccurrences({
       ownerId: input.ownerId,
@@ -438,16 +496,7 @@ export function createScheduleOccurrenceProjection(
       endDate: input.endDate,
       issues,
     }),
-    ...timetableOccurrences({
-      ownerId: input.ownerId,
-      templates: input.scheduleTemplates ?? [],
-      timetableTermId: input.timetableTermId,
-      timetableTerm: input.timetableTerm,
-      timetableTerms: input.timetableTerms,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      issues,
-    }),
+    ...projectedTimetableOccurrences,
   ];
 
   const byId = new Map<string, ScheduleOccurrence>();

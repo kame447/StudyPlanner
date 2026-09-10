@@ -9,8 +9,8 @@ function isoToday() {
   ].join('-');
 }
 
-async function seedMobileOverlayState(page) {
-  await page.addInitScript(({ today }) => {
+async function seedMobileOverlayState(page, { includeMonthEvent = true } = {}) {
+  await page.addInitScript(({ today, includeMonthEvent }) => {
     const now = new Date().toISOString();
     const user = {
       id: 'mobile-overlay-user',
@@ -61,11 +61,14 @@ async function seedMobileOverlayState(page) {
     localStorage.setItem('studyplanner.session', user.id);
     localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
-    localStorage.setItem('studyplanner.monthEvents', JSON.stringify([monthEvent]));
+    localStorage.setItem(
+      'studyplanner.monthEvents',
+      JSON.stringify(includeMonthEvent ? [monthEvent] : []),
+    );
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-  }, { today: isoToday() });
+  }, { today: isoToday(), includeMonthEvent });
 }
 
 async function openSchedule(page) {
@@ -85,7 +88,7 @@ test.describe('mobile overlay stability', () => {
   });
 
   test('study session keeps its root surface pinned while only the page scrolls', async ({ page }) => {
-    await seedMobileOverlayState(page);
+    await seedMobileOverlayState(page, { includeMonthEvent: false });
     await page.goto('/');
     await page.getByRole('button', { name: '学習を開始する' }).click();
 

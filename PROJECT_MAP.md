@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-09-02
+Updated: 2026-09-10
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -21,7 +21,7 @@ Scheduling / scheduled-event work:
 1. `docs/domains/scheduling/README.md`
 2. `docs/domains/scheduling/architecture/scheduled-event-authority.md`
 3. `docs/domains/scheduling/roadmap/current.md`
-4. Issue #278
+4. Issue #278 is completed migration history; new scheduling work must use the Issue that owns the new requirement
 5. `src/domain/scheduleOccurrence.ts`
 
 Weekly planning:
@@ -81,12 +81,11 @@ Do not move feature-specific domain decisions into `App.tsx`; keep it primarily 
 
 UI components and interaction surfaces. Examples:
 
-- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
+- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface。weekly-planning conversation / preview / approval のユーザー向け入口はここに一本化する
 - calendar / home / bookshelf / timetable views
 - `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
-- `QuickEntryModal.tsx`: generic quick/manual entry surface
-- `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
+- `QuickEntryModal.tsx`: generic quick/manual entry surface。weekly-planning state / callbacks / persistence plumbingを受け取らない
 - admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
 UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.
@@ -103,7 +102,7 @@ React-level orchestration and state composition. Use for view/application lifecy
 
 General deterministic domain rules that are not specific to weekly-planning internals.
 
-`src/domain/scheduleOccurrence.ts` owns the current compatibility read boundary for app-wide scheduled occurrences. Plan / MonthEvent / timetable source data may feed this resolver, but month/week/day/AI consumers must not recreate recurrence, occurrence identity or occupied-time semantics independently. The canonical contract is `docs/domains/scheduling/architecture/scheduled-event-authority.md` and the migration owner is Issue #278.
+`src/domain/scheduleOccurrence.ts` owns the shared app-wide occurrence projection. Canonical scheduled persistence is `ScheduleEvent`; legacy `Plan` / `MonthEvent` compatibility shapes and `TimetableTemplate` source data may feed the resolver, but month/week/day/AI consumers must not recreate recurrence, occurrence identity, timetable dedupe or occupied-time semantics independently. The canonical contract is `docs/domains/scheduling/architecture/scheduled-event-authority.md`. Issue #278 completed the migration baseline; it is no longer a standing implementation owner for future scheduling changes.
 
 ### `src/repositories/`
 
@@ -373,7 +372,7 @@ Choose the directory by change reason, not by current caller:
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
 - scheduled-event occurrence identity / recurrence expansion / busy projection → `src/domain/scheduleOccurrence.ts` under the scheduling domain contract
-- canonical scheduled-event persistence migration → repository persistence boundary under Issue #278 / scheduling domain contract
+- canonical scheduled-event persistence / migration / recovery → repository persistence boundary under the scheduling domain contract; each new product change uses its own owning Issue rather than reusing completed #278 as a standing owner
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain

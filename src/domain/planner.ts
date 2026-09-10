@@ -195,6 +195,10 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
     repeat === 'none' && recurrenceRules.length === 0
       ? []
       : normalizePlanExcludedDates(draft.date, draft.excludedDates);
+  const sourceDate =
+    draft.sourceType === 'timetable' && draft.sourceId
+      ? currentPlan?.sourceDate ?? currentPlan?.date ?? draft.date
+      : currentPlan?.sourceDate;
 
   if (currentPlan) {
     return {
@@ -209,6 +213,7 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
       updatedAt: now,
       materialId: draft.materialId ?? null,
       materialName: draft.materialName?.trim() ?? '',
+      ...(sourceDate ? { sourceDate } : {}),
     };
   }
 
@@ -224,6 +229,7 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
     updatedAt: now,
     materialId: draft.materialId ?? null,
     materialName: draft.materialName?.trim() ?? '',
+    ...(sourceDate ? { sourceDate } : {}),
   };
 }
 

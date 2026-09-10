@@ -10,7 +10,9 @@ describe('weekly planning application boundary', () => {
     const app = source('../../../App.tsx');
 
     expect(app).toContain('useWeeklyPlanningApplication');
-    expect(app).toContain('WeeklyPlanningQuickEntryModal');
+    expect(app).toContain('AiPlanningView');
+    expect(app).toContain('QuickEntryModal');
+    expect(app).not.toContain('WeeklyPlanningQuickEntryModal');
     expect(app).not.toContain('submitWeeklyPlanningControlledTurn');
     expect(app).not.toContain('executeWeeklyDraftApproval');
     expect(app).not.toContain('executeInterruptibleWeeklyDraftApproval');
@@ -20,15 +22,28 @@ describe('weekly planning application boundary', () => {
     expect(app).not.toContain('onSubmitWeeklyPlanningTurn=');
   });
 
-  it('owns the manual quick-entry boundary in the dedicated connector component', () => {
-    const connector = source('../../../components/WeeklyPlanningQuickEntryModal.tsx');
+  it('keeps generic quick entry free of weekly planning ownership', () => {
+    const quickEntry = source('../../../components/QuickEntryModal.tsx');
 
-    expect(connector).toContain('data-quick-entry-manual-only="true"');
-    expect(connector).toContain('weeklyPlanningPendingTurn={undefined}');
-    expect(connector).toContain('weeklyPlanningPendingApproval={undefined}');
-    expect(connector).not.toContain('weeklyPlanningPendingTurn={state.pendingTurn}');
-    expect(connector).toContain('onSubmitWeeklyPlanningTurn={application.submitTurn}');
-    expect(connector).toContain('onApproveWeeklyDraftBlocks={application.approveDraftBlocks}');
+    expect(quickEntry).not.toContain('NaturalLanguageAssistant');
+    expect(quickEntry).not.toContain('weeklyPlanning');
+    expect(quickEntry).not.toContain('WeeklyPlanDraftBlock');
+    expect(quickEntry).not.toContain('WeeklyPlanningMessage');
+    expect(quickEntry).not.toContain('onSubmitWeeklyPlanningTurn');
+    expect(quickEntry).not.toContain('onApproveWeeklyDraftBlocks');
+    expect(quickEntry).not.toContain('AI入力');
+  });
+
+  it('owns the weekly planning UI through AiPlanningView', () => {
+    const aiPlanningView = source('../../../components/AiPlanningView.tsx');
+    const aiPlanningLegacy = source('../../../components/AiPlanningViewLegacy.tsx');
+
+    expect(aiPlanningView).toContain('WeeklyPlanningApplication');
+    expect(aiPlanningView).toContain('application.cancelTurn');
+    expect(aiPlanningView).toContain('application.approveDraftBlocks');
+    expect(aiPlanningView).toContain('application.removePreviewCandidate');
+    expect(aiPlanningLegacy).toContain('application.submitTurn');
+    expect(aiPlanningLegacy).toContain('application.loadConversationSnapshot');
   });
 
   it('keeps the hook as a composition root and delegates turn orchestration', () => {

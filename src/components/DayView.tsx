@@ -12,6 +12,7 @@ import {
 } from '../domain/scheduleOccurrence';
 import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { addDays, formatDateLabel, sortByDateTime } from '../lib/date';
+import { projectReadOnlyTimetableOccurrencesForDay } from '../lib/dayScheduleDisplay';
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
@@ -158,8 +159,21 @@ export function DayView({
         endDate: selectedDate,
         plans,
         monthEvents,
+        scheduleTemplates,
+        timetableTermId,
+        timetableTerm,
+        timetableTerms,
       }),
-    [monthEvents, plans, selectedDate, userId],
+    [
+      monthEvents,
+      plans,
+      scheduleTemplates,
+      selectedDate,
+      timetableTerm,
+      timetableTermId,
+      timetableTerms,
+      userId,
+    ],
   );
   const dayOccurrenceById = useMemo(
     () => new Map(dayScheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
@@ -208,6 +222,18 @@ export function DayView({
       ),
     [dayMonthEventOccurrences, monthEventById, selectedDate],
   );
+  const dayReadOnlyTimetableEvents = useMemo(
+    () =>
+      projectReadOnlyTimetableOccurrencesForDay(
+        dayScheduleProjection.occurrences,
+        selectedDate,
+      ),
+    [dayScheduleProjection.occurrences, selectedDate],
+  );
+  const dayDisplayMonthEvents = useMemo(
+    () => sortMonthEvents([...dayMonthEvents, ...dayReadOnlyTimetableEvents]),
+    [dayMonthEvents, dayReadOnlyTimetableEvents],
+  );
   const dayMonthEventPlans = useMemo(
     () =>
       dayMonthEvents.map((monthEvent) =>
@@ -224,10 +250,18 @@ export function DayView({
       ),
     [dayMonthEventPlans, dayPlans],
   );
-  const dayPlanMap = useMemo(
-    () => new Map(dayPlans.map((plan) => [plan.id, plan])),
-    [dayPlans],
-  );
+  const dayPlanMap = useMemo(() => {
+    const map = new Map(dayPlans.map((plan) => [plan.id, plan]));
+    const visibleBackingPlanIds = new Set(
+      dayScheduleProjection.occurrences
+        .filter((occurrence) => occurrence.source.backingKind === 'plan')
+        .map((occurrence) => occurrence.source.backingId),
+    );
+    plans.forEach((plan) => {
+      if (visibleBackingPlanIds.has(plan.id)) map.set(plan.id, plan);
+    });
+    return map;
+  }, [dayPlans, dayScheduleProjection.occurrences, plans]);
   const dayMonthEventPlanMap = useMemo(
     () => new Map(dayMonthEventPlans.map((plan) => [plan.id, plan])),
     [dayMonthEventPlans],
@@ -286,7 +320,7 @@ export function DayView({
         plans
           .filter(
             (plan) =>
-              plan.date === selectedDate &&
+              (plan.sourceDate?.trim() || plan.date) === selectedDate &&
               plan.sourceType === 'timetable' &&
               typeof plan.sourceId === 'string',
           )
@@ -362,6 +396,7 @@ export function DayView({
     const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
     const occurrenceId = element?.dataset.scheduleOccurrenceId;
     const occurrence = occurrenceId ? dayOccurrenceById.get(occurrenceId) : undefined;
+    if (occurrence?.source.backingKind === 'timetable-template') return null;
     return element && occurrence ? { element, occurrence } : null;
   }
 
@@ -494,7 +529,7 @@ export function DayView({
       <DayTimeline
         dateLabel={dayRangeLabel}
         plans={dayPlans}
-        monthEvents={dayMonthEvents}
+        monthEvents={dayDisplayMonthEvents}
         scheduleOccurrences={dayScheduleProjection.occurrences}
         actuals={dayActuals}
         weeklyDraftBlocks={weeklyDraftBlocks.filter(

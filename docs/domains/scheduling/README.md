@@ -1,7 +1,7 @@
 # Scheduling domain
 
 Status: canonical domain entry point
-Updated: 2026-09-04
+Updated: 2026-09-10
 
 このdomainは、StudyPlanner内の「時間が確定した予定」のapp-wide ownershipを扱う。
 
@@ -10,9 +10,11 @@ Updated: 2026-09-04
 - scheduled-event persistence / occurrence projection: [`architecture/scheduled-event-authority.md`](architecture/scheduled-event-authority.md)
 - current operational baseline: [`roadmap/current.md`](roadmap/current.md)
 
-Issue #278 は完了・close済み。Phase 1/2 は PR #279、Phase 3 canonical persistence は PR #282 で `main` へ統合された。Phase 3 merge commit は `4cbf7d7b18e337ff8c6903bc37211c544bf01c55`。
+Issue #278 は完了・close済み。Phase 1/2 は PR #279、Phase 3 canonical persistence は PR #282 で `main` へ統合された。その後の adversarial re-audit で Week consumer だけが timetable template / term を共通 `ScheduleOccurrence` projection へ渡していないことが判明し、最終 follow-up は `f846cfb874c4c26a9bfa355d8c5fe56c911ac705` で `main` に反映された。
 
-Firestore Rules も同merge後に repository-owned WIF workflow から本番へdeployされ、live ruleset read-backまで成功している。scheduled-event migration用のactive implementation branchは現在存在しない。
+最終follow-upでは、Weekも Month / Day / AI と同じ occurrence truth を使用し、timetable template由来の予定はread-only、import済みPlanは編集可能なcanonical予定として扱い、同一sourceの二重表示を防ぐ。exact-head CI / Browser Regression / UI Regression Matrix / UI Quality Automation / Admin Overview Render / Cloudflare deploy がすべてterminal successとなった後に #278 を completed でcloseした。
+
+Firestore Rules は Phase 3 merge後に repository-owned WIF workflow から本番へdeployされ、live ruleset read-backまで成功している。Issue #278 用のactive implementation branchは現在存在しない。今後の scheduling 変更は、このcanonical baselineを前提に、新しいproduct requirementを所有するIssueで追跡する。
 
 ## Responsibility boundary
 

@@ -99,20 +99,17 @@ test.describe('manual quick entry browser flows', () => {
     });
   });
 
-  test('switching between AI input, actual records, and plans never leaves the plan surface without a usable input mode', async ({ page }) => {
+  test('switching between manual records and plans always keeps a usable manual input surface', async ({ page }) => {
     await openManualHarness(page);
 
-    await page.getByRole('button', { name: 'AI入力', exact: true }).click();
-    await expect(page.getByText('AI入力補助')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'AI入力', exact: true })).toHaveCount(0);
+    await expect(page.getByText('AI入力補助')).toHaveCount(0);
 
     await switchInputKind(page, '記録');
     await expect(page.getByPlaceholder('例: 英語の復習')).toBeVisible();
 
     await switchInputKind(page, '予定');
-    const manualInput = page.getByPlaceholder('例: 英語課題 / 面接準備');
-    const aiSurface = page.getByText('AI入力補助');
-    const manualVisible = await manualInput.isVisible().catch(() => false);
-    const aiVisible = await aiSurface.isVisible().catch(() => false);
-    expect(manualVisible || aiVisible).toBe(true);
+    await expect(page.getByPlaceholder('例: 英語課題 / 面接準備')).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存' })).toBeVisible();
   });
 });
