@@ -1,7 +1,7 @@
 # User Context
 
 Status: canonical domain index
-Updated: 2026-09-08
+Updated: 2026-09-11
 Owner Issue: #294
 
 This domain owns app-wide durable user context, semantic / episodic memory, memory retrieval, lifecycle / forget behavior, and the decision of whether retrieved memory may be surfaced in conversation.
@@ -56,7 +56,7 @@ Issue #294 does not declare the complete architecture in this directory to be al
 - Issue #152 owns stored/indirect prompt-injection and durable-context poisoning evaluation. User Context must not create a weaker parallel trust boundary.
 - Issue #187 owns registered material metadata/current Bookshelf data. Mutable material progress is not duplicated into memory as current truth.
 - Issue #246 owns learning consultation/advice lifecycle. AI-generated advice is not durable user truth merely because it exists in conversation state.
-- Issue #278 owns current scheduled-event authority and occurrence projection.
+- The scheduling domain owns current scheduled-event authority and occurrence projection; Issue #278 established the completed `ScheduleEvent → ScheduleOccurrence` baseline.
 
 ## Historical foundation
 

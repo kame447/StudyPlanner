@@ -1,7 +1,7 @@
 # User Context Regression Scenarios
 
 Status: canonical quality contract
-Updated: 2026-09-08
+Updated: 2026-09-11
 Owner Issue: #294
 
 Architecture: [../architecture/memory-and-conversation.md](../architecture/memory-and-conversation.md)

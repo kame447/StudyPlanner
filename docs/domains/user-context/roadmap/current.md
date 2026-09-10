@@ -1,7 +1,7 @@
 # User Context Current Roadmap
 
 Status: canonical current execution order
-Updated: 2026-09-08
+Updated: 2026-09-11
 Owner Issue: #294
 
 Architecture: [../architecture/memory-and-conversation.md](../architecture/memory-and-conversation.md)
@@ -239,9 +239,9 @@ Owns current Bookshelf/material information. User Context consumes current mater
 
 Owns consultation/advice lifecycle. Advice generation/adoption must remain distinct from durable-memory promotion.
 
-### Issue #278
+### Scheduling domain / completed Issue #278 baseline
 
-Owns current scheduled-event authority. Memory cannot become an occupied-time/current-event source.
+The scheduling domain owns current scheduled-event authority; completed Issue #278 established the `ScheduleEvent → ScheduleOccurrence` baseline. Memory cannot become an occupied-time/current-event source.
 
 ### Issue #213
 

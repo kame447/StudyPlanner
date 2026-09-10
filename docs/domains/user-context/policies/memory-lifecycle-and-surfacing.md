@@ -1,7 +1,7 @@
 # User Context Memory Lifecycle and Surfacing Policy
 
 Status: canonical policy
-Updated: 2026-09-08
+Updated: 2026-09-11
 Owner Issue: #294
 
 Parent architecture: [../architecture/memory-and-conversation.md](../architecture/memory-and-conversation.md)

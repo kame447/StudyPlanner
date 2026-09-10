@@ -1,7 +1,7 @@
 # User Context Memory and Conversation Architecture
 
 Status: canonical architecture contract
-Updated: 2026-09-08
+Updated: 2026-09-11
 Owner Issue: #294
 
 Parent index: [../README.md](../README.md)
@@ -453,9 +453,9 @@ If the user later expresses a durable meaning such as `今後もこの方針で�
 
 Current material total/progress/metadata is read from Bookshelf/StudyMaterial. A past discussion about a material may exist as an episode, but memory must not shadow the current Bookshelf value.
 
-### Scheduling / Issue #278
+### Scheduling domain
 
-Current event time/busy/recurrence semantics come from the scheduling domain. Narrative memory may recall a past event only as historical context and must not become the scheduler's occupied-time authority.
+Current event time/busy/recurrence semantics come from the scheduling domain's completed `ScheduleEvent → ScheduleOccurrence` contract (established by Issue #278). Narrative memory may recall a past event only as historical context and must not become the scheduler's occupied-time authority.
 
 ### Reporting
 
