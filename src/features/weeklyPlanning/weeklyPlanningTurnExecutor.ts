@@ -2,9 +2,6 @@ import {
   resolveWeeklyPlanningRequestContextAtIngress,
 } from './application/weeklyPlanningRequestContextIngress';
 import {
-  executeWeeklyPlanningStableV5RuntimeTurn,
-} from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
-import {
   weeklyPlanningStableV5TurnResultProjector,
 } from './application/weeklyPlanningStableV5TurnResultProjection';
 import type {
@@ -30,6 +27,9 @@ export async function executeWeeklyPlanningTurn(
     selectedDate: input.selectedDate,
     weekStartsOn: input.weekStartsOn,
   }).context;
+  const { executeWeeklyPlanningStableV5RuntimeTurn } = await import(
+    './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor'
+  );
   const result = await executeWeeklyPlanningStableV5RuntimeTurn({
     previousState: input.previousState,
     messages: input.messages,

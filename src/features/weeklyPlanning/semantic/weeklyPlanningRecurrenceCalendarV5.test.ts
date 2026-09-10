@@ -41,7 +41,22 @@ describe('weekly planning recurrence calendar semantics', () => {
     });
   });
 
-  it('uses the same canonical weekday set for weekly and custom recurrences', () => {
+  it('expands graph-canonical weekday tokens for weekly recurrences', () => {
+    expect(resolveWeeklyPlanningCalendarRecurrenceDatesV5({
+      kind: 'weekly',
+      days: ['weekday:wednesday', 'weekday:friday', 'weekday:sunday'],
+      dates,
+    })).toEqual({
+      calendarDates: ['2026-08-26', '2026-08-28', '2026-08-30'],
+      invalidDays: [],
+    });
+    expect(isWeeklyPlanningCalendarExpandableRecurrenceV5({
+      kind: 'weekly',
+      days: ['weekday:sunday'],
+    })).toBe(true);
+  });
+
+  it('preserves legacy short weekday recurrence tokens', () => {
     const expected = ['2026-08-26', '2026-08-28', '2026-08-30'];
 
     expect(resolveWeeklyPlanningCalendarRecurrenceDatesV5({
@@ -82,7 +97,7 @@ describe('weekly planning recurrence calendar semantics', () => {
     }
   });
 
-  it('reports non-canonical weekday tokens without inventing a meaning', () => {
+  it('reports unsupported weekday tokens without inventing a meaning', () => {
     expect(resolveWeeklyPlanningCalendarRecurrenceDatesV5({
       kind: 'custom',
       days: ['wed', '水曜', 'sun'],

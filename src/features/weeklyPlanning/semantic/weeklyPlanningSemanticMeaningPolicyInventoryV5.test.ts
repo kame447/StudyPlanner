@@ -42,16 +42,59 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     }
   });
 
-  it('keeps qualitative scope boundaries structural instead of inventing one custom workload', () => {
+  it('keeps qualitative scope structural and does not reopen an approved material breakdown', () => {
     const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'workload_quantity_effort',
     );
 
     expect(workloadRule?.instruction).toContain(
-      'Uncounted qualitative scope belongs in task/component structure',
+      'Qualitative scope belongs in task/components',
     );
-    expect(workloadRule?.instruction).toContain('emit work_breakdown uncertainty');
+    expect(workloadRule?.instruction).toContain(
+      'Approved material chapter/section structure resolves work_breakdown',
+    );
+    expect(workloadRule?.instruction).toContain("don't re-ask");
+    expect(workloadRule?.instruction).toContain(
+      'work_breakdown only for genuine structural ambiguity',
+    );
     expect(workloadRule?.instruction).toContain('never invent quantity or total duration');
+  });
+
+  it('canonicalizes explicit not-started progress as positive remaining work without inventing material quantity', () => {
+    const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'workload_quantity_effort',
+    );
+
+    expect(workloadRule?.instruction).toContain(
+      'Explicit not-started = remaining 100 custom % for each exact target',
+    );
+    expect(workloadRule?.instruction).not.toContain('completed 0');
+  });
+
+  it('keeps assessment performance separate from schedulable task progress', () => {
+    const taskRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'task_structure',
+    );
+    const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'workload_quantity_effort',
+    );
+
+    expect(taskRule?.instruction).toContain(
+      'Performance-only mentions such as exam scores do not create tasks/components',
+    );
+    expect(workloadRule?.instruction).toContain(
+      'scores/grades/accuracy/rank are not unless explicit task/material completion',
+    );
+  });
+
+  it('requires relation endpoints to come from emitted or explicitly bound entities', () => {
+    const taskRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'task_structure',
+    );
+
+    expect(taskRule?.instruction).toContain(
+      'Relation endpoints must be emitted or explicitly bound existing entities; never invent them',
+    );
   });
 
   it('reserves fixed_interval for clock intervals and uses date-bound kinds for date-only periods', () => {
@@ -64,6 +107,41 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     );
     expect(temporalRule?.instruction).toContain(
       'Date-only from/after -> earliest_start; until/by -> latest_end or deadline',
+    );
+  });
+
+  it('keeps recurring weekday encoding separate from an unrelated date expression', () => {
+    const temporalRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'temporal_scope_and_deadline',
+    );
+
+    expect(temporalRule?.instruction).toContain(
+      'Recurring weekdays use days with null dateExpression unless separately date-scoped',
+    );
+  });
+
+  it('represents daily capacity without widening it into all-day clock availability', () => {
+    const availabilityRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'availability_absence',
+    );
+
+    expect(availabilityRule?.instruction).toContain('kind=capacity');
+    expect(availabilityRule?.instruction).toContain('capacityMinutes');
+    expect(availabilityRule?.instruction).toContain(
+      'never widen capacity into an all-day clock window',
+    );
+    expect(availabilityRule?.instruction).toContain(
+      'hard plan-wide daily allocation ceiling',
+    );
+  });
+
+  it('keeps approximate goal-event dates symbolic instead of inventing a day', () => {
+    const durableContextRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'durable_user_context',
+    );
+
+    expect(durableContextRule?.instruction).toContain(
+      'Approximate goal-event dates may use custom symbolic form; never invent an exact day',
     );
   });
 });

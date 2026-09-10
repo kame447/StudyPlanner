@@ -18,7 +18,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'task_structure',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Choosing whether language denotes a task, subordinate component, attachment target, or a genuine new decomposition requirement requires semantic interpretation before structural validation can run.',
-    instruction: 'Treat requested learning work as study tasks with meaningful task/component structure. Attach work, effort, constraints and context to targets. Performance-only mentions such as exam scores do not create tasks/components. Relation endpoints must be emitted or explicitly bound existing entities; never invent them. Minimal existingPublicId shells need no breakdown; emit work_breakdown uncertainty only for genuine current-turn structural ambiguity.',
+    instruction: 'Represent learning work as study tasks/components. Attach work, effort, constraints, context. Performance-only mentions such as exam scores do not create tasks/components. Relation endpoints must be emitted or explicitly bound existing entities; never invent them. Minimal existingPublicId shells need no breakdown; work_breakdown only for genuine current-turn structural ambiguity.',
   },
   {
     id: 'study_activity_kind',
@@ -36,7 +36,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'workload_quantity_effort',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing fixed total scope, plan target, current progress, performance metrics, time-boxed work, duration cost, and per-unit effort requires semantic interpretation.',
-    instruction: 'scope_total needs explicit bounded total; target needs explicit plan amount and is never derived from total/completed. Uncounted qualitative scope belongs in task/component structure, not amount=1 custom workload; if needed, emit work_breakdown uncertainty; never invent quantity or total duration. For all remaining work, omit target; deterministic progress derives remaining. completed/remaining are workload progress; scores/grades/accuracy/rank are not progress unless explicitly task/material completion. Scheduled time is target minute/hour workload; do not ask content progress. Keep perOccurrence/recurrence aligned. Separate workload cost uses total_duration/duration_per_unit; session_duration only for one session.',
+    instruction: "scope_total needs bounded total; target is plan amount, never derived. Qualitative scope belongs in task/components, not amount=1 custom workload. Approved material chapter/section structure resolves work_breakdown without exact names/counts; don't re-ask. Otherwise work_breakdown only for genuine structural ambiguity; never invent quantity or total duration. All-remaining omits target; code derives remaining. completed/remaining are progress. Explicit not-started = remaining 100 custom % for each exact target. scores/grades/accuracy/rank are not unless explicit task/material completion. Scheduled time is target minute/hour workload; do not ask content progress. Align perOccurrence/recurrence. Separate workload cost: total_duration/duration_per_unit; session_duration only for one session.",
   },
   {
     id: 'temporal_scope_and_deadline',
@@ -47,8 +47,8 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
   {
     id: 'availability_absence',
     retentionBasis: 'language_interpretation',
-    retentionReason: 'Distinguishing explicit absence of constraints from omitted information or positive availability depends on what the user actually asserted.',
-    instruction: 'Use no_additional_constraint only when explicit; omission is not absence. available is positive availability. A daily total capacity without clock bounds is not all-day availability; if unsupported, emit uncertainty rather than widen it.',
+    retentionReason: 'Distinguishing explicit absence of constraints, clock-window availability, and a daily total study capacity depends on what the user actually asserted.',
+    instruction: 'Explicit no_additional_constraint means absence; omission does not. available is a clock window. Daily capacity uses kind=capacity, capacityMinutes, and date/recurrence scope; time fields stay null; never widen capacity into an all-day clock window. It is a hard plan-wide daily allocation ceiling.',
   },
   {
     id: 'contextual_reference_binding',
@@ -72,7 +72,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'independent_clause_decision_correction',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Clause independence, corrections, and proposal decisions are discourse semantics; deterministic lifecycle code applies them only after the model identifies them.',
-    instruction: 'Interpret clauses independently. Explicit corrections emit replacement facts and replacementLocalId. Corrections/decisions do not suppress facts. Emit decisions only when explicit; pending proposal decisions target proposal and exact publicId.',
+    instruction: 'Interpret clauses independently. Corrections emit replacement facts + replacementLocalId. Availability changes target.kind=availability_declaration + exact publicId; additions do not. Preserve facts. Decisions explicit; proposals exact publicId.',
   },
 ] as const satisfies readonly {
   id: string;

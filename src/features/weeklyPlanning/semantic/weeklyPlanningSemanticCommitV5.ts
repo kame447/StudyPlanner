@@ -1,9 +1,12 @@
 import {
-  applyWeeklyPlanningCanonicalCorrectionsV5,
-} from './weeklyPlanningCanonicalCorrectionApplicationV5';
+  applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
+} from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
 import {
   projectWeeklyPlanningBoundedProgressV5,
 } from './weeklyPlanningBoundedProgressProjectionV5';
+import {
+  applyWeeklyPlanningFactLifecycleOperationV5,
+} from './weeklyPlanningFactLifecycleEngineV5';
 import type {
   WeeklyPlanningFactDiffEntryV5,
   WeeklyPlanningFactGraphV5,
@@ -48,6 +51,84 @@ function uniqueDiffEntries(
     seen.add(key);
     return true;
   });
+}
+
+function removeResolvedWorkBreakdownUncertaintiesV5(params: {
+  originalGraph: WeeklyPlanningFactGraphV5;
+  document: WeeklyPlanningSemanticDocumentV5;
+  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
+  operationKeyPrefix: string;
+}): WeeklyPlanningSemanticCanonicalizationResultV5 {
+  const { canonicalization } = params;
+  if (canonicalization.status !== 'applied' || !canonicalization.diff) {
+    return canonicalization;
+  }
+
+  const resolvedTargetIds = new Set(
+    params.document.tasks
+      .filter((task) =>
+        typeof task.existingPublicId === 'string'
+        && task.existingPublicId.length > 0
+        && task.decompositionStatus === 'decomposed'
+        && (task.study?.components.length ?? 0) > 0)
+      .map((task) => task.existingPublicId as string),
+  );
+  if (resolvedTargetIds.size === 0) return canonicalization;
+
+  let graph = canonicalization.graph;
+  const removed: WeeklyPlanningFactDiffEntryV5[] = [];
+  const activeIds = () => new Set(
+    graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+  const uncertaintyIds = graph.uncertainties
+    .filter((uncertainty) =>
+      uncertainty.field === 'work_breakdown'
+      && typeof uncertainty.targetFactId === 'string'
+      && resolvedTargetIds.has(uncertainty.targetFactId))
+    .map((uncertainty) => uncertainty.id)
+    .sort();
+
+  for (const uncertaintyId of uncertaintyIds) {
+    if (!activeIds().has(uncertaintyId)) continue;
+    const result = applyWeeklyPlanningFactLifecycleOperationV5({
+      graph,
+      expectedRevision: graph.revision,
+      operation: {
+        operationKey: `${params.operationKeyPrefix}:resolved-work-breakdown:${uncertaintyId}`,
+        kind: 'remove',
+        targetFactId: uncertaintyId,
+      },
+    });
+    if (result.status === 'rejected') {
+      return {
+        status: 'rejected',
+        graph: params.originalGraph,
+        diff: null,
+        errors: result.errors.map((error) => `work-breakdown-cleanup:${error}`),
+        localToFactId: canonicalization.localToFactId,
+      };
+    }
+    if (result.status === 'applied') {
+      graph = result.graph;
+      removed.push(...result.removed);
+    }
+  }
+
+  if (removed.length === 0) return canonicalization;
+  return {
+    ...canonicalization,
+    graph,
+    diff: {
+      ...canonicalization.diff,
+      toRevision: graph.revision,
+      removed: uniqueDiffEntries([
+        ...canonicalization.diff.removed,
+        ...removed,
+      ]),
+    },
+  };
 }
 
 function applyCanonicalCorrectionResult(params: {
@@ -169,9 +250,15 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: percentageProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
+  const workBreakdownCleanedCanonicalization = removeResolvedWorkBreakdownUncertaintiesV5({
+    originalGraph: params.originalGraph,
+    document: params.document,
+    canonicalization: boundedProjectedCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
   const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
     originalGraph: params.originalGraph,
-    canonicalization: boundedProjectedCanonicalization,
+    canonicalization: workBreakdownCleanedCanonicalization,
   });
   return {
     entityBindingApplication,

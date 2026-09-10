@@ -25,9 +25,15 @@ export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
   providerError: string | null;
 }
 
+export type WeeklyPlanningContextualDirectiveV5 = {
+  kind: 'provisional_timebox';
+  scope: 'current_missing_effort';
+};
+
 export interface WeeklyPlanningSemanticNormalizerResultV5 {
   status: 'accepted' | 'rejected' | 'provider_failure';
   document: WeeklyPlanningSemanticDocumentV5 | null;
+  contextualDirective?: WeeklyPlanningContextualDirectiveV5 | null;
   diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
 }
 

@@ -266,6 +266,7 @@ const semanticReferenceSchema = objectSchema(
       'temporal_constraint',
       'recurrence',
       'relation',
+      'availability_declaration',
       'proposal',
     ]),
     publicId: nullableStringSchema,
@@ -306,6 +307,7 @@ const availabilityDeclarationSchema = objectSchema(
     'recurrenceKind',
     'days',
     'constraintLevel',
+    'capacityMinutes',
     'sourceText',
   ],
   {
@@ -320,6 +322,7 @@ const availabilityDeclarationSchema = objectSchema(
     },
     days: arraySchema(stringSchema),
     constraintLevel: enumSchema(SEMANTIC_CONSTRAINT_LEVELS_V5),
+    capacityMinutes: nullableNumberSchema,
     ...sourceTextProperty,
   },
 );
