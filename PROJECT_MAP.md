@@ -35,6 +35,16 @@ Weekly planning:
 7. `docs/domains/weekly-planning/roadmap/current.md`
 8. `docs/domains/weekly-planning/work/README.md` / owning Issue
 
+User context / long-term memory work:
+
+1. `docs/domains/user-context/README.md`
+2. `docs/domains/user-context/architecture/memory-and-conversation.md`
+3. `docs/domains/user-context/policies/memory-lifecycle-and-surfacing.md`
+4. `docs/domains/user-context/quality/regression-scenarios.md`
+5. `docs/domains/user-context/roadmap/current.md`
+6. Issue #294
+7. current foundation: `src/features/userPlanningContext/`
+
 Client-first/runtime work:
 
 1. `docs/domains/client-runtime/README.md`
@@ -285,13 +295,19 @@ Conversation-support and feature configuration helpers. Do not place independent
 
 A separate advice purpose/config may physically be referenced from here, but consultation routing, advice lifecycle and promotion ownership must remain in their semantic/application owners.
 
-## 7. User planning context
+## 7. User context
 
-`src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
+Canonical documentation root: `docs/domains/user-context/`
 
-Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
+Current production foundation: `src/features/userPlanningContext/`.
 
-Issue #246 advice is not durable user context merely because it is generated or persisted in a conversation. Only a separate user-stated durable meaning such as `今後もその方法でやりたい` may become a user-context candidate under the existing authority/lifecycle rules.
+Issue #294 owns app-wide durable user context, semantic/episodic memory, retrieval, lifecycle/forget, temporal/authority conflict resolution and conversation surfacing. The current code root was established by Issue #232 / PR #235 and remains implementation evidence; its current physical shape does not imply that the full #294 target architecture is already shipped.
+
+Current-value product data remains owned by the product domain that can authoritatively update it. User Context must not duplicate current material progress, current scheduled-event time, current timetable, or current weekly-planning state into a second active truth.
+
+Durable preference is not the same as current-week acceptance or observed learning evidence. Issue #47 remains the owner of weekly-planning personalization, cloud conversation/session rollout and outcome learning; Issue #164 owns client/local/cloud persistence and synchronization authority.
+
+Issue #246 advice is not durable user context merely because it is generated or persisted in a conversation. Only a separate user-stated durable meaning such as `今後もその方法でやりたい` may become a user-context candidate under the user-context authority/lifecycle rules.
 
 ## 8. Major safety boundaries
 
@@ -300,6 +316,8 @@ Issue #246 advice is not durable user context merely because it is generated or 
 AI may interpret language and render typed dialogue decisions. AI does not own formal IDs, revision/lifecycle, readiness, scheduler placement, approval or save.
 
 Future learning-advice generation may recommend strategy/material/order, but it does not gain scheduler, save, lifecycle or durable-memory authority.
+
+For User Context, AI may interpret memory candidates and realize an allowed callback, but deterministic/application code owns canonical memory identity, source-of-truth routing, lifecycle, revoke/forget and whether retrieved memory is eligible to be surfaced.
 
 ### Preview / approval
 
@@ -341,6 +359,7 @@ If consultation later consumes report aggregates, those deterministic values rem
 - product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
+- user-context longitudinal / memory quality policy: `docs/domains/user-context/quality/regression-scenarios.md`
 - Issue #246 planned consultation test matrix: `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` until implementation promotes verified guarantees into current regression owners
 - CI: `.github/workflows/ci.yml`
 - Browser Regression: `.github/workflows/browser-regression.yml`
@@ -376,6 +395,7 @@ Choose the directory by change reason, not by current caller:
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
+- durable semantic/episodic memory, retrieval, revoke/forget, temporal conflict resolution or surface decision → user-context domain / current user-context application boundary
 - natural-language meaning, including consultation/adoption reference meaning → weekly `semantic/`
 - readiness/proposal/work decision and future advice lifecycle/promotion → weekly `planning/` / `application/`
 - placement/availability → weekly `scheduling/`
