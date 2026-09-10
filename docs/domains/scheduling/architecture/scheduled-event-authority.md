@@ -1,8 +1,8 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-09-03
-Owner Issue: #278
+Updated: 2026-09-10
+Baseline implementation: Issue #278 — completed
 
 ## Product invariant
 
@@ -10,7 +10,7 @@ StudyPlannerでは「勉強か、勉強以外か」で保存先や表示先を�
 
 時間が確定したユーザー予定は、表示surfaceに依存しない一つのscheduled-event概念として扱う。月・週・日・AI計画は別々の予定truthを再解釈してはならない。
 
-Phase 3のtarget architectureは次のとおり。
+Current architectureは次のとおり。
 
 ```text
 legacy Plan / MonthEvent
@@ -75,7 +75,7 @@ recurrence、excluded date、multi-day span、24:00 / 日跨ぎの意味はconsu
 - compatibility MonthEvent recurrence / exclusion / multi-day spanはMonthEvent helperからoccurrenceへ展開する。
 - downstream consumerは展開済みoccurrenceのstart/endを基準にする。
 
-Phase 3はpersistence authorityを変えるが、既存recurrenceの意味を変更するmigrationではない。
+Phase 3はpersistence authorityを変えたが、既存recurrenceの意味を変更するmigrationではない。
 
 ## Category, kind, busy are separate
 
@@ -108,7 +108,9 @@ kind/details = study-specific / general-specific additional data
 
 ### Week
 
-- persisted scheduled occurrenceとMonthEvent互換projectionを同じ時間軸へ表示する。
+- persisted scheduled occurrence、MonthEvent compatibility projection、TimetableTemplate occurrenceを同じ時間軸へ表示する。
+- TimetableTemplate由来の未import occurrenceはread-onlyとして表示し、通常Planのdrag/edit/delete mutationへ誤送信しない。
+- timetable import済みPlanが同じsource occurrenceを所有する場合はPlanを優先し、template occurrenceを二重表示しない。
 - mutation対象のbacking identityを尊重し、表示用projectionを別種類のmutationへ誤送信しない。
 
 ### Day
