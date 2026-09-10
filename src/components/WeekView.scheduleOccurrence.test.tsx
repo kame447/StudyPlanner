@@ -1,7 +1,14 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
-import type { MonthEvent } from '../types/domain';
+import type {
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 import { WeekView } from './WeekView';
+
+const TIMESTAMP = '2026-08-01T00:00:00.000Z';
 
 function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
   return {
@@ -18,14 +25,86 @@ function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
     memo: '',
     checklist: [],
     locationTags: [],
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-08-01T00:00:00.000Z',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function timetableTerm(): TimetableTerm {
+  return {
+    id: 'term-1',
+    userId: 'user-1',
+    year: 2026,
+    kind: 'custom',
+    label: '前期',
+    startDate: '2026-08-01',
+    endDate: '2026-08-31',
+    isActive: true,
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+  };
+}
+
+function scheduleTemplate(
+  overrides: Partial<ScheduleTemplate> = {},
+): ScheduleTemplate {
+  return {
+    id: 'class-1',
+    userId: 'user-1',
+    title: '情報学演習',
+    subject: '情報学',
+    type: 'school-event',
+    weekday: 'mon',
+    startTime: '13:00',
+    endTime: '14:30',
+    termId: 'term-1',
+    periodNumber: 3,
+    classroom: '情報学部棟',
+    memo: '',
+    active: true,
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function importedTimetablePlan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'imported-class-1',
+    seriesId: 'imported-class-1',
+    userId: 'user-1',
+    title: '情報学演習',
+    subject: '情報学',
+    date: '2026-08-24',
+    startTime: '15:00',
+    endTime: '16:30',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'school-event',
+    memo: '',
+    sourceType: 'timetable',
+    sourceId: 'class-1',
+    sourceDate: '2026-08-24',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
     ...overrides,
   };
 }
 
 function findTimedBlock(renderer: ReactTestRenderer, title: string) {
   return renderer.root.find(
+    (node) =>
+      typeof node.props.title === 'string' &&
+      node.props.title.startsWith(`${title} / `) &&
+      node.props['data-week-spanning-event'] !== 'true',
+  );
+}
+
+function findTimedBlocks(renderer: ReactTestRenderer, title: string) {
+  return renderer.root.findAll(
     (node) =>
       typeof node.props.title === 'string' &&
       node.props.title.startsWith(`${title} / `) &&
@@ -58,6 +137,64 @@ describe('WeekView schedule occurrence projection', () => {
         (node) => node.props['data-schedule-week-spanning-events'] === 'true',
       ),
     ).toHaveLength(0);
+  });
+
+  it('shows timetable template occurrences on the hourly timeline as read-only schedule rows', () => {
+    let renderer!: ReactTestRenderer;
+    const term = timetableTerm();
+
+    act(() => {
+      renderer = create(
+        <WeekView
+          selectedDate="2026-08-24"
+          userId="user-1"
+          plans={[]}
+          actuals={[]}
+          monthEvents={[]}
+          scheduleTemplates={[scheduleTemplate()]}
+          timetableTermId={term.id}
+          timetableTerm={term}
+          timetableTerms={[term]}
+          onOpenDay={vi.fn()}
+        />,
+      );
+    });
+
+    const timetableBlock = findTimedBlock(renderer, '情報学演習');
+    expect(timetableBlock.type).toBe('span');
+    expect(timetableBlock.props.title).toBe('情報学演習 / 13:00-14:30');
+    expect(timetableBlock.props['data-schedule-occurrence-id']).toBeUndefined();
+    expect(timetableBlock.props['aria-label']).toContain('時間割');
+  });
+
+  it('prefers an imported timetable Plan over its template occurrence after a clock-time edit', () => {
+    let renderer!: ReactTestRenderer;
+    const term = timetableTerm();
+
+    act(() => {
+      renderer = create(
+        <WeekView
+          selectedDate="2026-08-24"
+          userId="user-1"
+          plans={[importedTimetablePlan()]}
+          actuals={[]}
+          monthEvents={[]}
+          scheduleTemplates={[scheduleTemplate()]}
+          timetableTermId={term.id}
+          timetableTerm={term}
+          timetableTerms={[term]}
+          onOpenDay={vi.fn()}
+        />,
+      );
+    });
+
+    const matchingBlocks = findTimedBlocks(renderer, '情報学演習');
+    expect(matchingBlocks).toHaveLength(1);
+    expect(matchingBlocks[0].type).toBe('button');
+    expect(matchingBlocks[0].props.title).toBe('情報学演習 / 15:00-16:30');
+    expect(matchingBlocks[0].props['data-schedule-occurrence-id']).toBe(
+      'timetable:class-1:2026-08-24',
+    );
   });
 
   it('moves multi-day MonthEvents into one spanning lane above the hourly grid', () => {
