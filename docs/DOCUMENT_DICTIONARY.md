@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-09-08
+Updated: 2026-09-10
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -68,9 +68,9 @@ archiveは現在の実装命令にならない。
 正本:
 
 - scheduled-event authority、ScheduleOccurrence identity/time/busy semantics、Plan / MonthEvent / timetable projection境界: `architecture/scheduled-event-authority.md`
-- current migration order / Phase 3 checkpoint: `roadmap/current.md`
+- completed migration baseline / current operational baseline: `roadmap/current.md`
 
-current implementation ownerはIssue #278。`src/domain/scheduleOccurrence.ts`はcompatibility read modelであり、canonical persistenceそのものではない。
+Issue #278 は canonical `ScheduleEvent → ScheduleOccurrence` baseline を確立した完了済みimplementation historyであり、current implementationを恒久的に所有しない。今後の scheduling 変更は、新しいproduct requirementを所有するIssueを使う。`src/domain/scheduleOccurrence.ts`は共通read/projection boundaryであり、canonical persistenceそのものではない。
 
 ### Weekly planning
 
