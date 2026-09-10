@@ -13,6 +13,16 @@ import {
 } from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
 
+function source() {
+  return {
+    conversationId: 'conversation-1',
+    turnId: 'turn-1',
+    semanticLocalId: 'task-local-1',
+    sourceText: '今日数学を1時間やりたい',
+    origin: 'user' as const,
+  };
+}
+
 function workItem(): GenericPlanningWorkItem {
   return {
     version: 'weekly-planning-generic-work-item-v1',
@@ -71,28 +81,46 @@ function graph(): WeeklyPlanningFactGraphV5 {
       id: 'task-1',
       category: 'study',
       title: '数学',
-      source: {
-        conversationId: 'conversation-1',
-        turnId: 'turn-1',
-        semanticLocalId: 'task-local-1',
-        sourceText: '今日数学を1時間やりたい',
-        origin: 'user',
+      source: source(),
+      createdRevision: 1,
+    }],
+    workloads: [{
+      id: 'workload-1',
+      taskId: 'task-1',
+      componentId: null,
+      quantityRole: 'target',
+      amount: 60,
+      unitCode: 'minute',
+      unitLabel: '分',
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      source: source(),
+      createdRevision: 1,
+    }],
+    factLifecycles: [
+      {
+        factId: 'task-1',
+        status: 'active',
+        createdRevision: 1,
+        terminalRevision: null,
+        supersededByFactId: null,
       },
-      createdRevision: 1,
-    }],
-    factLifecycles: [{
-      factId: 'task-1',
-      status: 'active',
-      createdRevision: 1,
-      terminalRevision: null,
-      supersededByFactId: null,
-    }],
+      {
+        factId: 'workload-1',
+        status: 'active',
+        createdRevision: 1,
+        terminalRevision: null,
+        supersededByFactId: null,
+      },
+    ],
   };
 }
 
-function placementGraph() {
+function placementGraph(value = graph()) {
   return createWeeklyPlanningPlacementGraphViewV5(
-    createWeeklyPlanningActiveSchedulerGraphViewV5(graph()),
+    createWeeklyPlanningActiveSchedulerGraphViewV5(value),
   );
 }
 
@@ -118,6 +146,59 @@ describe('Stable V5 preview scheduler request-time cutoff', () => {
       input: input(),
       graph: placementGraph(),
       notBefore: { date: '2026-08-11', time: '24:00' },
+    });
+
+    expect(result.status).toBe('insufficient_capacity');
+    expect(result.candidates).toEqual([]);
+    expect(result.unscheduledWorkItemIds).toEqual(['work-item-1']);
+  });
+
+  it('drops only past occurrences when a recurring conversation resumes on a later date', () => {
+    const schedulerInput = input();
+    schedulerInput.horizon = {
+      ...schedulerInput.horizon,
+      startDate: '2026-08-10',
+      endDate: '2026-08-11',
+    };
+    schedulerInput.movableWorkItems = [
+      { ...workItem(), id: 'work-item-past', requiredDate: '2026-08-10' },
+      { ...workItem(), id: 'work-item-today', requiredDate: '2026-08-11' },
+    ];
+    const value = graph();
+    value.workloads[0].perOccurrence = true;
+
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: schedulerInput,
+      graph: placementGraph(value),
+      notBefore: { date: '2026-08-11', time: '09:00' },
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.unscheduledWorkItemIds).toEqual([]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
+      date: '2026-08-11',
+      startTime: '09:00',
+      endTime: '10:00',
+      workItemKey: 'work-item-today',
+    });
+  });
+
+  it('does not silently drop a past one-off required date', () => {
+    const schedulerInput = input();
+    schedulerInput.horizon = {
+      ...schedulerInput.horizon,
+      startDate: '2026-08-10',
+      endDate: '2026-08-11',
+    };
+    schedulerInput.movableWorkItems = [
+      { ...workItem(), requiredDate: '2026-08-10' },
+    ];
+
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: schedulerInput,
+      graph: placementGraph(),
+      notBefore: { date: '2026-08-11', time: '09:00' },
     });
 
     expect(result.status).toBe('insufficient_capacity');
