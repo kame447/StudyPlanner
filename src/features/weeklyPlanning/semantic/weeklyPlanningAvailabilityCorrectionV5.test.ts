@@ -20,6 +20,9 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
+  parseWeeklyPlanningFactGraphV5,
+} from './weeklyPlanningFactGraphValidatorV5';
+import {
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
@@ -205,6 +208,49 @@ describe('Stable V5 availability corrections', () => {
       kind: 'availability_declaration',
       id: old.id,
     });
+  });
+
+  it('round-trips a graph whose correction targets an availability declaration', () => {
+    const graph = initialGraph();
+    const old = graph.availabilityDeclarations[0];
+    const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, graph);
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      providerCorrectionResponse(old.id),
+      { publicStateSummary },
+    );
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+      graph,
+      document: validation.document!,
+      context: {
+        conversationId: 'conversation-availability-correction',
+        turnId: 'turn-round-trip',
+        expectedRevision: graph.revision,
+      },
+    });
+    const committed = finalizeWeeklyPlanningSemanticCanonicalizationV5({
+      originalGraph: graph,
+      document: validation.document!,
+      baseCanonicalization: base,
+      contextualAnswer: false,
+      questionCode: null,
+      operationKeyPrefix: 'conversation-availability-correction:turn-round-trip',
+    });
+    const next = committed.canonicalization.graph;
+
+    const correction = next.correctionIntents[0];
+    expect(correction.target.factId).toBe(old.id);
+    expect(correction.replacementFactId).not.toBeNull();
+
+    // A committed correction must survive persistence. The graph validator has to accept
+    // availability declarations as addressable correction endpoints, otherwise a saved
+    // conversation containing an availability correction can never be resumed.
+    const reparsed = parseWeeklyPlanningFactGraphV5(JSON.stringify(next));
+    expect(reparsed.errors).toEqual([]);
+    expect(reparsed.graph).not.toBeNull();
+    expect(reparsed.graph?.correctionIntents[0]?.target.factId).toBe(old.id);
+    expect(reparsed.graph?.correctionIntents[0]?.replacementFactId).toBe(
+      correction.replacementFactId,
+    );
   });
 
   it('keeps an independent added availability active when no correction was emitted', () => {
