@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-05
+Updated: 2026-09-11
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -20,39 +20,22 @@ Scheduling Issue #278 is complete. PR #279 unified `ScheduleOccurrence` reads ac
 
 Issue #52 is complete. PR #283 removed the obsolete `WeeklyPlanningQuickEntryModal` compatibility wrapper, reduced generic `QuickEntryModal` to manual entry, and made `AiPlanningView` the user-facing owner for weekly-planning conversation, cancellation, preview and approval behavior. Generic QuickEntry must not regain weekly-planning state/callback plumbing.
 
-## Immediate active path: Issue #136 / PR #275
+## Completed: Issue #136 / PR #275
 
-Issue #136 owns the active Stable V5 semantic-regression implementation path.
+Issue #136 completed the Stable V5 semantic-regression path. PR #275 reconciled current main into `fix/issue136-semantic-regressions` by merge, carried the persisted Real Luna conversation to terminal save, and removed the temporary verification wiring it had added.
 
-- Issue: #136 `P1: Real Luna completion-based E2E regression tracker`
-- branch: `fix/issue136-semantic-regressions`
-- Draft PR: #275
+The completion-based evaluation reached `completed_saved` on reconciled code: preview, one user availability correction, regenerated preview, explicit approval, then 75 saved plans. Nothing was saved before approval.
 
-Exact branch HEAD, current-main divergence, Real Luna continuation state, verification evidence, and next action are owned by Issue #136 / PR #275. Re-fetch those mutable sources before resuming instead of copying their changing values into this roadmap.
-
-Resume order remains:
-
-```text
-re-fetch Issue #136 / PR #275 / current main
-→ reconcile current main into the existing branch when the active owner reaches that step
-→ classify conflicts by owner; preserve #278 ScheduleEvent authority
-→ rerun deterministic checks on the reconciled HEAD
-→ continue the persisted Real Luna checkpoint
-→ resolve remaining effort questions without inventing unknown quantities
-→ reach preview
-→ perform one correction
-→ explicit approval
-→ terminal save
-→ remove temporary Real Luna workflow/command wiring
-→ final CI / Browser Regression / diff audit
-→ merge/close decision for #136
-```
-
-Known durable behavior already established in this work includes:
+Durable behavior established by this work:
 
 - canonical weekday recurrence tokens are accepted by deterministic recurrence resolution while legacy aliases remain compatible.
 - weekend `1日8時間` is represented as a 480-minute daily capacity, not invented full-day clock availability.
-- physics/chemistry stale work-breakdown uncertainties were removed without inventing problem counts or total effort.
+- a separate Saturday unavailable interval stays distinct from capacity.
+- stale physics/chemistry work-breakdown uncertainties were removed without inventing problem counts or total effort; unresolved effort stays unresolved.
+- a corrected availability supersedes the exact fact it replaces, and the correction records both endpoints explicitly rather than inferring them.
+- a fact graph containing an availability correction survives persistence. The graph validator previously omitted availability declarations from the addressable correction targets, so such a conversation applied its correction in memory but could not be resumed from its saved form. Round-trip coverage now locks this.
+
+The evaluation harness is driven by the dispatch workflow that already lives on main. Do not reintroduce branch-scoped push or pull_request triggers for it: a pull_request trigger spends a real API credential on every pull request touching weekly planning.
 
 ## Next priority: Issue #152 adversarial security
 
