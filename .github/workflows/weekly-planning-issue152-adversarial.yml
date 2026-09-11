@@ -66,6 +66,9 @@ jobs:
               indirect) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts") ;;
               stateful) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts") ;;
               retention) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152SemanticRetentionRealApi.observation.test.ts") ;;
+              stored-durable) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152StoredDurableRealApi.observation.test.ts") ;;
+              synthesized-evidence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152SynthesizedEvidenceRealApi.observation.test.ts") ;;
+              renderer-influence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152RendererInfluenceRealApi.observation.test.ts") ;;
               *) echo "unsupported suite: $suite" >&2; exit 1 ;;
             esac
           done < <(jq -r '.suites[]' "$command_file")
