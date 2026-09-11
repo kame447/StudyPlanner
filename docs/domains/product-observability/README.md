@@ -4,9 +4,9 @@ Status: canonical domain entry point
 Updated: 2026-08-28
 Owning Issue: #213
 
-このdomainは、StudyPlanner全体の利用状況・AI/API利用・機能品質・運用状態を、管理者が分析し、個別障害まで掘り下げるための観測責務を所有する。
+このドメインは、StudyPlanner 全体の利用状況・AI/API 利用・機能品質・運用状態を、管理者が分析し、個別障害まで掘り下げるための観測責務を所有する。
 
-管理画面という「画面」そのものをownerにするのではなく、管理画面へ供給するtelemetry、集計read model、drill-down、診断導線をownerにする。UIはこれらのprojectionであり、集計規則やstorage実装を所有しない。
+管理画面という「画面」そのものを owner にするのではなく、管理画面へ供給する telemetry、集計 read model、drill-down、診断導線を owner にする。UI はこれらの projection であり、集計規則や storage 実装を所有しない。
 
 ## Read order
 
@@ -24,7 +24,7 @@ Owning Issue: #213
 
 ## Ownership
 
-このdomainが所有するもの:
+本ドメインが所有するもの:
 
 - product activity telemetryの意味と最小schema
 - AI/API request metricの分析契約
@@ -37,7 +37,7 @@ Owning Issue: #213
 - 管理UIの情報階層と、専門用語を知らなくても読める表示方針
 - observability dataのprivacy classification、retention、redaction方針
 
-このdomainが所有しないもの:
+本ドメインが所有しないもの:
 
 - 週間計画runtime、semantic、scheduler、approval/saveの意味
 - weekly-planning trace自体のruntime truth
@@ -69,12 +69,12 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 ## Current implementation status
 
-Phase 1のcanonical design、Phase 2のlightweight telemetry foundation、Phase 3のaggregation / bounded read model foundationはmainへ統合済みである。Phase 3ではactor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query serviceを実装した。
+Phase 1 の canonical design、Phase 2 の lightweight telemetry foundation、Phase 3 の aggregation / bounded read model foundation は main へ統合済みである。Phase 3 では actor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query service を実装した。
 
-PR #220の初回実装後に行ったpost-merge adversarial auditで、rolling active-userのnormal read path、snapshot failure recovery、environment isolation、revision race、read-model validation、登録ユーザーread authority、profile registration timestamp、Firestore Rules verificationをhardeningし、PR #222としてmainへ統合した。merged main `4d57ce510251005c636a707bd8ee4a058cf75a06` の七視点再監査と主要CI / browser gateも完了している。
+PR #220 の初回実装後に行った post-merge adversarial audit で、rolling active-user の normal read path、snapshot failure recovery、environment isolation、revision race、read-model validation、登録ユーザー read authority、profile registration timestamp、Firestore Rules verification を hardening し、PR #222 として main へ統合した。merged main `4d57ce510251005c636a707bd8ee4a058cf75a06` の七視点再監査と主要 CI / browser gate も完了している。
 
-管理画面の新UIはまだ未実装であり、現在の次phaseはPhase 4「Console shell and Overview」である。UI component自身では再集計せず、Phase 3のbounded admin query / typed read modelをsource of truthとしてOverviewから実装する。
+管理画面の新 UI はまだ未実装であり、現在の次 phase は Phase 4「Console shell and Overview」である。UI component 自身では再集計せず、Phase 3 の bounded admin query / typed read model を source of truth として Overview から実装する。
 
-現行legacy admin user summaryは複数planner collectionをbrowser側で全件取得して集計するため、新consoleの最終read pathとしては使用しない。
+現行 legacy admin user summary は複数 planner collection をブラウザ側で全件取得して集計するため、新 console の最終 read path としては使用しない。
 
 詳細な週間計画traceは引き続きrestricted diagnostic layerであり、長期analyticsの正本へ昇格させない。
