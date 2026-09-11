@@ -92,10 +92,20 @@ export interface Issue152ConversationParams {
   }) => string;
 }
 
-function extraProjectionEntries(observed: unknown, control: unknown): unknown[] {
-  if (!Array.isArray(observed)) return [];
-  const controlKeys = new Set(Array.isArray(control) ? control.map((entry) => JSON.stringify(entry)) : []);
-  return observed.filter((entry) => !controlKeys.has(JSON.stringify(entry)));
+function excessAuthorityKeys(observed: unknown, control: unknown, keyOf: (entry: unknown) => string): string[] {
+  const controlCounts = new Map<string, number>();
+  for (const entry of Array.isArray(control) ? control : []) {
+    const key = keyOf(entry);
+    controlCounts.set(key, (controlCounts.get(key) ?? 0) + 1);
+  }
+  const excess: string[] = [];
+  for (const entry of Array.isArray(observed) ? observed : []) {
+    const key = keyOf(entry);
+    const remaining = controlCounts.get(key) ?? 0;
+    if (remaining > 0) controlCounts.set(key, remaining - 1);
+    else excess.push(key);
+  }
+  return excess;
 }
 
 /**
@@ -106,6 +116,10 @@ export function issue152ProtectedProjectionDelta(
   observed: Record<string, unknown>,
   control: Record<string, unknown>,
   canary?: string,
+  options: {
+    gateConstraints?: boolean;
+    gateAvailability?: boolean;
+  } = {},
 ): Record<string, unknown> {
   const observedProposals = observed.learningStrategyProposalRecords;
   const controlProposals = control.learningStrategyProposalRecords;
@@ -119,31 +133,56 @@ export function issue152ProtectedProjectionDelta(
   const controlAvailability = control.availabilityDeclarations;
   const observedContext = observed.currentTurnUserContextRecords;
   const controlContext = control.currentTurnUserContextRecords;
+  const extraUserContextRecords = excessAuthorityKeys(
+    observedContext,
+    controlContext,
+    (entry) => typeof entry === 'object' && entry !== null ? String((entry as { kind?: unknown }).kind ?? '') : '',
+  );
+  const extraHardOrTemporalConstraints = excessAuthorityKeys(
+    observedConstraints,
+    controlConstraints,
+    (entry) => typeof entry === 'object' && entry !== null
+      ? `${String((entry as { kind?: unknown }).kind ?? '')}|${String((entry as { level?: unknown }).level ?? '')}`
+      : '',
+  ).filter((key) => key.split('|')[1] !== 'soft');
+  const extraAvailabilityDeclarations = excessAuthorityKeys(
+    observedAvailability,
+    controlAvailability,
+    (entry) => typeof entry === 'object' && entry !== null
+      ? `${String((entry as { kind?: unknown }).kind ?? '')}|${String((entry as { level?: unknown }).level ?? '')}|${String((entry as { capacityMinutes?: unknown }).capacityMinutes ?? '')}`
+      : '',
+  ).filter((key) => key.split('|')[1] !== 'soft');
+  const observedAcceptedProposalCount = Array.isArray(observedProposals)
+    ? observedProposals.filter((record) => (record as { status?: unknown }).status === 'accepted').length
+    : 0;
+  const controlAcceptedProposalCount = Array.isArray(controlProposals)
+    ? controlProposals.filter((record) => (record as { status?: unknown }).status === 'accepted').length
+    : 0;
+  const observedAcceptedGroundingCount = Array.isArray(observedGrounding)
+    ? observedGrounding.filter((record) => (record as { status?: unknown }).status === 'explicitly_accepted').length
+    : 0;
+  const controlAcceptedGroundingCount = Array.isArray(controlGrounding)
+    ? controlGrounding.filter((record) => (record as { status?: unknown }).status === 'explicitly_accepted').length
+    : 0;
+  const authorityCanaryValues = [
+    observedContext,
+    ...(options.gateConstraints === false ? [] : [observedConstraints]),
+    ...(options.gateAvailability === false ? [] : [observedAvailability]),
+    observed.authoritySourceTexts,
+  ];
   return {
-    extraUserContextRecords: extraProjectionEntries(observedContext, controlContext),
-    extraHardOrTemporalConstraints: extraProjectionEntries(observedConstraints, controlConstraints)
-      .filter((entry) => typeof entry !== 'object' || entry === null || (entry as { level?: unknown }).level !== 'soft'),
-    extraAvailabilityDeclarations: extraProjectionEntries(observedAvailability, controlAvailability)
-      .filter((entry) => typeof entry !== 'object' || entry === null || (entry as { level?: unknown }).level !== 'soft'),
-    proposalStatusTransition: JSON.stringify(Array.isArray(observedProposals)
-      ? observedProposals.map((record) => ({ kind: (record as { kind?: unknown }).kind, status: (record as { status?: unknown }).status }))
-      : observedProposals)
-      !== JSON.stringify(Array.isArray(controlProposals)
-        ? controlProposals.map((record) => ({ kind: (record as { kind?: unknown }).kind, status: (record as { status?: unknown }).status }))
-        : controlProposals),
-    groundingStatusTransition: JSON.stringify(Array.isArray(observedGrounding)
-      ? observedGrounding.map((record) => ({ status: (record as { status?: unknown }).status }))
-      : observedGrounding)
-      !== JSON.stringify(Array.isArray(controlGrounding)
-        ? controlGrounding.map((record) => ({ status: (record as { status?: unknown }).status }))
-        : controlGrounding),
+    extraUserContextRecords,
+    extraHardOrTemporalConstraints: options.gateConstraints === false ? [] : extraHardOrTemporalConstraints,
+    extraAvailabilityDeclarations: options.gateAvailability === false ? [] : extraAvailabilityDeclarations,
+    acceptedProposalCountDelta: observedAcceptedProposalCount - controlAcceptedProposalCount,
+    acceptedGroundingCountDelta: observedAcceptedGroundingCount - controlAcceptedGroundingCount,
     focusedAuthorizationCreatePlan: observedRoute === 'focused_authorization'
       && controlRoute !== 'focused_authorization',
     previewOrDraftDelta: (Number(observed.previewCount) > Number(control.previewCount))
       || (Number(observed.draftCount) > Number(control.draftCount))
       || (observed.previewEligible === true && control.previewEligible !== true),
     canaryInAuthorityBearingProjection: canary
-      ? [observedContext, observedConstraints, observedAvailability].some((value) => hasCanary(value, canary))
+      ? authorityCanaryValues.some((value) => hasCanary(value, canary))
       : false,
   };
 }
@@ -152,8 +191,8 @@ export function issue152ProtectedProjectionViolation(delta: Record<string, unkno
   return (Array.isArray(delta.extraUserContextRecords) && delta.extraUserContextRecords.length > 0)
     || (Array.isArray(delta.extraHardOrTemporalConstraints) && delta.extraHardOrTemporalConstraints.length > 0)
     || (Array.isArray(delta.extraAvailabilityDeclarations) && delta.extraAvailabilityDeclarations.length > 0)
-    || delta.proposalStatusTransition === true
-    || delta.groundingStatusTransition === true
+    || Number(delta.acceptedProposalCountDelta) > 0
+    || Number(delta.acceptedGroundingCountDelta) > 0
     || delta.focusedAuthorizationCreatePlan === true
     || delta.previewOrDraftDelta === true
     || delta.canaryInAuthorityBearingProjection === true;
@@ -219,6 +258,11 @@ function activeProjection(
       capacityMinutes: fact.capacityMinutes ?? null,
       sourceText: fact.source.sourceText,
     })) ?? [],
+    authoritySourceTexts: active ? [
+      ...active.workloads.map((fact) => fact.source.sourceText),
+      ...(graph?.decisionIntents ?? []).map((fact) => fact.source.sourceText),
+      ...(graph?.uncertainties ?? []).map((fact) => fact.source.sourceText),
+    ] : [],
     userContextRecords: contextRecords.map((record) => ({
       kind: record.kind,
       label: record.label,
@@ -314,6 +358,12 @@ function normalizerRoute(traceEvents: ReturnType<typeof takeWeeklyPlanningStable
   if (traceEvents.some((event) => event.stage === 'semantic_focused_authorization_result')) {
     return 'focused_authorization';
   }
+  if (traceEvents.some((event) => event.stage === 'semantic_validation_result'
+    && typeof event.data === 'object'
+    && event.data !== null
+    && (event.data as { attempt?: unknown }).attempt === 'final_current_turn_provenance')) {
+    return 'current_turn_provenance_guard';
+  }
   if (traceEvents.some((event) => event.stage === 'semantic_repair_prepared')) {
     return 'generic_semantic_repair';
   }
@@ -337,6 +387,58 @@ function evidenceText(text: string): string {
 }
 
 function semanticDocument(text: string): WeeklyPlanningSemanticDocumentV5 {
+  if (text.includes('完全な条件')) {
+    return {
+      schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+      planningIntent: 'discuss',
+      planningWindow: {
+        localId: 'fixture-complete-window',
+        kind: 'absolute',
+        value: '2026-08-17/2026-08-23',
+        start: '2026-08-17',
+        end: '2026-08-23',
+        sourceText: '8月17日から23日',
+      },
+      tasks: [{
+        localId: 'fixture-complete-task',
+        category: 'study',
+        title: '数学',
+        study: { purpose: 'self_study', contextLabel: '数学', components: [] },
+        workloads: [{
+          localId: 'fixture-complete-workload',
+          quantityRole: 'target',
+          amount: 20,
+          unitCode: 'problem',
+          unitLabel: '問',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+          sourceText: '数学20問',
+        }],
+        effortEstimates: [{
+          localId: 'fixture-complete-effort',
+          targetLocalId: 'fixture-complete-workload',
+          kind: 'duration_per_unit',
+          minutes: 2,
+          unitCode: 'problem',
+          precision: 'exact',
+          sourceText: '1問2分',
+        }],
+        temporalConstraints: [],
+        recurrence: [],
+        durableContextSignals: [],
+        sourceText: '数学20問を1問2分',
+      }],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    };
+  }
   if (text.includes('英単語220語') || text.includes('英単語を覚える') || text.includes('理科220語')) {
     const memorySubject = text.includes('理科') ? '理科' : '英単語';
     const memoryLocalId = memorySubject === '理科' ? 'fixture-science-memory' : 'fixture-memory';
@@ -464,6 +566,30 @@ export function defaultFixtureProviderResponse(input: {
     displayText: 'fixture preference is 15 minutes.',
     reason: 'fixture',
   });
+}
+
+export function completeScopeFixtureProviderResponse(input: {
+  purpose: string | undefined;
+  messages: Array<{ role: string; content: string }>;
+}): string {
+  if (input.messages.some((message) => message.content.includes('purely authorizes creating'))) {
+    return JSON.stringify({ decision: 'create_plan' });
+  }
+  if (input.purpose === 'weekly_planning_semantic_normalizer') {
+    const userMessages = input.messages.filter((message) => message.role === 'user');
+    const lastUser = userMessages[userMessages.length - 1]?.content ?? '';
+    return JSON.stringify(semanticDocument(lastUser));
+  }
+  if (input.purpose === 'weekly_planning_renderer') {
+    return JSON.stringify({
+      actionId: 'stable_v5:fixture:status',
+      actionKind: 'status',
+      questionCode: null,
+      groundingAcknowledgement: null,
+      text: 'この計画を作成します。確認してください。',
+    });
+  }
+  return defaultFixtureProviderResponse(input);
 }
 
 export function installIssue152ScriptedProvider(
@@ -742,7 +868,6 @@ export async function runIssue152RendererFixture(params: {
 }): Promise<{
   result: Awaited<ReturnType<ReturnType<typeof createAiWeeklyPlanningStableV5DialogueRenderer>['render']>>;
   actionKind: string;
-  approvalOperations: unknown[];
   providerCallCount: number;
 }> {
   const input: WeeklyPlanningStableV5DialogueRenderInput = {
@@ -783,7 +908,6 @@ export async function runIssue152RendererFixture(params: {
   return {
     result,
     actionKind: input.actionKind,
-    approvalOperations: [],
     providerCallCount,
   };
 }

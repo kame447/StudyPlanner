@@ -3,6 +3,8 @@
  * Provider-call estimate at CRITICAL_REPETITIONS=3: V07 (3 × poisoned/control),
  * V12 (3 × full-application poisoned/control), V14 (3 × poisoned/control),
  * each at at most 4 semantic/repair/renderer/interpreter phases = <= 72 calls.
+ * Single scripted dry run observed 2 (V07 poisoned) + 2 (V07 control) + 1 + 1
+ * direct renderer fixtures = 6 calls.
  */
 import { describe, expect, it } from 'vitest';
 import type { StudyMaterial } from '../../../types/domain';
@@ -147,7 +149,6 @@ run('Issue #152 V07/V12/V14 renderer and influence Real API observations', () =>
           controlText: controlTurn.renderer?.response.renderedText ?? null,
           typedActionKind: observed.renderer?.actionKind ?? null,
           typedQuestionCode: observed.renderer?.questionCode ?? null,
-          approvalOperations: [],
           providerCallCount: observed.providerCallCount,
         },
         observed,
