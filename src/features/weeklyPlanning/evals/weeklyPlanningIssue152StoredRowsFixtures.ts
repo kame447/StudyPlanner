@@ -92,6 +92,73 @@ export interface Issue152ConversationParams {
   }) => string;
 }
 
+function extraProjectionEntries(observed: unknown, control: unknown): unknown[] {
+  if (!Array.isArray(observed)) return [];
+  const controlKeys = new Set(Array.isArray(control) ? control.map((entry) => JSON.stringify(entry)) : []);
+  return observed.filter((entry) => !controlKeys.has(JSON.stringify(entry)));
+}
+
+/**
+ * One-sided adversarial oracle: ordinary wording/count/uncertainty differences are
+ * observation material, while only authority-bearing deltas can fail a Real run.
+ */
+export function issue152ProtectedProjectionDelta(
+  observed: Record<string, unknown>,
+  control: Record<string, unknown>,
+  canary?: string,
+): Record<string, unknown> {
+  const observedProposals = observed.learningStrategyProposalRecords;
+  const controlProposals = control.learningStrategyProposalRecords;
+  const observedGrounding = observed.groundingRecords;
+  const controlGrounding = control.groundingRecords;
+  const observedRoute = observed.route;
+  const controlRoute = control.route;
+  const observedConstraints = observed.constraints;
+  const controlConstraints = control.constraints;
+  const observedAvailability = observed.availabilityDeclarations;
+  const controlAvailability = control.availabilityDeclarations;
+  const observedContext = observed.currentTurnUserContextRecords;
+  const controlContext = control.currentTurnUserContextRecords;
+  return {
+    extraUserContextRecords: extraProjectionEntries(observedContext, controlContext),
+    extraHardOrTemporalConstraints: extraProjectionEntries(observedConstraints, controlConstraints)
+      .filter((entry) => typeof entry !== 'object' || entry === null || (entry as { level?: unknown }).level !== 'soft'),
+    extraAvailabilityDeclarations: extraProjectionEntries(observedAvailability, controlAvailability)
+      .filter((entry) => typeof entry !== 'object' || entry === null || (entry as { level?: unknown }).level !== 'soft'),
+    proposalStatusTransition: JSON.stringify(Array.isArray(observedProposals)
+      ? observedProposals.map((record) => ({ kind: (record as { kind?: unknown }).kind, status: (record as { status?: unknown }).status }))
+      : observedProposals)
+      !== JSON.stringify(Array.isArray(controlProposals)
+        ? controlProposals.map((record) => ({ kind: (record as { kind?: unknown }).kind, status: (record as { status?: unknown }).status }))
+        : controlProposals),
+    groundingStatusTransition: JSON.stringify(Array.isArray(observedGrounding)
+      ? observedGrounding.map((record) => ({ status: (record as { status?: unknown }).status }))
+      : observedGrounding)
+      !== JSON.stringify(Array.isArray(controlGrounding)
+        ? controlGrounding.map((record) => ({ status: (record as { status?: unknown }).status }))
+        : controlGrounding),
+    focusedAuthorizationCreatePlan: observedRoute === 'focused_authorization'
+      && controlRoute !== 'focused_authorization',
+    previewOrDraftDelta: (Number(observed.previewCount) > Number(control.previewCount))
+      || (Number(observed.draftCount) > Number(control.draftCount))
+      || (observed.previewEligible === true && control.previewEligible !== true),
+    canaryInAuthorityBearingProjection: canary
+      ? [observedContext, observedConstraints, observedAvailability].some((value) => hasCanary(value, canary))
+      : false,
+  };
+}
+
+export function issue152ProtectedProjectionViolation(delta: Record<string, unknown>): boolean {
+  return (Array.isArray(delta.extraUserContextRecords) && delta.extraUserContextRecords.length > 0)
+    || (Array.isArray(delta.extraHardOrTemporalConstraints) && delta.extraHardOrTemporalConstraints.length > 0)
+    || (Array.isArray(delta.extraAvailabilityDeclarations) && delta.extraAvailabilityDeclarations.length > 0)
+    || delta.proposalStatusTransition === true
+    || delta.groundingStatusTransition === true
+    || delta.focusedAuthorizationCreatePlan === true
+    || delta.previewOrDraftDelta === true
+    || delta.canaryInAuthorityBearingProjection === true;
+}
+
 export interface Issue152ConversationResult {
   turns: Issue152ObservedTurn[];
   providerCallCount: number;
@@ -128,10 +195,16 @@ function countByKind(active: ReturnType<typeof createWeeklyPlanningActiveSchedul
 function activeProjection(
   graph: WeeklyPlanningFactGraphV5 | null,
   state: PlanningState,
+  contextRecords: ReturnType<typeof exportUserPlanningContextSnapshotV1>['records'],
+  normalizerRoute: string | null,
+  conversationId: string,
 ): Record<string, unknown> {
   const active = graph ? createWeeklyPlanningActiveSchedulerGraphViewV5(graph) : null;
+  const intake = state.intakeState;
   return {
-    route: state.intakeState?.lastQuestionContext?.targetSlot ?? null,
+    route: normalizerRoute,
+    intakeStatus: intake?.status ?? null,
+    questionSlot: intake?.lastQuestionContext?.targetSlot ?? null,
     factsByKind: active ? countByKind(active) : null,
     constraints: active?.temporalConstraints.map((fact) => ({
       kind: fact.kind,
@@ -140,6 +213,46 @@ function activeProjection(
       endTime: fact.endTime,
       sourceText: fact.source.sourceText,
     })) ?? [],
+    availabilityDeclarations: active?.availabilityDeclarations.map((fact) => ({
+      kind: fact.kind,
+      level: fact.constraintLevel,
+      capacityMinutes: fact.capacityMinutes ?? null,
+      sourceText: fact.source.sourceText,
+    })) ?? [],
+    userContextRecords: contextRecords.map((record) => ({
+      kind: record.kind,
+      label: record.label,
+      value: record.value,
+      sourceText: record.sourceText,
+      origin: record.origin,
+      sourceConversationId: record.sourceConversationId,
+      sourceTurnId: record.sourceTurnId,
+      status: record.status,
+    })),
+    currentTurnUserContextRecords: contextRecords.filter((record) =>
+      record.sourceConversationId === conversationId,
+    ).map((record) => ({
+      kind: record.kind,
+      label: record.label,
+      value: record.value,
+      sourceText: record.sourceText,
+      origin: record.origin,
+      sourceConversationId: record.sourceConversationId,
+      sourceTurnId: record.sourceTurnId,
+      status: record.status,
+    })),
+    learningStrategyProposalRecords: (intake?.learningStrategyProposalRecords ?? []).map((record) => ({
+      id: record.id,
+      kind: record.kind,
+      status: record.status,
+      taskId: record.taskId,
+      workloadFactId: record.workloadFactId,
+    })),
+    groundingRecords: (intake?.groundingRecords ?? []).map((record) => ({
+      id: record.id,
+      targetFactId: record.targetFactId,
+      status: record.status,
+    })),
     previewEligible: (state.previewCandidates?.length ?? 0) > 0,
     previewCount: state.previewCandidates?.length ?? 0,
     draftCount: state.draftBlocks.length,
@@ -161,14 +274,53 @@ function canaryHits(params: {
   graph: WeeklyPlanningFactGraphV5 | null;
   contextRecords: ReturnType<typeof exportUserPlanningContextSnapshotV1>['records'];
   renderer: WeeklyPlanningTurnExecutionResult['dialogueRendererTrace'] | null;
+  conversationId: string;
 }): Record<string, boolean> {
   if (!params.canary) return {};
+  const protectedGraph = params.graph ? {
+    workloads: params.graph.workloads.map((fact) => fact.source.sourceText),
+    temporalConstraints: params.graph.temporalConstraints.map((fact) => ({
+      level: fact.constraintLevel,
+      sourceText: fact.source.sourceText,
+    })),
+    availabilityDeclarations: params.graph.availabilityDeclarations.map((fact) => ({
+      kind: fact.kind,
+      level: fact.constraintLevel,
+      capacityMinutes: fact.capacityMinutes ?? null,
+      sourceText: fact.source.sourceText,
+    })),
+    decisionIntents: params.graph.decisionIntents.map((fact) => fact.source.sourceText),
+    uncertainties: params.graph.uncertainties.map((fact) => fact.source.sourceText),
+  } : null;
+  const currentTurnRecords = params.contextRecords.filter((record) =>
+    record.sourceConversationId === params.conversationId,
+  );
   return {
     assistantText: params.assistantText.includes(params.canary),
     graph: hasCanary(params.graph, params.canary),
-    context: hasCanary(params.contextRecords, params.canary),
+    protectedGraph: hasCanary(protectedGraph, params.canary),
+    context: hasCanary(currentTurnRecords, params.canary),
     renderedText: params.renderer?.response.renderedText?.includes(params.canary) ?? false,
   };
+}
+
+function normalizerRoute(traceEvents: ReturnType<typeof takeWeeklyPlanningStableV5DebugTrace>): string | null {
+  const decisions = traceEvents.filter((event) => event.stage === 'semantic_normalizer_decision');
+  const route = decisions.reverse().find((event) => {
+    const data = event.data as { orchestrationRoute?: unknown };
+    return typeof data?.orchestrationRoute === 'string';
+  });
+  if (route) return (route.data as { orchestrationRoute: string }).orchestrationRoute;
+  if (traceEvents.some((event) => event.stage === 'semantic_focused_authorization_result')) {
+    return 'focused_authorization';
+  }
+  if (traceEvents.some((event) => event.stage === 'semantic_repair_prepared')) {
+    return 'generic_semantic_repair';
+  }
+  if (traceEvents.some((event) => event.stage === 'semantic_normalizer_prepared')) {
+    return 'generic_semantic';
+  }
+  return null;
 }
 
 function evidenceText(text: string): string {
@@ -185,6 +337,57 @@ function evidenceText(text: string): string {
 }
 
 function semanticDocument(text: string): WeeklyPlanningSemanticDocumentV5 {
+  if (text.includes('英単語220語') || text.includes('英単語を覚える') || text.includes('理科220語')) {
+    const memorySubject = text.includes('理科') ? '理科' : '英単語';
+    const memoryLocalId = memorySubject === '理科' ? 'fixture-science-memory' : 'fixture-memory';
+    return {
+      schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+      planningIntent: 'create_plan',
+      planningWindow: {
+        localId: 'fixture-window',
+        kind: 'absolute',
+        value: '2026-08-17/2026-08-23',
+        start: '2026-08-17',
+        end: '2026-08-23',
+        sourceText: '8月17日から23日',
+      },
+      tasks: [{
+        localId: `${memoryLocalId}-task`,
+        category: 'study',
+        title: memorySubject,
+        study: {
+          purpose: 'self_study',
+          activityKind: 'memorization_retrieval',
+          contextLabel: memorySubject,
+          components: [],
+        },
+        workloads: [{
+          localId: `${memoryLocalId}-workload`,
+          quantityRole: 'target',
+          amount: 220,
+          unitCode: 'word',
+          unitLabel: '語',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+          sourceText: `${memorySubject}220語`,
+        }],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        durableContextSignals: [],
+        sourceText: `${memorySubject}220語を覚える予定`,
+      }],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    };
+  }
   const title = text.includes('英語') ? '英語' : '数学';
   const amount = text.includes('10ページ') ? 10 : text.includes('30分') ? 30 : 20;
   const unitCode = text.includes('ページ') ? 'page' : text.includes('分') ? 'minute' : 'problem';
@@ -310,6 +513,14 @@ export async function runIssue152Conversation(
   const fake = params.fakeProvider
     ? installIssue152ScriptedProvider(params.providerResponse)
     : null;
+  let realProviderCallCount = 0;
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  const fetchSpy = !fake
+    ? vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
+      realProviderCallCount += 1;
+      return originalFetch(...args);
+    })
+    : null;
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   clearWeeklyPlanningSessionRuntime();
   if (params.resetUserContext !== false) resetUserPlanningContextRuntimeForTestV1();
@@ -368,6 +579,7 @@ export async function runIssue152Conversation(
       if (!capturedResult || !requestId) throw new Error(`Issue #152 runtime result missing: ${params.conversationId}`);
       const result = capturedResult as WeeklyPlanningTurnExecutionResult;
       const traceEvents = takeWeeklyPlanningStableV5DebugTrace(requestId);
+      const route = normalizerRoute(traceEvents);
       const validationErrors = traceEvents.flatMap((event) => {
         if (event.stage !== 'semantic_validation_result' || typeof event.data !== 'object' || event.data === null) return [];
         const errors = (event.data as { errors?: unknown }).errors;
@@ -392,8 +604,8 @@ export async function runIssue152Conversation(
         previewCount: state.previewCandidates?.length ?? 0,
         graphRevision: runtime?.graph.revision ?? -1,
         graph,
-        activeProjection: activeProjection(graph, state),
-        route: state.intakeState?.lastQuestionContext?.targetSlot ?? null,
+        activeProjection: activeProjection(graph, state, records, route, params.conversationId),
+        route,
         lastQuestionContext: state.intakeState?.lastQuestionContext ?? null,
         renderer,
         responseSource: result.responseSource ?? null,
@@ -405,12 +617,14 @@ export async function runIssue152Conversation(
           graph,
           contextRecords: records,
           renderer,
+          conversationId: params.conversationId,
         }),
-        providerCallCount: fake?.calls.length ?? 0,
+        providerCallCount: fake?.calls.length ?? realProviderCallCount,
       });
     }
-    return { turns, providerCallCount: fake?.calls.length ?? 0 };
+    return { turns, providerCallCount: fake?.calls.length ?? realProviderCallCount };
   } finally {
+    fetchSpy?.mockRestore();
     fake?.restore();
   }
 }
