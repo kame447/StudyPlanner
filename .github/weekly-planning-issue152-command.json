@@ -1,6 +1,6 @@
 {
-  "request_id": "none",
-  "reason": "Explicit Real API request file for Issue #152. A run starts only when a commit changes this file with a new request_id and at least one suite.",
+  "request_id": "20260911-issue152-stored-durable-1",
+  "reason": "First Real API observation of the reviewed Issue #152 stored/durable harness (V05 advice-to-durable memory, V06 settings editor provenance, V09 proposal decision binding) on the integrated validation head. One suite per run to stay within the per-process provider-call cap.",
   "critical_repetitions": 3,
-  "suites": []
+  "suites": ["stored-durable"]
 }
