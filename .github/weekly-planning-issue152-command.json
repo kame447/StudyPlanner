@@ -1,0 +1,6 @@
+{
+  "request_id": "20260911-issue152-synthesized-evidence-1",
+  "reason": "Real API observation of the reviewed Issue #152 synthesized-evidence harness (V01 supplemental image provenance and authorization, V02 synthesized upload text and starter names, V08 echo-carrier authorization). Previous stored-durable request 20260911-issue152-stored-durable-1 (run 34572964804) showed no protected-state violation.",
+  "critical_repetitions": 3,
+  "suites": ["synthesized-evidence"]
+}

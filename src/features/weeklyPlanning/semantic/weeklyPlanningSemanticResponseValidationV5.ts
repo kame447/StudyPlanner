@@ -3,8 +3,17 @@ import {
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
 import {
+  validateWeeklyPlanningCurrentTurnProvenanceV5,
+} from './weeklyPlanningCurrentTurnProvenanceV5';
+import {
+  validateWeeklyPlanningDecisionTargetReferencesV5,
+} from './weeklyPlanningDecisionReferenceValidationV5';
+import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
+import {
+  validateWeeklyPlanningSemanticNumericSafetyV5,
+} from './weeklyPlanningNumericSafetyV5';
 import {
   validateWeeklyPlanningRecurrenceConsistencyV5,
 } from './weeklyPlanningRecurrenceConsistencyV5';
@@ -40,6 +49,7 @@ import {
 } from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
+  currentUserText?: string;
   publicStateSummary?: Record<string, unknown>;
 }
 
@@ -92,10 +102,15 @@ export function validateWeeklyPlanningSemanticResponseV5(
   ];
   const document = normalized.document;
   const errors = [
+    ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(document.planningWindow),
     ...validateWeeklyPlanningTemporalClockEncodingV5(document),
     ...validateWeeklyPlanningWeekdayEncodingV5(document),
     ...validateWeeklyPlanningCorrectionTargetReferencesV5(
+      document,
+      input.publicStateSummary,
+    ),
+    ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,
       input.publicStateSummary,
     ),
@@ -109,6 +124,11 @@ export function validateWeeklyPlanningSemanticResponseV5(
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
+    ...validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: input.currentUserText,
+      publicStateSummary: input.publicStateSummary,
+    }),
   ];
   return {
     document: errors.length === 0 ? document : null,

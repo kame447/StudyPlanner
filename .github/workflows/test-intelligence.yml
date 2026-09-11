@@ -28,7 +28,7 @@ permissions:
 
 concurrency:
   group: test-intelligence-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.head_ref == 'test/issue152-adversarial-validation-lab' }}
 
 jobs:
   coverage:
@@ -89,7 +89,16 @@ jobs:
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
       - name: Run targeted weekly-planning mutation test
-        run: ./node_modules/.bin/stryker run stryker.config.mjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          config='stryker.config.mjs'
+          ref_name="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if [ "$ref_name" = 'test/issue152-adversarial-validation-lab' ] && [ -f stryker.issue152.config.mjs ]; then
+            config='stryker.issue152.config.mjs'
+          fi
+          echo "Using mutation config: $config"
+          ./node_modules/.bin/stryker run "$config"
       - name: Upload mutation intelligence
         if: always()
         uses: actions/upload-artifact@v4

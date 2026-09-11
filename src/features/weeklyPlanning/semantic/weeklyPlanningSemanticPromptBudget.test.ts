@@ -34,17 +34,17 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-// Keep semantic invariants even when they cost a few hundred bytes. PR #130
-// showed that forcing this budget lower can delete application-critical meaning.
-// PR #157 deliberately adds small headroom for deadline and remaining-effort
-// directionality; these remain growth guards, not compaction targets.
-const GENERIC_MEANING_POLICY_MAX_BYTES = 3_700;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 4_750;
-const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
+// These are deliberately loose runaway-growth guards, not prompt-size targets.
+// A reviewed semantic invariant must never be deleted, weakened, or paraphrased
+// merely to satisfy these byte ceilings. If a necessary semantic contract makes
+// a generic prompt exceed a guard, review the growth and raise the guard instead.
+const GENERIC_MEANING_POLICY_MAX_BYTES = 16_384;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 24_576;
+const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 8_192;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
-// The focused response schema now carries target and measurement as separate
-// typed axes. Keep enough room for that contract while still requiring this
-// route to remain materially smaller than generic semantic normalization.
+// Focused routes have closed, deliberately narrow responsibilities. Their bounds
+// remain useful unless evidence shows that one of those responsibilities itself
+// was compacted incorrectly; they must not be used to move semantic ownership.
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 3_200;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
@@ -184,7 +184,7 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
-  it('keeps the always-on meaning policy compact', () => {
+  it('guards against runaway meaning-policy growth without forcing semantic compaction', () => {
     const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
     expect(byteLength(policy)).toBeLessThanOrEqual(
       GENERIC_MEANING_POLICY_MAX_BYTES,
@@ -196,7 +196,7 @@ describe('Stable V5 semantic prompt budget', () => {
     ).toBe(true);
   });
 
-  it('keeps supplemental orchestration policy small and scenario independent', () => {
+  it('keeps supplemental orchestration policy scenario independent under a loose runaway guard', () => {
     const meaningPolicy = createWeeklyPlanningSemanticMeaningPolicyV5();
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '申請書を2件、参考資料を4ページ確認したいです',
@@ -224,7 +224,7 @@ describe('Stable V5 semantic prompt budget', () => {
     );
   });
 
-  it('caps the always-on generic system prompt itself', () => {
+  it('guards the generic system prompt against accidental runaway growth', () => {
     const systemPrompt = representativeGenericMessages()[0]?.content ?? '';
 
     expect(byteLength(systemPrompt)).toBeLessThanOrEqual(

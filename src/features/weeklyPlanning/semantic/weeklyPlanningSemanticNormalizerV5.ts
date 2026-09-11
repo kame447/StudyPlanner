@@ -1,6 +1,9 @@
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
+  validateWeeklyPlanningCurrentTurnProvenanceV5,
+} from './weeklyPlanningCurrentTurnProvenanceV5';
+import {
   tryWeeklyPlanningDenseTurnCompletenessRetryV5,
 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
@@ -60,18 +63,63 @@ function recordInitialValidation(params: {
   });
 }
 
+function enforceFinalCurrentTurnProvenance(params: {
+  input: WeeklyPlanningSemanticNormalizerInputV5;
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  result: WeeklyPlanningSemanticNormalizerResultV5;
+}): WeeklyPlanningSemanticNormalizerResultV5 {
+  if (!params.result.document) return params.result;
+
+  const provenanceErrors = validateWeeklyPlanningCurrentTurnProvenanceV5({
+    document: params.result.document,
+    currentUserText: params.input.userText,
+    publicStateSummary: params.input.publicStateSummary,
+  });
+  if (provenanceErrors.length === 0) return params.result;
+
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'rejected',
+    document: null,
+    diagnostics: {
+      ...params.result.diagnostics,
+      validationErrors: [...new Set([
+        ...params.result.diagnostics.validationErrors,
+        ...provenanceErrors,
+      ])],
+    },
+  };
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.input.traceRequestId,
+    stage: 'semantic_validation_result',
+    severity: 'error',
+    data: {
+      attempt: 'final_current_turn_provenance',
+      accepted: false,
+      errors: provenanceErrors,
+      parsedDocument: params.result.document,
+    },
+  });
+  params.run.recordDecision(result, {
+    route: 'current_turn_provenance_guard',
+    severity: 'error',
+  });
+  return result;
+}
+
 export function createWeeklyPlanningSemanticNormalizerV5(
   client: OpenAiCompatibleClient,
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
     async normalize(input) {
       const run = new WeeklyPlanningSemanticNormalizerRunV5(client, input);
+      const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
+        enforceFinalCurrentTurnProvenance({ input, run, result });
 
       const contextualResult = await tryFocusedContextualAnswerRouteV5(run);
-      if (contextualResult) return contextualResult;
+      if (contextualResult) return finish(contextualResult);
 
       const authorization = await tryFocusedAuthorizationRouteV5(run);
-      if (authorization.result) return authorization.result;
+      if (authorization.result) return finish(authorization.result);
 
       const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5(input);
       recordWeeklyPlanningStableV5DebugTrace({
@@ -109,12 +157,15 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           }),
         };
         run.recordDecision(result, { severity: 'error' });
-        return result;
+        return finish(result);
       }
 
       const initialValidation = validateWeeklyPlanningSemanticResponseV5(
         initialResponse,
-        { publicStateSummary: input.publicStateSummary },
+        {
+          currentUserText: input.userText,
+          publicStateSummary: input.publicStateSummary,
+        },
       );
       run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);
       recordInitialValidation({ input, validation: initialValidation });
@@ -126,7 +177,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           initialResponse,
           initialDocument: initialValidation.document,
         });
-        if (denseCompletenessRetry) return denseCompletenessRetry;
+        if (denseCompletenessRetry) return finish(denseCompletenessRetry);
 
         const completenessRetry = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({
           run,
@@ -134,7 +185,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           initialResponse,
           initialDocument: initialValidation.document,
         });
-        if (completenessRetry) return completenessRetry;
+        if (completenessRetry) return finish(completenessRetry);
 
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
@@ -147,7 +198,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           }),
         };
         run.recordDecision(result, { route: 'generic_semantic' });
-        return result;
+        return finish(result);
       }
 
       const focusedRepairResult = await tryFocusedSemanticRepairRouteV5({
@@ -155,14 +206,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         initialResponse,
         initialValidation,
       });
-      if (focusedRepairResult) return focusedRepairResult;
+      if (focusedRepairResult) return finish(focusedRepairResult);
 
-      return runGenericSemanticRepairRouteV5({
+      return finish(await runGenericSemanticRepairRouteV5({
         run,
         baseMessages,
         initialResponse,
         initialValidation,
-      });
+      }));
     },
   };
 }

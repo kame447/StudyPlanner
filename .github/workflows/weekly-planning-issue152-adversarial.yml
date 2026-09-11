@@ -1,0 +1,161 @@
+name: Issue 152 Adversarial Real API
+
+# Real-credential runs are requested explicitly by committing a new request_id in
+# .github/weekly-planning-issue152-command.json on the Issue #152 validation branch.
+# Pushes that only touch harness or semantic files do not spend the credential.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-issue152-command.json'
+      - '.github/workflows/weekly-planning-issue152-adversarial.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue152-adversarial-real-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'test/issue152-adversarial-validation-lab' }}
+    runs-on: ubuntu-22.04
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      files: ${{ steps.resolve.outputs.files }}
+      repetitions: ${{ steps.resolve.outputs.repetitions }}
+      request_id: ${{ steps.resolve.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - id: resolve
+        name: Resolve requested Issue 152 suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          command_file=.github/weekly-planning-issue152-command.json
+          should_run=true
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] \
+            && ! git diff-tree --no-commit-id --name-only -r HEAD | grep -Fxq "$command_file"; then
+            should_run=false
+          fi
+          request_id=$(jq -r '.request_id // ""' "$command_file")
+          case "$request_id" in
+            ''|none) ;;
+            *[!A-Za-z0-9._-]*) echo "request_id may contain only A-Z a-z 0-9 . _ -" >&2; exit 1 ;;
+          esac
+          repetitions=$(jq -r '.critical_repetitions // 3' "$command_file")
+          case "$repetitions" in
+            ''|*[!0-9]*) echo "critical_repetitions must be an integer" >&2; exit 1 ;;
+          esac
+          if [ "$repetitions" -lt 1 ] || [ "$repetitions" -gt 5 ]; then
+            echo "critical_repetitions must be between 1 and 5" >&2
+            exit 1
+          fi
+          files=()
+          while IFS= read -r suite; do
+            case "$suite" in
+              diagnostics) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts") ;;
+              adversarial) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts") ;;
+              indirect) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152IndirectInputRealApi.observation.test.ts") ;;
+              stateful) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152StatefulBoundaryRealApi.observation.test.ts") ;;
+              retention) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152SemanticRetentionRealApi.observation.test.ts") ;;
+              stored-durable) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152StoredDurableRealApi.observation.test.ts") ;;
+              synthesized-evidence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152SynthesizedEvidenceRealApi.observation.test.ts") ;;
+              renderer-influence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152RendererInfluenceRealApi.observation.test.ts") ;;
+              *) echo "unsupported suite: $suite" >&2; exit 1 ;;
+            esac
+          done < <(jq -r '.suites[]' "$command_file")
+          if [ "${#files[@]}" -eq 0 ] || [ -z "$request_id" ] || [ "$request_id" = "none" ]; then
+            should_run=false
+          fi
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "files=${files[*]:-}" >> "$GITHUB_OUTPUT"
+          echo "repetitions=$repetitions" >> "$GITHUB_OUTPUT"
+          echo "request_id=$request_id" >> "$GITHUB_OUTPUT"
+
+  adversarial-real-api:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.should_run == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Tokyo
+      WEEKLY_PLANNING_ISSUE152_REAL_API: '1'
+      WEEKLY_PLANNING_ISSUE152_OUTPUT_DIR: artifacts/issue152-adversarial-real-api
+      WEEKLY_PLANNING_ISSUE152_TIMEOUT_MS: '600000'
+      WEEKLY_PLANNING_ISSUE152_CRITICAL_REPETITIONS: ${{ needs.prepare.outputs.repetitions }}
+      VITE_AI_PROVIDER: openai
+      VITE_AI_BASE_URL: https://api.openai.com/v1
+      VITE_AI_MODEL: gpt-5.6-luna
+      VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      VITE_AI_MAX_PROCESS_REQUESTS: '240'
+      VITE_AI_EVAL_CAPTURE_METRICS: '1'
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify API credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Typecheck first
+        run: npm run typecheck
+
+      - name: Provider smoke
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg model "$VITE_AI_MODEL" '{model:$model,messages:[{role:"user",content:"Reply only OK."}]}')
+          status=$(curl -sS -o /tmp/issue152-provider-smoke.json -w '%{http_code}' \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$VITE_AI_BASE_URL/chat/completions")
+          echo "provider smoke HTTP $status"
+          jq '{error:(if .error then {type:.error.type,code:.error.code,param:.error.param,message:.error.message} else null end),model:.model,has_choices:(.choices|type=="array")}' \
+            /tmp/issue152-provider-smoke.json
+          rm -f /tmp/issue152-provider-smoke.json
+          test "$status" -ge 200 -a "$status" -lt 300
+
+      - name: Run requested Issue 152 Real API suites
+        env:
+          ISSUE152_FILES: ${{ needs.prepare.outputs.files }}
+          ISSUE152_REQUEST_ID: ${{ needs.prepare.outputs.request_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "request_id=$ISSUE152_REQUEST_ID"
+          read -r -a files <<< "$ISSUE152_FILES"
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run "${files[@]}"
+
+      - name: Upload safe observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue152-adversarial-real-api-${{ needs.prepare.outputs.request_id }}-${{ github.sha }}
+          path: artifacts/issue152-adversarial-real-api/
+          if-no-files-found: warn
+          retention-days: 30

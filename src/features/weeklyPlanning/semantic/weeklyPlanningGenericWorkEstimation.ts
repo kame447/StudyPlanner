@@ -2,6 +2,9 @@ import type {
   EffortEstimateFact,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
+import {
+  safeWeeklyPlanningComputedPositiveNumberV5,
+} from './weeklyPlanningNumericSafetyV5';
 
 export type GenericWorkItemEstimateBasis =
   | 'intrinsic_duration'
@@ -16,6 +19,24 @@ export interface GenericWorkItemEstimateResolution {
   ambiguous: boolean;
 }
 
+function resolvedEstimate(params: {
+  estimatedMinutes: number;
+  basis: GenericWorkItemEstimateBasis;
+  sourceFactIds?: string[];
+  sourceWorkloadFactIds?: string[];
+}): GenericWorkItemEstimateResolution {
+  const safeMinutes = safeWeeklyPlanningComputedPositiveNumberV5(
+    params.estimatedMinutes,
+  );
+  return {
+    estimatedMinutes: safeMinutes,
+    basis: safeMinutes === null ? null : params.basis,
+    sourceFactIds: params.sourceFactIds ?? [],
+    sourceWorkloadFactIds: params.sourceWorkloadFactIds ?? [],
+    ambiguous: false,
+  };
+}
+
 export function effortEstimateTargetsWorkload(
   estimate: EffortEstimateFact,
   workload: WorkloadFact,
@@ -28,22 +49,16 @@ export function effortEstimateTargetsWorkload(
 
 function intrinsicEstimate(workload: WorkloadFact): GenericWorkItemEstimateResolution | null {
   if (workload.unitCode === 'minute') {
-    return {
+    return resolvedEstimate({
       estimatedMinutes: workload.amount,
       basis: 'intrinsic_duration',
-      sourceFactIds: [],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
+    });
   }
   if (workload.unitCode === 'hour') {
-    return {
+    return resolvedEstimate({
       estimatedMinutes: workload.amount * 60,
       basis: 'intrinsic_duration',
-      sourceFactIds: [],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
+    });
   }
   return null;
 }
@@ -57,13 +72,11 @@ function directEstimate(params: {
   const perUnit = matching.filter((estimate) =>
     estimate.kind === 'duration_per_unit' && estimate.unitCode === params.workload.unitCode);
   if (perUnit.length === 1) {
-    return {
+    return resolvedEstimate({
       estimatedMinutes: perUnit[0].minutes * params.workload.amount,
       basis: 'direct_effort',
       sourceFactIds: [perUnit[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
+    });
   }
   if (perUnit.length > 1) {
     return {
@@ -77,13 +90,11 @@ function directEstimate(params: {
 
   const total = matching.filter((estimate) => estimate.kind === 'total_duration');
   if (total.length === 1) {
-    return {
+    return resolvedEstimate({
       estimatedMinutes: total[0].minutes,
       basis: 'direct_effort',
       sourceFactIds: [total[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
+    });
   }
   if (total.length > 1) {
     return {
@@ -98,13 +109,11 @@ function directEstimate(params: {
   const session = matching.filter((estimate) =>
     estimate.kind === 'session_duration' && estimate.unitCode === params.workload.unitCode);
   if (params.workload.unitCode === 'session' && session.length === 1) {
-    return {
+    return resolvedEstimate({
       estimatedMinutes: session[0].minutes * params.workload.amount,
       basis: 'intrinsic_duration',
       sourceFactIds: [session[0].id],
-      sourceWorkloadFactIds: [],
-      ambiguous: false,
-    };
+    });
   }
   if (params.workload.unitCode === 'session' && session.length > 1) {
     return {
@@ -193,13 +202,12 @@ function observedPaceEstimate(params: {
   const paceMinutes = estimate.kind === 'duration_per_unit'
     ? estimate.minutes
     : estimate.minutes / completedWorkload.amount;
-  return {
+  return resolvedEstimate({
     estimatedMinutes: paceMinutes * params.workload.amount,
     basis: 'observed_pace',
     sourceFactIds: [estimate.id],
     sourceWorkloadFactIds: [completedWorkload.id],
-    ambiguous: false,
-  };
+  });
 }
 
 export function resolveGenericWorkItemEstimate(params: {

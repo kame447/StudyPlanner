@@ -43,7 +43,7 @@ export interface FocusedAuthorizationInputV5 {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function focusedAuthorizationEligibleV5(
@@ -81,6 +81,10 @@ export function parseFocusedAuthorizationDecisionV5(
   try {
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
+    if (
+      Object.keys(value).length !== 1
+      || !Object.prototype.hasOwnProperty.call(value, 'decision')
+    ) return null;
     const decision = value.decision;
     if (decision !== 'create_plan' && decision !== 'fallback') return null;
     return { decision };

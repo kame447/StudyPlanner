@@ -137,15 +137,20 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
-  it('keeps deadline semantics without pinning the contract to one English sentence', () => {
+  it('keeps the generalized event-occurrence versus work-deadline distinction without scenario wording', () => {
     const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
-    expect(
-      WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
-        (rule) => rule.id === 'temporal_scope_and_deadline',
-      ),
-    ).toBe(true);
+    const deadlineRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'temporal_scope_and_deadline',
+    );
+    const eventRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+      (rule) => rule.id === 'event_occurrence_vs_work_deadline',
+    );
+
+    expect(deadlineRule).toBeDefined();
+    expect(eventRule).toBeDefined();
+    expect(eventRule?.instruction).toContain('is not automatically a work deadline');
+    expect(eventRule?.instruction).toContain('goal_event');
     expect(prompt).not.toContain('otherwise an event date is a goal event');
-    expect(prompt).not.toContain('goal event');
     expect(prompt).not.toContain('共通テスト模試');
     expect(prompt).not.toContain('2週間後');
   });
