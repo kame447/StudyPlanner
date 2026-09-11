@@ -1,0 +1,6 @@
+{
+  "request_id": "none",
+  "reason": "Explicit Real API request file for Issue #152. A run starts only when a commit changes this file with a new request_id and at least one suite.",
+  "critical_repetitions": 3,
+  "suites": []
+}
