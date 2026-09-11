@@ -10,6 +10,7 @@ import {
 import { splitWeeklyPlanningSessionMinutesV5 } from '../semantic/weeklyPlanningStableV5SessionSplitter';
 import { validateWeeklyPlanningDecisionTargetReferencesV5 } from '../semantic/weeklyPlanningDecisionReferenceValidationV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import { createWeeklyPlanningSemanticBaseMessagesV5 } from '../semantic/weeklyPlanningSemanticPromptAssemblyV5';
 
 describe('Issue #152 P1 numeric sibling and splitter boundaries', () => {
   it.fails('surfaces unschedulable work instead of silently returning no chunks above the generation cap', () => {
@@ -65,6 +66,17 @@ describe('Issue #152 P1 numeric sibling and splitter boundaries', () => {
       maxUnitsPerDay: null,
       remainingUnits: null,
     }));
+  });
+
+  it('keeps registered catalog strings in the user data payload, not semantic system policy', () => {
+    const messages = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '教材カタログ名を進めたい',
+      publicStateSummary: {
+        registeredMaterials: [{ name: '教材', catalogTitle: '教材カタログ名', aliases: ['数学教材'] }],
+      },
+    });
+    expect(messages[0]?.content).not.toContain('教材カタログ名');
+    expect(messages.find((message) => message.role === 'user')?.content).toContain('教材カタログ名');
   });
 });
 

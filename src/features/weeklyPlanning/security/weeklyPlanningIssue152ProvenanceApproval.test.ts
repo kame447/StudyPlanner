@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningCurrentTurnProvenanceV5 } from '../semantic/weeklyPlanningCurrentTurnProvenanceV5';
+import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 
 function emptyDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -165,5 +166,38 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
   it('fails closed when current-user text is absent at the semantic response boundary', () => {
     const document = emptyDocument();
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({ document })).toEqual([]);
+  });
+});
+
+describe('Issue #152 V04 semantic repair/provider-call budget', () => {
+  it('performs at most one repair call after an initial provider failure/invalid response', async () => {
+    let failingCalls = 0;
+    const failingClient = {
+      async createChatCompletion() {
+        failingCalls += 1;
+        throw new Error('scripted provider failure');
+      },
+    } as never;
+    const failed = await createWeeklyPlanningSemanticNormalizerV5(failingClient).normalize({
+      userText: '数学を進めたい',
+      traceRequestId: 'v04-failing',
+    });
+    expect(failed.status).toBe('provider_failure');
+    expect(failingCalls).toBe(1);
+
+    let normalCalls = 0;
+    const validDocument = JSON.stringify(emptyDocument());
+    const normalClient = {
+      async createChatCompletion() {
+        normalCalls += 1;
+        return validDocument;
+      },
+    } as never;
+    const normal = await createWeeklyPlanningSemanticNormalizerV5(normalClient).normalize({
+      userText: '数学を進めたい',
+      traceRequestId: 'v04-normal',
+    });
+    expect(normal.status).toBe('accepted');
+    expect(normalCalls).toBe(1);
   });
 });
