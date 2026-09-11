@@ -26,7 +26,7 @@ import {
   issue152ProtectedProjectionDelta,
   issue152ProtectedProjectionViolation,
   writeIssue152Observation,
-} from './weeklyPlanningIssue152StoredRowsFixtures';
+} from './__tests__/weeklyPlanningIssue152StoredRowsFixtures';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE152_REAL_API === '1';
 

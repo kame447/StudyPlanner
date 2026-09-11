@@ -1,51 +1,51 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { vi } from 'vitest';
-import type { StudyMaterial } from '../../../types/domain';
+import type { StudyMaterial } from '../../../../types/domain';
 import {
   createUserConfirmedPlanningContextRecordV1,
   exportUserPlanningContextSnapshotV1,
   hydrateUserPlanningContextSnapshotV1,
   resetUserPlanningContextRuntimeForTestV1,
-} from '../../userPlanningContext/userPlanningContextSpace';
+} from '../../../userPlanningContext/userPlanningContextSpace';
 import {
   replaceWithUserConfirmedContextRecordV1,
-} from '../../userPlanningContext/userPlanningContextRepository';
+} from '../../../userPlanningContext/userPlanningContextRepository';
 import {
   interpretUserPlanningContextNaturalLanguageV2,
-} from '../../userPlanningContext/userPlanningContextNaturalLanguageV2';
+} from '../../../userPlanningContext/userPlanningContextNaturalLanguageV2';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   getWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
-} from '../application/weeklyPlanningStableV5RuntimeSession';
-import { weeklyPlanningTurnRuntimeGateway } from '../application/weeklyPlanningTurnRuntimeGateway';
-import { weeklyPlanningTurnStagingLifecycle } from '../application/weeklyPlanningTurnSideEffects';
+} from '../../application/weeklyPlanningStableV5RuntimeSession';
+import { weeklyPlanningTurnRuntimeGateway } from '../../application/weeklyPlanningTurnRuntimeGateway';
+import { weeklyPlanningTurnStagingLifecycle } from '../../application/weeklyPlanningTurnSideEffects';
 import {
   submitWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnApplicationServices,
-} from '../application/weeklyPlanningTurnApplication';
-import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
-import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
-import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import type { PlanningState, WeeklyPlanningAction } from '../types';
+} from '../../application/weeklyPlanningTurnApplication';
+import { clearWeeklyPlanningSessionRuntime } from '../../planning/weeklyPlanningSessionRuntime';
+import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { PlanningState, WeeklyPlanningAction } from '../../types';
 import {
   createWeeklyPlanningControllerSession,
   submitWeeklyPlanningControlledTurn,
-} from '../weeklyPlanningTurnController';
-import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
-import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
-import { takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+} from '../../weeklyPlanningTurnController';
+import type { WeeklyPlanningTurnExecutionResult } from '../../weeklyPlanningTurnExecutor';
+import { createInitialPlanningState, weeklyPlanningReducer } from '../../weeklyPlanningReducer';
+import { takeWeeklyPlanningStableV5DebugTrace } from '../../trace/weeklyPlanningStableV5DebugTrace';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueRenderInput,
-} from '../dialogue/weeklyPlanningStableV5AiDialogueRenderer';
-import type { AiConfig } from '../../../lib/aiConfig';
-import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+} from '../../dialogue/weeklyPlanningStableV5AiDialogueRenderer';
+import type { AiConfig } from '../../../../lib/aiConfig';
+import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClient';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
-} from '../semantic/weeklyPlanningSemanticTypesV5';
+} from '../../semantic/weeklyPlanningSemanticTypesV5';
 
 export const ISSUE152_REFERENCE_DATE = '2026-08-17';
 export const ISSUE152_OUTPUT_DIR = process.env.WEEKLY_PLANNING_ISSUE152_OUTPUT_DIR
