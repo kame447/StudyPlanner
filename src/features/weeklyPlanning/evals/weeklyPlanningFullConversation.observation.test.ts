@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -262,6 +263,7 @@ run('weekly planning full real API conversation', () => {
         session,
         userId: ownerId,
         ownerId,
+        plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
         userText,
         selectedDate,
         plans: [],

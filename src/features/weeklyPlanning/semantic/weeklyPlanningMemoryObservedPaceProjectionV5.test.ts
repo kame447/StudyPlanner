@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Actual, Plan } from '../../../types/domain';
-import {
-  clearWeeklyPlanningMemoryPaceRuntimeV5,
-  setWeeklyPlanningMemoryPaceRuntimeV5,
-} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
 import type { WeeklyPlanningGenericSchedulerGraphView } from './weeklyPlanningGenericSchedulerInput';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -88,15 +84,25 @@ function document(activityKind: 'memorization_retrieval' | 'problem_solving'): W
   };
 }
 
-afterEach(() => clearWeeklyPlanningMemoryPaceRuntimeV5(ownerId));
+function project(params: {
+  explicit?: boolean;
+  activityKind: 'memorization_retrieval' | 'problem_solving';
+  plans?: readonly Plan[];
+  actuals?: readonly Actual[];
+}) {
+  return projectWeeklyPlanningMemoryObservedPaceV5({
+    plans: params.plans ?? [plan()],
+    actuals: params.actuals ?? [actual()],
+    graph: graph(params.explicit),
+    document: document(params.activityKind),
+    localToFactId: { 'task-local': 'task', 'workload-local': 'workload' },
+    previousRecords: [],
+  });
+}
 
 describe('observed memory pace scheduler projection', () => {
-  it('uses persisted pace only after Luna classified the workload as memorization', () => {
-    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans: [plan()], actuals: [actual()] });
-    const result = projectWeeklyPlanningMemoryObservedPaceV5({
-      ownerId, graph: graph(), document: document('memorization_retrieval'),
-      localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
-    });
+  it('uses explicit persisted history after Luna classified the workload as memorization', () => {
+    const result = project({ activityKind: 'memorization_retrieval' });
     expect(result.appliedWorkloadFactIds).toEqual(['workload']);
     expect(result.estimateOverrides).toHaveLength(1);
     expect(result.estimateOverrides[0]).toMatchObject({
@@ -107,22 +113,24 @@ describe('observed memory pace scheduler projection', () => {
     expect(result.estimateOverrides[0].estimatedMinutes).toBeCloseTo(220 * (20 / 35));
   });
 
-  it('does not infer memorization from the word unit alone', () => {
-    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans: [plan()], actuals: [actual()] });
-    const result = projectWeeklyPlanningMemoryObservedPaceV5({
-      ownerId, graph: graph(), document: document('problem_solving'),
-      localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
+  it('does not reuse stale ambient history when the current turn has no observations', () => {
+    const result = project({
+      activityKind: 'memorization_retrieval',
+      plans: [],
+      actuals: [],
     });
     expect(result.appliedWorkloadFactIds).toEqual([]);
     expect(result.estimateOverrides).toEqual([]);
   });
 
+  it('does not infer memorization from the word unit alone', () => {
+    const result = project({ activityKind: 'problem_solving' });
+    expect(result.appliedWorkloadFactIds).toEqual([]);
+    expect(result.estimateOverrides).toEqual([]);
+  });
+
   it('keeps an explicit current estimate ahead of observed history', () => {
-    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans: [plan()], actuals: [actual()] });
-    const result = projectWeeklyPlanningMemoryObservedPaceV5({
-      ownerId, graph: graph(true), document: document('memorization_retrieval'),
-      localToFactId: { 'task-local': 'task', 'workload-local': 'workload' }, previousRecords: [],
-    });
+    const result = project({ explicit: true, activityKind: 'memorization_retrieval' });
     expect(result.appliedWorkloadFactIds).toEqual([]);
     expect(result.estimateOverrides).toEqual([]);
   });

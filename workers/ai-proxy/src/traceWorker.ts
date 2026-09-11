@@ -44,16 +44,11 @@ import {
   ProductObservabilityRollupEngine,
   type ProductObservabilityRollupEnv,
 } from './productObservabilityRollup';
-import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
-import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
 import worker from './worker';
 
 export { AiQuotaDurableObject };
 
-const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
-const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
-const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
 const ROLLUP_BATCH_SIZE = 50;
 const MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE = 2;
@@ -201,11 +196,7 @@ export default {
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = pathname === ADMIN_ENTRY_PAGE_PATH || pathname === ADMIN_ENTRIES_PATH
-      ? await handleWeeklyPlanningTraceAdminEntriesPage(request, env)
-      : pathname === ADMIN_ARCHIVE_PATH
-        ? await handleWeeklyPlanningTraceAdminArchive(request, env)
-        : await worker.fetch(request, env as never);
+    const response = await worker.fetch(request, env as never);
 
     if (observerRequest) {
       scheduleAiRequestMetric(

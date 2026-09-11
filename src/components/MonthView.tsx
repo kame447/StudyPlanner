@@ -6,7 +6,14 @@ import { buildMonthGrid } from '../lib/monthViewProjection';
 import { MonthDaySheet } from './MonthDaySheet';
 import { MonthEventDialog } from './MonthEventDialog';
 import { MonthGridPanel } from './MonthGridPanel';
-import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
+import type {
+  Actual,
+  MonthEvent,
+  MonthEventDraft,
+  Plan,
+  ScheduleTemplate,
+  TimetableTerm,
+} from '../types/domain';
 
 interface MonthViewProps {
   monthDate: string;
@@ -15,10 +22,15 @@ interface MonthViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  timetableTerm?: TimetableTerm | null;
+  timetableTerms?: TimetableTerm[];
   createRequestId?: number;
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
+  onOpenDay?: (date: string) => void;
   onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
@@ -30,8 +42,14 @@ export function MonthView({
   plans,
   actuals,
   monthEvents,
+  scheduleTemplates = [],
+  timetableTermId,
+  timetableTerm,
+  timetableTerms = [],
   createRequestId = 0,
   onSelectDate,
+  onOpenWeek,
+  onOpenDay,
   onSaveMonthEvent,
   onDeleteMonthEvent,
 }: MonthViewProps) {
@@ -224,9 +242,14 @@ export function MonthView({
           isCurrent
           selectedDate={selectedDate}
           todayDate={todayDate}
+          userId={userId}
           plans={plans}
           actuals={actuals}
           monthEvents={monthEvents}
+          scheduleTemplates={scheduleTemplates}
+          timetableTermId={timetableTermId}
+          timetableTerm={timetableTerm}
+          timetableTerms={timetableTerms}
           registerCellRef={registerCellRef}
           onCellClick={handleCellClick}
           onMoveSelection={moveSelectionByKeyboard}
@@ -236,9 +259,19 @@ export function MonthView({
 
       <MonthDaySheet
         openDate={daySheetDate}
+        userId={userId}
+        plans={plans}
         monthEvents={monthEvents}
+        scheduleTemplates={scheduleTemplates}
+        timetableTermId={timetableTermId}
+        timetableTerm={timetableTerm}
+        timetableTerms={timetableTerms}
         onCreate={(date) => openMonthEventEditor(date)}
         onEdit={(event) => openMonthEventEditor(daySheetDate ?? event.date, event.id)}
+        onOpenDay={(date) => {
+          setDaySheetDate(null);
+          (onOpenDay ?? onOpenWeek)(date);
+        }}
         onClose={() => setDaySheetDate(null)}
       />
 

@@ -16,6 +16,7 @@ import {
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
@@ -117,9 +118,10 @@ async function runTurn(params: {
     ownerId,
     userText: params.userText,
     selectedDate: '2026-08-17',
-    plans: [],
-    scheduleTemplates: [],
-    weekStartsOn: 'monday',
+      plans: [],
+      scheduleTemplates: [],
+      plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
+      weekStartsOn: 'monday',
     getState: store.getState,
     dispatch: store.dispatch,
   }, services);

@@ -10,27 +10,19 @@ async function events(page, type) {
   ), type);
 }
 
-async function enterWeeklyMode(page) {
-  const input = page.getByLabel('週間計画にしたいこと');
-  if (await input.isVisible().catch(() => false)) return input;
-
-  const aiInput = page.getByRole('button', { name: 'AI入力', exact: true });
-  if (await aiInput.count() && await aiInput.isVisible()) await aiInput.click();
-
-  const weeklyMode = page.getByRole('button', { name: '週間計画', exact: true });
-  if (await weeklyMode.count() && await weeklyMode.isVisible()) await weeklyMode.click();
-
-  await expect(input).toBeVisible();
-  return input;
-}
-
 async function createDraftReadyForApproval(page) {
-  const input = await enterWeeklyMode(page);
+  const input = page.locator('.ai-planning-composer textarea');
+  await expect(input).toBeVisible();
   await input.fill('承認raceを検査する条件');
-  await input.press('Control+Enter');
-  await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-  await page.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await expect(page.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
+  await input.press('Enter');
+
+  await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await expect(preview.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
+  return preview;
 }
 
 async function waitForApprovalSavePending(page) {
@@ -52,34 +44,27 @@ async function expectNotActionable(locator) {
   await expect(locator).toBeDisabled();
 }
 
-test.describe('real weekly approval race lifecycle', () => {
-  test('pending approval exposes no actionable duplicate approval or destructive draft mutation', async ({ page }) => {
+test.describe('real weekly approval race lifecycle through AiPlanningView', () => {
+  test('pending approval exposes no actionable duplicate save', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
-    await createDraftReadyForApproval(page);
+    const preview = await createDraftReadyForApproval(page);
 
-    await page.getByRole('button', { name: '一括承認して保存' }).click({ noWaitAfter: true });
+    await preview.getByRole('button', { name: 'この内容で保存' }).click({ noWaitAfter: true });
     await waitForApprovalSavePending(page);
 
-    await expectNotActionable(page.getByRole('button', { name: /保存中|一括承認して保存/ }));
-    await expectNotActionable(page.getByRole('button', { name: '一括破棄' }));
-
-    const dateButton = page.getByRole('button', { name: /8\/18/ }).first();
-    if (await dateButton.count() && await dateButton.isVisible() && await dateButton.isEnabled()) {
-      await dateButton.click();
-      await expectNotActionable(page.getByRole('button', { name: '数学のワークを削除' }));
-    }
-
+    await expectNotActionable(preview.getByRole('button', { name: /保存中|この内容で保存/ }));
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
+
     await releaseApprovalSave(page);
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
-    await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
   });
 
-  test('two approval activations in the same browser task invoke external persistence once', async ({ page }) => {
+  test('two save activations in the same browser task invoke external persistence once', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
-    await createDraftReadyForApproval(page);
+    const preview = await createDraftReadyForApproval(page);
 
-    const approve = page.getByRole('button', { name: '一括承認して保存' });
+    const approve = preview.getByRole('button', { name: 'この内容で保存' });
     await approve.evaluate((button) => {
       button.click();
       button.click();
@@ -93,25 +78,24 @@ test.describe('real weekly approval race lifecycle', () => {
 
     await releaseApprovalSave(page);
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
-    await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
   });
 
-  test('closing and reopening during approval preserves the pending operation and completes it once', async ({ page }) => {
+  test('closing and reopening the AI planning surface during approval preserves the pending operation and completes it once', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
-    await createDraftReadyForApproval(page);
+    const preview = await createDraftReadyForApproval(page);
 
-    await page.getByRole('button', { name: '一括承認して保存' }).click({ noWaitAfter: true });
+    await preview.getByRole('button', { name: 'この内容で保存' }).click({ noWaitAfter: true });
     await waitForApprovalSavePending(page);
 
-    await page.getByRole('button', { name: '閉じる' }).click();
-    await expect(page.getByRole('button', { name: 'モーダルを再度開く' })).toBeVisible();
-    await page.getByRole('button', { name: 'モーダルを再度開く' }).click();
+    await page.evaluate(() => window.__realWeeklySurface.close());
+    await expect(page.getByRole('button', { name: 'AI計画を再度開く' })).toBeVisible();
+    await page.evaluate(() => window.__realWeeklySurface.open());
+    await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
 
-    await expectNotActionable(page.getByRole('button', { name: /保存中|一括承認して保存/ }));
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
-
     await releaseApprovalSave(page);
-    await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);
+    await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
     expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ProductActivityAction } from '../../shared/productObservabilityContract';
 import type { ProductTelemetryPort } from '../features/productObservability/productTelemetry';
-import type { Plan, TodoTask } from '../types/domain';
+import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { createObservedPlannerRepository } from './observedPlannerRepository';
 import type { PlannerRepository } from './repositoryContracts';
 
@@ -141,5 +141,89 @@ describe('createObservedPlannerRepository', () => {
     }));
 
     expect(actions).toEqual(['todo_updated']);
+  });
+
+  it('does not recount restored Actuals as newly recorded activity during Plan Undo', async () => {
+    const actions: ProductActivityAction[] = [];
+    const restoredActual = {
+      id: 'actual-undo',
+      userId: 'user-1',
+      planId: 'plan-1',
+      occurrenceDate: '2026-08-28',
+      actualStartTime: '09:00',
+      actualEndTime: '10:00',
+      title: 'Math',
+      subject: 'Math',
+      isAlignedToPlan: true,
+      note: '',
+      updatedAt: '2026-08-28T01:00:00.000Z',
+    } as Actual;
+    const base = {
+      restorePlanWithDependents: vi.fn(async () => undefined),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.restorePlanWithDependents({
+      plan: plan(),
+      actuals: [restoredActual],
+      todo: todo(),
+    });
+
+    expect(actions).toEqual(['plan_created', 'todo_updated']);
+  });
+
+  it('does not recount recurring Actual rebinds as newly recorded activity', async () => {
+    const actions: ProductActivityAction[] = [];
+    const reboundActual = {
+      id: 'actual-rebound',
+      userId: 'user-1',
+      planId: 'plan-future',
+      occurrenceDate: '2026-09-03',
+      actualStartTime: '09:00',
+      actualEndTime: '10:00',
+      title: 'Math',
+      subject: 'Math',
+      isAlignedToPlan: true,
+      note: '',
+      updatedAt: '2026-09-03T01:00:00.000Z',
+    } as Actual;
+    const base = {
+      applyRecurringPlanMutation: vi.fn(async () => undefined),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.applyRecurringPlanMutation('user-1', {
+      planUpserts: [],
+      planDeletes: [],
+      actualUpserts: [reboundActual],
+      actualDeletes: [],
+    });
+
+    expect(actions).toEqual([]);
+  });
+
+  it('preserves telemetry for aggregate Actual and material persistence', async () => {
+    const actions: ProductActivityAction[] = [];
+    const savedActual = {
+      id: 'actual-1', userId: 'user-1', planId: null, occurrenceDate: '2026-08-31',
+      actualStartTime: '09:00', actualEndTime: '10:00', title: 'Math', subject: 'Math',
+      isAlignedToPlan: false, note: '', updatedAt: '2026-08-31T01:00:00.000Z',
+    } as Actual;
+    const savedMaterial = {
+      id: 'material-1', userId: 'user-1', name: 'Book', subjectId: 'subject-1', subjectName: 'Math',
+      aliases: [], status: 'active', paceEnabled: true, progressUnit: 'page', totalUnits: 100, currentUnit: 20,
+      createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-31T01:00:00.000Z',
+    } as StudyMaterial;
+    const base = {
+      upsertActualWithMaterialProgress: vi.fn(async () => savedActual),
+    } as unknown as PlannerRepository;
+    const repository = createObservedPlannerRepository(base, telemetry(actions));
+
+    await repository.upsertActualWithMaterialProgress({
+      actual: savedActual,
+      materials: [savedMaterial],
+    });
+
+    expect(actions).toEqual(['actual_recorded', 'material_updated']);
   });
 });

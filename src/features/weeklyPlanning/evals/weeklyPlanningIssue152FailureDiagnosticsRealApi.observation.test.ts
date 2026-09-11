@@ -14,6 +14,7 @@ import {
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import { buildAiPlanningStarterPrompts } from '../ui/aiPlanningStarterPrompts';
@@ -111,6 +112,7 @@ async function runConversation(params: {
       selectedDate: '2026-08-17',
       plans: [],
       scheduleTemplates: [],
+      plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
       weekStartsOn: 'monday',
       getState: store.getState,
       dispatch: store.dispatch,

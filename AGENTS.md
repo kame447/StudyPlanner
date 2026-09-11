@@ -98,6 +98,16 @@ Update the checkpoint after meaningful milestones and before intentionally handi
 - If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
 - Never weaken a test, hide an error, or change an assertion solely to make CI green.
 
+### Explanation and reporting clarity
+
+- When explaining implementation, architecture, bugs, refactors, or progress to the user, start with product concepts, responsibility boundaries, data flow, and observable behavior.
+- Do not make raw variable, function, class, file, or internal field names the primary explanation unless the user explicitly asks for code-level detail.
+- Prefer plain domain language first, such as "the current bookshelf data is passed directly into the planning turn", before introducing implementation identifiers.
+- Introduce concrete identifiers only after the concept is clear and only when they improve traceability, debugging, or review.
+- If a technical term or acronym is necessary, explain its meaning on first use unless the user has already established that vocabulary.
+- Progress and final summaries should prioritize: what was wrong, what responsibility or flow changed, why the new structure is safer or clearer, and what remains. Put low-level implementation names after that explanation rather than in place of it.
+- Do not oversimplify away important behavior or uncertainty. The goal is conceptual clarity first, implementation detail second.
+
 ## Project overview
 
 This project is a study planning support web app.
@@ -372,6 +382,19 @@ Before creating or modifying an Issue, branch, commit, or pull request, the agen
 
 The agent must not perform a GitHub write action until this pre-flight check is complete.
 
+### Concurrent-work guard
+
+Before the first implementation write, and again whenever interrupted work is resumed, the agent must determine whether the same logical task is already being worked by another chat or agent using repository evidence rather than chat memory.
+
+- Re-fetch the owning Issue and inspect its latest durable checkpoint, recent comments, active branch/PR references, exact HEAD/base, and stated next action.
+- Search current open pull requests and branches for the same logical task, including branches whose names do not contain the Issue number.
+- Treat an active checkpoint, recent unmerged implementation, or an explicitly active branch/PR for the same scope as occupied work. Do not create a parallel branch/PR or independently implement the same scope.
+- Resume an existing active branch only when the user's request clearly hands off or continues that work, and only after re-fetching its current HEAD and diff. Never assume a remembered branch state is current.
+- When taking ownership of a task that has no active owner, immediately record the active branch, pull request if one exists, exact base/HEAD, scope, and next action in the owning Issue or canonical work checkpoint so other agents can detect it before writing.
+- If another agent's active work overlaps materially in files, responsibility, or acceptance criteria, do not race it. Reuse the existing owner path or leave the overlapping scope untouched until ownership is resolved.
+- Distinct concurrent tasks may proceed only when their responsibility boundaries and release units are genuinely separate; sharing a nearby file alone is not sufficient evidence of conflict, but shared semantic ownership or the same acceptance criterion is.
+- Repository evidence is the coordination source of truth. A missing memory of another chat is never evidence that no one else is working on the task.
+
 ### Issue, branch, and pull request roles
 
 - Use an Issue for bugs, investigation, design decisions, backlog, verification tracking, operational work, and tasks that are not yet implementation-ready.
@@ -424,6 +447,13 @@ The agent must not perform a GitHub write action until this pre-flight check is 
 - For PR Ready-for-review, use the normal GitHub operation first. If it fails and a re-fetch proves the PR is still `draft=true`, follow the runbook fallback instead of creating a replacement PR or repeatedly calling the same broken mutation.
 - The currently verified one-shot GitHub Actions fallback for the observed Ready mutation requires `pull-requests: write` and `contents: write`, must be scoped to the exact intended PR, and must be removed immediately after `draft=false` is verified.
 - Treat this fallback as an integration workaround, not as the default PR flow; re-check current GitHub/tool behavior before assuming the historical failure still applies.
+
+### Firestore Rules deployment capability
+
+- Production Firestore Rules deployment is already automated by `.github/workflows/deploy-firestore-rules.yml` using GitHub OIDC, Google Cloud Workload Identity Federation, short-lived credentials, and the Firebase Rules API. Do not introduce a static service-account JSON key or `FIREBASE_TOKEN` workaround.
+- Before asking the user to create Google Cloud credentials, GitHub secrets, or manual Firebase deployment steps, inspect the current workflow, `docs/work/tooling-operations-runbook.md`, and recent `Deploy Firestore Rules` runs. Treat the existing WIF path as the default supported deployment mechanism unless current evidence proves it is broken.
+- When `firestore.rules` changes on `main`, follow the deployment workflow to a terminal state and verify the WIF authentication step, Rules API deployment, production ruleset read-back, and repository SHA-256 match. A queued or partially successful run is not completion.
+- Only stop for user action when the current WIF/IAM configuration genuinely requires permissions or account changes that cannot be completed through the available repository/tooling path. Report the exact failing step and the minimum manual action required.
 
 ### Required reporting
 

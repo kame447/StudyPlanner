@@ -12,6 +12,7 @@ import type {
 } from '../../shared/productObservabilityLogReadModel';
 import type { ObservabilityOverviewReadModel } from '../../shared/productObservabilityReadModel';
 import type { ObservabilityPlanningAnalysisReadModel } from '../../shared/productObservabilityPlanningReadModel';
+import type { ObservabilitySystemReadModel } from '../../shared/productObservabilitySystemReadModel';
 import { getCloudflareAiProxyUrl } from '../lib/aiConfig';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 
@@ -99,6 +100,18 @@ export async function getAdminObservabilityPlanningAnalysis(params: {
   });
   const payload = await adminGet<{ ok: true; result: ObservabilityPlanningAnalysisReadModel }>(
     '/observability/admin/planning',
+    query,
+  );
+  return payload.result;
+}
+
+export async function getAdminObservabilitySystemStatus(params: {
+  environment?: ObservabilityEnvironment;
+} = {}): Promise<ObservabilitySystemReadModel> {
+  const query = new URLSearchParams();
+  if (params.environment) query.set('environment', params.environment);
+  const payload = await adminGet<{ ok: true; result: ObservabilitySystemReadModel }>(
+    '/observability/admin/system',
     query,
   );
   return payload.result;

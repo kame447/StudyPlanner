@@ -33,6 +33,11 @@ interface WeeklyPlanningControlledResultContext {
   result: WeeklyPlanningTurnExecutionResult;
 }
 
+export interface WeeklyPlanningPreparedExecutionCommit {
+  rollback(): void;
+  complete?(): void | Promise<void>;
+}
+
 export interface SubmitWeeklyPlanningControlledTurnParams {
   session: WeeklyPlanningControllerSession;
   ownerId: string;
@@ -49,9 +54,9 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     snapshot: PlanningState;
     pending: WeeklyPlanningPendingTurn;
   }): void | Promise<void>;
-  commitExecutionResult?(
+  prepareExecutionCommit?(
     params: WeeklyPlanningControlledResultContext,
-  ): void | Promise<void>;
+  ): WeeklyPlanningPreparedExecutionCommit | void;
   discardExecutionResult?(params: WeeklyPlanningControlledResultContext & {
     reason: 'stale' | 'commit_rejected' | 'failed';
   }): void | Promise<void>;
@@ -265,6 +270,7 @@ export async function submitWeeklyPlanningControlledTurn(
   await runBestEffort(() => params.onStartedTurn?.({ snapshot, pending }));
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
+  let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
   try {
     const executionResult = await params.execute({ snapshot, pending, userText: executionText });
     result = executionResult;
@@ -281,6 +287,15 @@ export async function submitWeeklyPlanningControlledTurn(
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
+
+    preparedCommit = params.prepareExecutionCommit?.(context) ?? undefined;
+    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+      preparedCommit?.rollback();
+      preparedCommit = undefined;
+      await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
+      return { accepted: false, draftCandidates: [] };
+    }
+
     const assistantMessage = createTurnMessage(
       envelope,
       'assistant',
@@ -299,6 +314,8 @@ export async function submitWeeklyPlanningControlledTurn(
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
     if (!accepted) {
+      preparedCommit?.rollback();
+      preparedCommit = undefined;
       await runBestEffort(() => params.discardExecutionResult?.({
         ...context,
         reason: 'commit_rejected',
@@ -306,7 +323,9 @@ export async function submitWeeklyPlanningControlledTurn(
       return { accepted: false, draftCandidates: [] };
     }
 
-    await params.commitExecutionResult?.(context);
+    const completedCommit = preparedCommit;
+    preparedCommit = undefined;
+    await runBestEffort(() => completedCommit?.complete?.());
     await runBestEffort(() => params.onCommittedTurn?.({
       ...context,
       committed,
@@ -317,6 +336,10 @@ export async function submitWeeklyPlanningControlledTurn(
       draftCandidates: executionResult.draftCandidates,
     };
   } catch (error) {
+    if (preparedCommit) {
+      preparedCommit.rollback();
+      preparedCommit = undefined;
+    }
     const failedResult = result;
     if (failedResult) {
       await runBestEffort(() => params.discardExecutionResult?.({

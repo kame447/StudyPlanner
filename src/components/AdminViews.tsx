@@ -3,6 +3,7 @@ import { AdminAiApiPage } from './AdminAiApiPage';
 import { AdminLogsPage } from './AdminLogsPage';
 import { AdminOverviewPage } from './AdminOverviewPage';
 import { AdminPlanningPage } from './AdminPlanningPage';
+import { AdminSystemPage } from './AdminSystemPage';
 import { AdminUserDetailPage } from './AdminUserDetailPage';
 import { AdminUsersPage } from './AdminUsersPage';
 
@@ -41,6 +42,10 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
 
   if (route.type === 'logs') {
     return <AdminLogsPage />;
+  }
+
+  if (route.type === 'system') {
+    return <AdminSystemPage />;
   }
 
   return (

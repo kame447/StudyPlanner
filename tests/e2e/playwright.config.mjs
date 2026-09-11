@@ -11,6 +11,7 @@ export default defineConfig({
   testDir: configDir,
   testIgnore: [
     '**/admin-overview-render.spec.mjs',
+    '**/admin-system-environment.spec.mjs',
     '**/cross-browser-smoke.spec.mjs',
     '**/quality-gates.spec.mjs',
     '**/visual-regression.spec.mjs',

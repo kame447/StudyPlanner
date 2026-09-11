@@ -1,24 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import type {
   Actual,
+  MonthEvent,
   Plan,
   PlanDraft,
   ScheduleTemplate,
+  StudyMaterial,
   TimetableTerm,
 } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
-import {
-  deriveWeeklyPlanningEstimateCalibration,
-} from '../personalization/weeklyPlanningEstimateCalibration';
-import {
-  clearWeeklyPlanningEstimateCalibrationRuntimeV5,
-  setWeeklyPlanningEstimateCalibrationRuntimeV5,
-} from '../personalization/weeklyPlanningEstimateCalibrationRuntimeV5';
-import {
-  clearWeeklyPlanningMemoryPaceRuntimeV5,
-  setWeeklyPlanningMemoryPaceRuntimeV5,
-} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -66,11 +58,14 @@ export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
   selectedDate: string;
   plans: Plan[];
+  monthEvents?: MonthEvent[];
   actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
+  plannerDataAvailability: PlannerDataAvailability;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
@@ -107,20 +102,19 @@ export function useWeeklyPlanningApplication({
   userId,
   selectedDate,
   plans,
+  monthEvents = [],
   actuals = [],
+  studyMaterials = [],
   scheduleTemplates,
   timetableTermId,
   timetableTerm,
   timetableTerms = [],
+  plannerDataAvailability,
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
   const { weekStartsOn } = useWeeklyPlanningPersonalization();
-  const estimateCalibration = useMemo(
-    () => deriveWeeklyPlanningEstimateCalibration({ plans, actuals }),
-    [actuals, plans],
-  );
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
@@ -151,19 +145,6 @@ export function useWeeklyPlanningApplication({
     }
     return next;
   }, [dispatchPlanningAction, ownerId]);
-
-  useEffect(() => {
-    setWeeklyPlanningEstimateCalibrationRuntimeV5({
-      ownerId,
-      calibration: estimateCalibration,
-    });
-    return () => clearWeeklyPlanningEstimateCalibrationRuntimeV5(ownerId);
-  }, [estimateCalibration, ownerId]);
-
-  useEffect(() => {
-    setWeeklyPlanningMemoryPaceRuntimeV5({ ownerId, plans, actuals });
-    return () => clearWeeklyPlanningMemoryPaceRuntimeV5(ownerId);
-  }, [actuals, ownerId, plans]);
 
   useEffect(() => {
     const session = controllerSessionRef.current;
@@ -216,10 +197,14 @@ export function useWeeklyPlanningApplication({
       supplementalContext,
       selectedDate,
       plans,
+      monthEvents,
+      actuals,
+      studyMaterials,
       scheduleTemplates,
       timetableTermId,
       timetableTerm,
       timetableTerms,
+      plannerDataAvailability,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,

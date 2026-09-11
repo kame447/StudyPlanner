@@ -52,12 +52,30 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   }
 
   const target = targetEntries[0]?.task;
+  const targetComponents = target?.category === 'study'
+    ? (target.study?.components ?? [])
+    : [];
   if (
     target?.decompositionStatus === 'decomposed'
     && target.category === 'study'
-    && (target.study?.components.length ?? 0) === 0
+    && targetComponents.length === 0
   ) {
     errors.push('document:work-breakdown-decomposed-without-constituents');
+  }
+
+  // `decomposed` means this turn has supplied a usable constituent structure
+  // for the pending parent task. Keeping another work_breakdown uncertainty on
+  // that same parent is contradictory and causes the dialogue to ask the exact
+  // question again. Unknown quantity/effort may remain unknown, but it must be
+  // represented by its own typed dimension rather than reopening breakdown.
+  if (
+    target?.decompositionStatus === 'decomposed'
+    && targetComponents.length > 0
+    && params.document.uncertainties.some((uncertainty) =>
+      uncertainty.field === 'work_breakdown'
+      && uncertainty.targetLocalId === target.localId)
+  ) {
+    errors.push('document:work-breakdown-decomposed-target-cannot-remain-uncertain');
   }
 
   return errors;

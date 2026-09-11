@@ -5,6 +5,7 @@ export type AdminRoute =
   | { type: 'ai-api' }
   | { type: 'planning' }
   | { type: 'logs' }
+  | { type: 'system' }
   | { type: 'not-found' };
 
 export function resolveAdminRoute(path: string): AdminRoute {
@@ -24,8 +25,12 @@ export function resolveAdminRoute(path: string): AdminRoute {
     return { type: 'planning' };
   }
 
-  if (path === '/admin/logs' || path === '/admin/weekly-planning-traces') {
+  if (path === '/admin/logs') {
     return { type: 'logs' };
+  }
+
+  if (path === '/admin/system') {
+    return { type: 'system' };
   }
 
   const detailMatch = path.match(/^\/admin\/users\/([^/]+)$/);

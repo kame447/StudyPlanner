@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
@@ -11,6 +12,7 @@ import {
   buildPlanOccurrenceKey,
   getActualOccurrenceKey,
 } from "../lib/planRecurrence";
+import { isScheduleOccurrenceOutsideHourlyGrid } from "../lib/scheduleOccurrencePresentation";
 import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
 import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
 import { useTimelineDragController } from "../hooks/useTimelineDragController";
@@ -30,6 +32,7 @@ interface DayTimelineProps {
   dateLabel: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
+  scheduleOccurrences: ScheduleOccurrence[];
   actuals: Actual[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
@@ -64,6 +67,7 @@ interface TimelineEntry {
   alignedToPlan?: boolean;
   standalone?: boolean;
   plan?: Plan;
+  occurrence?: ScheduleOccurrence;
 }
 
 const HOUR_HEIGHT = 54;
@@ -123,10 +127,20 @@ function getTimelineDensityClass(
   return classes.join(" ");
 }
 
+function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
+  if (occurrence.category === "study") return "study";
+  if (occurrence.category === "exam") return "mock-exam";
+  if (occurrence.category === "school" || occurrence.category === "class") return "school-event";
+  if (occurrence.category === "cram-school") return "cram-school";
+  if (occurrence.category === "deadline") return "deadline";
+  return "other";
+}
+
 export function DayTimeline({
   dateLabel,
   plans,
   monthEvents,
+  scheduleOccurrences,
   actuals,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
@@ -154,36 +168,60 @@ export function DayTimeline({
         });
       }
     },
+    deferTouchDragUntilMoveAfterLongPress: true,
   });
+  const occurrenceByPlanId = new Map(
+    scheduleOccurrences
+      .filter((occurrence) => occurrence.source.backingKind === "plan")
+      .map((occurrence) => [occurrence.source.backingId, occurrence])
+  );
+  const occurrenceByMonthEventId = new Map(
+    scheduleOccurrences
+      .filter((occurrence) => occurrence.source.backingKind === "month-event")
+      .map((occurrence) => [occurrence.source.backingId, occurrence])
+  );
+  const spanningOccurrences = scheduleOccurrences.filter(
+    isScheduleOccurrenceOutsideHourlyGrid
+  );
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
   );
   const planEntries = buildTimelineEntries([
-    ...plans.map((plan) => ({
-      id: buildPlanOccurrenceKey(plan.id, plan.date),
-      targetId: plan.id,
-      selectionId: `plan:${plan.id}`,
-      entryKind: "plan" as const,
-      title: plan.title,
-      subject: plan.subject,
-      type: plan.type,
-      sourceType: plan.sourceType,
-      startTime: plan.startTime,
-      endTime: plan.endTime,
-      plan,
-    })),
-    ...monthEvents.map((monthEvent) => ({
-      id: monthEvent.id,
-      targetId: monthEvent.id,
-      selectionId: `month-event:${monthEvent.id}`,
-      entryKind: "month-event" as const,
-      title: monthEvent.title,
-      subject: "主要予定",
-      type: "other" as const,
-      sourceType: "manual" as const,
-      startTime: monthEvent.startTime,
-      endTime: monthEvent.endTime,
-    })),
+    ...plans.flatMap((plan) => {
+      const occurrence = occurrenceByPlanId.get(plan.id);
+      if (occurrence && isScheduleOccurrenceOutsideHourlyGrid(occurrence)) return [];
+      return [{
+        id: buildPlanOccurrenceKey(plan.id, plan.date),
+        targetId: plan.id,
+        selectionId: `plan:${plan.id}`,
+        entryKind: "plan" as const,
+        title: plan.title,
+        subject: plan.subject,
+        type: plan.type,
+        sourceType: plan.sourceType,
+        startTime: plan.startTime,
+        endTime: plan.endTime,
+        plan,
+        occurrence,
+      }];
+    }),
+    ...monthEvents.flatMap((monthEvent) => {
+      const occurrence = occurrenceByMonthEventId.get(monthEvent.id);
+      if (occurrence && isScheduleOccurrenceOutsideHourlyGrid(occurrence)) return [];
+      return [{
+        id: monthEvent.id,
+        targetId: monthEvent.id,
+        selectionId: `month-event:${monthEvent.id}`,
+        entryKind: "month-event" as const,
+        title: monthEvent.title,
+        subject: "主要予定",
+        type: "other" as const,
+        sourceType: "manual" as const,
+        startTime: monthEvent.startTime,
+        endTime: monthEvent.endTime,
+        occurrence,
+      }];
+    }),
   ]);
   const draftEntries = buildTimelineEntries(
     weeklyDraftBlocks.map((block) => ({
@@ -273,6 +311,11 @@ export function DayTimeline({
     const label = getSubjectLabel(entry.subject, entry.type, entry.sourceType);
     legendMap.set(label, getSubjectTheme(label, entry.type, entry.sourceType).fill);
   });
+  spanningOccurrences.forEach((occurrence) => {
+    const type = planTypeForOccurrence(occurrence);
+    const label = getSubjectLabel(occurrence.subject, type, occurrence.planSourceType);
+    legendMap.set(label, getSubjectTheme(label, type, occurrence.planSourceType).fill);
+  });
   const timelineLegend = (
     <div className="timeline-legend">
       {Array.from(legendMap.entries()).map(([label, color]) => (
@@ -359,7 +402,8 @@ export function DayTimeline({
 
         {planEntries.length === 0 &&
         draftEntries.length === 0 &&
-        actualEntries.length === 0 ? (
+        actualEntries.length === 0 &&
+        spanningOccurrences.length === 0 ? (
           <>
             <p className="empty-copy">
               この日の予定はありません。追加すると時間軸に並びます。
@@ -368,6 +412,89 @@ export function DayTimeline({
           </>
         ) : (
           <>
+            {spanningOccurrences.length > 0 ? (
+              <div
+                data-day-spanning-events="true"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "52px minmax(0, 1fr)",
+                  alignItems: "start",
+                  gap: "6px",
+                  padding: "6px 8px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  background: "var(--surface)",
+                }}
+              >
+                <span
+                  style={{
+                    paddingTop: "5px",
+                    color: "var(--text-muted)",
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  終日
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "4px",
+                    minWidth: 0,
+                  }}
+                >
+                  {spanningOccurrences.map((occurrence) => {
+                    const type = planTypeForOccurrence(occurrence);
+                    const theme = getSubjectTheme(
+                      occurrence.subject,
+                      type,
+                      occurrence.planSourceType
+                    );
+                    const entryKind = occurrence.source.backingKind === "plan"
+                      ? "plan"
+                      : "month-event";
+                    return (
+                      <button
+                        key={occurrence.id}
+                        data-schedule-occurrence-id={occurrence.id}
+                        data-day-spanning-event="true"
+                        type="button"
+                        title={`${occurrence.title} / ${occurrence.start.date} ${occurrence.start.time} - ${occurrence.end.date} ${occurrence.end.time}`}
+                        aria-label={`${occurrence.title}。終日または日を跨ぐ予定。長押しで操作`}
+                        onClick={() =>
+                          onSelectEntry({
+                            kind: entryKind,
+                            id: occurrence.source.backingId,
+                          })
+                        }
+                        onContextMenu={(event) => event.preventDefault()}
+                        style={{
+                          minWidth: 0,
+                          maxWidth: "100%",
+                          padding: "5px 9px",
+                          overflow: "hidden",
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: "8px",
+                          background: theme.soft,
+                          color: theme.text,
+                          font: "inherit",
+                          fontSize: "0.72rem",
+                          fontWeight: 750,
+                          lineHeight: 1.2,
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {occurrence.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <div className="timeline-shell split">
               <div className="timeline-hours">
                 {DAY_HOURS.map((hour) => (
@@ -449,6 +576,7 @@ export function DayTimeline({
                         ]
                           .filter(Boolean)
                           .join(" ")}
+                        data-schedule-occurrence-id={entry.occurrence?.id}
                         style={buildColumnBlockStyle(
                           minutesFromTime(entry.startTime),
                           duration,
@@ -485,10 +613,12 @@ export function DayTimeline({
                         onTouchEnd={dragDescriptor ? dragController.handleTouchEnd : undefined}
                         onTouchCancel={dragDescriptor ? dragController.handleTouchCancel : undefined}
                         onContextMenu={
-                          dragDescriptor ? (event) => event.preventDefault() : undefined
+                          entry.occurrence || dragDescriptor
+                            ? (event) => event.preventDefault()
+                            : undefined
                         }
                         title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
-                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + (draggablePlan ? "。長押しまたはドラッグで移動" : "")}
+                        aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + (entry.occurrence ? "。長押しで操作" : "") + (draggablePlan ? "、長押しして動かすと移動" : "")}
                         type="button"
                       >
                         <div className="timeline-entry-line">

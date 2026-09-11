@@ -2,9 +2,11 @@ import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import {
-  canonicalizeWeeklyPlanningSemanticDocumentV5,
-  type WeeklyPlanningSemanticCanonicalizationContextV5,
-  type WeeklyPlanningSemanticCanonicalizationResultV5,
+  canonicalizeWeeklyPlanningSemanticDocumentWithAvailabilityCorrectionsV5 as canonicalizeWeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningAvailabilityCorrectionCompatibilityV5';
+import type {
+  WeeklyPlanningSemanticCanonicalizationContextV5,
+  WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
 import type {
   WeeklyPlanningFactGraphV5,

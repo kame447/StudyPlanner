@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPlanFromDraft } from '../domain/planner';
+import type { PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
 import { upsertByKey } from '../lib/collections';
 import { minutesBetween, sortByDateTime } from '../lib/date';
 import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
-import {
-  clearWeeklyPlanningRegisteredMaterialRuntimeV5,
-  setWeeklyPlanningRegisteredMaterialRuntimeV5,
-} from '../features/weeklyPlanning/personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
@@ -54,6 +51,7 @@ interface PlannerAppState {
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
+  plannerDataAvailability: PlannerDataAvailability;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -152,6 +150,7 @@ export function usePlannerAppState(): PlannerAppState {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,
@@ -216,16 +215,6 @@ export function usePlannerAppState(): PlannerAppState {
   useEffect(() => {
     setWeeklyApprovedPlanOverlay([]);
   }, [user?.id]);
-
-  useEffect(() => {
-    const ownerId = user?.id?.trim();
-    if (!ownerId) return;
-    setWeeklyPlanningRegisteredMaterialRuntimeV5({
-      ownerId,
-      materials: studyMaterials,
-    });
-    return () => clearWeeklyPlanningRegisteredMaterialRuntimeV5(ownerId);
-  }, [studyMaterials, user?.id]);
 
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
@@ -335,6 +324,7 @@ export function usePlannerAppState(): PlannerAppState {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,

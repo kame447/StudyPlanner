@@ -5,8 +5,9 @@ import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
 } from '../intake/weeklyPlanningStableV5QuestionSlot';
+import type { StudyMaterial } from '../../../types/domain';
 import {
-  getWeeklyPlanningRegisteredMaterialContextV5,
+  createWeeklyPlanningRegisteredMaterialContextV5,
 } from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
@@ -97,6 +98,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
   ownerId?: string;
   currentDate?: string;
   userText?: string;
+  studyMaterials?: readonly StudyMaterial[];
 }): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   return {
@@ -159,6 +161,12 @@ export function createStableV5SemanticPublicStateSummary(params: {
       perOccurrence: workload.perOccurrence,
       periodExpression: workload.periodExpression,
     })),
+    relations: active.relations.map((relation) => ({
+      publicId: relation.id,
+      kind: relation.kind,
+      fromTaskPublicId: relation.fromTaskId,
+      toTaskPublicId: relation.toTaskId,
+    })),
     uncertainties: active.uncertainties.map((uncertainty) => ({
       publicId: uncertainty.id,
       targetPublicId: uncertainty.targetFactId,
@@ -167,8 +175,9 @@ export function createStableV5SemanticPublicStateSummary(params: {
       sourceText: uncertainty.source.sourceText,
     })),
     registeredMaterials: params.ownerId
-      ? getWeeklyPlanningRegisteredMaterialContextV5({
+      ? createWeeklyPlanningRegisteredMaterialContextV5({
           ownerId: params.ownerId,
+          materials: params.studyMaterials ?? [],
           userText: params.userText,
         })
       : [],

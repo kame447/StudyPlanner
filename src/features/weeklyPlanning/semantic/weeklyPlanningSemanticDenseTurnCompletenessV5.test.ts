@@ -70,9 +70,20 @@ describe('Stable V5 dense-turn semantic completeness audit', () => {
       userText: '数学の模試は55%ですが、基礎問題精講を一周したいです。'.repeat(30),
       candidateDocument: candidateDocument(),
     });
-    expect(messages[0]?.content).toContain('assessment/mock-exam scores');
+    expect(messages[0]?.content).toMatch(/assessment\/mock-exam scores/i);
     expect(messages[0]?.content).toContain('not textbook completion');
     expect(messages[1]?.content).toContain('candidateDocument');
+  });
+
+  it('treats an explicit daily total as supported capacity without inventing clocks', () => {
+    const messages = createDenseTurnCompletenessAuditMessagesV5({
+      userText: '土日は基本的に1日8時間勉強できます。'.repeat(40),
+      candidateDocument: candidateDocument(),
+    });
+    expect(messages[0]?.content).toContain('daily capacity');
+    expect(messages[0]?.content).toContain('kind=capacity');
+    expect(messages[0]?.content).toContain('capacityMinutes');
+    expect(messages[0]?.content).toContain('without inventing a clock window');
   });
 
   it('asks a retry to regenerate the whole semantic document instead of patching', () => {

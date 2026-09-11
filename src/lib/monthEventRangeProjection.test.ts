@@ -24,25 +24,26 @@ function createMultiDayEvent(): MonthEvent {
 }
 
 describe('month event range projection', () => {
-  it('projects a multi-day event into every covered month cell only', () => {
+  it('projects one occurrence identity into every covered month cell only', () => {
     const projection = buildMonthPanelProjection({
       monthDate: '2026-08-01',
       plans: [],
       actuals: [],
       monthEvents: [createMultiDayEvent()],
     });
+    const occurrenceId = 'month-event:range-event:2026-08-10';
 
     for (const date of ['2026-08-10', '2026-08-11', '2026-08-12']) {
       expect(
         projection.cells.find((cell) => cell.date === date)?.monthEvents.map((event) => event.id),
-      ).toContain('range-event');
+      ).toContain(occurrenceId);
     }
 
     expect(
       projection.cells.find((cell) => cell.date === '2026-08-09')?.monthEvents.map((event) => event.id),
-    ).not.toContain('range-event');
+    ).not.toContain(occurrenceId);
     expect(
       projection.cells.find((cell) => cell.date === '2026-08-13')?.monthEvents.map((event) => event.id),
-    ).not.toContain('range-event');
+    ).not.toContain(occurrenceId);
   });
 });

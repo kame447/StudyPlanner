@@ -10,40 +10,35 @@ async function events(page, type) {
   ), type);
 }
 
-async function enterWeeklyMode(page) {
-  const input = page.getByLabel('週間計画にしたいこと');
-  if (await input.isVisible().catch(() => false)) return input;
-
-  const aiInput = page.getByRole('button', { name: 'AI入力', exact: true });
-  if (await aiInput.count() && await aiInput.isVisible()) await aiInput.click();
-
-  const weeklyMode = page.getByRole('button', { name: '週間計画', exact: true });
-  if (await weeklyMode.count() && await weeklyMode.isVisible()) await weeklyMode.click();
-
+async function composer(page) {
+  const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
   return input;
 }
 
 async function submitWeekly(page, text) {
-  const input = await enterWeeklyMode(page);
+  const input = await composer(page);
   await input.fill(text);
-  await input.press('Control+Enter');
+  await input.press('Enter');
 }
 
 async function createDraftReadyForApproval(page) {
   await submitWeekly(page, '保存失敗から回復する条件');
-  await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-  await page.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await expect(page.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await expect(preview.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
+  return preview;
 }
 
-test.describe('real weekly failure recovery', () => {
+test.describe('real weekly failure recovery through AiPlanningView', () => {
   test('a runtime failure clears pending state and the next turn succeeds without a poisoned graph revision', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?runtimeFailure=1`);
     await submitWeekly(page, '失敗する条件');
 
     await expect.poll(async () => (await events(page, 'real-runtime-fail')).length).toBe(1);
-    await expect(page.getByLabel('週間計画にしたいこと')).toBeVisible();
+    await expect(await composer(page)).toBeEnabled();
     expect(await events(page, 'real-runtime-complete')).toHaveLength(0);
 
     await page.evaluate(() => {
@@ -60,9 +55,9 @@ test.describe('real weekly failure recovery', () => {
 
   test('a failed approval save keeps the draft retryable and a second approval can complete it', async ({ page }) => {
     await page.goto(`${REAL_WEEKLY_URL}?preview=1&approvalFailure=once`);
-    await createDraftReadyForApproval(page);
+    const preview = await createDraftReadyForApproval(page);
 
-    const approve = page.getByRole('button', { name: '一括承認して保存' });
+    const approve = preview.getByRole('button', { name: 'この内容で保存' });
     await approve.click();
 
     await expect.poll(async () => (await events(page, 'real-fail-approved-plan')).length).toBe(1);
@@ -74,6 +69,6 @@ test.describe('real weekly failure recovery', () => {
 
     await expect.poll(async () => (await events(page, 'real-save-approved-plan')).length).toBe(2);
     await expect.poll(async () => (await events(page, 'real-complete-approved-plan')).length).toBe(1);
-    await expect(page.getByRole('button', { name: '一括承認して保存' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
   });
 });

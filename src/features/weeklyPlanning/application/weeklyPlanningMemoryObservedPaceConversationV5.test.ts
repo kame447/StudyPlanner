@@ -2,10 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actual, Plan } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
-  clearWeeklyPlanningMemoryPaceRuntimeV5,
-  setWeeklyPlanningMemoryPaceRuntimeV5,
-} from '../personalization/weeklyPlanningMemoryPaceRuntimeV5';
-import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
@@ -147,7 +143,8 @@ function input(params: {
 }): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   return {
     previousState: params.previousState, messages: [], userText: params.userText,
-    selectedDate: '2026-08-17', userId: ownerId, plans: [], scheduleTemplates: [],
+    selectedDate: '2026-08-17', userId: ownerId,
+    plans: [historicalPlan()], actuals: [historicalActual()], scheduleTemplates: [],
     conversationId: params.conversationId, traceRequestId: params.requestId, requestContext,
   };
 }
@@ -159,10 +156,6 @@ function finalize(conversationId: string, requestId: string): void {
 describe('Stable V5 returning memorization learner', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-    clearWeeklyPlanningMemoryPaceRuntimeV5(ownerId);
-    setWeeklyPlanningMemoryPaceRuntimeV5({
-      ownerId, plans: [historicalPlan()], actuals: [historicalActual()],
-    });
     normalizeMock.mockReset();
   });
 

@@ -20,6 +20,7 @@ import {
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
@@ -188,6 +189,7 @@ async function runConversation(params: {
       selectedDate: '2026-08-17',
       plans: [],
       scheduleTemplates: [],
+      plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
       weekStartsOn: 'monday',
       getState: store.getState,
       dispatch: store.dispatch,

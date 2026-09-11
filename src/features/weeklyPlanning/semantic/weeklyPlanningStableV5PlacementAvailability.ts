@@ -204,8 +204,8 @@ export function buildPlacementWindowsByDate(params: {
     && window.kind === 'available'
     && window.start.date === window.end.date);
   hardAvailable.forEach((window, windowIndex) => {
-    const start = Math.max(defaultWindow.start, minutesFromPlacementTime(window.start.time));
-    const end = Math.min(defaultWindow.end, minutesFromPlacementTime(window.end.time));
+    const start = minutesFromPlacementTime(window.start.time);
+    const end = minutesFromPlacementTime(window.end.time);
     if (end <= start) {
       result.set(window.start.date, []);
       return;

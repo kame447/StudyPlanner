@@ -8,29 +8,15 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import '../styles/admin-phase5.css';
 import '../styles/admin-phase6.css';
 import '../styles/admin-phase7.css';
+import '../styles/admin-phase8.css';
 import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
-
-function FutureNavItem({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <button
-      className="admin-console-nav-item is-disabled"
-      type="button"
-      disabled
-      title={`${label}は次フェーズで実装します`}
-    >
-      {icon}
-      <span>{label}</span>
-      <small>準備中</small>
-    </button>
-  );
-}
 
 export function AdminApp() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -106,7 +92,8 @@ export function AdminApp() {
   const isUsersPage = currentPath === '/admin/users' || currentPath.startsWith('/admin/users/');
   const isAiPage = currentPath === '/admin/ai';
   const isPlanningPage = currentPath === '/admin/planning';
-  const isLogsPage = currentPath === '/admin/logs' || currentPath === '/admin/weekly-planning-traces';
+  const isLogsPage = currentPath === '/admin/logs';
+  const isSystemPage = currentPath === '/admin/system';
 
   return (
     <div className="app-shell admin-app-shell">
@@ -162,7 +149,14 @@ export function AdminApp() {
                 <ListTree aria-hidden="true" size={19} />
                 <span>Logs</span>
               </button>
-              <FutureNavItem icon={<Settings aria-hidden="true" size={19} />} label="System" />
+              <button
+                className={`admin-console-nav-item${isSystemPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/system')}
+                type="button"
+              >
+                <Settings aria-hidden="true" size={19} />
+                <span>System</span>
+              </button>
             </nav>
 
             <div className="admin-console-sidebar-footer">

@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -176,6 +177,7 @@ async function conversation(params: {
       session,
       userId: params.ownerId,
       ownerId: params.ownerId,
+      plannerDataAvailability: createReadyPlannerDataAvailability(params.ownerId),
       userText,
       selectedDate: '2026-08-17',
       plans: [],

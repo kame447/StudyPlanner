@@ -1,6 +1,6 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
-import { HomeView } from './components/HomeView';
+import { HomeScheduleView } from './components/HomeScheduleView';
 import { SplashScreen } from './components/SplashScreen';
 import { StudySessionProvider } from './components/StudySessionView';
 import { LegalPage } from './components/LegalPage';
@@ -26,6 +26,7 @@ import {
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
+import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
 
 const AiPlanningView = lazy(() =>
@@ -43,9 +44,9 @@ const DayView = lazy(() =>
     default: module.DayView,
   })),
 );
-const WeeklyPlanningQuickEntryModal = lazy(() =>
-  import('./components/WeeklyPlanningQuickEntryModal').then((module) => ({
-    default: module.WeeklyPlanningQuickEntryModal,
+const QuickEntryModal = lazy(() =>
+  import('./components/QuickEntryModal').then((module) => ({
+    default: module.QuickEntryModal,
   })),
 );
 const ReportView = lazy(() =>
@@ -101,6 +102,7 @@ export default function App() {
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
+    plannerDataAvailability,
     viewMode,
     selectedDate,
     monthDate,
@@ -153,23 +155,22 @@ export default function App() {
     openDay,
     setEditorDraft,
   } = usePlannerAppState();
-  const activeTimetableTerm = useMemo(
-    () =>
-      timetableTerms.find((term) => term.isActive) ??
-      timetableTerms[0] ??
-      null,
-    [timetableTerms],
-  );
-  const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
+  const {
+    term: activeTimetableTerm,
+    termId: activeTimetableTermId,
+  } = resolveActiveTimetableTerm(timetableTerms);
   const weeklyPlanning = useWeeklyPlanningApplication({
     userId: user?.id,
     selectedDate,
     plans,
+    monthEvents,
     actuals,
+    studyMaterials,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
     timetableTerm: activeTimetableTerm,
     timetableTerms,
+    plannerDataAvailability,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });
@@ -391,11 +392,17 @@ export default function App() {
       >
         {isHomeSurface ? (
           <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
-            <HomeView
+            <HomeScheduleView
+              userId={user.id}
               plans={plans}
               actuals={actuals}
+              monthEvents={monthEvents}
               todos={todos}
               studyMaterials={studyMaterials}
+              scheduleTemplates={scheduleTemplates}
+              timetableTermId={activeTimetableTermId}
+              timetableTerm={activeTimetableTerm}
+              timetableTerms={timetableTerms}
               primaryHeaderRef={primaryHeaderRef}
               primaryBottomNavRef={primaryBottomNavRef}
               onOpenAiPlanning={openAiPlanningSurface}
@@ -433,6 +440,10 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            scheduleTemplates={scheduleTemplates}
+            timetableTermId={activeTimetableTermId}
+            timetableTerm={activeTimetableTerm}
+            timetableTerms={timetableTerms}
             createRequestId={monthCreateRequestId}
             onSelectDate={selectDate}
             onChangeMonth={changeMonth}
@@ -447,8 +458,14 @@ export default function App() {
             {viewMode === 'week' ? (
               <WeekView
                 selectedDate={selectedDate}
+                userId={user.id}
                 plans={plans}
                 actuals={actuals}
+                monthEvents={monthEvents}
+                scheduleTemplates={scheduleTemplates}
+                timetableTermId={activeTimetableTermId}
+                timetableTerm={activeTimetableTerm}
+                timetableTerms={timetableTerms}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
                 onRemoveWeeklyDraftBlock={
                   weeklyPlanning.canEditDraftBlocks
@@ -457,6 +474,8 @@ export default function App() {
                 }
                 onOpenPlan={openEditPlan}
                 onMovePlan={movePlanOccurrence}
+                onDeletePlan={deletePlan}
+                onDeleteMonthEvent={deleteMonthEvent}
                 onOpenDay={openDay}
               />
             ) : null}
@@ -484,6 +503,7 @@ export default function App() {
                 onEditPlan={openEditPlan}
                 onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
+                onDeleteMonthEvent={deleteMonthEvent}
                 onSavePlan={savePlanDraft}
                 onSaveActual={saveActual}
                 onSaveStandaloneActual={saveStandaloneActual}
@@ -597,8 +617,7 @@ export default function App() {
 
       {isQuickEntryOpen ? (
         <Suspense fallback={null}>
-          <WeeklyPlanningQuickEntryModal
-            application={weeklyPlanning}
+          <QuickEntryModal
             userId={user.id}
             selectedDate={selectedDate}
             plans={plans}

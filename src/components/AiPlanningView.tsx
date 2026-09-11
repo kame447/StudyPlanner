@@ -158,6 +158,16 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     setIsPreviewOpen(true);
   }
 
+  function removePreviewBlock(blockId: string) {
+    if (isBusy) return;
+    if (hasLocalPreview) {
+      application.removePreviewCandidate(blockId);
+    } else {
+      application.removeDraftBlock(blockId);
+    }
+    window.requestAnimationFrame(persistActiveChatSnapshot);
+  }
+
   function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
     if (previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
     const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
@@ -215,6 +225,14 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     requestClosePreview();
   }
 
+  function cancelPendingTurn() {
+    if (!state.pendingTurn) return;
+    const cancelled = application.cancelTurn();
+    if (cancelled) {
+      window.requestAnimationFrame(persistActiveChatSnapshot);
+    }
+  }
+
   return (
     <div
       ref={shellRef}
@@ -222,6 +240,17 @@ export function AiPlanningView(props: AiPlanningViewProps) {
       onClickCapture={openPreviewFromLegacySurface}
     >
       <AiPlanningViewLegacy {...props} />
+      {state.pendingTurn ? (
+        <div className="ai-planning-pending-turn-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={cancelPendingTurn}
+          >
+            処理をキャンセル
+          </button>
+        </div>
+      ) : null}
       {isPreviewOpen && allPreviewBlocks.length > 0 ? (
         <div
           className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}
@@ -236,6 +265,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
             canSave={approvalAvailability.kind === 'eligible'}
             onClose={() => requestClosePreview()}
             onAdjust={closePreviewForAdjustment}
+            onRemove={removePreviewBlock}
             onPromote={promotePreview}
             onSave={(blocks) => void saveDrafts(blocks)}
           />

@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -97,6 +98,7 @@ run('Issue #156 completed open-ended progress real API gate', () => {
         session,
         userId: ownerId,
         ownerId,
+        plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
         userText,
         selectedDate: '2026-08-17',
         plans: [],

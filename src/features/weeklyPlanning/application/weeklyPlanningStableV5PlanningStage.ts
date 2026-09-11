@@ -28,6 +28,7 @@ function recordPlanningEvaluationTrace(params: {
     externalSources,
     activeGraph,
     compilation,
+    provisionalTimeboxProjection,
     repairDecision,
     dialogue,
     planningIntent,
@@ -46,6 +47,7 @@ function recordPlanningEvaluationTrace(params: {
       requestContext,
       resolvedHorizon: horizon,
       grounding: { continuationAccepted, records: groundingRecords },
+      provisionalTimeboxProjection,
       repair: {
         mode: repairDecision.mode,
         deferredIssueIds: repairDecision.deferredIssueIds,
@@ -65,7 +67,10 @@ function recordPlanningEvaluationTrace(params: {
         planningIntent,
         semanticChanged,
         previousDraftGenerationIntent,
-        criterion: 'create_plan OR durable user_authorized before draft_ready OR (draft_ready + update_plan + semanticChanged)',
+        provisionalTimeboxRequested:
+          semantic.normalization.contextualDirective?.kind === 'provisional_timebox',
+        criterion:
+          'create_plan OR explicit provisional_timebox OR durable user_authorized before draft_ready OR (draft_ready + update_plan + semanticChanged)',
         authorized,
       },
     },

@@ -34,10 +34,12 @@ import {
  *   while old fixtures/checkpoints may omit it and are treated as unknown
  * - no_additional_constraint is an absence fact, not a positive availability
  *   window; it is retained in V5 while excluded from the legacy base validator
+ * - capacity availability is a plan-wide daily allocation ceiling, not a clock
+ *   window; capacityMinutes is validated here and stripped before base validation
  *
- * The OpenAI JSON Schema requires userContextFacts and study activity kind on
- * new provider responses. The TypeScript/runtime wrapper accepts omitted
- * extension fields only for pre-migration fixtures/checkpoints.
+ * The OpenAI JSON Schema requires userContextFacts, study activity kind and
+ * capacityMinutes on new provider responses. The TypeScript/runtime wrapper
+ * accepts omitted extension fields only for pre-migration fixtures/checkpoints.
  *
  * These checks never derive meaning from raw user text. The AI has already
  * selected semantic kinds; code verifies structure and consistency of those
@@ -91,6 +93,12 @@ function isNoAdditionalConstraintDeclaration(value: unknown): value is Record<st
   return isRecord(value) && value.kind === 'no_additional_constraint';
 }
 
+function stripAvailabilityExtension(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const { capacityMinutes: _capacityMinutes, ...rest } = value;
+  return rest;
+}
+
 function stripSemanticExtensions(value: Record<string, unknown>): Record<string, unknown> {
   const tasks = Array.isArray(value.tasks)
     ? value.tasks.map((task) => {
@@ -126,9 +134,9 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
       })
     : value.tasks;
   const availabilityDeclarations = Array.isArray(value.availabilityDeclarations)
-    ? value.availabilityDeclarations.filter(
-        (declaration) => !isNoAdditionalConstraintDeclaration(declaration),
-      )
+    ? value.availabilityDeclarations
+        .filter((declaration) => !isNoAdditionalConstraintDeclaration(declaration))
+        .map(stripAvailabilityExtension)
     : value.availabilityDeclarations;
   return { ...value, tasks, availabilityDeclarations };
 }
@@ -256,6 +264,44 @@ function validateDurableContextSignals(
   return errors;
 }
 
+function validateAvailabilityCapacityDeclarations(value: Record<string, unknown>): string[] {
+  if (!Array.isArray(value.availabilityDeclarations)) return [];
+  const errors: string[] = [];
+  value.availabilityDeclarations.forEach((declaration, index) => {
+    if (!isRecord(declaration)) return;
+    const path = `document.availabilityDeclarations[${index}]`;
+    const capacityMinutes = declaration.capacityMinutes;
+    if (declaration.kind === 'capacity') {
+      if (
+        typeof capacityMinutes !== 'number'
+        || !Number.isFinite(capacityMinutes)
+        || capacityMinutes <= 0
+        || capacityMinutes > 24 * 60
+      ) {
+        errors.push(`${path}.capacityMinutes:expected-positive-minutes-within-day`);
+      }
+      if (declaration.namedTimePeriod !== null
+        || declaration.startTime !== null
+        || declaration.endTime !== null) {
+        errors.push(`${path}:capacity-cannot-have-clock-window`);
+      }
+      if (declaration.constraintLevel !== 'hard') {
+        errors.push(`${path}.constraintLevel:capacity-must-be-hard`);
+      }
+      const hasDateScope = (
+        typeof declaration.dateExpression === 'string'
+        && declaration.dateExpression.trim().length > 0
+      ) || declaration.recurrenceKind !== null;
+      if (!hasDateScope) errors.push(`${path}:capacity-requires-date-scope`);
+      return;
+    }
+    if (capacityMinutes !== undefined && capacityMinutes !== null) {
+      errors.push(`${path}.capacityMinutes:must-be-null-unless-capacity`);
+    }
+  });
+  return errors;
+}
+
 function validateNoAdditionalConstraintDeclarations(
   value: Record<string, unknown>,
   occupiedLocalIds: Set<string>,
@@ -276,6 +322,7 @@ function validateNoAdditionalConstraintDeclarations(
       'recurrenceKind',
       'days',
       'constraintLevel',
+      'capacityMinutes',
       'sourceText',
     ])) {
       errors.push(`${path}:unknown-key`);
@@ -306,6 +353,9 @@ function validateNoAdditionalConstraintDeclarations(
     }
     if (!Array.isArray(declaration.days) || declaration.days.length > 0) {
       errors.push(`${path}.days:absence-has-no-positive-days`);
+    }
+    if (declaration.capacityMinutes !== undefined && declaration.capacityMinutes !== null) {
+      errors.push(`${path}.capacityMinutes:absence-has-no-capacity`);
     }
     if (declaration.constraintLevel !== 'hard') {
       errors.push(`${path}.constraintLevel:absence-is-factual`);
@@ -392,6 +442,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   const decompositionErrors = validateTaskDecompositionStatuses(weeklyValue);
   const activityErrors = validateStudyActivityKinds(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
+  const capacityErrors = validateAvailabilityCapacityDeclarations(weeklyValue);
   const absenceErrors = validateNoAdditionalConstraintDeclarations(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
@@ -403,6 +454,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...decompositionErrors,
     ...activityErrors,
     ...signalErrors,
+    ...capacityErrors,
     ...absenceErrors,
     ...contextErrors,
   ];

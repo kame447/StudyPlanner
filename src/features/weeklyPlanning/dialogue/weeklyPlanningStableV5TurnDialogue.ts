@@ -29,7 +29,7 @@ import {
   recordWeeklyPlanningDialogueRendererResponseV5,
 } from './weeklyPlanningStableV5TurnDialogueTrace';
 import {
-  getWeeklyPlanningRegisteredMaterialContextV5,
+  createWeeklyPlanningRegisteredMaterialContextV5,
 } from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import {
   createWeeklyPlanningSelfRepairNoticeV5,
@@ -218,8 +218,9 @@ function createRenderInput(params: {
   const planningInformation = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
-        registeredMaterials: getWeeklyPlanningRegisteredMaterialContextV5({
+        registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({
           ownerId: params.input.userId,
+          materials: params.input.studyMaterials ?? [],
           userText: params.input.userText,
         }),
         groundingRecords: groundingRecords(params.result),

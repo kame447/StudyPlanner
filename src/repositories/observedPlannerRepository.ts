@@ -40,6 +40,17 @@ export function createObservedPlannerRepository(
       todos.forEach((todo) => todoStatusById.set(todo.id, todo.status));
       return todos;
     },
+    async applyRecurringPlanMutation(userId, mutation) {
+      await repository.applyRecurringPlanMutation(userId, mutation);
+      mutation.planUpserts.forEach((plan) => {
+        recordBestEffort(
+          telemetry,
+          isNewTimestampedRecord(plan) ? 'plan_created' : 'plan_updated',
+        );
+      });
+      mutation.planDeletes.forEach(() => recordBestEffort(telemetry, 'plan_deleted'));
+      mutation.actualDeletes.forEach(() => recordBestEffort(telemetry, 'actual_deleted'));
+    },
     async upsertPlan(plan) {
       const saved = await repository.upsertPlan(plan);
       recordBestEffort(
@@ -52,12 +63,46 @@ export function createObservedPlannerRepository(
       await repository.deletePlan(userId, planId);
       recordBestEffort(telemetry, 'plan_deleted');
     },
+    async deletePlanWithDependents(mutation) {
+      await repository.deletePlanWithDependents(mutation);
+      if (mutation.todo) {
+        todoStatusById.set(mutation.todo.id, mutation.todo.status);
+        recordBestEffort(telemetry, 'todo_updated');
+      }
+      recordBestEffort(telemetry, 'plan_deleted');
+    },
+    async restorePlanWithDependents(mutation) {
+      await repository.restorePlanWithDependents(mutation);
+      recordBestEffort(
+        telemetry,
+        isNewTimestampedRecord(mutation.plan) ? 'plan_created' : 'plan_updated',
+      );
+      if (mutation.todo) {
+        todoStatusById.set(mutation.todo.id, mutation.todo.status);
+        recordBestEffort(telemetry, 'todo_updated');
+      }
+    },
+    async scheduleTodoPlan(mutation) {
+      await repository.scheduleTodoPlan(mutation);
+      recordBestEffort(
+        telemetry,
+        isNewTimestampedRecord(mutation.plan) ? 'plan_created' : 'plan_updated',
+      );
+      todoStatusById.set(mutation.todo.id, mutation.todo.status);
+      recordBestEffort(telemetry, 'todo_updated');
+    },
     async upsertActual(actual) {
       const saved = await repository.upsertActual(actual);
       // Actual currently has no createdAt field. Treat a successful save as a recorded
       // learning result; mutation-specific update analytics can be added when the domain
       // owns an explicit creation/update discriminator.
       recordBestEffort(telemetry, 'actual_recorded');
+      return saved;
+    },
+    async upsertActualWithMaterialProgress(mutation) {
+      const saved = await repository.upsertActualWithMaterialProgress(mutation);
+      recordBestEffort(telemetry, 'actual_recorded');
+      mutation.materials.forEach(() => recordBestEffort(telemetry, 'material_updated'));
       return saved;
     },
     async deleteActual(userId, actualId) {
@@ -81,6 +126,10 @@ export function createObservedPlannerRepository(
     async deleteTodo(userId, todoId) {
       await repository.deleteTodo(userId, todoId);
       todoStatusById.delete(todoId);
+    },
+    async upsertStudySubjectWithMaterials(mutation) {
+      await repository.upsertStudySubjectWithMaterials(mutation);
+      mutation.materials.forEach(() => recordBestEffort(telemetry, 'material_updated'));
     },
     async upsertStudyMaterial(item) {
       const saved = await repository.upsertStudyMaterial(item);

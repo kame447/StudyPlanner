@@ -200,6 +200,10 @@
   text-align: center;
 }
 
+.ai-planning-preview-dialog-v2 .ai-planning-preview-overview-block.schedule-week-plan-button {
+  touch-action: none;
+}
+
 .ai-planning-preview-dialog-v2 .ai-planning-preview-overview-block strong,
 .ai-planning-preview-dialog-v2 .ai-planning-preview-overview-block small {
   width: 100%;

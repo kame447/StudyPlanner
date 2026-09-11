@@ -7,9 +7,11 @@ import {
   commitWeeklyPlanningStableV5RuntimeGraph,
   discardWeeklyPlanningStableV5StagedGraph,
   finalizeWeeklyPlanningStableV5RuntimeGraph,
+  finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt,
   getWeeklyPlanningStableV5RuntimeSession,
   hasWeeklyPlanningStableV5StagedGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+  rollbackWeeklyPlanningStableV5RuntimeGraphFinalize,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 const OWNER_ID = 'owner-1';
@@ -60,6 +62,53 @@ describe('Stable V5 runtime Graph atomicity', () => {
       conversationId: CONVERSATION_ID,
       requestId: 'request-1',
     })).toBe(false);
+  });
+
+  it('rolls a prepared graph commit back to the exact previous runtime graph', () => {
+    const graph = graphForRequest('request-1', 1);
+    commitWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      graph,
+    });
+
+    const prepared = finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      requestId: 'request-1',
+    });
+    expect(prepared.session.graph).toEqual(graph);
+
+    expect(rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(prepared.receipt)).toBe(true);
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION_ID)?.graph.revision).toBe(0);
+  });
+
+  it('does not let an old rollback receipt overwrite a newer graph', () => {
+    commitWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      graph: graphForRequest('request-1', 1),
+    });
+    const first = finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      requestId: 'request-1',
+    });
+
+    const secondGraph = graphForRequest('request-2', 2);
+    commitWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      graph: secondGraph,
+    });
+    finalizeWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+      requestId: 'request-2',
+    });
+
+    expect(rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(first.receipt)).toBe(false);
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION_ID)?.graph).toEqual(secondGraph);
   });
 
   it('discards a staged Graph without changing the committed conversation state', () => {

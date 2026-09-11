@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-08-30
+Updated: 2026-09-10
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -16,6 +16,14 @@ Repository work:
 5. domain canonical contract / current Issue / active work record
 6. current code and tests
 
+Scheduling / scheduled-event work:
+
+1. `docs/domains/scheduling/README.md`
+2. `docs/domains/scheduling/architecture/scheduled-event-authority.md`
+3. `docs/domains/scheduling/roadmap/current.md`
+4. Issue #278 is completed migration history; new scheduling work must use the Issue that owns the new requirement
+5. `src/domain/scheduleOccurrence.ts`
+
 Weekly planning:
 
 1. `docs/domains/weekly-planning/README.md`
@@ -26,6 +34,16 @@ Weekly planning:
 6. `docs/domains/weekly-planning/quality/test-philosophy.md`
 7. `docs/domains/weekly-planning/roadmap/current.md`
 8. `docs/domains/weekly-planning/work/README.md` / owning Issue
+
+User context / long-term memory work:
+
+1. `docs/domains/user-context/README.md`
+2. `docs/domains/user-context/architecture/memory-and-conversation.md`
+3. `docs/domains/user-context/policies/memory-lifecycle-and-surfacing.md`
+4. `docs/domains/user-context/quality/regression-scenarios.md`
+5. `docs/domains/user-context/roadmap/current.md`
+6. Issue #294
+7. current foundation: `src/features/userPlanningContext/`
 
 Client-first/runtime work:
 
@@ -73,12 +91,11 @@ Do not move feature-specific domain decisions into `App.tsx`; keep it primarily 
 
 UI components and interaction surfaces. Examples:
 
-- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface
+- `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface。weekly-planning conversation / preview / approval のユーザー向け入口はここに一本化する
 - calendar / home / bookshelf / timetable views
 - `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
-- `QuickEntryModal.tsx`: generic quick/manual entry surface
-- `WeeklyPlanningQuickEntryModal.tsx`: remaining compatibility wrapper; weekly-planning plumbing is tracked by Issue #52
+- `QuickEntryModal.tsx`: generic quick/manual entry surface。weekly-planning state / callbacks / persistence plumbingを受け取らない
 - admin views: current UI surface。service-wide analyticsのmetric semantics、collection scan、pricing、rollupをcomponent内へ実装せず、product-observability query/read modelをconsumeする
 
 UI code consumes application/domain APIs instead of reproducing scheduling, lifecycle, authorization, persistence, reporting aggregation or product-observability aggregation decisions.
@@ -94,6 +111,8 @@ React-level orchestration and state composition. Use for view/application lifecy
 ### `src/domain/`
 
 General deterministic domain rules that are not specific to weekly-planning internals.
+
+`src/domain/scheduleOccurrence.ts` owns the shared app-wide occurrence projection. Canonical scheduled persistence is `ScheduleEvent`; legacy `Plan` / `MonthEvent` compatibility shapes and `TimetableTemplate` source data may feed the resolver, but month/week/day/AI consumers must not recreate recurrence, occurrence identity, timetable dedupe or occupied-time semantics independently. The canonical contract is `docs/domains/scheduling/architecture/scheduled-event-authority.md`. Issue #278 completed the migration baseline; it is no longer a standing implementation owner for future scheduling changes.
 
 ### `src/repositories/`
 
@@ -250,7 +269,7 @@ Issue #246's future consultation context assembly, advice lifecycle binding, sta
 
 Weekly-planning diagnostic observability only. Trace failure must not change the planning result. Privacy/retention is tracked by Issue #45 and production recovery by #89.
 
-Service-wide product analytics does not move into this directory. Product-observability consumes trace through a diagnostic adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
+Service-wide product analytics does not move into this directory. Product-observability consumes trace through a restricted adapter and consumes typed weekly-planning outcomes without reinterpreting trace content.
 
 If Issue #246 changes prompt/request/response/session/trace fields, the feature-local `AGENTS.md` trace persistence gate applies in the same implementation PR.
 
@@ -276,13 +295,19 @@ Conversation-support and feature configuration helpers. Do not place independent
 
 A separate advice purpose/config may physically be referenced from here, but consultation routing, advice lifecycle and promotion ownership must remain in their semantic/application owners.
 
-## 7. User planning context
+## 7. User context
 
-`src/features/userPlanningContext/` owns owner-scoped durable planning context infrastructure.
+Canonical documentation root: `docs/domains/user-context/`
 
-Durable preference is not the same as current-week acceptance or observed learning evidence. Cloud/shared authority and long-term rollout remain coordinated through Issue #47; client-first execution belongs to the separate `docs/domains/client-runtime/` responsibility and Issue #164.
+Current production foundation: `src/features/userPlanningContext/`.
 
-Issue #246 advice is not durable user context merely because it is generated or persisted in a conversation. Only a separate user-stated durable meaning such as `今後もその方法でやりたい` may become a user-context candidate under the existing authority/lifecycle rules.
+Issue #294 owns app-wide durable user context, semantic/episodic memory, retrieval, lifecycle/forget, temporal/authority conflict resolution and conversation surfacing. The current code root was established by Issue #232 / PR #235 and remains implementation evidence; its current physical shape does not imply that the full #294 target architecture is already shipped.
+
+Current-value product data remains owned by the product domain that can authoritatively update it. User Context must not duplicate current material progress, current scheduled-event time, current timetable, or current weekly-planning state into a second active truth.
+
+Durable preference is not the same as current-week acceptance or observed learning evidence. Issue #47 remains the owner of weekly-planning personalization, cloud conversation/session rollout and outcome learning; Issue #164 owns client/local/cloud persistence and synchronization authority.
+
+Issue #246 advice is not durable user context merely because it is generated or persisted in a conversation. Only a separate user-stated durable meaning such as `今後もその方法でやりたい` may become a user-context candidate under the user-context authority/lifecycle rules.
 
 ## 8. Major safety boundaries
 
@@ -291,6 +316,8 @@ Issue #246 advice is not durable user context merely because it is generated or 
 AI may interpret language and render typed dialogue decisions. AI does not own formal IDs, revision/lifecycle, readiness, scheduler placement, approval or save.
 
 Future learning-advice generation may recommend strategy/material/order, but it does not gain scheduler, save, lifecycle or durable-memory authority.
+
+For User Context, AI may interpret memory candidates and realize an allowed callback, but deterministic/application code owns canonical memory identity, source-of-truth routing, lifecycle, revoke/forget and whether retrieved memory is eligible to be surfaced.
 
 ### Preview / approval
 
@@ -325,12 +352,14 @@ If consultation later consumes report aggregates, those deterministic values rem
 ## 9. Tests
 
 - unit/integration/component/property tests: primarily `src/**/*.test.*`
+- scheduled-event occurrence / identity: `src/domain/scheduleOccurrence*.test.ts` under the scheduling domain contract
 - material metadata adapter/client: `workers/ai-proxy/src/materialMetadataApi.test.ts` / `src/services/materialMetadataService.test.ts`
 - material search manual fallback: `tests/e2e/bookshelf-material-search-fallback.spec.mjs`
 - reporting aggregation: `src/lib/learningReport.test.ts`
 - product observability contracts / rollups: future implementation under the Issue #213-owned feature/application boundary
 - browser/E2E: `tests/e2e/`
 - weekly-planning quality policy: `docs/domains/weekly-planning/quality/`
+- user-context longitudinal / memory quality policy: `docs/domains/user-context/quality/regression-scenarios.md`
 - Issue #246 planned consultation test matrix: `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` until implementation promotes verified guarantees into current regression owners
 - CI: `.github/workflows/ci.yml`
 - Browser Regression: `.github/workflows/browser-regression.yml`
@@ -361,9 +390,12 @@ Choose the directory by change reason, not by current caller:
 
 - visual interaction → `components/`
 - React lifecycle coordination → `hooks/`
+- scheduled-event occurrence identity / recurrence expansion / busy projection → `src/domain/scheduleOccurrence.ts` under the scheduling domain contract
+- canonical scheduled-event persistence / migration / recovery → repository persistence boundary under the scheduling domain contract; each new product change uses its own owning Issue rather than reusing completed #278 as a standing owner
 - learning-report aggregation/projection → `src/lib/learningReport.ts` under the reporting domain contract
 - service-wide telemetry / analytics metric semantics / rollup / admin read model → product-observability domain
 - external API adoption / normalization / provider fallback / usage-condition boundary → external-integrations domain
+- durable semantic/episodic memory, retrieval, revoke/forget, temporal conflict resolution or surface decision → user-context domain / current user-context application boundary
 - natural-language meaning, including consultation/adoption reference meaning → weekly `semantic/`
 - readiness/proposal/work decision and future advice lifecycle/promotion → weekly `planning/` / `application/`
 - placement/availability → weekly `scheduling/`

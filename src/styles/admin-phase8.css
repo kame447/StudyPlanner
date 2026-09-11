@@ -1,0 +1,109 @@
+.admin-system-page {
+  display: grid;
+  gap: 20px;
+}
+
+.admin-system-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.admin-system-summary-icon,
+.admin-system-status-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.admin-system-summary span,
+.admin-system-component span,
+.admin-system-summary small,
+.admin-system-component small,
+.admin-system-component dt,
+.admin-system-detail-card dt {
+  color: var(--muted-text, #667085);
+}
+
+.admin-system-grid,
+.admin-system-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-system-component {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  min-width: 0;
+}
+
+.admin-system-component-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-system-component-head > div:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-system-component p,
+.admin-system-detail-card p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.admin-system-component dl,
+.admin-system-detail-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.admin-system-component dl > div,
+.admin-system-detail-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-system-component dd,
+.admin-system-detail-card dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.admin-system-summary.is-warning,
+.admin-system-component.is-warning {
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--panel-border, #e5e7eb));
+}
+
+.admin-system-summary.is-unavailable,
+.admin-system-component.is-unavailable {
+  border-color: color-mix(in srgb, #ef4444 42%, var(--panel-border, #e5e7eb));
+}
+
+.admin-system-summary.is-unknown,
+.admin-system-component.is-unknown {
+  border-color: color-mix(in srgb, #64748b 36%, var(--panel-border, #e5e7eb));
+}
+
+.admin-system-detail-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .admin-system-grid,
+  .admin-system-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

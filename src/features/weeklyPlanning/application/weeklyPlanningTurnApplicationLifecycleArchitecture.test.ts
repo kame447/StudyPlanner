@@ -24,7 +24,7 @@ describe('weekly planning turn application lifecycle architecture', () => {
     expect(applicationSource).toContain('stagingLifecycle: WeeklyPlanningTurnStagingLifecycle');
     expect(applicationSource).toContain('outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle');
     expect(applicationSource).toContain('services.runtimeGateway.execute(');
-    expect(applicationSource).toContain('services.stagingLifecycle.finalize(');
+    expect(applicationSource).toContain('services.stagingLifecycle.prepare(');
     expect(applicationSource).toContain('services.stagingLifecycle.discard(');
     expect(applicationSource).toContain('services.outcomeLifecycle.committed(');
     expect(applicationSource).toContain('services.outcomeLifecycle.discarded(');
@@ -55,12 +55,12 @@ describe('weekly planning turn application lifecycle architecture', () => {
     expect(outcomeSource).toContain('weeklyPlanningTurnOutcomeLifecycle =');
   });
 
-  it('exposes staging only through a factory and lifecycle facade', () => {
-    expect(stagingSource).toContain('function finalizeStaging(');
+  it('exposes reversible staging only through a factory and lifecycle facade', () => {
+    expect(stagingSource).toContain('function prepareStaging(');
     expect(stagingSource).toContain('function discardStaging(');
     expect(stagingSource).toContain('createWeeklyPlanningTurnStagingLifecycle(');
     expect(stagingSource).toContain('weeklyPlanningTurnStagingLifecycle = createWeeklyPlanningTurnStagingLifecycle()');
-    expect(stagingSource).not.toContain('export function finalizeStaging(');
+    expect(stagingSource).not.toContain('export function prepareStaging(');
     expect(stagingSource).not.toContain('export function discardStaging(');
     expect(stagingSource).not.toContain("from './weeklyPlanningTurnTraceSideEffects'");
     expect(stagingSource).not.toContain('recordCommittedWeeklyPlanningApplicationTurn');

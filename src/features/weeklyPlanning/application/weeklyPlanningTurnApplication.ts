@@ -1,4 +1,15 @@
-import type { Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
+import {
+  isPlannerDataReadyForOwner,
+  type PlannerDataAvailability,
+} from '../../../domain/plannerDataReadAuthority';
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  StudyMaterial,
+  TimetableTerm,
+} from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -43,10 +54,14 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   supplementalContext?: string;
   selectedDate: string;
   plans: Plan[];
+  monthEvents?: MonthEvent[];
+  actuals?: Actual[];
+  studyMaterials?: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
+  plannerDataAvailability: PlannerDataAvailability;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
@@ -58,6 +73,10 @@ export function submitWeeklyPlanningApplicationTurn(
   params: SubmitWeeklyPlanningApplicationTurnParams,
   services: WeeklyPlanningTurnApplicationServices = defaultServices,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
+  if (!isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)) {
+    return Promise.resolve({ accepted: false, draftCandidates: [] });
+  }
+
   return services.submitControlledTurn({
     session: params.session,
     ownerId: params.userId,
@@ -74,6 +93,9 @@ export function submitWeeklyPlanningApplicationTurn(
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,
+        monthEvents: params.monthEvents,
+        actuals: params.actuals,
+        studyMaterials: params.studyMaterials,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
         timetableTerm: params.timetableTerm,
@@ -88,8 +110,8 @@ export function submitWeeklyPlanningApplicationTurn(
         pending,
       });
     },
-    commitExecutionResult({ pending }) {
-      services.stagingLifecycle.finalize({ ownerId: params.userId, pending });
+    prepareExecutionCommit({ pending }) {
+      return services.stagingLifecycle.prepare({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending, userText, result, reason }) {
       services.stagingLifecycle.discard(pending);

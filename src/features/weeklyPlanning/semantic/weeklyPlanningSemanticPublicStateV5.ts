@@ -101,6 +101,20 @@ function correctionTargetPublicFacts(
         fromTaskPublicId: fact.fromTaskId,
         toTaskPublicId: fact.toTaskId,
       })),
+    availabilityDeclarations: graph.availabilityDeclarations
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        kind: fact.kind,
+        dateExpression: fact.dateExpression,
+        namedTimePeriod: fact.namedTimePeriod,
+        startTime: fact.startTime,
+        endTime: fact.endTime,
+        recurrenceKind: fact.recurrenceKind,
+        days: fact.days,
+        constraintLevel: fact.constraintLevel,
+        capacityMinutes: fact.capacityMinutes ?? null,
+      })),
   };
 }
 

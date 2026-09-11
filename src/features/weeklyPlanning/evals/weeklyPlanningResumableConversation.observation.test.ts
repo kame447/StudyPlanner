@@ -1,3 +1,4 @@
+import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlanDraft } from '../../../types/domain';
@@ -344,6 +345,7 @@ async function submitTurnAction(
     session,
     userId: checkpoint.ownerId,
     ownerId: checkpoint.ownerId,
+    plannerDataAvailability: createReadyPlannerDataAvailability(checkpoint.ownerId),
     userText,
     selectedDate: checkpoint.selectedDate,
     plans: [],

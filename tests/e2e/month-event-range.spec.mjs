@@ -61,6 +61,25 @@ async function openSchedule(page) {
   await expect(page.locator('.schedule-month-view')).toBeVisible();
 }
 
+async function readCanonicalMonthEventRange(page, title) {
+  return page.evaluate((eventTitle) => {
+    const items = JSON.parse(
+      localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]',
+    );
+    const event = items.find(
+      (item) =>
+        item.title === eventTitle &&
+        item.provenance?.legacy?.kind === 'month-event',
+    );
+    return event
+      ? {
+          date: event.date,
+          endDate: event.endDate,
+        }
+      : null;
+  }, title);
+}
+
 function cellForDay(grid, page, day) {
   return grid
     .locator('[role="gridcell"]')
@@ -147,17 +166,14 @@ test.describe('multi-day month events', () => {
     await editor.getByRole('button', { name: '保存' }).click();
 
     await expect.poll(() =>
-      page.evaluate(() => {
-        const items = JSON.parse(localStorage.getItem('studyplanner.monthEvents') ?? '[]');
-        const event = items.find((item) => item.title === '複数日イベント');
-        return event
-          ? {
-              date: event.date,
-              endDate: event.endDate,
-            }
-          : null;
-      }),
+      readCanonicalMonthEventRange(page, '複数日イベント'),
     ).toEqual({ date: dates.startDate, endDate: dates.endDate });
+
+    const legacyContainsNewEvent = await page.evaluate(() => {
+      const items = JSON.parse(localStorage.getItem('studyplanner.monthEvents') ?? '[]');
+      return items.some((item) => item.title === '複数日イベント');
+    });
+    expect(legacyContainsNewEvent).toBe(false);
 
     await expect(editorOverlay).toHaveCount(0, { timeout: 5000 });
 

@@ -15,15 +15,8 @@ async function realEvents(page, type) {
   ), type);
 }
 
-async function enterRealWeeklyMode(page) {
-  const input = page.getByLabel('週間計画にしたいこと');
-  if (await input.isVisible().catch(() => false)) return input;
-
-  const aiInput = page.getByRole('button', { name: 'AI入力', exact: true });
-  if (await aiInput.count() && await aiInput.isVisible()) await aiInput.click();
-  const weeklyMode = page.getByRole('button', { name: '週間計画', exact: true });
-  if (await weeklyMode.count() && await weeklyMode.isVisible()) await weeklyMode.click();
-
+async function realComposer(page) {
+  const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
   return input;
 }
@@ -46,9 +39,9 @@ test.describe('weekly conversation rendering browser contracts', () => {
     expect(await page.evaluate(() => window.__weeklyXssExecuted)).toBe(false);
   });
 
-  test('weekly composer maximum length agrees with the real controlled-turn boundary', async ({ page }) => {
+  test('AI planning composer maximum length agrees with the real controlled-turn boundary', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
-    const input = await enterRealWeeklyMode(page);
+    const input = await realComposer(page);
 
     const declaredMaxLength = Number(await input.getAttribute('maxlength'));
     expect(Number.isInteger(declaredMaxLength)).toBe(true);
@@ -58,7 +51,7 @@ test.describe('weekly conversation rendering browser contracts', () => {
     await page.keyboard.insertText('あ'.repeat(declaredMaxLength + 1));
     await expect(input).toHaveValue('あ'.repeat(declaredMaxLength));
 
-    await input.press('Control+Enter');
+    await input.press('Enter');
 
     await expect.poll(async () => (await realEvents(page, 'real-runtime-execute')).length).toBe(1);
     expect((await realEvents(page, 'real-runtime-execute'))[0].payload.userText).toHaveLength(declaredMaxLength);
