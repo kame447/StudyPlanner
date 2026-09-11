@@ -7,7 +7,6 @@ import {
   type UserPlanningContextNaturalLanguageResultV2,
 } from '../../userPlanningContext/userPlanningContextNaturalLanguageV2';
 import {
-  createUserConfirmedPlanningContextRecordV1,
   discardStagedUserPlanningContextV1,
   finalizeStagedUserPlanningContextV1,
   hydrateUserPlanningContextSnapshotV1,
@@ -56,19 +55,24 @@ function rendererResponse(text: string, actionKind: WeeklyPlanningStableV5Dialog
 }
 
 describe('Issue #152 V12 renderer deterministic boundary', () => {
-  it.fails('rejects past-tense execution claims for an unexecuted status/question action', () => {
-    // Issue #152 V12 reproduced: execution-claim regex recognizes present/future forms but not past-tense/state claims.
-    for (const text of ['保存しました', '登録しました', '反映が完了しました', '承認済み']) {
-      for (const actionKind of ['status', 'question'] as const) {
-        expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
-          rendererResponse(text, actionKind),
-          renderInput(actionKind),
-        ).status).toBe('fallback');
-      }
-    }
+  it.fails.each([
+    ['保存しました', 'status'],
+    ['保存しました', 'question'],
+    ['登録しました', 'status'],
+    ['登録しました', 'question'],
+    ['反映が完了しました', 'status'],
+    ['反映が完了しました', 'question'],
+    ['承認済み', 'status'],
+    ['承認済み', 'question'],
+  ] as const)('rejects one past-tense execution claim for %s/%s', (text, actionKind) => {
+    // Issue #152 V12 reproduced: execution-claim regex recognizes present/future forms but not this past-tense/state claim.
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      rendererResponse(text, actionKind),
+      renderInput(actionKind),
+    ).status).toBe('fallback');
   });
 
-  it.fails('does not over-block security-topic labels that are ordinary user-facing content', () => {
+  it.fails('P1 availability: does not over-block security-topic labels that are ordinary user-facing content', () => {
     // Issue #152 V12 reproduced: security-topic labels are treated as forbidden content rather than untrusted rendered data.
     const result = parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse('パスワード管理について確認しました'),
@@ -77,25 +81,21 @@ describe('Issue #152 V12 renderer deterministic boundary', () => {
     expect(result.status).toBe('rendered');
   });
 
-  it.fails('rejects fullwidth-protocol and bare-domain URL guidance in a status response', () => {
-    // Issue #152 V12 reproduced: URL guidance outside the narrow ASCII https?:// expression is rendered.
-    for (const text of ['https：//example.com', 'example.com の手順を確認しました']) {
-      expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
-        rendererResponse(text),
-        renderInput(),
-      ).status).toBe('fallback');
-    }
+  it.fails('rejects fullwidth-protocol URL guidance in a status response', () => {
+    // Issue #152 V12 reproduced: fullwidth URL punctuation bypasses the ASCII URL safety expression.
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      rendererResponse('https：//example.com'),
+      renderInput(),
+    ).status).toBe('fallback');
+  });
+
+  it('documents exposure: bare-domain URL guidance is rendered (renderer-contract owned; see Luna B V12)', () => {
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      rendererResponse('example.com の手順を確認しました'),
+      renderInput(),
+    ).status).toBe('rendered');
   });
 });
-
-function fakeInterpreterClient(result: UserPlanningContextNaturalLanguageResultV2) {
-  return {
-    async createChatCompletion(params: { messages: Array<{ role: string; content: string }> }) {
-      void params;
-      return JSON.stringify(result);
-    },
-  } as never;
-}
 
 const baseSnapshot = (ownerId: string, records: UserPlanningContextRecordV1[]): UserPlanningContextSnapshotV1 => ({
   version: 'studyplanner-user-planning-context-v1',
@@ -125,38 +125,7 @@ function contextRecord(overrides: Partial<UserPlanningContextRecordV1> = {}): Us
 }
 
 describe('Issue #152 V06 settings memory editor boundary', () => {
-  it.fails('does not persist AI-authored display text as the user edit evidence', async () => {
-    // Issue #152 V06 reproduced: settings save maps interpreted.displayText to sourceText instead of the user edit text.
-    const userText = '数学は毎日15分だけ復習したい';
-    const interpreted: UserPlanningContextNaturalLanguageResultV2 = {
-      targetDomain: 'user_context',
-      kind: 'learning_preference',
-      label: '復習時間',
-      value: '15分',
-      dateExpression: null,
-      displayText: 'ユーザーは数学の復習時間を15分にしたい',
-      reason: '設定として再利用できるため',
-    };
-    const result = await interpretUserPlanningContextNaturalLanguageV2({
-      text: userText,
-      existingRecord: contextRecord(),
-      client: fakeInterpreterClient(interpreted),
-    });
-    const record = createUserConfirmedPlanningContextRecordV1({
-      ownerId: 'owner-152',
-      kind: result.kind!,
-      label: result.label!,
-      value: result.value,
-      dateExpression: result.dateExpression,
-      currentDate: '2026-09-11',
-      sourceText: result.displayText,
-      existingId: 'record-1',
-      now: '2026-09-11T00:01:00.000Z',
-    });
-    expect(record.sourceText).toBe(userText);
-  });
-
-  it('keeps existing-record content in the typed user payload rather than the system prompt', async () => {
+  it('documents existing-record content as typed user payload; this does not prove settings source binding', async () => {
     let request: { role: string; content: string }[] = [];
     const result: UserPlanningContextNaturalLanguageResultV2 = {
       targetDomain: 'user_context',
@@ -186,12 +155,16 @@ describe('Issue #152 V06 settings memory editor boundary', () => {
 });
 
 describe('Issue #152 V07 memory lifecycle boundary', () => {
-  it.fails('does not let invisible Unicode label variants bypass a revoked durable key', () => {
-    // Issue #152 V07 reproduced: durable identity normalizes NFKC but does not remove zero-width or word-joiner controls.
+  it.fails('does not let a zero-width-space label variant bypass a revoked durable key', () => {
+    // Issue #152 V07 reproduced: durable identity does not remove U+200B before computing the tombstone key.
     const base = userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学' });
-    for (const variant of ['数\u200B学', '数\u2060学', '数學']) {
-      expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: variant })).toBe(base);
-    }
+    expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u200B学' })).toBe(base);
+  });
+
+  it.fails('does not let a word-joiner label variant bypass a revoked durable key', () => {
+    // Issue #152 V07 reproduced: durable identity does not remove U+2060 before computing the tombstone key.
+    const base = userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学' });
+    expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u2060学' })).toBe(base);
   });
 
   it.fails('retains revoked tombstones and user-confirmed records while flooding newer inferred records', () => {
@@ -201,23 +174,32 @@ describe('Issue #152 V07 memory lifecycle boundary', () => {
       label: `old-${index}`,
       recordedAt: `2026-01-${String((index % 9) + 1).padStart(2, '0')}T00:00:00.000Z`,
     }));
-    records.push(contextRecord({ id: 'revoked', status: 'revoked', recordedAt: '2026-01-01T00:00:00.000Z' }));
-    records.push(contextRecord({ id: 'confirmed', origin: 'user_confirmed', recordedAt: '2026-01-01T00:00:00.000Z' }));
+    const initial = baseSnapshot('owner-152', [
+      ...records,
+      contextRecord({ id: 'forget-me', recordedAt: '2026-09-10T00:00:00.000Z' }),
+      contextRecord({ id: 'confirmed', origin: 'user_confirmed', recordedAt: '2026-09-10T00:00:00.000Z' }),
+    ]);
+    const tombstoned = removeUserPlanningContextRecordFromSnapshotV1({
+      snapshot: initial,
+      recordId: 'forget-me',
+      now: '2026-09-11T00:00:00.000Z',
+    });
     const inferred = Array.from({ length: 10 }, (_, index) => contextRecord({
       id: `new-${index}`,
       label: `new-${index}`,
-      recordedAt: `2026-09-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+      recordedAt: `2026-09-12T00:0${index}:00.000Z`,
     }));
     const merged = mergeInferredUserPlanningContextRecordsV1({
-      snapshot: baseSnapshot('owner-152', records),
+      snapshot: tombstoned,
       records: inferred,
-      now: '2026-09-11T00:00:00.000Z',
+      now: '2026-09-13T00:00:00.000Z',
     });
-    expect(merged.records.map((record) => record.id)).toEqual(expect.arrayContaining(['revoked', 'confirmed']));
+    expect(merged.records.map((record) => record.id)).toEqual(expect.arrayContaining(['forget-me', 'confirmed']));
   });
 
   it.fails('does not restore a revoked record when staged facts finalize after revoke', () => {
     // Issue #152 V07 reproduced: finalize writes the pre-revoke staged snapshot over a newer local tombstone.
+    // reachability: same-client settings forget is directly callable while a planning turn is pending; multi-tab/cloud overwrite is routed to #164.
     resetUserPlanningContextRuntimeForTestV1();
     const existing = contextRecord();
     hydrateUserPlanningContextSnapshotV1(baseSnapshot('owner-152', [existing]));

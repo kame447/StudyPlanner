@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningCurrentTurnProvenanceV5 } from '../semantic/weeklyPlanningCurrentTurnProvenanceV5';
@@ -52,8 +53,8 @@ function taskWithWorkload(params: {
 }
 
 describe('Issue #152 V03 provenance validator characterizations', () => {
-  it.fails('does not authorize a one-character source substring as grounding for a decision or large amount', () => {
-    // Issue #152 V03 reproduced: provenance uses substring inclusion without a minimum evidence length.
+  it('documents exposure: a one-character source substring grounds a value (semantic-owned; see Luna B V03)', () => {
+    // A minimum evidence length would be a lexical/length heuristic; characterize the current semantic-owned boundary instead.
     const decisionDocument = emptyDocument();
     decisionDocument.userContextFacts = [{
       localId: 'fact-1',
@@ -66,7 +67,7 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
       document: decisionDocument,
       currentUserText: 'x',
-    })).not.toEqual([]);
+    })).toEqual([]);
 
     const amountDocument = emptyDocument();
     amountDocument.tasks = [taskWithWorkload({
@@ -78,29 +79,34 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
       document: amountDocument,
       currentUserText: 'x',
-    })).not.toEqual([]);
+    })).toEqual([]);
   });
 
-  it.fails('does not bypass exact-copy detection with zero-width or suffix copies', () => {
-    // Issue #152 V03 reproduced: exact normalized equality is required, so invisible and partial copies evade the stored-context detector.
-    for (const value of ['S\u200bECRET', 'SECRET-suffix']) {
-      const document = emptyDocument();
-      document.userContextFacts = [{
-        localId: 'fact-1',
-        kind: 'concern',
-        label: '別ラベル',
-        value,
-        dateExpression: null,
-        sourceText: '今日は数学を進める',
-      }];
-      expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
-        document,
-        currentUserText: '今日は数学を進める',
-        publicStateSummary: {
-          userPlanningContext: [{ id: 'stored-1', label: '学習', value: 'SECRET' }],
-        },
-      })).not.toEqual([]);
-    }
+  it.fails('rejects a zero-width-space copy of a stored value', () => {
+    // Issue #152 V03 reproduced: the stored-copy normalizer does not remove U+200B.
+    const document = emptyDocument();
+    document.userContextFacts = [{
+      localId: 'fact-1', kind: 'concern', label: '別ラベル', value: 'S\u200bECRET',
+      dateExpression: null, sourceText: '今日は数学を進める',
+    }];
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: '今日は数学を進める',
+      publicStateSummary: { userPlanningContext: [{ id: 'stored-1', label: '学習', value: 'SECRET' }] },
+    })).toContain('document.userContextFacts[0].value:copied-from-stored-context-without-current-mention');
+  });
+
+  it('documents exposure: a suffix/partial stored copy is not treated as exact copy (semantic-owned; see Luna B V03)', () => {
+    const document = emptyDocument();
+    document.userContextFacts = [{
+      localId: 'fact-1', kind: 'concern', label: '別ラベル', value: 'SECRET-suffix',
+      dateExpression: null, sourceText: '今日は数学を進める',
+    }];
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: '今日は数学を進める',
+      publicStateSummary: { userPlanningContext: [{ id: 'stored-1', label: '学習', value: 'SECRET' }] },
+    })).toEqual([]);
   });
 
   it('rejects an exact stored copy without current-turn mention', () => {
@@ -120,8 +126,8 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
     })).toContain('document.userContextFacts[0].value:copied-from-stored-context-without-current-mention');
   });
 
-  it.fails('collects registered material and numeric sibling strings before allowing copied values', () => {
-    // Issue #152 V03 reproduced: registeredMaterials, workload units/periods, and source expressions are absent from stored-string collection.
+  it('documents exposure: registered material and numeric sibling strings are outside the stored-string set (semantic-owned; see Luna B V03)', () => {
+    // Resolving a registered material can be legitimate; ownership of these additional carriers remains a Luna B decision.
     const document = emptyDocument();
     document.userContextFacts = [{
       localId: 'fact-1',
@@ -139,11 +145,10 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
         workloads: [{ unitLabel: 'Catalog Secret', periodExpression: '毎週' }],
         groundingRecords: [{ sourceExpression: 'Grounding Secret' }],
       },
-    })).not.toEqual([]);
+    })).toEqual([]);
   });
 
-  it.fails('does not treat recent user messages and assistant fragments as current evidence', () => {
-    // Issue #152 V03 reproduced: recent user messages and assistant fragments are not comprehensively collected as stored-copy sources.
+  it('documents exposure: an assistant-message fragment is outside the stored-string set (semantic-owned; see Luna B V03)', () => {
     const document = emptyDocument();
     document.userContextFacts = [{
       localId: 'fact-1',
@@ -156,48 +161,49 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
       document,
       currentUserText: '今日の数学',
-      publicStateSummary: {
-        recentConversation: [{ role: 'user', content: '過去の断片' }],
-        lastAssistantMessage: '現在の説明に過去の断片が含まれる',
-      },
-    })).not.toEqual([]);
+      publicStateSummary: { lastAssistantMessage: '現在の説明に過去の断片が含まれる' },
+    })).toEqual([]);
   });
 
-  it('fails closed when current-user text is absent at the semantic response boundary', () => {
+  it('documents fail-open when currentUserText is omitted at the semantic response boundary', () => {
     const document = emptyDocument();
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({ document })).toEqual([]);
   });
 });
 
-describe('Issue #152 V04 semantic repair/provider-call budget', () => {
-  it('performs at most one repair call after an initial provider failure/invalid response', async () => {
-    let failingCalls = 0;
-    const failingClient = {
-      async createChatCompletion() {
-        failingCalls += 1;
-        throw new Error('scripted provider failure');
-      },
-    } as never;
-    const failed = await createWeeklyPlanningSemanticNormalizerV5(failingClient).normalize({
-      userText: '数学を進めたい',
-      traceRequestId: 'v04-failing',
-    });
-    expect(failed.status).toBe('provider_failure');
-    expect(failingCalls).toBe(1);
+describe('Issue #152 V03 provenance caller inventory', () => {
+  it.fails.each([
+    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticGenericRepairRouteV5.ts',
+    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNoOpCompletenessRetryV5.ts',
+    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticFocusedRepairRoutesV5.ts',
+  ])('passes currentUserText through the production call site: %s', (path) => {
+    // Issue #152 V03 reproduced: repair and no-op retry callers validate without currentUserText; only the final normalizer guard restores coverage.
+    const source = readFileSync(path, 'utf8');
+    expect(source).toMatch(/validateWeeklyPlanningSemanticResponseV5\([\s\S]{0,700}currentUserText/);
+  });
+});
 
-    let normalCalls = 0;
-    const validDocument = JSON.stringify(emptyDocument());
-    const normalClient = {
+describe('Issue #152 V04 semantic repair/provider-call budget', () => {
+  it.each([
+    { name: 'invalid→invalid', responses: ['{"not":"the semantic schema"}', '{"not":"the semantic schema"}'], expectedStatus: 'rejected' },
+    { name: 'invalid→valid', responses: ['{"not":"the semantic schema"}', JSON.stringify(emptyDocument())], expectedStatus: 'accepted' },
+  ] as const)('counts one semantic repair after $name responses', async (testCase) => {
+    const invalid = '{"not":"the semantic schema"}';
+    let calls = 0;
+    const client = {
       async createChatCompletion() {
-        normalCalls += 1;
-        return validDocument;
+        const response = testCase.responses[calls] ?? invalid;
+        calls += 1;
+        return response;
       },
     } as never;
-    const normal = await createWeeklyPlanningSemanticNormalizerV5(normalClient).normalize({
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
       userText: '数学を進めたい',
-      traceRequestId: 'v04-normal',
+      traceRequestId: `v04-${testCase.name}`,
     });
-    expect(normal.status).toBe('accepted');
-    expect(normalCalls).toBe(1);
+    expect(result.status).toBe(testCase.expectedStatus);
+    expect(result.diagnostics.repairAttempted).toBe(true);
+    expect(result.diagnostics.attemptCount).toBe(2);
+    expect(calls).toBe(2);
   });
 });

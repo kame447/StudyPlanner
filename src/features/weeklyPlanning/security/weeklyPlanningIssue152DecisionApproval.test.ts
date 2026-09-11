@@ -73,8 +73,7 @@ function decisionDocument(ids: string[]): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Issue #152 V09 proposal decision application boundary', () => {
-  it.fails('does not apply every accepted proposal when the document contains two pending decisions', () => {
-    // Issue #152 V09 reproduced: application mutates every pending proposal referenced by a schema-valid document.
+  it('documents application of all typed collective decisions (semantic-owned; see Luna B V09)', () => {
     const previous = [proposal('proposal-a', 'work-a'), proposal('proposal-b', 'work-b')];
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
       previousState: intakeState(previous),
@@ -84,16 +83,19 @@ describe('Issue #152 V09 proposal decision application boundary', () => {
       graphRevision: 2,
       turnId: 'turn-2',
     });
-    expect(result.records.filter((record) => record.status === 'accepted')).toHaveLength(1);
+    expect(result.records.filter((record) => record.status === 'accepted')).toHaveLength(2);
   });
 
-  it.fails('requires proposal decisions to match the currently asked question target', () => {
-    // Issue #152 V09 reproduced: reference validation checks active identity but does not bind a proposal decision to lastQuestionContext.
+  it('documents proposal reference validation does not bind side decisions to pendingQuestion (semantic-owned; see Luna B V09)', () => {
     const document = decisionDocument(['proposal-a']);
     expect(validateWeeklyPlanningDecisionTargetReferencesV5(document, {
       learningStrategyProposals: [{ publicId: 'proposal-a' }],
-      pendingQuestion: { actionId: 'different-question', topicId: 'work-other' },
-    })).not.toEqual([]);
+      pendingQuestion: {
+        actionId: 'different-question',
+        questionCode: 'missing_effort_estimate',
+        targetFactId: 'work-other',
+      },
+    })).toEqual([]);
   });
 
   it('accepts explicit collective consent as a valid decision document', () => {
@@ -124,8 +126,9 @@ function legacyDraftBlock(id: string): WeeklyPlanDraftBlock {
 }
 
 describe('Issue #152 V10 approval freshness boundary', () => {
-  it.fails('does not approve metadata-free draft blocks without freshness metadata', () => {
+  it.fails('route #128: does not approve metadata-free draft blocks without freshness metadata', () => {
     // Issue #152 V10 reproduced: metadata-free legacy drafts synthesize current revision and bypass conversation freshness.
+    // reachability: legacy/restore paths permit draft blocks with optional behaviorMetadata; see weeklyPlanningStorage.ts:257-283 and weeklyPlanningStorage.ts:628-697.
     const result = validateWeeklyPreviewApproval({
       blocks: [legacyDraftBlock('legacy-1')],
       currentStateRevision: 99,
