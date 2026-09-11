@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { buildWeeklyPlanningExecutionText, createWeeklyPlanningControllerSession, submitWeeklyPlanningControlledTurn } from '../weeklyPlanningTurnController';
+import {
+  buildWeeklyPlanningExecutionText,
+  createWeeklyPlanningControllerSession,
+  MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH,
+  submitWeeklyPlanningControlledTurn,
+} from '../weeklyPlanningTurnController';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningCurrentTurnProvenanceV5 } from '../semantic/weeklyPlanningCurrentTurnProvenanceV5';
-import { createFocusedAuthorizationMessagesV5, focusedAuthorizationEligibleV5 } from '../semantic/weeklyPlanningFocusedAuthorizationV5';
+import {
+  createFocusedAuthorizationMessagesV5,
+  FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5,
+  focusedAuthorizationEligibleV5,
+} from '../semantic/weeklyPlanningFocusedAuthorizationV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import { buildAiPlanningStarterPromptOptions } from '../ui/aiPlanningStarterPrompts';
 import { resetUserPlanningContextRuntimeForTestV1, stageUserPlanningContextFactsV1, finalizeStagedUserPlanningContextV1, loadUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -129,12 +138,26 @@ describe('Issue #152 V01/V08 channel and supplemental provenance boundary', () =
     expect(typeof executionText).toBe('string');
   });
 
-  it.fails('preserves a trailing negation when the supplemental slice ends immediately before it', () => {
-    // Issue #152 V01 reproduced: character-budget truncation can cut a semantic trailing negation from supplemental text.
-    const supplemental = '確認できる情報です。必ず保存しないでください';
+  function executionTextCutBeforeNegation() {
+    const affirmativeStem = '確認できる情報です。必ず保存し';
+    const supplemental = `${affirmativeStem}ないでください`;
     const headerLength = buildWeeklyPlanningExecutionText('', 'x').length - 1;
-    const userLength = 4_000 - headerLength - (supplemental.length - 1);
-    const executionText = buildWeeklyPlanningExecutionText('x'.repeat(userLength), supplemental);
+    const userLength = MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH - headerLength - affirmativeStem.length;
+    return {
+      affirmativeStem,
+      supplemental,
+      executionText: buildWeeklyPlanningExecutionText('x'.repeat(userLength), supplemental),
+    };
+  }
+
+  it('documents exposure (V01 truncation guard): the slice keeps the affirmative stem and drops only the negating suffix', () => {
+    const { affirmativeStem, executionText } = executionTextCutBeforeNegation();
+    expect(executionText.endsWith(affirmativeStem)).toBe(true);
+  });
+
+  it.fails('does not deliver a supplemental segment truncated immediately before its negation', () => {
+    // Issue #152 V01 reproduced: character-budget truncation turns 「保存しないでください」 into the affirmative stem 「保存し」.
+    const { supplemental, executionText } = executionTextCutBeforeNegation();
     expect(executionText).toContain(supplemental);
   });
 
@@ -158,18 +181,16 @@ describe('Issue #152 V08 focused authorization route', () => {
     expect(messages[0]?.content).not.toContain('条件を確認しました');
   });
 
-  it.fails('does not answer a supplemental turn through fact-free focused authorization', async () => {
-    // Issue #152 V08 reproduced: focused authorization accepts the real concatenated attachment input and projects an empty document.
-    const calls: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+  async function normalizeSupplementalTurnInNeedsScope() {
+    const calls: Array<{ responseFormat?: { json_schema?: { name?: string } } }> = [];
     const client = {
-      async createChatCompletion(request: { messages: Array<{ role: string; content: string }> }) {
+      async createChatCompletion(request: { responseFormat?: { json_schema?: { name?: string } } }) {
         calls.push(request);
         return '{"decision":"create_plan"}';
       },
     } as never;
-    const executionText = buildWeeklyPlanningExecutionText('この内容で作って', '数学 20問');
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
-      userText: executionText,
+      userText: buildWeeklyPlanningExecutionText('この内容で作って', '数学 20問'),
       publicStateSummary: {
         pendingQuestion: null,
         previousCompatibilityStatus: 'needs_scope',
@@ -178,8 +199,20 @@ describe('Issue #152 V08 focused authorization route', () => {
       },
       traceRequestId: 'trace-152',
     });
-    expect(calls).toHaveLength(1);
-    expect(result.status).not.toBe('accepted');
+    return { calls, result };
+  }
+
+  it('documents exposure (V08 guard): the supplemental turn is routed to focused authorization and yields a fact-free create_plan', async () => {
+    const { calls, result } = await normalizeSupplementalTurnInNeedsScope();
+    expect(calls[0]?.responseFormat?.json_schema?.name).toBe(FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5.json_schema.name);
+    expect(result.document?.planningIntent).toBe('create_plan');
+    expect(result.document?.tasks).toEqual([]);
+  });
+
+  it.fails('does not answer a supplemental turn through fact-free focused authorization', async () => {
+    // Issue #152 V08 reproduced: focused authorization is eligible for the real concatenated attachment input, so image facts are discarded.
+    const { calls } = await normalizeSupplementalTurnInNeedsScope();
+    expect(calls[0]?.responseFormat?.json_schema?.name).not.toBe(FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5.json_schema.name);
   });
 });
 

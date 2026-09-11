@@ -167,34 +167,51 @@ describe('Issue #152 V07 memory lifecycle boundary', () => {
     expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u2060学' })).toBe(base);
   });
 
-  it.fails('retains revoked tombstones and user-confirmed records while flooding newer inferred records', () => {
-    // Issue #152 V07 reproduced: the 200-record newest-record cap can evict anti-resurrection and confirmed records.
-    const records = Array.from({ length: 198 }, (_, index) => contextRecord({
-      id: `old-${index}`,
-      label: `old-${index}`,
-      recordedAt: `2026-01-${String((index % 9) + 1).padStart(2, '0')}T00:00:00.000Z`,
-    }));
+  function floodedAfterForget() {
     const initial = baseSnapshot('owner-152', [
-      ...records,
-      contextRecord({ id: 'forget-me', recordedAt: '2026-09-10T00:00:00.000Z' }),
-      contextRecord({ id: 'confirmed', origin: 'user_confirmed', recordedAt: '2026-09-10T00:00:00.000Z' }),
+      contextRecord({ id: 'forget-me', label: '数学', value: '苦手', recordedAt: '2026-09-10T00:00:00.000Z' }),
+      contextRecord({
+        id: 'confirmed',
+        label: '英語',
+        value: '長文が苦手',
+        origin: 'user_confirmed',
+        recordedAt: '2026-09-10T00:00:00.000Z',
+      }),
     ]);
     const tombstoned = removeUserPlanningContextRecordFromSnapshotV1({
       snapshot: initial,
       recordId: 'forget-me',
       now: '2026-09-11T00:00:00.000Z',
     });
-    const inferred = Array.from({ length: 10 }, (_, index) => contextRecord({
+    // Newer inferred records than both the tombstone and the confirmed record, exceeding the 200-record cap.
+    const inferred = Array.from({ length: 200 }, (_, index) => contextRecord({
       id: `new-${index}`,
       label: `new-${index}`,
-      recordedAt: `2026-09-12T00:0${index}:00.000Z`,
+      value: `value-${index}`,
+      recordedAt: new Date(Date.UTC(2026, 8, 12, 0, 0, index)).toISOString(),
     }));
-    const merged = mergeInferredUserPlanningContextRecordsV1({
+    return mergeInferredUserPlanningContextRecordsV1({
       snapshot: tombstoned,
       records: inferred,
       now: '2026-09-13T00:00:00.000Z',
     });
-    expect(merged.records.map((record) => record.id)).toEqual(expect.arrayContaining(['forget-me', 'confirmed']));
+  }
+
+  it('documents exposure (V07 flood guard): only the 200 newest distinct inferred records survive the merge', () => {
+    // Guards the two expected-failure tests below against failing for an unrelated fixture reason.
+    const merged = floodedAfterForget();
+    expect(merged.records).toHaveLength(200);
+    expect(merged.records.every((record) => record.id.startsWith('new-'))).toBe(true);
+  });
+
+  it.fails('retains a revoked tombstone while flooding newer inferred records', () => {
+    // Issue #152 V07 reproduced: the 200-record newest-record cap evicts the anti-resurrection tombstone.
+    expect(floodedAfterForget().records.map((record) => record.id)).toContain('forget-me');
+  });
+
+  it.fails('retains a user-confirmed record while flooding newer inferred records', () => {
+    // Issue #152 V07 reproduced: the 200-record newest-record cap evicts the strongest-authority record.
+    expect(floodedAfterForget().records.map((record) => record.id)).toContain('confirmed');
   });
 
   it.fails('does not restore a revoked record when staged facts finalize after revoke', () => {

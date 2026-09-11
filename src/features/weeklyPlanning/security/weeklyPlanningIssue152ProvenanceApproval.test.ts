@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningCurrentTurnProvenanceV5 } from '../semantic/weeklyPlanningCurrentTurnProvenanceV5';
@@ -171,15 +170,32 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
   });
 });
 
-describe('Issue #152 V03 provenance caller inventory', () => {
-  it.fails.each([
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticGenericRepairRouteV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNoOpCompletenessRetryV5.ts',
-    'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticFocusedRepairRoutesV5.ts',
-  ])('passes currentUserText through the production call site: %s', (path) => {
-    // Issue #152 V03 reproduced: repair and no-op retry callers validate without currentUserText; only the final normalizer guard restores coverage.
-    const source = readFileSync(path, 'utf8');
-    expect(source).toMatch(/validateWeeklyPlanningSemanticResponseV5\([\s\S]{0,700}currentUserText/);
+describe('Issue #152 V03 final provenance guard', () => {
+  it('fails closed when an ungrounded fact survives the repair route, because the final normalizer guard re-checks provenance', async () => {
+    // Repair-route validation does not receive currentUserText; the final guard is the owner of fail-closed provenance.
+    const ungrounded = emptyDocument();
+    ungrounded.tasks = [{
+      ...taskWithWorkload({
+        title: '英語',
+        sourceText: '英語を30問',
+        workloadSourceText: '英語を30問',
+        workloadAmount: 30,
+      }),
+      study: { purpose: 'self_study', contextLabel: '英語', components: [] },
+    }];
+    const client = {
+      async createChatCompletion() {
+        return JSON.stringify(ungrounded);
+      },
+    } as never;
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '数学を進めたい',
+      traceRequestId: 'v03-final-provenance-guard',
+    });
+    expect(result.status).toBe('rejected');
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.validationErrors.some((error) =>
+      error.includes('sourceText:not-grounded-in-current-user-text'))).toBe(true);
   });
 });
 
