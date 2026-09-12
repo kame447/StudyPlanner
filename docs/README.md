@@ -22,6 +22,10 @@
 - [Product observability](domains/product-observability/README.md)
 - [External integrations](domains/external-integrations/README.md) — 書籍教材 metadata の正仕様は [`material-metadata.md`](domains/external-integrations/spec/material-metadata.md)
 
+## User Contextの実装準備
+
+#294の既存canonical文書を正本とし、[read/writeサービスの詳細設計](domains/user-context/architecture/context-service-contract.md) はその補助設計、[段階実装work](domains/user-context/work/20260912-context-harness-delivery.md) は変更箇所・受入条件・rollbackの作業記録です。[実行順序](domains/user-context/roadmap/current.md) に従い、文書の導入とruntimeの完成を区別します。開発エージェント向けskills/orchestrationの#212とは別scopeです。
+
 ## 横断タスク・運用 (Cross-cutting work)
 
 - [Work documentation](work/README.md)

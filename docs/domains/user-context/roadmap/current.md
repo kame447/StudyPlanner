@@ -1,281 +1,93 @@
 # User Context Current Roadmap
 
 Status: canonical current execution order
-Updated: 2026-09-11
+Updated: 2026-09-12
 Owner Issue: #294
 
-Architecture: [../architecture/memory-and-conversation.md](../architecture/memory-and-conversation.md)
-Policy: [../policies/memory-lifecycle-and-surfacing.md](../policies/memory-lifecycle-and-surfacing.md)
-Quality: [../quality/regression-scenarios.md](../quality/regression-scenarios.md)
+全体の責務は [architecture](../architecture/memory-and-conversation.md)、継続する規則は [policy](../policies/memory-lifecycle-and-surfacing.md)、品質条件は [quality](../quality/regression-scenarios.md) を正とする。実装インターフェースは [supporting service design](../architecture/context-service-contract.md)、変更箇所と受入条件は [実装work](../work/20260912-context-harness-delivery.md) を参照する。
 
 ## Current phase
 
-Phase 0 — canonical architecture and baseline audit.
+Phase 0のcanonical documentation導入はPR #302で完了している。2026-09-11のIssue checkpointでdocs-only merge、旧docs branch削除、本番runtime未変更を確認した。旧 `docs/issue-294-user-context-architecture` をactiveとして扱わず、再作成もしない。
 
-The current documentation branch is documentation-only. It must not change production memory behavior, storage schema, provider choice, or weekly-planning runtime behavior.
+残っているのは現行foundationのcharacterizationとbaseline実測、および後続runtime実装である。2026-09-12のsupporting設計・work・管理情報の整備は、この実測や実装を完了にしない。現在のbranch/PR/HEADと検証結果はIssue #294の最新checkpointを正とする。
 
-After the canonical documentation is merged, implementation continues under Issue #294 one reviewable release unit at a time. Keep at most one active implementation branch/PR for the same logical #294 phase unless a genuinely separate child Issue is intentionally created with a distinct owner and acceptance boundary.
+週間計画のproduction queueでは [weekly-planning roadmap](../../weekly-planning/roadmap/current.md) の#152 / Draft PR #174を先に扱う。#294の監査・docs整備は先行できるが、新しいmemory情報を本番入力へ出す経路は対応するsecurity/provenanceの検証を消費する。別のsecurity branchを作らない。
 
-## Execution principles
+## Execution discipline
 
-Implementation order is evidence-driven:
+実コードを調べ、既存保証をcharacterizeし、一つの責務境界を導入して検証し、consumer/producerを移し、縦断動作を確認する。最初にvector DBへ置き換えたり、userPlanningContext全schemaを書き直したりしない。
 
-```text
-inspect current foundation
-→ characterize existing guarantees
-→ introduce one ownership boundary
-→ verify
-→ migrate consumers/producers
-→ verify longitudinal behavior
-```
+一つの論理release unitにつきactive branch/PRは一つ。同じ修正・review・CI retryを同じPRで続ける。全phaseのbranchやplaceholder PRを先行作成しない。新しい別ownerが必要な場合だけ、責務とacceptanceが独立したchild Issueを明示的に作る。
 
-Do not begin by replacing the current repository with a new vector database or rewriting the entire userPlanningContext schema.
+各実装writeの前にcurrent main、最新owner checkpoint、既存branch/PR/diffを再確認する。閉じたdocs branchをruntimeに再利用しない。実装済みと主張するにはexact codeと実行済みの検証を対応させる。
 
-Do not treat the target architecture as an already-shipped production guarantee until code/tests prove each phase.
+## Release order
 
-## Phase 0 — canonical design and baseline audit
+作業IDは実装work内の識別子であり、Issue番号ではない。基本の順序はUC-P0、UC-P1A、UC-P1B、UC-P1C、UC-P2Aとする。UC-P0は現状固定/計測、UC-P1Aは既存正常選択を保つ非破壊的read boundary、UC-P1Bは共通mutation/staging、UC-P1Cは#164と整合するschema/証拠/tombstone/同期移行、UC-P2Aはeligibility・競合・予算を持つbounded retrievalである。
 
-Goal: establish one current owner and determine exactly what exists today.
+UC-P2Bの追加読取は、UC-P2Aの評価で初回話題のmissが必要性を示した場合に導入する。必要性がなければ実装を増やさず、判断と残る品質条件を記録する。embedding/rerankerは別の比較単位とし、追加読取やmodel変更と同時導入しない。
 
-Required work:
+次にUC-P3で会話横断episodeとworking-memory projectionを接続する。永続job基盤、AI抽出、会話圧縮は別release unitに分ける。その後のUC-P4はsurface policyとrenderer接続、UC-P5は必要性を評価したconsolidation/retention、UC-P6は操作性とforget全経路の完成、UC-P7は縦断評価と本番rolloutの完了を扱う。詳細なファイル・fixture・rollbackは実装workだけに置く。
 
-- establish `docs/domains/user-context/` as the app-wide current documentation owner
-- inspect current `src/features/userPlanningContext/` types, repositories, application flow, UI, Firestore/local behavior, migrations and tests
-- map which Issue #232 / PR #235 guarantees are actually production-enforced
-- inventory all producers of durable user context
-- inventory all consumers that currently receive full active memory/context
-- inventory summary/public-state/context projections that may duplicate memory meaning
-- identify current deletion/revoke propagation and stale-device behavior
-- establish a baseline longitudinal/adversarial corpus before adding new retrieval behavior
-- profile current context size and AI request path when user context is present
+この順序は既存Phase 0〜7を実装単位に展開したもので、目標自体を廃止しない。安全な読取を先に作るため、Phase 3の競合解消の最小条件をUC-P2Aへ含め、Phase 2の会話横断episodeをUC-P3で実装する。安全性・forget・計測の最小条件は前段から必須であり、Phase 6/7まで先送りする意味ではない。
 
-Exit gate:
+## Phase 0 — characterization and baseline
 
-- current code/tests and target architecture are compared explicitly
-- no undocumented current invariant is lost
-- next implementation unit has a narrow responsibility and characterization tests
+既存V1/V2の記録、repository、local/Firestore、移行、設定UI、全producer/consumer、summary/public-state projection、削除伝播、stale-device挙動を棚卸しする。既存bounded selector、Graph由来episode、formal-turn境界を維持する。新しい検索動作を入れる前にlongitudinal/adversarial corpusとcontext/request量のbaselineを用意する。
 
-## Phase 1 — identity, provenance and lifecycle foundation
+Exit gateは、current code/testsとtarget architectureの差、再現したfailureと未再現の懸念、測定結果、次の最小unitが明示されること。今回の静的設計だけで通過扱いにしない。
 
-Goal: make memory identity/lifecycle robust enough for retrieval and correction.
+## Phase 1 — identity, provenance and lifecycle
 
-Required capabilities:
+UC-P1A〜P1Cでreadの入口、共通更新規則、stable identity、evidence/origin/authority、scope/time、replace/supersede/revoke、冪等性とanti-resurrectionを固める。保存・同期・旧client・migrationは#164、untrusted dataは#152の契約に従う。
 
-- stable identity independent of display wording
-- explicit provenance/origin/authority semantics
-- scope representation
-- time/validity semantics where applicable
-- deterministic replace/supersede/revoke transitions
-- anti-resurrection behavior
-- idempotent mutation/retry
-- compatibility/migration for current records
-
-Dependencies:
-
-- Issue #164 for storage/sync/migration authority
-- Issue #152 for durable-context trust boundary
-
-Exit gate:
-
-- correction does not create competing active truths
-- revoke survives reload and applicable concurrency tests
-- current V1/V2 data remains safely readable/migratable
+Exit gateは訂正が競合するactive truthを作らず、forgetがreloadと適用対象のconcurrencyで保たれ、既存データを失わず読取/移行できること。原証拠の不明な旧記録から引用を捏造しない。format failureを空と扱って上書きしない。
 
 ## Phase 2 — episodic memory and bounded retrieval
 
-Goal: support long-term conversation continuity without loading all history.
+UC-P2A/P2Bでowner/scope/lifecycle資格、exact entity/lexical、必要性を検証したsemantic retrieval、上限付き候補とcontextを提供する。UC-P3で会話横断episodeのprovenance/timeと永続処理を追加し、既存Graph-derived episodeとは区別する。embedding実装自体を目的化しない。
 
-Required capabilities:
-
-- bounded episodic representation with provenance/time
-- owner/scope/lifecycle eligibility filter
-- lexical/entity retrieval for exact identifiers
-- semantic retrieval for paraphrases
-- bounded candidate set
-- explicit distinction between retrieval unavailable and authoritative empty
-
-Do not yet require explicit callback behavior. Retrieval can be integrated behind a diagnostic/evaluation boundary first.
-
-Exit gate:
-
-- longitudinal corpus can retrieve relevant past context across sessions
-- revoked/wrong-scope/wrong-owner items fail eligibility regardless of similarity
-- context size does not scale with all stored history
+Exit gateは関連情報を会話横断で取得でき、wrong-owner/scope/revokedがsimilarityに関係なく除外され、unavailableとauthoritative emptyを区別し、保存履歴全体に比例したprompt増大へ戻らないこと。callbackはこのphaseの必須ではない。
 
 ## Phase 3 — temporal conflict resolution and rerank
 
-Goal: make retrieval safe when multiple memories or current domain data disagree.
+current Structured State、supersession、origin/authority、validity、conflict分類を検索とprojectionに反映する。AIへ同じ重みのcurrent factとして矛盾情報を丸投げしない。bounded rerankは必要な場合だけ導入する。
 
-Required capabilities:
+Exit gateは古い教材progress・予定・preferenceが現在値をshadowせず、既知の機械的根拠で解ける矛盾を解消してからモデルへ渡すこと。初期の安全条件はUC-P2Aのrelease前から必須とする。
 
-- current Structured State precedence
-- supersession resolution
-- authority/origin comparison
-- validity/time-aware interpretation
-- conflict classification
-- bounded reranking after eligibility resolution
-- model-facing context projection that preserves current/historical/inferred distinctions
+## Phase 4 — surface planning and natural realization
 
-Exit gate:
+UC-P4で検索採用と言及を分離し、ignore/use_silentlyから始め、必要なcallbackと不確実性の確認へ進む。current-turn ACK、既存action、grounding、fallbackを維持する。文章を解析し直してmemory/stateを更新しない。
 
-- old material progress/schedule/preferences cannot shadow fresher owner-domain state
-- answer model does not receive unresolved contradictory records as equal current facts when deterministic evidence can resolve them
-
-## Phase 4 — Surface Planner and natural realization
-
-Goal: make remembering feel natural rather than repetitive.
-
-Required capabilities:
-
-```text
-ignore
-use_silently
-light_callback
-explicit_callback
-ask_due_to_uncertainty_or_conflict
-```
-
-Implementation must:
-
-- separate retrieval result from surfacing decision
-- use surface history/repetition evidence without turning it into user truth
-- support silent use
-- permit natural model wording after the application allows a callback
-- avoid parsing rendered prose back into memory state
-- evaluate sensitive/creepy/irrelevant callback failures
-
-Exit gate:
-
-- relevant memory can improve an answer without mandatory acknowledgment
-- repeated adjacent callbacks are suppressed
-- explicit callback occurs when it materially improves grounding
-- uncertainty/conflict can route to confirmation instead of silent rewrite
+Exit gateはsilent useができ、隣接turnの不要callbackを抑え、敏感/不適切な想起を評価し、矛盾はsilent rewriteでなく確認へ戻せること。surface historyは表示/commit後の表現制御情報とする。
 
 ## Phase 5 — consolidation, reflection and retention
 
-Goal: control memory growth without granting reflection authority over truth.
+UC-P3のprojectionとUC-P5で、重複の整理、episode圧縮、見直し候補、summary/index/cache refresh、retentionを扱う。重い処理を毎turnのcritical pathに置かず、必要性と費用を測る。自律reflectionを必須にしないが、品質条件を黙って省略しない。
 
-Required capabilities:
+Exit gateは証拠より強いclaimを作らず、summaryが再生成可能で、revoked/supersededな内容が古いprojection経由で戻らないこと。確定イベントとjob/epochを検証する。
 
-- duplicate/near-duplicate candidate grouping
-- episode compression with evidence references
-- stale/review candidate generation
-- projection/summary refresh
-- retention cleanup according to an explicit policy
-- index/cache invalidation on source changes
+## Phase 6 — user control and end-to-end forget
 
-Keep this work out of the critical request path where possible.
+UC-P6で既存memory UXを発展させ、閲覧/訂正/forget/共有反映待ちをdesktop/mobileで扱う。retrieval/summary/cache/index/jobと同期へ失効を反映する。#164の旧端末/offline条件をconsumeし、物理削除やprovider送信済み情報との区別も表示する。
 
-Exit gate:
-
-- reflection cannot produce a stronger claim than its evidence
-- summaries remain recomputable projections
-- revoked/superseded content cannot return through stale summaries/indexes
-
-## Phase 6 — user control, privacy and end-to-end forget
-
-Goal: make the product guarantee visible and testable to users.
-
-Required capabilities:
-
-- inspect durable memory in human-readable form
-- edit/correct without exposing internal schema complexity
-- revoke/forget with clear user-facing state
-- safe error UX when sync fails
-- applicable desktop/mobile responsive behavior
-- end-to-end invalidation of retrieval/summary/cache/index projections
-- multi-device/offline behavior aligned with Issue #164
-- account deletion/retention integration where owned elsewhere
-
-Exit gate:
-
-- a user can understand what is remembered and change/remove it
-- UI removal and semantic/runtime forget cannot drift
-- stale device/reload does not resurrect forgotten information
+Exit gateはUIの削除とruntime forgetがずれず、古い端末やreloadで復活せず、適用範囲の全経路を実行済み証拠で確認できること。前段の実装も基本forgetを満たさなければreleaseしない。
 
 ## Phase 7 — longitudinal evaluation and production observability
 
-Goal: prove the system remains correct over time rather than only in isolated tests.
+UC-P7で複数session/time/current-state変更/訂正/forget/一時adoptionのcorpusを実行する。precision、miss、false/stale recall、反復、不適切な表出、forget、context size、latencyを独立して評価する。重大failureを自然さの平均点で相殺しない。
 
-Required work:
+#213のprivacy-preserving telemetryへ接続し、raw memory proseを軽量analyticsへ送らない。rolloutとrollback、security、ユーザー操作、同期の実行済み証拠が揃い、並行する正本がないことをexit gateとする。有限試験の0 failureを全入力への保証と書かない。
 
-- run canonical multi-session corpus
-- measure factual precision/currentness
-- measure retrieval miss/false recall/stale recall separately
-- measure callback repetition/irrelevant surfacing
-- verify revoke/forget guarantee
-- verify stored-injection resistance with Issue #152
-- measure context/request size and latency
-- emit privacy-preserving typed outcomes for product observability where useful
-- inspect production failures without making observability the memory authority
+## Dependency boundaries
 
-Issue #213 owns service-wide telemetry/read-model design.
+#47は共有会話/Fact Graphとoutcome learningを保持し、#294の共通read/episodeをconsumeする。#164はstorage/sync/operation/migrationの必要契約を提供する。初期read adapterは既存repositoryで進められ、WASM等の全体完了を待たない。新共有write/forgetの有効化時は該当契約の完了が必要である。
 
-Exit gate:
+#152 / PR #174は既存security owner。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187と本棚domain、scheduling domain、Actual、明示設定から現在値を読む。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
 
-- production path passes longitudinal, adversarial and user-control gates
-- memory remains bounded and failure-isolated
-- no known parallel source of truth remains
+## Next implementation boundary
 
-## Dependency map
+UC-P0のfixtureと実測を整えた上で、最初のruntime PRはUC-P1Aだけを対象にする。新しいLLM呼出し、vector DB、episode worker、schema全面変更、会話UI全面変更、model差替えを混ぜない。
 
-### Issue #47
-
-Owns weekly-planning personalization, cloud conversation/session rollout, and outcome learning. Consume User Context as an app-wide service/boundary rather than duplicating its retrieval/surfacing rules inside weekly planning.
-
-### Issue #164
-
-Owns local/cloud authority, offline queue, multi-tab/multi-device conflict, migration and rollback. Any memory persistence change must align before production rollout.
-
-### Issue #152
-
-Owns adversarial stored/indirect injection evaluation. Memory retrieval/summarization/realization must use the same or stronger trust boundary.
-
-### Issue #187
-
-Owns current Bookshelf/material information. User Context consumes current material state rather than copying mutable progress as durable truth.
-
-### Issue #246
-
-Owns consultation/advice lifecycle. Advice generation/adoption must remain distinct from durable-memory promotion.
-
-### Scheduling domain / completed Issue #278 baseline
-
-The scheduling domain owns current scheduled-event authority; completed Issue #278 established the `ScheduleEvent → ScheduleOccurrence` baseline. Memory cannot become an occupied-time/current-event source.
-
-### Issue #213
-
-Owns service-wide product observability. Memory-quality metrics are projections/observations, not authority.
-
-## Phase sequencing constraints
-
-Do not implement Phase 4 Surface Planner on top of an unbounded/unfiltered retrieval path.
-
-Do not implement autonomous consolidation before identity/provenance/supersession are strong enough to prevent accidental truth rewriting.
-
-Do not claim forget is complete until source record, retrieval eligibility, derived projections, and applicable sync behavior are all verified.
-
-Do not add production embeddings/vector search merely to satisfy the architecture diagram; first characterize the simplest retrieval baseline and prove a semantic retrieval need with evaluation evidence.
-
-## Current checkpoint — 2026-09-08
-
-Owner Issue: #294
-
-Documentation branch:
-
-`docs/issue-294-user-context-architecture`
-
-Initial audited base:
-
-`d4126511a6f5cb1c7a1c734498062ef2ec9f91a6`
-
-Current activity:
-
-- establish canonical domain docs
-- synchronize documentation dictionary/navigation
-- open one documentation PR
-- no production runtime implementation in this phase
-
-Next implementation action after documentation merge:
-
-Perform the Phase 0 current-foundation inventory against the then-current `main`, create characterization evidence, and select the smallest Phase 1 release unit. Do not resume from the documentation branch for production implementation.
+文書PRのmergeはこのroadmapとworkの導入完了であり、親#294の完了ではない。新しいbranchを切る前に必ずcurrent mainと既存ownerを再確認する。
