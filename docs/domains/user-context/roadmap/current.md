@@ -28,7 +28,9 @@ Phase 0のcanonical documentation導入はPR #302で完了している。2026-09
 
 UC-P2Bの追加読取は、UC-P2Aの評価で初回話題のmissが必要性を示した場合に導入する。必要性がなければ実装を増やさず、判断と残る品質条件を記録する。embedding/rerankerは別の比較単位とし、追加読取やmodel変更と同時導入しない。
 
-次にUC-P3で会話横断episodeとworking-memory projectionを接続する。永続job基盤、AI抽出、会話圧縮は別release unitに分ける。その後のUC-P4はsurface policyとrenderer接続、UC-P5は必要性を評価したconsolidation/retention、UC-P6は操作性とforget全経路の完成、UC-P7は縦断評価と本番rolloutの完了を扱う。詳細なファイル・fixture・rollbackは実装workだけに置く。
+UC-P3で汎用的な実行loop・session復旧・圧縮を自作する前に、[UC-E0の外部実行基盤評価](../../external-integrations/work/20260912-managed-agent-runtime-evaluation.md) を用いて、自前の最小executorと限定managed adapterを比較する。公式資料の調査は実施済みだが、実API/利用条件/費用/forgetの実験は未実施であり、Agents APIの採用は未決定。UC-E0はUC-P0/P1Aの前提ではなく、利用不可なら直接呼出しを維持する。独立した実装branch/PRを先行作成しない。
+
+次にUC-P3で会話横断episodeとworking-memory projectionを接続する。確定イベント・dispatch receiptの永続境界、選択したexecutorへの接続、AI抽出、会話圧縮は別release unitに分ける。[実行基盤の委譲境界](../architecture/managed-execution-boundary.md) に従い、managed内部のqueue/retry/compactionを重複自作しない。その後のUC-P4はsurface policyとrenderer接続、UC-P5は必要性を評価したconsolidation/retention、UC-P6は操作性とforget全経路の完成、UC-P7は縦断評価と本番rolloutの完了を扱う。詳細なファイル・fixture・rollbackは実装workと採否workだけに置く。
 
 この順序は既存Phase 0〜7を実装単位に展開したもので、目標自体を廃止しない。安全な読取を先に作るため、Phase 3の競合解消の最小条件をUC-P2Aへ含め、Phase 2の会話横断episodeをUC-P3で実装する。安全性・forget・計測の最小条件は前段から必須であり、Phase 6/7まで先送りする意味ではない。
 
@@ -66,13 +68,13 @@ Exit gateはsilent useができ、隣接turnの不要callbackを抑え、敏感/
 
 UC-P3のprojectionとUC-P5で、重複の整理、episode圧縮、見直し候補、summary/index/cache refresh、retentionを扱う。重い処理を毎turnのcritical pathに置かず、必要性と費用を測る。自律reflectionを必須にしないが、品質条件を黙って省略しない。
 
-Exit gateは証拠より強いclaimを作らず、summaryが再生成可能で、revoked/supersededな内容が古いprojection経由で戻らないこと。確定イベントとjob/epochを検証する。
+Exit gateは証拠より強いclaimを作らず、summaryが再生成可能で、revoked/supersededな内容が古いprojection経由で戻らないこと。確定イベントとjob/epochを検証する。managed compactionを使う場合もprovider sessionをこの検証から除外しない。
 
 ## Phase 6 — user control and end-to-end forget
 
 UC-P6で既存memory UXを発展させ、閲覧/訂正/forget/共有反映待ちをdesktop/mobileで扱う。retrieval/summary/cache/index/jobと同期へ失効を反映する。#164の旧端末/offline条件をconsumeし、物理削除やprovider送信済み情報との区別も表示する。
 
-Exit gateはUIの削除とruntime forgetがずれず、古い端末やreloadで復活せず、適用範囲の全経路を実行済み証拠で確認できること。前段の実装も基本forgetを満たさなければreleaseしない。
+Exit gateはUIの削除とruntime forgetがずれず、古い端末やreloadで復活せず、適用範囲の全経路を実行済み証拠で確認できること。前段の実装も基本forgetを満たさなければreleaseしない。外部継続sessionを採用した場合は、旧sessionの利用終了と遅延結果の拒否も含める。
 
 ## Phase 7 — longitudinal evaluation and production observability
 
@@ -84,10 +86,10 @@ UC-P7で複数session/time/current-state変更/訂正/forget/一時adoptionのco
 
 #47は共有会話/Fact Graphとoutcome learningを保持し、#294の共通read/episodeをconsumeする。#164はstorage/sync/operation/migrationの必要契約を提供する。初期read adapterは既存repositoryで進められ、WASM等の全体完了を待たない。新共有write/forgetの有効化時は該当契約の完了が必要である。
 
-#152 / PR #174は既存security owner。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187と本棚domain、scheduling domain、Actual、明示設定から現在値を読む。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
+#152 / PR #174は既存security owner。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187は外部provider/managed runtimeの採否とadapterを所有し、本棚domain、scheduling domain、Actual、明示設定は各現在値を所有する。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
 
 ## Next implementation boundary
 
-UC-P0のfixtureと実測を整えた上で、最初のruntime PRはUC-P1Aだけを対象にする。新しいLLM呼出し、vector DB、episode worker、schema全面変更、会話UI全面変更、model差替えを混ぜない。
+UC-P0のfixtureと実測を整えた上で、最初のruntime PRはUC-P1Aだけを対象にする。新しいLLM呼出し、vector DB、episode worker、schema全面変更、会話UI全面変更、model差替えを混ぜない。Agents API導入をこのPRの完了条件に追加しない。
 
 文書PRのmergeはこのroadmapとworkの導入完了であり、親#294の完了ではない。新しいbranchを切る前に必ずcurrent mainと既存ownerを再確認する。

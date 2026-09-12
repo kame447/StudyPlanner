@@ -14,6 +14,8 @@ Owner Issue: #294
 
 実装インターフェースは [read/writeサービスの詳細設計](architecture/context-service-contract.md) が補足する。これはsupporting target architectureであり、canonical contractの上書きや実装済みの宣言ではない。実行順は [Current roadmap](roadmap/current.md)、ファイル単位の変更・依存・受入条件・rollbackは [段階実装work](work/20260912-context-harness-delivery.md)、最新のactive branch/PRとexact HEADは [Issue #294](https://github.com/kame447/StudyPlanner/issues/294) を参照する。
 
+外部のmanaged harnessを比較する場合は [実行基盤の委譲境界](architecture/managed-execution-boundary.md) を併せて読む。技術的な実行loop・compactionと、アプリのmemory/approval authorityを分離する補助設計である。Agents APIの公式情報、未検証事項、限定実験の採否は [external-integrationsのwork](../external-integrations/work/20260912-managed-agent-runtime-evaluation.md) に集約し、採用済みとは扱わない。
+
 ## Core boundary
 
 current structured stateは担当domainの現在の正本、semantic/profile memoryは別の現在値ownerがない再利用可能なユーザー固有の意味、episodic evidenceは時期と出典を持つ過去の根拠、working stateは現在のinteraction/sessionである。回復のため保存した会話状態を、そのまま恒常的なユーザーの好みと解釈しない。
@@ -38,4 +40,4 @@ PR #302でcanonical文書の導入は完了した。旧documentation branchは�
 
 #152 / PR #174はstored/indirect injection、durable poisoning、provenance、renderer securityの検証ownerを維持する。#246は学習相談の提案・review・adoption・promotionを所有し、助言や今回限りの採用をdurable memoryへ無断昇格しない。#213は本文を含まない品質・費用・latencyの観測を担当する。
 
-#187と本棚domainからは現在の教材情報を読む。scheduling domainはcompleted #278のScheduleEvent/Occurrence baselineを所有する。#190の明示設定、#51の承認一意性、#45/#89のtrace運用、#128の保存済みpreview互換もそれぞれのownerを維持する。
+#187と本棚domainからは現在の教材情報を読む。外部実行サービスの採否・adapterも#187へ接続し、provider sessionを#294や#47の正本にしない。scheduling domainはcompleted #278のScheduleEvent/Occurrence baselineを所有する。#190の明示設定、#51の承認一意性、#45/#89のtrace運用、#128の保存済みpreview互換もそれぞれのownerを維持する。
