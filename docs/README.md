@@ -26,7 +26,11 @@
 
 #294の既存canonical文書を正本とし、[read/writeサービスの詳細設計](domains/user-context/architecture/context-service-contract.md) はその補助設計、[段階実装work](domains/user-context/work/20260912-context-harness-delivery.md) は変更箇所・受入条件・rollbackの作業記録です。[実行順序](domains/user-context/roadmap/current.md) に従い、文書の導入とruntimeの完成を区別します。開発エージェント向けskills/orchestrationの#212とは別scopeです。
 
-Agents APIの登場に伴う変更は [実行基盤の委譲境界](domains/user-context/architecture/managed-execution-boundary.md) と [外部provider採否work](domains/external-integrations/work/20260912-managed-agent-runtime-evaluation.md) に分けています。技術的なloop/圧縮/復旧は比較対象ですが、記憶・正式状態・承認・保存の正本はStudyPlannerに残します。API採用、実API実験、本番データ送信はこの文書整備に含みません。
+## 情報収集を伴う学習相談へのAgents API利用
+
+2026-09-13に合意した用途は、複数の情報源を調べて根拠付きの助言候補を作る学習相談の前段だけです。[限定導入work](domains/external-integrations/work/20260912-managed-agent-runtime-evaluation.md) に利用範囲と本番有効化前の評価を置き、[学習相談の正仕様](domains/weekly-planning/spec/learning-consultation-and-advice.md) の検証・提案・ユーザー採用・通常planningへの接続を使います。[User Contextの読取境界](domains/user-context/architecture/managed-execution-boundary.md) は、相談へ渡す記憶とその訂正・忘却の扱いだけを補足します。
+
+通常の計画解釈・renderer・scheduler・承認・保存、および長期記憶の抽出・統合・定期要約はAgents APIへ移しません。外部調査のない短い相談まで一律に呼び出す方針ではありません。Lunaでの対象構成、総費用、待ち時間、根拠と安全性の試験は未実施で、本番API切替も行っていません。User Contextの実装順をこのAPI評価待ちにしません。
 
 ## 横断タスク・運用 (Cross-cutting work)
 

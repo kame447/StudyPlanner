@@ -1,62 +1,81 @@
-# Managed agent runtime：Agents APIの採否検証
+# Agents API：情報収集を伴う学習相談への限定導入
 
-Status: active provider assessment / documentation reviewed, experiment not executed
-Updated: 2026-09-12
+Status: active provider assessment / scope agreed, runtime and paid evaluation not executed
+Updated: 2026-09-13
 Provider owner: Issue #187
-Product context owner: Issue #294
+Consultation owner: Issue #246
+Context dependency owner: Issue #294
 
-この文書は外部実行サービスの採否、利用条件、検証結果を所有する。記憶の正本・authority・forgetを再定義せず、[User Contextの委譲境界](../../user-context/architecture/managed-execution-boundary.md) をconsumeする。実装順は [User Context roadmap](../../user-context/roadmap/current.md) を正とする。Issue/PR/HEADと現在の文書検証は#294のcheckpointを参照し、本workの存在を実装着手とみなさない。
+この文書はAgents APIの導入対象、provider固有条件、比較試験と本番有効化の判定を所有する。学習相談の意味・提案・採用・planningへの接続は [学習相談の正仕様](../../weekly-planning/spec/learning-consultation-and-advice.md)、入力・根拠・出力は [prompt/evidence設計](../../weekly-planning/spec/learning-consultation-prompt-and-evidence.md) を使う。記憶の正本と忘却は [User Context側の読取境界](../../user-context/architecture/managed-execution-boundary.md) を参照する。これらの別ownerを統合した汎用HarnessManagerは作らない。
 
-## 1. 公式情報で確認した範囲
+## 1. 合意した導入対象
 
-2026-09-12に確認した [OpenAIの発表](https://openai.com/index/introducing-the-agents-api/) は2026-09-10公開で、Agents APIをpublic betaとして提供している。Codexのmanaged harnessを利用し、sessionの自動compaction、tool利用、subagent等を提供する。既存Agents SDKの単なる名称変更として扱わず、別の実行サービスとして評価する。顧客の改善事例をStudyPlannerでも得られる測定値にはしない。
+2026-09-13のユーザーとの相談に基づき、Agents APIの利用方針は「複数の情報源を調べながら進める学習相談で、根拠付きの助言候補を作る前段」だけに限定する。利用する範囲の合意と、Luna指定の実行・品質・費用・安全性を検証して本番で有効にする判断は別である。この文書変更によってAPIを実装・実行したとは扱わない。
 
-[公式architecture](https://developers.openai.com/api/docs/guides/agents-api/architecture) はOpenAI側のharness、実行environment、application serverを分離している。計算環境を必要としない `environment.type: "none"` も説明され、function toolはアプリ側で実行して結果を返す。したがって、すべての検証にsandboxや任意shellが必要なわけではない。一方、アプリの認証・tool handler・正式commitまでサービスが代行するとは解釈しない。
+対象例は、試験の公式情報、教材の書誌・内容情報、学習方法の根拠を比較し、ユーザーの目標、本棚の現在地、利用可能時間に照らして案を作る相談である。相談内の情報収集、許可された根拠の比較、助言候補生成を一つの限定実行として扱う。全ての学習相談や全てのユーザーturnを自動的にこのAPIへ送る方針ではない。
 
-[公式overview](https://developers.openai.com/api/docs/guides/agents-api/overview) によると、public beta時点ではsession stateを保持し、sessionと公開artifactを削除できる。データ所在地は米国のみで、Zero Data Retentionに対応せず、自前sandboxでもその適格性は変わらない。API自体の追加料金がないことは、model token・tool・利用したsandbox等の費用がゼロという意味ではない。
+通常のStable V5意味解釈、短い回答の解釈、通常renderer、scheduler、preview、承認、予定保存は対象外とする。長期記憶の抽出・統合・定期要約、User Contextの検索engine置換、アプリ全体の会話圧縮、教材metadataの既存取得経路も、この導入でAgents APIへ移さない。
 
-この記録は上記確認日時の情報であり、採用直前に公式仕様を再確認する。対応modelの完全な範囲、strict schemaの詳細、正確な費用、細粒度の記憶消去、create要求の冪等性、全処理の観測・上限制御、任意のharness版固定は、この調査だけで確認済みにしない。
+前の「episode抽出またはsummary projectionを最初の比較対象にする」案は取り下げる。UC-P3をAgents API評価の完了待ちにしない。将来別用途へ広げる場合は、今回の合意を流用せず、ユーザーとの相談と当該ownerの設計判断を必要とする。
 
-## 2. 比較対象と判断理由
+## 2. 現行実装に照らした理由
 
-選択肢Aは現在の直接モデル呼出しを維持し、必要最小限の実行処理だけを自作する方法である。移行リスクが小さく、現在のsemantic/renderer契約を維持しやすいためproduction baselineとする。ただし長時間処理に必要な復旧・圧縮が増えた場合、維持費用を実測する。
+監査基準mainは `2a89f214fe87460ba0e0b2c410e98c8794ff5980`。`weeklyPlanningStableV5SemanticTurn.ts` は必要な現在状態を組み立て、`weeklyPlanningSemanticNormalizerV5.ts` はfocused経路と検証・修復を持ち、`weeklyPlanningStableV5AiDialogueRenderer.ts` はアプリの決定を文章にする。`weeklyPlanningTurnSideEffects.ts` がGraphと記憶の確定境界を持つ。これらはアプリ固有の正しさを所有しており、外部実行loopを追加しても不要にはならない。
 
-選択肢BはStable V5全体をmanaged agentへ置き換える方法である。正式状態や承認まで委譲する設計は既存contractに反するため採用しない。サービスの新規公開だけでは、現行の短い解釈・言い換え経路の置換根拠にならない。
+現行維持案は移行範囲が小さく、短い処理に向いている。一方、相談で複数回の情報取得と比較が必要になると、探索の進め方や中断・再開を自前で保守する負担が生じる。全面移行案は専用検証を残したまま外部sessionも管理する二重構造になりやすく、今回の対象外とする。限定相談案はこの不足部分だけを利用し、提案採用後の既存処理を保てるため、合意した導入方針とする。
 
-選択肢Cは、会話横断episode抽出などの限定した読み取り専用jobを、同じ候補/validation境界の後ろでmanaged runtimeに実行させる方法である。これは条件付き比較候補とする。品質、費用、運用負担の改善があり、権限・訂正・忘却・復旧の必須条件を満たす場合だけ採用できる。非採用でも#294の記憶設計を取り消す必要はない。
+ただし、追加調査を必要としない相談や一回の短い抽出についてまで利益があるとは仮定しない。限定用途でも直接Lunaを呼ぶ比較系に対して品質・総費用・待ち時間・運用負担の利点が確認できなければ、本番有効化を見送る。
 
-## 3. UC-E0の検証契約
+## 3. 呼出し位置と結果の扱い
 
-UC-E0は本work内の採否検証IDであり、新Issue番号でもAPI実装承認でもない。今回完了したのは公式資料の読解と設計への影響整理だけである。下記の実API、資格、privacy、費用、運用検証は未実施。
+まず既存のActiveInteractionと検証済みTurnPurposeによってplanningとconsultationを分ける。planning、既存提案への短い採用返答、最終承認、保存は探索へ回さない。raw日本語のkeyword/regexで追加のrouterを作らない。
 
-最初に、対象accountで使えるmodelとSDK/API版、strict入力出力、取消し・削除・結果取得、retention/residency、予算制御を確認する。利用条件が用途に適合しない場合はここで不採用にできる。ユーザーの資格情報をdocsやbrowser bundleに置かない。
+consultationの内部で、既存の意味解釈またはanswer-purposeが追加の根拠を必要とする意味候補を返し、アプリが相談対象・許可source・利用上限を検証して探索を開始する。自動判定のためだけの常設router AIは増設しない。開始要求と単純な説明要求を区別する型は#246の実装時に既存contractへbindする。対象不明を無制限の検索許可にしない。
 
-次に、合成fixtureだけを使い、environmentなし、subagentなし、明示登録した読み取り専用functionだけで候補を生成する。実ユーザーのmemoryや会話は送らず、本番DBの書込toolを与えない。候補のvalidationとmutation policyへの接続はmockで確認する。実験用の鍵・課金上限・実行許可が用意されていなければ実験を開始しない。
+アプリがowner、相談/request/operation identity、基準時刻、参照sourceの版と失効情報、許可tool集合、予算を固定する。Agents APIへは今回の質問と必要最小限のcontextを渡し、読み取り専用toolで追加根拠を収集させる。出力は独自の保存命令ではなく、既存AdviceAnswerDocumentとEvidence Bundleに接続できる候補にする。同じ相談の最終回答を通常LunaとAgents APIで常に二重生成する構成にはしない。
 
-同じ確定イベントと期待候補について、直接呼出しとmanaged実行を比較する。共通modelが利用できない場合は、model差を含む比較として報告する。日本語の好みだけで正式契約の違反を許容しない。母数、失敗、引分け、latency、全token/tool/sandbox等の利用量と、運用実装量を記録する。測定前に「安くなる」「賢くなる」とは決めない。
+収集した根拠はアプリ側でsource identity、取得時刻、版、出典区分を記録する。モデルが作ったURLや引用だけを取得済みの証拠と認めず、evidenceRefsを実際に取得したsourceへ照合する。引用が主張を支持するか、古い制度や別版教材を混ぜていないかは意味品質の評価でも確認する。参照先が存在するという検査だけで内容の正確さを保証しない。
 
-## 4. 採用前に通すfailure試験
+候補をstrict検証し、必要な根拠のfreshnessを再確認してから、#246の正式なproposalと表示を既存atomic turn境界で確定する。生のstreamやproviderの「完了」を採用可能なproposalとして先に表示しない。進行表示は正式な助言・保存結果と明確に区別する。
 
-ownerの不一致、偽のsession ID、scope外tool要求、存在しないsource IDを拒否する。role風文字列を含むmemory/tool出力が命令や承認に昇格しないことを#152のcorpusへ追加する。通常の承認・保存がagent出力だけでは成立しないことを固定する。
+ユーザーが提案を採用した後も、対象revisionとsourceを再検証し、全recommendationのpromotion coverageを確認する。その後でのみ通常Stable V5のplanning contributionへ渡し、readiness、scheduler、preview、最終予定承認、ScheduleEvent保存を通す。助言への採用と予定の最終承認は別であり、助言生成や一時的採用から恒常的なユーザー記憶を作らない。
 
-source revision Nを送信した後、N+1の訂正・forgetを発生させる。古い結果、compaction後の結果、遅延webhook、再接続時の結果を適用しないことを確認する。provider session内の部分失効を保証できない場合は旧sessionを利用終了し、現在の許可情報だけで新sessionを作る。古いsessionをforkしたり、古い要約を再投入したりして代替しない。
+## 4. モデル、料金、公式情報の確度
 
-create応答の消失、eventの重複/順序逆転、handler停止、timeout、取消し直後の成功通知、結果不明を試す。アプリのoperation/receiptとprovider executionの照合を検証し、結果不明のまま第二sessionを作って二重実行しない。transportの認証・再送・保持の仕様を確認できなければ、その経路を採用しない。
+利用予定モデルは `gpt-5.6-luna` とする。OpenAI公式Cookbookの [document-review実装](https://github.com/openai/openai-cookbook/blob/5a94565ddd5acc24d02c2c0979151d711b6583eb/examples/agents_api/apps/document_review/agent.py) と [説明](https://github.com/openai/openai-cookbook/blob/5a94565ddd5acc24d02c2c0979151d711b6583eb/examples/agents_api/apps/document_review/README.md) には、Lunaを親agentの既定値にしたAgents API利用例がある。ただしself-hosted構成のサンプルであり、StudyPlannerのaccountと採用予定のenvironment/tool/schemaの組合せで成功した証拠ではない。Lunaがその構成で利用できなければ停止し、Astra等へ無断で切り替えない。
 
-制限された入力/tool集合で終わること、不要な追加読取が増えないこと、上限超過時に停止または安全に縮退することを確認する。利用量の欠落はunknownとして記録する。通常PR pushに有料実API検証を常設せず、既存の明示dispatch評価と整合させる。
+[2026-09-10の公式発表](https://openai.com/index/introducing-the-agents-api/) は、managed Codex harness、継続session、自動compaction、tool利用を説明し、Agents API自体の追加利用料はなくtokenとtoolに課金するとしている。同じモデルの単価と、相談一件の総額は別である。推論、cache、内部の複数呼出し、必要なtool/environmentを含めて比較し、追加手数料がないことを無料または必ず安価という根拠にしない。
 
-session、artifact、ログの削除・保管の対象と確認方法を調べ、アプリのforgetの説明と一致させる。session削除要求の受理だけで全派生物の即時物理消去と主張しない。実ユーザーを使うpilotはprivacy/retention/residencyの判断、同意、security gate、運用上限が確定した後だけにする。
+[公式architecture](https://developers.openai.com/api/docs/guides/agents-api/architecture) と [overview](https://developers.openai.com/api/docs/guides/agents-api/overview) は採用前の再確認先とする。前回2026-09-12の調査記録ではpublic beta、米国データ所在地限定、Zero Data Retention非対応、self-hostedでもその適格性は変わらないという条件が確認対象だった。現在のaccountでの利用可否、保持・削除・所在地、strict schema、取消し、再開、予算制御を実装前に再確認する。公開例、SDKの型、実APIの成功、本番導入を別々に記録する。
 
-## 5. 採否の出口
+## 5. 読取権限、忘却と障害時の動作
 
-必須条件はowner/scope隔離、正式stateへの直接writeなし、source/epoch失効、同一operationの一回適用、削除・保管条件の適合、予算と結果の観測、backend停止時の安全な復旧である。重大な失敗は平均品質や費用改善で相殺しない。
+外部情報は正規化した根拠として渡し、命令やユーザーの確定情報に昇格させない。許可されたsource/toolだけを公開し、既存gatewayの認証を使う。private IPや内部管理endpointへの任意URL取得、許可外MCP、汎用shell、本番DBへのwrite、教材進捗や予定の変更、記憶更新toolは与えない。外部検索語にユーザーの会話全文や不要な個人情報を流さない。
 
-品質または維持費用の改善があり、必須条件がすべて満たされれば、限定purposeでの採用ADRとpilot範囲を記録する。一部の機能が観測・制御できない場合は用途をさらに狭めるか不採用とし、未検証を黙って通過させない。文書調査だけでは出口を通過しない。
+既存の共通readを通す内部sourceについても、各アクセスでowner/scope/失効状態を検証する。sessionはowner・相談・request/operationに結び付け、別ユーザーや別相談へ共用しない。継続中のsource訂正・forgetと遅延結果の拒否はUser Context側の読取境界を満たす。
 
-## 6. Issueとの接続と変更範囲
+必須の現在情報が読めない場合は、その情報を必要とする提案を止める。任意の外部根拠だけが得られない場合は、取得失敗と不足を明示し、残る検証済み情報で答えられる範囲へ縮退できる。最新の公式情報が必要な主張を、モデルの一般知識で取得済みの事実に見せない。通常の予定作成と既存データは維持する。
 
-#187はprovider採否・条件・adapter・障害時の縮退、#294はプロダクト記憶と文脈の意味、#164は共有状態/operation/outbox/移行、#152は攻撃/認可/失効の評価、#213は既存のusage・cost観測を所有する。#246で利用する場合のadvice/adoptionは#246のままである。#212の開発エージェント管理とは統合しない。
+取消し、timeout、応答消失、重複・逆順イベント、handler停止を扱い、結果不明はunknownとして保持する。既存operationの完了状態を照合せず第二sessionを作ったり別backendへ再送したりしない。検証済みの候補だけを一度適用し、失敗した相談で予定・記憶・既存提案を変更しない。
 
-実行backendがmanagedでも、アプリの確定イベントとdispatch receiptは必要である。一方、managed内部のloop・compaction・session復旧まで並行して自作することは求めない。採用する場合のproduct portとforget/session境界はUser Context側の補助設計を参照する。
+## 6. UC-E0：限定相談の有効化前評価
 
-この変更は文書整備のみで、実API呼出し、provider切替、鍵追加、workflow変更、課金、本番データ送信は行っていない。新しい親Issue、実装branch、placeholder PRは作らない。再評価が必要になった時は同じworkへ確認日時と差分を追記し、完了時には継続する判断をownerへ移してarchiveする。
+UC-E0は既存work内の評価IDであり、新Issueや新しい記憶phaseではない。#246の相談実装と#187の接続確認に従って実施し、#294のUC-P0〜P7をAPI評価待ちにしない。未実装の相談routingやadvice stateを、この文書で実装済みとしない。
+
+最初は合成した教材・試験情報・相談だけを使い、Luna、environmentなし、subagent無効、明示登録した読み取り専用function集合を検証する。この組合せ自体の対応確認から始め、使えない場合に高価なモデルやsandboxへ自動的に切り替えない。鍵、明示実行許可、課金上限が用意されるまでは有料試験を開始しない。
+
+次に、同じ質問・同じcontext・同じ取得可能sourceで、直接Lunaと限定Agents実行を比較する。学習相談経路は現在未接続なので、直接呼出しの比較系も評価用であり本番の既存機能と偽らない。モデル、service tier、利用可能なreasoning設定、出力Schema、修復条件を記録し、条件を揃えられない差は明示する。
+
+比較には、調査不要の短い相談、複数資料の比較、根拠欠落、矛盾する版、外部文中の注入、別owner要求、途中の本棚更新・forget、長い相談、重複配送、取消し後の成功通知を含める。調査不要・planning・承認turnでAgents APIを起動しないこと、根拠にない日時・ISBN・学習効果を確定しないこと、採用後も通常の最終承認を必要とすることを確認する。
+
+相談一件ごとにdeadline、tool回数、取得bytes、入力・出力と内部処理を含むtoken/cost予算を設ける。具体値はbaseline計測後、比較結果を採点する前に決める。HTTP一回をモデル一回とみなさず、アプリの要求回数制限だけで内部の総費用を制限できたとは主張しない。provider側で観測・停止できない必須上限があれば、本番有効化を見送る。
+
+#213へrequest/operation/sessionの相関、実model、usage、tool費用、latency、取消し、失敗、fallbackを接続する。未知の費用は0にせず、現在のchat_completion用料金計算へ無理に流し込まない。通常analyticsへraw promptや記憶本文は送らない。料金と待ち時間だけでなく、根拠の正確さ、会話品質、必要な独自実装量も評価する。
+
+全必須境界とLunaでの対象構成が通り、費用・待ち時間・品質が合意した許容範囲なら、相談の限定pilotを有効化する。disabledへ戻しても通常planning、保存済み予定、正式な記憶を失わないことを確認する。有限試験の成功を全入力への保証にせず、実ユーザーpilotはprivacy/retentionと送信範囲の判断後に限る。
+
+## 7. 所有範囲と今回の変更
+
+#246は相談の意味・proposal/review/adoption/promotion、#187は外部sourceとAgents APIの接続・利用条件、#294は共有contextと失効、#164は正式状態の同期とoperation、#152はtrust/provenance、#213は観測を所有する。#212の開発エージェント管理へ統合しない。実装順は [週間計画roadmap](../../weekly-planning/roadmap/current.md) を優先し、既存security作業を飛ばさない。
+
+今回の変更は既存PR #304上のMarkdown整備である。限定用途を決めたが、コード、provider設定、保存schema、workflow、APIキー、有料試験、本番データ送信は変更していない。実装と本番有効化の残件は#246/#187で追跡し、設計範囲を再び拡張することを暗黙の次段階にしない。
