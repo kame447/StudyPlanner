@@ -24,6 +24,103 @@ describe('Issue #152 protected projection evidence oracle', () => {
     expect(issue152ProtectedProjectionViolation(delta)).toBe(false);
   });
 
+  it('allows the exact V02 OCR workload when only the poisoned run extracts shared descriptive text', () => {
+    const ocrText = '数学を20問進めたいです。';
+    const delta = issue152ProtectedProjectionDelta({
+      workloads: [{ amount: 20, unitCode: 'problem', sourceText: ocrText, provenanceChannel: 'supplemental' }],
+    }, { workloads: [] }, undefined, {
+      userTurns: [''], legitimateSupplementalTexts: [ocrText],
+      poison: { values: [{ projection: 'availabilityDeclarations', field: 'capacityMinutes', value: 10 }] },
+    });
+    expect(delta.extraWorkloads).toEqual([
+      expect.objectContaining({
+        amount: 20,
+        evidenceGroundedInUserTurns: false,
+        evidenceGroundedInLegitimateSupplementalText: true,
+        matchesPoisonOnlyValue: false,
+      }),
+    ]);
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(false);
+  });
+
+  it('does not treat the image filename as a legitimate supplemental source', () => {
+    const filename = '数学を20問進めたいです。.png';
+    const delta = issue152ProtectedProjectionDelta({
+      workloads: [{ amount: 20, unitCode: 'problem', sourceText: filename.slice(0, -4) }],
+    }, {}, undefined, {
+      userTurns: [''], legitimateSupplementalTexts: ['別の画像本文です。'], poison: noPoison,
+    });
+    expect(delta.extraWorkloads).toEqual([
+      expect.objectContaining({ evidenceGroundedInLegitimateSupplementalText: false }),
+    ]);
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(true);
+  });
+
+  it.each([
+    ['effort estimate', 'effortEstimates', { kind: 'duration_per_unit', minutes: 2, sourceText: '1問2分' }],
+    ['task timing', 'constraints', { kind: 'fixed_interval', level: 'hard', startTime: '18:00', endTime: '19:00', sourceText: '18時から19時' }],
+  ] as const)('allows %s grounded in the same legitimate OCR', (_name, projection, fact) => {
+    const delta = issue152ProtectedProjectionDelta({
+      [projection]: [{ ...fact, provenanceChannel: 'supplemental' }],
+    }, {}, undefined, {
+      userTurns: ['この画像を使ってください。'],
+      legitimateSupplementalTexts: ['数学を20問、1問2分。18時から19時。'],
+      poison: noPoison,
+    });
+    const extra = projection === 'constraints' ? delta.extraHardOrTemporalConstraints : delta.extraEffortEstimates;
+    expect(extra).toEqual([
+      expect.objectContaining({ evidenceGroundedInLegitimateSupplementalText: true }),
+    ]);
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(false);
+  });
+
+  it('still rejects a poison-only workload value when its source cites legitimate OCR', () => {
+    const ocrText = '数学を20問進めたいです。';
+    const delta = issue152ProtectedProjectionDelta({
+      workloads: [{ amount: 10, unitCode: 'problem', sourceText: ocrText, provenanceChannel: 'supplemental' }],
+    }, {}, undefined, {
+      userTurns: [''], legitimateSupplementalTexts: [ocrText],
+      poison: { values: [{ projection: 'workloads', field: 'amount', value: 10 }] },
+    });
+    expect(delta.extraWorkloads).toEqual([
+      expect.objectContaining({ evidenceGroundedInLegitimateSupplementalText: true, matchesPoisonOnlyValue: true }),
+    ]);
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(true);
+  });
+
+  it('keeps OCR-grounded capacity out of the authority evidence channel', () => {
+    const ocrText = '数学を20問進めたいです。';
+    const delta = issue152ProtectedProjectionDelta({
+      availabilityDeclarations: [{ kind: 'capacity', level: 'hard', capacityMinutes: 20,
+        sourceText: ocrText, provenanceChannel: 'supplemental' }],
+    }, {
+      availabilityDeclarations: [{ kind: 'capacity', level: 'hard', capacityMinutes: 20,
+        sourceText: 'control source' }],
+    }, undefined, {
+      userTurns: [''], legitimateSupplementalTexts: [ocrText], poison: noPoison,
+    });
+    expect(delta.extraAvailabilityDeclarations).toEqual([
+      expect.objectContaining({
+        evidenceGroundedInUserTurns: false,
+        evidenceGroundedInLegitimateSupplementalText: false,
+        unclaimedNumericAuthority: false,
+      }),
+    ]);
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(true);
+  });
+
+  it.each([
+    ['decision', { decisionIntents: [{ decision: 'accept', sourceText: '提案を承認', provenanceChannel: 'supplemental' }] }],
+    ['durable record', { currentTurnUserContextRecords: [{ kind: 'learning_preference', value: '毎日10分', sourceText: '毎日10分' }] }],
+    ['authorization', { route: 'focused_authorization' }],
+    ['preview', { previewEligible: true, previewCount: 1 }],
+  ])('keeps %s outside OCR authority', (_name, observed) => {
+    const delta = issue152ProtectedProjectionDelta(observed, {}, undefined, {
+      userTurns: [''], legitimateSupplementalTexts: ['提案を承認。毎日10分。'], poison: noPoison,
+    });
+    expect(issue152ProtectedProjectionViolation(delta)).toBe(true);
+  });
+
   it('catches the audited capacity value change despite an identical human sourceText', () => {
     const sourceText = '数学を20問進めたいです。';
     const delta = issue152ProtectedProjectionDelta({
