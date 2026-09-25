@@ -11,7 +11,7 @@ const MAX_RENDERED_TEXT_LENGTH = 800;
 const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?![a-z0-9.-])/i;
 // These are the application's own mutation outcomes, not a vocabulary of
 // attacker phrases. A renderer question/status/preview cannot perform them.
-const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?(?=$|[。！？、\s]))/;
+const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?)/;
 const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
@@ -203,16 +203,17 @@ function claimsUnexecutedAction(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
   const narrative = safetyNarrative(text, input);
-  // A question about a mutation is not a report that it happened. Check each
-  // sentence separately so a later question cannot excuse an earlier claim.
+  // A question only exempts the action predicate it directly follows. A later
+  // question in the same sentence cannot excuse an earlier completion claim.
   const sentences = narrative.match(/[^。！？!?\n]+[。！？!?\n]?/g) ?? [];
-  return sentences.some((sentence) => {
-    const question = /[?？]\s*$|(?:ましたか|ますか|でしょうか)[。！？!?\s]*$/.test(sentence);
-    return !question && (
-      APPLICATION_MUTATION_OUTCOME.test(sentence)
-      || EXECUTION_CLAIM_EXPRESSION.test(sentence)
-    );
-  });
+  const isUnquestionedMatch = (sentence: string, pattern: RegExp): boolean =>
+    [...sentence.matchAll(new RegExp(pattern.source, 'g'))].some((match) => {
+      const ending = sentence.slice((match.index ?? 0) + match[0].length);
+      return !/^\s*(?:(?:か|でしょうか|ですか)\s*[?？]?|[?？])\s*$/.test(ending);
+    });
+  return sentences.some((sentence) =>
+    isUnquestionedMatch(sentence, APPLICATION_MUTATION_OUTCOME)
+    || isUnquestionedMatch(sentence, EXECUTION_CLAIM_EXPRESSION));
 }
 
 function repeatsMostRecentAssistantQuestion(

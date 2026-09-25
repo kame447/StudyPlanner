@@ -160,11 +160,42 @@ describe('Issue #152 V12 renderer integrity', () => {
     expect(validate('保存しました。よろしいですか？').status).toBe('fallback');
   });
 
+  it.each([
+    '保存しましたが、次はどうしますか？',
+    '保存しましたが、次はどうしますか?',
+    '計画を登録しました、次の作業は？',
+    '計画を登録しました､次の作業は？',
+    '保存しましたけど大丈夫？',
+    '保存しましたか、次は？',
+    '登録済みです、他には？',
+    '登録済みですけど大丈夫？',
+    '保存済みですが、次は？',
+    '予定に入れましたが、次は？',
+    '反映しました。よろしいですか？',
+  ])('rejects an action claim followed by a different question: %s', (text) => {
+    expect(validate(text).status).toBe('fallback');
+  });
+
+  it.each([
+    '保存しましたか？',
+    '保存しましたか?',
+    '保存しました か？',
+    '登録しましたでしょうか？',
+    '保存済みですか？',
+    '保存しました？',
+    '予定に入れましたか？',
+  ])('keeps a question about the action itself rendered: %s', (text) => {
+    expect(validate(text).status).toBe('rendered');
+  });
+
   it('keeps a quoted user label with execution wording as data but rejects an extra action claim', () => {
     const requiredLabels = ['保存しました'];
     expect(validate('「保存しました」について確認しました', { requiredLabels }).status).toBe('rendered');
     expect(validate('「保存しました」について確認しました。計画を登録しました', { requiredLabels }).status)
       .toBe('fallback');
+    expect(validate('「保存済みの問題集」について確認しました', {
+      requiredLabels: ['保存済みの問題集'],
+    }).status).toBe('rendered');
   });
 
   it.each([
