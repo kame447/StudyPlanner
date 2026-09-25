@@ -9,6 +9,7 @@ import {
   WeeklyPlanningTraceFirestoreClient,
   type WeeklyPlanningTraceFirestoreEnv,
 } from './weeklyPlanningTraceFirestore';
+import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
@@ -353,6 +354,7 @@ function errorType(caught: unknown): string {
 export async function handleWeeklyPlanningTraceAdminEntriesPage(
   request: Request,
   rawEnv: Record<string, unknown>,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<Response> {
   const env = rawEnv as unknown as WeeklyPlanningTraceAdminEntriesPageEnv;
   const context: TraceRequestContext = {
@@ -387,7 +389,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         'ログイン情報を確認できませんでした。', 'trace_auth_invalid', 'auth');
     }
 
-    const firestore = new WeeklyPlanningTraceFirestoreClient(env);
+    const firestore = new WeeklyPlanningTraceFirestoreClient(env, tokenProvider);
     const admin = await firestore.getDocument(ADMINS, session.uid);
     if (admin?.enabled !== true || admin.weeklyPlanningTraceReader !== true) {
       return errorResponse(request, env, context, 403,

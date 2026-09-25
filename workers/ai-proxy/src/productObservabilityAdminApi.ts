@@ -1,12 +1,17 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import type { FirestoreOrderedCursor } from './firestoreServiceAccountClient';
-import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
+import {
+  FirestoreServiceAccountClient,
+  FirestoreServiceAccountTokenProvider,
+  type FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { ProductObservabilityAdminAnalysisService } from './productObservabilityAdminAnalysisService';
 import { ProductObservabilityAdminPlanningAnalysisService } from './productObservabilityAdminPlanningAnalysisService';
 import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
 } from './productObservabilityReadModelService';
+import { ProductObservabilityStore } from './productObservabilityStore';
 import { ProductObservabilitySystemStatusService } from './productObservabilitySystemStatusService';
 import { ProductObservabilityWeeklyPlanningDiagnosticAdapter } from './productObservabilityWeeklyPlanningDiagnosticAdapter';
 
@@ -97,6 +102,7 @@ function bearerToken(request: Request): string {
 async function authenticatedAdminUid(
   request: Request,
   env: ProductObservabilityAdminApiEnv,
+  firestore: FirestoreServiceAccountClient,
 ): Promise<string | null> {
   const apiKey = env.FIREBASE_WEB_API_KEY?.trim();
   const token = bearerToken(request);
@@ -113,7 +119,7 @@ async function authenticatedAdminUid(
   const payload = await response.json() as FirebaseLookupResponse;
   const user = payload.users?.[0];
   if (!user?.localId || user.emailVerified === false) return null;
-  const admin = await new FirestoreServiceAccountClient(env).getDocument('admins', user.localId);
+  const admin = await firestore.getDocument('admins', user.localId);
   return admin?.enabled === true ? user.localId : null;
 }
 
@@ -191,8 +197,11 @@ export function isProductObservabilityAdminPath(pathname: string): boolean {
 export async function handleProductObservabilityAdminApi(
   request: Request,
   rawEnv: Record<string, unknown>,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<Response> {
   const env = rawEnv as unknown as ProductObservabilityAdminApiEnv;
+  const invocationTokenProvider = tokenProvider ?? new FirestoreServiceAccountTokenProvider(env);
+  const firestore = new FirestoreServiceAccountClient(env, invocationTokenProvider);
   const origin = corsOrigin(request, env);
   if (origin === '') return jsonResponse(request, env, 403, { error: 'Origin is not allowed.' });
   if (request.method === 'OPTIONS') {
@@ -201,13 +210,18 @@ export async function handleProductObservabilityAdminApi(
   if (request.method !== 'GET') {
     return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
   }
-  const adminUid = await authenticatedAdminUid(request, env);
+  const adminUid = await authenticatedAdminUid(request, env, firestore);
   if (!adminUid) return jsonResponse(request, env, 403, { error: 'Admin access is required.' });
 
   const url = new URL(request.url);
-  const readModel = new ProductObservabilityReadModelService(env);
-  const analysis = new ProductObservabilityAdminAnalysisService(env);
-  const planningAnalysis = new ProductObservabilityAdminPlanningAnalysisService(env);
+  const readModel = new ProductObservabilityReadModelService(env, firestore);
+  const analysis = new ProductObservabilityAdminAnalysisService(
+    env,
+    firestore,
+    readModel,
+    new ProductObservabilityStore(env, firestore),
+  );
+  const planningAnalysis = new ProductObservabilityAdminPlanningAnalysisService(env, firestore);
   try {
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_OVERVIEW_PATH) {
       const fromDate = url.searchParams.get('from')?.trim() ?? '';
@@ -243,7 +257,7 @@ export async function handleProductObservabilityAdminApi(
     }
 
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_SYSTEM_PATH) {
-      const system = new ProductObservabilitySystemStatusService(env);
+      const system = new ProductObservabilitySystemStatusService(env, firestore);
       const result = await system.getSystemStatus(
         environmentFrom(url.searchParams.get('environment'), env),
       );
@@ -253,7 +267,10 @@ export async function handleProductObservabilityAdminApi(
     if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH
       || url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOG_ENTRIES_PATH
       || url.pathname === PRODUCT_OBSERVABILITY_ADMIN_DEBUG_BUNDLE_PATH) {
-      const diagnostics = new ProductObservabilityWeeklyPlanningDiagnosticAdapter(env);
+      const diagnostics = new ProductObservabilityWeeklyPlanningDiagnosticAdapter(
+        env,
+        invocationTokenProvider,
+      );
       await diagnostics.assertTraceReader(adminUid);
       if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH) {
         const page = await diagnostics.listSessions({

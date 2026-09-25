@@ -44,6 +44,12 @@ import {
   ProductObservabilityRollupEngine,
   type ProductObservabilityRollupEnv,
 } from './productObservabilityRollup';
+import {
+  FirestoreServiceAccountClient,
+  FirestoreServiceAccountTokenProvider,
+  type FirestoreServiceAccountEnv,
+  type FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
 import worker from './worker';
 
@@ -81,12 +87,16 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
-async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<{
+async function runScheduledObservabilityRollup(
+  env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
+): Promise<{
   engine: ProductObservabilityRollupEngine;
   dirtySources: ObservabilityActiveUserDirtySource[];
 }> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
+    firestore,
   );
   let dirtySources: ObservabilityActiveUserDirtySource[] = [];
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
@@ -100,18 +110,22 @@ async function runScheduledObservabilityRollup(env: Record<string, unknown>): Pr
 async function runScheduledActiveUserSnapshots(
   env: Record<string, unknown>,
   dirtySources: readonly ObservabilityActiveUserDirtySource[],
+  firestore: FirestoreServiceAccountClient,
 ): Promise<void> {
   const snapshots = new ProductObservabilityActiveUserSnapshotService(
     env as unknown as ProductObservabilityActiveUserSnapshotEnv,
+    firestore,
   );
   await snapshots.refreshAffected(dirtySources);
 }
 
 async function runScheduledProfileRegistrationBackfill(
   env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
 ): Promise<void> {
   const backfill = new ProductObservabilityProfileRegistrationBackfillService(
     env as unknown as ProductObservabilityProfileRegistrationBackfillEnv,
+    firestore,
   );
   for (
     let index = 0;
@@ -123,9 +137,13 @@ async function runScheduledProfileRegistrationBackfill(
   }
 }
 
-async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
+async function runScheduledObservabilityRetention(
+  env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
+): Promise<void> {
   const retention = new ProductObservabilityRetentionService(
     env as unknown as ProductObservabilityRetentionEnv,
+    firestore,
   );
   for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await retention.runBatch(RETENTION_BATCH_SIZE);
@@ -133,10 +151,17 @@ async function runScheduledObservabilityRetention(env: Record<string, unknown>):
   }
 }
 
-async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
+async function runScheduledObservabilityMaintenance(
+  env: Record<string, unknown>,
+  tokenProvider: FirestoreTokenProvider,
+): Promise<void> {
+  const firestore = new FirestoreServiceAccountClient(
+    env as unknown as FirestoreServiceAccountEnv,
+    tokenProvider,
+  );
   let rollup: Awaited<ReturnType<typeof runScheduledObservabilityRollup>> | null = null;
   try {
-    rollup = await runScheduledObservabilityRollup(env);
+    rollup = await runScheduledObservabilityRollup(env, firestore);
   } catch (error) {
     console.error('[Product Observability] scheduled rollup failed', {
       message: error instanceof Error ? error.message : String(error),
@@ -145,7 +170,7 @@ async function runScheduledObservabilityMaintenance(env: Record<string, unknown>
 
   if (rollup) {
     try {
-      await runScheduledActiveUserSnapshots(env, rollup.dirtySources);
+      await runScheduledActiveUserSnapshots(env, rollup.dirtySources, firestore);
       await rollup.engine.clearActiveUserDirtySources(rollup.dirtySources);
     } catch (error) {
       console.error('[Product Observability] active-user snapshot refresh failed', {
@@ -155,14 +180,14 @@ async function runScheduledObservabilityMaintenance(env: Record<string, unknown>
   }
 
   try {
-    await runScheduledProfileRegistrationBackfill(env);
+    await runScheduledProfileRegistrationBackfill(env, firestore);
   } catch (error) {
     console.error('[Product Observability] profile registration backfill failed', {
       message: error instanceof Error ? error.message : String(error),
     });
   }
 
-  await runScheduledObservabilityRetention(env);
+  await runScheduledObservabilityRetention(env, firestore);
 }
 
 export default {
@@ -171,20 +196,25 @@ export default {
     env: Record<string, unknown>,
     executionContext?: ExecutionContext,
   ): Promise<Response> {
+    const tokenProvider = new FirestoreServiceAccountTokenProvider(
+      env as unknown as FirestoreServiceAccountEnv,
+    );
     const pathname = new URL(request.url).pathname;
     if (isProductObservabilityAdminPath(pathname)) {
-      return await handleProductObservabilityAdminApi(request, env);
+      return await handleProductObservabilityAdminApi(request, env, tokenProvider);
     }
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(
         request,
         env as unknown as ProductObservabilityApiEnv,
+        tokenProvider,
       );
     }
     if (isMaterialMetadataPath(pathname)) {
       return await handleMaterialMetadataApi(
         request,
         env as unknown as MaterialMetadataApiEnv,
+        tokenProvider,
       );
     }
 
@@ -196,7 +226,7 @@ export default {
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = await worker.fetch(request, env as never);
+    const response = await worker.fetch(request, env as never, tokenProvider);
 
     if (observerRequest) {
       scheduleAiRequestMetric(
@@ -205,6 +235,7 @@ export default {
           request: observerRequest,
           response: response.clone(),
           env: observerEnv,
+          firestoreTokenProvider: tokenProvider,
           startedAtMs,
           occurredAt,
           onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
@@ -229,8 +260,11 @@ export default {
     env: Record<string, unknown>,
     executionContext: ExecutionContext,
   ): Promise<void> {
+    const tokenProvider = new FirestoreServiceAccountTokenProvider(
+      env as unknown as FirestoreServiceAccountEnv,
+    );
     executionContext.waitUntil(
-      runScheduledObservabilityMaintenance(env).catch((error) => {
+      runScheduledObservabilityMaintenance(env, tokenProvider).catch((error) => {
         console.error('[Product Observability] scheduled retention failed', {
           message: error instanceof Error ? error.message : String(error),
         });

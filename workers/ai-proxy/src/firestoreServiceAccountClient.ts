@@ -4,6 +4,10 @@ export interface FirestoreServiceAccountEnv {
   FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: string;
 }
 
+export interface FirestoreTokenProvider {
+  getToken(): Promise<string>;
+}
+
 interface OAuthTokenResponse {
   access_token?: string;
   expires_in?: number;
@@ -232,9 +236,10 @@ function equalityWhere(filters: Array<{ field: string; value: string }>): object
   })));
 }
 
-export class FirestoreServiceAccountClient {
+export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvider {
   private accessToken = '';
   private accessTokenExpiresAt = 0;
+  private inFlightToken: Promise<string> | null = null;
 
   constructor(
     private readonly env: FirestoreServiceAccountEnv,
@@ -242,30 +247,27 @@ export class FirestoreServiceAccountClient {
     private readonly cryptoApi: Crypto = crypto,
   ) {}
 
-  private projectId(): string {
-    const value = this.env.FIREBASE_PROJECT_ID?.trim();
-    if (!value) throw new Error('FIREBASE_PROJECT_ID is not configured');
-    return value;
-  }
-
-  private databaseName(): string {
-    return `projects/${this.projectId()}/databases/(default)`;
-  }
-
-  private documentsBase(): string {
-    return `https://firestore.googleapis.com/v1/${this.databaseName()}/documents`;
-  }
-
-  private documentName(collection: string, id: string): string {
-    return `${this.databaseName()}/documents/${collection}/${id}`;
-  }
-
-  private async serviceAccountToken(): Promise<string> {
+  async getToken(): Promise<string> {
     const now = Date.now();
     if (this.accessToken && now + TOKEN_EARLY_REFRESH_MS < this.accessTokenExpiresAt) {
       return this.accessToken;
     }
+    if (this.inFlightToken) return this.inFlightToken;
 
+    const tokenRequest = this.fetchToken(now);
+    this.inFlightToken = tokenRequest;
+    void tokenRequest.then(
+      () => {
+        if (this.inFlightToken === tokenRequest) this.inFlightToken = null;
+      },
+      () => {
+        if (this.inFlightToken === tokenRequest) this.inFlightToken = null;
+      },
+    );
+    return tokenRequest;
+  }
+
+  private async fetchToken(now: number): Promise<string> {
     const email = this.env.FIREBASE_SERVICE_ACCOUNT_EMAIL?.trim();
     const privateKey = this.env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY?.trim();
     if (!email || !privateKey) throw new Error('Firebase service account is not configured');
@@ -309,6 +311,52 @@ export class FirestoreServiceAccountClient {
     this.accessToken = payload.access_token;
     this.accessTokenExpiresAt = now + Math.max(60, payload.expires_in ?? 3600) * 1000;
     return this.accessToken;
+  }
+}
+
+export class FirestoreServiceAccountClient {
+  private readonly tokenProvider: FirestoreTokenProvider;
+
+  constructor(
+    private readonly env: FirestoreServiceAccountEnv,
+    fetcherOrTokenProvider: typeof fetch | FirestoreTokenProvider = workerSafeFetch,
+    cryptoApi: Crypto = crypto,
+  ) {
+    if (typeof fetcherOrTokenProvider === 'function') {
+      this.fetcher = fetcherOrTokenProvider;
+      this.tokenProvider = new FirestoreServiceAccountTokenProvider(
+        env,
+        fetcherOrTokenProvider,
+        cryptoApi,
+      );
+      return;
+    }
+    this.fetcher = workerSafeFetch;
+    this.tokenProvider = fetcherOrTokenProvider;
+  }
+
+  private readonly fetcher: typeof fetch;
+
+  private projectId(): string {
+    const value = this.env.FIREBASE_PROJECT_ID?.trim();
+    if (!value) throw new Error('FIREBASE_PROJECT_ID is not configured');
+    return value;
+  }
+
+  private databaseName(): string {
+    return `projects/${this.projectId()}/databases/(default)`;
+  }
+
+  private documentsBase(): string {
+    return `https://firestore.googleapis.com/v1/${this.databaseName()}/documents`;
+  }
+
+  private documentName(collection: string, id: string): string {
+    return `${this.databaseName()}/documents/${collection}/${id}`;
+  }
+
+  private async serviceAccountToken(): Promise<string> {
+    return await this.tokenProvider.getToken();
   }
 
   private async request(url: string, init: RequestInit = {}): Promise<Response> {

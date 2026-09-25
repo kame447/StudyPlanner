@@ -13,6 +13,7 @@ import {
   type AiRequestUsage,
 } from './aiRequestObservability';
 import type { ProductObservabilityEnv } from './productObservabilityStore';
+import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 
 export interface AiProxyRequestObserverEnv extends ProductObservabilityEnv {
   FIREBASE_WEB_API_KEY?: string;
@@ -193,6 +194,7 @@ export async function observeAiProxyRequest(params: {
   request: Request;
   response: Response;
   env: AiProxyRequestObserverEnv;
+  firestoreTokenProvider?: FirestoreTokenProvider;
   startedAtMs: number;
   occurredAt: string;
   usage?: AiRequestUsage | null;
@@ -224,6 +226,7 @@ export async function observeAiProxyRequest(params: {
 
   await recordAiRequestMetricBestEffort({
     env: params.env,
+    firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
     occurredAt: params.occurredAt,
