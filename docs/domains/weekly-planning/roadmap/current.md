@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-11
+Updated: 2026-09-25
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -45,9 +45,21 @@ Issue #152 remains a valid separate security scope.
 - Draft PR: #174
 - the branch is intentionally long-lived, but its historical verification is not current-main evidence.
 
-After #136 reaches a durable terminal point, reconcile PR #174 with current main before relying on it. Then continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification. Do not absorb #136 semantic-regression work or general UI QA into the security branch.
+Issue #136 has reached its durable terminal point. Reconcile PR #174 with current main before relying on it, then continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification. Do not absorb #136 semantic-regression work or general UI QA into the security branch.
 
-This security/provenance work is also an input to later #246 production consultation wiring.
+This security/provenance work is also an input to later #246 production consultation wiring and the applicable #305 Jev production rollout gates.
+
+## Issue #305: bounded Jev integration
+
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) turns the completed 2026-09-18 research into an implementation backlog. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint are owned by that Issue, not duplicated in a second design document. Jev is not connected to production by this roadmap change.
+
+The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and existing PR #174; before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
+
+After Japanese gold/holdout evaluation and calibration, enable only accepted eligible cases through a reversible canary. Low confidence, provider failure or mixed meaning must preserve the existing safe fallback and application authority. Numerical thresholds in the research are hypotheses to evaluate, not already-achieved guarantees or automatic rollout approval.
+
+Only after the first gate passes should the same boundary expand to focused contextual categorical fields, then user-context owner routing and the #246 TurnPurpose consumer when its production integration is ready. These are ordered evaluation scopes, not instructions to pre-create one Issue, branch or PR per field. Keep free-value extraction and prose with the existing generative paths unless a later measured change is explicitly accepted.
+
+The #246/#294 memory and consultation owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 is separate from ordinary Stable V5 classification; neither integration replaces the other or becomes a new formal state authority.
 
 ## Issue #246: learning consultation before scheduling
 

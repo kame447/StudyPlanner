@@ -1,7 +1,7 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-08-30
+Updated: 2026-09-25
 
 Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
 
@@ -44,16 +44,18 @@ These documents supplement the canonical owners above; they do not override them
 
 - Stable V5 owns weekly-planning production semantics.
 - AI interprets natural language and realizes typed dialogue; deterministic application code owns validation, lifecycle, repair/question/proposal decisions, scheduling, preview, approval and save.
-- Issue #246 extends the product toward pre-scheduling learning consultation: user questions can be grounded in StudyPlanner context, answered as advisory state, and promoted into normal planning only after explicit user adoption. The runtime implementation is still pending; [the canonical consultation requirement](spec/learning-consultation-and-advice.md) must not be read as an already-shipped production guarantee.
+- Issue #246 extends the product toward pre-scheduling learning consultation. Its dormant typed foundation was merged by PR #280, but production routing and advice execution are still pending; [the canonical consultation requirement](spec/learning-consultation-and-advice.md) must not be read as an already-shipped production guarantee. Advice enters normal planning only after explicit user adoption.
 - Accepted active movable-work date constraints are resolved into scheduler-facing hard date bounds / preferred placements before downstream distribution and placement; downstream code must not become a second owner of the same temporal meaning.
 - When the resulting planning horizon is exactly 7 days, Stable V5 uses six normal placement days plus a seventh reserve day. Applicable hard temporal bounds may require a longer fallback horizon; details live in `policies/scheduling.md` rather than historical task records.
 - Request-time `notBefore`, authoritative busy sources, typed life constraints and work atomicity are current scheduling safety boundaries.
 - Progress state (`scope_total` / `completed` / `remaining`) and the current planning `target` are distinct.
 - Low-impact uncertainty may be deferred through the repair agenda while blocking information is resolved first; deferred issues must reopen before the boundary they affect.
-- PR #162 established the dedicated `AiPlanningView`; Issue #52 still owns removal of remaining weekly-planning plumbing from generic QuickEntry.
+- PR #162 established the dedicated `AiPlanningView`; Issue #52 was completed by PR #283. Generic QuickEntry no longer owns weekly-planning conversation, preview or approval plumbing.
 - Issue #152 owns adversarial/prompt-injection evaluation.
 - Trace privacy/recovery, personalization/cloud authority, multi-device approval uniqueness, saved-preview migration and AI-cost observability remain independent Issues.
 - Client-first execution is a separate responsibility under [`../client-runtime/`](../client-runtime/README.md).
+
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns the planned, bounded Jev integration based on the completed research. It starts with the existing focused authorization classifier, not a replacement of the full semantic document or the consultation foundation. The implementation design and acceptance detail live in the Issue; execution ordering lives in [the roadmap](roadmap/current.md). Jev is not yet a production provider, and this documentation change does not alter runtime or approval/save authority.
 
 ## Historical documents
 
