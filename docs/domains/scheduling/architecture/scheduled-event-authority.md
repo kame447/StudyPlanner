@@ -1,7 +1,7 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-09-10
+Updated: 2026-09-26
 Baseline implementation: Issue #278 — completed
 
 ## Product invariant

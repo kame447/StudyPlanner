@@ -1,7 +1,7 @@
 # 教材メタデータ取得 要件
 
 Status: canonical product/integration requirement
-Updated: 2026-08-29
+Updated: 2026-09-26
 Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 
 ## 1. 目的
