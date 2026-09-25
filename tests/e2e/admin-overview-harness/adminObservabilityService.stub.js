@@ -242,7 +242,16 @@ export async function getAdminObservabilityOverview() {
 
 export async function getAdminObservabilityUsers() {
   maybeFail();
-  return { users: harnessState === 'empty' ? [] : users, nextCursor: null };
+  const overview = await getAdminObservabilityOverview();
+  return {
+    users: harnessState === 'empty' ? [] : users,
+    nextCursor: null,
+    enrichmentReady: true,
+    trend: {
+      daily: overview.daily,
+      activeUsers: overview.activeUsers,
+    },
+  };
 }
 
 export async function resolveAdminObservabilityUserIdentity() {

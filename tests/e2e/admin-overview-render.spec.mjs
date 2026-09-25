@@ -78,6 +78,7 @@ async function inspectUsers(page, options) {
   await expect(firstStats).toContainText('AI');
   await expect(firstStats).toContainText('計画');
   await expect(firstStats).toContainText('直近error');
+  await expect(page.locator('.admin-user-stats').nth(1)).toContainText('利用日数 未確認');
   await screenshot(page, `users-${options.label}`);
 }
 
@@ -167,6 +168,7 @@ test.describe('Admin console rendered UI', () => {
   test('Users empty state remains explicit on mobile', async ({ page }) => {
     await openSurface(page, { view: 'users', theme: 'light', width: 390, height: 844, state: 'empty' });
     await expect(page.getByText('該当するユーザーがいません')).toBeVisible();
+    await expect(page.getByText('直近30日の利用データはまだありません。')).toBeVisible();
     await screenshot(page, 'users-empty-mobile-light');
   });
 
