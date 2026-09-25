@@ -23,7 +23,7 @@ export async function getAdminObservabilityUsers() {
       registeredAt: `2026-08-${String(18 + index).padStart(2, '0')}T02:30:00.000Z`,
       firstActivityAt: user.firstActivityAt,
       lastActivityAt: user.lastActivityAt,
-      activeDayCount: 8 - index,
+      activeDayCount: index === 1 ? null : 8 - index,
       eventCount: user.eventCount,
       productActivityCount: user.productActivityCount,
       aiRequestCount: user.aiRequestCount,

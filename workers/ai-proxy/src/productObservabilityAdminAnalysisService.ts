@@ -9,9 +9,11 @@ import type {
   ObservabilityDailyRollup,
   ObservabilityDimensionAggregate,
 } from '../../../shared/productObservabilityReadModel';
+import { PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE } from '../../../shared/productObservabilityReadModel';
 import type {
   ObservabilityAdminIdentityMatch,
   ObservabilityAdminRecentErrorState,
+  ObservabilityAdminUserTrend,
   ObservabilityAdminUserListItem,
   ObservabilityAiAnalysisReadModel,
   ObservabilityAiDimensionSummary,
@@ -27,12 +29,24 @@ import {
   createEmptyLatencyHistogram,
   latencyPercentileMs,
   mergeLatencyHistograms,
+  observabilityReportingDate,
 } from './productObservabilityReadModelProjection';
+import { aggregateOverviewPeriod } from './productObservabilityOverviewAggregation';
 import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
 } from './productObservabilityReadModelService';
 import { ProductObservabilityStore } from './productObservabilityStore';
+import {
+  readUserEnrichmentBackfillCheckpoint,
+  USER_ENRICHMENT_BACKFILL_STATE_COLLECTION,
+  USER_ENRICHMENT_BACKFILL_STATE_ID,
+  userEnrichmentBackfillReady,
+} from './productObservabilityUserEnrichmentBackfill';
+import {
+  classifyObservabilityEventError,
+  userSummaryEnrichmentReady,
+} from './productObservabilityUserEnrichment';
 
 const EVENT_COLLECTION = 'observability_events';
 const ACTOR_DAY_COLLECTION = 'observability_actor_day';
@@ -42,6 +56,7 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_USER_LIST_PAGE_SIZE = 25;
 const MAX_USER_LIST_PAGE_SIZE = 25;
+const MAX_LEGACY_USER_LIST_PAGE_SIZE = 9;
 const MAX_IDENTITY_MATCHES = 5;
 const MAX_RECENT_ERROR_SCAN = 100;
 const RECENT_ERROR_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -87,6 +102,7 @@ interface AnalysisFirestore {
 
 interface IdentityStore {
   lookupActorSubjectId(firebaseUid: string): Promise<string | null>;
+  lookupActorSubjectIds(firebaseUids: readonly string[]): Promise<Array<string | null>>;
 }
 
 interface RecentErrorResult {
@@ -234,6 +250,12 @@ function registeredAt(profile: Record<string, unknown>): string | null {
   return null;
 }
 
+function addDays(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 function timelineItem(value: Record<string, unknown>): ObservabilityUserTimelineItem | null {
   const eventType = value.eventType;
   const eventId = value.eventId;
@@ -305,30 +327,6 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
   };
 }
 
-function eventError(value: Record<string, unknown>): { occurredAt: string; category: string } | null {
-  const occurredAt = typeof value.occurredAt === 'string' ? value.occurredAt : '';
-  if (!occurredAt || !Number.isFinite(new Date(occurredAt).getTime())) return null;
-  const payload = record(value.payload) ?? {};
-  if (value.eventType === 'ai_request_metric'
-    && typeof payload.status === 'string'
-    && aiStatuses.has(payload.status as AiRequestMetricStatus)
-    && payload.status !== 'success') {
-    return {
-      occurredAt,
-      category: typeof payload.errorCategory === 'string' && payload.errorCategory.trim()
-        ? payload.errorCategory
-        : payload.status,
-    };
-  }
-  if (value.eventType === 'planning_outcome' && payload.outcomeType === 'failed') {
-    return { occurredAt, category: 'planning_failed' };
-  }
-  if (value.eventType === 'planning_outcome' && payload.outcomeType === 'approval_failure_observed') {
-    return { occurredAt, category: 'planning_approval_failure' };
-  }
-  return null;
-}
-
 export class ProductObservabilityAdminAnalysisService {
   private readonly readModel: ProductObservabilityReadModelService;
   private readonly identityStore: IdentityStore;
@@ -388,7 +386,7 @@ export class ProductObservabilityAdminAnalysisService {
         crossedCutoff = true;
         break;
       }
-      const found = eventError(row);
+      const found = classifyObservabilityEventError(row);
       if (found) {
         return { state: 'present', occurredAt: found.occurredAt, category: found.category };
       }
@@ -405,12 +403,16 @@ export class ProductObservabilityAdminAnalysisService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityAiAnalysisReadModel> {
-    const overview = await this.readModel.getOverview(params);
-    const byModel = mergeDimensions(overview.daily, (entry) => entry.aiByModel);
-    const byPurpose = mergeDimensions(overview.daily, (entry) => entry.aiByPurpose);
-    const byPhase = mergeDimensions(overview.daily, (entry) => entry.aiByPhase);
+    const [daily, rollupCheckpoint] = await Promise.all([
+      this.readModel.getDailyRollups(params),
+      this.readModel.getRollupCheckpoint(),
+    ]);
+    const period = aggregateOverviewPeriod(daily);
+    const byModel = mergeDimensions(daily, (entry) => entry.aiByModel);
+    const byPurpose = mergeDimensions(daily, (entry) => entry.aiByPurpose);
+    const byPhase = mergeDimensions(daily, (entry) => entry.aiByPhase);
     const byOperationKind = mergeDimensions(
-      overview.daily,
+      daily,
       (entry) => entry.aiByOperationKind ?? [],
     );
     const planningAggregate = byPurpose
@@ -422,18 +424,18 @@ export class ProductObservabilityAdminAnalysisService {
     const initialRequestCount = byPhase.find((entry) => entry.key === 'initial')?.aggregate.requestCount ?? 0;
     const repairRequestCount = byPhase.find((entry) => entry.key === 'repair')?.aggregate.requestCount ?? 0;
     const repairEligibleCount = initialRequestCount + repairRequestCount;
-    const turnCount = overview.period.planning.outcomeCounts.turn_started ?? 0;
+    const turnCount = period.planning.outcomeCounts.turn_started ?? 0;
     const cacheKnown = planningAggregate.promptTokensUnknownCount === 0
       && planningAggregate.cachedTokensUnknownCount === 0;
 
     return {
-      fromDate: overview.fromDate,
-      toDate: overview.toDate,
+      fromDate: params.fromDate,
+      toDate: params.toDate,
       environment: params.environment,
-      reportingTimeZone: overview.reportingTimeZone,
-      total: overview.period.ai,
-      latencyP50Ms: overview.aiLatencyP50Ms,
-      latencyP95Ms: overview.aiLatencyP95Ms,
+      reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+      total: period.ai,
+      latencyP50Ms: latencyPercentileMs(period.ai.latency, 0.5),
+      latencyP95Ms: latencyPercentileMs(period.ai.latency, 0.95),
       byModel,
       byPurpose,
       byPhase,
@@ -457,7 +459,7 @@ export class ProductObservabilityAdminAnalysisService {
             ? planningAggregate.cachedTokens / planningAggregate.promptTokens
             : null,
       },
-      rollupCheckpoint: overview.rollupCheckpoint,
+      rollupCheckpoint,
     };
   }
 
@@ -468,71 +470,146 @@ export class ProductObservabilityAdminAnalysisService {
   }): Promise<{
     users: ObservabilityAdminUserListItem[];
     nextCursor: FirestoreOrderedCursor | null;
+    enrichmentReady: boolean;
+    trend: ObservabilityAdminUserTrend;
   }> {
     validateProfileCursor(params.cursor);
-    const limit = Math.max(
+    const readinessValue = await this.firestore.getDocument(
+      USER_ENRICHMENT_BACKFILL_STATE_COLLECTION,
+      USER_ENRICHMENT_BACKFILL_STATE_ID,
+    );
+    const checkpoint = readinessValue
+      ? readUserEnrichmentBackfillCheckpoint(readinessValue, this.now().toISOString())
+      : null;
+    const enrichmentReady = userEnrichmentBackfillReady(checkpoint, params.environment);
+    const requestedLimit = Math.max(
       1,
       Math.min(MAX_USER_LIST_PAGE_SIZE, params.limit ?? DEFAULT_USER_LIST_PAGE_SIZE),
     );
-    const profiles = await this.firestore.queryDocumentsByNameAfter({
-      collection: PROFILE_COLLECTION,
-      cursorDocumentName: params.cursor?.documentName ?? null,
-      limit,
-    });
-    const users = await Promise.all(profiles.map(async (profile): Promise<ObservabilityAdminUserListItem> => {
-      const firebaseUid = profile.id;
-      const [profileSubjectId, actorSubjectId] = await Promise.all([
-        this.profileSubjectId(firebaseUid),
-        this.identityStore.lookupActorSubjectId(firebaseUid),
-      ]);
-      if (!actorSubjectId) {
+    const limit = enrichmentReady
+      ? requestedLimit
+      : Math.min(MAX_LEGACY_USER_LIST_PAGE_SIZE, requestedLimit);
+    const toDate = observabilityReportingDate(this.now().toISOString());
+    const [profiles, trend] = await Promise.all([
+      this.firestore.queryDocumentsByNameAfter({
+        collection: PROFILE_COLLECTION,
+        cursorDocumentName: params.cursor?.documentName ?? null,
+        limit,
+      }),
+      this.readModel.getUserTrend({
+        environment: params.environment,
+        fromDate: addDays(toDate, -29),
+        toDate,
+      }),
+    ]);
+    const profileSubjectIds = await Promise.all(
+      profiles.map((profile) => this.profileSubjectId(profile.id)),
+    );
+
+    let users: ObservabilityAdminUserListItem[];
+    if (enrichmentReady) {
+      const actorSubjectIds = await this.identityStore.lookupActorSubjectIds(
+        profiles.map((profile) => profile.id),
+      );
+      const presentActorSubjectIds = actorSubjectIds.filter(
+        (actorSubjectId): actorSubjectId is string => Boolean(actorSubjectId),
+      );
+      const summaries = await this.readModel.getUserSummaries(
+        presentActorSubjectIds,
+        params.environment,
+      );
+      const summariesByActor = new Map(presentActorSubjectIds.map(
+        (actorSubjectId, index) => [actorSubjectId, summaries[index] ?? null],
+      ));
+      const cutoff = new Date(this.now().getTime() - RECENT_ERROR_WINDOW_MS).toISOString();
+      users = profiles.map((profile, index): ObservabilityAdminUserListItem => {
+        const actorSubjectId = actorSubjectIds[index] ?? null;
+        const summary = actorSubjectId ? summariesByActor.get(actorSubjectId) ?? null : null;
+        const readySummary = userSummaryEnrichmentReady(summary) ? summary : null;
+        const recentErrorState: ObservabilityAdminRecentErrorState = !actorSubjectId
+          ? 'absent'
+          : !readySummary
+            ? 'unknown'
+            : readySummary.latestErrorAt && readySummary.latestErrorAt >= cutoff
+              ? 'present'
+              : 'absent';
+        return {
+          profileSubjectId: profileSubjectIds[index],
+          actorSubjectId,
+          registeredAt: registeredAt(profile),
+          firstActivityAt: summary?.firstActivityAt ?? null,
+          lastActivityAt: summary?.lastActivityAt ?? null,
+          activeDayCount: actorSubjectId ? readySummary?.activeDayCount ?? null : 0,
+          eventCount: summary?.eventCount ?? 0,
+          productActivityCount: summary?.productActivityCount ?? 0,
+          aiRequestCount: summary?.aiRequestCount ?? 0,
+          planningOutcomeCount: summary?.planningOutcomeCount ?? 0,
+          recentErrorState,
+          recentErrorAt: recentErrorState === 'present' ? readySummary?.latestErrorAt ?? null : null,
+          recentErrorCategory: recentErrorState === 'present'
+            ? readySummary?.latestErrorCategory ?? null
+            : null,
+        };
+      });
+    } else {
+      users = await Promise.all(profiles.map(async (
+        profile,
+        index,
+      ): Promise<ObservabilityAdminUserListItem> => {
+        const firebaseUid = profile.id;
+        const profileSubjectId = profileSubjectIds[index];
+        const actorSubjectId = await this.identityStore.lookupActorSubjectId(firebaseUid);
+        if (!actorSubjectId) {
+          return {
+            profileSubjectId,
+            actorSubjectId: null,
+            registeredAt: registeredAt(profile),
+            firstActivityAt: null,
+            lastActivityAt: null,
+            activeDayCount: 0,
+            eventCount: 0,
+            productActivityCount: 0,
+            aiRequestCount: 0,
+            planningOutcomeCount: 0,
+            recentErrorState: 'absent',
+            recentErrorAt: null,
+            recentErrorCategory: null,
+          };
+        }
+
+        const [summary, activeDayCount, recentError] = await Promise.all([
+          this.readModel.getUserSummary(actorSubjectId, params.environment),
+          this.firestore.countDocuments(ACTOR_DAY_COLLECTION, [
+            { field: 'actorSubjectId', operator: 'EQUAL', value: actorSubjectId },
+            { field: 'environment', operator: 'EQUAL', value: params.environment },
+          ]),
+          this.recentError(actorSubjectId, params.environment),
+        ]);
         return {
           profileSubjectId,
-          actorSubjectId: null,
+          actorSubjectId,
           registeredAt: registeredAt(profile),
-          firstActivityAt: null,
-          lastActivityAt: null,
-          activeDayCount: 0,
-          eventCount: 0,
-          productActivityCount: 0,
-          aiRequestCount: 0,
-          planningOutcomeCount: 0,
-          recentErrorState: 'absent',
-          recentErrorAt: null,
-          recentErrorCategory: null,
+          firstActivityAt: summary?.firstActivityAt ?? null,
+          lastActivityAt: summary?.lastActivityAt ?? null,
+          activeDayCount,
+          eventCount: summary?.eventCount ?? 0,
+          productActivityCount: summary?.productActivityCount ?? 0,
+          aiRequestCount: summary?.aiRequestCount ?? 0,
+          planningOutcomeCount: summary?.planningOutcomeCount ?? 0,
+          recentErrorState: recentError.state,
+          recentErrorAt: recentError.occurredAt,
+          recentErrorCategory: recentError.category,
         };
-      }
-
-      const [summary, activeDayCount, recentError] = await Promise.all([
-        this.readModel.getUserSummary(actorSubjectId, params.environment),
-        this.firestore.countDocuments(ACTOR_DAY_COLLECTION, [
-          { field: 'actorSubjectId', operator: 'EQUAL', value: actorSubjectId },
-          { field: 'environment', operator: 'EQUAL', value: params.environment },
-        ]),
-        this.recentError(actorSubjectId, params.environment),
-      ]);
-      return {
-        profileSubjectId,
-        actorSubjectId,
-        registeredAt: registeredAt(profile),
-        firstActivityAt: summary?.firstActivityAt ?? null,
-        lastActivityAt: summary?.lastActivityAt ?? null,
-        activeDayCount,
-        eventCount: summary?.eventCount ?? 0,
-        productActivityCount: summary?.productActivityCount ?? 0,
-        aiRequestCount: summary?.aiRequestCount ?? 0,
-        planningOutcomeCount: summary?.planningOutcomeCount ?? 0,
-        recentErrorState: recentError.state,
-        recentErrorAt: recentError.occurredAt,
-        recentErrorCategory: recentError.category,
-      };
-    }));
+      }));
+    }
     const last = profiles[profiles.length - 1];
     return {
       users,
       nextCursor: profiles.length === limit && last
         ? { orderedValue: 'profile', documentName: last.documentName }
         : null,
+      enrichmentReady,
+      trend,
     };
   }
 
@@ -565,15 +642,19 @@ export class ProductObservabilityAdminAnalysisService {
       byUsername.forEach((row) => profiles.set(row.id, row));
     }
 
-    return Promise.all([...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES).map(
-      async ([firebaseUid, profile]): Promise<ObservabilityAdminIdentityMatch> => ({
+    const selected = [...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES);
+    const actorSubjectIds = await this.identityStore.lookupActorSubjectIds(
+      selected.map(([firebaseUid]) => firebaseUid),
+    );
+    return selected.map(
+      ([firebaseUid, profile], index): ObservabilityAdminIdentityMatch => ({
         firebaseUid,
         email: profileString(profile, 'email'),
         username: profileString(profile, 'username') || profileString(profile, 'email') || firebaseUid,
         registeredAt: registeredAt(profile),
-        actorSubjectId: await this.identityStore.lookupActorSubjectId(firebaseUid),
+        actorSubjectId: actorSubjectIds[index] ?? null,
       }),
-    ));
+    );
   }
 
   async getUserInvestigation(params: {

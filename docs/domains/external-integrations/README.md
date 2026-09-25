@@ -2,11 +2,11 @@
 
 Status: current domain entry point
 
-このdomainは、StudyPlannerが外部サービスからデータを取得・参照するときのprovider / adapter境界、利用条件、障害時の縮退、外部データと内部domain modelの分離を扱う。
+このドメインは、StudyPlanner が外部サービスからデータを取得・参照する際の provider / adapter 境界、利用条件、障害時の縮退、および外部データと内部 domain model の分離を扱う。
 
 現在の親Issueは [#187](https://github.com/kame447/StudyPlanner/issues/187) とする。
 
-このdomainは教材・予定・週間計画そのものの意味や保存モデルを所有しない。外部サービス固有のレスポンス、認証、quota、利用規約、fallbackをStudyPlanner内部へ漏らさないための統合境界を所有する。
+本ドメインは教材・予定・週間計画そのものの意味や保存モデルを所有しない。外部サービス固有のレスポンス、認証、quota、利用規約、fallback を StudyPlanner 内部へ漏らさないための統合境界を所有する。
 
 ## Canonical requirements
 
@@ -30,10 +30,10 @@ StudyPlanner domain model
 
 次を継続的な境界とする。
 
-- provider固有responseをUIやdomain modelへ直接流さない
-- 外部API停止時でも手入力など既存の主要導線を壊さない
-- providerから得られない情報をAIやheuristicで「取得済み」にしない
-- caching、保存、画像利用、商用利用はproviderごとの公式条件を確認する
-- external metadataと教材の章・節・進捗構造を同じ責務にしない
+- provider 固有の response を UI や domain model へ直接流さない
+- 外部 API 停止時でも手入力など既存の主要導線を壊さない
+- provider から得られない情報を AI や heuristic で「取得済み」にしない
+- caching、保存、画像利用、商用利用は provider ごとの公式条件を確認する
+- external metadata と教材の章・節・進捗構造を同じ責務にしない
 
-書籍教材については、初期providerをNDL Search、共有catalogをISBN中心のserver-side cacheとして実装する。runtime behaviorは `spec/material-metadata.md` を正本とする。
+書籍教材については、初期 provider を NDL Search とし、共有 catalog を ISBN 中心の server-side cache として実装する。runtime behavior は `spec/material-metadata.md` を正本とする。

@@ -1,6 +1,11 @@
 import {
   validateProductObservabilityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
+import {
+  FirestoreServiceAccountClient,
+  FirestoreServiceAccountTokenProvider,
+  type FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { ProductObservabilityStore, type ProductObservabilityEnv } from './productObservabilityStore';
 
 export const PRODUCT_OBSERVABILITY_EVENTS_PATH = '/observability/events';
@@ -118,6 +123,7 @@ export function isProductObservabilityPath(pathname: string): boolean {
 export async function handleProductObservabilityApi(
   request: Request,
   env: ProductObservabilityApiEnv,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<Response> {
   const origin = allowedOrigin(request, env);
   if (origin === '') return jsonResponse(request, env, 403, { error: 'Origin is not allowed.' });
@@ -155,7 +161,11 @@ export async function handleProductObservabilityApi(
   if (!validated.ok) return jsonResponse(request, env, 400, { error: validated.error });
 
   try {
-    const store = new ProductObservabilityStore(env);
+    const invocationTokenProvider = tokenProvider ?? new FirestoreServiceAccountTokenProvider(env);
+    const store = new ProductObservabilityStore(
+      env,
+      new FirestoreServiceAccountClient(env, invocationTokenProvider),
+    );
     if (validated.value.eventType === 'planning_outcome') {
       await store.storePlanningOutcome(uid, validated.value);
     } else {

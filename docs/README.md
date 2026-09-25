@@ -1,33 +1,33 @@
 # StudyPlanner Documentation
 
-Documentation placement is governed by [DOCUMENT_DICTIONARY.md](DOCUMENT_DICTIONARY.md).
+文書の配置ルールおよび統制は [DOCUMENT_DICTIONARY.md](DOCUMENT_DICTIONARY.md) に従います。
 
-## Read order
+## 閲覧順序 (Read order)
 
-Repository work:
+リポジトリでの作業時の推奨閲覧順序：
 
 1. [`AGENTS.md`](../AGENTS.md)
 2. [`PROJECT_MAP.md`](../PROJECT_MAP.md)
-3. this index / documentation dictionary
-4. owning domain README
-5. canonical contract / current Issue / active work record
+3. 本インデックス / ドキュメント辞書 ([DOCUMENT_DICTIONARY.md](DOCUMENT_DICTIONARY.md))
+4. 担当ドメインの README (`domains/<responsibility>/README.md`)
+5. 正本仕様 (canonical contract) / 現在の Issue / 進行中タスク記録 (active work record)
 
-## Domains
+## ドメイン一覧 (Domains)
 
-- [Scheduling](domains/scheduling/README.md) — app-wide scheduled-event authority / `ScheduleOccurrence` projection / canonical `ScheduleEvent` persistence。Issue #278 の移行は完了済みで、今後の変更は新しいproduct requirementを所有するIssueから開始する
-- [Weekly planning](domains/weekly-planning/README.md) — Issue #246 の「学習相談 → AI助言 → user adoption → 既存planning」planned requirement は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が正本。runtime implementation は未完了
-- [User context](domains/user-context/README.md) — app-wide durable user context、semantic / episodic memory、retrieval、lifecycle / forget、conversation surfacing。Current owner: Issue #294
+- [Scheduling](domains/scheduling/README.md) — アプリ全体の scheduled-event authority / `ScheduleOccurrence` projection / canonical な `ScheduleEvent` 永続化。Issue #278 の移行は完了済みであり、今後の変更は新しい product requirement を所有する Issue から開始します。
+- [Weekly planning](domains/weekly-planning/README.md) — Issue #246 の「学習相談 → AI助言 → user adoption → 既存planning」に関する planned requirement は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が正本です（runtime 実装は未完了）。
+- [User context](domains/user-context/README.md) — アプリ全体の durable user context、semantic / episodic memory、retrieval、lifecycle / forget、会話への表出（conversation surfacing）。Current owner: Issue #294
 - [Client runtime](domains/client-runtime/README.md)
 - [Reporting](domains/reporting/README.md)
 - [Product observability](domains/product-observability/README.md)
-- [External integrations](domains/external-integrations/README.md) — 書籍教材metadataの正仕様は [`material-metadata.md`](domains/external-integrations/spec/material-metadata.md)
+- [External integrations](domains/external-integrations/README.md) — 書籍教材 metadata の正仕様は [`material-metadata.md`](domains/external-integrations/spec/material-metadata.md)
 
-## Cross-cutting work
+## 横断タスク・運用 (Cross-cutting work)
 
 - [Work documentation](work/README.md)
 
-## History
+## 履歴・アーカイブ (History)
 
 - [Archive](archive/README.md)
 
-`archive/` is evidence, not current instruction. Current decisions must live under their owning domain rather than under audience/tool folders such as `ai/`, `testing/`, `strategy/`, or `design/`.
+`archive/` は過去の経緯や監査の証跡であり、現在の実装指示ではありません。現行の設計・判断は、`ai/`、`testing/`、`strategy/`、`design/` のような対象者・ツール別のフォルダではなく、担当ドメイン配下に配置します。

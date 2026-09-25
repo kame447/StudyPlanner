@@ -7,6 +7,10 @@ import {
   ProductObservabilityStore,
   type ProductObservabilityEnv,
 } from './productObservabilityStore';
+import {
+  FirestoreServiceAccountClient,
+  type FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 
 export interface AiRequestUsage {
   promptTokens: number | null;
@@ -28,6 +32,7 @@ interface MetricMessage {
 
 export interface RecordAiRequestMetricParams {
   env: ProductObservabilityEnv;
+  firestoreTokenProvider?: FirestoreTokenProvider;
   firebaseUid: string;
   requestId: string;
   occurredAt: string;
@@ -152,7 +157,10 @@ export async function recordAiRequestMetricBestEffort(
   };
 
   try {
-    await new ProductObservabilityStore(params.env).storeAiRequestMetric({
+    await new ProductObservabilityStore(
+      params.env,
+      new FirestoreServiceAccountClient(params.env, params.firestoreTokenProvider),
+    ).storeAiRequestMetric({
       firebaseUid: params.firebaseUid,
       requestId: params.requestId,
       occurredAt: params.occurredAt,

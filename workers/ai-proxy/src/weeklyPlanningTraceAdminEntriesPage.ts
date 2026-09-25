@@ -9,6 +9,7 @@ import {
   WeeklyPlanningTraceFirestoreClient,
   type WeeklyPlanningTraceFirestoreEnv,
 } from './weeklyPlanningTraceFirestore';
+import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
@@ -49,13 +50,18 @@ interface TraceRequestContext {
 }
 
 interface AdminEntryReader {
-  getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
+  batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>>;
 }
 
 export interface WeeklyPlanningTraceAdminEntryPage {
   entries: Record<string, unknown>[];
+  scannedEntries: Record<string, unknown>[];
   totalEntryCount: number;
   nextAfterSequence: number | null;
+  nextAfterScannedSequence: number | null;
   missingSequenceCount: number;
   responseBytes: number;
   requestedStartSequence: number;
@@ -262,19 +268,18 @@ function documentForAdmin(document: Record<string, unknown>): Record<string, unk
 }
 
 function boundedEntries(
-  entries: Record<string, unknown>[],
+  safeEntries: Record<string, unknown>[],
 ): { entries: Record<string, unknown>[]; responseBytes: number } {
   const selected: Record<string, unknown>[] = [];
   let responseBytes = measureWeeklyPlanningTraceJsonBytes([]);
-  for (const entry of entries) {
-    const safeEntry = documentForAdmin(entry);
+  for (const safeEntry of safeEntries) {
     const entryBytes = measureWeeklyPlanningTraceJsonBytes(safeEntry);
     const candidateBytes = responseBytes + entryBytes + (selected.length > 0 ? 1 : 0);
     if (candidateBytes > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxResponseBytes) break;
     selected.push(safeEntry);
     responseBytes = candidateBytes;
   }
-  if (entries.length > 0 && selected.length === 0) {
+  if (safeEntries.length > 0 && selected.length === 0) {
     throw new Error('trace admin entry page exceeds response byte limit');
   }
   return { entries: selected, responseBytes };
@@ -295,24 +300,30 @@ export async function loadWeeklyPlanningTraceAdminEntryPage(
     (_, index) => startSequence + index,
   );
 
-  const loaded = await Promise.all(sequences.map(async (sequence) => normalizedEntry(
-    await firestore.getDocument(
-      TRACE_ENTRIES,
-      `${sessionId}-${String(sequence).padStart(8, '0')}`,
-    ),
+  const values = await firestore.batchGetDocuments(
+    TRACE_ENTRIES,
+    sequences.map((sequence) => `${sessionId}-${String(sequence).padStart(8, '0')}`),
+  );
+  const loaded = sequences.map((sequence, index) => normalizedEntry(
+    values[index] ?? null,
     sessionId,
     sequence,
-  )));
+  ));
   const present = loaded.filter((entry): entry is Record<string, unknown> => Boolean(entry));
-  const bounded = boundedEntries(present);
+  const scannedEntries = present.map(documentForAdmin);
+  const bounded = boundedEntries(scannedEntries);
   const lastReturnedSequence = bounded.entries.length > 0
     ? Number(bounded.entries[bounded.entries.length - 1].sequence)
     : endExclusive - 1;
   const hasMore = lastReturnedSequence + 1 < totalEntryCount;
+  const lastScannedSequence = endExclusive - 1;
+  const hasMoreToScan = lastScannedSequence + 1 < totalEntryCount;
   return {
     entries: bounded.entries,
+    scannedEntries,
     totalEntryCount,
     nextAfterSequence: hasMore ? lastReturnedSequence : null,
+    nextAfterScannedSequence: hasMoreToScan ? lastScannedSequence : null,
     missingSequenceCount: loaded.length - present.length,
     responseBytes: bounded.responseBytes,
     requestedStartSequence: startSequence,
@@ -353,6 +364,7 @@ function errorType(caught: unknown): string {
 export async function handleWeeklyPlanningTraceAdminEntriesPage(
   request: Request,
   rawEnv: Record<string, unknown>,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<Response> {
   const env = rawEnv as unknown as WeeklyPlanningTraceAdminEntriesPageEnv;
   const context: TraceRequestContext = {
@@ -387,7 +399,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         'ログイン情報を確認できませんでした。', 'trace_auth_invalid', 'auth');
     }
 
-    const firestore = new WeeklyPlanningTraceFirestoreClient(env);
+    const firestore = new WeeklyPlanningTraceFirestoreClient(env, tokenProvider);
     const admin = await firestore.getDocument(ADMINS, session.uid);
     if (admin?.enabled !== true || admin.weeklyPlanningTraceReader !== true) {
       return errorResponse(request, env, context, 403,

@@ -11,6 +11,7 @@ import {
   type WeeklyPlanningTraceApiEnv,
   type WeeklyPlanningTraceApiSession,
 } from './weeklyPlanningTraceApi';
+import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 
 export { AiQuotaDurableObject };
 
@@ -836,7 +837,11 @@ async function handlePlanningTranscriptionRequest(
   }
 }
 
-async function handleTraceRequest(request: Request, env: Env): Promise<Response> {
+async function handleTraceRequest(
+  request: Request,
+  env: Env,
+  tokenProvider?: FirestoreTokenProvider,
+): Promise<Response> {
   const origin = corsOrigin(request, env);
   if (origin === '') {
     return jsonResponse(request, env, 403, {
@@ -855,15 +860,19 @@ async function handleTraceRequest(request: Request, env: Env): Promise<Response>
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
 
-  const result = await handleWeeklyPlanningTraceApi(request, env, session);
+  const result = await handleWeeklyPlanningTraceApi(request, env, session, tokenProvider);
   return jsonResponse(request, env, result.status, result.body);
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    tokenProvider?: FirestoreTokenProvider,
+  ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isWeeklyPlanningTracePath(pathname)) {
-      return await handleTraceRequest(request, env);
+      return await handleTraceRequest(request, env, tokenProvider);
     }
 
     if (pathname === '/planning-transcription') {

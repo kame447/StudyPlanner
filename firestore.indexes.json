@@ -1,0 +1,41 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "observability_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actorSubjectId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "environment",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "observability_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actorSubjectId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "environment",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

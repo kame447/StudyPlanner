@@ -25,6 +25,7 @@ import {
   WeeklyPlanningTraceFirestoreClient,
   type WeeklyPlanningTraceFirestoreEnv,
 } from './weeklyPlanningTraceFirestore';
+import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 
 export interface WeeklyPlanningTraceApiEnv extends WeeklyPlanningTraceFirestoreEnv {
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: string;
@@ -680,6 +681,7 @@ export async function handleWeeklyPlanningTraceApi(
   request: Request,
   env: WeeklyPlanningTraceApiEnv,
   session: WeeklyPlanningTraceApiSession,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<WeeklyPlanningTraceApiResult> {
   const { pathname } = new URL(request.url);
   const context: TraceRequestContext = {
@@ -694,7 +696,7 @@ export async function handleWeeklyPlanningTraceApi(
       'trace_contract_mismatch', 'contract');
   }
 
-  const firestore = new WeeklyPlanningTraceFirestoreClient(env);
+  const firestore = new WeeklyPlanningTraceFirestoreClient(env, tokenProvider);
   try {
     if (pathname === '/weekly-planning-trace/health' && request.method === 'GET') {
       return ok(context, {

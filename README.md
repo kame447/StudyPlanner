@@ -13,17 +13,17 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 月・週・日単位で予定を確認し、作成、編集、削除、実績記録を行えます。予定と実績は別データとして扱い、計画どおりに進んだかを後から確認できます。
 
-学習予定と一般予定は canonical `ScheduleEvent` を保存上の正本とし、共通 `ScheduleOccurrence` projection を通じて月・週・日・AI計画が同じ occurrence identity / time / busy semantics を参照します。`TimetableTemplate` は別のtemplate lifecycleを維持したまま occurrence projection へ合流し、同じsourceからimport済みのPlanがある場合は二重表示・二重busyを防ぎます。Issue #278 の移行とconsumer統合は完了済みです。正仕様は [`docs/domains/scheduling/`](./docs/domains/scheduling/README.md) にあります。
+学習予定と一般予定は canonical な `ScheduleEvent` を保存上の正本とし、共通の `ScheduleOccurrence` projection を通じて月・週・日・AI計画が同じ occurrence identity / time / busy semantics を参照します。`TimetableTemplate` は別の template lifecycle を維持したまま occurrence projection へ合流し、同じ source から import 済みの Plan がある場合は二重表示・二重 busy を防ぎます。Issue #278 の移行と consumer 統合は完了済みです。正仕様は [`docs/domains/scheduling/`](./docs/domains/scheduling/README.md) にあります。
 
 ### AI 計画
 
 チャット形式で学習対象、進捗、期限、利用できない時間、希望時間帯などを伝えると、既存予定や時間割を考慮して週間計画を作成します。生成結果はプレビューとして表示され、修正または承認した後に予定へ保存されます。
 
-学習戦略・教材選択・進める順序・目安期限を予定作成前に相談し、AIの助言をユーザーが採用した場合だけ通常の計画へ接続する機能を Issue #246 で設計中です。これは未実装のplanned capabilityであり、現在のproduction機能としては扱いません。正仕様は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) にあります。
+学習戦略・教材選択・進める順序・目安期限を予定作成前に相談し、AI の助言をユーザーが採用した場合だけ通常の計画へ接続する機能を Issue #246 で設計中です。これは未実装の planned capability であり、現在の production 機能としては扱いません。正仕様は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) にあります。
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加ではISBNまたは教材名から共有catalog / NDL Searchを使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量はStudyPlanner側が所有します。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は StudyPlanner 側が所有します。
 
 ### ホーム・時間割
 
@@ -59,7 +59,7 @@ User approval
 Save
 ```
 
-Issue #246 のplanned consultation extensionでもこの責任境界を維持します。AIが教材・学習順序・目安期限を提案しても、その回答はuser fact、accepted planning condition、preview、saved Plan、durable memoryのいずれにも自動昇格しません。ユーザーが採用したscopeだけを既存Stable V5のplanning flowへ戻します。
+Issue #246 の planned consultation extension でもこの責任境界を維持します。AI が教材・学習順序・目安期限を提案しても、その回答は user fact、accepted planning condition、preview、saved Plan、durable memory のいずれにも自動昇格しません。ユーザーが採用した scope だけを既存 Stable V5 の planning flow へ戻します。
 
 週間計画の正仕様は [`docs/domains/weekly-planning/`](./docs/domains/weekly-planning/README.md) に集約しています。runtime の責務境界は [`current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation の要件は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) を参照してください。
 
@@ -67,11 +67,11 @@ Issue #246 のplanned consultation extensionでもこの責任境界を維持し
 
 フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
 
-時間が確定した予定の永続化正本は canonical `ScheduleEvent` です。月・週・日・AI計画は保存形式を個別に再解釈せず、`src/domain/scheduleOccurrence.ts` の共通 `ScheduleOccurrence` projection を利用します。legacy `Plan` / `MonthEvent` はmigration入力・compatibility shapeとして残り得ますが、post-cutoverの第二のwrite authorityではありません。現在の責任境界は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
+時間が確定した予定の永続化正本は canonical な `ScheduleEvent` です。月・週・日・AI計画は保存形式を個別に再解釈せず、`src/domain/scheduleOccurrence.ts` の共通 `ScheduleOccurrence` projection を利用します。legacy `Plan` / `MonthEvent` は migration 入力・compatibility shape として残り得ますが、post-cutover の第二の write authority ではありません。現在の責任境界は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
 
-管理・分析consoleは、UIからplanner collectionを都度全件scanする構造を最終形にせず、lightweight telemetry、集計read model、restricted diagnostic traceを分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
+管理・分析 console は、UI から planner collection を都度全件 scan する構造を最終形にせず、lightweight telemetry、集計 read model、restricted diagnostic trace を分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
 
-外部APIはprovider固有responseをproduct domainへ直接流さず、Cloudflare Worker上のintegration boundaryで正規化します。書籍教材の初期実装では共有catalogを先に参照し、miss時だけNDL Searchへ問い合わせることで外部依存と不要なrequestを抑えます。
+外部 API は provider 固有 response を product domain へ直接流さず、Cloudflare Worker 上の integration boundary で正規化します。書籍教材の初期実装では共有 catalog を先に参照し、miss 時だけ NDL Search へ問い合わせることで外部依存と不要な request を抑えます。
 
 テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
 
