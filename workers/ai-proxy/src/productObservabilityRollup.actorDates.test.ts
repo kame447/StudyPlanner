@@ -49,12 +49,11 @@ class MemoryRollupFirestore {
     return `tx-${this.transactionSequence}`;
   }
 
-  async getDocumentInTransaction(
-    collection: string,
-    id: string,
+  async batchGetDocumentKeys(
+    keys: readonly Array<{ collection: string; id: string }>,
     _transaction: string,
-  ): Promise<StoredDocument | null> {
-    return await this.getDocument(collection, id);
+  ): Promise<Array<StoredDocument | null>> {
+    return await Promise.all(keys.map(({ collection, id }) => this.getDocument(collection, id)));
   }
 
   async commitTransaction(
