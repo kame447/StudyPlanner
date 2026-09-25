@@ -12,9 +12,9 @@ Status: current domain entry point
 
 - [`spec/material-metadata.md`](spec/material-metadata.md): 書籍教材の検索、共有catalog、provider fallback、manual fallbackの正仕様
 
-## Supporting research
+## Historical evidence
 
-- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査した証拠。本文中の実装前記述はhistorical contextであり、現在のruntime要件を上書きしない。
+教材メタデータ導入時の調査・実装checkpointは `docs/archive/work/closed/` に保存する。現在のruntime要件は上記canonical specを正とし、archive内の旧branch・PR・実装前記述をcurrent queueとして扱わない。
 
 ## Boundary
 
