@@ -253,7 +253,7 @@ export function AdminAiApiPage() {
             />
           </label>
           {dateRange.errorMessage ? (
-            <p className="admin-date-range-error" role="alert">{dateRange.errorMessage}</p>
+            <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
           ) : null}
           <button className="ghost-button" type="button" onClick={() => setRefreshKey((value) => value + 1)}>
             <RefreshCw aria-hidden="true" size={17} />

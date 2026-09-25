@@ -417,7 +417,7 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
             />
           </label>
           {dateRange.errorMessage ? (
-            <p className="admin-date-range-error" role="alert">{dateRange.errorMessage}</p>
+            <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
           ) : null}
           <button
             className="admin-overview-refresh-button"
