@@ -364,6 +364,20 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     params.selectedStarterTarget,
     params.recentConversation,
   );
+  const priorUserMessages = (params.recentConversation ?? [])
+    .filter((message) => message.role === 'user')
+    .map((message) => normalizedEvidenceText(message.content));
+  const matchesPriorUser = (value: string): boolean => {
+    const normalized = normalizedEvidenceText(value);
+    return Boolean(normalized && priorUserMessages.some((message) =>
+      sourceTextMatchesChannelV5(normalized, message)));
+  };
+  const matchesSupplemental = (value: string): boolean => Boolean(
+    params.supplementalContext && sourceTextMatchesChannelV5(
+      normalizedEvidenceText(value),
+      normalizedEvidenceText(params.supplementalContext),
+    ),
+  );
   const machineBoundValues = contextualMachineBoundEntityValues(params.publicStateSummary);
   if (params.selectedStarterTarget) {
     const selectedLabel = normalizedEvidenceText(params.selectedStarterTarget.label);
@@ -487,8 +501,32 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   });
   params.document.uncertainties.forEach((uncertainty, index) => {
     const uncertaintyPath = `document.uncertainties[${index}]`;
-    check(uncertainty.sourceText, uncertaintyPath);
-    checkStoredCopy(uncertainty.reason, `${uncertaintyPath}.reason`);
+    // An uncertainty asks for clarification without asserting a new planning
+    // fact. It may cite an earlier user turn, but never assistant or
+    // supplemental text alone. Every other fact still needs current evidence.
+    const citesPriorUser = matchesPriorUser(uncertainty.sourceText)
+      && !matchesSupplemental(uncertainty.sourceText);
+    if (!citesPriorUser) check(uncertainty.sourceText, uncertaintyPath);
+
+    const targetTask = params.document.tasks.find((task) =>
+      task.localId === uncertainty.targetLocalId);
+    const targetComponent = params.document.tasks.flatMap((task) =>
+      task.study?.components ?? []).find((component) =>
+        component.localId === uncertainty.targetLocalId);
+    const targetPublicId = targetTask?.existingPublicId
+      ?? targetComponent?.existingPublicId ?? null;
+    const repeatsExistingReason = citesPriorUser && Boolean(targetPublicId)
+      && recordArray(params.publicStateSummary?.uncertainties).some((stored) =>
+        stored.targetPublicId === targetPublicId
+        && stored.field === uncertainty.field
+        && typeof stored.sourceText === 'string'
+        && normalizedEvidenceText(stored.sourceText) === normalizedEvidenceText(uncertainty.sourceText)
+        && typeof stored.reason === 'string'
+        && normalizedEvidenceText(stored.reason) === normalizedEvidenceText(uncertainty.reason));
+    if (!repeatsExistingReason
+      && !(matchesPriorUser(uncertainty.reason) && !matchesSupplemental(uncertainty.reason))) {
+      checkStoredCopy(uncertainty.reason, `${uncertaintyPath}.reason`);
+    }
   });
   params.document.corrections.forEach((correction, index) => {
     check(correction.sourceText, `document.corrections[${index}]`);
