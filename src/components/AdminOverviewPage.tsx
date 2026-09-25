@@ -19,6 +19,7 @@ import type {
   ObservabilityDailyRollup,
   ObservabilityOverviewReadModel,
 } from '../../shared/productObservabilityReadModel';
+import { useAdminDateRange } from '../lib/adminDateRange';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import { getAdminObservabilityOverview } from '../services/adminObservabilityService';
 
@@ -311,14 +312,20 @@ function StatusRow({
 
 export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
   const defaultToDate = useMemo(() => todayInTokyo(), []);
-  const [fromDate, setFromDate] = useState(() => shiftIsoDate(defaultToDate, -6));
-  const [toDate, setToDate] = useState(defaultToDate);
+  const dateRange = useAdminDateRange({
+    defaultFromDate: shiftIsoDate(defaultToDate, -6),
+    defaultToDate: defaultToDate,
+  });
   const [environment, setEnvironment] = useState<ObservabilityEnvironment>('production');
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadOverview = useCallback(
-    () => getAdminObservabilityOverview({ fromDate, toDate, environment }),
-    [environment, fromDate, refreshKey, toDate],
+    () => getAdminObservabilityOverview({
+      fromDate: dateRange.appliedFromDate,
+      toDate: dateRange.appliedToDate,
+      environment,
+    }),
+    [dateRange.appliedFromDate, dateRange.appliedToDate, environment, refreshKey],
   );
   const { loadState, data, errorMessage } = useAdminDataLoader<ObservabilityOverviewReadModel | null>(
     loadOverview,
@@ -393,12 +400,25 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
           </label>
           <label>
             <span>開始日</span>
-            <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input
+              type="date"
+              value={dateRange.fromDate}
+              max={dateRange.toDate}
+              onChange={(event) => dateRange.setFromDate(event.target.value)}
+            />
           </label>
           <label>
             <span>終了日</span>
-            <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+            <input
+              type="date"
+              value={dateRange.toDate}
+              min={dateRange.fromDate}
+              onChange={(event) => dateRange.setToDate(event.target.value)}
+            />
           </label>
+          {dateRange.errorMessage ? (
+            <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
+          ) : null}
           <button
             className="admin-overview-refresh-button"
             type="button"
@@ -441,7 +461,9 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
               value={data.registeredUsers.newInPeriod === null
                 ? '集計中'
                 : `${formatNumber(data.registeredUsers.newInPeriod)}人`}
-              note={data.registeredUsers.registrationIndexReady ? `${fromDate}〜${toDate}` : '登録日時データを移行中'}
+              note={data.registeredUsers.registrationIndexReady
+                ? `${dateRange.appliedFromDate}〜${dateRange.appliedToDate}`
+                : '登録日時データを移行中'}
               tone="green"
             />
             <MetricCard
