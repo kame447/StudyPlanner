@@ -611,6 +611,7 @@ export class ProductObservabilityRollupEngine {
           const nextUser = projectUserSummary({
             current: userBefore,
             event,
+            actorDayWasNew: actorDayBefore === null,
             nowIso: runStartedAt,
           });
           stage(

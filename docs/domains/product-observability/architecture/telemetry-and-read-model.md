@@ -644,6 +644,8 @@ admin read の現行最大形は次のとおりである。`auth 3` は cold inv
 | Overview | 93日 | 9 |
 | AI/API | 93日 | 5 |
 | Planning | 93日 | 4 |
+| Users、enrichment ready | profile 25件 + 30日trend | 8 |
+| Users、migration中 | profile 9件 + 30日trend | 42 |
 | User investigation | event 100件 | 6 |
 | Identity resolver | match 5件 | 6 |
 | Logs | session 50件 | 5 |
@@ -656,7 +658,13 @@ admin read の現行最大形は次のとおりである。`auth 3` は cold inv
 
 読み捨てる HTTP response body は status にかかわらず明示的に cancel または完全消費する。特に Firestore GET の 404、mutation の成功 body、non-2xx body を未処理のまま残さない。
 
-Users list の旧 enrichment N+1 は materialized projection への cutover が完了するまで暫定例外である。通常最大 page はこの contract を満たさないため、現段階では hard ceiling が 46 件目を止め generic 503 とする。page size 縮小を恒久解にせず、Issue #308 の projection migration で bounded normal path へ置換する。
+Users list のactive-day countと最新のtyped error分類は、environment別user summaryのadditive enrichmentとして保持する。rollupはactor-day markerを新規作成した時だけactive-day countをincrementし、既存のtyped AI / planning error分類だけからlatest errorを更新する。profileのemail、username、Firebase UID等のPIIをobservability collectionへ複製しない。Usersの通常readはprofile 25件を1 query、actor directoryとuser summaryを各1 `batchGet`、daily rollup・active-user window・rollup checkpointを1 cross-collection `batchGet`で取得する。Users responseが30日trendも所有するため、browserはOverviewを並列取得しない。
+
+rollout順序はPR merge → Pages自動配信 → Worker手動配信に固定し、merge後は速やかにWorkerを配信する。この間の新UI + 旧Workerでは、client serviceがUsers responseの`trend`または`enrichmentReady`欠損を旧shapeとして検出し、従来どおり30日Overviewを1回だけ追加取得してtrendへ正規化する。このfallbackは旧Workerの成功応答shapeの差だけを吸収し、legacy N+1がsubrequest上限へ達して返すgeneric 503は吸収しない。新shapeではUsers 1 requestを維持する。旧shapeの欠損enrichmentはunknownとして表示し、`0`、`null日`、`undefined日`を捏造・露出しない。新shapeのfieldが存在するのにnested valueが破損している場合はfallbackせず画面の既存エラー状態へ遷移する。旧UI + 新Workerは配信後も開かれている古いtabに限る。Workerのtop-level追加fieldはadditiveとし、既存user fieldの意味を維持する。既存型の拡張は、証明できないactive-day countだけを`null`にする場合に限定する。
+
+additive enrichmentのmigration readinessは専用checkpointのenvironment完了状態だけで判定する。一部documentにfieldが存在するだけではreadyとしない。migration中はserverがpageを9件へclampし、従来のdirectory / summary / actor-day COUNT / recent-error queryをbounded fallbackとして使う。actorを持つのにsummary/enrichmentが証明できない場合はactive daysとrecent errorをunknownとし、0やabsentを捏造しない。profile cursorは9件目から継続できる。ready後にsummaryが欠損または未versionedならN+1へ戻らずunknownを返す。
+
+user enrichment backfillはprofile registrationと同じscheduled phaseの残budgetで1 invocation最大17 summaryを処理する。各unitはactor-day COUNT 1回とrecent-error page 1回までとし、100 eventで30日境界またはtyped errorへ到達しなければactor cursorをcheckpointして次回再開する。summary query時のFirestore update timeをconditional bulk commitへ渡し、rollupが同じsummaryを更新した場合はsummary群とcheckpointをまとめて409/412 conflictにし、cursorを進めない。このupdate-time watermarkによりbackfillが新しいrollup値を上書きしない。既存のactor/environment equality + occurredAt order queryを再利用し、新しいcomposite indexは要求しない。
 
 scheduled maintenance は phase 分割、bulk write、checkpoint と一体で budget 適用する。分割前の rollup → snapshots → backfill → retention を単一 invocation のまま「bounded」とは扱わない。
 
@@ -666,7 +674,7 @@ production の cron trigger はアカウント全体の trigger slot を増や�
 | ---: | --- |
 | 0 | rollup |
 | 1 | active-user snapshot |
-| 2 | profile registration backfill |
+| 2 | profile registration + user enrichment backfill |
 | 3 | retention |
 | 4 | no-op |
 
@@ -683,8 +691,8 @@ cold OAuth を含む scheduled phase の実測上限contractは次のとおり�
 | Active-user snapshot、dirtyなし / current snapshotあり | 3 |
 | Active-user snapshot、最大35 actor-day page + publish + dirty clear | 44 |
 | Active-user snapshot、最大scan後の transaction conflict | 42 |
-| Profile registration backfill、初回empty / completed | 4 / 2 |
-| Profile registration backfill、100 profile × 2 batch | 7 |
+| Combined backfill、profile empty + user migration開始 / 両方completed | 7 / 3 |
+| Combined backfill、profile 100件 × 2 + user enrichment 17件 | 44 |
 | Retention、expiredなし / 4 collection × 100 delete × 2 batch | 5 / 11 |
 | no-op | 0 |
 
@@ -692,4 +700,4 @@ rollup は1 batchを最大20 eventとし、既知のcheckpoint、actor-day、dai
 
 active-user snapshot はdirty sourceの1 revision・1 target dateだけを一度に処理する。最大35 pageで止まり、job state、date cursor、64 shardのpseudonymous actor accumulatorを保存する。長いscan中はFirestore transactionを開いたままにせず、scan後の短いtransactionでjob/shardの再読取が開始時と一致する場合だけcheckpointまたはsnapshotをcommitする。canonical `observability_active_user_windows` は30日すべてのscanが終わるまで更新しない。accumulatorはactor IDをfield keyにしたmapではなく、shardごとにsort済みactor IDとwindow flagを1個のcanonical string fieldへencodeする。これによりactorごとの自動single-field index entryを生成しない。各shardはFirestoreのdocument name・field name/value・32-byte overhead式で450,000 bytes以下とし、publish transactionは削除する64 shardのdocument storageと既定の昇順/降順index entry、canonical snapshot/jobの更新前後を保守的に合算して8 MiB以下であることを事前検査する（Firestore hard limit 10 MiBに2 MiBの余白）。HTTP request bodyもtransportで別途10 MiB未満を再検査する。完成時はcanonical snapshotのpublish、idle job state、64 shard削除を1 transactionへまとめる。dirty sourceは同じrevisionだけを別transactionでclearするため、途中で新revisionが入っても古いjobが消さない。publish後にclearが失敗した場合はjobがidleなので、次回は同じsourceを再scanしてからclearし、古い完了jobが再利用されたrevisionを誤ってclearするABAを避ける。
 
-profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめる。retention は4 collectionのexpired prefixを読み、最大400 deleteを1 commitにまとめる。どちらもcommit失敗時にcheckpointだけ、またはdeleteの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。
+profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめ、その後の残budgetでuser enrichmentを最大17件進める。cold OAuthを共有した最大形はprofile 6 Firestore request + user enrichment `checkpoint 1 + summary page 1 + 17 × 2 reads + conditional commit 1 = 37` の合計44である。retention は4 collectionのexpired prefixを読み、最大400 deleteを1 commitにまとめる。いずれもcommit失敗時にcheckpointだけ、またはmutationの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。

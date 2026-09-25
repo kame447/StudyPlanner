@@ -140,6 +140,14 @@ describe('ProductObservabilityRollupEngine', () => {
     expect(dailyAfterFirst?.activeActorCount).toBe(1);
     expect(dailyAfterFirst?.processedEventCount).toBe(2);
     expect(dailyAfterFirst).not.toHaveProperty('id');
+    expect(firestore.documents.get(
+      'observability_user_summary_production/actor-12345678',
+    )).toMatchObject({
+      userEnrichmentVersion: 1,
+      activeDayCount: 1,
+      latestErrorAt: null,
+      latestErrorCategory: null,
+    });
 
     const second = await rollup.runBatch(50);
     const dailyAfterSecond = firestore.documents.get(dailyKey);

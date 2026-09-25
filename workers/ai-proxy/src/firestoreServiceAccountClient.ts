@@ -31,6 +31,7 @@ interface FirestoreValue {
 interface FirestoreDocument {
   name?: string;
   fields?: Record<string, FirestoreValue>;
+  updateTime?: string;
 }
 
 interface FirestoreBatchGetResult {
@@ -60,6 +61,13 @@ export interface FirestoreOrderedCursor {
 export interface FirestoreOrderedDocument extends Record<string, unknown> {
   id: string;
   documentName: string;
+}
+
+export interface FirestoreDocumentSnapshot {
+  id: string;
+  documentName: string;
+  updateTime: string;
+  value: Record<string, unknown>;
 }
 
 export type FirestoreFilterOperator =
@@ -96,6 +104,7 @@ export interface FirestoreTransactionDocumentWrite extends FirestoreTransactionD
 
 export interface FirestoreBulkDocumentUpdate extends FirestoreTransactionDocumentWrite {
   updateMask?: readonly string[];
+  currentDocument?: { exists: boolean } | { updateTime: string };
 }
 
 export interface FirestoreBulkDocumentDelete extends FirestoreTransactionDocumentKey {
@@ -110,6 +119,13 @@ export class FirestoreTransactionConflictError extends Error {
   constructor(readonly status: number) {
     super(`Firestore transaction conflict: ${status}`);
     this.name = 'FirestoreTransactionConflictError';
+  }
+}
+
+export class FirestoreWriteConflictError extends Error {
+  constructor(readonly status: number) {
+    super(`Firestore write conflict: ${status}`);
+    this.name = 'FirestoreWriteConflictError';
   }
 }
 
@@ -426,6 +442,33 @@ export class FirestoreServiceAccountClient {
     return { ...decodeFirestoreFields(document.fields ?? {}), id: documentId(document.name) };
   }
 
+  async getDocumentSnapshot(
+    collection: string,
+    id: string,
+  ): Promise<FirestoreDocumentSnapshot | null> {
+    const response = await this.request(
+      `${this.documentsBase()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`,
+    );
+    if (response.status === 404) {
+      await discardResponseBody(response);
+      return null;
+    }
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore get failed: ${response.status}`);
+    }
+    const document = await response.json() as FirestoreDocument;
+    if (!document.name || !document.updateTime) {
+      throw new Error('Firestore document snapshot metadata was incomplete');
+    }
+    return {
+      id: documentId(document.name),
+      documentName: document.name,
+      updateTime: document.updateTime,
+      value: decodeFirestoreFields(document.fields ?? {}),
+    };
+  }
+
   async batchGetDocuments(
     collection: string,
     ids: readonly string[],
@@ -501,6 +544,7 @@ export class FirestoreServiceAccountClient {
           ...(write.updateMask && write.updateMask.length > 0
             ? { updateMask: { fieldPaths: [...write.updateMask] } }
             : {}),
+          ...(write.currentDocument ? { currentDocument: write.currentDocument } : {}),
         };
         return update;
       }),
@@ -514,6 +558,9 @@ export class FirestoreServiceAccountClient {
     });
     if (!response.ok) {
       await discardResponseBody(response);
+      if (response.status === 409 || response.status === 412) {
+        throw new FirestoreWriteConflictError(response.status);
+      }
       throw new Error(`Firestore commit failed: ${response.status}`);
     }
     await discardResponseBody(response);
@@ -847,6 +894,47 @@ export class FirestoreServiceAccountClient {
         ...decodeFirestoreFields(document.fields ?? {}),
         id: documentId(document.name),
         documentName: document.name,
+      }];
+    });
+  }
+
+  async queryDocumentSnapshotsByNameAfter(params: {
+    collection: string;
+    cursorDocumentName?: string | null;
+    limit?: number;
+  }): Promise<FirestoreDocumentSnapshot[]> {
+    const response = await this.request(`${this.documentsBase()}:runQuery`, {
+      method: 'POST',
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: params.collection }],
+          orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+          ...(params.cursorDocumentName ? {
+            startAt: {
+              values: [{ referenceValue: params.cursorDocumentName }],
+              before: false,
+            },
+          } : {}),
+          limit: boundedQueryLimit(params.limit ?? 100),
+        },
+      }),
+    });
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore name-ordered query failed: ${response.status}`);
+    }
+    const payload = await response.json() as FirestoreRunQueryResult[];
+    return payload.flatMap((result) => {
+      const document = result.document;
+      if (!document?.name) return [];
+      if (!document.updateTime) {
+        throw new Error('Firestore document snapshot metadata was incomplete');
+      }
+      return [{
+        id: documentId(document.name),
+        documentName: document.name,
+        updateTime: document.updateTime,
+        value: decodeFirestoreFields(document.fields ?? {}),
       }];
     });
   }

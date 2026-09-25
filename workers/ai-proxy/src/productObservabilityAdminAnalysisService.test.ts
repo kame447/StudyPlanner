@@ -146,8 +146,22 @@ class FakeReadModel {
       planningOutcomeCount: 0,
       lastProductAction: 'plan_created' as const,
       lastPlanningOutcome: null,
+      userEnrichmentVersion: 1 as const,
+      activeDayCount: 2,
+      latestErrorAt: '2026-08-29T00:30:00.000Z',
+      latestErrorCategory: 'provider_error',
+      userEnrichmentUpdatedAt: '2026-08-29T00:31:00.000Z',
       updatedAt: '2026-08-29T00:00:01.000Z',
     };
+  }
+
+  async getUserSummaries(actorSubjectIds: readonly string[]) {
+    return await Promise.all(actorSubjectIds.map((actorSubjectId) =>
+      this.getUserSummary(actorSubjectId)));
+  }
+
+  async getUserTrend() {
+    return { daily: overview().daily, activeUsers: null };
   }
 }
 
@@ -164,9 +178,23 @@ class FakeFirestore {
   profilePageLimits: number[] = [];
   getCallCount = 0;
   countCollections: string[] = [];
+  enrichmentReady = true;
 
   async getDocument(collection: string, id: string) {
     this.getCallCount += 1;
+    if (collection === 'observability_user_enrichment_backfill_state' && id === 'main') {
+      return this.enrichmentReady ? {
+        schemaVersion: 1,
+        environmentIndex: 1,
+        cursorDocumentName: null,
+        pendingRecentErrorScan: null,
+        completedEnvironments: ['production'],
+        processedUsers: 1,
+        enrichedUsers: 1,
+        completed: false,
+        updatedAt: '2026-08-29T00:31:00.000Z',
+      } : null;
+    }
     return collection === 'profiles' && id === profile.id ? { ...profile } : null;
   }
 
@@ -362,7 +390,7 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     const page = await service.listUsers({ environment: 'production', limit: 100 });
 
     expect(firestore.profilePageLimits).toEqual([25]);
-    expect(firestore.countCollections).toEqual(['observability_actor_day']);
+    expect(firestore.countCollections).toEqual([]);
     expect(page.nextCursor).toBeNull();
     expect(page.users).toHaveLength(1);
     expect(page.users[0]).toMatchObject({
@@ -381,6 +409,49 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(page.users[0].profileSubjectId).not.toContain(profile.id);
     expect(page.users[0]).not.toHaveProperty('firebaseUid');
     expect(page.users[0]).not.toHaveProperty('email');
+  });
+
+  it('uses the capped legacy path before readiness and keeps the continuation cursor', async () => {
+    const firestore = new FakeFirestore();
+    firestore.enrichmentReady = false;
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      firestore as never,
+      new FakeReadModel() as never,
+      new FakeIdentityStore(),
+      () => new Date('2026-08-29T12:00:00.000Z'),
+    );
+
+    const page = await service.listUsers({ environment: 'production', limit: 25 });
+
+    expect(firestore.profilePageLimits).toEqual([9]);
+    expect(firestore.countCollections).toEqual(['observability_actor_day']);
+    expect(page.enrichmentReady).toBe(false);
+    expect(page.users[0].activeDayCount).toBe(2);
+  });
+
+  it('keeps missing ready-state summaries unknown instead of fabricating zero enrichment', async () => {
+    const firestore = new FakeFirestore();
+    const readModel = new FakeReadModel();
+    readModel.getUserSummaries = async () => [null];
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      firestore as never,
+      readModel as never,
+      new FakeIdentityStore(),
+      () => new Date('2026-08-29T12:00:00.000Z'),
+    );
+
+    const page = await service.listUsers({ environment: 'production', limit: 25 });
+
+    expect(page.enrichmentReady).toBe(true);
+    expect(page.users[0]).toMatchObject({
+      actorSubjectId: 'actor-aaaaaaaa',
+      activeDayCount: null,
+      recentErrorState: 'unknown',
+      recentErrorAt: null,
+      recentErrorCategory: null,
+    });
   });
 
   it('resolves profile identity only on an explicit bounded exact lookup', async () => {
