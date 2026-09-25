@@ -1,6 +1,6 @@
 {
-  "request_id": "20260911-issue152-synthesized-evidence-1",
-  "reason": "Real API observation of the reviewed Issue #152 synthesized-evidence harness (V01 supplemental image provenance and authorization, V02 synthesized upload text and starter names, V08 echo-carrier authorization). Previous stored-durable request 20260911-issue152-stored-durable-1 (run 34572964804) showed no protected-state violation.",
+  "request_id": "20260926-issue152-postfix-provenance-durable-1",
+  "reason": "Post-fix Real API verification at fdb8ae2e of typed channel provenance (V01/V02/V08), durable user-context lifecycle (V05/V07/V09), and stored-label injection after the Issue #152 fixes. Batch 1 of 3.",
   "critical_repetitions": 3,
-  "suites": ["synthesized-evidence"]
+  "suites": ["synthesized-evidence", "stored-durable"]
 }
