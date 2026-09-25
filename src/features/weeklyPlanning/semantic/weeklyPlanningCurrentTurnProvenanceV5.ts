@@ -179,6 +179,42 @@ function collectStoredContextStrings(
   return stored;
 }
 
+function collectPromptContextStrings(
+  publicStateSummary: Record<string, unknown> | undefined,
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
+  recentConversation?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>,
+): Set<string> {
+  const stored = new Set<string>();
+  // Prompt assembly serializes public state, starter context, and conversation
+  // history independently. Prior user turns do not compete with the current
+  // utterance's fragments; the current utterance must still ground the source.
+  // Visit each leaf independently to avoid joining unrelated fields.
+  const pending: unknown[] = [
+    publicStateSummary,
+    selectedStarterTarget,
+    ...(recentConversation ?? [])
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content),
+  ];
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === 'string') {
+      const normalized = normalizedEvidenceText(value);
+      if (normalized) stored.add(normalized);
+      continue;
+    }
+    if (!value || typeof value !== 'object' || visited.has(value)) continue;
+    visited.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) pending.push(item);
+    } else if (isRecord(value)) {
+      for (const item of Object.values(value)) pending.push(item);
+    }
+  }
+  return stored;
+}
+
 function contextualMachineBoundEntityValues(
   publicStateSummary: Record<string, unknown> | undefined,
 ): {
@@ -299,6 +335,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   currentUserText?: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  recentConversation?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
   committedGraph?: WeeklyPlanningFactGraphV5;
 }): string[] {
@@ -322,6 +359,11 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     params.publicStateSummary,
     params.selectedStarterTarget,
   );
+  const promptContextStrings = collectPromptContextStrings(
+    params.publicStateSummary,
+    params.selectedStarterTarget,
+    params.recentConversation,
+  );
   const machineBoundValues = contextualMachineBoundEntityValues(params.publicStateSummary);
   if (params.selectedStarterTarget) {
     const selectedLabel = normalizedEvidenceText(params.selectedStarterTarget.label);
@@ -344,7 +386,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     // saved entity. Exact current-user quotations keep their prior behavior.
     const copiedFromStoredFragments = channel === 'user'
       && !normalizedEvidenceText(params.currentUserText ?? '').includes(normalizedSource)
-      && [...storedContextStrings].some((stored) =>
+      && [...promptContextStrings].some((stored) =>
         sourceTextMatchesChannelV5(normalizedSource, stored));
     if (!restatesCommittedUserFact && (channel === null || copiedFromStoredFragments
       || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel })))) {

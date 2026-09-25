@@ -54,6 +54,7 @@ export interface WeeklyPlanningSemanticResponseValidationInputV5 {
   currentUserText?: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  recentConversation?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
   committedGraph?: WeeklyPlanningFactGraphV5;
 }
@@ -134,6 +135,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       currentUserText: input.currentUserText,
       supplementalContext: input.supplementalContext,
       selectedStarterTarget: input.selectedStarterTarget,
+      recentConversation: input.recentConversation,
       publicStateSummary: input.publicStateSummary,
       committedGraph: input.committedGraph,
     }),

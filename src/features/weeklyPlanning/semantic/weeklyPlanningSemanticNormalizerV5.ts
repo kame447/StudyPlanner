@@ -75,6 +75,7 @@ function enforceFinalCurrentTurnProvenance(params: {
     currentUserText: params.input.userText,
     supplementalContext: params.input.supplementalContext,
     selectedStarterTarget: params.input.selectedStarterTarget,
+    recentConversation: params.input.recentConversation,
     publicStateSummary: params.input.publicStateSummary,
     committedGraph: params.input.committedGraph,
   });
@@ -171,6 +172,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           currentUserText: input.userText,
           supplementalContext: input.supplementalContext,
           selectedStarterTarget: input.selectedStarterTarget,
+          recentConversation: input.recentConversation,
           publicStateSummary: input.publicStateSummary,
           committedGraph: input.committedGraph,
         },

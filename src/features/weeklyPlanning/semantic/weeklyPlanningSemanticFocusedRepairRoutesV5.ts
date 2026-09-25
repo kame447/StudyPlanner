@@ -39,6 +39,7 @@ function validationState(run: WeeklyPlanningSemanticNormalizerRunV5) {
     currentUserText: run.input.userText,
     supplementalContext: run.input.supplementalContext,
     selectedStarterTarget: run.input.selectedStarterTarget,
+    recentConversation: run.input.recentConversation,
     publicStateSummary: run.input.publicStateSummary,
     committedGraph: run.input.committedGraph,
   };
