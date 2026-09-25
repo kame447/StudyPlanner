@@ -1,3 +1,5 @@
+import type { WorkerSubrequestObserver } from './workerSubrequestBudget';
+
 export interface FirestoreServiceAccountEnv {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_SERVICE_ACCOUNT_EMAIL: string;
@@ -6,6 +8,7 @@ export interface FirestoreServiceAccountEnv {
 
 export interface FirestoreTokenProvider {
   getToken(): Promise<string>;
+  readonly subrequestObserver?: WorkerSubrequestObserver;
 }
 
 interface OAuthTokenResponse {
@@ -28,6 +31,11 @@ interface FirestoreValue {
 interface FirestoreDocument {
   name?: string;
   fields?: Record<string, FirestoreValue>;
+}
+
+interface FirestoreBatchGetResult {
+  found?: FirestoreDocument;
+  missing?: string;
 }
 
 interface FirestoreRunQueryResult {
@@ -97,8 +105,18 @@ const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
+const BATCH_GET_DOCUMENT_LIMIT = 100;
+const FIRESTORE_REQUEST_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 const TIMESTAMP_FIELD_NAMES = new Set(['expireAt', 'registeredAt']);
 const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
+
+async function discardResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The response may already be closed by the runtime. There is nothing left to drain.
+  }
+}
 
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
@@ -245,6 +263,7 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
     private readonly env: FirestoreServiceAccountEnv,
     private readonly fetcher: typeof fetch = workerSafeFetch,
     private readonly cryptoApi: Crypto = crypto,
+    readonly subrequestObserver?: WorkerSubrequestObserver,
   ) {}
 
   async getToken(): Promise<string> {
@@ -296,15 +315,20 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
       new TextEncoder().encode(unsigned),
     );
     const assertion = `${unsigned}.${base64Url(new Uint8Array(signature))}`;
+    this.subrequestObserver?.beforeSubrequest('oauth_token');
     const response = await this.fetcher(OAUTH_TOKEN_URL, {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
       }),
     });
-    if (!response.ok) throw new Error('Firebase service account token exchange failed');
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error('Firebase service account token exchange failed');
+    }
 
     const payload = await response.json() as OAuthTokenResponse;
     if (!payload.access_token) throw new Error('Firebase service account token was empty');
@@ -361,8 +385,10 @@ export class FirestoreServiceAccountClient {
 
   private async request(url: string, init: RequestInit = {}): Promise<Response> {
     const token = await this.serviceAccountToken();
+    this.tokenProvider.subrequestObserver?.beforeSubrequest('firestore');
     return await this.fetcher(url, {
       ...init,
+      redirect: 'manual',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -375,10 +401,63 @@ export class FirestoreServiceAccountClient {
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`,
     );
-    if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`Firestore get failed: ${response.status}`);
+    if (response.status === 404) {
+      await discardResponseBody(response);
+      return null;
+    }
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore get failed: ${response.status}`);
+    }
     const document = await response.json() as FirestoreDocument;
     return { ...decodeFirestoreFields(document.fields ?? {}), id: documentId(document.name) };
+  }
+
+  async batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+    transaction?: string,
+  ): Promise<Array<Record<string, unknown> | null>> {
+    if (ids.length === 0) return [];
+    const documents = ids.map((id) => this.documentName(collection, id));
+    const documentsByName = new Map<string, Record<string, unknown> | null>();
+
+    for (let offset = 0; offset < documents.length; offset += BATCH_GET_DOCUMENT_LIMIT) {
+      const requestedDocuments = documents.slice(offset, offset + BATCH_GET_DOCUMENT_LIMIT);
+      const body = JSON.stringify({
+        documents: requestedDocuments,
+        ...(transaction ? { transaction } : {}),
+      });
+      if (new TextEncoder().encode(body).byteLength >= FIRESTORE_REQUEST_BODY_LIMIT_BYTES) {
+        throw new Error('Firestore batch get request was too large');
+      }
+      const response = await this.request(`${this.documentsBase()}:batchGet`, {
+        method: 'POST',
+        body,
+      });
+      if (!response.ok) {
+        await discardResponseBody(response);
+        throw new Error(`Firestore batch get failed: ${response.status}`);
+      }
+      const payload = await response.json() as FirestoreBatchGetResult[];
+      payload.forEach((entry) => {
+        if (entry.found?.name) {
+          documentsByName.set(entry.found.name, {
+            ...decodeFirestoreFields(entry.found.fields ?? {}),
+            id: documentId(entry.found.name),
+          });
+        } else if (entry.missing) {
+          documentsByName.set(entry.missing, null);
+        }
+      });
+      requestedDocuments.forEach((name) => {
+        if (!documentsByName.has(name)) {
+          throw new Error('Firestore batch get response was incomplete');
+        }
+      });
+    }
+
+    return documents.map((name) => documentsByName.get(name) ?? null);
   }
 
   async getDocumentInTransaction(
@@ -390,8 +469,14 @@ export class FirestoreServiceAccountClient {
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}?${params.toString()}`,
     );
-    if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`Firestore transactional get failed: ${response.status}`);
+    if (response.status === 404) {
+      await discardResponseBody(response);
+      return null;
+    }
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore transactional get failed: ${response.status}`);
+    }
     const document = await response.json() as FirestoreDocument;
     return { ...decodeFirestoreFields(document.fields ?? {}), id: documentId(document.name) };
   }
@@ -412,7 +497,11 @@ export class FirestoreServiceAccountClient {
         body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
       },
     );
-    if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore write failed: ${response.status}`);
+    }
+    await discardResponseBody(response);
   }
 
   async setDocumentWithMaximumInteger(
@@ -448,7 +537,11 @@ export class FirestoreServiceAccountClient {
         ],
       }),
     });
-    if (!response.ok) throw new Error(`Firestore maximum transform failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore maximum transform failed: ${response.status}`);
+    }
+    await discardResponseBody(response);
   }
 
   async setImmutableDocument(
@@ -465,10 +558,15 @@ export class FirestoreServiceAccountClient {
         body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
       },
     );
-    if (response.ok) return;
+    if (response.ok) {
+      await discardResponseBody(response);
+      return;
+    }
     if (response.status !== 409) {
+      await discardResponseBody(response);
       throw new Error(`Firestore immutable write failed: ${response.status}`);
     }
+    await discardResponseBody(response);
 
     const existing = await this.getDocument(collection, id);
     if (!existing
@@ -525,11 +623,16 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       body: JSON.stringify({ writes }),
     });
-    if (response.ok) return;
+    if (response.ok) {
+      await discardResponseBody(response);
+      return;
+    }
     if (response.status !== 409) {
+      await discardResponseBody(response);
       const prefix = params.writeFailurePrefix ?? 'Firestore atomic append failed';
       throw new Error(`${prefix}: ${response.status}`);
     }
+    await discardResponseBody(response);
 
     const itemMatches = await Promise.all(params.items.map(async (item) => {
       const existing = await this.getDocument(params.itemCollection, item.id);
@@ -559,7 +662,10 @@ export class FirestoreServiceAccountClient {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Firestore query failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore query failed: ${response.status}`);
+    }
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => result.document
       ? [{
@@ -586,7 +692,10 @@ export class FirestoreServiceAccountClient {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Firestore aggregation query failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore aggregation query failed: ${response.status}`);
+    }
     const payload = await response.json() as FirestoreRunAggregationQueryResult[];
     const rawCount = payload
       .map((entry) => decodeFirestoreValue(entry.result?.aggregateFields?.count))
@@ -630,7 +739,10 @@ export class FirestoreServiceAccountClient {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Firestore ordered query failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore ordered query failed: ${response.status}`);
+    }
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => {
       const document = result.document;
@@ -664,7 +776,10 @@ export class FirestoreServiceAccountClient {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Firestore name-ordered query failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore name-ordered query failed: ${response.status}`);
+    }
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => {
       const document = result.document;
@@ -682,7 +797,10 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       body: JSON.stringify({ options: { readWrite: {} } }),
     });
-    if (!response.ok) throw new Error(`Firestore begin transaction failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore begin transaction failed: ${response.status}`);
+    }
     const payload = await response.json() as BeginTransactionResponse;
     if (!payload.transaction) throw new Error('Firestore transaction token was empty');
     return payload.transaction;
@@ -704,10 +822,15 @@ export class FirestoreServiceAccountClient {
         })),
       }),
     });
-    if (response.ok) return;
+    if (response.ok) {
+      await discardResponseBody(response);
+      return;
+    }
     if (response.status === 409 || response.status === 412) {
+      await discardResponseBody(response);
       throw new FirestoreTransactionConflictError(response.status);
     }
+    await discardResponseBody(response);
     throw new Error(`Firestore transaction commit failed: ${response.status}`);
   }
 
@@ -716,7 +839,11 @@ export class FirestoreServiceAccountClient {
       method: 'POST',
       body: JSON.stringify({ transaction }),
     });
-    if (!response.ok) throw new Error(`Firestore transaction rollback failed: ${response.status}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore transaction rollback failed: ${response.status}`);
+    }
+    await discardResponseBody(response);
   }
 
   async deleteDocument(collection: string, id: string): Promise<void> {
@@ -725,8 +852,10 @@ export class FirestoreServiceAccountClient {
       { method: 'DELETE' },
     );
     if (!response.ok && response.status !== 404) {
+      await discardResponseBody(response);
       throw new Error(`Firestore delete failed: ${response.status}`);
     }
+    await discardResponseBody(response);
   }
 
   async deleteByStringField(

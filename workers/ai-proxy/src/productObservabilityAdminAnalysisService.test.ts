@@ -42,6 +42,10 @@ function overview(): ObservabilityOverviewReadModel {
   day1.aiByPurpose = [{ key: 'weekly_planning_semantic_normalizer', aggregate: modelAggregate }];
   day1.aiByPhase = [{ key: 'initial', aggregate: modelAggregate }];
   day1.aiByOperationKind = [{ key: 'chat_completion', aggregate: modelAggregate }];
+  day1.planning = {
+    ...day1.planning,
+    outcomeCounts: { session_started: 1, turn_started: 2 },
+  };
 
   const secondAggregate = {
     ...day2.ai,
@@ -116,6 +120,14 @@ function overview(): ObservabilityOverviewReadModel {
 }
 
 class FakeReadModel {
+  async getDailyRollups() {
+    return overview().daily;
+  }
+
+  async getRollupCheckpoint() {
+    return overview().rollupCheckpoint;
+  }
+
   async getOverview() {
     return overview();
   }
@@ -241,6 +253,11 @@ class FakeIdentityStore {
   async lookupActorSubjectId(firebaseUid: string) {
     this.lookupCount += 1;
     return firebaseUid === profile.id ? 'actor-aaaaaaaa' : null;
+  }
+
+  async lookupActorSubjectIds(firebaseUids: readonly string[]) {
+    return await Promise.all(firebaseUids.map((firebaseUid) =>
+      this.lookupActorSubjectId(firebaseUid)));
   }
 }
 

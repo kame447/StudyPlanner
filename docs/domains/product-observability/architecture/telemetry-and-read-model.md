@@ -1,8 +1,8 @@
 # Product Observability Telemetry and Read Model Architecture
 
 Status: canonical architecture contract
-Updated: 2026-08-28
-Owning Issue: #213
+Updated: 2026-09-25
+Owning Issues: #213, #308
 Parent requirement: `../spec/console-requirements.md`
 
 ## 1. Problem statement
@@ -620,3 +620,42 @@ consoleは`計測開始日`を保持し、期間がtelemetry開始前を含む�
 運用計測の結果、event volumeが極端に小さくserver rollupが不必要、Firestoreがanalytics workloadに不適切、または別のmanaged analytics storeの方が大幅に安全・安価であることが示された場合、physical storage / aggregation implementationは変更してよい。
 
 ただし、lightweight analyticsとdetailed traceの分離、metric semanticsの単一owner、best-effort observation、stable drill-down identity、UIからstorage/aggregation責務を外すという境界は、別案がこれらをより安全に満たす証拠がない限り維持する。
+
+## 22. Worker subrequest budget and measurement
+
+product-observability の Worker は Workers Free の 1 invocation あたり 50 external subrequests という上限内で動作させる。Paid plan や `limits.subrequests` の引き上げを前提にしない。Cloudflare の上限と redirect hop の計数規則は [Workers limits: Subrequests](https://developers.cloudflare.com/workers/platform/limits/#subrequests) を authority とする。
+
+アプリケーション側は次の安全余白を持つ。
+
+- 送信を試みた external request が 40 件に達した時点で sanitized warning を 1 回記録する
+- 45 件までを hard ceiling とし、46 件目は送信前に拒否する
+- budget 超過を admin client へ件数付きで返さず、既存の generic 503 contract を維持する
+- OAuth token exchange、Identity Toolkit lookup、Firestore REST request を同じ invocation-local tracker で数える
+- Google endpoint は `redirect: manual` とし、redirect response は失敗として扱う。手動追跡して追加 hop を発生させない
+
+tracker は module-global singleton にしない。`fetch()` または各 scheduled invocation の開始時に生成し、その invocation 内で共有する service-account token provider から全 Firestore client へ伝播させる。計測値は Cloudflare runtime の内部カウンタではなく、Worker が送信直前に数える **attempted external requests** である。
+
+completion log は invocation kind、固定の route / maintenance phase、合計、固定カテゴリ別件数だけを持つ。URL query、Firebase UID、actor/profile ID、Authorization、token、request/response body、secret は記録しない。client response にも計測値を含めない。
+
+admin read の現行最大形は次のとおりである。`auth 3` は cold invocation の Identity Toolkit 1 + OAuth 1 + `admins` document 1 を表す。
+
+| Admin path | 最大入力 | 最大 external requests |
+| --- | --- | ---: |
+| Overview | 93日 | 9 |
+| AI/API | 93日 | 5 |
+| Planning | 93日 | 4 |
+| User investigation | event 100件 | 6 |
+| Identity resolver | match 5件 | 6 |
+| Logs | session 50件 | 5 |
+| Log entries | entry 20件 | 6 |
+| Debug Bundle | filterなし、200 entry scan | 15 |
+| Debug Bundle | request filterあり | 7 |
+| System | 固定 probe | 6 |
+
+日付範囲と連番 entry は個別 GET の fan-out にせず、exact document name の Firestore `batchGet` を最大100件ずつ使用する。Firestore の `found` / `missing` は返却順を信用せず document name で要求順へ復元する。欠損日を隣の日付へずらさず、Overview の欠損日省略、Planning の0埋め、trace sequence / cursor の既存挙動を維持する。request body は Firestore の 10 MiB 上限未満であることを送信前に検査する。
+
+読み捨てる HTTP response body は status にかかわらず明示的に cancel または完全消費する。特に Firestore GET の 404、mutation の成功 body、non-2xx body を未処理のまま残さない。
+
+Users list の旧 enrichment N+1 は materialized projection への cutover が完了するまで暫定例外である。通常最大 page はこの contract を満たさないため、現段階では hard ceiling が 46 件目を止め generic 503 とする。page size 縮小を恒久解にせず、Issue #308 の projection migration で bounded normal path へ置換する。
+
+scheduled maintenance は phase 分割、bulk write、checkpoint と一体で budget 適用する。分割前の rollup → snapshots → backfill → retention を単一 invocation のまま「bounded」とは扱わない。

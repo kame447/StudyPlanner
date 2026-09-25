@@ -24,6 +24,7 @@ class MemoryReadFirestore {
   readonly profiles: StoredDocument[] = [];
   queryCallCount = 0;
   countCallCount = 0;
+  batchGetCallCount = 0;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -59,6 +60,14 @@ class MemoryReadFirestore {
   async getDocument(collection: string, id: string): Promise<StoredDocument | null> {
     const value = this.documents.get(this.key(collection, id));
     return value ? { ...value, id } : null;
+  }
+
+  async batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<StoredDocument | null>> {
+    this.batchGetCallCount += 1;
+    return await Promise.all(ids.map((id) => this.getDocument(collection, id)));
   }
 
   async countDocuments(
@@ -182,6 +191,29 @@ function service(firestore: MemoryReadFirestore): ProductObservabilityReadModelS
 }
 
 describe('ProductObservabilityReadModelService', () => {
+  it('keeps later daily rollups on their requested date when a middle document is missing', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument(
+      'observability_daily_rollups',
+      'production:2026-09-01',
+      daily('2026-09-01', 100) as unknown as StoredDocument,
+    );
+    firestore.setDocument(
+      'observability_daily_rollups',
+      'production:2026-09-03',
+      daily('2026-09-03', 300) as unknown as StoredDocument,
+    );
+
+    const values = await service(firestore).getDailyRollups({
+      environment: 'production',
+      fromDate: '2026-09-01',
+      toDate: '2026-09-03',
+    });
+
+    expect(values.map((value) => value.localDate)).toEqual(['2026-09-01', '2026-09-03']);
+    expect(firestore.batchGetCallCount).toBe(1);
+  });
+
   it('reads precomputed active-user windows without scanning actor-day rows', async () => {
     const firestore = new MemoryReadFirestore();
     firestore.setDocument('observability_daily_rollups', 'production:2026-08-28', daily('2026-08-28', 90) as unknown as StoredDocument);
@@ -200,6 +232,7 @@ describe('ProductObservabilityReadModelService', () => {
     });
 
     expect(overview.daily.map((entry) => entry.activeActorCount)).toEqual([2, 2]);
+    expect(firestore.batchGetCallCount).toBe(1);
     expect(overview.activeUsers).toMatchObject({ today: 2, last7Days: 3, last30Days: 4 });
     expect(overview.registeredUsers).toEqual({
       total: 0,
