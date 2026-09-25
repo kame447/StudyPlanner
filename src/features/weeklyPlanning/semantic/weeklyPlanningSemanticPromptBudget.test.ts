@@ -39,7 +39,7 @@ const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 // with roughly 10% headroom rounded up to 50 bytes. These remain growth guards,
 // not compaction targets: PR #130 showed that forcing the budget lower can
 // delete application-critical meaning.
-const GENERIC_MEANING_POLICY_MAX_BYTES = 4_950;
+const GENERIC_MEANING_POLICY_MAX_BYTES = 5_700;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_400;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;

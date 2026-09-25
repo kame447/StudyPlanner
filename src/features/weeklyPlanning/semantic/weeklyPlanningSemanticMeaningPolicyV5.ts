@@ -60,7 +60,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'temporal_kind_and_strength',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Choosing deadline versus one-sided bounds or preference, and choosing hard versus soft versus unknown strength, depends on linguistic force; deterministic validation cannot detect a plausible but semantically stronger legal enum value.',
-    instruction: 'Use deadline for completion-by meaning, latest_end for work that may continue until an upper bound, earliest_start for not-before or start-from meaning, and preferred_window for a timing preference. Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint; use soft for preferences; use unknown when strength is not established. Do not strengthen unknown or soft meaning into hard.',
+    instruction: 'Use deadline for completion-by meaning, latest_end for work that may continue until an upper bound, earliest_start for not-before or start-from meaning, and preferred_window for a timing preference. Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint; use soft for preferences; use unknown when strength is not established. Do not strengthen unknown or soft meaning into hard. This strength choice applies to task timing constraints. A free-time window the user states as available is an available declaration with hard strength unless the user explicitly calls that window optional or uncertain.',
   },
   {
     id: 'availability_absence',
