@@ -1,9 +1,9 @@
 {
-  "request_id": "20260926-issue152-final-adaf7fd1-batch3",
-  "reason": "Final-HEAD Real API verification at adaf7fd1: multi-turn stateful authority/pending-question/preview boundaries (stateful) and semantic retention across turns and sessions (retention). Batch 3 of 3. Batches 1 (36173063315) and 2 (36174683441) passed.",
+  "request_id": "20260926-issue152-final-0fe1c15a-batch1",
+  "reason": "Final-HEAD Real API verification at 0fe1c15a (after renderer question fix, injected-value oracle, V09 reachability, prompt-rule restore, stored-string coverage): synthesized-evidence and stored-durable. Batch 1 of 3.",
   "critical_repetitions": 3,
   "suites": [
-    "stateful",
-    "retention"
+    "synthesized-evidence",
+    "stored-durable"
   ]
 }
