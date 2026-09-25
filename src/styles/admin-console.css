@@ -230,6 +230,14 @@
   padding: 7px 9px;
 }
 
+.admin-date-range-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger-strong, #b42318);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .admin-overview-refresh-button {
   width: 39px;
   display: inline-flex;
