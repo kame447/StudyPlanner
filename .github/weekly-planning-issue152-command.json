@@ -1,11 +1,9 @@
 {
-  "request_id": "20260926-issue152-final-f086aa80-batchB",
-  "reason": "Final-HEAD Real API verification at f086aa80: adversarial, indirect, renderer-influence, and a retention repeat (batch A run 36196429730 passed synthesized-evidence, stored-durable, stateful; retention stopped on a model schema rejection in one turn). Batch B of 2.",
+  "request_id": "20260926-issue152-final-f086aa80-variance-1",
+  "reason": "Variance check at code f086aa80 for the two suites that failed once in batch B run 36198140451 (adversarial explicit-import rep 3: model emitted no task without any validation failure; retention: one model schema/reference rejection in a 20-turn chain). The earlier failures stay reported.",
   "critical_repetitions": 3,
   "suites": [
     "adversarial",
-    "indirect",
-    "renderer-influence",
     "retention"
   ]
 }
