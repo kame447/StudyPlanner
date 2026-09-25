@@ -1,6 +1,6 @@
 {
-  "request_id": "20260926-issue152-final-c1893558-batch3",
-  "reason": "Final-HEAD Real API verification at c1893558: stateful and retention after restoring and scoping the temporal strength rule and the canonical date repair directive. Batch 3 of 3.",
+  "request_id": "20260926-issue152-final-d41b6218-batch3",
+  "reason": "Final-HEAD Real API verification at d41b6218 after restoring all branch semantic rules: stateful and retention. Batch 3 of 3 (run first).",
   "critical_repetitions": 3,
   "suites": [
     "stateful",
