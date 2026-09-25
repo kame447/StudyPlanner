@@ -1,6 +1,6 @@
 {
-  "request_id": "20260926-issue152-final-58ce1b47-batchA",
-  "reason": "Final-HEAD Real API verification at 58ce1b47 (production code 2eab80d0): synthesized-evidence, stored-durable, stateful, retention. Batch A of 2.",
+  "request_id": "20260926-issue152-final-f086aa80-batchA",
+  "reason": "Final-HEAD Real API verification at f086aa80: synthesized-evidence, stored-durable, stateful, retention. Batch A of 2.",
   "critical_repetitions": 3,
   "suites": [
     "synthesized-evidence",
