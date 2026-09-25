@@ -1,9 +1,9 @@
 {
-  "request_id": "20260926-issue152-final-d41b6218-batch1",
-  "reason": "Final-HEAD Real API verification at code d41b6218: synthesized-evidence and stored-durable (injected-value oracle, reliable V09 precondition). Batch 1 of 3. Batch 3 run 36186612419 passed.",
+  "request_id": "20260926-issue152-final-afbf0570-batch3",
+  "reason": "Final-HEAD Real API verification at code afbf0570 (all fixes, restored branch semantic rules, scoped temporal strength, partial-correction shape): stateful and retention. Batch 3 of 3.",
   "critical_repetitions": 3,
   "suites": [
-    "synthesized-evidence",
-    "stored-durable"
+    "stateful",
+    "retention"
   ]
 }
