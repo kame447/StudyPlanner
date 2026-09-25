@@ -8,6 +8,7 @@ import {
 import { getFirestoreDb } from '../../lib/firebaseClient';
 import {
   normalizeUserPlanningContextSnapshotV1,
+  retainUserPlanningContextRecordsV1,
   userPlanningContextDurableKeyV1,
   userPlanningContextRecordIdentityV1,
 } from './userPlanningContextSpace';
@@ -20,7 +21,6 @@ import {
 } from './userPlanningContextTypes';
 
 const COLLECTION_NAME = 'user_planning_contexts';
-const MAX_RECORDS = 200;
 
 export interface UserPlanningContextRepositoryStateV1 {
   snapshot: UserPlanningContextSnapshotV1;
@@ -85,10 +85,7 @@ function parseCloudDocument(
 function canonicalRecords(
   records: Iterable<UserPlanningContextRecordV1>,
 ): UserPlanningContextRecordV1[] {
-  return [...records]
-    .sort((left, right) => right.recordedAt.localeCompare(left.recordedAt))
-    .slice(0, MAX_RECORDS)
-    .map((record) => ({ ...record }));
+  return retainUserPlanningContextRecordsV1(records);
 }
 
 function snapshotFromRecords(params: {
@@ -129,16 +126,19 @@ export function mergeInferredUserPlanningContextRecordsV1(params: {
 }): UserPlanningContextSnapshotV1 {
   const byIdentity = new Map<string, UserPlanningContextRecordV1>();
   const protectedDurableKeys = new Set<string>();
-  for (const record of params.snapshot.records) {
+  for (const record of retainUserPlanningContextRecordsV1(params.snapshot.records)) {
     byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
-    if (record.origin === 'user_confirmed') {
+    if (record.status === 'revoked' || record.origin === 'user_confirmed') {
       protectedDurableKeys.add(userPlanningContextDurableKeyV1(record));
     }
   }
   for (const record of params.records) {
     if (record.ownerId !== params.snapshot.ownerId || !isPersistableSemanticOrigin(record)) continue;
     if (protectedDurableKeys.has(userPlanningContextDurableKeyV1(record))) continue;
-    byIdentity.set(userPlanningContextRecordIdentityV1(record), { ...record });
+    const identity = userPlanningContextRecordIdentityV1(record);
+    const previous = byIdentity.get(identity);
+    if (previous && Date.parse(previous.recordedAt) > Date.parse(record.recordedAt)) continue;
+    byIdentity.set(identity, { ...record });
   }
   return snapshotFromRecords({
     ownerId: params.snapshot.ownerId,

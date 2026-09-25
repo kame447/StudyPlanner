@@ -5,14 +5,40 @@ import {
   exportUserPlanningContextSnapshotV1,
   finalizeStagedUserPlanningContextV1,
   hasStagedUserPlanningContextV1,
+  hydrateUserPlanningContextSnapshotV1,
   resetUserPlanningContextRuntimeForTestV1,
   rollbackFinalizedUserPlanningContextV1,
   stageUserPlanningContextFactsV1,
+  userPlanningContextDurableKeyV1,
   userPlanningContextPromptSummaryV1,
 } from './userPlanningContextSpace';
+import {
+  createEmptyUserPlanningContextSnapshotV1,
+  type UserPlanningContextRecordV1,
+} from './userPlanningContextTypes';
 
 const OWNER_A = 'owner-a';
 const OWNER_B = 'owner-b';
+
+function storedRecord(overrides: Partial<UserPlanningContextRecordV1> = {}): UserPlanningContextRecordV1 {
+  return {
+    id: 'stored-1',
+    ownerId: OWNER_A,
+    kind: 'concern',
+    label: '数学',
+    value: '苦手',
+    dateExpression: null,
+    observedDate: '2026-08-07',
+    resolvedDate: null,
+    sourceText: '数学が苦手です',
+    sourceConversationId: 'older-conversation',
+    sourceTurnId: 'older-turn',
+    recordedAt: '2026-08-07T08:00:00.000Z',
+    status: 'active',
+    origin: 'user_stated',
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   resetUserPlanningContextRuntimeForTestV1();
@@ -262,5 +288,105 @@ describe('UserPlanningContextSpace', () => {
       ownerId: OWNER_A,
       currentDate: '2026-08-07',
     }).records).toEqual([]);
+  });
+
+  it('reads a legacy invisible-character tombstone in a new session and still saves unrelated facts', () => {
+    hydrateUserPlanningContextSnapshotV1({
+      ...createEmptyUserPlanningContextSnapshotV1(OWNER_A),
+      records: [storedRecord({
+        id: 'forgotten-math',
+        label: '数\u200B学',
+        recordedAt: '2026-08-08T08:00:00.000Z',
+        status: 'revoked',
+        origin: 'user_confirmed',
+      })],
+      updatedAt: '2026-08-08T08:00:00.000Z',
+    });
+    const persisted = exportUserPlanningContextSnapshotV1({ ownerId: OWNER_A, currentDate: '2026-08-08' });
+    resetUserPlanningContextRuntimeForTestV1();
+    hydrateUserPlanningContextSnapshotV1(JSON.parse(JSON.stringify(persisted)));
+
+    stageUserPlanningContextFactsV1({
+      ownerId: OWNER_A,
+      conversationId: 'new-conversation',
+      requestId: 'new-turn',
+      observedDate: '2026-08-09',
+      now: '2026-08-09T08:00:00.000Z',
+      facts: [
+        {
+          localId: 'old-key-variant',
+          kind: 'concern',
+          label: '数学',
+          value: '苦手',
+          dateExpression: null,
+          sourceText: '数学が苦手です',
+        },
+        {
+          localId: 'ordinary-different-label',
+          kind: 'concern',
+          label: '物理',
+          value: '苦手',
+          dateExpression: null,
+          sourceText: '物理が苦手です',
+        },
+      ],
+    });
+    finalizeStagedUserPlanningContextV1({
+      ownerId: OWNER_A,
+      conversationId: 'new-conversation',
+      requestId: 'new-turn',
+    });
+
+    const records = exportUserPlanningContextSnapshotV1({ ownerId: OWNER_A, currentDate: '2026-08-09' }).records;
+    expect(records).toHaveLength(2);
+    expect(records.find((record) => record.id === 'forgotten-math')).toMatchObject({
+      label: '数\u200B学',
+      status: 'revoked',
+    });
+    expect(records.find((record) => record.label === '物理')).toMatchObject({ status: 'active' });
+    expect(records.some((record) => record.label === '数学' && record.status === 'active')).toBe(false);
+  });
+
+  it('compares format and default-ignorable marks while keeping visibly different labels distinct', () => {
+    const base = userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学' });
+    expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u0600学' })).toBe(base);
+    expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学\uFE0F' })).toBe(base);
+    expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '物理' })).not.toBe(base);
+  });
+
+  it('does not overwrite newer local records when an older staged turn finalizes', () => {
+    stageUserPlanningContextFactsV1({
+      ownerId: OWNER_A,
+      conversationId: 'older-conversation',
+      requestId: 'older-turn',
+      observedDate: '2026-08-07',
+      now: '2026-08-07T10:00:00.000+02:00',
+      facts: [{
+        localId: 'concern-1',
+        kind: 'concern',
+        label: '数学',
+        value: '苦手',
+        dateExpression: null,
+        sourceText: '数学が苦手です',
+      }],
+    });
+    hydrateUserPlanningContextSnapshotV1({
+      ...createEmptyUserPlanningContextSnapshotV1(OWNER_A),
+      records: [storedRecord({
+        id: 'newer-record',
+        sourceConversationId: 'newer-conversation',
+        sourceTurnId: 'newer-turn',
+        recordedAt: '2026-08-07T09:00:00.000Z',
+      })],
+      updatedAt: '2026-08-07T09:00:00.000Z',
+    });
+
+    expect(finalizeStagedUserPlanningContextV1({
+      ownerId: OWNER_A,
+      conversationId: 'older-conversation',
+      requestId: 'older-turn',
+    })).toBeNull();
+    expect(exportUserPlanningContextSnapshotV1({ ownerId: OWNER_A, currentDate: '2026-08-07' }).records)
+      .toEqual([expect.objectContaining({ id: 'newer-record', sourceTurnId: 'newer-turn' })]);
   });
 });

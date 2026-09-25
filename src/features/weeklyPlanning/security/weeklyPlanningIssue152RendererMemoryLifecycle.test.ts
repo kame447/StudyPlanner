@@ -155,14 +155,14 @@ describe('Issue #152 V06 settings memory editor boundary', () => {
 });
 
 describe('Issue #152 V07 memory lifecycle boundary', () => {
-  it.fails('does not let a zero-width-space label variant bypass a revoked durable key', () => {
-    // Issue #152 V07 reproduced: durable identity does not remove U+200B before computing the tombstone key.
+  it('does not let a zero-width-space label variant bypass a revoked durable key', () => {
+    // V07 regression: U+200B must not create a second durable identity.
     const base = userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学' });
     expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u200B学' })).toBe(base);
   });
 
-  it.fails('does not let a word-joiner label variant bypass a revoked durable key', () => {
-    // Issue #152 V07 reproduced: durable identity does not remove U+2060 before computing the tombstone key.
+  it('does not let a word-joiner label variant bypass a revoked durable key', () => {
+    // V07 regression: U+2060 must not create a second durable identity.
     const base = userPlanningContextDurableKeyV1({ kind: 'concern', label: '数学' });
     expect(userPlanningContextDurableKeyV1({ kind: 'concern', label: '数\u2060学' })).toBe(base);
   });
@@ -197,25 +197,26 @@ describe('Issue #152 V07 memory lifecycle boundary', () => {
     });
   }
 
-  it('documents exposure (V07 flood guard): only the 200 newest distinct inferred records survive the merge', () => {
-    // Guards the two expected-failure tests below against failing for an unrelated fixture reason.
+  it('keeps the 200-record bound and newest ordinary inferred records under a flood', () => {
     const merged = floodedAfterForget();
     expect(merged.records).toHaveLength(200);
-    expect(merged.records.every((record) => record.id.startsWith('new-'))).toBe(true);
+    expect(merged.records.filter((record) => record.id.startsWith('new-'))).toHaveLength(198);
+    expect(merged.records.map((record) => record.id)).toContain('new-199');
+    expect(merged.records.map((record) => record.id)).not.toContain('new-0');
   });
 
-  it.fails('retains a revoked tombstone while flooding newer inferred records', () => {
-    // Issue #152 V07 reproduced: the 200-record newest-record cap evicts the anti-resurrection tombstone.
+  it('retains a revoked tombstone while flooding newer inferred records', () => {
+    // V07 regression: inferred-record volume cannot evict a forget tombstone.
     expect(floodedAfterForget().records.map((record) => record.id)).toContain('forget-me');
   });
 
-  it.fails('retains a user-confirmed record while flooding newer inferred records', () => {
-    // Issue #152 V07 reproduced: the 200-record newest-record cap evicts the strongest-authority record.
+  it('retains a user-confirmed record while flooding newer inferred records', () => {
+    // V07 regression: inferred-record volume cannot evict a confirmed record.
     expect(floodedAfterForget().records.map((record) => record.id)).toContain('confirmed');
   });
 
-  it.fails('does not restore a revoked record when staged facts finalize after revoke', () => {
-    // Issue #152 V07 reproduced: finalize writes the pre-revoke staged snapshot over a newer local tombstone.
+  it('does not restore a revoked record when staged facts finalize after revoke', () => {
+    // V07 regression: finalize merges into the current store after settings forget.
     // reachability: same-client settings forget is directly callable while a planning turn is pending; multi-tab/cloud overwrite is routed to #164.
     resetUserPlanningContextRuntimeForTestV1();
     const existing = contextRecord();
@@ -242,8 +243,13 @@ describe('Issue #152 V07 memory lifecycle boundary', () => {
     });
     hydrateUserPlanningContextSnapshotV1(revoked);
     finalizeStagedUserPlanningContextV1({ ownerId: 'owner-152', conversationId: 'conversation-152', requestId: 'request-152' });
-    expect(loadUserPlanningContextSnapshotV1({ ownerId: 'owner-152', currentDate: '2026-09-11' }).records
-      .find((record) => record.id === existing.id)?.status).toBe('revoked');
+    const finalized = loadUserPlanningContextSnapshotV1({ ownerId: 'owner-152', currentDate: '2026-09-11' });
+    expect(finalized.records.find((record) => record.id === existing.id)?.status).toBe('revoked');
+    expect(finalized.records).toContainEqual(expect.objectContaining({
+      label: '復習',
+      origin: 'user_stated',
+      status: 'active',
+    }));
     discardStagedUserPlanningContextV1({ conversationId: 'conversation-152', requestId: 'request-152' });
     resetUserPlanningContextRuntimeForTestV1();
   });
