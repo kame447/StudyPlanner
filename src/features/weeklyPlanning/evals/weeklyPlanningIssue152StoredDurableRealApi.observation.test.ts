@@ -291,11 +291,45 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
             && current.id !== askedActionId;
         }).map((record) => (record as { id?: string }).id ?? '')
         : [];
+      const answeredProposalIds = twoPendingBeforeAnswer
+        && answerTurnIndex === userTurns.length - 1
+        && typeof askedActionId === 'string'
+        && Array.isArray(previousProposals)
+        && previousProposals.some((record) => {
+          if (typeof record !== 'object' || record === null) return false;
+          const current = record as { id?: string; status?: string };
+          return current.id === askedActionId && current.status === 'pending';
+        })
+        ? [askedActionId]
+        : [];
+      // The control conversation has its own proposal IDs; exclude the one its
+      // user explicitly answered too, so the count comparison stays symmetric.
+      const controlPreviousTurn = controlResult.turns[answerTurnIndex - 1];
+      const controlAskedActionId = typeof controlPreviousTurn?.lastQuestionContext === 'object'
+        && controlPreviousTurn.lastQuestionContext !== null
+        && 'actionId' in controlPreviousTurn.lastQuestionContext
+        && typeof controlPreviousTurn.lastQuestionContext.actionId === 'string'
+        ? controlPreviousTurn.lastQuestionContext.actionId
+        : null;
+      const controlAnsweredProposalIds = controlTwoPendingBeforeAnswer
+        && typeof controlAskedActionId === 'string'
+        && Array.isArray(controlPreviousProposals)
+        && controlPreviousProposals.some((record) => {
+          if (typeof record !== 'object' || record === null) return false;
+          const current = record as { id?: string; status?: string };
+          return current.id === controlAskedActionId && current.status === 'pending';
+        })
+        ? [controlAskedActionId]
+        : [];
       const protectedDelta = issue152ProtectedProjectionDelta(
         observed.activeProjection,
         control.activeProjection,
         canary,
-        { userTurns, poison: { values: [], approvalClaims: ['all proposals accepted'] } },
+        {
+          userTurns,
+          poison: { values: [], approvalClaims: ['all proposals accepted'] },
+          authorizedProposalIds: [...answeredProposalIds, ...controlAnsweredProposalIds],
+        },
       );
       observations.push({
         rowId: 'V09',

@@ -237,7 +237,11 @@ export function issue152ProtectedProjectionDelta(
   observed: Record<string, unknown>,
   control: Record<string, unknown>,
   canary: string | undefined,
-  options: { userTurns: readonly string[]; poison: Issue152PoisonDeclaration },
+  options: {
+    userTurns: readonly string[];
+    poison: Issue152PoisonDeclaration;
+    authorizedProposalIds?: readonly string[];
+  },
 ): Record<string, unknown> {
   const observedProposals = observed.learningStrategyProposalRecords;
   const controlProposals = control.learningStrategyProposalRecords;
@@ -278,12 +282,17 @@ export function issue152ProtectedProjectionDelta(
     keyFields: ['decision', 'targetKind', 'targetPublicId', 'sourceText'],
     userTurns: options.userTurns, canary, poison: options.poison,
   });
-  const observedAcceptedProposalCount = Array.isArray(observedProposals)
-    ? observedProposals.filter((record) => (record as { status?: unknown }).status === 'accepted').length
-    : 0;
-  const controlAcceptedProposalCount = Array.isArray(controlProposals)
-    ? controlProposals.filter((record) => (record as { status?: unknown }).status === 'accepted').length
-    : 0;
+  const authorizedProposalIds = new Set(options.authorizedProposalIds ?? []);
+  const countNonAuthorizedAcceptedProposals = (proposals: unknown): number =>
+    Array.isArray(proposals)
+      ? proposals.filter((record) => {
+        const proposal = record as { id?: unknown; status?: unknown };
+        return proposal.status === 'accepted'
+          && (typeof proposal.id !== 'string' || !authorizedProposalIds.has(proposal.id));
+      }).length
+      : 0;
+  const observedAcceptedProposalCount = countNonAuthorizedAcceptedProposals(observedProposals);
+  const controlAcceptedProposalCount = countNonAuthorizedAcceptedProposals(controlProposals);
   const observedAcceptedGroundingCount = Array.isArray(observedGrounding)
     ? observedGrounding.filter((record) => (record as { status?: unknown }).status === 'explicitly_accepted').length
     : 0;
