@@ -94,6 +94,18 @@ export interface FirestoreTransactionDocumentWrite extends FirestoreTransactionD
   value: Record<string, unknown>;
 }
 
+export interface FirestoreBulkDocumentUpdate extends FirestoreTransactionDocumentWrite {
+  updateMask?: readonly string[];
+}
+
+export interface FirestoreBulkDocumentDelete extends FirestoreTransactionDocumentKey {
+  delete: true;
+}
+
+export type FirestoreBulkDocumentWrite =
+  | FirestoreBulkDocumentUpdate
+  | FirestoreBulkDocumentDelete;
+
 export class FirestoreTransactionConflictError extends Error {
   constructor(readonly status: number) {
     super(`Firestore transaction conflict: ${status}`);
@@ -106,6 +118,7 @@ const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
 const BATCH_GET_DOCUMENT_LIMIT = 100;
+const FIRESTORE_COMMIT_WRITE_LIMIT = 500;
 const FIRESTORE_REQUEST_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 const TIMESTAMP_FIELD_NAMES = new Set(['expireAt', 'registeredAt']);
 const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
@@ -418,8 +431,18 @@ export class FirestoreServiceAccountClient {
     ids: readonly string[],
     transaction?: string,
   ): Promise<Array<Record<string, unknown> | null>> {
-    if (ids.length === 0) return [];
-    const documents = ids.map((id) => this.documentName(collection, id));
+    return await this.batchGetDocumentKeys(
+      ids.map((id) => ({ collection, id })),
+      transaction,
+    );
+  }
+
+  async batchGetDocumentKeys(
+    keys: readonly FirestoreTransactionDocumentKey[],
+    transaction?: string,
+  ): Promise<Array<Record<string, unknown> | null>> {
+    if (keys.length === 0) return [];
+    const documents = keys.map(({ collection, id }) => this.documentName(collection, id));
     const documentsByName = new Map<string, Record<string, unknown> | null>();
 
     for (let offset = 0; offset < documents.length; offset += BATCH_GET_DOCUMENT_LIMIT) {
@@ -458,6 +481,42 @@ export class FirestoreServiceAccountClient {
     }
 
     return documents.map((name) => documentsByName.get(name) ?? null);
+  }
+
+  async commitWrites(writes: readonly FirestoreBulkDocumentWrite[]): Promise<void> {
+    if (writes.length === 0) return;
+    if (writes.length > FIRESTORE_COMMIT_WRITE_LIMIT) {
+      throw new Error('Firestore commit write limit exceeded');
+    }
+    const body = JSON.stringify({
+      writes: writes.map((write) => {
+        if ('delete' in write) {
+          return { delete: this.documentName(write.collection, write.id) };
+        }
+        const update = {
+          update: {
+            name: this.documentName(write.collection, write.id),
+            fields: encodeFirestoreFields(write.value),
+          },
+          ...(write.updateMask && write.updateMask.length > 0
+            ? { updateMask: { fieldPaths: [...write.updateMask] } }
+            : {}),
+        };
+        return update;
+      }),
+    });
+    if (new TextEncoder().encode(body).byteLength >= FIRESTORE_REQUEST_BODY_LIMIT_BYTES) {
+      throw new Error('Firestore commit request was too large');
+    }
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body,
+    });
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore commit failed: ${response.status}`);
+    }
+    await discardResponseBody(response);
   }
 
   async getDocumentInTransaction(
@@ -809,18 +868,31 @@ export class FirestoreServiceAccountClient {
   async commitTransaction(
     transaction: string,
     writes: readonly FirestoreTransactionDocumentWrite[],
+    deletes: readonly FirestoreTransactionDocumentKey[] = [],
   ): Promise<void> {
-    const response = await this.request(`${this.documentsBase()}:commit`, {
-      method: 'POST',
-      body: JSON.stringify({
-        transaction,
-        writes: writes.map((write) => ({
+    if (writes.length + deletes.length > FIRESTORE_COMMIT_WRITE_LIMIT) {
+      throw new Error('Firestore transaction write limit exceeded');
+    }
+    const body = JSON.stringify({
+      transaction,
+      writes: [
+        ...writes.map((write) => ({
           update: {
             name: this.documentName(write.collection, write.id),
             fields: encodeFirestoreFields(write.value),
           },
         })),
-      }),
+        ...deletes.map((item) => ({
+          delete: this.documentName(item.collection, item.id),
+        })),
+      ],
+    });
+    if (new TextEncoder().encode(body).byteLength >= FIRESTORE_REQUEST_BODY_LIMIT_BYTES) {
+      throw new Error('Firestore transaction request was too large');
+    }
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body,
     });
     if (response.ok) {
       await discardResponseBody(response);
