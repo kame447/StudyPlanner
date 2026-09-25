@@ -12,12 +12,15 @@ Status: current domain entry point
 
 - [`spec/material-metadata.md`](spec/material-metadata.md): 書籍教材の検索、共有catalog、provider fallback、manual fallbackの正仕様
 
-## Supporting research
+## Active work
 
-- [`work/20260828-material-metadata-api-research.md`](work/20260828-material-metadata-api-research.md): 教材登録・教材タイプ拡張に使える外部APIの公式仕様、利用条件、採否を調査した証拠。本文中の実装前記述はhistorical contextであり、現在のruntime要件を上書きしない。
 - [`work/20260912-managed-agent-runtime-evaluation.md`](work/20260912-managed-agent-runtime-evaluation.md): Agents APIを、複数情報源を調べる学習相談の助言候補生成だけに限定する導入方針と有効化前の評価。Lunaでの対象構成、費用、待ち時間、安全性の実API試験と本番有効化は未実施。
 
 学習相談の意味・提案・採用・通常planningへの接続は [#246の正仕様](../weekly-planning/spec/learning-consultation-and-advice.md) に従う。通常の計画解釈、renderer、承認・保存、User Contextの記憶生成・統合・要約をAgents APIへ移さない。外部調査が不要な相談まで一律に起動しない。
+
+## Historical evidence
+
+教材メタデータ導入時の調査・実装checkpointは `docs/archive/work/closed/` に保存する。現在のruntime要件は上記canonical specを正とし、archive内の旧branch・PR・実装前記述をcurrent queueとして扱わない。
 
 ## Boundary
 
