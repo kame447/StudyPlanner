@@ -70,6 +70,11 @@ class MemoryReadFirestore {
     return await Promise.all(ids.map((id) => this.getDocument(collection, id)));
   }
 
+  async batchGetDocumentKeys(keys: readonly Array<{ collection: string; id: string }>) {
+    this.batchGetCallCount += 1;
+    return await Promise.all(keys.map(({ collection, id }) => this.getDocument(collection, id)));
+  }
+
   async countDocuments(
     collection: string,
     filters: readonly FirestoreAggregationFilter[] = [],
@@ -430,6 +435,17 @@ describe('ProductObservabilityReadModelService', () => {
     })).rejects.toThrow('observability_user_summary_invalid');
   });
 
+  it('rejects partially populated user enrichment instead of treating it as ready', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.addUserSummary('production', 'actor-aaaaaaaa', {
+      ...userSummary('actor-aaaaaaaa'),
+      userEnrichmentVersion: 1,
+    });
+
+    await expect(service(firestore).getUserSummaries(['actor-aaaaaaaa'], 'production'))
+      .rejects.toThrow('observability_user_summary_invalid');
+  });
+
   it('rejects a forged user-summary cursor before querying storage', async () => {
     const firestore = new MemoryReadFirestore();
 
@@ -463,6 +479,50 @@ describe('ProductObservabilityReadModelService', () => {
     expect(await service(firestore).getUserSummary('actor-preview1', 'production')).toBeNull();
     expect((await service(firestore).getUserSummary('actor-preview1', 'preview'))?.actorSubjectId)
       .toBe('actor-preview1');
+  });
+
+  it('batch-loads aligned user summaries without shifting missing actors', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.addUserSummary('production', 'actor-aaaaaaaa', userSummary('actor-aaaaaaaa'));
+    firestore.addUserSummary('production', 'actor-cccccccc', userSummary('actor-cccccccc'));
+
+    const summaries = await service(firestore).getUserSummaries([
+      'actor-aaaaaaaa',
+      'actor-bbbbbbbb',
+      'actor-cccccccc',
+    ]);
+
+    expect(summaries.map((summary) => summary?.actorSubjectId ?? null)).toEqual([
+      'actor-aaaaaaaa',
+      null,
+      'actor-cccccccc',
+    ]);
+    expect(firestore.batchGetCallCount).toBe(1);
+  });
+
+  it('loads 30-day user trend, active window, and dirty checkpoint in one batch', async () => {
+    const firestore = new MemoryReadFirestore();
+    firestore.setDocument(
+      'observability_daily_rollups',
+      'production:2026-08-28',
+      daily('2026-08-28', 100) as unknown as StoredDocument,
+    );
+    firestore.setDocument(
+      'observability_active_user_windows',
+      'production:2026-08-29',
+      activeUsers('2026-08-29') as unknown as StoredDocument,
+    );
+    firestore.setDocument('observability_rollup_state', 'main', checkpoint());
+
+    const trend = await service(firestore).getUserTrend({
+      environment: 'production',
+      fromDate: '2026-08-01',
+      toDate: '2026-08-29',
+    });
+
+    expect(firestore.batchGetCallCount).toBe(1);
+    expect(trend.daily.map((entry) => entry.localDate)).toEqual(['2026-08-28']);
+    expect(trend.activeUsers?.last30Days).toBe(4);
   });
 
   it('rejects incompatible latency histogram versions instead of silently merging them', async () => {

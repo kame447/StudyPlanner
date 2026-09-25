@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
+import {
+  FirestoreServiceAccountClient,
+  FirestoreWriteConflictError,
+} from './firestoreServiceAccountClient';
 
 const env = {
   FIREBASE_PROJECT_ID: 'test-project',
@@ -60,6 +63,66 @@ describe('FirestoreServiceAccountClient bulk commits', () => {
       ],
     });
     expect(cancelled).toBe(true);
+  });
+
+  it('attaches update-time preconditions and exposes versioned query snapshots', async () => {
+    const capturedBodies: unknown[] = [];
+    const client = clientWithFetcher(async (input, init) => {
+      const url = String(input);
+      capturedBodies.push(JSON.parse(String(init?.body ?? '{}')));
+      if (url.endsWith('/documents:runQuery')) {
+        return new Response(JSON.stringify([{
+          document: {
+            name: documentName('summaries', 'actor-1'),
+            updateTime: '2026-09-25T00:00:00.123456Z',
+            fields: { eventCount: { integerValue: '2' } },
+          },
+        }]), { status: 200 });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    const snapshots = await client.queryDocumentSnapshotsByNameAfter({
+      collection: 'summaries',
+      limit: 17,
+    });
+    expect(snapshots).toEqual([{
+      id: 'actor-1',
+      documentName: documentName('summaries', 'actor-1'),
+      updateTime: '2026-09-25T00:00:00.123456Z',
+      value: { eventCount: 2 },
+    }]);
+
+    await client.commitWrites([{
+      collection: 'summaries',
+      id: 'actor-1',
+      value: { activeDayCount: 3 },
+      updateMask: ['activeDayCount'],
+      currentDocument: { updateTime: snapshots[0].updateTime },
+    }]);
+    expect(capturedBodies[1]).toEqual({
+      writes: [{
+        update: {
+          name: documentName('summaries', 'actor-1'),
+          fields: { activeDayCount: { integerValue: '3' } },
+        },
+        updateMask: { fieldPaths: ['activeDayCount'] },
+        currentDocument: { updateTime: '2026-09-25T00:00:00.123456Z' },
+      }],
+    });
+  });
+
+  it('surfaces a conditional bulk-write conflict without retrying it', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 412 }));
+    const client = clientWithFetcher(fetcher);
+
+    await expect(client.commitWrites([{
+      collection: 'summaries',
+      id: 'actor-1',
+      value: { activeDayCount: 3 },
+      currentDocument: { updateTime: '2026-09-25T00:00:00.123456Z' },
+    }])).rejects.toBeInstanceOf(FirestoreWriteConflictError);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('supports transactionally deleting accumulator shards with the published snapshot', async () => {

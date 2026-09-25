@@ -9,6 +9,7 @@ import {
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+  PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION,
   type ObservabilityActorDay,
   type ObservabilityAiAggregate,
   type ObservabilityDailyRollup,
@@ -17,6 +18,7 @@ import {
   type ObservabilityPlanningAggregate,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
+import { classifyObservabilityEventError } from './productObservabilityUserEnrichment';
 
 export type StoredProductObservabilityEvent =
   | StoredObservabilityEvent<ProductActivityTelemetryDraft['payload']>
@@ -476,6 +478,7 @@ export function projectActorDay(params: {
 export function projectUserSummary(params: {
   current: ObservabilityUserSummary | null;
   event: StoredProductObservabilityEvent;
+  actorDayWasNew: boolean;
   nowIso: string;
 }): ObservabilityUserSummary {
   const localDate = observabilityReportingDate(params.event.occurredAt);
@@ -492,6 +495,11 @@ export function projectUserSummary(params: {
     planningOutcomeCount: 0,
     lastProductAction: null,
     lastPlanningOutcome: null,
+    userEnrichmentVersion: PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION,
+    activeDayCount: 0,
+    latestErrorAt: null,
+    latestErrorCategory: null,
+    userEnrichmentUpdatedAt: params.nowIso,
     updatedAt: params.nowIso,
   };
   const productPayload = params.event.eventType === 'product_activity'
@@ -502,6 +510,15 @@ export function projectUserSummary(params: {
     : null;
   const isLater = params.event.occurredAt.localeCompare(base.lastActivityAt) >= 0;
   const isEarlier = params.event.occurredAt.localeCompare(base.firstActivityAt) <= 0;
+  const enrichmentReady = base.userEnrichmentVersion
+    === PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION
+    && Number.isSafeInteger(base.activeDayCount)
+    && Number(base.activeDayCount) >= 0;
+  const classifiedError = classifyObservabilityEventError(
+    params.event as unknown as Record<string, unknown>,
+  );
+  const errorIsLater = classifiedError
+    && (!base.latestErrorAt || classifiedError.occurredAt >= base.latestErrorAt);
   return {
     ...base,
     firstActivityAt: isEarlier ? params.event.occurredAt : base.firstActivityAt,
@@ -516,6 +533,15 @@ export function projectUserSummary(params: {
     lastPlanningOutcome: isLater && planningPayload
       ? planningPayload.outcomeType
       : base.lastPlanningOutcome,
+    ...(enrichmentReady ? {
+      userEnrichmentVersion: PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION,
+      activeDayCount: Number(base.activeDayCount) + (params.actorDayWasNew ? 1 : 0),
+      latestErrorAt: errorIsLater ? classifiedError.occurredAt : base.latestErrorAt ?? null,
+      latestErrorCategory: errorIsLater
+        ? classifiedError.category
+        : base.latestErrorCategory ?? null,
+      userEnrichmentUpdatedAt: params.nowIso,
+    } : {}),
     updatedAt: params.nowIso,
   };
 }

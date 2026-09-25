@@ -355,6 +355,8 @@ export async function handleProductObservabilityAdminApi(
         ok: true,
         users: page.users,
         nextCursor: encodeCursor(page.nextCursor),
+        enrichmentReady: page.enrichmentReady,
+        trend: page.trend,
       });
     }
     return jsonResponse(request, env, 404, { error: 'Not found.' });

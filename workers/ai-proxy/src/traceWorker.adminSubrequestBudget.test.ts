@@ -20,9 +20,19 @@ interface FetchCall {
 }
 
 function value(input: unknown): Record<string, unknown> {
+  if (input === null || input === undefined) return { nullValue: null };
   if (typeof input === 'boolean') return { booleanValue: input };
   if (typeof input === 'number') return { integerValue: String(input) };
-  return { stringValue: String(input) };
+  if (typeof input === 'string') return { stringValue: input };
+  if (Array.isArray(input)) return { arrayValue: { values: input.map(value) } };
+  return {
+    mapValue: {
+      fields: Object.fromEntries(
+        Object.entries(input as Record<string, unknown>)
+          .map(([key, item]) => [key, value(item)]),
+      ),
+    },
+  };
 }
 
 function document(
@@ -48,6 +58,9 @@ function queryCollection(init?: RequestInit): string {
 
 function installFetchMock(options: {
   populatedUsers?: boolean;
+  profileCount?: number;
+  usersReady?: boolean;
+  missingIdentities?: boolean;
   largeDebugEntries?: boolean;
 } = {}): FetchCall[] {
   vi.stubGlobal('crypto', {
@@ -76,6 +89,24 @@ function installFetchMock(options: {
         enabled: true,
         weeklyPlanningTraceReader: true,
       })), { status: 200 });
+    }
+    if (url.includes('/documents/observability_user_enrichment_backfill_state/main')) {
+      if (!options.usersReady) return new Response(null, { status: 404 });
+      return new Response(JSON.stringify(document(
+        'observability_user_enrichment_backfill_state',
+        'main',
+        {
+          schemaVersion: 1,
+          environmentIndex: 4,
+          cursorDocumentName: null,
+          pendingRecentErrorScan: null,
+          completedEnvironments: ['production', 'preview', 'development', 'test'],
+          processedUsers: 25,
+          enrichedUsers: 25,
+          completed: true,
+          updatedAt: '2026-09-25T00:00:00.000Z',
+        },
+      )), { status: 200 });
     }
     if (url.includes(`/documents/weekly_planning_trace_sessions/${SESSION_ID}`)) {
       return new Response(JSON.stringify(document('weekly_planning_trace_sessions', SESSION_ID, {
@@ -137,6 +168,48 @@ function installFetchMock(options: {
           };
         })), { status: 200 });
       }
+      if (body.documents.every((name) => name.includes('/observability_actor_directory/'))) {
+        if (options.missingIdentities) {
+          return new Response(JSON.stringify(
+            body.documents.map((name) => ({ missing: name })),
+          ), { status: 200 });
+        }
+        return new Response(JSON.stringify(body.documents.map((name) => ({
+          found: document(
+            'observability_actor_directory',
+            name.split('/').pop() ?? 'directory',
+            { actorSubjectId: 'actor-aaaaaaaa' },
+          ),
+        }))), { status: 200 });
+      }
+      if (body.documents.every((name) => name.includes('/observability_user_summary_test/'))) {
+        return new Response(JSON.stringify(body.documents.map((name) => ({
+          found: document(
+            'observability_user_summary_test',
+            name.split('/').pop() ?? 'actor-aaaaaaaa',
+            {
+              schemaVersion: 1,
+              actorSubjectId: 'actor-aaaaaaaa',
+              firstActivityAt: '2026-09-01T00:00:00.000Z',
+              lastActivityAt: '2026-09-25T00:00:00.000Z',
+              firstActivityDate: '2026-09-01',
+              lastActivityDate: '2026-09-25',
+              eventCount: 1,
+              productActivityCount: 1,
+              aiRequestCount: 0,
+              planningOutcomeCount: 0,
+              lastProductAction: 'plan_created',
+              lastPlanningOutcome: null,
+              userEnrichmentVersion: 1,
+              activeDayCount: 1,
+              latestErrorAt: null,
+              latestErrorCategory: null,
+              userEnrichmentUpdatedAt: '2026-09-25T00:00:01.000Z',
+              updatedAt: '2026-09-25T00:00:01.000Z',
+            },
+          ),
+        }))), { status: 200 });
+      }
       return new Response(JSON.stringify(body.documents.map((name) => ({ missing: name }))), {
         status: 200,
       });
@@ -149,7 +222,14 @@ function installFetchMock(options: {
     if (url.includes(':runQuery')) {
       const collection = queryCollection(init);
       if (collection === 'profiles') {
-        const count = options.populatedUsers ? 25 : 5;
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          structuredQuery?: { limit?: number };
+        };
+        const requestedLimit = body.structuredQuery?.limit ?? 100;
+        const count = Math.min(
+          options.profileCount ?? (options.populatedUsers ? 25 : 5),
+          requestedLimit,
+        );
         return new Response(JSON.stringify(Array.from({ length: count }, (_, index) => ({
           document: document('profiles', `firebase-user-${index + 1}`, {
             email: index === 0 ? 'user@example.com' : `user-${index + 1}@example.com`,
@@ -211,16 +291,80 @@ describe('traceWorker admin subrequest budget', () => {
     }
   });
 
-  it('returns the existing generic 503 before sending a 46th external request', async () => {
-    const calls = installFetchMock({ populatedUsers: true });
+  it('keeps ready Users page 25 plus trend at exactly 8 requests', async () => {
+    const calls = installFetchMock({ populatedUsers: true, usersReady: true });
 
     const response = await adminGet('/observability/admin/users?limit=25');
-    const body = await response.json() as Record<string, unknown>;
+    const body = await response.json() as {
+      users?: unknown[];
+      enrichmentReady?: boolean;
+      nextCursor?: string | null;
+    };
 
-    expect(response.status).toBe(503);
-    expect(calls).toHaveLength(45);
-    expect(body).toEqual({ error: 'Observability read model is temporarily unavailable.' });
-    expect(JSON.stringify(body)).not.toMatch(/45|subrequest|budget/i);
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(calls).toHaveLength(8);
+    expect(calls.length).toBeLessThan(50);
+    expect(body.users).toHaveLength(25);
+    expect(body.enrichmentReady).toBe(true);
+    expect(body.nextCursor).not.toBeNull();
+    const batchCalls = calls.filter((call) => call.url.endsWith('/documents:batchGet'));
+    expect(batchCalls).toHaveLength(3);
+    const trendDocuments = batchCalls
+      .map((call) => (JSON.parse(String(call.init?.body)) as { documents: string[] }).documents)
+      .find((documents) => documents.some((name) =>
+        name.includes('/observability_daily_rollups/')));
+    expect(trendDocuments).toHaveLength(32);
+    expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
+  });
+
+  it('keeps an empty ready Users page bounded without issuing empty join batches', async () => {
+    const calls = installFetchMock({ profileCount: 0, usersReady: true });
+
+    const response = await adminGet('/observability/admin/users?limit=25');
+    const body = await response.json() as { users?: unknown[]; enrichmentReady?: boolean };
+
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(calls).toHaveLength(6);
+    expect(body.users).toEqual([]);
+    expect(body.enrichmentReady).toBe(true);
+  });
+
+  it('keeps all missing actor identities known-empty without summary fan-out', async () => {
+    const calls = installFetchMock({
+      profileCount: 25,
+      usersReady: true,
+      missingIdentities: true,
+    });
+
+    const response = await adminGet('/observability/admin/users?limit=25');
+    const body = await response.json() as {
+      users?: Array<{ actorSubjectId: string | null; activeDayCount: number | null }>;
+    };
+
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(calls).toHaveLength(7);
+    expect(body.users).toHaveLength(25);
+    expect(body.users?.every((user) =>
+      user.actorSubjectId === null && user.activeDayCount === 0)).toBe(true);
+  });
+
+  it('caps migration-incomplete Users at 9 and exactly 42 requests with a cursor', async () => {
+    const calls = installFetchMock({ profileCount: 9, usersReady: false });
+
+    const response = await adminGet('/observability/admin/users?limit=25');
+    const body = await response.json() as {
+      users?: unknown[];
+      enrichmentReady?: boolean;
+      nextCursor?: string | null;
+    };
+
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(calls).toHaveLength(42);
+    expect(calls.length).toBeLessThan(50);
+    expect(body.users).toHaveLength(9);
+    expect(body.enrichmentReady).toBe(false);
+    expect(body.nextCursor).not.toBeNull();
+    expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
   });
 
   it('scans 200 near-maximum entries in exactly 10 batches without repeats or skips', async () => {

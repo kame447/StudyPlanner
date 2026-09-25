@@ -4,6 +4,7 @@ import {
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+  PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION,
   type ObservabilityActiveUserDirtySource,
   type ObservabilityActiveUserWindows,
   type ObservabilityDailyRollup,
@@ -19,6 +20,7 @@ import {
   type FirestoreOrderedCursor,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
+  type FirestoreTransactionDocumentKey,
 } from './firestoreServiceAccountClient';
 import { aggregateOverviewPeriod } from './productObservabilityOverviewAggregation';
 import {
@@ -47,6 +49,9 @@ interface ObservabilityReadFirestore {
   batchGetDocuments(
     collection: string,
     ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>>;
+  batchGetDocumentKeys(
+    keys: readonly FirestoreTransactionDocumentKey[],
   ): Promise<Array<Record<string, unknown> | null>>;
   countDocuments(
     collection: string,
@@ -251,6 +256,20 @@ function readDailyRollup(
 function readUserSummary(value: FirestoreOrderedDocument): ObservabilityUserSummary {
   const { documentName: _documentName, id: _id, ...document } = value;
   const user = document as unknown as ObservabilityUserSummary;
+  const enrichmentFieldsPresent = user.userEnrichmentVersion !== undefined
+    || user.activeDayCount !== undefined
+    || user.latestErrorAt !== undefined
+    || user.latestErrorCategory !== undefined
+    || user.userEnrichmentUpdatedAt !== undefined;
+  const enrichmentValid = !enrichmentFieldsPresent || (
+    user.userEnrichmentVersion === PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION
+    && isNonNegativeSafeInteger(user.activeDayCount)
+    && (user.latestErrorAt === null || isIsoTimestamp(user.latestErrorAt))
+    && (user.latestErrorCategory === null
+      || (typeof user.latestErrorCategory === 'string' && Boolean(user.latestErrorCategory.trim())))
+    && (user.latestErrorAt === null) === (user.latestErrorCategory === null)
+    && isIsoTimestamp(user.userEnrichmentUpdatedAt)
+  );
   if (
     user.schemaVersion !== PRODUCT_OBSERVABILITY_READ_MODEL_VERSION
     || !ACTOR_SUBJECT_PATTERN.test(user.actorSubjectId)
@@ -265,6 +284,7 @@ function readUserSummary(value: FirestoreOrderedDocument): ObservabilityUserSumm
     || !isNonNegativeSafeInteger(user.aiRequestCount)
     || !isNonNegativeSafeInteger(user.planningOutcomeCount)
     || user.productActivityCount + user.aiRequestCount + user.planningOutcomeCount !== user.eventCount
+    || !enrichmentValid
   ) {
     throw new Error('observability_user_summary_invalid');
   }
@@ -442,6 +462,64 @@ export class ProductObservabilityReadModelService {
       id: normalized,
       documentName,
     });
+  }
+
+  async getUserSummaries(
+    actorSubjectIds: readonly string[],
+    environment: ObservabilityEnvironment = 'production',
+  ): Promise<Array<ObservabilityUserSummary | null>> {
+    const normalized = actorSubjectIds.map((actorSubjectId) => actorSubjectId.trim());
+    if (normalized.some((actorSubjectId) => !ACTOR_SUBJECT_PATTERN.test(actorSubjectId))) {
+      throw new Error('observability_actor_subject_invalid');
+    }
+    const values = await this.firestore.batchGetDocuments(
+      userSummaryCollection(environment),
+      normalized,
+    );
+    return values.map((value, index) => value ? readUserSummary({
+      ...value,
+      id: normalized[index],
+      documentName: `${userSummaryCollection(environment)}/${normalized[index]}`,
+    }) : null);
+  }
+
+  async getUserTrend(params: {
+    environment: ObservabilityEnvironment;
+    fromDate: string;
+    toDate: string;
+  }): Promise<{
+    daily: ObservabilityDailyRollup[];
+    activeUsers: ObservabilityActiveUserWindows | null;
+  }> {
+    const dates = listDatesInclusive(params.fromDate, params.toDate);
+    const keys: FirestoreTransactionDocumentKey[] = [
+      ...dates.map((localDate) => ({
+        collection: DAILY_ROLLUP_COLLECTION,
+        id: dailyId(params.environment, localDate),
+      })),
+      {
+        collection: ACTIVE_USER_WINDOW_COLLECTION,
+        id: activeUserWindowId(params.environment, params.toDate),
+      },
+      { collection: ROLLUP_STATE_COLLECTION, id: ROLLUP_STATE_ID },
+    ];
+    const values = await this.firestore.batchGetDocumentKeys(keys);
+    const checkpoint = readCheckpoint(values[dates.length + 1] ?? null);
+    return {
+      daily: dates
+        .map((localDate, index) => readDailyRollup(
+          values[index] ?? null,
+          params.environment,
+          localDate,
+        ))
+        .filter((value): value is ObservabilityDailyRollup => Boolean(value)),
+      activeUsers: readActiveUsers(
+        values[dates.length] ?? null,
+        params.environment,
+        params.toDate,
+        checkpoint.activeUserDirtySources,
+      ),
+    };
   }
 
   async listUserSummaries(params: {

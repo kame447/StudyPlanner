@@ -32,6 +32,11 @@ interface ScenarioState {
   backfillProcessed: number;
   backfillTotal: number;
   backfillCompleted: boolean;
+  userEnrichmentTotal: number;
+  userEnrichmentProcessed: number;
+  userEnrichmentEnvironmentIndex: number;
+  userEnrichmentCheckpointExists: boolean;
+  userEnrichmentLastPageCount: number;
   retentionMax: boolean;
   retentionDeleted: number;
 }
@@ -61,6 +66,7 @@ function firestoreDocument(
 ): Record<string, unknown> {
   return {
     name: `projects/test-project/databases/(default)/documents/${collection}/${id}`,
+    updateTime: '2026-09-25T00:00:00.000000Z',
     fields: Object.fromEntries(
       Object.entries(fields).map(([key, value]) => [key, firestoreValue(value)]),
     ),
@@ -172,6 +178,11 @@ function installScenario(
     backfillProcessed: 0,
     backfillTotal: 0,
     backfillCompleted: false,
+    userEnrichmentTotal: 0,
+    userEnrichmentProcessed: 0,
+    userEnrichmentEnvironmentIndex: 0,
+    userEnrichmentCheckpointExists: false,
+    userEnrichmentLastPageCount: 0,
     retentionMax: false,
     retentionDeleted: 0,
     ...overrides,
@@ -344,23 +355,104 @@ function installScenario(
           },
         )), { status: 200 });
       }
+      if (url.endsWith('/documents/observability_user_enrichment_backfill_state/main')) {
+        if (!state.userEnrichmentCheckpointExists) {
+          return new Response(null, { status: 404 });
+        }
+        const completedEnvironments = [
+          'production',
+          'preview',
+          'development',
+          'test',
+        ].slice(0, state.userEnrichmentEnvironmentIndex);
+        return new Response(JSON.stringify(firestoreDocument(
+          'observability_user_enrichment_backfill_state',
+          'main',
+          {
+            schemaVersion: 1,
+            environmentIndex: state.userEnrichmentEnvironmentIndex,
+            cursorDocumentName: state.userEnrichmentProcessed > 0
+              ? `projects/test-project/databases/(default)/documents/observability_user_summary_production/actor-${String(state.userEnrichmentProcessed - 1).padStart(8, '0')}`
+              : null,
+            pendingRecentErrorScan: null,
+            completedEnvironments,
+            processedUsers: state.userEnrichmentProcessed,
+            enrichedUsers: state.userEnrichmentProcessed,
+            completed: state.userEnrichmentEnvironmentIndex >= 4,
+            updatedAt: '2026-09-25T00:00:00.000Z',
+          },
+        )), { status: 200 });
+      }
+      if (url.includes(':runAggregationQuery')) {
+        return new Response(JSON.stringify([{
+          result: { aggregateFields: { count: { integerValue: '2' } } },
+        }]), { status: 200 });
+      }
       if (url.includes(':runQuery')) {
-        const count = Math.min(100, state.backfillTotal - state.backfillProcessed);
-        return new Response(JSON.stringify(Array.from({ length: Math.max(0, count) }, (_, offset) => {
-          const index = state.backfillProcessed + offset;
-          return {
-            document: firestoreDocument(
-              'profiles',
-              `profile-${String(index).padStart(4, '0')}`,
-              { createdAt: eventTime(index) },
-            ),
-          };
-        })), { status: 200 });
+        const collection = collectionFromQuery(init);
+        if (collection === 'profiles') {
+          const count = Math.min(100, state.backfillTotal - state.backfillProcessed);
+          return new Response(JSON.stringify(Array.from({ length: Math.max(0, count) }, (_, offset) => {
+            const index = state.backfillProcessed + offset;
+            return {
+              document: firestoreDocument(
+                'profiles',
+                `profile-${String(index).padStart(4, '0')}`,
+                { createdAt: eventTime(index) },
+              ),
+            };
+          })), { status: 200 });
+        }
+        if (collection.startsWith('observability_user_summary_')) {
+          const isProduction = collection === 'observability_user_summary_production';
+          const count = isProduction
+            ? Math.min(17, state.userEnrichmentTotal - state.userEnrichmentProcessed)
+            : 0;
+          state.userEnrichmentLastPageCount = Math.max(0, count);
+          return new Response(JSON.stringify(Array.from(
+            { length: state.userEnrichmentLastPageCount },
+            (_, offset) => {
+              const index = state.userEnrichmentProcessed + offset;
+              const actorSubjectId = `actor-${String(index).padStart(8, '0')}`;
+              return {
+                document: firestoreDocument(collection, actorSubjectId, {
+                  schemaVersion: 1,
+                  actorSubjectId,
+                  firstActivityAt: '2026-09-01T00:00:00.000Z',
+                  lastActivityAt: '2026-09-25T00:00:00.000Z',
+                  firstActivityDate: '2026-09-01',
+                  lastActivityDate: '2026-09-25',
+                  eventCount: 1,
+                  productActivityCount: 1,
+                  aiRequestCount: 0,
+                  planningOutcomeCount: 0,
+                  lastProductAction: 'plan_created',
+                  lastPlanningOutcome: null,
+                  updatedAt: '2026-09-25T00:00:00.000Z',
+                }),
+              };
+            },
+          )), { status: 200 });
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
       }
       if (url.endsWith('/documents:commit')) {
-        const count = Math.min(100, state.backfillTotal - state.backfillProcessed);
-        state.backfillProcessed += Math.max(0, count);
-        state.backfillCompleted = count < 100;
+        const body = JSON.parse(String(init?.body)) as {
+          writes: Array<{ update?: { name?: string } }>;
+        };
+        const userCheckpoint = body.writes.some((write) =>
+          write.update?.name?.includes('/observability_user_enrichment_backfill_state/main'));
+        if (userCheckpoint) {
+          state.userEnrichmentCheckpointExists = true;
+          state.userEnrichmentProcessed += state.userEnrichmentLastPageCount;
+          if (state.userEnrichmentLastPageCount < 17) {
+            state.userEnrichmentEnvironmentIndex += 1;
+          }
+        } else {
+          const count = Math.min(100, state.backfillTotal - state.backfillProcessed);
+          state.backfillProcessed += Math.max(0, count);
+          state.backfillCompleted = count < 100;
+        }
         return new Response(null, { status: 200 });
       }
     }
@@ -546,26 +638,33 @@ describe('traceWorker scheduled subrequest budget', () => {
     expect(externalCalls(conflict)).toBe(42);
   });
 
-  it('keeps backfill initial, steady, and two maximum batches at exact 4, 2, and 7', async () => {
+  it('keeps the combined profile and user-enrichment backfill at exact bounded counts', async () => {
     const initial = installScenario('backfill', { backfillTotal: 0 });
     await runScheduled(2);
-    expect(externalCalls(initial)).toBe(4);
+    expect(externalCalls(initial)).toBe(7);
 
     vi.unstubAllGlobals();
     const steady = installScenario('backfill', {
       backfillCompleted: true,
+      userEnrichmentCheckpointExists: true,
+      userEnrichmentEnvironmentIndex: 4,
     });
     await runScheduled(2);
-    expect(externalCalls(steady)).toBe(2);
+    expect(externalCalls(steady)).toBe(3);
 
     vi.unstubAllGlobals();
-    const backlog = installScenario('backfill', { backfillTotal: 250 });
+    const backlog = installScenario('backfill', {
+      backfillTotal: 250,
+      userEnrichmentTotal: 17,
+    });
     await runScheduled(2);
     const firstCalls = externalCalls(backlog);
-    expect(firstCalls).toBe(7);
+    expect(firstCalls).toBe(44);
+    expect(firstCalls).toBeLessThan(50);
     expect(backlog.backfillProcessed).toBe(200);
+    expect(backlog.userEnrichmentProcessed).toBe(17);
     await runScheduled(2);
-    expect(externalCalls(backlog) - firstCalls).toBe(4);
+    expect(externalCalls(backlog) - firstCalls).toBe(7);
     expect(backlog.backfillProcessed).toBe(250);
     expect(backlog.backfillCompleted).toBe(true);
   });

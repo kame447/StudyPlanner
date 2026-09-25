@@ -36,6 +36,11 @@ import {
   type ProductObservabilityProfileRegistrationBackfillEnv,
 } from './productObservabilityProfileRegistrationBackfill';
 import {
+  ProductObservabilityUserEnrichmentBackfillService,
+  USER_ENRICHMENT_BACKFILL_BATCH_SIZE,
+  type ProductObservabilityUserEnrichmentBackfillEnv,
+} from './productObservabilityUserEnrichmentBackfill';
+import {
   ProductObservabilityRetentionService,
   type ProductObservabilityRetentionEnv,
 } from './productObservabilityRetention';
@@ -157,8 +162,13 @@ async function runScheduledProfileRegistrationBackfill(
     index += 1
   ) {
     const checkpoint = await backfill.runBatch(PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE);
-    if (checkpoint.completed) return;
+    if (checkpoint.completed) break;
   }
+  const userEnrichment = new ProductObservabilityUserEnrichmentBackfillService(
+    env as unknown as ProductObservabilityUserEnrichmentBackfillEnv,
+    firestore,
+  );
+  await userEnrichment.runBatch(USER_ENRICHMENT_BACKFILL_BATCH_SIZE);
 }
 
 async function runScheduledObservabilityRetention(
