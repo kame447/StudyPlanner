@@ -1,10 +1,16 @@
 import type {
   SemanticStudyComponentV5,
   SemanticTaskV5,
+  SemanticWorkloadV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningTurnEvidenceV5';
-import { isUserUtteranceSourcedV5 } from './weeklyPlanningFactGraphV5';
+import {
+  isUserUtteranceSourcedV5,
+  type WeeklyPlanningFactGraphV5,
+  type WorkloadFactV5,
+} from './weeklyPlanningFactGraphV5';
+import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycleV5';
 
 export const WEEKLY_PLANNING_CURRENT_TURN_PROVENANCE_VERSION_V5 =
   'weekly-planning-current-turn-provenance-v5' as const;
@@ -241,12 +247,60 @@ function copiedExactlyFromStoredContext(params: {
   return !normalizedEvidenceText(params.currentUserText).includes(normalizedValue);
 }
 
+function sameCommittedWorkloadValueV5(
+  semantic: SemanticWorkloadV5,
+  committed: WorkloadFactV5,
+): boolean {
+  return semantic.quantityRole === committed.quantityRole
+    && semantic.amount === committed.amount
+    && semantic.unitCode === committed.unitCode
+    && semantic.unitLabel === committed.unitLabel
+    && semantic.rangeStart === committed.rangeStart
+    && semantic.rangeEnd === committed.rangeEnd
+    && semantic.perOccurrence === committed.perOccurrence
+    && semantic.periodExpression === committed.periodExpression;
+}
+
+function restatesCommittedUserWorkloadV5(params: {
+  graph?: WeeklyPlanningFactGraphV5;
+  task: SemanticTaskV5;
+  component?: SemanticStudyComponentV5;
+  workload: SemanticWorkloadV5;
+}): boolean {
+  const { graph, task, component, workload } = params;
+  if (!graph || !task.existingPublicId) return false;
+  if (!filterActiveWeeklyPlanningFactsV5(graph, graph.tasks)
+    .some((fact) => fact.id === task.existingPublicId)) return false;
+
+  let componentId: string | null = null;
+  if (component) {
+    if (!component.existingPublicId) return false;
+    const boundComponent = filterActiveWeeklyPlanningFactsV5(graph, graph.components)
+      .find((fact) => fact.id === component.existingPublicId);
+    if (!boundComponent || boundComponent.taskId !== task.existingPublicId) return false;
+    componentId = boundComponent.id;
+  }
+
+  const normalizedSource = normalizedEvidenceText(workload.sourceText);
+  if (!normalizedSource) return false;
+  return filterActiveWeeklyPlanningFactsV5(graph, graph.workloads).some((fact) =>
+    fact.taskId === task.existingPublicId
+    && fact.componentId === componentId
+    && sameCommittedWorkloadValueV5(workload, fact)
+    && isUserUtteranceSourcedV5(fact.source)
+    && sourceTextMatchesChannelV5(
+      normalizedSource,
+      normalizedEvidenceText(fact.source.sourceText),
+    ));
+}
+
 export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   currentUserText?: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   publicStateSummary?: Record<string, unknown>;
+  committedGraph?: WeeklyPlanningFactGraphV5;
 }): string[] {
   if (params.currentUserText === undefined) {
     const document = params.document;
@@ -274,7 +328,12 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     machineBoundValues.taskTitles.add(selectedLabel);
     machineBoundValues.componentLabels.add(selectedLabel);
   }
-  const check = (sourceText: string, path: string, allowSupplemental = false): void => {
+  const check = (
+    sourceText: string,
+    path: string,
+    allowSupplemental = false,
+    restatesCommittedUserFact = false,
+  ): void => {
     const normalizedSource = normalizedEvidenceText(sourceText);
     const channel = weeklyPlanningEvidenceChannelForSourceTextV5(
       sourceText,
@@ -287,8 +346,8 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
       && !normalizedEvidenceText(params.currentUserText ?? '').includes(normalizedSource)
       && [...storedContextStrings].some((stored) =>
         sourceTextMatchesChannelV5(normalizedSource, stored));
-    if (channel === null || copiedFromStoredFragments
-      || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel }))) {
+    if (!restatesCommittedUserFact && (channel === null || copiedFromStoredFragments
+      || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel })))) {
       errors.push(`${path}.sourceText:not-grounded-in-current-user-text`);
     }
   };
@@ -323,7 +382,8 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     }
 
     task.workloads.forEach((workload, workloadIndex) => {
-      check(workload.sourceText, `${taskPath}.workloads[${workloadIndex}]`, true);
+      check(workload.sourceText, `${taskPath}.workloads[${workloadIndex}]`, true,
+        restatesCommittedUserWorkloadV5({ graph: params.committedGraph, task, workload }));
     });
     task.effortEstimates.forEach((estimate, estimateIndex) => {
       check(estimate.sourceText, `${taskPath}.effortEstimates[${estimateIndex}]`, true);
@@ -355,7 +415,10 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
         checkStoredCopy(component.label, `${componentPath}.label`);
       }
       component.workloads.forEach((workload, workloadIndex) => {
-        check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`, true);
+        check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`, true,
+          restatesCommittedUserWorkloadV5({
+            graph: params.committedGraph, task, component, workload,
+          }));
       });
       (component.durableContextSignals ?? []).forEach((signal, signalIndex) => {
         const signalPath = `${componentPath}.durableContextSignals[${signalIndex}]`;

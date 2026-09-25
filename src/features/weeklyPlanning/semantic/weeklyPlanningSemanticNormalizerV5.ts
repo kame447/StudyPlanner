@@ -76,6 +76,7 @@ function enforceFinalCurrentTurnProvenance(params: {
     supplementalContext: params.input.supplementalContext,
     selectedStarterTarget: params.input.selectedStarterTarget,
     publicStateSummary: params.input.publicStateSummary,
+    committedGraph: params.input.committedGraph,
   });
   if (provenanceErrors.length === 0) return params.result;
 
@@ -171,6 +172,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           supplementalContext: input.supplementalContext,
           selectedStarterTarget: input.selectedStarterTarget,
           publicStateSummary: input.publicStateSummary,
+          committedGraph: input.committedGraph,
         },
       );
       run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);

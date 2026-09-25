@@ -213,6 +213,7 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
           supplementalContext: params.run.input.supplementalContext,
           selectedStarterTarget: params.run.input.selectedStarterTarget,
           publicStateSummary,
+          committedGraph: params.run.input.committedGraph,
         },
       )
     : null;
@@ -361,6 +362,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         supplementalContext: params.run.input.supplementalContext,
         selectedStarterTarget: params.run.input.selectedStarterTarget,
         publicStateSummary: params.run.input.publicStateSummary,
+        committedGraph: params.run.input.committedGraph,
       },
     );
     params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);

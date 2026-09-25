@@ -40,6 +40,7 @@ function validationState(run: WeeklyPlanningSemanticNormalizerRunV5) {
     supplementalContext: run.input.supplementalContext,
     selectedStarterTarget: run.input.selectedStarterTarget,
     publicStateSummary: run.input.publicStateSummary,
+    committedGraph: run.input.committedGraph,
   };
 }
 

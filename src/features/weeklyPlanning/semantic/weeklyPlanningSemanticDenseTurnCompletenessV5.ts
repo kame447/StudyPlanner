@@ -267,6 +267,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
       supplementalContext: params.run.input.supplementalContext,
       selectedStarterTarget: params.run.input.selectedStarterTarget,
       publicStateSummary: params.run.input.publicStateSummary,
+      committedGraph: params.run.input.committedGraph,
     },
   );
   params.run.addAlgorithmicRepairs(retryValidation.algorithmicRepairs);
