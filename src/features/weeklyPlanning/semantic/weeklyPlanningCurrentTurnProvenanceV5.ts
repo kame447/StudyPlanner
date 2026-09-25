@@ -3,6 +3,8 @@ import type {
   SemanticTaskV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningTurnEvidenceV5';
+import { isUserUtteranceSourcedV5 } from './weeklyPlanningFactGraphV5';
 
 export const WEEKLY_PLANNING_CURRENT_TURN_PROVENANCE_VERSION_V5 =
   'weekly-planning-current-turn-provenance-v5' as const;
@@ -16,16 +18,24 @@ function recordArray(value: unknown): Record<string, unknown>[] {
 }
 
 function normalizedEvidenceText(value: string): string {
-  return value.normalize('NFKC').trim().replace(/\s+/g, ' ');
+  return value.normalize('NFKC').replace(/\p{Cf}/gu, '').trim().replace(/\s+/g, ' ');
 }
 
-function sourceTextGroundedInCurrentTurn(
+export function weeklyPlanningEvidenceChannelForSourceTextV5(
   sourceText: string,
   currentUserText: string,
-): boolean {
+  supplementalContext?: string,
+): 'user' | 'supplemental' | 'ambiguous' | null {
   const normalizedSource = normalizedEvidenceText(sourceText);
   const normalizedCurrent = normalizedEvidenceText(currentUserText);
-  return normalizedSource.length > 0 && normalizedCurrent.includes(normalizedSource);
+  if (!normalizedSource) return null;
+  const inUser = normalizedCurrent.includes(normalizedSource);
+  const inSupplemental = Boolean(supplementalContext
+    && normalizedEvidenceText(supplementalContext).includes(normalizedSource));
+  if (inUser && inSupplemental) return 'ambiguous';
+  if (inUser) return 'user';
+  if (inSupplemental) return 'supplemental';
+  return null;
 }
 
 function boundRecord(
@@ -87,6 +97,7 @@ function componentShellNeedsCurrentTurnEvidence(
 
 function collectStoredContextStrings(
   publicStateSummary: Record<string, unknown> | undefined,
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
 ): Set<string> {
   const stored = new Set<string>();
   const register = (value: unknown): void => {
@@ -106,6 +117,7 @@ function collectStoredContextStrings(
     register(fact.value);
   });
   register(publicStateSummary?.lastAssistantMessage);
+  register(selectedStarterTarget?.label);
   return stored;
 }
 
@@ -180,15 +192,43 @@ function copiedExactlyFromStoredContext(params: {
 export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   currentUserText?: string;
+  supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   publicStateSummary?: Record<string, unknown>;
 }): string[] {
-  if (params.currentUserText === undefined) return [];
+  if (params.currentUserText === undefined) {
+    const document = params.document;
+    const hasAuthorityBearingContent = document.planningIntent === 'create_plan'
+      || Boolean(document.planningWindow)
+      || document.tasks.length > 0
+      || document.relations.length > 0
+      || document.availabilityDeclarations.length > 0
+      || document.constraintSourceRequests.length > 0
+      || (document.userContextFacts?.length ?? 0) > 0
+      || document.uncertainties.length > 0
+      || document.corrections.length > 0
+      || document.decisions.length > 0;
+    return hasAuthorityBearingContent ? ['currentUserText:missing'] : [];
+  }
 
   const errors: string[] = [];
-  const storedContextStrings = collectStoredContextStrings(params.publicStateSummary);
+  const storedContextStrings = collectStoredContextStrings(
+    params.publicStateSummary,
+    params.selectedStarterTarget,
+  );
   const machineBoundValues = contextualMachineBoundEntityValues(params.publicStateSummary);
-  const check = (sourceText: string, path: string): void => {
-    if (!sourceTextGroundedInCurrentTurn(sourceText, params.currentUserText ?? '')) {
+  if (params.selectedStarterTarget) {
+    const selectedLabel = normalizedEvidenceText(params.selectedStarterTarget.label);
+    machineBoundValues.taskTitles.add(selectedLabel);
+    machineBoundValues.componentLabels.add(selectedLabel);
+  }
+  const check = (sourceText: string, path: string, allowSupplemental = false): void => {
+    const channel = weeklyPlanningEvidenceChannelForSourceTextV5(
+      sourceText,
+      params.currentUserText ?? '',
+      params.supplementalContext,
+    );
+    if (channel === null || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel }))) {
       errors.push(`${path}.sourceText:not-grounded-in-current-user-text`);
     }
   };
@@ -214,7 +254,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   params.document.tasks.forEach((task, taskIndex) => {
     const taskPath = `document.tasks[${taskIndex}]`;
     if (taskShellNeedsCurrentTurnEvidence(task, params.publicStateSummary)) {
-      check(task.sourceText, taskPath);
+      check(task.sourceText, taskPath, true);
     }
     if (!task.existingPublicId) {
       checkStoredCopy(task.title, `${taskPath}.title`, machineBoundValues.taskTitles);
@@ -223,16 +263,16 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     }
 
     task.workloads.forEach((workload, workloadIndex) => {
-      check(workload.sourceText, `${taskPath}.workloads[${workloadIndex}]`);
+      check(workload.sourceText, `${taskPath}.workloads[${workloadIndex}]`, true);
     });
     task.effortEstimates.forEach((estimate, estimateIndex) => {
-      check(estimate.sourceText, `${taskPath}.effortEstimates[${estimateIndex}]`);
+      check(estimate.sourceText, `${taskPath}.effortEstimates[${estimateIndex}]`, true);
     });
     task.temporalConstraints.forEach((constraint, constraintIndex) => {
-      check(constraint.sourceText, `${taskPath}.temporalConstraints[${constraintIndex}]`);
+      check(constraint.sourceText, `${taskPath}.temporalConstraints[${constraintIndex}]`, true);
     });
     task.recurrence.forEach((recurrence, recurrenceIndex) => {
-      check(recurrence.sourceText, `${taskPath}.recurrence[${recurrenceIndex}]`);
+      check(recurrence.sourceText, `${taskPath}.recurrence[${recurrenceIndex}]`, true);
     });
     (task.durableContextSignals ?? []).forEach((signal, signalIndex) => {
       const signalPath = `${taskPath}.durableContextSignals[${signalIndex}]`;
@@ -243,7 +283,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     (task.study?.components ?? []).forEach((component, componentIndex) => {
       const componentPath = `${taskPath}.study.components[${componentIndex}]`;
       if (componentShellNeedsCurrentTurnEvidence(component, params.publicStateSummary)) {
-        check(component.sourceText, componentPath);
+        check(component.sourceText, componentPath, true);
       }
       if (!component.existingPublicId) {
         checkStoredCopy(
@@ -255,7 +295,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
         checkStoredCopy(component.label, `${componentPath}.label`);
       }
       component.workloads.forEach((workload, workloadIndex) => {
-        check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`);
+        check(workload.sourceText, `${componentPath}.workloads[${workloadIndex}]`, true);
       });
       (component.durableContextSignals ?? []).forEach((signal, signalIndex) => {
         const signalPath = `${componentPath}.durableContextSignals[${signalIndex}]`;
@@ -266,7 +306,7 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
   });
 
   params.document.relations.forEach((relation, index) => {
-    check(relation.sourceText, `document.relations[${index}]`);
+    check(relation.sourceText, `document.relations[${index}]`, true);
   });
   params.document.availabilityDeclarations.forEach((availability, index) => {
     check(availability.sourceText, `document.availabilityDeclarations[${index}]`);

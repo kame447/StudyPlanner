@@ -42,7 +42,11 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
-import { buildAiPlanningStarterPromptOptions } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
+import {
+  buildAiPlanningStarterPromptOptions,
+  type AiPlanningStarterPromptOption,
+} from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
+import { buildAiPlanningImageTurn } from '../features/weeklyPlanning/ui/aiPlanningImageTurn';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
   formatMinutes,
@@ -186,6 +190,8 @@ export function AiPlanningView({
 }: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [text, setText] = useState('');
+  const [selectedStarterOption, setSelectedStarterOption] =
+    useState<AiPlanningStarterPromptOption | null>(null);
   const [error, setError] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewPageIndex, setPreviewPageIndex] = useState(0);
@@ -488,6 +494,7 @@ export function AiPlanningView({
       const baseText = speechBaseTextRef.current.trimEnd();
       const nextText = [baseText, recognizedText].filter(Boolean).join('\n');
       setText(nextText.slice(0, 4000));
+      setSelectedStarterOption(null);
     };
 
     recognition.onerror = (event) => {
@@ -543,11 +550,18 @@ export function AiPlanningView({
       }
     }
 
-    const displayText = attachment
-      ? value
-        ? `${value}\n\n画像: ${attachment.file.name}`
-        : `画像「${attachment.file.name}」をもとに学習計画を作って`
-      : value;
+    const starter = selectedStarterOption?.requestText === value
+      && starterPromptOptions.some((option) => option.requestText === value
+        && option.target?.kind === selectedStarterOption.target?.kind
+        && option.target?.id === selectedStarterOption.target?.id
+        && option.target?.label === selectedStarterOption.target?.label
+        && option.target?.targetDate === selectedStarterOption.target?.targetDate)
+      ? selectedStarterOption
+      : null;
+    const requestText = starter?.requestText ?? value;
+    const submittedText = attachment
+      ? buildAiPlanningImageTurn(requestText, attachment.file.name).userText
+      : requestText;
 
     const shouldReleaseComposerFocus = shouldReleaseComposerFocusAfterSubmit();
     setText('');
@@ -556,12 +570,17 @@ export function AiPlanningView({
     }
 
     try {
-      const result = await application.submitTurn(displayText, supplementalContext);
+      const result = await application.submitTurn(
+        submittedText,
+        supplementalContext,
+        starter?.target ?? undefined,
+      );
       if (!result.accepted) {
         setText(value);
         return;
       }
       clearImageAttachment();
+      setSelectedStarterOption(null);
       persistActiveChat();
     } catch (submitError) {
       setText(value);
@@ -587,8 +606,9 @@ export function AiPlanningView({
     void submitMessage();
   }
 
-  function useStarterPrompt(prompt: string) {
-    setText(prompt);
+  function useStarterPrompt(option: AiPlanningStarterPromptOption) {
+    setText(option.requestText);
+    setSelectedStarterOption(option);
   }
 
   function switchChat(chatId: string) {
@@ -612,6 +632,7 @@ export function AiPlanningView({
     saveAiPlanningChatIndex(userId, nextIndex);
     setChatIndex(nextIndex);
     setText('');
+    setSelectedStarterOption(null);
     clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
@@ -628,6 +649,7 @@ export function AiPlanningView({
     setChatIndex(created.index);
     setChatQuery('');
     setText('');
+    setSelectedStarterOption(null);
     clearImageAttachment();
     setError('');
     setIsPreviewOpen(false);
@@ -653,6 +675,7 @@ export function AiPlanningView({
       if (snapshot) application.loadConversationSnapshot(snapshot);
       else application.startConversation();
       setText('');
+      setSelectedStarterOption(null);
       clearImageAttachment();
       setError('');
       setIsPreviewOpen(false);
@@ -758,7 +781,7 @@ export function AiPlanningView({
                   <button
                     key={`${option.displayText}\u0000${option.prompt}`}
                     type="button"
-                    onClick={() => useStarterPrompt(option.prompt)}
+                    onClick={() => useStarterPrompt(option)}
                   >
                     <span>{option.displayText}</span>
                     <ChevronRight aria-hidden="true" size={16} />
@@ -904,7 +927,12 @@ export function AiPlanningView({
           <textarea
             ref={inputRef}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              setText(event.target.value);
+              if (event.target.value !== selectedStarterOption?.requestText) {
+                setSelectedStarterOption(null);
+              }
+            }}
             onKeyDown={handleKeyDown}
             rows={1}
             maxLength={4000}

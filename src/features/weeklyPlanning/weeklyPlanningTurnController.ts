@@ -12,6 +12,7 @@ import type {
   WeeklyPlanningTurnFailure,
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -43,12 +44,15 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
   ownerId: string;
   userText: string;
   supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
   execute(params: {
     snapshot: PlanningState;
     pending: WeeklyPlanningPendingTurn;
     userText: string;
+    supplementalContext?: string;
+    selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   }): Promise<WeeklyPlanningTurnExecutionResult>;
   onStartedTurn?(params: {
     snapshot: PlanningState;
@@ -194,6 +198,7 @@ const SUPPLEMENTAL_CONTEXT_HEADER = [
   '',
 ].join('\n');
 
+/** Combined-size check only; semantic execution receives the two channels separately. */
 export function buildWeeklyPlanningExecutionText(
   userText: string,
   supplementalContext?: string,
@@ -205,18 +210,9 @@ export function buildWeeklyPlanningExecutionText(
     return normalizedUserText;
   }
 
-  const availableContextLength = Math.max(
-    0,
-    MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH
-      - normalizedUserText.length
-      - SUPPLEMENTAL_CONTEXT_HEADER.length,
-  );
-
-  if (availableContextLength === 0) {
-    return normalizedUserText;
-  }
-
-  return `${normalizedUserText}${SUPPLEMENTAL_CONTEXT_HEADER}${normalizedContext.slice(0, availableContextLength)}`;
+  // Never cut supplemental evidence in the middle of a negation or instruction.
+  // The controller rejects the complete payload if it exceeds the turn budget.
+  return `${normalizedUserText}${SUPPLEMENTAL_CONTEXT_HEADER}${normalizedContext}`;
 }
 
 export async function submitWeeklyPlanningControlledTurn(
@@ -272,7 +268,13 @@ export async function submitWeeklyPlanningControlledTurn(
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
   try {
-    const executionResult = await params.execute({ snapshot, pending, userText: executionText });
+    const executionResult = await params.execute({
+      snapshot,
+      pending,
+      userText,
+      supplementalContext: supplementalContext || undefined,
+      selectedStarterTarget: params.selectedStarterTarget,
+    });
     result = executionResult;
     if (executionResult.failure) {
       throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);

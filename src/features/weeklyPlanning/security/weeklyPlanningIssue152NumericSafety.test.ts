@@ -77,7 +77,9 @@ function workload(amount: number) {
 }
 
 function validateResponse(value: unknown) {
-  return validateWeeklyPlanningSemanticResponseV5(JSON.stringify(value), {});
+  return validateWeeklyPlanningSemanticResponseV5(JSON.stringify(value), {
+    currentUserText: '数学を進めたいです',
+  });
 }
 
 const factSource = {

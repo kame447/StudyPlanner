@@ -1,4 +1,5 @@
 import {
+  isUserUtteranceSourcedV5,
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
@@ -9,6 +10,15 @@ export interface WeeklyPlanningFactGraphValidationResultV5 {
 }
 
 type UnknownFact = Record<string, unknown>;
+
+const USER_AUTHORITY_FACT_PATHS = new Set([
+  'graph.planningWindows',
+  'graph.uncertainties',
+  'graph.correctionIntents',
+  'graph.decisionIntents',
+  'graph.availabilityDeclarations',
+  'graph.constraintSourceRequests',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -89,7 +99,14 @@ function validateFactArray(
     } else {
       validateExactKeys(
         fact.source,
-        ['conversationId', 'turnId', 'semanticLocalId', 'sourceText', 'origin'],
+        [
+          'conversationId',
+          'turnId',
+          'semanticLocalId',
+          'sourceText',
+          'origin',
+          ...('provenanceChannel' in fact.source ? ['provenanceChannel'] : []),
+        ],
         `${factPath}.source`,
         errors,
       );
@@ -104,6 +121,16 @@ function validateFactArray(
         errors.push(`${factPath}.source.sourceText`);
       }
       if (fact.source.origin !== 'user') errors.push(`${factPath}.source.origin`);
+      if ('provenanceChannel' in fact.source
+        && fact.source.provenanceChannel !== 'supplemental') {
+        errors.push(`${factPath}.source.provenanceChannel`);
+      }
+      if (USER_AUTHORITY_FACT_PATHS.has(path)
+        && !isUserUtteranceSourcedV5({
+          channel: fact.source.provenanceChannel === 'supplemental' ? 'supplemental' : 'user',
+        })) {
+        errors.push(`${factPath}.source:requires-user-utterance`);
+      }
     }
     facts.push(fact);
   });

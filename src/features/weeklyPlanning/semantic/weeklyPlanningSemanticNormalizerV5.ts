@@ -73,6 +73,8 @@ function enforceFinalCurrentTurnProvenance(params: {
   const provenanceErrors = validateWeeklyPlanningCurrentTurnProvenanceV5({
     document: params.result.document,
     currentUserText: params.input.userText,
+    supplementalContext: params.input.supplementalContext,
+    selectedStarterTarget: params.input.selectedStarterTarget,
     publicStateSummary: params.input.publicStateSummary,
   });
   if (provenanceErrors.length === 0) return params.result;
@@ -115,7 +117,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
         enforceFinalCurrentTurnProvenance({ input, run, result });
 
-      const contextualResult = await tryFocusedContextualAnswerRouteV5(run);
+      const contextualResult = input.supplementalContext?.trim()
+        ? null
+        : await tryFocusedContextualAnswerRouteV5(run);
       if (contextualResult) return finish(contextualResult);
 
       const authorization = await tryFocusedAuthorizationRouteV5(run);
@@ -164,6 +168,8 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         initialResponse,
         {
           currentUserText: input.userText,
+          supplementalContext: input.supplementalContext,
+          selectedStarterTarget: input.selectedStarterTarget,
           publicStateSummary: input.publicStateSummary,
         },
       );

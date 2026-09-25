@@ -11,6 +11,7 @@ import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningDialogueRendererTrace } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
@@ -19,6 +20,8 @@ export interface WeeklyPlanningTurnExecutionInput {
   previousState?: PlanningIntakeState;
   messages: readonly WeeklyPlanningMessage[];
   userText: string;
+  supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   selectedDate: string;
   userId: string;
   plans: Plan[];

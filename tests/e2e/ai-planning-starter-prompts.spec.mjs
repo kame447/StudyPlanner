@@ -96,10 +96,10 @@ test('AI planning starters use registered exam, unfinished task, and active mate
     `英語レポートを${shortDate(todoDate)}までに終えられるように計画して`,
     `基本情報問題集を${shortDate(materialDate)}までに終えられるように計画して`,
   ];
-  const expectedPrompt = [
-    `登録済み模試名: ${JSON.stringify('情報処理試験')}。${shortDate(examDate)}のこの模試に向けて学習計画を作って`,
-    `登録済みTodo名: ${JSON.stringify('英語レポート')}。このTodoを${shortDate(todoDate)}までに終えられるように計画して`,
-    `登録済み教材名: ${JSON.stringify('基本情報問題集')}。この教材を${shortDate(materialDate)}までに終えられるように計画して`,
+  const expectedRequest = [
+    `${shortDate(examDate)}のこの模試に向けて学習計画を作って`,
+    `このTodoを${shortDate(todoDate)}までに終えられるように計画して`,
+    `この教材を${shortDate(materialDate)}までに終えられるように計画して`,
   ];
 
   for (let index = 0; index < expectedDisplay.length; index += 1) {
@@ -107,5 +107,6 @@ test('AI planning starters use registered exam, unfinished task, and active mate
   }
 
   await page.locator('.ai-planning-starter-list button').nth(1).click();
-  await expect(page.locator('.ai-planning-composer textarea')).toHaveValue(expectedPrompt[1]);
+  await expect(page.locator('.ai-planning-composer textarea')).toHaveValue(expectedRequest[1]);
+  await expect(page.locator('.ai-planning-composer textarea')).not.toHaveValue(/英語レポート/);
 });

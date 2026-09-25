@@ -1,4 +1,5 @@
 import type { Plan, StudyMaterial, TodoTask } from '../../../types/domain';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 
 export const AI_PLANNING_FALLBACK_PROMPTS = [
   '今週の課題を優先して、空き時間に無理なく入れて',
@@ -9,6 +10,8 @@ export const AI_PLANNING_FALLBACK_PROMPTS = [
 export interface AiPlanningStarterPromptOption {
   displayText: string;
   prompt: string;
+  requestText: string;
+  target: WeeklyPlanningSelectedStarterTargetV5 | null;
 }
 
 interface StarterPromptCandidate extends AiPlanningStarterPromptOption {
@@ -82,6 +85,8 @@ function buildCandidates({
         key: plan.title,
         displayText: `${formatShortDate(plan.date)}の${plan.title}に向けて学習計画を作って`,
         prompt: `登録済み模試名: ${storedValue(plan.title)}。${formatShortDate(plan.date)}のこの模試に向けて学習計画を作って`,
+        requestText: `${formatShortDate(plan.date)}のこの模試に向けて学習計画を作って`,
+        target: { kind: 'plan', id: plan.id, label: plan.title, targetDate: plan.date },
         priority: 0,
         date: plan.date,
       });
@@ -114,6 +119,12 @@ function buildCandidates({
         key: todo.title,
         displayText,
         prompt,
+        requestText: todo.dueDate
+          ? overdue
+            ? 'このTodoを優先して終えられるように計画して'
+            : `このTodoを${formatShortDate(todo.dueDate)}までに終えられるように計画して`
+          : 'このTodoを進める学習計画を作って',
+        target: { kind: 'todo', id: todo.id, label: todo.title, targetDate: todo.dueDate ?? null },
         priority: 1,
         date: todo.dueDate,
       });
@@ -146,6 +157,12 @@ function buildCandidates({
         key: material.name,
         displayText,
         prompt,
+        requestText: targetDate
+          ? overdue
+            ? 'この教材を優先して進める学習計画を作って'
+            : `この教材を${formatShortDate(targetDate)}までに終えられるように計画して`
+          : 'この教材を今週進める学習計画を作って',
+        target: { kind: 'material', id: material.id, label: material.name, targetDate },
         priority: 2,
         date: targetDate,
       });
@@ -159,6 +176,8 @@ function buildCandidates({
         key: plan.title,
         displayText: `${plan.title}を${formatShortDate(plan.date)}までに終えられるように計画して`,
         prompt: `登録済み期限予定名: ${storedValue(plan.title)}。この予定を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        requestText: `この予定を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        target: { kind: 'plan', id: plan.id, label: plan.title, targetDate: plan.date },
         priority: 1,
         date: plan.date,
       });
@@ -174,12 +193,12 @@ export function buildAiPlanningStarterPromptOptions(
   const options = buildCandidates(input)
     .sort(compareCandidates)
     .slice(0, normalizedLimit)
-    .map(({ displayText, prompt }) => ({ displayText, prompt }));
+    .map(({ displayText, prompt, requestText, target }) => ({ displayText, prompt, requestText, target }));
 
   for (const fallback of AI_PLANNING_FALLBACK_PROMPTS) {
     if (options.length >= normalizedLimit) break;
     if (!options.some((option) => option.prompt === fallback)) {
-      options.push({ displayText: fallback, prompt: fallback });
+      options.push({ displayText: fallback, prompt: fallback, requestText: fallback, target: null });
     }
   }
 

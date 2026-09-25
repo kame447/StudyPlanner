@@ -28,6 +28,7 @@ import { clearWeeklyPlanningSessionRuntime } from '../../planning/weeklyPlanning
 import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../../semantic/weeklyPlanningTurnEvidenceV5';
 import type { PlanningState, WeeklyPlanningAction } from '../../types';
 import {
   createWeeklyPlanningControllerSession,
@@ -83,6 +84,7 @@ export interface Issue152ConversationParams {
   canary?: string;
   turns: string[];
   supplementalContexts?: Array<string | undefined>;
+  selectedStarterTargets?: Array<WeeklyPlanningSelectedStarterTargetV5 | undefined>;
   studyMaterials?: StudyMaterial[];
   resetUserContext?: boolean;
   fakeProvider?: boolean;
@@ -692,6 +694,7 @@ export async function runIssue152Conversation(
         ownerId,
         userText,
         supplementalContext: params.supplementalContexts?.[turnIndex] ?? undefined,
+        selectedStarterTarget: params.selectedStarterTargets?.[turnIndex] ?? undefined,
         selectedDate: ISSUE152_REFERENCE_DATE,
         plans: [],
         studyMaterials: params.studyMaterials,

@@ -16,11 +16,14 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningSemanticValueV5 } from './weeklyPlanningSemanticValidatorV5';
+import { weeklyPlanningEvidenceChannelForSourceTextV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
 
 export interface WeeklyPlanningSemanticCanonicalizationContextV5 {
   conversationId: string;
   turnId: string;
   expectedRevision: number;
+  userText?: string;
+  supplementalContext?: string;
 }
 
 export interface WeeklyPlanningSemanticCanonicalizationResultV5 {
@@ -77,12 +80,21 @@ function createSource(params: {
   semanticLocalId: string;
   sourceText: string;
 }): PlanningFactSourceV5 {
+  const channel = params.context.userText !== undefined
+    ? weeklyPlanningEvidenceChannelForSourceTextV5(
+        params.sourceText,
+        params.context.userText,
+        params.context.supplementalContext,
+      )
+    : null;
   return {
     conversationId: params.context.conversationId,
     turnId: params.context.turnId,
     semanticLocalId: params.semanticLocalId,
     sourceText: params.sourceText,
     origin: 'user',
+    ...(channel === 'supplemental' || channel === 'ambiguous'
+      ? { provenanceChannel: 'supplemental' as const } : {}),
   };
 }
 

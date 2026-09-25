@@ -81,7 +81,7 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
     })).toEqual([]);
   });
 
-  it.fails('rejects a zero-width-space copy of a stored value', () => {
+  it('rejects a zero-width-space copy of a stored value', () => {
     // Issue #152 V03 reproduced: the stored-copy normalizer does not remove U+200B.
     const document = emptyDocument();
     document.userContextFacts = [{
@@ -93,6 +93,11 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
       currentUserText: '今日は数学を進める',
       publicStateSummary: { userPlanningContext: [{ id: 'stored-1', label: '学習', value: 'SECRET' }] },
     })).toContain('document.userContextFacts[0].value:copied-from-stored-context-without-current-mention');
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: '今日は数学を進める。S\u200bECRETを使う',
+      publicStateSummary: { userPlanningContext: [{ id: 'stored-1', label: '学習', value: 'SECRET' }] },
+    })).toEqual([]);
   });
 
   it('documents exposure: a suffix/partial stored copy is not treated as exact copy (semantic-owned; see Luna B V03)', () => {
@@ -167,12 +172,18 @@ describe('Issue #152 V03 provenance validator characterizations', () => {
   it('documents fail-open when currentUserText is omitted at the semantic response boundary', () => {
     const document = emptyDocument();
     expect(validateWeeklyPlanningCurrentTurnProvenanceV5({ document })).toEqual([]);
+    document.planningIntent = 'create_plan';
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({ document })).toContain('currentUserText:missing');
+    expect(validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: 'この計画を作って',
+    })).toEqual([]);
   });
 });
 
 describe('Issue #152 V03 final provenance guard', () => {
   it('fails closed when an ungrounded fact survives the repair route, because the final normalizer guard re-checks provenance', async () => {
-    // Repair-route validation does not receive currentUserText; the final guard is the owner of fail-closed provenance.
+    // Initial, repair, and final validation all receive the typed evidence channels.
     const ungrounded = emptyDocument();
     ungrounded.tasks = [{
       ...taskWithWorkload({
