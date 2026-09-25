@@ -1,9 +1,10 @@
 {
-  "request_id": "20260926-issue152-final-adaf7fd1-batch1",
-  "reason": "Final-HEAD Real API verification at adaf7fd1: V01/V02/V08 synthesized evidence and V05/V06/V09 stored and durable context after ordered-fragment and committed-restatement provenance fixes. Batch 1 of 3.",
+  "request_id": "20260926-issue152-final-adaf7fd1-batch2",
+  "reason": "Final-HEAD Real API verification at adaf7fd1: direct injection, nonsense/no-op, Unicode/delimiter, numeric bounds (adversarial), stored/indirect entity-label injection (indirect), and renderer integrity with the automatic V12 oracle (renderer-influence). Batch 2 of 3. Batch 1 run 36173063315 passed.",
   "critical_repetitions": 3,
   "suites": [
-    "synthesized-evidence",
-    "stored-durable"
+    "adversarial",
+    "indirect",
+    "renderer-influence"
   ]
 }
