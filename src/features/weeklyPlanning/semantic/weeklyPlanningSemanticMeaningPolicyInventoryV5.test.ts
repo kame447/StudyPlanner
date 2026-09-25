@@ -65,6 +65,8 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     expect(decisionRule).toContain('resolved publicId or current-turn localId');
     expect(decisionRule).toContain('otherwise emit uncertainty');
     expect(decisionRule).toContain('target kind=proposal and exact publicId');
+    expect(instructionFor('temporal_kind_and_strength')).toContain('latest_end');
+    expect(instructionFor('temporal_kind_and_strength')).toContain('Do not strengthen unknown or soft meaning into hard');
   });
 
   it('keeps qualitative scope structural and does not reopen an approved material breakdown', () => {

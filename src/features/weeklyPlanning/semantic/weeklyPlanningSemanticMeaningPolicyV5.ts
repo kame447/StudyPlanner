@@ -57,6 +57,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     instruction: 'Task timing is task-scoped; availability plan-wide; planningWindow whole-plan. Completion-by is hard deadline. Date-only earliest_start/latest_end is valid; never invent clocks. fixed_interval requires both clock startTime/endTime; never use it for a date-only period. Date-only from/after -> earliest_start; until/by -> latest_end or deadline; emit both when both stated. Recurring weekdays use days with null dateExpression unless separately date-scoped. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic for deterministic calendar resolution.',
   },
   {
+    id: 'temporal_kind_and_strength',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'Choosing deadline versus one-sided bounds or preference, and choosing hard versus soft versus unknown strength, depends on linguistic force; deterministic validation cannot detect a plausible but semantically stronger legal enum value.',
+    instruction: 'Use deadline for completion-by meaning, latest_end for work that may continue until an upper bound, earliest_start for not-before or start-from meaning, and preferred_window for a timing preference. Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint; use soft for preferences; use unknown when strength is not established. Do not strengthen unknown or soft meaning into hard.',
+  },
+  {
     id: 'availability_absence',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Distinguishing explicit absence of constraints, clock-window availability, and a daily total study capacity depends on what the user actually asserted.',
