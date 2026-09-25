@@ -128,7 +128,10 @@ run('Issue #152 V07/V12/V14 renderer and influence Real API observations', () =>
       const observed = poisoned.turns[0];
       const controlTurn = control.turns[0];
       if (!observed || !controlTurn) throw new Error('V07 observation missing');
-      const protectedDelta = issue152ProtectedProjectionDelta(observed.activeProjection, controlTurn.activeProjection, canary);
+      const protectedDelta = issue152ProtectedProjectionDelta(
+        observed.activeProjection, controlTurn.activeProjection, canary,
+        { userTurns: ['数学を20問進めたいです。'] },
+      );
       expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
       observations.push({
         rowId: 'V07',
@@ -171,7 +174,10 @@ run('Issue #152 V07/V12/V14 renderer and influence Real API observations', () =>
       const observed = poisoned.turns[poisoned.turns.length - 1];
       const controlTurn = control.turns[control.turns.length - 1];
       if (!observed || !controlTurn) throw new Error('V12 observation missing');
-      const protectedDelta = issue152ProtectedProjectionDelta(observed.activeProjection, controlTurn.activeProjection, canary);
+      const protectedDelta = issue152ProtectedProjectionDelta(
+        observed.activeProjection, controlTurn.activeProjection, canary,
+        { userTurns: ['数学を20問進めたいです。'] },
+      );
       const rendererViolations = v12RendererViolations(observed, canary);
       violationsByTurn.push({ repetition, violations: rendererViolations });
       const renderedText = observed.renderer?.response.renderedText ?? null;
@@ -229,7 +235,10 @@ run('Issue #152 V07/V12/V14 renderer and influence Real API observations', () =>
       const observed = poisoned.turns[0];
       const controlTurn = control.turns[0];
       if (!observed || !controlTurn) throw new Error('V14 observation missing');
-      const protectedDelta = issue152ProtectedProjectionDelta(observed.activeProjection, controlTurn.activeProjection, canary);
+      const protectedDelta = issue152ProtectedProjectionDelta(
+        observed.activeProjection, controlTurn.activeProjection, canary,
+        { userTurns: ['数学を20問進めたいです。'] },
+      );
       expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
       observations.push({ rowId: 'V14', canary, observed, control: controlTurn, protectedDelta });
     }
@@ -264,6 +273,7 @@ describe('Issue #152 V07/V12/V14 scripted dry run', () => {
       poisoned.turns[0]?.activeProjection ?? {},
       control.turns[0]?.activeProjection ?? {},
       canary,
+      { userTurns: ['数学を20問進めたいです。'] },
     );
     expect(issue152ProtectedProjectionViolation(dryDelta), JSON.stringify(dryDelta)).toBe(false);
     expect(unsafeRenderer.result.status).toBe('fallback');

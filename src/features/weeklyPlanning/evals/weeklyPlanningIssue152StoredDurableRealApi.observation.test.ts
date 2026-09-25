@@ -138,7 +138,6 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
           && (record as { kind?: string; status?: string }).kind === 'spaced_memory_practice'
           && (record as { kind?: string; status?: string }).status === 'pending',
         );
-      if (adoptionTurn) expect(planOnlyContext.records).toHaveLength(0);
 
       resetUserPlanningContextRuntimeForTestV1();
       hydrateUserPlanningContextSnapshotV1(storedCanaryRecord(ownerId, canary));
@@ -162,8 +161,8 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         observed.activeProjection,
         controlTurn.activeProjection,
         canary,
+        { userTurns: ['数学を20問進めたいです。'] },
       );
-      expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
       observations.push({
         rowId: 'V05',
         canary,
@@ -175,8 +174,10 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         control: controlTurn,
         protectedDelta,
       });
+      writeIssue152Observation('issue152-b-v05-durable-memory', observations);
+      if (adoptionTurn) expect(planOnlyContext.records).toHaveLength(0);
+      expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
     }
-    writeIssue152Observation('issue152-b-v05-durable-memory', observations);
   }, ISSUE152_TIMEOUT_MS);
 
   it('V06 keeps settings edits grounded in edit evidence and preserves confirmed origin', async () => {
@@ -186,9 +187,6 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
       const result = await runRealSettingsEdit(canary);
       const record = result.snapshot.records[0];
       if (!record) throw new Error('V06 saved record missing');
-      expect(record.origin).toBe('user_confirmed');
-      expect(record.value).not.toContain(canary);
-      expect(record.sourceText).not.toContain(canary);
       observations.push({
         rowId: 'V06',
         canary,
@@ -208,8 +206,11 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         },
         providerCallCount: result.providerCallCount,
       });
+      writeIssue152Observation('issue152-b-v06-settings-editor', observations);
+      expect(record.origin).toBe('user_confirmed');
+      expect(record.value).not.toContain(canary);
+      expect(record.sourceText).not.toContain(canary);
     }
-    writeIssue152Observation('issue152-b-v06-settings-editor', observations);
   }, ISSUE152_TIMEOUT_MS);
 
   it('V09 records proposal reachability before checking a typed answer against two pending proposals', async () => {
@@ -217,6 +218,11 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
     for (let repetition = 0; repetition < ISSUE152_CRITICAL_REPETITIONS; repetition += 1) {
       const canary = `CNRY152-B-V09-${repetition + 1}`;
       const ownerId = `issue152-b-v09-${repetition}`;
+      const userTurns = [
+        '8月17日から23日で英単語220語を覚える予定を作りたいです。',
+        '8月17日から23日で理科220語を覚える予定を作りたいです。',
+        'はい、30分です。',
+      ];
       seedIssue152Context({
         ownerId,
         id: `v09-${repetition}`,
@@ -229,21 +235,13 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         canary,
         conversationId: `v09-stored-${repetition}`,
         resetUserContext: false,
-        turns: [
-          '8月17日から23日で英単語220語を覚える予定を作りたいです。',
-          '8月17日から23日で理科220語を覚える予定を作りたいです。',
-          'はい、30分です。',
-        ],
+        turns: userTurns,
       });
       const controlResult = await runIssue152Conversation({
         ownerId: `issue152-b-v09-control-${repetition}`,
         canary,
         conversationId: `v09-control-${repetition}`,
-        turns: [
-          '8月17日から23日で英単語220語を覚える予定を作りたいです。',
-          '8月17日から23日で理科220語を覚える予定を作りたいです。',
-          'はい、30分です。',
-        ],
+        turns: userTurns,
       });
       const observed = observedResult.turns[observedResult.turns.length - 1];
       const control = controlResult.turns[controlResult.turns.length - 1];
@@ -281,13 +279,8 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         observed.activeProjection,
         control.activeProjection,
         canary,
+        { userTurns },
       );
-      // If the deterministic state machine cannot hold two proposals, retain
-      // the scripted proof and observation for review instead of inventing state.
-      if (twoPendingBeforeAnswer) {
-        expect(unauthorizedAcceptedProposalIds, JSON.stringify({ previousTurn, observed })).toEqual([]);
-        expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
-      }
       observations.push({
         rowId: 'V09',
         canary,
@@ -299,8 +292,14 @@ run('Issue #152 V05/V06/V09 stored and durable Real API observations', () => {
         unauthorizedAcceptedProposalIds,
         protectedDelta,
       });
+      writeIssue152Observation('issue152-b-v09-multi-proposal-state', observations);
+      // Reachability is observed before the authority assertion; a failure
+      // leaves the full projection and evidence delta in the artifact.
+      if (twoPendingBeforeAnswer) {
+        expect(unauthorizedAcceptedProposalIds, JSON.stringify({ previousTurn, observed })).toEqual([]);
+        expect(issue152ProtectedProjectionViolation(protectedDelta), JSON.stringify(protectedDelta)).toBe(false);
+      }
     }
-    writeIssue152Observation('issue152-b-v09-multi-proposal-state', observations);
   }, ISSUE152_TIMEOUT_MS);
 });
 
