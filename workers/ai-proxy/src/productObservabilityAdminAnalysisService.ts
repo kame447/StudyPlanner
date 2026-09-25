@@ -9,6 +9,7 @@ import type {
   ObservabilityDailyRollup,
   ObservabilityDimensionAggregate,
 } from '../../../shared/productObservabilityReadModel';
+import { PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE } from '../../../shared/productObservabilityReadModel';
 import type {
   ObservabilityAdminIdentityMatch,
   ObservabilityAdminRecentErrorState,
@@ -28,6 +29,7 @@ import {
   latencyPercentileMs,
   mergeLatencyHistograms,
 } from './productObservabilityReadModelProjection';
+import { aggregateOverviewPeriod } from './productObservabilityOverviewAggregation';
 import {
   ProductObservabilityReadModelService,
   type ProductObservabilityReadModelEnv,
@@ -87,6 +89,7 @@ interface AnalysisFirestore {
 
 interface IdentityStore {
   lookupActorSubjectId(firebaseUid: string): Promise<string | null>;
+  lookupActorSubjectIds(firebaseUids: readonly string[]): Promise<Array<string | null>>;
 }
 
 interface RecentErrorResult {
@@ -405,12 +408,16 @@ export class ProductObservabilityAdminAnalysisService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityAiAnalysisReadModel> {
-    const overview = await this.readModel.getOverview(params);
-    const byModel = mergeDimensions(overview.daily, (entry) => entry.aiByModel);
-    const byPurpose = mergeDimensions(overview.daily, (entry) => entry.aiByPurpose);
-    const byPhase = mergeDimensions(overview.daily, (entry) => entry.aiByPhase);
+    const [daily, rollupCheckpoint] = await Promise.all([
+      this.readModel.getDailyRollups(params),
+      this.readModel.getRollupCheckpoint(),
+    ]);
+    const period = aggregateOverviewPeriod(daily);
+    const byModel = mergeDimensions(daily, (entry) => entry.aiByModel);
+    const byPurpose = mergeDimensions(daily, (entry) => entry.aiByPurpose);
+    const byPhase = mergeDimensions(daily, (entry) => entry.aiByPhase);
     const byOperationKind = mergeDimensions(
-      overview.daily,
+      daily,
       (entry) => entry.aiByOperationKind ?? [],
     );
     const planningAggregate = byPurpose
@@ -422,18 +429,18 @@ export class ProductObservabilityAdminAnalysisService {
     const initialRequestCount = byPhase.find((entry) => entry.key === 'initial')?.aggregate.requestCount ?? 0;
     const repairRequestCount = byPhase.find((entry) => entry.key === 'repair')?.aggregate.requestCount ?? 0;
     const repairEligibleCount = initialRequestCount + repairRequestCount;
-    const turnCount = overview.period.planning.outcomeCounts.turn_started ?? 0;
+    const turnCount = period.planning.outcomeCounts.turn_started ?? 0;
     const cacheKnown = planningAggregate.promptTokensUnknownCount === 0
       && planningAggregate.cachedTokensUnknownCount === 0;
 
     return {
-      fromDate: overview.fromDate,
-      toDate: overview.toDate,
+      fromDate: params.fromDate,
+      toDate: params.toDate,
       environment: params.environment,
-      reportingTimeZone: overview.reportingTimeZone,
-      total: overview.period.ai,
-      latencyP50Ms: overview.aiLatencyP50Ms,
-      latencyP95Ms: overview.aiLatencyP95Ms,
+      reportingTimeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+      total: period.ai,
+      latencyP50Ms: latencyPercentileMs(period.ai.latency, 0.5),
+      latencyP95Ms: latencyPercentileMs(period.ai.latency, 0.95),
       byModel,
       byPurpose,
       byPhase,
@@ -457,7 +464,7 @@ export class ProductObservabilityAdminAnalysisService {
             ? planningAggregate.cachedTokens / planningAggregate.promptTokens
             : null,
       },
-      rollupCheckpoint: overview.rollupCheckpoint,
+      rollupCheckpoint,
     };
   }
 
@@ -565,15 +572,19 @@ export class ProductObservabilityAdminAnalysisService {
       byUsername.forEach((row) => profiles.set(row.id, row));
     }
 
-    return Promise.all([...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES).map(
-      async ([firebaseUid, profile]): Promise<ObservabilityAdminIdentityMatch> => ({
+    const selected = [...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES);
+    const actorSubjectIds = await this.identityStore.lookupActorSubjectIds(
+      selected.map(([firebaseUid]) => firebaseUid),
+    );
+    return selected.map(
+      ([firebaseUid, profile], index): ObservabilityAdminIdentityMatch => ({
         firebaseUid,
         email: profileString(profile, 'email'),
         username: profileString(profile, 'username') || profileString(profile, 'email') || firebaseUid,
         registeredAt: registeredAt(profile),
-        actorSubjectId: await this.identityStore.lookupActorSubjectId(firebaseUid),
+        actorSubjectId: actorSubjectIds[index] ?? null,
       }),
-    ));
+    );
   }
 
   async getUserInvestigation(params: {

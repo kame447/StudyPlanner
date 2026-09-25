@@ -51,6 +51,7 @@ import {
   type FirestoreTokenProvider,
 } from './firestoreServiceAccountClient';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
+import { WorkerSubrequestBudget } from './workerSubrequestBudget';
 import worker from './worker';
 
 export { AiQuotaDurableObject };
@@ -196,12 +197,22 @@ export default {
     env: Record<string, unknown>,
     executionContext?: ExecutionContext,
   ): Promise<Response> {
+    const pathname = new URL(request.url).pathname;
+    const adminBudget = isProductObservabilityAdminPath(pathname)
+      ? new WorkerSubrequestBudget('fetch', pathname)
+      : null;
     const tokenProvider = new FirestoreServiceAccountTokenProvider(
       env as unknown as FirestoreServiceAccountEnv,
+      undefined,
+      undefined,
+      adminBudget ?? undefined,
     );
-    const pathname = new URL(request.url).pathname;
     if (isProductObservabilityAdminPath(pathname)) {
-      return await handleProductObservabilityAdminApi(request, env, tokenProvider);
+      try {
+        return await handleProductObservabilityAdminApi(request, env, tokenProvider);
+      } finally {
+        adminBudget?.logCompletion();
+      }
     }
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(

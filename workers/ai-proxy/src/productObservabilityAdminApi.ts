@@ -38,6 +38,19 @@ interface FirebaseLookupResponse {
   }>;
 }
 
+interface AuthenticatedAdmin {
+  uid: string;
+  document: Record<string, unknown>;
+}
+
+async function discardResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The runtime may already have closed the response body.
+  }
+}
+
 const CLIENT_VALIDATION_ERRORS = new Set([
   'observability_date_range_invalid',
   'observability_date_range_too_large',
@@ -99,28 +112,34 @@ function bearerToken(request: Request): string {
     : '';
 }
 
-async function authenticatedAdminUid(
+async function authenticatedAdmin(
   request: Request,
   env: ProductObservabilityAdminApiEnv,
   firestore: FirestoreServiceAccountClient,
-): Promise<string | null> {
+  tokenProvider: FirestoreTokenProvider,
+): Promise<AuthenticatedAdmin | null> {
   const apiKey = env.FIREBASE_WEB_API_KEY?.trim();
   const token = bearerToken(request);
   if (!apiKey || !token) return null;
+  tokenProvider.subrequestObserver?.beforeSubrequest('identity_toolkit');
   const response = await globalThis.fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token }),
     },
   );
-  if (!response.ok) return null;
+  if (!response.ok) {
+    await discardResponseBody(response);
+    return null;
+  }
   const payload = await response.json() as FirebaseLookupResponse;
   const user = payload.users?.[0];
   if (!user?.localId || user.emailVerified === false) return null;
   const admin = await firestore.getDocument('admins', user.localId);
-  return admin?.enabled === true ? user.localId : null;
+  return admin?.enabled === true ? { uid: user.localId, document: admin } : null;
 }
 
 function parseEnvironment(value: string | undefined): ObservabilityEnvironment {
@@ -210,8 +229,9 @@ export async function handleProductObservabilityAdminApi(
   if (request.method !== 'GET') {
     return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
   }
-  const adminUid = await authenticatedAdminUid(request, env, firestore);
-  if (!adminUid) return jsonResponse(request, env, 403, { error: 'Admin access is required.' });
+  const admin = await authenticatedAdmin(request, env, firestore, invocationTokenProvider);
+  if (!admin) return jsonResponse(request, env, 403, { error: 'Admin access is required.' });
+  const adminUid = admin.uid;
 
   const url = new URL(request.url);
   const readModel = new ProductObservabilityReadModelService(env, firestore);
@@ -271,7 +291,7 @@ export async function handleProductObservabilityAdminApi(
         env,
         invocationTokenProvider,
       );
-      await diagnostics.assertTraceReader(adminUid);
+      await diagnostics.assertTraceReader(adminUid, admin.document);
       if (url.pathname === PRODUCT_OBSERVABILITY_ADMIN_LOGS_PATH) {
         const page = await diagnostics.listSessions({
           cursor: decodeCursor(url.searchParams.get('cursor')),

@@ -22,7 +22,7 @@ function installCryptoMock(): void {
 function installFetchMock(): string[] {
   installCryptoMock();
   const calls: string[] = [];
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
     if (url.includes('identitytoolkit.googleapis.com')) {
@@ -40,6 +40,12 @@ function installFetchMock(): string[] {
         name: 'projects/test-project/databases/(default)/documents/admins/admin-uid',
         fields: { enabled: { booleanValue: true } },
       }), { status: 200 });
+    }
+    if (url.endsWith('/documents:batchGet')) {
+      const body = JSON.parse(String(init?.body)) as { documents: string[] };
+      return new Response(JSON.stringify(body.documents.map((name) => ({ missing: name }))), {
+        status: 200,
+      });
     }
     if (url.includes(':runAggregationQuery')) {
       return new Response(JSON.stringify([{
@@ -72,7 +78,7 @@ describe('traceWorker Firestore token sharing', () => {
   it('keeps 30-day admin overview below the Workers subrequest limit', async () => {
     const calls = await fetchOverview('2026-08-01', '2026-08-30');
 
-    expect(calls).toHaveLength(38);
+    expect(calls).toHaveLength(9);
     expect(calls.filter((url) => url === 'https://oauth2.googleapis.com/token')).toHaveLength(1);
     expect(calls.filter((url) => url.includes('identitytoolkit.googleapis.com'))).toHaveLength(1);
   });
@@ -80,7 +86,7 @@ describe('traceWorker Firestore token sharing', () => {
   it('keeps the 7-day admin overview at its expected request count', async () => {
     const calls = await fetchOverview('2026-08-24', '2026-08-30');
 
-    expect(calls).toHaveLength(15);
+    expect(calls).toHaveLength(9);
     expect(calls.filter((url) => url === 'https://oauth2.googleapis.com/token')).toHaveLength(1);
   });
 });

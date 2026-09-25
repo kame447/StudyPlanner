@@ -44,6 +44,10 @@ const OBSERVABILITY_ENVIRONMENTS = new Set<ObservabilityEnvironment>([
 
 interface ObservabilityReadFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
+  batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>>;
   countDocuments(
     collection: string,
     filters?: readonly FirestoreAggregationFilter[],
@@ -364,32 +368,44 @@ export class ProductObservabilityReadModelService {
     private readonly firestore: ObservabilityReadFirestore = new FirestoreServiceAccountClient(env),
   ) {}
 
+  async getDailyRollups(params: {
+    environment: ObservabilityEnvironment;
+    fromDate: string;
+    toDate: string;
+  }): Promise<ObservabilityDailyRollup[]> {
+    const dates = listDatesInclusive(params.fromDate, params.toDate);
+    const values = await this.firestore.batchGetDocuments(
+      DAILY_ROLLUP_COLLECTION,
+      dates.map((localDate) => dailyId(params.environment, localDate)),
+    );
+    return values
+      .map((value, index) => readDailyRollup(value, params.environment, dates[index]))
+      .filter((value): value is ObservabilityDailyRollup => Boolean(value));
+  }
+
+  async getRollupCheckpoint(): Promise<ObservabilityRollupCheckpoint> {
+    return readCheckpoint(await this.firestore.getDocument(
+      ROLLUP_STATE_COLLECTION,
+      ROLLUP_STATE_ID,
+    ));
+  }
+
   async getOverview(params: {
     environment: ObservabilityEnvironment;
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
-    const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const [dailyValues, activeUsersValue, checkpointValue, registeredUsers] = await Promise.all([
-      Promise.all(dates.map(async (localDate) => ({
-        localDate,
-        value: await this.firestore.getDocument(
-          DAILY_ROLLUP_COLLECTION,
-          dailyId(params.environment, localDate),
-        ),
-      }))),
+    listDatesInclusive(params.fromDate, params.toDate);
+    const [daily, activeUsersValue, checkpoint, registeredUsers] = await Promise.all([
+      this.getDailyRollups(params),
       this.firestore.getDocument(
         ACTIVE_USER_WINDOW_COLLECTION,
         activeUserWindowId(params.environment, params.toDate),
       ),
-      this.firestore.getDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID),
+      this.getRollupCheckpoint(),
       registeredUsersForPeriod(this.firestore, params.fromDate, params.toDate),
     ]);
-    const daily = dailyValues
-      .map(({ localDate, value }) => readDailyRollup(value, params.environment, localDate))
-      .filter((value): value is ObservabilityDailyRollup => Boolean(value));
     const period = aggregateOverviewPeriod(daily);
-    const checkpoint = readCheckpoint(checkpointValue);
     return {
       schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
       fromDate: params.fromDate,
