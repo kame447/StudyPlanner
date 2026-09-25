@@ -1,7 +1,7 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
 
@@ -17,7 +17,7 @@ Issue-only active scopes such as #128, #152 and [#305](https://github.com/kame44
 
 Issue #52 was completed by PR #283 and is no longer an active scope. Its implementation history remains in the closed Issue/PR and repository history rather than in this active-work index.
 
-Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 / PR #174 remains a separate long-lived adversarial validation scope and must be reconciled with current main before its historical checks are reused.
+Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 / PR #174 remains a separate long-lived adversarial validation scope and is actively changing. It has reconciled current main during resumed work, but its latest Issue checkpoint, HEAD and verification state must be re-fetched before any result is reused.
 
 Issue #305 holds the completed Jev research's implementation design, rollout gates, evaluation conditions and current checkpoint. Keep that detail in the Issue rather than copying it into a second provider or migration specification. Provider integration, security and shared telemetry continue to consume #187, #152 and #213 respectively. The documentation branch is not evidence that Jev runtime implementation or rollout has begun.
 

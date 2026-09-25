@@ -1,7 +1,7 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
 

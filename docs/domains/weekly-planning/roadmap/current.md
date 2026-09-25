@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -45,7 +45,7 @@ Issue #152 remains a valid separate security scope.
 - Draft PR: #174
 - the branch is intentionally long-lived, but its historical verification is not current-main evidence.
 
-Issue #136 has reached its durable terminal point. Reconcile PR #174 with current main before relying on it, then continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification. Do not absorb #136 semantic-regression work or general UI QA into the security branch.
+Issue #136 has reached its durable terminal point. PR #174 has since resumed on the existing security branch and has reconciled current main during that work. Because the branch remains active, re-fetch its latest Issue checkpoint, HEAD and verification state before relying on any result; do not treat older validation as current evidence. Continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification without absorbing #136 semantic-regression work or general UI QA into the security branch.
 
 This security/provenance work is also an input to later #246 production consultation wiring and the applicable #305 Jev production rollout gates.
 
