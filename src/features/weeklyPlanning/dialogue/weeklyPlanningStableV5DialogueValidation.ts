@@ -75,21 +75,6 @@ function withoutGroundedQuotedData(
   });
 }
 
-function withoutGroundedTypedLabels(
-  text: string,
-  input: WeeklyPlanningStableV5DialogueRenderInput,
-): string {
-  const labels = groundedDisplayLabels(input)
-    .map(normalizeSafetyText)
-    .filter((label) => label.length > 0)
-    .sort((left, right) => right.length - left.length);
-  let narrative = text;
-  for (const label of labels) {
-    narrative = narrative.split(label).join('〈引用データ〉');
-  }
-  return narrative;
-}
-
 function safetyNarrative(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -109,21 +94,12 @@ function safetyNarrative(
   return narrative;
 }
 
-function containsExternalDestination(text: string, input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
-  // Quoting an exact typed label makes the display-data boundary observable.
-  // An unquoted domain is ambiguous with navigation guidance, so use fallback.
-  const normalized = normalizeSafetyText(text);
-  const narrative = withoutGroundedQuotedData(normalized, input);
-  if (EXTERNAL_DESTINATION.test(narrative)) return true;
-  // Even a grounded address cannot become a destination for new instructions.
-  return EXTERNAL_DESTINATION.test(normalized) && /(?:ください|しましょう)/.test(narrative);
+function containsExternalDestination(text: string): boolean {
+  return EXTERNAL_DESTINATION.test(normalizeSafetyText(text));
 }
 
-function containsUngroundedSensitiveValue(text: string, input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
-  const normalized = normalizeSafetyText(text);
-  // Only exact typed application labels are display data. Free-form user text
-  // cannot exempt a sensitive term from the renderer's safety boundary.
-  return SENSITIVE_VALUE.test(withoutGroundedTypedLabels(normalized, input));
+function containsSensitiveValue(text: string): boolean {
+  return SENSITIVE_VALUE.test(normalizeSafetyText(text));
 }
 
 function expressions(value: string, pattern: RegExp): string[] {
@@ -227,12 +203,16 @@ function claimsUnexecutedAction(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
   const narrative = safetyNarrative(text, input);
-  // The renderer can acknowledge a typed question or preview, but it cannot
-  // report an application mutation. An ambiguous completion claim falls back
-  // unless it is the application's exact deterministic text or quoted input data.
-  return APPLICATION_MUTATION_OUTCOME.test(narrative)
-    || (EXECUTION_CLAIM_EXPRESSION.test(narrative)
-      && !/[?？]|(?:ますか|でしょうか)/.test(narrative));
+  // A question about a mutation is not a report that it happened. Check each
+  // sentence separately so a later question cannot excuse an earlier claim.
+  const sentences = narrative.match(/[^。！？!?\n]+[。！？!?\n]?/g) ?? [];
+  return sentences.some((sentence) => {
+    const question = /[?？]\s*$|(?:ましたか|ますか|でしょうか)[。！？!?\s]*$/.test(sentence);
+    return !question && (
+      APPLICATION_MUTATION_OUTCOME.test(sentence)
+      || EXECUTION_CLAIM_EXPRESSION.test(sentence)
+    );
+  });
 }
 
 function repeatsMostRecentAssistantQuestion(
@@ -314,8 +294,8 @@ function validateRenderedText(
   if (
     text.length === 0
     || text.length > MAX_RENDERED_TEXT_LENGTH
-    || containsExternalDestination(text, input)
-    || containsUngroundedSensitiveValue(text, input)
+    || containsExternalDestination(text)
+    || containsSensitiveValue(text)
   ) {
     return 'unsafe_text';
   }

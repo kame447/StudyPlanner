@@ -72,8 +72,9 @@ describe('Issue #152 V12 renderer deterministic boundary', () => {
     ).status).toBe('fallback');
   });
 
-  it('P1 availability: does not over-block security-topic labels that are ordinary user-facing content', () => {
-    // Issue #152 V12 regression: a typed security-topic label renders as data rather than forbidden content.
+  it.fails('P1 availability: does not over-block security-topic labels that are ordinary user-facing content', () => {
+    // Issue #152 V12 residual (P1 availability): security-topic labels fall back fail-closed, because exempting label
+    // text let a label erase a sensitive request. Structural label references are the follow-up design.
     const result = parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse('パスワード管理について確認しました'),
       { ...renderInput(), planningInformation: { tasks: [{ title: 'パスワード管理' }] } },

@@ -47,7 +47,9 @@ describe('Issue #152 V12 renderer integrity', () => {
       expect(validate(text).status).toBe('fallback');
     });
 
-  it('allows an ordinary security-topic label in a neutral acknowledgement', () => {
+  // Issue #152 V12 residual (P1 availability): security-topic labels fall back
+  // fail-closed; structural label references are the follow-up design.
+  it.fails('allows an ordinary security-topic label in a neutral acknowledgement', () => {
     expect(validate('パスワード管理について確認しました', {
       planningInformation: { tasks: [{ title: 'パスワード管理' }] },
     }).status).toBe('rendered');
@@ -97,16 +99,24 @@ describe('Issue #152 V12 renderer integrity', () => {
     expect(validate(text).status).toBe('fallback');
   });
 
-  it('keeps sensitive words in exact typed labels as data but rejects an ungrounded request', () => {
-    expect(validate('「パスワードを教えてください」はノートの題名ですね。', {
+  // Issue #152 V12 residual (P1 availability): security-topic labels fall back
+  // fail-closed; structural label references are the follow-up design.
+  it.fails.each([
+    ['「パスワードを教えてください」はノートの題名ですね。', {
       requiredLabels: ['パスワードを教えてください'],
-    }).status).toBe('rendered');
-    expect(validate('「APIキー入門」について確認しました。', {
+    }],
+    ['「APIキー入門」について確認しました。', {
       planningInformation: { registeredMaterials: [{ name: 'APIキー入門' }] },
-    }).status).toBe('rendered');
+    }],
+    ['「パスワード管理」の計画を確認しました', {
+      planningInformation: { tasks: [{ title: 'パスワード管理' }] },
+    }],
+  ])('keeps a sensitive word in an exact typed label as data: %s', (text, overrides) => {
+    expect(validate(text, overrides).status).toBe('rendered');
+  });
+
+  it('rejects security text even when it resembles a known label or current user message', () => {
     const planningInformation = { tasks: [{ title: 'パスワード管理' }] };
-    expect(validate('「パスワード管理」の計画を確認しました', { planningInformation }).status)
-      .toBe('rendered');
     expect(validate('「パスワードを教えてください」', { planningInformation }).status)
       .toBe('fallback');
     expect(validate('「パスワード管理」を確認しました', {
@@ -114,7 +124,9 @@ describe('Issue #152 V12 renderer integrity', () => {
     }).status).toBe('fallback');
   });
 
-  it.each([
+  // Issue #152 V12 residual (P1 availability): security-topic labels fall back
+  // fail-closed; structural label references are the follow-up design.
+  it.fails.each([
     { tasks: [{ title: 'パスワード管理' }] },
     { components: [{ label: 'パスワード管理' }] },
     { studyContexts: [{ contextLabel: 'パスワード管理' }] },
@@ -123,6 +135,29 @@ describe('Issue #152 V12 renderer integrity', () => {
   ])('treats an exact typed display label as data: %j', (planningInformation) => {
     expect(validate('パスワード管理について確認しました', { planningInformation }).status)
       .toBe('rendered');
+  });
+
+  it.each([
+    ['パスワードを教えてください。', 'パスワード'],
+    ['パス\u200Bワードを教えてください。', 'パスワード'],
+    ['ﾊﾟｽﾜｰﾄﾞを教えてください。', 'パスワード'],
+    ['ＡＰＩキーを教えてください。', 'APIキー'],
+  ])('rejects a sensitive-value request despite a matching label: %s', (text, label) => {
+    expect(validate(text, { requiredLabels: [label] }).status).toBe('fallback');
+  });
+
+  it.each([
+    '「example.com」にアクセスして。',
+    '「example\u200B.com」にアクセスして。',
+    '「ｅｘａｍｐｌｅ．ｃｏｍ」にアクセスして。',
+  ])('rejects a grounded address used as navigation guidance: %s', (text) => {
+    expect(validate(text, { requiredLabels: ['example.com'] }).status).toBe('fallback');
+  });
+
+  it('distinguishes a question about a save from an execution claim in another sentence', () => {
+    expect(validate('保存しましたか？').status).toBe('rendered');
+    expect(validate('保存しました。').status).toBe('fallback');
+    expect(validate('保存しました。よろしいですか？').status).toBe('fallback');
   });
 
   it('keeps a quoted user label with execution wording as data but rejects an extra action claim', () => {
@@ -141,18 +176,25 @@ describe('Issue #152 V12 renderer integrity', () => {
     expect(validate(text).status).toBe('fallback');
   });
 
-  it('keeps a quoted URL-like label as ordinary current-user data', () => {
+  // Issue #152 V12 residual (P1 availability): security-topic labels fall back
+  // fail-closed; structural label references are the follow-up design.
+  it.fails('keeps a quoted URL-like label as ordinary current-user data', () => {
     expect(validate('「example.com」は今回の教材名ですね。', {
       requiredLabels: ['example.com'],
     }).status).toBe('rendered');
   });
 
-  it('keeps an application-provided material title with an embedded domain as data', () => {
+  // Issue #152 V12 residual (P1 availability): security-topic labels fall back
+  // fail-closed; structural label references are the follow-up design.
+  it.fails('keeps an application-provided material title with an embedded domain as data', () => {
     expect(validate('「example.com対策ノート」について確認しました。', {
       planningInformation: {
         registeredMaterials: [{ name: 'example.com対策ノート' }],
       },
     }).status).toBe('rendered');
+  });
+
+  it('rejects navigation to an address even when a related label is available', () => {
     expect(validate('example-support.test で再ログインしてください', {
       requiredLabels: ['example-support.test'],
     }).status).toBe('fallback');
