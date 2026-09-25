@@ -331,6 +331,8 @@ AI request eventをvolume/index/retention上分離する必要がある場合は
 
 短中期のlightweight append-only journal。
 
+`actorSubjectId` と `environment` で絞り `occurredAt` で並べ替えるquery shapeはcomposite indexが必須であり、定義は `firestore.indexes.json` で管理する。
+
 ### observability_actor_day
 
 `actorSubjectId + localDate`で一意となるactivity presence marker。
