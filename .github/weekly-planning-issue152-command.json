@@ -1,10 +1,9 @@
 {
-  "request_id": "20260926-issue152-final-adaf7fd1-batch2",
-  "reason": "Final-HEAD Real API verification at adaf7fd1: direct injection, nonsense/no-op, Unicode/delimiter, numeric bounds (adversarial), stored/indirect entity-label injection (indirect), and renderer integrity with the automatic V12 oracle (renderer-influence). Batch 2 of 3. Batch 1 run 36173063315 passed.",
+  "request_id": "20260926-issue152-final-adaf7fd1-batch3",
+  "reason": "Final-HEAD Real API verification at adaf7fd1: multi-turn stateful authority/pending-question/preview boundaries (stateful) and semantic retention across turns and sessions (retention). Batch 3 of 3. Batches 1 (36173063315) and 2 (36174683441) passed.",
   "critical_repetitions": 3,
   "suites": [
-    "adversarial",
-    "indirect",
-    "renderer-influence"
+    "stateful",
+    "retention"
   ]
 }
