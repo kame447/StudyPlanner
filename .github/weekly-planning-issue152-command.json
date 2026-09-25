@@ -1,6 +1,9 @@
 {
-  "request_id": "20260926-issue152-final-provenance-durable-1",
-  "reason": "Final-HEAD Real API verification at 637f7168 (ordered-fragment provenance, fail-closed renderer, evidence-grounded protected-projection oracle): V01/V02/V08 synthesized evidence and V05/V06/V09 stored and durable context. Batch 1 of 3.",
+  "request_id": "20260926-issue152-final-adaf7fd1-batch1",
+  "reason": "Final-HEAD Real API verification at adaf7fd1: V01/V02/V08 synthesized evidence and V05/V06/V09 stored and durable context after ordered-fragment and committed-restatement provenance fixes. Batch 1 of 3.",
   "critical_repetitions": 3,
-  "suites": ["synthesized-evidence", "stored-durable"]
+  "suites": [
+    "synthesized-evidence",
+    "stored-durable"
+  ]
 }
