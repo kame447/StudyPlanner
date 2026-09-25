@@ -1,6 +1,6 @@
 {
-  "request_id": "20260926-issue152-postfix-provenance-durable-1",
-  "reason": "Post-fix Real API verification at fdb8ae2e of typed channel provenance (V01/V02/V08), durable user-context lifecycle (V05/V07/V09), and stored-label injection after the Issue #152 fixes. Batch 1 of 3.",
+  "request_id": "20260926-issue152-final-provenance-durable-1",
+  "reason": "Final-HEAD Real API verification at 637f7168 (ordered-fragment provenance, fail-closed renderer, evidence-grounded protected-projection oracle): V01/V02/V08 synthesized evidence and V05/V06/V09 stored and durable context. Batch 1 of 3.",
   "critical_repetitions": 3,
   "suites": ["synthesized-evidence", "stored-durable"]
 }
