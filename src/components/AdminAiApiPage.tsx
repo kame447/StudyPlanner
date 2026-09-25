@@ -13,6 +13,7 @@ import type {
   ObservabilityAiAnalysisReadModel,
   ObservabilityAiDimensionSummary,
 } from '../../shared/productObservabilityAdminReadModel';
+import { useAdminDateRange } from '../lib/adminDateRange';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import { getAdminObservabilityAiAnalysis } from '../services/adminObservabilityService';
 
@@ -38,10 +39,6 @@ function shiftDate(localDate: string, offset: number): string {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return date.toISOString().slice(0, 10);
-}
-
-function validDateParam(value: string | null): string | null {
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 function initialEnvironment(): ObservabilityEnvironment {
@@ -188,24 +185,31 @@ function DimensionTable({ title, description, rows }: {
 export function AdminAiApiPage() {
   const today = useMemo(() => tokyoDate(new Date()), []);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const [fromDate, setFromDate] = useState(
-    () => validDateParam(params.get('from')) ?? shiftDate(today, -6),
-  );
-  const [toDate, setToDate] = useState(
-    () => validDateParam(params.get('to')) ?? today,
-  );
+  const dateRange = useAdminDateRange({
+    defaultFromDate: shiftDate(today, -6),
+    defaultToDate: today,
+    initialFromDate: params.get('from'),
+    initialToDate: params.get('to'),
+  });
   const [environment, setEnvironment] = useState<ObservabilityEnvironment>(initialEnvironment);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    const query = new URLSearchParams({ from: fromDate, to: toDate });
+    const query = new URLSearchParams({
+      from: dateRange.appliedFromDate,
+      to: dateRange.appliedToDate,
+    });
     if (environment !== 'production') query.set('environment', environment);
     window.history.replaceState({}, '', `${window.location.pathname}?${query.toString()}`);
-  }, [environment, fromDate, toDate]);
+  }, [dateRange.appliedFromDate, dateRange.appliedToDate, environment]);
 
   const loadAnalysis = useCallback(
-    () => getAdminObservabilityAiAnalysis({ fromDate, toDate, environment }),
-    [environment, fromDate, refreshKey, toDate],
+    () => getAdminObservabilityAiAnalysis({
+      fromDate: dateRange.appliedFromDate,
+      toDate: dateRange.appliedToDate,
+      environment,
+    }),
+    [dateRange.appliedFromDate, dateRange.appliedToDate, environment, refreshKey],
   );
   const { loadState, data, errorMessage } = useAdminDataLoader<ObservabilityAiAnalysisReadModel | null>(
     loadAnalysis,
@@ -232,11 +236,21 @@ export function AdminAiApiPage() {
           </label>
           <label>
             <span>開始日</span>
-            <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input
+              type="date"
+              value={dateRange.fromDate}
+              max={dateRange.toDate}
+              onChange={(event) => dateRange.setFromDate(event.target.value)}
+            />
           </label>
           <label>
             <span>終了日</span>
-            <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+            <input
+              type="date"
+              value={dateRange.toDate}
+              min={dateRange.fromDate}
+              onChange={(event) => dateRange.setToDate(event.target.value)}
+            />
           </label>
           <button className="ghost-button" type="button" onClick={() => setRefreshKey((value) => value + 1)}>
             <RefreshCw aria-hidden="true" size={17} />
@@ -244,6 +258,10 @@ export function AdminAiApiPage() {
           </button>
         </div>
       </header>
+
+      {dateRange.errorMessage ? (
+        <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
+      ) : null}
 
       {loadState === 'loading' ? (
         <section className="admin-state-card panel"><strong>読み込み中</strong><p>AI/API read modelを取得しています。</p></section>

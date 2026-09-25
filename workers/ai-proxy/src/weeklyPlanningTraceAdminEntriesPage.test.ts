@@ -13,15 +13,24 @@ function storedEntry(sequence: number, overrides: Record<string, unknown> = {}):
   };
 }
 
+function batchReader(
+  resolve: (id: string) => Record<string, unknown> | null,
+): { batchGetDocuments: ReturnType<typeof vi.fn> } {
+  return {
+    batchGetDocuments: vi.fn(async (_collection: string, ids: readonly string[]) =>
+      ids.map(resolve)),
+  };
+}
+
 describe('weekly planning trace admin entry page loader', () => {
   it('entryCount 256でも1requestあたり20 documentだけ取得する legacy guard', async () => {
-    const getDocument = vi.fn(async (_collection: string, id: string) => {
+    const firestore = batchReader((id) => {
       const sequence = Number(id.slice(-8));
       return storedEntry(sequence);
     });
 
     const first = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 256 },
       -1,
@@ -32,11 +41,12 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(first.totalEntryCount).toBe(256);
     expect(first.nextAfterSequence).toBe(19);
     expect(first.missingSequenceCount).toBe(0);
-    expect(getDocument).toHaveBeenCalledTimes(20);
+    expect(firestore.batchGetDocuments).toHaveBeenCalledTimes(1);
+    expect(firestore.batchGetDocuments.mock.calls[0]?.[1]).toHaveLength(20);
 
-    getDocument.mockClear();
+    firestore.batchGetDocuments.mockClear();
     const second = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 256 },
       first.nextAfterSequence ?? -1,
@@ -45,11 +55,12 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(second.entries[0]?.sequence).toBe(20);
     expect(second.entries[19]?.sequence).toBe(39);
     expect(second.nextAfterSequence).toBe(39);
-    expect(getDocument).toHaveBeenCalledTimes(20);
+    expect(firestore.batchGetDocuments).toHaveBeenCalledTimes(1);
+    expect(firestore.batchGetDocuments.mock.calls[0]?.[1]).toHaveLength(20);
   });
 
   it('loads a normal two-turn schema v2 session with exactly two Firestore reads', async () => {
-    const getDocument = vi.fn(async (_collection: string, id: string) => {
+    const firestore = batchReader((id) => {
       const sequence = Number(id.slice(-8));
       return storedEntry(sequence, {
         kind: 'turn_diagnostic',
@@ -60,7 +71,7 @@ describe('weekly planning trace admin entry page loader', () => {
     });
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 2, schemaVersion: 2 },
       -1,
@@ -73,12 +84,12 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(page.requestedStartSequence).toBe(0);
     expect(page.requestedEndSequence).toBe(1);
     expect(page.responseBytes).toBeGreaterThan(0);
-    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(firestore.batchGetDocuments).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(page.entries)).toContain('英語を3時間');
   });
 
   it('does not recursively redact raw schema v2 diagnostic text during admin retrieval', async () => {
-    const getDocument = vi.fn(async () => storedEntry(0, {
+    const firestore = batchReader(() => storedEntry(0, {
       traceSubjectToken: 'wpt_internal-secret',
       traceSubjectEpoch: '100',
       kind: 'turn_diagnostic',
@@ -88,7 +99,7 @@ describe('weekly planning trace admin entry page loader', () => {
     }));
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 1, schemaVersion: 2 },
       -1,
@@ -103,7 +114,7 @@ describe('weekly planning trace admin entry page loader', () => {
   });
 
   it('keeps recursive identifier redaction for legacy entries', async () => {
-    const getDocument = vi.fn(async () => storedEntry(0, {
+    const firestore = batchReader(() => storedEntry(0, {
       traceSubjectToken: 'wpt_internal-secret',
       traceSubjectEpoch: '100',
       logicalConversationId: CONVERSATION_ID,
@@ -121,7 +132,7 @@ describe('weekly planning trace admin entry page loader', () => {
     }));
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 1, schemaVersion: 1 },
       -1,
@@ -137,7 +148,7 @@ describe('weekly planning trace admin entry page loader', () => {
   });
 
   it('stops before exceeding the response byte limit and advances by the returned sequence', async () => {
-    const getDocument = vi.fn(async (_collection: string, id: string) => {
+    const firestore = batchReader((id) => {
       const sequence = Number(id.slice(-8));
       return storedEntry(sequence, {
         kind: 'turn_diagnostic',
@@ -147,7 +158,7 @@ describe('weekly planning trace admin entry page loader', () => {
     });
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 20 },
       -1,
@@ -158,17 +169,32 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(page.entries.length).toBeLessThan(20);
     expect(page.responseBytes).toBeLessThanOrEqual(256 * 1024);
     expect(page.nextAfterSequence).toBe(Number(page.entries.at(-1)?.sequence));
-    expect(getDocument).toHaveBeenCalledTimes(20);
+    expect(page.scannedEntries).toHaveLength(20);
+    expect(page.nextAfterScannedSequence).toBeNull();
+    expect(firestore.batchGetDocuments).toHaveBeenCalledTimes(1);
+
+    firestore.batchGetDocuments.mockClear();
+    const nextPage = await loadWeeklyPlanningTraceAdminEntryPage(
+      firestore,
+      SESSION_ID,
+      { entryCount: 20 },
+      page.nextAfterSequence ?? -1,
+      20,
+    );
+    expect(nextPage.entries[0]?.sequence).toBe(Number(page.entries.at(-1)?.sequence) + 1);
+    expect(firestore.batchGetDocuments.mock.calls[0]?.[1]?.[0]).toBe(
+      `${SESSION_ID}-${String(nextPage.entries[0]?.sequence).padStart(8, '0')}`,
+    );
   });
 
   it('欠落documentを捨ててもcursorをpage末尾まで進める', async () => {
-    const getDocument = vi.fn(async (_collection: string, id: string) => {
+    const firestore = batchReader((id) => {
       const sequence = Number(id.slice(-8));
       return sequence === 1 ? null : storedEntry(sequence);
     });
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
-      { getDocument },
+      firestore,
       SESSION_ID,
       { entryCount: 4 },
       -1,

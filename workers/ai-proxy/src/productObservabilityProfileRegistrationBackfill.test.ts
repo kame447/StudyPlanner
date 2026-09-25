@@ -17,6 +17,7 @@ class MemoryBackfillFirestore {
   readonly profiles: FirestoreOrderedDocument[] = [];
   readonly profileWrites: Array<{ id: string; value: StoredDocument; mask?: string[] }> = [];
   queryCallCount = 0;
+  commitFails = false;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -38,20 +39,23 @@ class MemoryBackfillFirestore {
     return value ? { ...value, id } : null;
   }
 
-  async setDocument(
-    collection: string,
-    id: string,
-    value: StoredDocument,
-    updateMask?: string[],
-  ): Promise<void> {
-    if (collection === 'profiles') {
-      const profile = this.profiles.find((row) => row.id === id);
-      if (!profile) throw new Error('missing test profile');
-      Object.assign(profile, value);
-      this.profileWrites.push({ id, value: { ...value }, mask: updateMask });
-      return;
+  async commitWrites(writes: readonly Array<{
+    collection: string;
+    id: string;
+    value: StoredDocument;
+    updateMask?: readonly string[];
+  }>): Promise<void> {
+    if (this.commitFails) throw new Error('injected bulk commit failure');
+    for (const { collection, id, value, updateMask } of writes) {
+      if (collection === 'profiles') {
+        const profile = this.profiles.find((row) => row.id === id);
+        if (!profile) throw new Error('missing test profile');
+        Object.assign(profile, value);
+        this.profileWrites.push({ id, value: { ...value }, mask: [...(updateMask ?? [])] });
+        continue;
+      }
+      this.documents.set(this.key(collection, id), { ...value });
     }
-    this.documents.set(this.key(collection, id), { ...value });
   }
 
   async queryDocumentsAfter(params: {
@@ -173,6 +177,21 @@ describe('ProductObservabilityProfileRegistrationBackfillService', () => {
       'profile_registration_backfill_profile_invalid',
     );
     expect(firestore.profileWrites).toEqual([]);
+    expect(firestore.documents.has(
+      `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
+    )).toBe(false);
+  });
+
+  it('does not publish profile updates or checkpoint progress when the bulk commit fails', async () => {
+    const firestore = new MemoryBackfillFirestore();
+    firestore.addProfile('a', { createdAt: '2026-08-26T00:00:00.000Z' });
+    firestore.commitFails = true;
+
+    await expect(service(firestore).runBatch(100))
+      .rejects.toThrow('injected bulk commit failure');
+
+    expect(firestore.profileWrites).toEqual([]);
+    expect(firestore.profiles[0]).not.toHaveProperty('registeredAt');
     expect(firestore.documents.has(
       `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
     )).toBe(false);

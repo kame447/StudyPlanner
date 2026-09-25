@@ -6,6 +6,7 @@ import type {
 } from './productObservabilityContract';
 
 export const PRODUCT_OBSERVABILITY_READ_MODEL_VERSION = 1 as const;
+export const PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION = 1 as const;
 export const PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE = 'Asia/Tokyo' as const;
 export const OBSERVABILITY_LATENCY_HISTOGRAM_VERSION = 'latency-ms-v1' as const;
 export const OBSERVABILITY_LATENCY_BUCKET_UPPER_BOUNDS_MS = [
@@ -125,6 +126,11 @@ export interface ObservabilityUserSummary {
   planningOutcomeCount: number;
   lastProductAction: ProductActivityAction | null;
   lastPlanningOutcome: PlanningOutcomeType | null;
+  userEnrichmentVersion?: typeof PRODUCT_OBSERVABILITY_USER_ENRICHMENT_VERSION;
+  activeDayCount?: number;
+  latestErrorAt?: string | null;
+  latestErrorCategory?: string | null;
+  userEnrichmentUpdatedAt?: string;
   updatedAt: string;
 }
 
