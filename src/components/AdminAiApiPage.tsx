@@ -252,15 +252,16 @@ export function AdminAiApiPage() {
               onChange={(event) => dateRange.setToDate(event.target.value)}
             />
           </label>
-          {dateRange.errorMessage ? (
-            <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
-          ) : null}
           <button className="ghost-button" type="button" onClick={() => setRefreshKey((value) => value + 1)}>
             <RefreshCw aria-hidden="true" size={17} />
             更新
           </button>
         </div>
       </header>
+
+      {dateRange.errorMessage ? (
+        <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
+      ) : null}
 
       {loadState === 'loading' ? (
         <section className="admin-state-card panel"><strong>読み込み中</strong><p>AI/API read modelを取得しています。</p></section>

@@ -416,9 +416,6 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
               onChange={(event) => dateRange.setToDate(event.target.value)}
             />
           </label>
-          {dateRange.errorMessage ? (
-            <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
-          ) : null}
           <button
             className="admin-overview-refresh-button"
             type="button"
@@ -430,6 +427,10 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
           </button>
         </div>
       </header>
+
+      {dateRange.errorMessage ? (
+        <p className="inline-error" role="alert">{dateRange.errorMessage}</p>
+      ) : null}
 
       {loadState === 'loading' ? (
         <section className="admin-state-card panel" aria-live="polite">
