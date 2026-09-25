@@ -659,3 +659,37 @@ admin read の現行最大形は次のとおりである。`auth 3` は cold inv
 Users list の旧 enrichment N+1 は materialized projection への cutover が完了するまで暫定例外である。通常最大 page はこの contract を満たさないため、現段階では hard ceiling が 46 件目を止め generic 503 とする。page size 縮小を恒久解にせず、Issue #308 の projection migration で bounded normal path へ置換する。
 
 scheduled maintenance は phase 分割、bulk write、checkpoint と一体で budget 適用する。分割前の rollup → snapshots → backfill → retention を単一 invocation のまま「bounded」とは扱わない。
+
+production の cron trigger はアカウント全体の trigger slot を増やさないよう、1 本の `* * * * *` とする。phase は実行開始時刻や `cron` 文字列ではなく、Cloudflare が渡す `scheduledTime` の UTC minute を 5 で割った余りだけで決める。
+
+| UTC minute mod 5 | phase |
+| ---: | --- |
+| 0 | rollup |
+| 1 | active-user snapshot |
+| 2 | profile registration backfill |
+| 3 | retention |
+| 4 | no-op |
+
+遅延実行でも予定時刻由来の phase は変えない。各 minute は別 invocation なので token provider、transaction、budget tracker を共有しない。no-op は token を取得せず external request 0 件で完了する。1分triggerは1日1,440 invocationで、Workers Free の日次100,000 request枠より十分小さい。
+
+cold OAuth を含む scheduled phase の実測上限contractは次のとおりである。
+
+| Phase / shape | External requests |
+| --- | ---: |
+| Rollup、empty | 6 |
+| Rollup、20 event × 5 batch | 31 |
+| Rollup、最後のbatchで transaction conflict 2回 | 45 |
+| Active-user snapshot、初回30日scan | 36 |
+| Active-user snapshot、dirtyなし / current snapshotあり | 3 |
+| Active-user snapshot、最大35 actor-day page + publish + dirty clear | 44 |
+| Active-user snapshot、最大scan後の transaction conflict | 42 |
+| Profile registration backfill、初回empty / completed | 4 / 2 |
+| Profile registration backfill、100 profile × 2 batch | 7 |
+| Retention、expiredなし / 4 collection × 100 delete × 2 batch | 5 / 11 |
+| no-op | 0 |
+
+rollup は1 batchを最大20 eventとし、既知のcheckpoint、actor-day、daily rollup、planning session、user summaryをtransaction token付きのcross-collection `batchGet` 1回で読む。session projectionから判明するplanning cohortも2回目の `batchGet` へまとめる。cursor確認、projection、checkpoint更新は同じtransactionでcommitし、競合してもcursorを先へ進めない。45件へ達したretryはfailure checkpointを無理に追加せず次回invocationへ繰り越す。
+
+active-user snapshot はdirty sourceの1 revision・1 target dateだけを一度に処理する。最大35 pageで止まり、job state、date cursor、64 shardのpseudonymous actor accumulatorを保存する。長いscan中はFirestore transactionを開いたままにせず、scan後の短いtransactionでjob/shardの再読取が開始時と一致する場合だけcheckpointまたはsnapshotをcommitする。canonical `observability_active_user_windows` は30日すべてのscanが終わるまで更新しない。accumulatorはactor IDをfield keyにしたmapではなく、shardごとにsort済みactor IDとwindow flagを1個のcanonical string fieldへencodeする。これによりactorごとの自動single-field index entryを生成しない。各shardはFirestoreのdocument name・field name/value・32-byte overhead式で450,000 bytes以下とし、publish transactionは削除する64 shardのdocument storageと既定の昇順/降順index entry、canonical snapshot/jobの更新前後を保守的に合算して8 MiB以下であることを事前検査する（Firestore hard limit 10 MiBに2 MiBの余白）。HTTP request bodyもtransportで別途10 MiB未満を再検査する。完成時はcanonical snapshotのpublish、idle job state、64 shard削除を1 transactionへまとめる。dirty sourceは同じrevisionだけを別transactionでclearするため、途中で新revisionが入っても古いjobが消さない。publish後にclearが失敗した場合はjobがidleなので、次回は同じsourceを再scanしてからclearし、古い完了jobが再利用されたrevisionを誤ってclearするABAを避ける。
+
+profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめる。retention は4 collectionのexpired prefixを読み、最大400 deleteを1 commitにまとめる。どちらもcommit失敗時にcheckpointだけ、またはdeleteの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。

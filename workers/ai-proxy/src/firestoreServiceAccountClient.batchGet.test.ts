@@ -82,6 +82,39 @@ describe('FirestoreServiceAccountClient batch get support', () => {
     expect(documents.map((document) => document?.marker)).toEqual(ids);
   });
 
+  it('reads mixed collections in one transactional batch while preserving key order', async () => {
+    let capturedBody: unknown;
+    const client = clientWithFetcher(async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify([
+        { missing: documentName('daily', 'day-1') },
+        {
+          found: {
+            name: documentName('state', 'main'),
+            fields: { revision: { integerValue: '2' } },
+          },
+        },
+      ]), { status: 200 });
+    });
+
+    const documents = await client.batchGetDocumentKeys([
+      { collection: 'state', id: 'main' },
+      { collection: 'daily', id: 'day-1' },
+    ], 'transaction-token');
+
+    expect(documents).toEqual([
+      { id: 'main', revision: 2 },
+      null,
+    ]);
+    expect(capturedBody).toEqual({
+      documents: [
+        documentName('state', 'main'),
+        documentName('daily', 'day-1'),
+      ],
+      transaction: 'transaction-token',
+    });
+  });
+
   it('rejects a response that omits a requested document outcome', async () => {
     const client = clientWithFetcher(async () => new Response(JSON.stringify([
       { missing: documentName('items', 'one') },
