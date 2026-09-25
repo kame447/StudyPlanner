@@ -18,7 +18,56 @@ function recordArray(value: unknown): Record<string, unknown>[] {
 }
 
 function normalizedEvidenceText(value: string): string {
-  return value.normalize('NFKC').replace(/\p{Cf}/gu, '').trim().replace(/\s+/g, ' ');
+  return value.normalize('NFKC').replace(/\p{Cf}/gu, '')
+    .trim().replace(/\s+/g, ' ')
+    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '');
+}
+
+const MAX_SOURCE_FRAGMENTS_V5 = 3;
+const MIN_FRAGMENT_LENGTH_V5 = 2;
+// The turn controller limits the combined user and supplemental text to 4,000
+// UTF-16 units. Keep the fragment fallback bounded for direct callers too.
+const MAX_FRAGMENT_MATCH_TEXT_LENGTH_V5 = 4_000;
+
+function sourceTextMatchesChannelV5(sourceText: string, channelText: string): boolean {
+  if (!sourceText || !channelText) return false;
+  // Preserve the established one-character contiguous evidence contract.
+  if (channelText.includes(sourceText)) return true;
+  if (sourceText.length > MAX_FRAGMENT_MATCH_TEXT_LENGTH_V5
+    || channelText.length > MAX_FRAGMENT_MATCH_TEXT_LENGTH_V5) return false;
+
+  const source = Array.from(sourceText);
+  if (source.length < MIN_FRAGMENT_LENGTH_V5 * 2) return false;
+  const masks = new Map<string, bigint>();
+  source.forEach((character, index) => {
+    masks.set(character, (masks.get(character) ?? 0n) | (1n << BigInt(index)));
+  });
+
+  // Bit i means that i source characters have matched. A channel character
+  // may be skipped only between completed fragments; each fragment must reach
+  // MIN_FRAGMENT_LENGTH_V5 before a gap can begin.
+  let between = Array<bigint>(MAX_SOURCE_FRAGMENTS_V5 + 1).fill(0n);
+  let oneCharacter = Array<bigint>(MAX_SOURCE_FRAGMENTS_V5 + 1).fill(0n);
+  let completed = Array<bigint>(MAX_SOURCE_FRAGMENTS_V5 + 1).fill(0n);
+  between[0] = 1n;
+  const fullSource = 1n << BigInt(source.length);
+
+  for (const character of channelText) {
+    const mask = masks.get(character) ?? 0n;
+    const advance = (positions: bigint): bigint => (positions & mask) << 1n;
+    const nextBetween = between.map((positions, count) => positions | completed[count]);
+    const nextOneCharacter = Array<bigint>(MAX_SOURCE_FRAGMENTS_V5 + 1).fill(0n);
+    const nextCompleted = Array<bigint>(MAX_SOURCE_FRAGMENTS_V5 + 1).fill(0n);
+    for (let count = 1; count <= MAX_SOURCE_FRAGMENTS_V5; count += 1) {
+      nextOneCharacter[count] = advance(between[count - 1]);
+      nextCompleted[count] = advance(oneCharacter[count] | completed[count]);
+      if ((nextCompleted[count] & fullSource) !== 0n) return true;
+    }
+    between = nextBetween;
+    oneCharacter = nextOneCharacter;
+    completed = nextCompleted;
+  }
+  return false;
 }
 
 export function weeklyPlanningEvidenceChannelForSourceTextV5(
@@ -29,9 +78,12 @@ export function weeklyPlanningEvidenceChannelForSourceTextV5(
   const normalizedSource = normalizedEvidenceText(sourceText);
   const normalizedCurrent = normalizedEvidenceText(currentUserText);
   if (!normalizedSource) return null;
-  const inUser = normalizedCurrent.includes(normalizedSource);
+  const inUser = sourceTextMatchesChannelV5(normalizedSource, normalizedCurrent);
   const inSupplemental = Boolean(supplementalContext
-    && normalizedEvidenceText(supplementalContext).includes(normalizedSource));
+    && sourceTextMatchesChannelV5(
+      normalizedSource,
+      normalizedEvidenceText(supplementalContext),
+    ));
   if (inUser && inSupplemental) return 'ambiguous';
   if (inUser) return 'user';
   if (inSupplemental) return 'supplemental';
@@ -223,12 +275,20 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     machineBoundValues.componentLabels.add(selectedLabel);
   }
   const check = (sourceText: string, path: string, allowSupplemental = false): void => {
+    const normalizedSource = normalizedEvidenceText(sourceText);
     const channel = weeklyPlanningEvidenceChannelForSourceTextV5(
       sourceText,
       params.currentUserText ?? '',
       params.supplementalContext,
     );
-    if (channel === null || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel }))) {
+    // A fragmented user match cannot borrow the same ordered evidence from a
+    // saved entity. Exact current-user quotations keep their prior behavior.
+    const copiedFromStoredFragments = channel === 'user'
+      && !normalizedEvidenceText(params.currentUserText ?? '').includes(normalizedSource)
+      && [...storedContextStrings].some((stored) =>
+        sourceTextMatchesChannelV5(normalizedSource, stored));
+    if (channel === null || copiedFromStoredFragments
+      || (!allowSupplemental && !isUserUtteranceSourcedV5({ channel }))) {
       errors.push(`${path}.sourceText:not-grounded-in-current-user-text`);
     }
   };
