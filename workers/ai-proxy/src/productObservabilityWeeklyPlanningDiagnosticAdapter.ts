@@ -10,7 +10,10 @@ import {
   type ObservabilityLogSessionSummary,
   type ObservabilityLogSeverity,
 } from '../../../shared/productObservabilityLogReadModel';
-import type { FirestoreOrderedCursor } from './firestoreServiceAccountClient';
+import type {
+  FirestoreOrderedCursor,
+  FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { WeeklyPlanningTraceFirestoreClient } from './weeklyPlanningTraceFirestore';
 import { loadWeeklyPlanningTraceAdminEntryPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { safeWeeklyPlanningTraceDocumentsForAdmin } from './weeklyPlanningTraceApi';
@@ -311,9 +314,12 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
   private readonly env: ProductObservabilityWeeklyPlanningDiagnosticEnv;
   private authorizedAdminUid: string | null = null;
 
-  constructor(env: ProductObservabilityWeeklyPlanningDiagnosticEnv) {
+  constructor(
+    env: ProductObservabilityWeeklyPlanningDiagnosticEnv,
+    tokenProvider?: FirestoreTokenProvider,
+  ) {
     this.env = env;
-    this.firestore = new WeeklyPlanningTraceFirestoreClient(env);
+    this.firestore = new WeeklyPlanningTraceFirestoreClient(env, tokenProvider);
   }
 
   async assertTraceReader(adminUid: string): Promise<void> {
