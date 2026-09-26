@@ -1,13 +1,4 @@
-import { expect, test } from '@playwright/test';
-
-function isoToday() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-}
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 async function seedMobileOverlayState(page, { includeMonthEvent = true } = {}) {
   await page.addInitScript(({ today, includeMonthEvent }) => {
@@ -68,7 +59,7 @@ async function seedMobileOverlayState(page, { includeMonthEvent = true } = {}) {
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-  }, { today: isoToday(), includeMonthEvent });
+  }, { today: E2E_TODAY, includeMonthEvent });
 }
 
 async function openSchedule(page) {

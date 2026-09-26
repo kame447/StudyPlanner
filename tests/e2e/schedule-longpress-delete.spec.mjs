@@ -1,12 +1,4 @@
-import { expect, test } from '@playwright/test';
-
-function toIsoDate(value) {
-  return [
-    value.getFullYear(),
-    String(value.getMonth() + 1).padStart(2, '0'),
-    String(value.getDate()).padStart(2, '0'),
-  ].join('-');
-}
+import { E2E_TODAY, expect, newFixedClockContext, test } from './support/fixed-clock.mjs';
 
 async function seedDaySchedule(page) {
   await page.addInitScript(({ today }) => {
@@ -54,7 +46,7 @@ async function seedDaySchedule(page) {
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-  }, { today: toIsoDate(new Date()) });
+  }, { today: E2E_TODAY });
 }
 
 async function enableTouch(page) {
@@ -87,7 +79,7 @@ async function locatorCenter(locator) {
 }
 
 async function openDaySchedule(browser) {
-  const context = await browser.newContext({
+  const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,

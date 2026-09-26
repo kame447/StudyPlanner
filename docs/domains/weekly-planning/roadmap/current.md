@@ -39,13 +39,21 @@ The evaluation harness is driven by the dispatch workflow that already lives on 
 
 ## Next priority: Issue #152 adversarial security
 
-Issue #152 remains a valid separate security scope.
+Issue #152 remains a valid separate security scope. Its adversarial evaluation and fixes were completed and independently audited on the integration branch `test/issue152-adversarial-validation-lab` (Draft PR #174, tested HEAD `b75ebabd`, audit CLOSE-READY). PR #174 is **superseded and kept as evidence only**: do not merge it, and do not treat it as the merge path.
 
-- branch: `test/issue152-adversarial-validation-lab`
-- Draft PR: #174
-- the branch is intentionally long-lived, but its historical verification is not current-main evidence.
+The merge path is this replacement PR chain from main, in dependency order. Each PR targets `main`; dependent branches are built on their predecessor, and each PR states its review range:
 
-Issue #136 has reached its durable terminal point. PR #174 has since resumed on the existing security branch and has reconciled current main during that work. Because the branch remains active, re-fetch its latest Issue checkpoint, HEAD and verification state before relying on any result; do not treat older validation as current evidence. Continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification without absorbing #136 semantic-regression work or general UI QA into the security branch.
+1. #323: dispatch-only Issue #152 Real API workflow (SHA-pinned `ref`, step-scoped credential)
+2. #324: numeric safety and planning-window year bound
+3. #326: durable user-context lifecycle
+4. #327: renderer integrity
+5. #329: typed channel provenance, evidence matcher, trust-boundary prompt, Real harness and suites
+6. #330: decision binding and the stored-durable suite
+7. #331: remaining evidence pins
+
+#325 (fixed-clock e2e seeds, owner #322) is independent general QA, not part of #152.
+
+Before each merge, re-fetch the PR's exact head and the latest Issue #152 checkpoint. PRs #329 and #330 need their Issue #152 Real suites ×3 at their exact SHA, which is possible only after #323 is on main. #152 closes only after the chain is merged and the final gate is terminal on the main SHA. The final gate is the six security suites (synthesized-evidence, stored-durable, renderer-influence, adversarial, indirect, stateful) plus a normal completed-save conversation. Branch-only semantic-quality rules, month-day planning windows and the retention suite are not part of this chain; they need a separate semantic owner if they are wanted.
 
 This security/provenance work is also an input to later #246 production consultation wiring and the applicable #305 Jev production rollout gates.
 
@@ -53,7 +61,7 @@ This security/provenance work is also an input to later #246 production consulta
 
 [Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns the initial OpenRouter focused-authorization implementation and subsequent evaluation. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint remain in that Issue. The implementation defaults to off; the next operational step is an explicit real-API smoke, then non-authoritative shadow evaluation. Runtime code availability does not establish production enablement or calibrated quality.
 
-The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and existing PR #174; before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
+The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and its replacement PR chain (see the #152 section; PR #174 is evidence only); before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
 
 After Japanese gold/holdout evaluation and calibration, enable only accepted eligible cases through a reversible canary. Low confidence, provider failure or mixed meaning must preserve the existing safe fallback and application authority. Numerical thresholds in the research are hypotheses to evaluate, not already-achieved guarantees or automatic rollout approval.
 
@@ -77,7 +85,7 @@ Production consultation is still not wired. When resumed, Issue #246 must consum
 
 - #269 planner-data availability — merged baseline
 - #270 atomic formal-turn boundary — merged baseline
-- #152 security/provenance — still active
+- #152 security/provenance — still active; merge path is the replacement PR chain listed above
 - #164 storage/multi-client authority — separate owner
 - #187 material identity/catalog — separate owner
 - #51 final approval multi-device uniqueness — separate owner
