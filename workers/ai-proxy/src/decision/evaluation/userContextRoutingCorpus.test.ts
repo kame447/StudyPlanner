@@ -27,12 +27,12 @@ describe('user-context routing corpus', () => {
     }
   });
 
-  it('keeps mixed hard cases pending one limited-judge batch', () => {
+  it('keeps every mixed hard case on the one limited-judge batch decision', () => {
     const mixed = USER_CONTEXT_ROUTING_CORPUS.filter((item) =>
       item.evaluationClass === 'mixed_negative');
     expect(mixed.length).toBeGreaterThan(0);
     expect(mixed.every((item) =>
-      item.labelStatus === 'needs_opus_5_5_limited_judge'
+      item.labelStatus === 'opus-5.5-limited-judge'
       && item.expectedRoute === 'luna'
       && item.expectedTargetDomain === null)).toBe(true);
   });

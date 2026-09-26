@@ -34,7 +34,7 @@ export interface UserPlanningContextNaturalLanguageResultV2 {
   reason: string;
 }
 
-const RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+export const USER_PLANNING_CONTEXT_RESPONSE_FORMAT_V2: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
     name: 'studyplanner_user_context_interpretation_v2',
@@ -179,6 +179,22 @@ function existingRecordPayload(record: UserPlanningContextRecordV1 | null | unde
   };
 }
 
+export function createUserPlanningContextNaturalLanguageMessagesV2(params: {
+  text: string;
+  existingRecord?: UserPlanningContextRecordV1 | null;
+}) {
+  return [
+    { role: 'system' as const, content: SYSTEM_PROMPT },
+    {
+      role: 'user' as const,
+      content: JSON.stringify({
+        text: params.text,
+        existingRecord: existingRecordPayload(params.existingRecord),
+      }),
+    },
+  ];
+}
+
 function defaultClient(): OpenAiCompatibleClient {
   const aiConfig = getAiConfig();
   const configError = getAiConfigValidationMessage(aiConfig);
@@ -218,17 +234,11 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
     purpose: 'user_context_interpreter',
     temperature: 0,
     maxCompletionTokens: 700,
-    responseFormat: RESPONSE_FORMAT,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          text,
-          existingRecord: existingRecordPayload(params.existingRecord),
-        }),
-      },
-    ],
+    responseFormat: USER_PLANNING_CONTEXT_RESPONSE_FORMAT_V2,
+    messages: createUserPlanningContextNaturalLanguageMessagesV2({
+      text,
+      existingRecord: params.existingRecord,
+    }),
   });
 
   let parsed: unknown;

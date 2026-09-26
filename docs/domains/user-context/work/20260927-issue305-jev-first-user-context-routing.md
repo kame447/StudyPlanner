@@ -4,6 +4,7 @@ Status: active
 Owner: Issue #305 / #333 / #335
 Branch: `feat/issue-305-jev-first-user-context-routing`
 Base: `d3623479e07a6870f23c54a7631fe2761a408efa`
+Latest durable checkpoint: `b311b44bf4e748ec8aa4746517da2b703826aa60`
 Updated: 2026-09-27
 
 ## 目的と責任境界
@@ -73,18 +74,20 @@ retry / repair は今回の settings interpreter に存在しない。今後追�
 - `userContextRoutingPolicy.ts`: 6-choice catalog と conservative external-only gate を追加。
 - `userContextRoutingDispatch.ts`: off/shadow/canary、typed direct response、全 defer/fault の Luna fallback を追加。
 - feature は raw text だけを Jev projection に入れ、typed direct response を既存固定案内へ変換する。stored `existingRecord` は Jev state に入れない。
-- focused union / `worker.ts` は単位3の reservation 中のため未編集。LivelyYukawa に安定後の引渡しを依頼済み。
-- 独立単体 test 56件（routing 30 + feature/#152 26）は green。
+- 単位3の引渡し後、focused union に1型、`worker.ts` に分類 / purpose 検証 / dispatch / failure resolver の1経路を末尾追加した。既存 authorization/contextual の順序と挙動は変更していない。
+- tuning 52件、holdout 64件を別 text / group で作成した。holdout は各 class 16件、合計32 conversation group。mixed 28件は親の一括判定で全件 `route=luna`, `targetDomain=null`、source=`opus-5.5-limited-judge`（human gold ではない）に固定した。
+- holdout は tuning 前に `sealed_unconsumed` として封印済み。fingerprint は catalog=`c3a284e53846d229f1932cae34acf00efc98f266986100ba4efed60aac0bdc4e`、gate=`9bcb1fc70281dc2420cce5ad18b0254716b45a52fbdd0bfd90ca9e9b28c90854`、corpus=`0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6`。
+- runner は Wrangler 4.140.0 のみを受理し、holdout は上記 seal/hash が一致し `consumed=false` の場合だけ実行する。成功時は raw text を含まない typed result で同じ artifact を `consumed` に更新する。
+- exact checkpoint 後の local `npm run verify` は green: typecheck、583 test files / 3,024 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）、production build 2,215 modules。runner の `node --check` も green。build の既存 dynamic/static import と chunk-size warning 以外に失敗なし。
+- remote dev は Wrangler OAuth の期限切れで、親がユーザーの再ログイン待ち。親から再開通知が来るまで tuning / holdout / paired / fault probe は実行しない。
 
 次の具体作業:
 
-1. tuning/holdout corpus、fingerprint、typed evidence schema を作り、holdout を remote 実行前の sealed 状態にする。
-2. 単位3の shared/Worker 引渡し後、union 1型と分類/dispatch 1分岐だけを追加する。
-3. typecheck と Worker regression を通す。
-4. remote tuning → policy freeze → holdout 1回 → Luna-only paired → faults の順に実行する。
+1. 親の Wrangler OAuth 再開通知を待つ。
+2. 再開後、remote tuning → gate 固定確認 → holdout 1回 → Luna-only paired → faults の順に実行する。
+3. typed evidence と集計を本記録へ反映し、親へ commit / PR 依頼を送る。
 
 未解決:
 
-- holdout corpus と hash は未作成、未実行。
-- shared union / Worker integration は reservation 待ち。
-- 実 provider 校正、paired comparison、費用/latency、CI は未実施。
+- remote tuning / holdout / paired / fault は Wrangler OAuth 再認証待ちで未実行。holdout 自体は封印済み・未消費。
+- 実 provider 校正、実費用/latency、CI は未完了。local full test/build は green。

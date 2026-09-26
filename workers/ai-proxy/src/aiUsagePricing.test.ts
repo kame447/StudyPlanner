@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AI_PRICING_VERSION,
   estimateAiRequestCost,
+  estimateLunaTextUsageCostRange,
 } from './aiUsagePricing';
 
 describe('AI usage pricing', () => {
@@ -38,6 +39,25 @@ describe('AI usage pricing', () => {
     })).toEqual({
       pricingVersion: AI_PRICING_VERSION,
       estimatedCostMicros: null,
+    });
+  });
+
+  it('bounds Luna cost when aggregate usage omits the cache breakdown', () => {
+    expect(estimateLunaTextUsageCostRange({
+      promptTokens: 1000,
+      completionTokens: 100,
+    })).toEqual({
+      pricingVersion: AI_PRICING_VERSION,
+      minimumCostMicros: 140,
+      maximumCostMicros: 370,
+    });
+    expect(estimateLunaTextUsageCostRange({
+      promptTokens: null,
+      completionTokens: 100,
+    })).toEqual({
+      pricingVersion: AI_PRICING_VERSION,
+      minimumCostMicros: null,
+      maximumCostMicros: null,
     });
   });
 

@@ -24,7 +24,7 @@ export interface UserContextRoutingEvaluationCandidate {
   currentUserText: string;
   expectedRoute: 'external_owner' | 'luna';
   expectedTargetDomain: UserContextRoutingExpectedTarget | null;
-  labelStatus: 'synthetic_unreviewed' | 'needs_opus_5_5_limited_judge';
+  labelStatus: 'synthetic_unreviewed' | 'opus-5.5-limited-judge';
 }
 
 type CorpusRow = readonly [
@@ -42,7 +42,7 @@ function candidates(params: {
     ? 'external_owner' as const
     : 'luna' as const;
   const labelStatus = params.evaluationClass === 'mixed_negative'
-    ? 'needs_opus_5_5_limited_judge' as const
+    ? 'opus-5.5-limited-judge' as const
     : 'synthetic_unreviewed' as const;
   return params.rows.map(([currentUserText, expectedTargetDomain], index) => ({
     id: `${params.prefix}-${String(index + 1).padStart(2, '0')}`,

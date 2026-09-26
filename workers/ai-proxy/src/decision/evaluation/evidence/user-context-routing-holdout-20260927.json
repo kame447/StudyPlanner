@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "user_context_routing_sealed_holdout",
+  "corpusVersion": "user-context-routing-corpus-2026-09-27-v1",
+  "status": "sealed_unconsumed",
+  "sealedAt": "2026-09-27T04:36:00+09:00",
+  "createdBeforeTuning": true,
+  "consumed": false,
+  "caseCount": 64,
+  "conversationGroupCount": 32,
+  "classCounts": {
+    "external_clear": 16,
+    "user_context_negative": 16,
+    "mixed_negative": 16,
+    "security_negative": 16
+  },
+  "labelStatusCounts": {
+    "synthetic_unreviewed": 48,
+    "opus-5.5-limited-judge": 16
+  },
+  "labelNote": "Provisional labels only; opus-5.5-limited-judge is not human gold and agreement is not accuracy.",
+  "policy": {
+    "catalogVersion": "user-context-routing-2026-09-27-v1",
+    "gateVersion": "user-context-routing-conservative-v1",
+    "catalogSha256": "c3a284e53846d229f1932cae34acf00efc98f266986100ba4efed60aac0bdc4e",
+    "gateSha256": "9bcb1fc70281dc2420cce5ad18b0254716b45a52fbdd0bfd90ca9e9b28c90854",
+    "corpusSha256": "0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6"
+  },
+  "results": null
+}

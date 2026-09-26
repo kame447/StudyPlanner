@@ -6,6 +6,7 @@ import type { UserContextRoutingDecision } from './userContextRoutingPolicy';
 
 const calls: string[] = [];
 const lunaBodies: Array<Record<string, unknown>> = [];
+const jevBodies: Array<Record<string, unknown>> = [];
 let quotaCalls = 0;
 let jevChoice: UserContextRoutingDecision = 'bookshelf';
 let jevConfidence = 0.999;
@@ -106,6 +107,7 @@ function execute(params: {
 beforeEach(() => {
   calls.length = 0;
   lunaBodies.length = 0;
+  jevBodies.length = 0;
   quotaCalls = 0;
   jevChoice = 'bookshelf';
   jevConfidence = 0.999;
@@ -136,7 +138,8 @@ beforeEach(() => {
       expect(body.questions.target_domain.type).toBe('choice');
       expect(body.questions.multiple_domains.type).toBe('noul');
       expect(body.questions).not.toHaveProperty('authorization');
-      expect(body.state).toEqual({ currentUserText: decisionContext().state.currentUserText });
+      expect(Object.keys(body.state)).toEqual(['currentUserText']);
+      jevBodies.push(body);
       return Response.json(jevResponse());
     }
     if (url.endsWith('/chat/completions')) {
@@ -197,6 +200,8 @@ describe('user-context routing Worker dispatch', () => {
     expect(payload).not.toHaveProperty('record');
     expect(payload.content).not.toContain('保存');
     expect(payload.content).not.toContain('承認');
+    expect((jevBodies[0]?.state as { currentUserText: string }).currentUserText)
+      .toBe(injected.state.currentUserText);
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(0);
   });
 
