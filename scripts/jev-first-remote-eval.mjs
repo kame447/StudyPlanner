@@ -17,7 +17,7 @@ async function loadWrangler() {
       `Refusing remote evaluation with Wrangler ${String(packageJson.version)}; expected ${VERIFIED_WRANGLER_VERSION}.`);
     return import(pathToFileURL(resolve(dirname(executable), '../wrangler-dist/cli.js')).href);
   }
-  throw new Error('Run through npm exec --package=wrangler@4.140.0 so Wrangler is available.');
+  throw new Error('Put the verified Wrangler 4.140.0 binary on PATH before running this evaluator.');
 }
 
 function parseArgs() {
@@ -33,14 +33,17 @@ function parseArgs() {
   if (!worker || !/^[a-zA-Z0-9-]+$/.test(worker)) {
     throw new Error('Pass --worker followed by the existing Worker name.');
   }
-  if (suite !== 'corpus' && suite !== 'faults') {
-    throw new Error('Pass --suite corpus or --suite faults.');
+  if (suite !== 'corpus' && suite !== 'faults' && suite !== 'luna-baseline') {
+    throw new Error('Pass --suite corpus, --suite luna-baseline, or --suite faults.');
   }
   if (suite === 'corpus' && split !== 'tuning' && split !== 'holdout') {
     throw new Error('Corpus evaluation requires --split tuning or --split holdout.');
   }
   if (suite === 'faults' && split !== null) {
     throw new Error('Fault evaluation does not accept --split.');
+  }
+  if (suite === 'luna-baseline' && split !== 'holdout') {
+    throw new Error('The paired Luna baseline is limited to --split holdout.');
   }
   const maxCases = maxCasesRaw === null ? null : Number(maxCasesRaw);
   if (maxCases !== null && (!Number.isSafeInteger(maxCases) || maxCases <= 0 || maxCases > 131)) {
@@ -70,7 +73,9 @@ async function main() {
 import { createOpenRouterDecisionProvider } from ${JSON.stringify(providerPath)};
 import { createLunaFocusedAuthorizationEvaluator } from ${JSON.stringify(lunaPath)};
 import {
+  evaluateFocusedAuthorizationLunaBaselineCase,
   evaluateFocusedAuthorizationFirstRouteCase,
+  summarizeFocusedAuthorizationLunaBaseline,
   summarizeFocusedAuthorizationFirstRoute,
 } from ${JSON.stringify(evaluatorPath)};
 import { focusedAuthorizationFirstRouteCorpus } from ${JSON.stringify(corpusPath)};
@@ -155,9 +160,19 @@ export default { async fetch(request, env) {
     });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   }
+  if (url.pathname === '/luna-case') {
+    const candidate = focusedAuthorizationFirstRouteCorpus('holdout').find(value => value.id === body.id);
+    if (!candidate) return new Response('Bad request', { status: 400 });
+    const result = await evaluateFocusedAuthorizationLunaBaselineCase({ candidate, luna });
+    return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+  }
   if (url.pathname === '/summary') {
     if (!Array.isArray(body.cases)) return new Response('Bad request', { status: 400 });
     return Response.json(summarizeFocusedAuthorizationFirstRoute(body.cases));
+  }
+  if (url.pathname === '/luna-summary') {
+    if (!Array.isArray(body.cases)) return new Response('Bad request', { status: 400 });
+    return Response.json(summarizeFocusedAuthorizationLunaBaseline(body.cases));
   }
   if (url.pathname === '/luna-control') {
     const result = await luna.evaluate({
@@ -252,6 +267,38 @@ export default { async fetch(request, env) {
       assert.equal(summaryResponse.status, 200, 'Remote summary failed.');
       report = {
         suite: 'corpus', split: options.split, caseCount: cases.length,
+        cases, summary: await summaryResponse.json(),
+      };
+    } else if (options.suite === 'luna-baseline') {
+      failureStage = 'luna_baseline_holdout';
+      console.warn(JSON.stringify({
+        event: 'jev_first_luna_baseline_holdout_opened',
+        warning: 'Paired production Luna baseline; do not tune the fixed Jev gate from this result.',
+      }));
+      const manifestResponse = await worker.fetch('/manifest?split=holdout', {
+        headers, signal: AbortSignal.timeout(45_000),
+      });
+      assert.equal(manifestResponse.status, 200, 'Holdout manifest failed.');
+      const manifest = await manifestResponse.json();
+      const ids = options.maxCases === null ? manifest.ids : manifest.ids.slice(0, options.maxCases);
+      const cases = [];
+      for (const id of ids) {
+        const response = await worker.fetch('/luna-case', {
+          method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }), signal: AbortSignal.timeout(120_000),
+        });
+        assert.equal(response.status, 200, `Remote Luna baseline case failed: ${id}`);
+        const result = await response.json();
+        cases.push(result);
+        console.log(JSON.stringify({ event: 'jev_first_luna_baseline_case', ...result }));
+      }
+      const summaryResponse = await worker.fetch('/luna-summary', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cases }), signal: AbortSignal.timeout(45_000),
+      });
+      assert.equal(summaryResponse.status, 200, 'Remote Luna baseline summary failed.');
+      report = {
+        suite: 'luna-baseline', split: 'holdout', caseCount: cases.length,
         cases, summary: await summaryResponse.json(),
       };
     } else {

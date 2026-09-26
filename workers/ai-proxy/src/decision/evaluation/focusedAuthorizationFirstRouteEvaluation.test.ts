@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { gateDecision } from '../decisionPolicy';
 import type { DecisionEvaluation, DecisionProvider } from '../decisionProvider';
 import {
+  evaluateFocusedAuthorizationLunaBaselineCase,
   evaluateFocusedAuthorizationFirstRouteCase,
+  summarizeFocusedAuthorizationLunaBaseline,
   summarizeFocusedAuthorizationFirstRoute,
   type FocusedAuthorizationFirstRouteCandidate,
 } from './focusedAuthorizationFirstRouteEvaluation';
@@ -49,6 +52,39 @@ function luna(result: LunaFocusedAuthorizationEvaluation = {
 }
 
 describe('Jev-first focused authorization evaluation', () => {
+  it('locks the tuning-81 create, fallback and strong-veto boundaries', () => {
+    expect(gateDecision(evaluation({
+      confidence: 0.9,
+      probabilities: { create_plan: 0.95, fallback: 0.05 },
+      conditionChange: 0.499,
+      independentMeaning: 0.499,
+    }))).toEqual({ status: 'accepted', decision: 'create_plan' });
+    expect(gateDecision(evaluation({ confidence: 0.899 }))).toEqual({
+      status: 'abstained', reason: 'uncertain',
+    });
+    expect(gateDecision(evaluation({
+      probabilities: { create_plan: 0.949, fallback: 0.051 },
+    }))).toEqual({ status: 'abstained', reason: 'uncertain' });
+    expect(gateDecision(evaluation({ independentMeaning: 0.5 }))).toEqual({
+      status: 'abstained', reason: 'conflicting_heads',
+    });
+
+    const fallback = evaluation({
+      decision: 'fallback', confidence: 0.8,
+      probabilities: { create_plan: 0.1, fallback: 0.9 },
+      conditionChange: 0.2,
+      independentMeaning: 0.2,
+    });
+    expect(gateDecision(fallback)).toEqual({ status: 'accepted', decision: 'fallback' });
+    expect(gateDecision({ ...fallback, confidence: 0.799 })).toEqual({
+      status: 'abstained', reason: 'uncertain',
+    });
+    expect(gateDecision(evaluation({
+      confidence: 0.1,
+      conditionChange: 0.9,
+    }))).toEqual({ status: 'accepted', decision: 'fallback' });
+  });
+
   it('uses the production dispatch and avoids Luna after an accepted Jev decision', async () => {
     const baseline = luna();
     const result = await evaluateFocusedAuthorizationFirstRouteCase({
@@ -121,6 +157,41 @@ describe('Jev-first focused authorization evaluation', () => {
       falseCreate: { occurrences: 0, negativeSampleCount: 1 },
     });
     expect(summary.falseCreate.oneSidedClopperPearsonUpper95).toBeGreaterThan(0);
+  });
+
+  it('evaluates and summarizes the paired Luna-only baseline without granting authority', async () => {
+    const first = await evaluateFocusedAuthorizationLunaBaselineCase({
+      candidate: { ...candidate, expected: 'fallback' },
+      luna: luna({
+        status: 'evaluated', decision: 'create_plan',
+        metadata: {
+          requestedModel: 'gpt-5.6-luna', servedModel: 'gpt-5.6-luna', latencyMs: 40,
+          promptTokens: 30, completionTokens: 4, costUsd: null,
+        },
+      }),
+    });
+    const second = await evaluateFocusedAuthorizationLunaBaselineCase({
+      candidate: { ...candidate, id: 'failure' },
+      luna: luna({
+        status: 'unavailable', reason: 'http',
+        metadata: {
+          requestedModel: 'gpt-5.6-luna', servedModel: null, latencyMs: 80,
+          promptTokens: null, completionTokens: null, costUsd: null,
+        },
+      }),
+    });
+    expect(first.authority).toEqual({
+      maximumEffect: 'unsaved_draft_request', approvalGranted: false, saveGranted: false,
+    });
+    expect(second.final).toEqual({ status: 'controlled_failure', decision: null, httpStatus: 502 });
+    const summary = summarizeFocusedAuthorizationLunaBaseline([first, second]);
+    expect(summary).toMatchObject({
+      caseCount: 2,
+      falseCreate: { occurrences: 1, negativeSampleCount: 1 },
+      controlledFailureCount: 1,
+      latencyMs: { p50: 40, p95: 80 },
+      usage: { promptTokens: { reportedComponentCount: 1, unknownComponentCount: 1 } },
+    });
   });
 });
 

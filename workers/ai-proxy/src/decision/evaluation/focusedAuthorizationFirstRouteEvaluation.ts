@@ -108,6 +108,53 @@ export interface FocusedAuthorizationFirstRouteSummary {
   costUsd: NullableTotal;
 }
 
+export interface FocusedAuthorizationLunaBaselineCaseResult {
+  id: string;
+  conversationGroupId: string;
+  layer: string;
+  split: 'tuning' | 'holdout';
+  expected: AuthorizationDecision | null;
+  labelStatus: string;
+  luna: {
+    status: LunaFocusedAuthorizationEvaluation['status'];
+    decision: AuthorizationDecision | null;
+    reason: string | null;
+    latencyMs: number;
+    promptTokens: number | null;
+    completionTokens: number | null;
+    costUsd: number | null;
+  };
+  final: {
+    status: 'evaluated' | 'controlled_failure';
+    decision: AuthorizationDecision | null;
+    httpStatus: number;
+  };
+  authority: {
+    maximumEffect: 'unsaved_draft_request';
+    approvalGranted: false;
+    saveGranted: false;
+  };
+}
+
+export interface FocusedAuthorizationLunaBaselineSummary {
+  caseCount: number;
+  binaryLabeledCaseCount: number;
+  labelStatusCounts: Record<string, number>;
+  falseCreate: {
+    occurrences: number;
+    negativeSampleCount: number;
+    oneSidedClopperPearsonUpper95: number | null;
+  };
+  controlledFailureCount: number;
+  finalAccuracy: { numerator: number; denominator: number; value: number | null };
+  latencyMs: { p50: number | null; p95: number | null };
+  usage: {
+    promptTokens: NullableTotal;
+    completionTokens: NullableTotal;
+  };
+  costUsd: NullableTotal;
+}
+
 interface NullableTotal {
   componentCount: number;
   reportedComponentCount: number;
@@ -159,7 +206,7 @@ function routeFor(gate: DecisionGate, contextCurrent: boolean): FocusedAuthoriza
   return gate.decision === 'create_plan' ? 'jev_accepted_create' : 'jev_accepted_fallback';
 }
 
-function lunaFailureResponse(evaluation: LunaFocusedAuthorizationEvaluation): Response {
+function lunaFailureResponse(): Response {
   return Response.json({ error: 'Focused authorization provider failed.' }, { status: 502 });
 }
 
@@ -198,14 +245,20 @@ export async function evaluateFocusedAuthorizationFirstRouteCase(params: {
   try {
     response = await dispatchFocusedAuthorization({
       context,
-      env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+      env: {
+        JEV_MODE: 'canary',
+        JEV_CANARY_PERCENT: '100',
+        FIREBASE_PROJECT_ID: '',
+        FIREBASE_SERVICE_ACCOUNT_EMAIL: '',
+        FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: '',
+      },
       firebaseUid: 'jev-first-evaluation',
       executionContext: { waitUntil: (promise) => background.push(promise) },
       signal: params.signal ?? new AbortController().signal,
       fallback: async (signal) => {
         lunaCalls += 1;
         lunaEvaluation = await params.luna.evaluate(context.state, signal);
-        if (lunaEvaluation.status !== 'evaluated') return lunaFailureResponse(lunaEvaluation);
+        if (lunaEvaluation.status !== 'evaluated') return lunaFailureResponse();
         return Response.json({
           content: JSON.stringify({ decision: lunaEvaluation.decision }),
           usage: {
@@ -223,9 +276,10 @@ export async function evaluateFocusedAuthorizationFirstRouteCase(params: {
     response = Response.json({ error: failure?.failure ?? 'controlled_failure' }, { status: 502 });
   }
   await Promise.allSettled(background);
-  if (!jevEvaluation) throw new Error('Jev-first evaluation completed without a provider result.');
+  const jev = jevEvaluation as DecisionEvaluation | null;
+  if (!jev) throw new Error('Jev-first evaluation completed without a provider result.');
 
-  const naturalGate = gateDecision(jevEvaluation);
+  const naturalGate = gateDecision(jev);
   const effectiveGate: DecisionGate = contextCurrent
     ? naturalGate
     : { status: 'unavailable', reason: 'stale_context' };
@@ -240,18 +294,18 @@ export async function evaluateFocusedAuthorizationFirstRouteCase(params: {
     labelStatus: params.candidate.labelStatus,
     route: routeFor(effectiveGate, contextCurrent),
     jev: {
-      status: jevEvaluation.status,
+      status: jev.status,
       gate: effectiveGate.status,
-      decision: jevEvaluation.status === 'evaluated' ? jevEvaluation.decision : null,
+      decision: jev.status === 'evaluated' ? jev.decision : null,
       reason: effectiveGate.status === 'accepted' ? null : effectiveGate.reason,
-      confidence: jevEvaluation.status === 'evaluated' ? jevEvaluation.confidence : null,
-      probabilities: jevEvaluation.status === 'evaluated' ? jevEvaluation.probabilities : null,
-      conditionChange: jevEvaluation.status === 'evaluated' ? jevEvaluation.conditionChange : null,
-      independentMeaning: jevEvaluation.status === 'evaluated' ? jevEvaluation.independentMeaning : null,
-      latencyMs: jevEvaluation.metadata.latencyMs,
-      inputTokens: jevEvaluation.metadata.inputTokens,
-      outputTokens: jevEvaluation.metadata.outputTokens,
-      costUsd: jevEvaluation.metadata.costUsd,
+      confidence: jev.status === 'evaluated' ? jev.confidence : null,
+      probabilities: jev.status === 'evaluated' ? jev.probabilities : null,
+      conditionChange: jev.status === 'evaluated' ? jev.conditionChange : null,
+      independentMeaning: jev.status === 'evaluated' ? jev.independentMeaning : null,
+      latencyMs: jev.metadata.latencyMs,
+      inputTokens: jev.metadata.inputTokens,
+      outputTokens: jev.metadata.outputTokens,
+      costUsd: jev.metadata.costUsd,
     },
     luna: {
       called: lunaCalls > 0,
@@ -275,6 +329,81 @@ export async function evaluateFocusedAuthorizationFirstRouteCase(params: {
       approvalGranted: false,
       saveGranted: false,
     },
+  };
+}
+
+export async function evaluateFocusedAuthorizationLunaBaselineCase(params: {
+  candidate: FocusedAuthorizationFirstRouteCandidate;
+  luna: LunaFocusedAuthorizationEvaluator;
+  signal?: AbortSignal;
+}): Promise<FocusedAuthorizationLunaBaselineCaseResult> {
+  const evaluation = await params.luna.evaluate({
+    currentUserText: params.candidate.currentUserText,
+    lastAssistantMessage: params.candidate.lastAssistantMessage,
+  }, params.signal);
+  const evaluated = evaluation.status === 'evaluated';
+  return {
+    id: params.candidate.id,
+    conversationGroupId: params.candidate.conversationGroupId,
+    layer: params.candidate.layer,
+    split: params.candidate.split,
+    expected: params.candidate.expected ?? null,
+    labelStatus: params.candidate.labelStatus,
+    luna: {
+      status: evaluation.status,
+      decision: evaluated ? evaluation.decision : null,
+      reason: evaluated ? null : evaluation.reason,
+      latencyMs: evaluation.metadata.latencyMs,
+      promptTokens: evaluation.metadata.promptTokens,
+      completionTokens: evaluation.metadata.completionTokens,
+      costUsd: evaluation.metadata.costUsd,
+    },
+    final: {
+      status: evaluated ? 'evaluated' : 'controlled_failure',
+      decision: evaluated ? evaluation.decision : null,
+      httpStatus: evaluated ? 200 : 502,
+    },
+    authority: {
+      maximumEffect: 'unsaved_draft_request',
+      approvalGranted: false,
+      saveGranted: false,
+    },
+  };
+}
+
+export function summarizeFocusedAuthorizationLunaBaseline(
+  cases: readonly FocusedAuthorizationLunaBaselineCaseResult[],
+): FocusedAuthorizationLunaBaselineSummary {
+  const binary = cases.filter((value): value is FocusedAuthorizationLunaBaselineCaseResult & {
+    expected: AuthorizationDecision;
+  } => value.expected === 'create_plan' || value.expected === 'fallback');
+  const negative = binary.filter((value) => value.expected === 'fallback');
+  const falseCreate = negative.filter((value) => value.final.decision === 'create_plan').length;
+  const correct = binary.filter((value) => value.final.decision === value.expected).length;
+  const labelStatusCounts = cases.reduce<Record<string, number>>((counts, value) => {
+    counts[value.labelStatus] = (counts[value.labelStatus] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    caseCount: cases.length,
+    binaryLabeledCaseCount: binary.length,
+    labelStatusCounts,
+    falseCreate: {
+      occurrences: falseCreate,
+      negativeSampleCount: negative.length,
+      oneSidedClopperPearsonUpper95: exactClopperPearsonUpperBound95(falseCreate, negative.length),
+    },
+    controlledFailureCount: cases.filter((value) => value.final.status === 'controlled_failure').length,
+    finalAccuracy: ratio(correct, binary.length),
+    latencyMs: {
+      p50: percentile(cases.map((value) => value.luna.latencyMs), 0.5),
+      p95: percentile(cases.map((value) => value.luna.latencyMs), 0.95),
+    },
+    usage: {
+      promptTokens: nullableTotal(cases.map((value) => value.luna.promptTokens)),
+      completionTokens: nullableTotal(cases.map((value) => value.luna.completionTokens)),
+    },
+    costUsd: nullableTotal(cases.map((value) => value.luna.costUsd)),
   };
 }
 

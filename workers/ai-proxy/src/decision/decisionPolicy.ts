@@ -5,8 +5,8 @@ export const JEV_MODEL = {
   request: 'typesafe/jev-1.13',
   responses: ['typesafe/jev-1.13', 'typesafe/jev-1.13-20260917'] as readonly string[],
 } as const;
-export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-26';
-export const JEV_GATE_VERSION = 'authorization-conservative-v1-uncalibrated';
+export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
+export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
 export const JEV_TIMEOUT_MS = 1_500;
 export const FOCUSED_REQUEST_TIMEOUT_MS = 85_000;
 
@@ -34,14 +34,18 @@ export type DecisionGate = { status: 'accepted'; decision: 'create_plan' | 'fall
 // not a proven contradiction, and agreement is not an independent safety guarantee.
 export function gateDecision(result: DecisionEvaluation): DecisionGate {
   if (result.status === 'unavailable') return { status: result.status, reason: result.reason };
-  if (result.conditionChange >= 0.97 || result.independentMeaning >= 0.97) {
+  if (result.conditionChange >= 0.9 || result.independentMeaning >= 0.9) {
     return { status: 'accepted', decision: 'fallback' };
   }
-  if (result.confidence < 0.97 || result.probabilities[result.decision] < 0.99) {
+  if (result.decision === 'fallback') {
+    return result.confidence >= 0.8 && result.probabilities.fallback >= 0.9
+      ? { status: 'accepted', decision: 'fallback' }
+      : { status: 'abstained', reason: 'uncertain' };
+  }
+  if (result.confidence < 0.9 || result.probabilities.create_plan < 0.95) {
     return { status: 'abstained', reason: 'uncertain' };
   }
-  if (result.decision === 'fallback') return { status: 'accepted', decision: 'fallback' };
-  if (result.conditionChange > 0.01 || result.independentMeaning > 0.01) {
+  if (result.conditionChange >= 0.5 || result.independentMeaning >= 0.5) {
     return { status: 'abstained', reason: 'conflicting_heads' };
   }
   return { status: 'accepted', decision: 'create_plan' };

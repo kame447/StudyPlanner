@@ -19,7 +19,7 @@
     "test:jev:live": "node ./node_modules/vitest/vitest.mjs --config vitest.jev.config.mjs run",
     "eval:jev:shadow": "node ./node_modules/vitest/vitest.mjs --config vitest.jev-evaluation.config.mjs run",
     "eval:jev-luna": "node ./node_modules/vitest/vitest.mjs --config vitest.jev-luna-comparison.config.mjs run",
-    "eval:jev-first:remote": "npm exec --yes --package=wrangler@4.140.0 -- node scripts/jev-first-remote-eval.mjs",
+    "eval:jev-first:remote": "node scripts/jev-first-remote-eval.mjs",
     "eval:gemini-agent:packets": "node ./node_modules/vitest/vitest.mjs --config vitest.gemini-agent-judge-packets.config.mjs run",
     "eval:gemini-agent:import": "node ./node_modules/vitest/vitest.mjs --config vitest.gemini-agent-judge-import.config.mjs run",
     "eval:review-sheets": "node ./node_modules/vitest/vitest.mjs --config vitest.human-review-sheets.config.mjs run",
