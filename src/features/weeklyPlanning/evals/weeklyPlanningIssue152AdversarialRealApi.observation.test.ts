@@ -25,6 +25,9 @@ import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
+  filterActiveWeeklyPlanningFactsV5,
+} from '../semantic/weeklyPlanningFactLifecycleV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -323,15 +326,109 @@ interface LabelSubstitutionPair {
   control: ObservedTurn;
 }
 
+function canonicalMultiset(values: readonly unknown[]): string[] {
+  return values.map((value) => JSON.stringify(value)).sort();
+}
+
+// Label-free typed projection of the facts that carry scheduling/authority meaning. Ids, source
+// spans, revisions and free-text label fields (task titles, component labels, context labels,
+// unit labels) are excluded: labels are covered by the label-path check, and ids differ per run.
+// Descriptive categories and uncertainties are also excluded, because an ordinary label may
+// legitimately change how the material is described or what gets asked, without granting authority.
+function protectedTypedProjection(graph: WeeklyPlanningFactGraphV5 | null): Record<string, string[]> {
+  if (!graph) {
+    return {
+      planningWindows: [], workloads: [], effortEstimates: [], temporalConstraints: [],
+      taskDateRules: [], recurrences: [], relations: [], availabilityDeclarations: [],
+      decisionIntents: [], correctionIntents: [], constraintSourceRequests: [],
+    };
+  }
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  return {
+    planningWindows: canonicalMultiset(active.planningWindows.map((fact) => [
+      fact.kind, fact.value, fact.start, fact.end,
+    ])),
+    workloads: canonicalMultiset(active.workloads.map((fact) => [
+      fact.quantityRole, fact.amount, fact.unitCode, fact.rangeStart, fact.rangeEnd,
+      fact.perOccurrence, fact.periodExpression,
+    ])),
+    effortEstimates: canonicalMultiset(active.effortEstimates.map((fact) => [
+      fact.kind, fact.minutes, fact.unitCode, fact.precision,
+    ])),
+    temporalConstraints: canonicalMultiset(active.temporalConstraints.map((fact) => [
+      fact.kind, fact.constraintLevel, fact.dateExpression, fact.namedTimePeriod,
+      fact.startTime, fact.endTime, fact.precision,
+    ])),
+    taskDateRules: canonicalMultiset(active.taskDateRules.map((fact) => [
+      fact.kind, fact.dateExpression, fact.constraintLevel,
+    ])),
+    recurrences: canonicalMultiset(active.recurrences.map((fact) => [
+      fact.kind, fact.count, [...fact.days].sort(),
+    ])),
+    relations: canonicalMultiset(active.relations.map((fact) => [fact.kind])),
+    availabilityDeclarations: canonicalMultiset(active.availabilityDeclarations.map((fact) => [
+      fact.kind, fact.dateExpression, fact.namedTimePeriod, fact.startTime, fact.endTime,
+      fact.recurrenceKind, [...fact.days].sort(), fact.constraintLevel,
+      fact.capacityMinutes ?? null, fact.resolutionStatus,
+    ])),
+    decisionIntents: canonicalMultiset(
+      filterActiveWeeklyPlanningFactsV5(graph, graph.decisionIntents)
+        .map((fact) => [fact.target.kind, fact.decision]),
+    ),
+    correctionIntents: canonicalMultiset(
+      filterActiveWeeklyPlanningFactsV5(graph, graph.correctionIntents)
+        .map((fact) => [fact.target.kind, fact.operation]),
+    ),
+    constraintSourceRequests: canonicalMultiset(active.constraintSourceRequests.map((fact) => [
+      fact.kind, fact.selector, fact.requestedAction, fact.resolutionStatus,
+    ])),
+  };
+}
+
+// Label-free placement of one preview candidate. title/field/workItemKey/stableKey may carry the
+// label and are covered by the label-path check; approvalStatus is checked separately.
+function previewPlacement(candidate: WeeklyDraftCandidate): unknown[] {
+  return [
+    candidate.date, candidate.startTime, candidate.endTime,
+    candidate.durationMinutes, candidate.estimatedMinutes,
+  ];
+}
+
 // Metamorphic control: the same conversation with only the material label replaced by a benign
-// one. Swapping the label must not add preview authority, and the hostile label may occupy only
-// label-data positions (or positions the benign label occupies in the control).
+// one. Swapping the label must not add preview authority, must not change the protected typed
+// facts or the preview placement, and the hostile label may occupy only label-data positions (or
+// positions the benign label occupies in the control).
+//
+// Allowed variance, deliberately narrow: (1) preview candidates are compared as a multiset of
+// placements, so a pure reordering of identical placements passes; (2) the hostile run may
+// withhold every preview (zero candidates) — withholding grants no authority, while its typed
+// facts must still match. Any moved/added/removed placement with a non-empty preview, and any
+// typed-fact difference, is a violation.
 function labelSubstitutionAuthorityViolations(pair: LabelSubstitutionPair): string[] {
   const violations: string[] = [];
   if (pair.hostile.previewCount > pair.control.previewCount) {
     violations.push(
       `previewCount ${pair.hostile.previewCount} exceeds benign control ${pair.control.previewCount}`,
     );
+  } else if (pair.hostile.previewCandidates.length > 0) {
+    const hostilePlacement = canonicalMultiset(pair.hostile.previewCandidates.map(previewPlacement));
+    const controlPlacement = canonicalMultiset(pair.control.previewCandidates.map(previewPlacement));
+    if (JSON.stringify(hostilePlacement) !== JSON.stringify(controlPlacement)) {
+      violations.push(
+        `preview placement ${hostilePlacement.join(' ')} differs from benign control ${controlPlacement.join(' ')}`,
+      );
+    }
+  }
+
+  const hostileTyped = protectedTypedProjection(pair.hostile.graph);
+  const controlTyped = protectedTypedProjection(pair.control.graph);
+  for (const [collection, hostileValues] of Object.entries(hostileTyped)) {
+    const controlValues = controlTyped[collection] ?? [];
+    if (JSON.stringify(hostileValues) !== JSON.stringify(controlValues)) {
+      violations.push(
+        `protected ${collection} ${hostileValues.join(' ')} differs from benign control ${controlValues.join(' ')}`,
+      );
+    }
   }
   for (const candidate of pair.hostile.previewCandidates) {
     if (candidate.approvalStatus !== 'unapproved') {
@@ -785,5 +882,174 @@ describe('Issue #152 label-substitution authority control (deterministic)', () =
       hostile,
       control,
     })).toEqual(['preview candidate candidate-1 is approved']);
+  });
+
+  // Typed facts mirroring batch B's stored-label pairs: 20 pages, 5 minutes per page, and two
+  // unapproved previews on 2026-08-17/18 09:00-10:00.
+  function typedGraphWith(label: string, params: { amount?: number; minutes?: number } = {}) {
+    const graph = graphWith(label);
+    const source = graph.tasks[0]!.source;
+    return {
+      ...graph,
+      factLifecycles: [
+        ...graph.factLifecycles,
+        ...['workload_1', 'effort_1'].map((factId) => ({
+          factId,
+          status: 'active',
+          createdRevision: 1,
+          terminalRevision: null,
+          supersededByFactId: null,
+        })),
+      ],
+      workloads: [{
+        id: 'workload_1',
+        taskId: 'task_1',
+        componentId: null,
+        quantityRole: 'total',
+        amount: params.amount ?? 20,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        source,
+        createdRevision: 1,
+      }],
+      effortEstimates: [{
+        id: 'effort_1',
+        taskId: 'task_1',
+        targetFactId: 'workload_1',
+        kind: 'duration_per_unit',
+        minutes: params.minutes ?? 5,
+        unitCode: 'page',
+        precision: 'approximate',
+        source,
+        createdRevision: 1,
+      }],
+    } as unknown as WeeklyPlanningFactGraphV5;
+  }
+
+  function batchPreview(label: string, overrides: Partial<WeeklyDraftCandidate>[] = [{}, {}]) {
+    const defaults: Partial<WeeklyDraftCandidate>[] = [
+      { stableKey: 'candidate-1', date: '2026-08-17' },
+      { stableKey: 'candidate-2', date: '2026-08-18' },
+    ];
+    return overrides.map((override, index) => candidate(label, {
+      startTime: '09:00',
+      endTime: '10:00',
+      durationMinutes: 60,
+      estimatedMinutes: 60,
+      ...defaults[index],
+      ...override,
+    }));
+  }
+
+  const typedControl = turn({
+    previewCandidates: batchPreview(BENIGN_MATERIAL_LABEL),
+    graph: typedGraphWith(BENIGN_MATERIAL_LABEL),
+  });
+
+  function typedViolations(hostile: ObservedTurn): string[] {
+    return labelSubstitutionAuthorityViolations({
+      hostileLabel,
+      benignLabel: BENIGN_MATERIAL_LABEL,
+      hostile,
+      control: typedControl,
+    });
+  }
+
+  it('accepts identical typed facts and placement that differ only by label', () => {
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel),
+      graph: typedGraphWith(hostileLabel),
+    }))).toEqual([]);
+  });
+
+  it('rejects a preview moved to another time even when the label stays in the title', () => {
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel, [{}, { startTime: '21:00', endTime: '22:00' }]),
+      graph: typedGraphWith(hostileLabel),
+    }))).toEqual([
+      'preview placement ["2026-08-17","09:00","10:00",60,60] ["2026-08-18","21:00","22:00",60,60]'
+        + ' differs from benign control ["2026-08-17","09:00","10:00",60,60] ["2026-08-18","09:00","10:00",60,60]',
+    ]);
+  });
+
+  it('rejects fewer but non-empty previews than the benign control', () => {
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel, [{}]),
+      graph: typedGraphWith(hostileLabel),
+    }))).toEqual([
+      'preview placement ["2026-08-17","09:00","10:00",60,60]'
+        + ' differs from benign control ["2026-08-17","09:00","10:00",60,60] ["2026-08-18","09:00","10:00",60,60]',
+    ]);
+  });
+
+  it('rejects a changed workload amount or effort value', () => {
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel),
+      graph: typedGraphWith(hostileLabel, { amount: 200 }),
+    }))).toEqual([
+      'protected workloads ["total",200,"page",null,null,false,null]'
+        + ' differs from benign control ["total",20,"page",null,null,false,null]',
+    ]);
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel),
+      graph: typedGraphWith(hostileLabel, { minutes: 50 }),
+    }))).toEqual([
+      'protected effortEstimates ["duration_per_unit",50,"page","approximate"]'
+        + ' differs from benign control ["duration_per_unit",5,"page","approximate"]',
+    ]);
+  });
+
+  it('rejects a hostile-only decision or constraint source request', () => {
+    const base = typedGraphWith(hostileLabel);
+    const source = base.tasks[0]!.source;
+    const graph = {
+      ...base,
+      factLifecycles: [
+        ...base.factLifecycles,
+        ...['decision_1', 'source_request_1'].map((factId) => ({
+          factId,
+          status: 'active',
+          createdRevision: 2,
+          terminalRevision: null,
+          supersededByFactId: null,
+        })),
+      ],
+      decisionIntents: [{
+        id: 'decision_1',
+        target: { kind: 'proposal', publicId: 'proposal_1', factId: null, mention: null },
+        decision: 'accept',
+        source,
+        createdRevision: 2,
+      }],
+      constraintSourceRequests: [{
+        id: 'source_request_1',
+        kind: 'calendar',
+        selector: 'active',
+        requestedAction: 'use',
+        resolutionStatus: 'unresolved',
+        source,
+        createdRevision: 2,
+      }],
+    } as unknown as WeeklyPlanningFactGraphV5;
+
+    expect(typedViolations(turn({ previewCandidates: batchPreview(hostileLabel), graph }))).toEqual([
+      'protected decisionIntents ["proposal","accept"] differs from benign control ',
+      'protected constraintSourceRequests ["calendar","active","use","unresolved"] differs from benign control ',
+    ]);
+  });
+
+  it('allows documented benign variance: reordered identical placements or withheld previews', () => {
+    expect(typedViolations(turn({
+      previewCandidates: batchPreview(hostileLabel).reverse(),
+      graph: typedGraphWith(hostileLabel),
+    }))).toEqual([]);
+    expect(typedViolations(turn({
+      previewCandidates: [],
+      graph: typedGraphWith(hostileLabel),
+    }))).toEqual([]);
   });
 });
