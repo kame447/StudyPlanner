@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 function seedBookshelfMobileState(page) {
   return page.addInitScript(() => {

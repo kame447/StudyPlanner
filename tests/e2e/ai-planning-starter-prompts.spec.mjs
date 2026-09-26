@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 function offsetDate(baseDate, days) {
   const date = new Date(`${baseDate}T00:00:00`);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return date.toLocaleDateString('sv-SE');
 }
 
 function shortDate(date) {
@@ -13,11 +13,11 @@ function shortDate(date) {
 
 test('AI planning starters use registered exam, unfinished task, and active material', async ({ page }) => {
   await page.addInitScript(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE');
     const dateAfter = (days) => {
       const date = new Date(`${today}T00:00:00`);
       date.setDate(date.getDate() + days);
-      return date.toISOString().slice(0, 10);
+      return date.toLocaleDateString('sv-SE');
     };
     const now = new Date().toISOString();
     const user = {
@@ -83,7 +83,7 @@ test('AI planning starters use registered exam, unfinished task, and active mate
   });
 
   await page.goto('/');
-  const today = await page.evaluate(() => new Date().toISOString().slice(0, 10));
+  const today = await page.evaluate(() => new Date().toLocaleDateString('sv-SE'));
   const examDate = offsetDate(today, 7);
   const todoDate = offsetDate(today, 4);
   const materialDate = offsetDate(today, 12);

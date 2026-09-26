@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 import {
   expectOrderedWithoutOverlap,
   expectRectContained,
@@ -29,7 +29,7 @@ const RESIZE_SEQUENCE = [
 
 async function seedHome(page, planCount) {
   await page.addInitScript(({ count }) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE');
     const now = new Date().toISOString();
     const user = {
       id: 'home-containment-user',
