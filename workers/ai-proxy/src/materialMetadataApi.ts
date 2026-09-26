@@ -9,7 +9,9 @@ import {
 } from '../../../shared/materialMetadataContract';
 import {
   FirestoreServiceAccountClient,
+  FirestoreServiceAccountTokenProvider,
   type FirestoreServiceAccountEnv,
+  type FirestoreTokenProvider,
 } from './firestoreServiceAccountClient';
 
 export interface MaterialMetadataApiEnv extends FirestoreServiceAccountEnv {
@@ -142,8 +144,16 @@ function serviceAccountConfigured(env: MaterialMetadataApiEnv): boolean {
   );
 }
 
-function catalogClient(env: MaterialMetadataApiEnv): FirestoreServiceAccountClient | null {
-  return serviceAccountConfigured(env) ? new FirestoreServiceAccountClient(env) : null;
+function catalogClient(
+  env: MaterialMetadataApiEnv,
+  tokenProvider?: FirestoreTokenProvider,
+): FirestoreServiceAccountClient | null {
+  return serviceAccountConfigured(env)
+    ? new FirestoreServiceAccountClient(
+        env,
+        tokenProvider ?? new FirestoreServiceAccountTokenProvider(env),
+      )
+    : null;
 }
 
 function catalogDocumentId(candidate: MaterialMetadataCandidate): string {
@@ -530,6 +540,7 @@ async function readQueryPayload(
 export async function handleMaterialMetadataApi(
   request: Request,
   env: MaterialMetadataApiEnv,
+  tokenProvider?: FirestoreTokenProvider,
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname;
   if (!isMaterialMetadataPath(pathname)) {
@@ -550,7 +561,7 @@ export async function handleMaterialMetadataApi(
 
   const query = await readQueryPayload(request, env);
   if (query instanceof Response) return query;
-  const client = catalogClient(env);
+  const client = catalogClient(env, tokenProvider);
 
   if (pathname === DETAILS_PATH) {
     try {

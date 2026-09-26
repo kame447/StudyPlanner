@@ -1,5 +1,6 @@
 import {
   FirestoreServiceAccountClient,
+  type FirestoreBulkDocumentWrite,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
@@ -11,7 +12,7 @@ const RETENTION_COLLECTIONS = [
   'observability_active_user_windows',
 ] as const;
 const DEFAULT_RETENTION_BATCH_SIZE = 100;
-const MAX_RETENTION_BATCH_SIZE = 250;
+const MAX_RETENTION_BATCH_SIZE = 100;
 
 interface ObservabilityRetentionFirestore {
   queryDocumentsAfter(params: {
@@ -19,7 +20,7 @@ interface ObservabilityRetentionFirestore {
     orderByField: string;
     limit?: number;
   }): Promise<FirestoreOrderedDocument[]>;
-  deleteDocument(collection: string, id: string): Promise<void>;
+  commitWrites(writes: readonly FirestoreBulkDocumentWrite[]): Promise<void>;
 }
 
 export interface ProductObservabilityRetentionEnv extends FirestoreServiceAccountEnv {}
@@ -55,6 +56,7 @@ export class ProductObservabilityRetentionService {
     const nowIso = this.now().toISOString();
     let deleted = 0;
     let hasMore = false;
+    const deletes: FirestoreBulkDocumentWrite[] = [];
 
     for (const collection of RETENTION_COLLECTIONS) {
       const rows = await this.firestore.queryDocumentsAfter({
@@ -63,13 +65,12 @@ export class ProductObservabilityRetentionService {
         limit: pageSize,
       });
       const expired = expiredPrefix(rows, nowIso);
-      for (const row of expired) {
-        await this.firestore.deleteDocument(collection, row.id);
-      }
+      expired.forEach((row) => deletes.push({ collection, id: row.id, delete: true }));
       deleted += expired.length;
       if (expired.length === pageSize) hasMore = true;
     }
 
+    await this.firestore.commitWrites(deletes);
     return { deleted, hasMore };
   }
 }

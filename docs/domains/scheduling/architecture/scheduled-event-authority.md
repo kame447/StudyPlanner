@@ -1,7 +1,7 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-09-10
+Updated: 2026-09-26
 Baseline implementation: Issue #278 — completed
 
 ## Product invariant
@@ -112,10 +112,15 @@ kind/details = study-specific / general-specific additional data
 - TimetableTemplate由来の未import occurrenceはread-onlyとして表示し、通常Planのdrag/edit/delete mutationへ誤送信しない。
 - timetable import済みPlanが同じsource occurrenceを所有する場合はPlanを優先し、template occurrenceを二重表示しない。
 - mutation対象のbacking identityを尊重し、表示用projectionを別種類のmutationへ誤送信しない。
+- 終日または日を跨ぐoccurrenceはhourly grid内の24時間blockへ変換せず、時間グリッド上部の専用laneへ表示する。
+- 複数日にまたがるoccurrenceは対象日の範囲を一つのspanning presentationとして示す。
+- 通常のtimed occurrenceは実時間区間が重なる場合だけ横幅を分割し、境界が接するだけのintervalは重複として扱わない。
+- 上部laneでも通常timed cardと同程度の可読性を維持し、利用可能幅を使う前に不要な省略を行わない。
 
 ### Day
 
 - 当日表示可否と当日時間sliceは`ScheduleOccurrence`から決める。
+- 終日または日を跨ぐoccurrenceはhourly grid上部の専用領域へ表示し、通常timed occurrenceとActualの時間軸を圧迫しない。
 - URL / memo / checklist等のrich metadataはbacking compatibility objectへ戻って参照してよいが、発生日判定を再解釈しない。
 
 ### AI weekly planning

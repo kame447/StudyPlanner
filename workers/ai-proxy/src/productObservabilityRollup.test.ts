@@ -53,12 +53,11 @@ class MemoryRollupFirestore {
     return `tx-${this.transactionSequence}`;
   }
 
-  async getDocumentInTransaction(
-    collection: string,
-    id: string,
+  async batchGetDocumentKeys(
+    keys: readonly Array<{ collection: string; id: string }>,
     _transaction: string,
-  ): Promise<StoredDocument | null> {
-    return await this.getDocument(collection, id);
+  ): Promise<Array<StoredDocument | null>> {
+    return await Promise.all(keys.map(({ collection, id }) => this.getDocument(collection, id)));
   }
 
   async commitTransaction(
@@ -141,6 +140,14 @@ describe('ProductObservabilityRollupEngine', () => {
     expect(dailyAfterFirst?.activeActorCount).toBe(1);
     expect(dailyAfterFirst?.processedEventCount).toBe(2);
     expect(dailyAfterFirst).not.toHaveProperty('id');
+    expect(firestore.documents.get(
+      'observability_user_summary_production/actor-12345678',
+    )).toMatchObject({
+      userEnrichmentVersion: 1,
+      activeDayCount: 1,
+      latestErrorAt: null,
+      latestErrorCategory: null,
+    });
 
     const second = await rollup.runBatch(50);
     const dailyAfterSecond = firestore.documents.get(dailyKey);

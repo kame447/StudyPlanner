@@ -10,7 +10,10 @@ import {
   type ObservabilityLogSessionSummary,
   type ObservabilityLogSeverity,
 } from '../../../shared/productObservabilityLogReadModel';
-import type { FirestoreOrderedCursor } from './firestoreServiceAccountClient';
+import type {
+  FirestoreOrderedCursor,
+  FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { WeeklyPlanningTraceFirestoreClient } from './weeklyPlanningTraceFirestore';
 import { loadWeeklyPlanningTraceAdminEntryPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { safeWeeklyPlanningTraceDocumentsForAdmin } from './weeklyPlanningTraceApi';
@@ -311,13 +314,20 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
   private readonly env: ProductObservabilityWeeklyPlanningDiagnosticEnv;
   private authorizedAdminUid: string | null = null;
 
-  constructor(env: ProductObservabilityWeeklyPlanningDiagnosticEnv) {
+  constructor(
+    env: ProductObservabilityWeeklyPlanningDiagnosticEnv,
+    tokenProvider?: FirestoreTokenProvider,
+  ) {
     this.env = env;
-    this.firestore = new WeeklyPlanningTraceFirestoreClient(env);
+    this.firestore = new WeeklyPlanningTraceFirestoreClient(env, tokenProvider);
   }
 
-  async assertTraceReader(adminUid: string): Promise<void> {
-    const admin = await this.firestore.getDocument(ADMINS, adminUid);
+  async assertTraceReader(
+    adminUid: string,
+    authenticatedAdminDocument?: Record<string, unknown>,
+  ): Promise<void> {
+    const admin = authenticatedAdminDocument
+      ?? await this.firestore.getDocument(ADMINS, adminUid);
     if (admin?.enabled !== true || admin.weeklyPlanningTraceReader !== true) {
       throw new Error('observability_trace_reader_forbidden');
     }
@@ -476,8 +486,8 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
         afterSequence,
         Math.min(WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize, remainingScan),
       );
-      entries.push(...page.entries);
-      nextAfterSequence = page.nextAfterSequence;
+      entries.push(...page.scannedEntries);
+      nextAfterSequence = page.nextAfterScannedSequence;
       const consumedThrough = nextAfterSequence ?? page.requestedEndSequence;
       const consumedSequenceCount = Math.max(0, consumedThrough - afterSequence);
       if (consumedSequenceCount === 0) break;
