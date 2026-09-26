@@ -3,6 +3,7 @@ import type {
   DecisionEvaluation,
   DecisionProvider,
 } from '../decisionProvider';
+import { isFocusedAuthorizationDecisionContext } from '../../../../../shared/focusedAuthorizationDecision';
 import { gateDecision } from '../decisionPolicy';
 import {
   gateOutcomeForEvaluation,
@@ -46,15 +47,15 @@ export interface JevComparisonResult {
   probabilities: Record<AuthorizationDecision, number> | null;
   conditionChange: number | null;
   independentMeaning: number | null;
-  gateOutcome: GateOutcome;
+  gateOutcome: GateOutcome | 'rejected_before_provider';
   unavailableReason: string | null;
-  latencyMs: number;
+  latencyMs: number | null;
   tokens: {
     prompt: number | null;
     completion: number | null;
   };
   costUsd: number | null;
-  requestedModel: string;
+  requestedModel: string | null;
   servedModel: string | null;
 }
 
@@ -75,7 +76,8 @@ export interface LunaComparisonResult {
 export type FocusedAuthorizationFocusedBoundaryRoute =
   | 'jev_accepted'
   | 'luna_after_jev_abstain'
-  | 'luna_after_jev_unavailable';
+  | 'luna_after_jev_unavailable'
+  | 'luna_only_invalid_context';
 
 export interface FocusedAuthorizationFocusedBoundaryResult {
   route: FocusedAuthorizationFocusedBoundaryRoute;
@@ -105,9 +107,34 @@ export interface LatencySummary {
   p95: number | null;
 }
 
+export interface ConfidenceInterval95 {
+  confidenceLevel: 0.95;
+  method: 'wilson';
+  lower: number | null;
+  upper: number | null;
+}
+
+export interface OneSidedUpperBound95 {
+  confidenceLevel: 0.95;
+  method: 'clopper_pearson_exact';
+  upper: number | null;
+}
+
+export interface StatisticalUncertainty95 {
+  byClass: Record<AuthorizationDecision, {
+    precision: ConfidenceInterval95;
+    recall: ConfidenceInterval95;
+  }>;
+  falseCreateRate: OneSidedUpperBound95;
+  createPlanMissRate: OneSidedUpperBound95;
+}
+
 export interface FocusedAuthorizationSystemMetrics {
   caseCount: number;
+  evaluationEligibleCaseCount: number;
+  rejectedBeforeProviderCount: number;
   labelStatusCounts: Record<string, number>;
+  provisional: boolean;
   byClass: Record<AuthorizationDecision, ClassMetrics>;
   coverage: RatioMetric;
   selectiveAccuracy: RatioMetric;
@@ -123,6 +150,7 @@ export interface FocusedAuthorizationSystemMetrics {
     completionTokens: NullableAggregate;
   };
   costUsd: NullableAggregate;
+  uncertainty95: StatisticalUncertainty95;
 }
 
 export interface FocusedAuthorizationFocusedBoundaryMetrics
@@ -140,6 +168,25 @@ export interface JevLunaAgreementMetrics {
     jevCreatePlanLunaFallback: number;
     jevFallbackLunaCreatePlan: number;
   };
+  labelStatusCounts: Record<string, number>;
+  provisional: boolean;
+}
+
+export interface PairedDiscordanceMetrics {
+  caseCount: number;
+  bLunaCorrectFocusedBoundaryWrong: number;
+  cFocusedBoundaryCorrectLunaWrong: number;
+  exactTwoSidedMcNemarPValue: number;
+  labelStatusCounts: Record<string, number>;
+  provisional: boolean;
+}
+
+export interface PairedVsLabelsMetrics {
+  note: 'Paired correctness uses supplied labels; repeated paraphrases in one conversation group are not independent observations.';
+  overall: PairedDiscordanceMetrics;
+  expectedFallbackFalseCreateRisk: PairedDiscordanceMetrics;
+  labelStatusCounts: Record<string, number>;
+  provisional: boolean;
 }
 
 export interface FocusedAuthorizationComparisonMetrics {
@@ -147,6 +194,9 @@ export interface FocusedAuthorizationComparisonMetrics {
   luna: FocusedAuthorizationSystemMetrics;
   focusedBoundary: FocusedAuthorizationFocusedBoundaryMetrics;
   jevLunaAgreement: JevLunaAgreementMetrics;
+  pairedVsLabels: PairedVsLabelsMetrics;
+  labelStatusCounts: Record<string, number>;
+  provisional: boolean;
 }
 
 export interface FocusedAuthorizationComparisonSegmentedMetrics {
@@ -157,6 +207,7 @@ export interface FocusedAuthorizationComparisonSegmentedMetrics {
 
 export interface FocusedAuthorizationJevLunaComparisonReport {
   scopeNote: 'Focused-boundary latency and cost exclude downstream generic-semantic execution after fallback.';
+  independenceNote: 'Repeated paraphrases in one conversation group are not independent observations.';
   labelStatuses: string[];
   cases: FocusedAuthorizationJevLunaCaseResult[];
   metrics: FocusedAuthorizationComparisonSegmentedMetrics;
@@ -177,15 +228,97 @@ interface QualitySample {
 
 interface CompletedCase {
   result: FocusedAuthorizationJevLunaCaseResult;
-  jevEvaluation: DecisionEvaluation;
+  jevEvaluation: DecisionEvaluation | null;
   lunaEvaluation: LunaFocusedAuthorizationEvaluation;
-  jevQuality: QualitySample;
+  jevQuality: QualitySample | null;
   lunaQuality: QualitySample;
   focusedBoundaryQuality: QualitySample;
 }
 
 function ratio(numerator: number, denominator: number): RatioMetric {
   return { numerator, denominator, value: denominator === 0 ? null : numerator / denominator };
+}
+
+function validCount(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function binomialCdf(successes: number, trials: number, probability: number): number {
+  if (successes >= trials || probability === 0) return 1;
+  if (successes < 0 || probability === 1) return 0;
+  let term = (1 - probability) ** trials;
+  let total = term;
+  for (let index = 0; index < successes; index += 1) {
+    term *= ((trials - index) / (index + 1)) * (probability / (1 - probability));
+    total += term;
+  }
+  return Math.min(1, Math.max(0, total));
+}
+
+export function exactClopperPearsonUpperBound95(
+  occurrences: number,
+  sampleCount: number,
+): number | null {
+  if (!validCount(occurrences) || !validCount(sampleCount) || occurrences > sampleCount) {
+    throw new Error('Clopper-Pearson inputs must be non-negative integer counts.');
+  }
+  if (sampleCount === 0) return null;
+  if (occurrences === sampleCount) return 1;
+  let lower = 0;
+  let upper = 1;
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const midpoint = (lower + upper) / 2;
+    if (binomialCdf(occurrences, sampleCount, midpoint) > 0.05) lower = midpoint;
+    else upper = midpoint;
+  }
+  return (lower + upper) / 2;
+}
+
+export function wilsonInterval95(
+  occurrences: number,
+  sampleCount: number,
+): ConfidenceInterval95 {
+  if (!validCount(occurrences) || !validCount(sampleCount) || occurrences > sampleCount) {
+    throw new Error('Wilson interval inputs must be non-negative integer counts.');
+  }
+  if (sampleCount === 0) {
+    return { confidenceLevel: 0.95, method: 'wilson', lower: null, upper: null };
+  }
+  const z = 1.959963984540054;
+  const proportion = occurrences / sampleCount;
+  const zSquaredOverN = (z * z) / sampleCount;
+  const center = (proportion + zSquaredOverN / 2) / (1 + zSquaredOverN);
+  const margin = z * Math.sqrt(
+    (proportion * (1 - proportion) / sampleCount)
+      + ((z * z) / (4 * sampleCount * sampleCount)),
+  ) / (1 + zSquaredOverN);
+  return {
+    confidenceLevel: 0.95,
+    method: 'wilson',
+    lower: Math.max(0, center - margin),
+    upper: Math.min(1, center + margin),
+  };
+}
+
+export function exactTwoSidedMcNemarPValue(
+  bLunaCorrectFocusedBoundaryWrong: number,
+  cFocusedBoundaryCorrectLunaWrong: number,
+): number {
+  if (!validCount(bLunaCorrectFocusedBoundaryWrong)
+    || !validCount(cFocusedBoundaryCorrectLunaWrong)) {
+    throw new Error('McNemar inputs must be non-negative integer counts.');
+  }
+  const discordantCount = bLunaCorrectFocusedBoundaryWrong
+    + cFocusedBoundaryCorrectLunaWrong;
+  if (discordantCount === 0) return 1;
+  return Math.min(
+    1,
+    2 * binomialCdf(
+      Math.min(bLunaCorrectFocusedBoundaryWrong, cFocusedBoundaryCorrectLunaWrong),
+      discordantCount,
+      0.5,
+    ),
+  );
 }
 
 function percentile(values: readonly number[], quantile: number): number | null {
@@ -209,11 +342,62 @@ function nullableAggregate(values: readonly (number | null)[]): NullableAggregat
   };
 }
 
-function labelStatusCounts(samples: readonly QualitySample[]): Record<string, number> {
-  return samples.reduce<Record<string, number>>((counts, sample) => {
-    counts[sample.labelStatus] = (counts[sample.labelStatus] ?? 0) + 1;
+function countLabelStatuses(statuses: readonly string[]): Record<string, number> {
+  return statuses.reduce<Record<string, number>>((counts, status) => {
+    counts[status] = (counts[status] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function labelStatusCounts(samples: readonly QualitySample[]): Record<string, number> {
+  return countLabelStatuses(samples.map((sample) => sample.labelStatus));
+}
+
+function provisionalLabelCounts(counts: Readonly<Record<string, number>>): boolean {
+  return Object.entries(counts).some(
+    ([status, count]) => count > 0 && status !== 'human_reviewed_gold',
+  );
+}
+
+function oneSidedUpperBound(metric: RatioMetric): OneSidedUpperBound95 {
+  return {
+    confidenceLevel: 0.95,
+    method: 'clopper_pearson_exact',
+    upper: exactClopperPearsonUpperBound95(metric.numerator, metric.denominator),
+  };
+}
+
+function statisticalUncertainty95(params: {
+  byClass: Record<AuthorizationDecision, ClassMetrics>;
+  falsePositiveCreatePlan: RatioMetric;
+  falseNegativeCreatePlan: RatioMetric;
+}): StatisticalUncertainty95 {
+  return {
+    byClass: {
+      create_plan: {
+        precision: wilsonInterval95(
+          params.byClass.create_plan.precision.numerator,
+          params.byClass.create_plan.precision.denominator,
+        ),
+        recall: wilsonInterval95(
+          params.byClass.create_plan.recall.numerator,
+          params.byClass.create_plan.recall.denominator,
+        ),
+      },
+      fallback: {
+        precision: wilsonInterval95(
+          params.byClass.fallback.precision.numerator,
+          params.byClass.fallback.precision.denominator,
+        ),
+        recall: wilsonInterval95(
+          params.byClass.fallback.recall.numerator,
+          params.byClass.fallback.recall.denominator,
+        ),
+      },
+    },
+    falseCreateRate: oneSidedUpperBound(params.falsePositiveCreatePlan),
+    createPlanMissRate: oneSidedUpperBound(params.falseNegativeCreatePlan),
+  };
 }
 
 function summarizeQuality(samples: readonly QualitySample[]): FocusedAuthorizationSystemMetrics {
@@ -251,23 +435,31 @@ function summarizeQuality(samples: readonly QualitySample[]): FocusedAuthorizati
     }
   }
 
+  const byClass: Record<AuthorizationDecision, ClassMetrics> = {
+    create_plan: {
+      precision: ratio(correctCounts.create_plan, predictedCounts.create_plan),
+      recall: ratio(correctCounts.create_plan, expectedCounts.create_plan),
+    },
+    fallback: {
+      precision: ratio(correctCounts.fallback, predictedCounts.fallback),
+      recall: ratio(correctCounts.fallback, expectedCounts.fallback),
+    },
+  };
+  const falsePositiveCreatePlan = ratio(falsePositiveCreatePlanCount, expectedCounts.fallback);
+  const falseNegativeCreatePlan = ratio(falseNegativeCreatePlanCount, expectedCounts.create_plan);
+  const labels = labelStatusCounts(samples);
+
   return {
     caseCount: samples.length,
-    labelStatusCounts: labelStatusCounts(samples),
-    byClass: {
-      create_plan: {
-        precision: ratio(correctCounts.create_plan, predictedCounts.create_plan),
-        recall: ratio(correctCounts.create_plan, expectedCounts.create_plan),
-      },
-      fallback: {
-        precision: ratio(correctCounts.fallback, predictedCounts.fallback),
-        recall: ratio(correctCounts.fallback, expectedCounts.fallback),
-      },
-    },
+    evaluationEligibleCaseCount: samples.length,
+    rejectedBeforeProviderCount: 0,
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
+    byClass,
     coverage: ratio(coveredCount, samples.length),
     selectiveAccuracy: ratio(correctCount, coveredCount),
-    falsePositiveCreatePlan: ratio(falsePositiveCreatePlanCount, expectedCounts.fallback),
-    falseNegativeCreatePlan: ratio(falseNegativeCreatePlanCount, expectedCounts.create_plan),
+    falsePositiveCreatePlan,
+    falseNegativeCreatePlan,
     abstainRate: ratio(abstainCount, samples.length),
     fallbackDecisionRate: ratio(fallbackDecisionCount, samples.length),
     invalidRate: ratio(invalidCount, samples.length),
@@ -282,19 +474,40 @@ function summarizeQuality(samples: readonly QualitySample[]): FocusedAuthorizati
       completionTokens: nullableAggregate(samples.flatMap((sample) => sample.completionTokenComponents)),
     },
     costUsd: nullableAggregate(samples.flatMap((sample) => sample.costComponents)),
+    uncertainty95: statisticalUncertainty95({
+      byClass,
+      falsePositiveCreatePlan,
+      falseNegativeCreatePlan,
+    }),
   };
 }
 
 function summarizeJev(cases: readonly CompletedCase[]): FocusedAuthorizationSystemMetrics {
-  const generic = summarizeQuality(cases.map((value) => value.jevQuality));
-  const samples: FocusedAuthorizationEvaluationSample[] = cases.map((value) => ({
+  const eligibleCases = cases.filter((value): value is CompletedCase & {
+    jevEvaluation: DecisionEvaluation;
+    jevQuality: QualitySample;
+  } => value.jevEvaluation !== null && value.jevQuality !== null);
+  const generic = summarizeQuality(eligibleCases.map((value) => value.jevQuality));
+  const samples: FocusedAuthorizationEvaluationSample[] = eligibleCases.map((value) => ({
     id: value.result.id,
     expected: value.result.expected,
     evaluation: value.jevEvaluation,
   }));
-  const existing = summarizeFocusedAuthorizationEvaluation(samples);
+  const rejectedBeforeProviderCount = cases.length - eligibleCases.length;
+  const existing = summarizeFocusedAuthorizationEvaluation(samples, rejectedBeforeProviderCount);
+  const labels = countLabelStatuses(cases.map((value) => value.result.labelStatus));
+  const uncertainty95 = statisticalUncertainty95({
+    byClass: existing.byClass,
+    falsePositiveCreatePlan: existing.falseAutoCreatePlanRate,
+    falseNegativeCreatePlan: generic.falseNegativeCreatePlan,
+  });
   return {
     ...generic,
+    caseCount: cases.length,
+    evaluationEligibleCaseCount: eligibleCases.length,
+    rejectedBeforeProviderCount,
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
     byClass: existing.byClass,
     coverage: existing.coverage,
     selectiveAccuracy: existing.selectiveAccuracy,
@@ -313,6 +526,7 @@ function summarizeJev(cases: readonly CompletedCase[]): FocusedAuthorizationSyst
       knownSubtotal: existing.reportedCostUsd.knownSubtotal,
       completeTotal: existing.reportedCostUsd.completeTotal,
     },
+    uncertainty95,
   };
 }
 
@@ -322,6 +536,7 @@ function summarizeAgreement(cases: readonly CompletedCase[]): JevLunaAgreementMe
   let jevCreatePlanLunaFallback = 0;
   let jevFallbackLunaCreatePlan = 0;
   for (const value of cases) {
+    if (value.jevEvaluation === null) continue;
     const gate = gateDecision(value.jevEvaluation);
     if (gate.status !== 'accepted' || value.lunaEvaluation.status !== 'evaluated') continue;
     comparableCaseCount += 1;
@@ -333,6 +548,7 @@ function summarizeAgreement(cases: readonly CompletedCase[]): JevLunaAgreementMe
       jevFallbackLunaCreatePlan += 1;
     }
   }
+  const labels = countLabelStatuses(cases.map((value) => value.result.labelStatus));
   return {
     basis: 'jev_gated_decision_vs_luna_decision',
     note: 'Agreement is not accuracy and is not compared with labels.',
@@ -340,6 +556,8 @@ function summarizeAgreement(cases: readonly CompletedCase[]): JevLunaAgreementMe
     nonComparableCaseCount: cases.length - comparableCaseCount,
     agreement: ratio(agreementCount, comparableCaseCount),
     discordantPairCounts: { jevCreatePlanLunaFallback, jevFallbackLunaCreatePlan },
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
   };
 }
 
@@ -356,12 +574,61 @@ function summarizeFocusedBoundary(
   };
 }
 
+function pairedDiscordance(
+  cases: readonly CompletedCase[],
+  basis: 'label_correctness' | 'false_create_risk' = 'label_correctness',
+): PairedDiscordanceMetrics {
+  let bLunaCorrectFocusedBoundaryWrong = 0;
+  let cFocusedBoundaryCorrectLunaWrong = 0;
+  for (const value of cases) {
+    const expected = value.result.expected;
+    const lunaCorrect = basis === 'false_create_risk'
+      ? value.result.luna.decision !== 'create_plan'
+      : value.result.luna.decision === expected;
+    const focusedBoundaryCorrect = basis === 'false_create_risk'
+      ? value.result.focusedBoundary.finalDecision !== 'create_plan'
+      : value.result.focusedBoundary.finalDecision === expected;
+    if (lunaCorrect && !focusedBoundaryCorrect) bLunaCorrectFocusedBoundaryWrong += 1;
+    if (!lunaCorrect && focusedBoundaryCorrect) cFocusedBoundaryCorrectLunaWrong += 1;
+  }
+  const labels = countLabelStatuses(cases.map((value) => value.result.labelStatus));
+  return {
+    caseCount: cases.length,
+    bLunaCorrectFocusedBoundaryWrong,
+    cFocusedBoundaryCorrectLunaWrong,
+    exactTwoSidedMcNemarPValue: exactTwoSidedMcNemarPValue(
+      bLunaCorrectFocusedBoundaryWrong,
+      cFocusedBoundaryCorrectLunaWrong,
+    ),
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
+  };
+}
+
+function summarizePairedVsLabels(cases: readonly CompletedCase[]): PairedVsLabelsMetrics {
+  const labels = countLabelStatuses(cases.map((value) => value.result.labelStatus));
+  return {
+    note: 'Paired correctness uses supplied labels; repeated paraphrases in one conversation group are not independent observations.',
+    overall: pairedDiscordance(cases),
+    expectedFallbackFalseCreateRisk: pairedDiscordance(
+      cases.filter((value) => value.result.expected === 'fallback'),
+      'false_create_risk',
+    ),
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
+  };
+}
+
 function summarizeComparison(cases: readonly CompletedCase[]): FocusedAuthorizationComparisonMetrics {
+  const labels = countLabelStatuses(cases.map((value) => value.result.labelStatus));
   return {
     jev: summarizeJev(cases),
     luna: summarizeQuality(cases.map((value) => value.lunaQuality)),
     focusedBoundary: summarizeFocusedBoundary(cases),
     jevLunaAgreement: summarizeAgreement(cases),
+    pairedVsLabels: summarizePairedVsLabels(cases),
+    labelStatusCounts: labels,
+    provisional: provisionalLabelCounts(labels),
   };
 }
 
@@ -397,9 +664,19 @@ function validatedInputs(
 }
 
 function focusedBoundaryResult(
-  jev: DecisionEvaluation,
+  jev: DecisionEvaluation | null,
   luna: LunaFocusedAuthorizationEvaluation,
 ): FocusedAuthorizationFocusedBoundaryResult {
+  if (jev === null) {
+    return {
+      route: 'luna_only_invalid_context',
+      status: luna.status,
+      finalDecision: luna.status === 'evaluated' ? luna.decision : null,
+      totalLatencyMs: luna.metadata.latencyMs,
+      totalCostUsd: nullableAggregate([luna.metadata.costUsd]),
+      continuesToGenericSemantic: luna.status !== 'evaluated' || luna.decision === 'fallback',
+    };
+  }
   const gate = gateDecision(jev);
   if (gate.status === 'accepted') {
     return {
@@ -434,32 +711,44 @@ export async function compareFocusedAuthorizationCandidates(
 ): Promise<FocusedAuthorizationJevLunaComparisonReport> {
   validatedInputs(candidates, labels);
   const completed: CompletedCase[] = [];
-  for (const candidate of candidates) {
+  for (const [index, candidate] of candidates.entries()) {
     const label = labels[candidate.id];
     const context: FocusedAuthorizationEvaluationContext = {
       currentUserText: candidate.currentUserText,
       lastAssistantMessage: candidate.lastAssistantMessage,
     };
+    const providerContext = {
+      purpose: 'focused_authorization',
+      requestId: `jev-luna-comparison:${index}`,
+      inputRevision: 0,
+      previousStatus: 'needs_scope',
+      hasTasks: true,
+      hasPendingQuestion: false,
+      state: context,
+    } as const;
+    const jevEligible = isFocusedAuthorizationDecisionContext(providerContext);
     const [jevEvaluation, lunaEvaluation] = await Promise.all([
-      providers.jev.evaluate(context),
+      jevEligible ? providers.jev.evaluate(context) : Promise.resolve(null),
       providers.luna.evaluate(context),
     ]);
     const final = focusedBoundaryResult(jevEvaluation, lunaEvaluation);
     const jevResult: JevComparisonResult = {
-      rawChoice: jevEvaluation.status === 'evaluated' ? jevEvaluation.decision : null,
-      probabilities: jevEvaluation.status === 'evaluated' ? jevEvaluation.probabilities : null,
-      conditionChange: jevEvaluation.status === 'evaluated' ? jevEvaluation.conditionChange : null,
-      independentMeaning: jevEvaluation.status === 'evaluated' ? jevEvaluation.independentMeaning : null,
-      gateOutcome: gateOutcomeForEvaluation(jevEvaluation),
-      unavailableReason: jevEvaluation.status === 'unavailable' ? jevEvaluation.reason : null,
-      latencyMs: jevEvaluation.metadata.latencyMs,
+      rawChoice: jevEvaluation?.status === 'evaluated' ? jevEvaluation.decision : null,
+      probabilities: jevEvaluation?.status === 'evaluated' ? jevEvaluation.probabilities : null,
+      conditionChange: jevEvaluation?.status === 'evaluated' ? jevEvaluation.conditionChange : null,
+      independentMeaning: jevEvaluation?.status === 'evaluated' ? jevEvaluation.independentMeaning : null,
+      gateOutcome: jevEvaluation === null
+        ? 'rejected_before_provider'
+        : gateOutcomeForEvaluation(jevEvaluation),
+      unavailableReason: jevEvaluation?.status === 'unavailable' ? jevEvaluation.reason : null,
+      latencyMs: jevEvaluation?.metadata.latencyMs ?? null,
       tokens: {
-        prompt: jevEvaluation.metadata.inputTokens,
-        completion: jevEvaluation.metadata.outputTokens,
+        prompt: jevEvaluation?.metadata.inputTokens ?? null,
+        completion: jevEvaluation?.metadata.outputTokens ?? null,
       },
-      costUsd: jevEvaluation.metadata.costUsd,
-      requestedModel: jevEvaluation.metadata.requestedModel,
-      servedModel: jevEvaluation.metadata.servedModel,
+      costUsd: jevEvaluation?.metadata.costUsd ?? null,
+      requestedModel: jevEvaluation?.metadata.requestedModel ?? null,
+      servedModel: jevEvaluation?.metadata.servedModel ?? null,
     };
     const lunaResult: LunaComparisonResult = {
       decision: lunaEvaluation.status === 'evaluated' ? lunaEvaluation.decision : null,
@@ -487,17 +776,21 @@ export async function compareFocusedAuthorizationCandidates(
       focusedBoundary: final,
     };
     const lunaPrediction = lunaEvaluation.status === 'evaluated' ? lunaEvaluation.decision : null;
-    const focusedBoundaryTokenComponents = final.route === 'jev_accepted'
+    const focusedBoundaryTokenComponents = jevEvaluation === null
+      ? [lunaEvaluation.metadata.promptTokens]
+      : final.route === 'jev_accepted'
       ? [jevEvaluation.metadata.inputTokens]
       : [jevEvaluation.metadata.inputTokens, lunaEvaluation.metadata.promptTokens];
-    const focusedBoundaryCompletionComponents = final.route === 'jev_accepted'
+    const focusedBoundaryCompletionComponents = jevEvaluation === null
+      ? [lunaEvaluation.metadata.completionTokens]
+      : final.route === 'jev_accepted'
       ? [jevEvaluation.metadata.outputTokens]
       : [jevEvaluation.metadata.outputTokens, lunaEvaluation.metadata.completionTokens];
     completed.push({
       result,
       jevEvaluation,
       lunaEvaluation,
-      jevQuality: {
+      jevQuality: jevEvaluation === null ? null : {
         expected: label.expected,
         labelStatus: label.labelStatus,
         prediction: jevPrediction(jevEvaluation),
@@ -525,7 +818,9 @@ export async function compareFocusedAuthorizationCandidates(
         latencyMs: final.totalLatencyMs,
         promptTokenComponents: focusedBoundaryTokenComponents,
         completionTokenComponents: focusedBoundaryCompletionComponents,
-        costComponents: final.route === 'jev_accepted'
+        costComponents: jevEvaluation === null
+          ? [lunaEvaluation.metadata.costUsd]
+          : final.route === 'jev_accepted'
           ? [jevEvaluation.metadata.costUsd]
           : [jevEvaluation.metadata.costUsd, lunaEvaluation.metadata.costUsd],
       },
@@ -537,6 +832,7 @@ export async function compareFocusedAuthorizationCandidates(
     summarizeComparison(completed.filter(predicate));
   return {
     scopeNote: 'Focused-boundary latency and cost exclude downstream generic-semantic execution after fallback.',
+    independenceNote: 'Repeated paraphrases in one conversation group are not independent observations.',
     labelStatuses: [...new Set(completed.map((value) => value.result.labelStatus))].sort(),
     cases: completed.map((value) => value.result),
     metrics: {

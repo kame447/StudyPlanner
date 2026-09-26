@@ -9,7 +9,12 @@ import type {
   DecisionMetadata,
   DecisionProvider,
 } from '../decisionProvider';
-import { compareFocusedAuthorizationCandidates } from './focusedAuthorizationJevLunaComparison';
+import {
+  compareFocusedAuthorizationCandidates,
+  exactClopperPearsonUpperBound95,
+  exactTwoSidedMcNemarPValue,
+  wilsonInterval95,
+} from './focusedAuthorizationJevLunaComparison';
 import {
   createLunaFocusedAuthorizationEvaluator,
   type LunaFocusedAuthorizationEvaluation,
@@ -292,6 +297,16 @@ describe('Jev/Luna focused-boundary comparison', () => {
         knownSubtotal: 1.4,
         completeTotal: null,
       },
+      uncertainty95: {
+        byClass: {
+          create_plan: {
+            precision: { method: 'wilson', confidenceLevel: 0.95 },
+            recall: { method: 'wilson', confidenceLevel: 0.95 },
+          },
+        },
+        falseCreateRate: { method: 'clopper_pearson_exact', confidenceLevel: 0.95 },
+        createPlanMissRate: { method: 'clopper_pearson_exact', confidenceLevel: 0.95 },
+      },
     });
     expect(report.metrics.global.jevLunaAgreement).toMatchObject({
       basis: 'jev_gated_decision_vs_luna_decision',
@@ -333,11 +348,126 @@ describe('Jev/Luna focused-boundary comparison', () => {
         jevCreatePlanLunaFallback: 1,
         jevFallbackLunaCreatePlan: 0,
       },
+      labelStatusCounts: { human_reviewed_gold: 2 },
+      provisional: false,
     });
     expect(report.metrics.global.jev.selectiveAccuracy)
       .toEqual({ numerator: 0, denominator: 2, value: 0 });
     expect(report.metrics.global.luna.selectiveAccuracy)
       .toEqual({ numerator: 1, denominator: 2, value: 0.5 });
+  });
+
+  it('runs Luna only when the production decision context rejects a candidate', async () => {
+    const candidates = [
+      { ...candidate('empty'), currentUserText: '' },
+      { ...candidate('whitespace'), currentUserText: ' \n\t ' },
+      candidate('eligible'),
+    ];
+    const jev = queuedJev([jevEvaluation({ decision: 'fallback' })]);
+    const luna = queuedLuna([
+      lunaEvaluation('fallback', { latencyMs: 21 }),
+      lunaEvaluation('fallback', { latencyMs: 22 }),
+      lunaEvaluation('fallback', { latencyMs: 23 }),
+    ]);
+    const labels = Object.fromEntries(candidates.map((value) => [value.id, {
+      expected: 'fallback' as const,
+      labelStatus: 'synthetic_unreviewed',
+    }]));
+
+    const report = await compareFocusedAuthorizationCandidates(candidates, labels, { jev, luna });
+
+    expect(jev.evaluate).toHaveBeenCalledTimes(1);
+    expect(luna.evaluate).toHaveBeenCalledTimes(3);
+    expect(report.cases.slice(0, 2)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        jev: expect.objectContaining({
+          gateOutcome: 'rejected_before_provider',
+          latencyMs: null,
+          requestedModel: null,
+        }),
+        focusedBoundary: expect.objectContaining({
+          route: 'luna_only_invalid_context',
+          finalDecision: 'fallback',
+          totalLatencyMs: expect.any(Number),
+          totalCostUsd: expect.objectContaining({ componentCount: 1 }),
+        }),
+      }),
+    ]));
+    expect(report.cases.map((value) => value.focusedBoundary.route)).toEqual([
+      'luna_only_invalid_context',
+      'luna_only_invalid_context',
+      'jev_accepted',
+    ]);
+    expect(report.metrics.global.jev).toMatchObject({
+      caseCount: 3,
+      evaluationEligibleCaseCount: 1,
+      rejectedBeforeProviderCount: 2,
+      coverage: { numerator: 1, denominator: 1, value: 1 },
+      abstainRate: { numerator: 0, denominator: 1, value: 0 },
+      labelStatusCounts: { synthetic_unreviewed: 3 },
+      provisional: true,
+    });
+    expect(report.metrics.global.luna).toMatchObject({
+      caseCount: 3,
+      evaluationEligibleCaseCount: 3,
+      rejectedBeforeProviderCount: 0,
+    });
+  });
+
+  it('reports paired label correctness, fallback-risk discordance and provisional status', async () => {
+    const values = [
+      candidate('overall-b'),
+      candidate('overall-c'),
+      candidate('fallback-b'),
+      candidate('fallback-c'),
+    ];
+    const report = await compareFocusedAuthorizationCandidates(
+      values,
+      {
+        'overall-b': { expected: 'create_plan', labelStatus: 'human_reviewed_gold' },
+        'overall-c': { expected: 'create_plan', labelStatus: 'human_reviewed_gold' },
+        'fallback-b': { expected: 'fallback', labelStatus: 'human_reviewed_gold' },
+        'fallback-c': { expected: 'fallback', labelStatus: 'synthetic_unreviewed' },
+      },
+      {
+        jev: queuedJev([
+          jevEvaluation({ decision: 'fallback' }),
+          jevEvaluation({ decision: 'create_plan' }),
+          jevEvaluation({ decision: 'create_plan' }),
+          jevEvaluation({ decision: 'fallback' }),
+        ]),
+        luna: queuedLuna([
+          lunaEvaluation('create_plan'),
+          lunaEvaluation('fallback'),
+          lunaEvaluation('fallback'),
+          lunaEvaluation('create_plan'),
+        ]),
+      },
+    );
+
+    expect(report.metrics.global.pairedVsLabels).toMatchObject({
+      overall: {
+        caseCount: 4,
+        bLunaCorrectFocusedBoundaryWrong: 2,
+        cFocusedBoundaryCorrectLunaWrong: 2,
+        exactTwoSidedMcNemarPValue: 1,
+        provisional: true,
+      },
+      expectedFallbackFalseCreateRisk: {
+        caseCount: 2,
+        bLunaCorrectFocusedBoundaryWrong: 1,
+        cFocusedBoundaryCorrectLunaWrong: 1,
+        exactTwoSidedMcNemarPValue: 1,
+        labelStatusCounts: { human_reviewed_gold: 1, synthetic_unreviewed: 1 },
+        provisional: true,
+      },
+      labelStatusCounts: { human_reviewed_gold: 3, synthetic_unreviewed: 1 },
+      provisional: true,
+    });
+    expect(report.metrics.global.jev.provisional).toBe(true);
+    expect(report.metrics.global.luna.provisional).toBe(true);
+    expect(report.metrics.global.focusedBoundary.provisional).toBe(true);
+    expect(report.independenceNote).toContain('not independent observations');
   });
 
   it('validates externally supplied labels before either provider can make a network call', async () => {
@@ -349,5 +479,21 @@ describe('Jev/Luna focused-boundary comparison', () => {
       .rejects.toThrow('Missing or invalid comparison label: missing-label');
     expect(jev.evaluate).not.toHaveBeenCalled();
     expect(luna.evaluate).not.toHaveBeenCalled();
+  });
+});
+
+describe('focused-authorization exact statistical helpers', () => {
+  it('matches known exact and Wilson values without external dependencies', () => {
+    expect(exactClopperPearsonUpperBound95(0, 16)).toBeCloseTo(0.17075, 5);
+    expect(exactTwoSidedMcNemarPValue(0, 5)).toBe(0.0625);
+    expect(exactTwoSidedMcNemarPValue(0, 0)).toBe(1);
+    const interval = wilsonInterval95(5, 10);
+    expect(interval.lower).toBeCloseTo(0.23659, 5);
+    expect(interval.upper).toBeCloseTo(0.76341, 5);
+  });
+
+  it('returns null bounds for empty denominators', () => {
+    expect(exactClopperPearsonUpperBound95(0, 0)).toBeNull();
+    expect(wilsonInterval95(0, 0)).toMatchObject({ lower: null, upper: null });
   });
 });
