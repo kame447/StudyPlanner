@@ -1,3 +1,4 @@
+import type { FocusedAuthorizationExpansionCandidate } from '../focusedAuthorizationExpansionCandidates';
 import type { AuthorizationDecision } from '../../decisionProvider';
 import type {
   FocusedAuthorizationEvaluationSplit,
@@ -191,6 +192,22 @@ export function adaptSyntheticReviewCandidates(
     currentUserText: candidate.currentUserText,
     syntheticLabel: candidate.expected,
     source: PR332_SYNTHETIC_SOURCE,
+  }));
+}
+
+export function adaptExpansionReviewCandidates(
+  candidates: readonly FocusedAuthorizationExpansionCandidate[],
+): FocusedAuthorizationReviewInput[] {
+  // Expansion candidates are unlabeled by design; humans assign every label.
+  return candidates.map((candidate) => ({
+    id: candidate.id,
+    conversationGroupId: candidate.conversationGroupId,
+    layer: candidate.layer,
+    split: candidate.split,
+    lastAssistantMessage: candidate.lastAssistantMessage,
+    currentUserText: candidate.currentUserText,
+    syntheticLabel: null,
+    source: candidate.source,
   }));
 }
 
