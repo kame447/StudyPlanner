@@ -6,6 +6,8 @@ import {
   FOCUSED_AUTHORIZATION_EVALUATION_LAYERS,
   FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES,
   FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
+  parseFocusedAuthorizationEvaluationSplit,
+  selectFocusedAuthorizationCandidates,
   validateFocusedAuthorizationSyntheticCandidates,
   type FocusedAuthorizationSyntheticCandidate,
 } from './focusedAuthorizationSyntheticCandidates';
@@ -66,8 +68,25 @@ describe('focused authorization synthetic candidates', () => {
     const crossed: FocusedAuthorizationSyntheticCandidate = {
       ...original, id: `${original.id}-crossed`, split: original.split === 'tuning' ? 'holdout' : 'tuning',
     };
-    expect(() => validateFocusedAuthorizationSyntheticCandidates([original, crossed]))
+    expect(() => selectFocusedAuthorizationCandidates([original, crossed], original.split))
       .toThrow(/crosses evaluation splits/);
+  });
+
+  it('selects tuning, holdout, or all candidates only after validation', () => {
+    const tuning = fixture('tuning', 'create_plan');
+    const holdout = { ...fixture('holdout', 'fallback'), split: 'holdout' as const };
+
+    expect(selectFocusedAuthorizationCandidates([tuning, holdout], 'tuning')).toEqual([tuning]);
+    expect(selectFocusedAuthorizationCandidates([tuning, holdout], 'holdout')).toEqual([holdout]);
+    expect(selectFocusedAuthorizationCandidates([tuning, holdout], 'all')).toEqual([tuning, holdout]);
+  });
+
+  it('requires an explicit valid JEV_EVAL_SPLIT value', () => {
+    expect(parseFocusedAuthorizationEvaluationSplit('tuning')).toBe('tuning');
+    expect(parseFocusedAuthorizationEvaluationSplit('holdout')).toBe('holdout');
+    expect(parseFocusedAuthorizationEvaluationSplit('all')).toBe('all');
+    expect(() => parseFocusedAuthorizationEvaluationSplit(undefined)).toThrow(/JEV_EVAL_SPLIT/);
+    expect(() => parseFocusedAuthorizationEvaluationSplit('invalid')).toThrow(/JEV_EVAL_SPLIT/);
   });
 });
 
@@ -87,7 +106,7 @@ describe('focused authorization evaluation metrics', () => {
 
     const report = await evaluateFocusedAuthorizationCandidates([
       emptyText, oversizedAssistant, fixture('eligible', 'create_plan'),
-    ], provider);
+    ], provider, { requestedSplit: 'all' });
 
     expect(providerCalls).toBe(1);
     expect(report.cases.map((value) => value.gateOutcome)).toEqual([
@@ -130,7 +149,9 @@ describe('focused authorization evaluation metrics', () => {
       fixture('wrong-fallback', 'create_plan'),
     ];
 
-    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider);
+    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider, {
+      requestedSplit: 'all',
+    });
 
     expect(report.cases.map((value) => value.gateOutcome)).toEqual([
       'accepted_create_plan', 'accepted_create_plan', 'accepted_fallback',
@@ -165,6 +186,8 @@ describe('focused authorization evaluation metrics', () => {
       fixtureSetVersion: FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
       catalogVersion: JEV_CATALOG_VERSION,
       gateVersion: JEV_GATE_VERSION,
+      requestedSplit: 'all',
+      caseCounts: { total: 6, tuning: 6, holdout: 0 },
     });
     expect(report.cases[0]).toMatchObject({
       choice: 'create_plan', confidence: 0.999,
@@ -185,6 +208,7 @@ describe('focused authorization evaluation metrics', () => {
     };
     const unknownCostReport = await evaluateFocusedAuthorizationCandidates(
       [fixture('unknown-cost', 'fallback')], unknownCostProvider,
+      { requestedSplit: 'all' },
     );
     expect(unknownCostReport.metrics.global.reportedCostUsd).toEqual({
       reportedCaseCount: 0, unknownCaseCount: 1, knownSubtotal: null, completeTotal: null,
@@ -211,7 +235,9 @@ describe('focused authorization evaluation metrics', () => {
       },
     ];
 
-    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider);
+    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider, {
+      requestedSplit: 'all',
+    });
 
     expect(report.metrics.global).toMatchObject({
       fixtureCaseCount: 3, evaluationEligibleCaseCount: 2, rejectedBeforeProviderCount: 1,
@@ -230,5 +256,28 @@ describe('focused authorization evaluation metrics', () => {
       fixtureCaseCount: 1, evaluationEligibleCaseCount: 0, rejectedBeforeProviderCount: 1,
       falseAutoCreatePlanRate: { numerator: 0, denominator: 0, value: null },
     });
+  });
+
+  it('filters evaluation by the requested split and records unambiguous case counts', async () => {
+    let providerCalls = 0;
+    const provider: DecisionProvider = {
+      evaluate: async () => {
+        providerCalls += 1;
+        return evaluated('fallback', 1, null);
+      },
+    };
+    const candidates: FocusedAuthorizationSyntheticCandidate[] = [
+      fixture('tuning-create', 'create_plan'),
+      { ...fixture('holdout-fallback', 'fallback'), split: 'holdout' },
+    ];
+
+    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider, {
+      requestedSplit: 'holdout',
+    });
+
+    expect(providerCalls).toBe(1);
+    expect(report.requestedSplit).toBe('holdout');
+    expect(report.caseCounts).toEqual({ total: 1, tuning: 0, holdout: 1 });
+    expect(report.cases.map((value) => value.id)).toEqual(['holdout-fallback']);
   });
 });

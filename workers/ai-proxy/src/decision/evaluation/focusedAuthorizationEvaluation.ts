@@ -11,8 +11,10 @@ import {
 import {
   FOCUSED_AUTHORIZATION_EVALUATION_LAYERS,
   FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
+  selectFocusedAuthorizationCandidates,
   type FocusedAuthorizationEvaluationLayer,
   type FocusedAuthorizationEvaluationSplit,
+  type FocusedAuthorizationRequestedSplit,
   type FocusedAuthorizationSyntheticCandidate,
 } from './focusedAuthorizationSyntheticCandidates';
 
@@ -51,14 +53,25 @@ export interface FocusedAuthorizationEvaluationReport {
   fixtureSetVersion: typeof FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION;
   catalogVersion: typeof JEV_CATALOG_VERSION;
   gateVersion: typeof JEV_GATE_VERSION;
+  requestedSplit: FocusedAuthorizationRequestedSplit;
+  caseCounts: {
+    total: number;
+    tuning: number;
+    holdout: number;
+  };
   cases: FocusedAuthorizationCaseVerdict[];
   metrics: FocusedAuthorizationSegmentedMetrics;
+}
+
+export interface FocusedAuthorizationEvaluationOptions {
+  requestedSplit: FocusedAuthorizationRequestedSplit;
+  onCase?: (verdict: FocusedAuthorizationCaseVerdict) => void;
 }
 
 export async function evaluateFocusedAuthorizationCandidates(
   candidates: readonly FocusedAuthorizationSyntheticCandidate[],
   provider: DecisionProvider,
-  onCase?: (verdict: FocusedAuthorizationCaseVerdict) => void,
+  options: FocusedAuthorizationEvaluationOptions,
 ): Promise<FocusedAuthorizationEvaluationReport> {
   type TaggedSample = FocusedAuthorizationEvaluationSample & {
     layer: FocusedAuthorizationEvaluationLayer;
@@ -67,7 +80,8 @@ export async function evaluateFocusedAuthorizationCandidates(
   const samples: TaggedSample[] = [];
   const rejectedCandidates: FocusedAuthorizationSyntheticCandidate[] = [];
   const verdicts: FocusedAuthorizationCaseVerdict[] = [];
-  for (const value of candidates) {
+  const selectedCandidates = selectFocusedAuthorizationCandidates(candidates, options.requestedSplit);
+  for (const value of selectedCandidates) {
     const context = {
       purpose: 'focused_authorization',
       requestId: `jev-shadow-evaluation:${value.id}`,
@@ -105,7 +119,7 @@ export async function evaluateFocusedAuthorizationCandidates(
         servedModel: null,
       };
       verdicts.push(verdict);
-      onCase?.(verdict);
+      options.onCase?.(verdict);
       continue;
     }
     const evaluation = await provider.evaluate(context.state);
@@ -140,7 +154,7 @@ export async function evaluateFocusedAuthorizationCandidates(
       servedModel: evaluation.metadata.servedModel,
     };
     verdicts.push(verdict);
-    onCase?.(verdict);
+    options.onCase?.(verdict);
   }
   const summarizeSegment = (
     predicate: (value: { layer: FocusedAuthorizationEvaluationLayer; split: FocusedAuthorizationEvaluationSplit }) => boolean,
@@ -161,6 +175,12 @@ export async function evaluateFocusedAuthorizationCandidates(
     fixtureSetVersion: FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
     catalogVersion: JEV_CATALOG_VERSION,
     gateVersion: JEV_GATE_VERSION,
+    requestedSplit: options.requestedSplit,
+    caseCounts: {
+      total: selectedCandidates.length,
+      tuning: selectedCandidates.filter((value) => value.split === 'tuning').length,
+      holdout: selectedCandidates.filter((value) => value.split === 'holdout').length,
+    },
     cases: verdicts,
     metrics: {
       global: summarizeFocusedAuthorizationEvaluation(samples, rejectedCandidates.length),
