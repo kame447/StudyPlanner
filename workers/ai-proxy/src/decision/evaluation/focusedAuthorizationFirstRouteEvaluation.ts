@@ -97,7 +97,7 @@ export interface FocusedAuthorizationFirstRouteSummary {
     oneSidedClopperPearsonUpper95: number | null;
   };
   controlledFailureCount: number;
-  finalAccuracy: { numerator: number; denominator: number; value: number | null };
+  provisionalLabelAgreement: { numerator: number; denominator: number; value: number | null };
   latencyMs: { p50: number | null; p95: number | null };
   usage: {
     jevInputTokens: NullableTotal;
@@ -146,7 +146,7 @@ export interface FocusedAuthorizationLunaBaselineSummary {
     oneSidedClopperPearsonUpper95: number | null;
   };
   controlledFailureCount: number;
-  finalAccuracy: { numerator: number; denominator: number; value: number | null };
+  provisionalLabelAgreement: { numerator: number; denominator: number; value: number | null };
   latencyMs: { p50: number | null; p95: number | null };
   usage: {
     promptTokens: NullableTotal;
@@ -394,7 +394,7 @@ export function summarizeFocusedAuthorizationLunaBaseline(
       oneSidedClopperPearsonUpper95: exactClopperPearsonUpperBound95(falseCreate, negative.length),
     },
     controlledFailureCount: cases.filter((value) => value.final.status === 'controlled_failure').length,
-    finalAccuracy: ratio(correct, binary.length),
+    provisionalLabelAgreement: ratio(correct, binary.length),
     latencyMs: {
       p50: percentile(cases.map((value) => value.luna.latencyMs), 0.5),
       p95: percentile(cases.map((value) => value.luna.latencyMs), 0.95),
@@ -450,7 +450,7 @@ export function summarizeFocusedAuthorizationFirstRoute(
       oneSidedClopperPearsonUpper95: exactClopperPearsonUpperBound95(jevAutoFalseCreate, negative.length),
     },
     controlledFailureCount: cases.filter((value) => value.final.status === 'controlled_failure').length,
-    finalAccuracy: ratio(correct, binary.length),
+    provisionalLabelAgreement: ratio(correct, binary.length),
     latencyMs: {
       p50: percentile(cases.map((value) => value.final.totalLatencyMs), 0.5),
       p95: percentile(cases.map((value) => value.final.totalLatencyMs), 0.95),

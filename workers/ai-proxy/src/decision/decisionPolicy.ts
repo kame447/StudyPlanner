@@ -9,6 +9,14 @@ export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
 export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
 export const JEV_TIMEOUT_MS = 1_500;
 export const FOCUSED_REQUEST_TIMEOUT_MS = 85_000;
+export const FOCUSED_AUTHORIZATION_GATE_THRESHOLDS = {
+  strongAuxiliaryFallback: 0.9,
+  fallbackConfidence: 0.8,
+  fallbackProbability: 0.9,
+  createConfidence: 0.9,
+  createProbability: 0.95,
+  createAuxiliaryVeto: 0.5,
+} as const;
 
 export interface DecisionEnv {
   OPENROUTER_API_KEY?: string;
@@ -34,18 +42,22 @@ export type DecisionGate = { status: 'accepted'; decision: 'create_plan' | 'fall
 // not a proven contradiction, and agreement is not an independent safety guarantee.
 export function gateDecision(result: DecisionEvaluation): DecisionGate {
   if (result.status === 'unavailable') return { status: result.status, reason: result.reason };
-  if (result.conditionChange >= 0.9 || result.independentMeaning >= 0.9) {
+  if (result.conditionChange >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.strongAuxiliaryFallback
+    || result.independentMeaning >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.strongAuxiliaryFallback) {
     return { status: 'accepted', decision: 'fallback' };
   }
   if (result.decision === 'fallback') {
-    return result.confidence >= 0.8 && result.probabilities.fallback >= 0.9
+    return result.confidence >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.fallbackConfidence
+      && result.probabilities.fallback >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.fallbackProbability
       ? { status: 'accepted', decision: 'fallback' }
       : { status: 'abstained', reason: 'uncertain' };
   }
-  if (result.confidence < 0.9 || result.probabilities.create_plan < 0.95) {
+  if (result.confidence < FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createConfidence
+    || result.probabilities.create_plan < FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createProbability) {
     return { status: 'abstained', reason: 'uncertain' };
   }
-  if (result.conditionChange >= 0.5 || result.independentMeaning >= 0.5) {
+  if (result.conditionChange >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createAuxiliaryVeto
+    || result.independentMeaning >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createAuxiliaryVeto) {
     return { status: 'abstained', reason: 'conflicting_heads' };
   }
   return { status: 'accepted', decision: 'create_plan' };

@@ -16,6 +16,9 @@ import {
   focusedAuthorizationAmbiguousLimitedJudgmentIds,
   focusedAuthorizationFirstRouteCorpus,
 } from './focusedAuthorizationFirstRouteCorpus';
+import { focusedAuthorizationPolicyFingerprints } from './focusedAuthorizationPolicyFingerprint';
+import holdoutEvidence from './evidence/focused-authorization-holdout-20260927.json';
+import tuningEvidence from './evidence/focused-authorization-tuning-v2-20260927.json';
 
 const candidate: FocusedAuthorizationFirstRouteCandidate = {
   id: 'case', conversationGroupId: 'group', layer: 'plain', split: 'tuning',
@@ -52,6 +55,41 @@ function luna(result: LunaFocusedAuthorizationEvaluation = {
 }
 
 describe('Jev-first focused authorization evaluation', () => {
+  it('pins the catalog and gate fingerprints recorded with the consumed holdout', async () => {
+    const fingerprints = {
+      catalogSha256: 'b8ae8dff071ac14fe9aeac13ab5a0a555906dcc0b9f81b5afffea548ec87c2b7',
+      gateSha256: '8ee49c51d476f3baccdaf21387a9856ea72800469f8f4ac0fcebca9fcdc597e0',
+    };
+    await expect(focusedAuthorizationPolicyFingerprints()).resolves.toEqual(fingerprints);
+    expect(holdoutEvidence.policy).toMatchObject(fingerprints);
+    expect(tuningEvidence.policy).toMatchObject(fingerprints);
+  });
+
+  it.each([
+    ['tuning', tuningEvidence],
+    ['holdout', holdoutEvidence],
+  ] as const)('keeps the %s artifact typed, text-free and reproducible by the fixed gate', (_, artifact) => {
+    expect(artifact.results).toHaveLength(artifact.caseCount);
+    expect(artifact.containsRawConversationText).toBe(false);
+    for (const result of artifact.results) {
+      expect(result).not.toHaveProperty('currentUserText');
+      expect(result).not.toHaveProperty('lastAssistantMessage');
+      const gate = gateDecision({
+        status: 'evaluated',
+        decision: result.jevDecision as 'create_plan' | 'fallback',
+        confidence: result.confidence as number,
+        probabilities: result.probabilities as { create_plan: number; fallback: number },
+        conditionChange: result.conditionChange as number,
+        independentMeaning: result.independentMeaning as number,
+        metadata: evaluation().metadata,
+      });
+      const route = gate.status === 'accepted'
+        ? gate.decision === 'create_plan' ? 'jev_accepted_create' : 'jev_accepted_fallback'
+        : gate.status === 'unavailable' ? 'unavailable_to_luna' : 'abstain_to_luna';
+      expect(result.route).toBe(route);
+    }
+  });
+
   it('locks the tuning-81 create, fallback and strong-veto boundaries', () => {
     expect(gateDecision(evaluation({
       confidence: 0.9,
@@ -155,6 +193,7 @@ describe('Jev-first focused authorization evaluation', () => {
       jevCoverage: { numerator: 1, denominator: 2, value: 0.5 },
       lunaCallReduction: { numerator: 1, denominator: 2, value: 0.5 },
       falseCreate: { occurrences: 0, negativeSampleCount: 1 },
+      provisionalLabelAgreement: { numerator: 2, denominator: 2, value: 1 },
     });
     expect(summary.falseCreate.oneSidedClopperPearsonUpper95).toBeGreaterThan(0);
   });
@@ -189,6 +228,7 @@ describe('Jev-first focused authorization evaluation', () => {
       caseCount: 2,
       falseCreate: { occurrences: 1, negativeSampleCount: 1 },
       controlledFailureCount: 1,
+      provisionalLabelAgreement: { numerator: 0, denominator: 2, value: 0 },
       latencyMs: { p50: 40, p95: 80 },
       usage: { promptTokens: { reportedComponentCount: 1, unknownComponentCount: 1 } },
     });

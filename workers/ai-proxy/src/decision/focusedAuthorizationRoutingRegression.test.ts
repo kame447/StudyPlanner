@@ -79,7 +79,7 @@ async function execute(params: {
   return fallback;
 }
 
-describe('Issue #335 focused authorization security regression', () => {
+describe('Issue #335 focused authorization routing regression', () => {
   const activeAttackInputs = [
     ...WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS.filter(
       (entry) => entry.category !== 'stored_injection',
@@ -95,7 +95,7 @@ describe('Issue #335 focused authorization security regression', () => {
   ];
 
   it.each(activeAttackInputs)(
-    'contains $id in both Jev and Luna-fallback routes without authority escalation',
+    'routes $id through both Jev and Luna fallback without changing the decision envelope',
     async ({ text }) => {
       const jevOnly = await execute({
         currentUserText: text,

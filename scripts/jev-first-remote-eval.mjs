@@ -66,6 +66,14 @@ async function main() {
   const lunaPath = join(root, 'workers/ai-proxy/src/decision/evaluation/focusedAuthorizationLunaEvaluation.ts');
   const evaluatorPath = join(root, 'workers/ai-proxy/src/decision/evaluation/focusedAuthorizationFirstRouteEvaluation.ts');
   const corpusPath = join(root, 'workers/ai-proxy/src/decision/evaluation/focusedAuthorizationFirstRouteCorpus.ts');
+  const fingerprintPath = join(root, 'workers/ai-proxy/src/decision/evaluation/focusedAuthorizationPolicyFingerprint.ts');
+  const holdoutArtifactPath = join(
+    root,
+    'workers/ai-proxy/src/decision/evaluation/evidence/focused-authorization-holdout-20260927.json',
+  );
+  const recordedHoldoutPolicy = options.split === 'holdout'
+    ? JSON.parse(await readFile(holdoutArtifactPath, 'utf8')).policy
+    : null;
   let worker;
   try {
     failureStage = 'write_preview_entry';
@@ -79,6 +87,7 @@ import {
   summarizeFocusedAuthorizationFirstRoute,
 } from ${JSON.stringify(evaluatorPath)};
 import { focusedAuthorizationFirstRouteCorpus } from ${JSON.stringify(corpusPath)};
+import { focusedAuthorizationPolicyFingerprints } from ${JSON.stringify(fingerprintPath)};
 
 const expiresAt = ${Date.now() + 3_600_000};
 const faultIds = ['timeout', 'http_429', 'http_500', 'malformed', 'model_mismatch', 'provider_abort', 'stale_context'];
@@ -145,6 +154,9 @@ export default { async fetch(request, env) {
     const split = url.searchParams.get('split');
     if (split !== 'tuning' && split !== 'holdout') return new Response('Bad request', { status: 400 });
     return Response.json({ ids: focusedAuthorizationFirstRouteCorpus(split).map(value => value.id) });
+  }
+  if (url.pathname === '/policy-fingerprints') {
+    return Response.json(await focusedAuthorizationPolicyFingerprints());
   }
   if (request.method !== 'POST') return new Response('Not found', { status: 404 });
   const body = await request.json();
@@ -233,6 +245,19 @@ export default { async fetch(request, env) {
     const configuration = await ready.json();
     assert.equal(configuration.openRouterConfigured, true, 'Worker OPENROUTER_API_KEY is unavailable.');
     assert.equal(configuration.openAiConfigured, true, 'Worker OPENAI_API_KEY is unavailable.');
+
+    if (options.split === 'holdout') {
+      failureStage = 'holdout_policy_guard';
+      const policyResponse = await worker.fetch('/policy-fingerprints', {
+        headers, signal: AbortSignal.timeout(45_000),
+      });
+      assert.equal(policyResponse.status, 200, 'Holdout policy fingerprint lookup failed.');
+      const currentPolicy = await policyResponse.json();
+      assert.deepEqual(currentPolicy, {
+        catalogSha256: recordedHoldoutPolicy?.catalogSha256,
+        gateSha256: recordedHoldoutPolicy?.gateSha256,
+      }, 'Refusing holdout execution because the catalog or gate differs from the recorded evidence.');
+    }
 
     let report;
     if (options.suite === 'corpus') {
