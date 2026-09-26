@@ -29,7 +29,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('The absolute planningWindow year is more than ten years from publicStateSummary.calendarContext.currentDate. Keep the same planningWindow localId and dates; if current userText states no year for them, write start/end as --MM-DD so code resolves the year, otherwise use the stated year. Change no unrelated facts.');
   }
   if (errors.some((error) => error.includes('sourceText:not-grounded-in-current-user-text'))) {
-    directives.push('For every rejected sourceText, copy an exact contiguous substring from current userText that directly supports that fact; do not paraphrase, synthesize, or reuse prior-turn/stored text. If current userText does not support that fact, remove only that unsupported fact.');
+    directives.push('For every rejected sourceText, copy an exact contiguous substring from current userText that directly supports that fact; do not paraphrase, synthesize, or reuse prior-turn/stored text. If current userText does not support that fact, remove only that unsupported fact. Quoted or serialized data that the current request explicitly imports or applies does support its planning facts; fix such a citation by copying the data\'s exact characters instead of removing the fact.');
   }
   const selfReferentialUncertainty = errors.some((error) =>
     error.includes('document.uncertainties')
