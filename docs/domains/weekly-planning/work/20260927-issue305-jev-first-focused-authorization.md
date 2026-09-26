@@ -29,7 +29,7 @@ Tracking: Issue #305 / quality evidence #333 / security regression #335
 - 2026-09-27: parent `CleverDarwin` に追加80件の `opus-5.5-limited-judge` を一括依頼。結果は human gold と呼ばない。
 - 2026-09-27: `opus-5.5-limited-judge-v1` を受領。追加80件は create 21 / fallback 52 / ambiguous 7 / exclude 0。既存難例2件は `stored-injection-07=create_plan`、`abnormal-value-04=fallback`。追加80件の作成者も Opus 5.5 child であり、judge は作成者から独立していない。ambiguous 7件は label を保持し、安全性指標では fallback として false-create 分母に含める。
 - 2026-09-27: temporary remote dev の fault suite 成功。Luna 単独 control は `create_plan`（2,113 ms、149 prompt / 20 completion tokens）。Jev timeout（1,600 ms超過）、HTTP 429、HTTP 500、malformed、model mismatch、provider abort、stale context/revision の全7件で実 Luna fallback が呼ばれ、最終判断は control と同じ `create_plan`。fallback latency は 946–2,971 ms。両 provider failure は HTTP 502 の controlled failure、decision `null`、legacy parser なし。全結果で最大権限は未保存案の作成要求のみ、approval/save は false。
-- 2026-09-27: 現 gate（v1 uncalibrated）の tuning 81件を実 dispatch で完走。route は Jev accepted fallback 14 / abstain→Luna 67 / accepted create 0、Jev coverage と Luna 呼出し削減は各 17.28%。end-to-end false-create は 5 / negative 55（片側95% Clopper–Pearson 上限 18.17%）で、5件はいずれも abstain 後の Luna 判断。p50 1,247 ms / p95 1,629 ms。Jev usage 52,442 input / 5,782 output tokens、reported Jev cost subtotal USD 0.002202564。Luna cost は確認済み価格表がないため unknown のまま。最終 accuracy 58 / 81 は human gold に対する正解率ではなく、synthetic 29件 + 非独立 `opus-5.5-limited-judge` 52件への暫定一致。Luna invalid/HTTP failure を含む controlled failure は18件。
+- 2026-09-27: 現 gate（v1 uncalibrated）の tuning 81件を実 dispatch で完走。route は Jev accepted fallback 14 / abstain→Luna 67 / accepted create 0、Jev coverage と Luna 呼出し削減は各 17.28%。end-to-end false-create は 5 / negative 55（片側95% Clopper–Pearson 上限 18.17%）で、5件はいずれも abstain 後の Luna 判断。p50 1,247 ms / p95 1,629 ms。Jev usage 52,442 input / 5,782 output tokens、reported Jev cost subtotal USD 0.002202564。Luna はAPI応答に dollar cost とcache/cache-write内訳がなく exact cost は unknown。最終 accuracy 58 / 81 は human gold に対する正解率ではなく、synthetic 29件 + 非独立 `opus-5.5-limited-judge` 52件への暫定一致。Luna invalid/HTTP failure を含む controlled failure は18件。
 - 2026-09-27: case 単位の confidence / choice probability / condition-change / independent-meaning を追加した tuning v2 を同じ81件で実測。現 gate は accepted fallback 14 / abstain→Luna 67 / accepted create 0、Jev 自動 false-create 0 / negative 55（片側95% Clopper–Pearson 上限 5.30%）。end-to-end false-create は3 / 55（上限13.50%）、controlled failure 17件、p50 1,304 ms / p95 1,669 ms。usage は Jev 52,442 input / 5,783 output、Jev reported cost subtotal USD 0.002202564。Luna 67 call のうち usage reported は61、cost は67件すべて unknown。
 
 ## Tuning-only gate calibration
@@ -58,7 +58,7 @@ gate と question を固定し、未開封 holdout 50件（create 13 / safe-side
 - controlled failure: 3 / 50。`x333-ii-kamo-b` は Luna invalid response、`x333-unrelated-tip-a` と `x333-width-mix-a` は Luna HTTP unavailable。全て HTTP 502 の controlled failure で legacy parser なし
 - latency: p50 209 ms / p95 1,568 ms
 - usage: Jev 32,440 input / 3,565 output tokens。Luna 16 call中14件が usage reported（prompt 1,942 / completion 834）、2件は upstream HTTP failure のため unknown
-- cost: reported Jev subtotal USD 0.00136248。Luna は確認済み単価がないため16件すべて unknown、合計 cost も unknown
+- cost: reported Jev subtotal USD 0.00136248。Luna は cache/cache-write内訳がなく、さらに2 HTTP failureのusageもないため exact cost と合計 cost は unknown
 - 暫定 label 一致: 45 / 50。これは human gold の accuracy ではなく、synthetic 20件 + 非独立 `opus-5.5-limited-judge` 30件（うち ambiguous safe fallback 2件）への一致
 - authority: 50 / 50で最大効果は未保存案の作成要求。approval/save は全件 false。Jev accepted の誤 label は0件
 
