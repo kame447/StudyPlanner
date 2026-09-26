@@ -12,6 +12,7 @@ Current durable records:
 - `20260731-personalization-rollout.md` — Issue #47
 - `20260731-synced-conversation-session-store.md` — Issue #47 related cloud/session authority
 - `20260731-trace-privacy-and-lifecycle.md` — Issue #45
+- `20260926-issue333-japanese-semantic-evaluation.md` — Issue #333（#305 canary 前の日本語品質 gate、human review 手順）
 
 Issue-only active scopes such as #128, #152, [#305](https://github.com/kame447/StudyPlanner/issues/305) and [#333](https://github.com/kame447/StudyPlanner/issues/333) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
 
