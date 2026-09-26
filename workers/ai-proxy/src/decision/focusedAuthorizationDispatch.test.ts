@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
+import traceWorker from '../traceWorker';
+import { FirestoreServiceAccountTokenProvider } from '../firestoreServiceAccountClient';
 import { JEV_MODEL } from './decisionPolicy';
 import { observeAiProxyRequest } from '../aiProxyRequestObserver';
 import { jevExecutionMode } from './decisionExecutionMarker';
@@ -50,6 +52,7 @@ function execute(mode = 'off', options: {
   openRouterApiKey?: string | null;
   signal?: AbortSignal;
   observability?: boolean;
+  throughTraceWorker?: boolean;
 } = {}) {
   const pending: Promise<unknown>[] = [];
   const env = {
@@ -77,14 +80,12 @@ function execute(mode = 'off', options: {
     }),
   });
   const tokenProvider = { getToken: async () => 'test-firestore-token' };
-  const response = worker.fetch(
-    request.clone(),
-    env as never,
-    tokenProvider,
-    options.noLifecycle ? undefined : {
-      waitUntil: (p: Promise<unknown>) => pending.push(p),
-    } as unknown as ExecutionContext,
-  );
+  const executionContext = options.noLifecycle ? undefined : {
+    waitUntil: (p: Promise<unknown>) => pending.push(p),
+  } as unknown as ExecutionContext;
+  const response = options.throughTraceWorker
+    ? traceWorker.fetch(request.clone(), env as never, executionContext)
+    : worker.fetch(request.clone(), env as never, tokenProvider, executionContext);
   return { response, pending, env, request, tokenProvider };
 }
 
@@ -275,6 +276,37 @@ describe('focused authorization deployed proxy dispatch', () => {
         requestId: { stringValue: context.requestId },
         stateRevision: { integerValue: String(context.inputRevision) },
       });
+    });
+  });
+
+  it('keeps the Jev marker internal and applies turn correlation only to an executed shadow', async () => {
+    vi.spyOn(FirestoreServiceAccountTokenProvider.prototype, 'getToken')
+      .mockResolvedValue('test-firestore-token');
+
+    const shadow = execute('shadow', { observability: true, throughTraceWorker: true });
+    const shadowResponse = await shadow.response;
+    expect(shadowResponse.headers.get('X-StudyPlanner-Internal-Jev-Mode')).toBeNull();
+    await Promise.all(shadow.pending);
+
+    const shadowMetrics = storedAiMetricFields();
+    const shadowBaseline = shadowMetrics.find((metric) =>
+      metric.payload.mapValue?.fields?.operationKind.stringValue === 'chat_completion');
+    expect(shadowBaseline?.correlation.mapValue?.fields).toEqual({
+      requestId: { stringValue: context.requestId },
+      stateRevision: { integerValue: String(context.inputRevision) },
+    });
+
+    const offMetricOffset = shadowMetrics.length;
+    const off = execute('off', { observability: true, throughTraceWorker: true });
+    const offResponse = await off.response;
+    expect(offResponse.headers.get('X-StudyPlanner-Internal-Jev-Mode')).toBeNull();
+    await Promise.all(off.pending);
+
+    const [offBaseline] = storedAiMetricFields().slice(offMetricOffset);
+    expect(offBaseline.payload.mapValue?.fields?.operationKind.stringValue)
+      .toBe('chat_completion');
+    expect(offBaseline.correlation.mapValue?.fields).toEqual({
+      requestId: offBaseline.eventId,
     });
   });
 
