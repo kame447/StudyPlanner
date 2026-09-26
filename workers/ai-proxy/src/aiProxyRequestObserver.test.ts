@@ -3,6 +3,7 @@ import {
   classifyAiProxyMetricStatus,
   describeAiProxyOperation,
   observeAiProxyRequest,
+  resolveAiProxyMetricCorrelation,
 } from './aiProxyRequestObserver';
 
 describe('AI proxy request observer', () => {
@@ -60,6 +61,20 @@ describe('AI proxy request observer', () => {
     expect(classifyAiProxyMetricStatus(500, {})).toBe('unknown_failure');
     expect(classifyAiProxyMetricStatus(400, {})).toBeNull();
     expect(classifyAiProxyMetricStatus(401, {})).toBeNull();
+  });
+
+  it('uses a valid focused decision context as the parent turn correlation', () => {
+    const decisionContext = {
+      purpose: 'focused_authorization', requestId: 'turn-request-12345678', inputRevision: 7,
+      previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
+      state: { currentUserText: 'この条件で案を作って', lastAssistantMessage: '案を作りますか？' },
+    };
+    expect(resolveAiProxyMetricCorrelation({ decisionContext })).toEqual({
+      requestId: 'turn-request-12345678', stateRevision: 7,
+    });
+    expect(resolveAiProxyMetricCorrelation({
+      decisionContext: { ...decisionContext, hasPendingQuestion: true },
+    })).toBeUndefined();
   });
 
   it('does not authenticate or persist anything when observability is unconfigured', async () => {

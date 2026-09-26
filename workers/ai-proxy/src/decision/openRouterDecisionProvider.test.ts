@@ -22,6 +22,23 @@ function adapter(value: unknown, status = 200) {
   return { provider, fetchMock };
 }
 
+function chunkedResponse(chunks: readonly Uint8Array[], onCancel?: () => void): {
+  response: Response;
+  pulledChunks: () => number;
+} {
+  let pulledChunks = 0;
+  const response = new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[pulledChunks];
+      pulledChunks += 1;
+      if (chunk) controller.enqueue(chunk);
+      else controller.close();
+    },
+    cancel() { onCancel?.(); },
+  }, { highWaterMark: 0 }), { status: 200 });
+  return { response, pulledChunks: () => pulledChunks };
+}
+
 afterEach(() => vi.useRealTimers());
 
 describe('OpenRouter Decisions contract and gates', () => {
@@ -105,14 +122,47 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(JSON.stringify(result)).not.toContain('private-network-message');
   });
 
+  it('accepts a chunked response exactly at the byte cap without Content-Length', async () => {
+    const encoded = new TextEncoder().encode(JSON.stringify(decisionResponse()));
+    const exactlyAtCap = new Uint8Array(32_768).fill(0x20);
+    exactlyAtCap.set(encoded);
+    const { response } = chunkedResponse([exactlyAtCap]);
+    expect(response.headers.get('Content-Length')).toBeNull();
+    const provider = createOpenRouterDecisionProvider({
+      apiKey: crypto.randomUUID(), fetch: vi.fn(async () => response),
+    });
+
+    expect(await provider.evaluate(state)).toMatchObject({
+      status: 'evaluated', metadata: { responseBytes: 32_768 },
+    });
+  });
+
+  it('cancels a chunked response as soon as the next chunk exceeds the byte cap', async () => {
+    let cancelled = false;
+    const chunks = [new Uint8Array(32_768), new Uint8Array([1]), new Uint8Array([2])];
+    const streamed = chunkedResponse(chunks, () => { cancelled = true; });
+    expect(streamed.response.headers.get('Content-Length')).toBeNull();
+    const provider = createOpenRouterDecisionProvider({
+      apiKey: crypto.randomUUID(), fetch: vi.fn(async () => streamed.response),
+    });
+
+    expect(await provider.evaluate(state)).toMatchObject({
+      status: 'unavailable', reason: 'invalid_response', metadata: { responseBytes: 32_769 },
+    });
+    expect(cancelled).toBe(true);
+    expect(streamed.pulledChunks()).toBe(2);
+  });
+
   it('bounds response-body time and distinguishes cancellation', async () => {
     vi.useFakeTimers();
-    const hangingFetch = vi.fn<typeof fetch>(async (_url, init) => ({
-      ok: true,
-      text: () => new Promise<string>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new Error('abort')), { once: true });
-      }),
-    } as Response));
+    const hangingFetch = vi.fn<typeof fetch>(async (_url, init) => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(new Error('abort')), { once: true });
+        },
+      }, { highWaterMark: 0 }),
+      { status: 200 },
+    ));
     const provider = createOpenRouterDecisionProvider({ apiKey: crypto.randomUUID(), fetch: hangingFetch, timeoutMs: 100 });
     const pending = provider.evaluate(state);
     await vi.advanceTimersByTimeAsync(100);

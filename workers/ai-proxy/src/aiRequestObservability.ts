@@ -1,6 +1,7 @@
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
+  ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
 import { estimateAiRequestCost } from './aiUsagePricing';
 import {
@@ -35,6 +36,7 @@ export interface RecordAiRequestMetricParams {
   firestoreTokenProvider?: FirestoreTokenProvider;
   firebaseUid: string;
   requestId: string;
+  correlation?: ObservabilityCorrelation;
   occurredAt: string;
   appVersion: string;
   operationKind: AiRequestMetricPayload['operationKind'];
@@ -166,6 +168,7 @@ export async function recordAiRequestMetricBestEffort(
     ).storeAiRequestMetric({
       firebaseUid: params.firebaseUid,
       requestId: params.requestId,
+      correlation: params.correlation,
       occurredAt: params.occurredAt,
       appVersion: params.appVersion,
       payload,

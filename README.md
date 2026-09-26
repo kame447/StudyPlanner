@@ -137,7 +137,7 @@ npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.js
 
 既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
 
-モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.13`、応答は公式に確認したrelease/dated snapshotのみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。
+モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.13`、応答は公式に確認したrelease/dated snapshotのみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
 
 低確信度・補助判定の不一致・欠落値・モデル不一致・通信障害は既存focused LLMへ戻します。明確な条件変更や独立した意味はgeneric semanticへ渡します。両providerの失敗は現行のcontrolled failureへ戻り、legacy自然言語parserは復活させません。汎用入力や長すぎる入力は従来経路を使います。
 
@@ -169,7 +169,7 @@ npm exec --yes --package=wrangler@4.140.0 -- node scripts/jev-cloud-smoke.mjs --
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
 
-モデル、latency、成功/fallback、shadow比較、token数、OpenRouter報告costを既存 `ai_request_metric` と内容を限定したWorkerログへ記録します。不明なusage/costはnullのまま保持します。OpenRouterの応答本文、送信state、ユーザー入力全文、key、例外本文を新規のdecisionログやtraceへ保存しません。週間計画traceは既存の結果・byte数・状態を維持し、providerごとの安全な数値診断は#213のtelemetryを使います。運用上の総AI spendはheadline `ai` の総額に `aiByOperationKind.decision` の総額を加えます（decisionはheadlineから除外されます）。
+モデル、latency、成功/fallback、raw choiceとgate適用後routeそれぞれのshadow比較、token数、OpenRouter報告costを既存 `ai_request_metric` と内容を限定したWorkerログへ記録します。abstained/unavailableのgate比較は未決定の `null` とし、不明なusage/costもnullのまま保持します。provider callごとのevent IDは一意のまま、decisionと既存baseline/fallback metricの `correlation.requestId` に同じopaqueなturn request IDを置き、turn単位でcostをjoinできます。OpenRouterの応答本文、送信state、ユーザー入力全文、key、例外本文を新規のdecisionログやtraceへ保存しません。週間計画traceは既存の結果・byte数・状態を維持し、providerごとの安全な数値診断は#213のtelemetryを使います。運用上の総AI spendはheadline `ai` の総額に `aiByOperationKind.decision` の総額を加えます（decisionはheadlineから除外されます）。
 
 2026-09-26確認の一次資料は [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)、[Jev tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial)、[TypeSafe primitives](https://docs.typesafe.ai/introduction)、[TypeSafe confidence](https://docs.typesafe.ai/confidence) です。SDK互換やchat APIから仕様を推測せず、`POST https://openrouter.ai/api/alpha/decisions` の `state / questions / answers / usage` 契約を使います。
 

@@ -324,7 +324,7 @@ export class ProductObservabilityStore {
       source: 'ai_proxy',
       correlation: {
         ...(params.correlation ?? {}),
-        requestId: params.requestId,
+        requestId: params.correlation?.requestId ?? params.requestId,
       },
       payload: params.payload,
       expireAt: new Date(new Date(observedAt).getTime() + EVENT_RETENTION_MS).toISOString(),

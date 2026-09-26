@@ -15,6 +15,7 @@ let jevResponse: () => Promise<Response>;
 let quotaAllowed = true;
 let authAllowed = true;
 let baselineStatus = 200;
+let baselineDecisionValue: 'create_plan' | 'fallback' = 'fallback';
 
 function validResponse(independentMeaning = 0.001) {
   return {
@@ -61,6 +62,7 @@ beforeEach(() => {
   quotaAllowed = true;
   authAllowed = true;
   baselineStatus = 200;
+  baselineDecisionValue = 'fallback';
   jevResponse = async () => Response.json(validResponse());
   vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -77,7 +79,10 @@ beforeEach(() => {
     }
     if (url.endsWith('/chat/completions')) {
       expect(JSON.parse(String(init?.body))).not.toHaveProperty('decisionContext');
-      return Response.json({ choices: [{ message: { content: '{"decision":"fallback"}' } }], usage: { prompt_tokens: 10 } }, { status: baselineStatus });
+      return Response.json({
+        choices: [{ message: { content: JSON.stringify({ decision: baselineDecisionValue }) } }],
+        usage: { prompt_tokens: 10 },
+      }, { status: baselineStatus });
     }
     throw new Error('Unexpected network call');
   }));
@@ -100,8 +105,43 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(pending).toHaveLength(1);
     finish(Response.json(validResponse()));
     await Promise.all(pending);
-    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({ outcome: 'shadow', comparisonMatches: false }));
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      outcome: 'shadow', rawChoiceMatchesBaseline: false, gatedRouteMatchesBaseline: false,
+    }));
   });
+
+  it('records raw and gated baseline comparisons separately after an auxiliary veto', async () => {
+    baselineDecisionValue = 'create_plan';
+    jevResponse = async () => Response.json(validResponse(0.99));
+    const { response, pending } = execute('shadow');
+    expect(await (await response).json()).toMatchObject({ content: '{"decision":"create_plan"}' });
+    await Promise.all(pending);
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      gate: 'accepted', choice: 'create_plan',
+      rawChoiceMatchesBaseline: true, gatedRouteMatchesBaseline: false,
+    }));
+  });
+
+  it.each(['abstained', 'unavailable'] as const)(
+    'keeps the gated baseline comparison undecided when the gate is %s',
+    async (kind) => {
+      if (kind === 'abstained') {
+        const uncertain = validResponse();
+        uncertain.answers.authorization.confidence = 0.5;
+        jevResponse = async () => Response.json(uncertain);
+      } else {
+        jevResponse = async () => Response.json({}, { status: 503 });
+      }
+      const { response, pending } = execute('shadow');
+      expect(await (await response).json()).toMatchObject({ content: '{"decision":"fallback"}' });
+      await Promise.all(pending);
+      expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+        gate: kind,
+        rawChoiceMatchesBaseline: kind === 'abstained' ? false : null,
+        gatedRouteMatchesBaseline: null,
+      }));
+    },
+  );
 
   it('keeps bounded shadow evaluation alive after the client request is aborted', async () => {
     let finish!: (value: Response) => void;

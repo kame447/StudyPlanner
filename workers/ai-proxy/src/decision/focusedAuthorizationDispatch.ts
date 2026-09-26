@@ -61,8 +61,10 @@ export async function dispatchFocusedAuthorization(params: {
       gate: gate.status, reason: gate.status === 'accepted' ? null : gate.reason,
       requestedModel: metadata.requestedModel, catalogVersion: JEV_CATALOG_VERSION,
       gateVersion: JEV_GATE_VERSION, inputRevision: params.context.inputRevision,
-      comparisonMatches: baseline !== null && evaluation.status === 'evaluated'
+      rawChoiceMatchesBaseline: baseline !== null && evaluation.status === 'evaluated'
         ? evaluation.decision === baseline : null,
+      gatedRouteMatchesBaseline: baseline !== null && gate.status === 'accepted'
+        ? gate.decision === baseline : null,
       reportedCostUsd: metadata.costUsd,
       choice: evaluation.status === 'evaluated' ? evaluation.decision : null,
       confidence: evaluation.status === 'evaluated' ? evaluation.confidence : null,
@@ -80,6 +82,7 @@ export async function dispatchFocusedAuthorization(params: {
     await recordAiRequestMetricBestEffort({
       env: params.env, firestoreTokenProvider: params.tokenProvider, firebaseUid: params.firebaseUid,
       requestId, occurredAt: new Date(startedAtMs).toISOString(), appVersion: 'unknown',
+      correlation: { requestId: params.context.requestId, stateRevision: params.context.inputRevision },
       operationKind: 'decision', purpose: 'weekly_planning_focused_authorization', phase: 'single',
       provider: metadata.provider, model: metadata.servedModel ?? metadata.requestedModel,
       status: metricStatus(evaluation), requestBytes: metadata.requestBytes, responseBytes: metadata.responseBytes,

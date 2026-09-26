@@ -100,7 +100,8 @@ export interface AiRequestMetricPayload {
     catalogVersion: string;
     gateVersion: string;
     inputRevision: number;
-    comparisonMatches: boolean | null;
+    rawChoiceMatchesBaseline: boolean | null;
+    gatedRouteMatchesBaseline: boolean | null;
     reportedCostUsd: number | null;
     choice: 'create_plan' | 'fallback' | null;
     confidence: number | null;

@@ -1,7 +1,9 @@
 import { getUtf8ByteLength } from '../../../shared/aiProxyContract';
+import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
+  ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
 import { resolveChatModel } from './modelPolicy';
 import {
@@ -161,6 +163,16 @@ export function describeAiProxyOperation(
   return null;
 }
 
+export function resolveAiProxyMetricCorrelation(payload: unknown): ObservabilityCorrelation | undefined {
+  if (!isRecord(payload) || !isFocusedAuthorizationDecisionContext(payload.decisionContext)) {
+    return undefined;
+  }
+  return {
+    requestId: payload.decisionContext.requestId,
+    stateRevision: payload.decisionContext.inputRevision,
+  };
+}
+
 export function classifyAiProxyMetricStatus(
   responseStatus: number,
   responsePayload: unknown,
@@ -231,6 +243,7 @@ export async function observeAiProxyRequest(params: {
     firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
+    correlation: resolveAiProxyMetricCorrelation(requestPayload),
     occurredAt: params.occurredAt,
     appVersion,
     operationKind: operation.operationKind,

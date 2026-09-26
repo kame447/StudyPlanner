@@ -127,17 +127,23 @@ describe('ProductObservabilityStore', () => {
     const decision = {
       mode: 'shadow' as const, outcome: 'shadow' as const, gate: 'abstained' as const,
       reason: 'uncertain', requestedModel: JEV_MODEL.request, catalogVersion: 'fixture', gateVersion: 'fixture',
-      inputRevision: 4, comparisonMatches: false, reportedCostUsd: 0.00001344,
+      inputRevision: 4, rawChoiceMatchesBaseline: false, gatedRouteMatchesBaseline: null,
+      reportedCostUsd: 0.00001344,
       choice: 'create_plan' as const, confidence: 0.8, createPlanProbability: 0.9, fallbackProbability: 0.1,
       conditionChangeProbability: 0.1, independentMeaningProbability: 0.2,
     };
     await store.storeAiRequestMetric({
       firebaseUid: 'private-firebase-uid', requestId: 'jev-metric-fixture',
+      correlation: { requestId: 'turn-request-12345678', stateRevision: 4 },
       occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
       payload: { ...validAiMetricPayload(), provider: 'openrouter', operationKind: 'decision', model: JEV_MODEL.request, decision },
     });
     const saved = [...firestore.documents.values()].find((value) => value.eventType === 'ai_request_metric');
     expect(saved?.payload).toMatchObject({ provider: 'openrouter', promptTokens: null, decision });
+    expect(saved).toMatchObject({
+      eventId: 'jev-metric-fixture',
+      correlation: { requestId: 'turn-request-12345678', stateRevision: 4 },
+    });
     expect(JSON.stringify([...firestore.documents.values()])).not.toContain('private-firebase-uid');
   });
   it('keeps unknown decision probabilities null and rejects incomplete or invalid distributions', async () => {
@@ -146,7 +152,7 @@ describe('ProductObservabilityStore', () => {
     const baseDecision = {
       mode: 'shadow' as const, outcome: 'shadow' as const, gate: 'unavailable' as const,
       reason: 'configuration', requestedModel: JEV_MODEL.request, catalogVersion: 'fixture', gateVersion: 'fixture',
-      inputRevision: 4, comparisonMatches: null, reportedCostUsd: null,
+      inputRevision: 4, rawChoiceMatchesBaseline: null, gatedRouteMatchesBaseline: null, reportedCostUsd: null,
       choice: null, confidence: null, createPlanProbability: null, fallbackProbability: null,
       conditionChangeProbability: null, independentMeaningProbability: null,
     };

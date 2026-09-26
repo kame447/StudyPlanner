@@ -2,6 +2,41 @@ import type { DecisionEvaluation, DecisionMetadata, DecisionProvider } from './d
 import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
+const MAX_DECISIONS_RESPONSE_BYTES = 32_768;
+
+type BoundedBody = {
+  text: string | null;
+  byteLength: number;
+};
+
+async function readBoundedBody(response: Response, abort: () => void): Promise<BoundedBody> {
+  if (!response.body) return { text: '', byteLength: 0 };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      byteLength += next.value.byteLength;
+      if (byteLength > MAX_DECISIONS_RESPONSE_BYTES) {
+        try { await reader.cancel(); } catch { /* best-effort upstream cancellation */ }
+        abort();
+        return { text: null, byteLength };
+      }
+      chunks.push(next.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(bytes), byteLength };
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -48,9 +83,10 @@ export function createOpenRouterDecisionProvider(options: {
           body,
         });
         if (!response.ok) return failed('http', response.status);
-        const text = await response.text();
-        metadata.responseBytes = new TextEncoder().encode(text).length;
-        if (metadata.responseBytes > 32_768) return failed('invalid_response');
+        const responseBody = await readBoundedBody(response, () => controller.abort());
+        metadata.responseBytes = responseBody.byteLength;
+        if (responseBody.text === null) return failed('invalid_response');
+        const text = responseBody.text;
         let root: Record<string, unknown> | null;
         try { root = record(JSON.parse(text)); } catch { return failed('invalid_response'); }
         const usage = record(root?.usage);
