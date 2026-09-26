@@ -8,7 +8,11 @@ import type {
 } from './weeklyPlanningStableV5DialogueContracts';
 
 const MAX_RENDERED_TEXT_LENGTH = 800;
-const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
+const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?![a-z0-9.-])/i;
+// These are the application's own mutation outcomes, not a vocabulary of
+// attacker phrases. A renderer question/status/preview cannot perform them.
+const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?)/;
+const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
@@ -27,6 +31,75 @@ function normalizeProtectedExpression(value: string): string {
 
 function normalizeDialogueText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSafetyText(value: string): string {
+  return value.normalize('NFKC').replace(/\p{Cf}/gu, '');
+}
+
+function groundedDisplayLabels(input: WeeklyPlanningStableV5DialogueRenderInput): string[] {
+  const labels = [...input.requiredLabels];
+  const collections: Array<[string, string[]]> = [
+    ['tasks', ['title']],
+    ['components', ['label']],
+    ['studyContexts', ['contextLabel']],
+    ['registeredMaterials', ['name', 'catalogTitle']],
+  ];
+  for (const [collection, fields] of collections) {
+    const entries = input.planningInformation?.[collection];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!isRecord(entry)) continue;
+      for (const field of fields) {
+        if (typeof entry[field] === 'string') labels.push(entry[field] as string);
+      }
+      if (collection === 'registeredMaterials' && Array.isArray(entry.aliases)) {
+        labels.push(...entry.aliases.filter((alias): alias is string => typeof alias === 'string'));
+      }
+    }
+  }
+  return labels;
+}
+
+function withoutGroundedQuotedData(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): string {
+  const grounded = [input.currentUserMessage, ...groundedDisplayLabels(input)]
+    .map(normalizeSafetyText)
+    .filter((value) => value.length > 0);
+  return text.replace(/「([^」]*)」|『([^』]*)』|"([^"]*)"/g, (quoted, japanese, alternate, doubleQuoted) => {
+    const value = japanese ?? alternate ?? doubleQuoted;
+    if (!grounded.some((source) => source.includes(value) && value.length > 0)) return quoted;
+    return '〈引用データ〉';
+  });
+}
+
+function safetyNarrative(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): string {
+  const normalized = normalizeSafetyText(text);
+  const withoutQuotes = withoutGroundedQuotedData(normalized, input);
+  const fallback = normalizeSafetyText(input.fallbackText);
+  let narrative = fallback.length > 0 ? withoutQuotes.split(fallback).join('') : withoutQuotes;
+  for (const fact of input.currentTurnGrounding?.acceptedFacts ?? []) {
+    if (fact.kind !== 'workload' || fact.data.quantityRole !== 'completed') continue;
+    const amount = fact.data.amount;
+    const unit = fact.data.unitLabel;
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || typeof unit !== 'string') continue;
+    const groundedProgress = normalizeSafetyText(`${amount}${unit}まで完了している`);
+    narrative = narrative.split(groundedProgress).join('〈進捗〉');
+  }
+  return narrative;
+}
+
+function containsExternalDestination(text: string): boolean {
+  return EXTERNAL_DESTINATION.test(normalizeSafetyText(text));
+}
+
+function containsSensitiveValue(text: string): boolean {
+  return SENSITIVE_VALUE.test(normalizeSafetyText(text));
 }
 
 function expressions(value: string, pattern: RegExp): string[] {
@@ -129,9 +202,18 @@ function claimsUnexecutedAction(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
-  return input.actionKind !== 'preview_ready'
-    && EXECUTION_CLAIM_EXPRESSION.test(text)
-    && !/[?？]|(?:ますか|でしょうか)/.test(text);
+  const narrative = safetyNarrative(text, input);
+  // A question only exempts the action predicate it directly follows. A later
+  // question in the same sentence cannot excuse an earlier completion claim.
+  const sentences = narrative.match(/[^。！？!?\n]+[。！？!?\n]?/g) ?? [];
+  const isUnquestionedMatch = (sentence: string, pattern: RegExp): boolean =>
+    [...sentence.matchAll(new RegExp(pattern.source, 'g'))].some((match) => {
+      const ending = sentence.slice((match.index ?? 0) + match[0].length);
+      return !/^\s*(?:(?:か|でしょうか|ですか)\s*[?？]?|[?？])\s*$/.test(ending);
+    });
+  return sentences.some((sentence) =>
+    isUnquestionedMatch(sentence, APPLICATION_MUTATION_OUTCOME)
+    || isUnquestionedMatch(sentence, EXECUTION_CLAIM_EXPRESSION));
 }
 
 function repeatsMostRecentAssistantQuestion(
@@ -213,7 +295,8 @@ function validateRenderedText(
   if (
     text.length === 0
     || text.length > MAX_RENDERED_TEXT_LENGTH
-    || FORBIDDEN_CONTENT.test(text)
+    || containsExternalDestination(text)
+    || containsSensitiveValue(text)
   ) {
     return 'unsafe_text';
   }

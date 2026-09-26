@@ -55,7 +55,7 @@ function rendererResponse(text: string, actionKind: WeeklyPlanningStableV5Dialog
 }
 
 describe('Issue #152 V12 renderer deterministic boundary', () => {
-  it.fails.each([
+  it.each([
     ['保存しました', 'status'],
     ['保存しました', 'question'],
     ['登録しました', 'status'],
@@ -65,7 +65,7 @@ describe('Issue #152 V12 renderer deterministic boundary', () => {
     ['承認済み', 'status'],
     ['承認済み', 'question'],
   ] as const)('rejects one past-tense execution claim for %s/%s', (text, actionKind) => {
-    // Issue #152 V12 reproduced: execution-claim regex recognizes present/future forms but not this past-tense/state claim.
+    // Issue #152 V12 regression: past-tense/state claims of an unexecuted application action fall back.
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse(text, actionKind),
       renderInput(actionKind),
@@ -73,27 +73,29 @@ describe('Issue #152 V12 renderer deterministic boundary', () => {
   });
 
   it.fails('P1 availability: does not over-block security-topic labels that are ordinary user-facing content', () => {
-    // Issue #152 V12 reproduced: security-topic labels are treated as forbidden content rather than untrusted rendered data.
+    // Issue #152 V12 residual (P1 availability): security-topic labels fall back fail-closed, because exempting label
+    // text let a label erase a sensitive request. Structural label references are the follow-up design.
     const result = parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse('パスワード管理について確認しました'),
-      renderInput(),
+      { ...renderInput(), planningInformation: { tasks: [{ title: 'パスワード管理' }] } },
     );
     expect(result.status).toBe('rendered');
   });
 
-  it.fails('rejects fullwidth-protocol URL guidance in a status response', () => {
-    // Issue #152 V12 reproduced: fullwidth URL punctuation bypasses the ASCII URL safety expression.
+  it('rejects fullwidth-protocol URL guidance in a status response', () => {
+    // Issue #152 V12 regression: fullwidth URL punctuation is normalized before the destination check.
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse('https：//example.com'),
       renderInput(),
     ).status).toBe('fallback');
   });
 
-  it('documents exposure: bare-domain URL guidance is rendered (renderer-contract owned; see Luna B V12)', () => {
+  it('rejects ungrounded bare-domain guidance in a status response', () => {
+    // Issue #152 V12 regression: the previously documented bare-domain exposure now falls back.
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
       rendererResponse('example.com の手順を確認しました'),
       renderInput(),
-    ).status).toBe('rendered');
+    ).status).toBe('fallback');
   });
 });
 
