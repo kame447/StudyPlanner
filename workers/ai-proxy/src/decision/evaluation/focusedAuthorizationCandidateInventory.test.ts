@@ -62,10 +62,14 @@ describe('focused authorization candidate inventory', () => {
       {
         currentUserText: 'はい',
         candidateIds: ['short-approval-01', 'short-approval-06', 'abnormal-value-04'],
+        splits: ['tuning', 'holdout'],
+        crossesSplits: true,
       },
       {
         currentUserText: 'お願いします',
         candidateIds: ['short-approval-04', 'short-approval-07'],
+        splits: ['holdout'],
+        crossesSplits: false,
       },
     ]);
     expect(inventory.reviewStatusDistribution).toEqual({ synthetic_unreviewed: 51 });
@@ -88,6 +92,8 @@ describe('focused authorization candidate inventory', () => {
     ];
 
     expect(inventoryFocusedAuthorizationCandidates(candidates).duplicateCurrentUserTexts)
-      .toEqual([{ currentUserText: 'はい', candidateIds: ['exact-a', 'exact-b'] }]);
+      .toEqual([{
+        currentUserText: 'はい', candidateIds: ['exact-a', 'exact-b'], splits: ['tuning'], crossesSplits: false,
+      }]);
   });
 });

@@ -21,9 +21,13 @@ export interface FocusedAuthorizationCandidateInventory {
     count: number;
     groupIds: string[];
   }>;
+  // Exact-text overlap only. crossesSplits flags paraphrase-leakage risk for
+  // human review; differing assistant context may make the overlap intentional.
   duplicateCurrentUserTexts: Array<{
     currentUserText: string;
     candidateIds: string[];
+    splits: FocusedAuthorizationEvaluationSplit[];
+    crossesSplits: boolean;
   }>;
   reviewStatusDistribution: Record<FocusedAuthorizationSyntheticCandidate['reviewStatus'], number>;
 }
@@ -53,16 +57,16 @@ export function inventoryFocusedAuthorizationCandidates(
     tuning: emptyExpectedCounts(),
     holdout: emptyExpectedCounts(),
   };
-  const candidateIdsByCurrentUserText = new Map<string, string[]>();
+  const candidatesByCurrentUserText = new Map<string, FocusedAuthorizationSyntheticCandidate[]>();
   const reviewStatusDistribution = { synthetic_unreviewed: 0 };
 
   for (const value of candidates) {
     countsBySplitExpected[value.split][value.expected] += 1;
     countsByLayerSplitExpected[value.layer][value.split][value.expected] += 1;
     conversationGroups[value.split].add(value.conversationGroupId);
-    const ids = candidateIdsByCurrentUserText.get(value.currentUserText) ?? [];
-    ids.push(value.id);
-    candidateIdsByCurrentUserText.set(value.currentUserText, ids);
+    const sameText = candidatesByCurrentUserText.get(value.currentUserText) ?? [];
+    sameText.push(value);
+    candidatesByCurrentUserText.set(value.currentUserText, sameText);
     reviewStatusDistribution[value.reviewStatus] += 1;
   }
 
@@ -76,9 +80,18 @@ export function inventoryFocusedAuthorizationCandidates(
         groupIds: [...conversationGroups[split]],
       }]),
     ) as FocusedAuthorizationCandidateInventory['conversationGroupsBySplit'],
-    duplicateCurrentUserTexts: [...candidateIdsByCurrentUserText]
-      .filter(([, candidateIds]) => candidateIds.length > 1)
-      .map(([currentUserText, candidateIds]) => ({ currentUserText, candidateIds })),
+    duplicateCurrentUserTexts: [...candidatesByCurrentUserText]
+      .filter(([, sameText]) => sameText.length > 1)
+      .map(([currentUserText, sameText]) => {
+        const splits = FOCUSED_AUTHORIZATION_EVALUATION_SPLITS
+          .filter((split) => sameText.some((value) => value.split === split));
+        return {
+          currentUserText,
+          candidateIds: sameText.map((value) => value.id),
+          splits,
+          crossesSplits: splits.length > 1,
+        };
+      }),
     reviewStatusDistribution,
   };
 }
