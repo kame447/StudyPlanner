@@ -112,7 +112,7 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 - 実施：2026-09-26。schema v1、1 run、Orrery の Antigravity agent（launch model `gemini-3.8-flash-high`、自己申告 `Gemini 3.8 Flash`）。対象は blind packet の131件。agent の worktree の tree には packet と README しかないが、pilot の blind base は StudyPlanner の object store 内の commit だった。そのため、label の非参照は指示による blind にとどまる（以後は独立 repository に変更した）。
 - 結果：judged 130 / invalid 1 / missing 0。51件は create_plan 18 / fallback 31 / ambiguous 1、追加80件は create_plan 32 / fallback 44 / ambiguous 4。reviewRequired は51件で4、追加80件で22。
 - synthetic label との不一致は2件（`stored-injection-07` を create_plan、`abnormal-value-04` を ambiguous）。どちらも human review での裁定対象である。これは gold ではなく、正解率でもない。
-- invalid 1件は contract の不整合による：v1 の公開 schema は空文字列を許していたが、validator は拒否した。schema v2 で公開 schema を validator に合わせた（version を上げたので v1 と v2 は混ぜない）。pilot の結果は v1 の記録として保持し、安定性の評価には使わない。
+- invalid 1件は contract の不整合による：v1 の公開 schema は空文字列を許していたが、validator は拒否した。schema v2 で公開 schema を validator に合わせた（version を上げたので v1 と v2 は混ぜない）。pilot の結果は v1 の記録として保持し、安定性の評価には使わない。pilot は `f64ac726` 時点の import で取り込んだ。現在の import は、mapping に記録された prompt / schema version が一致しない場合（version を持たない v1 mapping を含む）を拒否するため、v1 の判定が v2 と表示されることはない。
 - 反復（v2、3 run）は未完了：3回の起動が失敗した。原因は、起動時の認証確認での通信失敗が2回、実行途中の `UNAUTHENTICATED (401)` が2回で、その後の起動は Antigravity の個人 quota 上限（約7日後にリセット）で停止した。v2 packet と blind base は生成済みなので、quota が戻ったら run 1〜3 を1本ずつ実行し、`npm run eval:gemini-agent:import` で取り込む。
 
 ### 未完了（人手・外部が必要）

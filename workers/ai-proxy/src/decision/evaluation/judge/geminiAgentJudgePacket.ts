@@ -41,6 +41,10 @@ export interface GeminiAgentJudgeMappingItem {
 export interface GeminiAgentJudgeMapping {
   packetId: string;
   packetSha256: string;
+  // Versions the packet was exported with; import refuses a mismatch so
+  // records never claim a prompt/schema the agent did not see.
+  promptVersion: typeof GEMINI_JUDGE_PROMPT_VERSION;
+  schemaVersion: typeof GEMINI_JUDGE_SCHEMA_VERSION;
   runIndex: number;
   items: GeminiAgentJudgeMappingItem[];
 }
@@ -188,6 +192,8 @@ export async function buildGeminiAgentJudgePacket(
     mapping: {
       packetId,
       packetSha256,
+      promptVersion: GEMINI_JUDGE_PROMPT_VERSION,
+      schemaVersion: GEMINI_JUDGE_SCHEMA_VERSION,
       runIndex: options.runIndex,
       items: ordered.map((input, index) => ({
         itemId: packetItems[index].itemId,
@@ -199,8 +205,11 @@ export async function buildGeminiAgentJudgePacket(
 
 function parseMapping(value: unknown): GeminiAgentJudgeMapping {
   const root = object(value);
-  if (!root || !hasExactKeys(root, ['packetId', 'packetSha256', 'runIndex', 'items'])) {
+  if (!root || !hasExactKeys(root, ['packetId', 'packetSha256', 'promptVersion', 'schemaVersion', 'runIndex', 'items'])) {
     throw new Error('Gemini agent judge mapping does not match the expected shape.');
+  }
+  if (root.promptVersion !== GEMINI_JUDGE_PROMPT_VERSION || root.schemaVersion !== GEMINI_JUDGE_SCHEMA_VERSION) {
+    throw new Error(`Gemini agent judge mapping was exported with ${String(root.promptVersion)} / ${String(root.schemaVersion)}; this import handles ${GEMINI_JUDGE_PROMPT_VERSION} / ${GEMINI_JUDGE_SCHEMA_VERSION}.`);
   }
   if (!nonEmptyString(root.packetId)
     || typeof root.packetSha256 !== 'string'
@@ -227,6 +236,8 @@ function parseMapping(value: unknown): GeminiAgentJudgeMapping {
   return {
     packetId: root.packetId,
     packetSha256: root.packetSha256,
+    promptVersion: GEMINI_JUDGE_PROMPT_VERSION,
+    schemaVersion: GEMINI_JUDGE_SCHEMA_VERSION,
     runIndex: root.runIndex as number,
     items,
   };
@@ -305,8 +316,8 @@ export function importGeminiAgentJudgments(
       },
       packetId: mapping.packetId,
       packetSha256: mapping.packetSha256,
-      promptVersion: GEMINI_JUDGE_PROMPT_VERSION,
-      schemaVersion: GEMINI_JUDGE_SCHEMA_VERSION,
+      promptVersion: mapping.promptVersion,
+      schemaVersion: mapping.schemaVersion,
       runIndex: mapping.runIndex,
       status,
       reason: status === 'judged' ? null : status,

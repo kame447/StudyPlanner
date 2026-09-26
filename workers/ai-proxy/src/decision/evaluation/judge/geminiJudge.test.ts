@@ -12,6 +12,8 @@ import {
   aggregateGeminiJudgeRecords,
 } from './geminiJudgeAggregation';
 import {
+  GEMINI_JUDGE_PROMPT_VERSION,
+  GEMINI_JUDGE_SCHEMA_VERSION,
   GEMINI_JUDGMENT_RESPONSE_SCHEMA,
   parseGeminiJudgment,
   type GeminiJudgeRecord,
@@ -182,7 +184,8 @@ describe('Gemini Orrery agent packet', () => {
 
 describe('Gemini Orrery agent judgment import', () => {
   const mapping: GeminiAgentJudgeMapping = {
-    packetId: 'gajp-import-fixture', packetSha256: 'b'.repeat(64), runIndex: 1,
+    packetId: 'gajp-import-fixture', packetSha256: 'b'.repeat(64),
+    promptVersion: GEMINI_JUDGE_PROMPT_VERSION, schemaVersion: GEMINI_JUDGE_SCHEMA_VERSION, runIndex: 1,
     items: [
       { itemId: 'item-a', caseId: 'case-a' },
       { itemId: 'item-b', caseId: 'case-b' },
@@ -190,6 +193,16 @@ describe('Gemini Orrery agent judgment import', () => {
     ],
   };
   const agent = { name: 'GeminiJudge', launchModel: 'gemini-3.8-flash-high', effort: 'high' };
+
+  it('refuses a mapping exported with a different prompt or schema version', () => {
+    // Regression: records must carry the version the agent actually judged.
+    const response = JSON.stringify({ packetId: mapping.packetId, judgments: [] });
+    expect(() => importGeminiAgentJudgments(
+      { ...mapping, schemaVersion: 'focused-authorization-judgment-v1' }, response, agent,
+    )).toThrow(/exported with/);
+    const { promptVersion: _omitted, ...withoutVersion } = mapping;
+    expect(() => importGeminiAgentJudgments(withoutVersion, response, agent)).toThrow(/expected shape/);
+  });
 
   it('imports valid items and marks invalid or absent items without coercion', () => {
     const records = importGeminiAgentJudgments(mapping, JSON.stringify({
