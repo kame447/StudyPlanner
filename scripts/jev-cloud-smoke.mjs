@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const VERIFIED_WRANGLER_VERSION = '4.140.0';
 
 async function loadWrangler() {
   for (const directory of (process.env.PATH ?? '').split(delimiter)) {
     let executable;
     try { executable = await realpath(join(directory, 'wrangler')); } catch { continue; }
+    const packageJson = JSON.parse(await readFile(resolve(dirname(executable), '../package.json'), 'utf8'));
+    assert.equal(packageJson.version, VERIFIED_WRANGLER_VERSION,
+      `Refusing remote smoke with Wrangler ${String(packageJson.version)}; expected ${VERIFIED_WRANGLER_VERSION}.`);
     return import(pathToFileURL(resolve(dirname(executable), '../wrangler-dist/cli.js')).href);
   }
   throw new Error('Run through npm exec --package=wrangler@4.140.0 so Wrangler is available.');

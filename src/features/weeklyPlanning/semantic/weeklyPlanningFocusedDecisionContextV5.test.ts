@@ -39,18 +39,6 @@ describe('bounded focused decision context', () => {
     expect(trace).not.toContain('decisionContext');
   });
 
-  it('does not apply a delayed decision after revision, text or eligibility changes', async () => {
-    for (const change of [
-      (value: ReturnType<typeof input>) => { value.publicStateSummary.graphRevision += 1; },
-      (value: ReturnType<typeof input>) => { value.userText = 'changed'; },
-      (value: ReturnType<typeof input>) => { value.publicStateSummary.previousCompatibilityStatus = 'ready'; },
-    ]) {
-      const value = input();
-      const client = { createChatCompletion: vi.fn(async () => { change(value); return '{"decision":"create_plan"}'; }) };
-      expect(await tryFocusedAuthorizationRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(client, value))).toEqual({ result: null, decision: null });
-    }
-  });
-
   it('does not attach a decision context for unbounded input or absent revision', () => {
     expect(focusedDecisionContextV5({ ...input(), userText: 'あ'.repeat(3000) })).toBeUndefined();
     expect(focusedDecisionContextV5({ ...input(), publicStateSummary: { ...input().publicStateSummary, graphRevision: undefined } })).toBeUndefined();

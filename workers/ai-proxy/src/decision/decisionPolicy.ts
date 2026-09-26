@@ -29,6 +29,9 @@ export type DecisionGate = { status: 'accepted'; decision: 'create_plan' | 'fall
   | { status: 'abstained'; reason: 'uncertain' | 'conflicting_heads' }
   | { status: 'unavailable'; reason: string };
 
+// TypeSafe documents Choice and Noul outputs separately; it does not guarantee
+// consistency between them. "conflicting_heads" means observed disagreement,
+// not a proven contradiction, and agreement is not an independent safety guarantee.
 export function gateDecision(result: DecisionEvaluation): DecisionGate {
   if (result.status === 'unavailable') return { status: result.status, reason: result.reason };
   if (result.conditionChange >= 0.97 || result.independentMeaning >= 0.97) {

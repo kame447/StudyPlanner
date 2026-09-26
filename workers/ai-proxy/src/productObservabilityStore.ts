@@ -59,6 +59,28 @@ function normalizedEnvironment(value: string | undefined): ObservabilityEnvironm
   return 'production';
 }
 
+function isNullableProbability(value: unknown): boolean {
+  return value === null
+    || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1);
+}
+
+function validateDecisionMetric(payload: AiRequestMetricPayload): void {
+  if (payload.operationKind !== 'decision') return;
+  const decision = payload.decision as Record<string, unknown> | undefined;
+  const createPlanProbability = decision?.createPlanProbability;
+  const fallbackProbability = decision?.fallbackProbability;
+  const bothUnknown = createPlanProbability === null && fallbackProbability === null;
+  const bothKnown = typeof createPlanProbability === 'number'
+    && typeof fallbackProbability === 'number';
+  if (!decision
+    || !isNullableProbability(createPlanProbability)
+    || !isNullableProbability(fallbackProbability)
+    || (!bothUnknown && !bothKnown)
+    || (bothKnown && Math.abs(createPlanProbability + fallbackProbability - 1) > 0.02)) {
+    throw new Error('Decision telemetry probabilities are invalid');
+  }
+}
+
 function comparableEvent(value: Record<string, unknown>): Record<string, unknown> {
   const comparable = { ...value };
   delete comparable.id;
@@ -287,6 +309,7 @@ export class ProductObservabilityStore {
     correlation?: ObservabilityCorrelation;
     payload: AiRequestMetricPayload;
   }): Promise<void> {
+    validateDecisionMetric(params.payload);
     const actorSubjectId = await this.resolveActorSubjectId(params.firebaseUid);
     const observedAt = this.now().toISOString();
     const event: StoredObservabilityEvent<AiRequestMetricPayload> = {

@@ -42,6 +42,7 @@ export async function dispatchFocusedAuthorization(params: {
 }): Promise<Response> {
   const mode = decisionMode(params.env);
   if (mode === 'off') return params.fallback();
+  if (!params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
   const selected = mode === 'canary' && canarySelected(params.env);
   if (mode === 'canary' && !selected) return params.fallback();
   // Without a Worker lifecycle there is no safe, bounded background shadow job.
@@ -64,6 +65,7 @@ export async function dispatchFocusedAuthorization(params: {
       choice: evaluation.status === 'evaluated' ? evaluation.decision : null,
       confidence: evaluation.status === 'evaluated' ? evaluation.confidence : null,
       createPlanProbability: evaluation.status === 'evaluated' ? evaluation.probabilities.create_plan : null,
+      fallbackProbability: evaluation.status === 'evaluated' ? evaluation.probabilities.fallback : null,
       conditionChangeProbability: evaluation.status === 'evaluated' ? evaluation.conditionChange : null,
       independentMeaningProbability: evaluation.status === 'evaluated' ? evaluation.independentMeaning : null,
     };
@@ -90,7 +92,7 @@ export async function dispatchFocusedAuthorization(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(params.context.state, params.signal);
+    const evaluation = provider.evaluate(params.context.state);
     const baseline = params.fallback();
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])

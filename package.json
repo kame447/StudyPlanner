@@ -17,6 +17,7 @@
     "test": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run",
     "test:jev:live": "node ./node_modules/vitest/vitest.mjs --config vitest.jev.config.mjs run",
+    "eval:jev:shadow": "node ./node_modules/vitest/vitest.mjs --config vitest.jev-evaluation.config.mjs run",
     "test:firestore-rules": "npx --yes firebase-tools emulators:exec --only auth,firestore --project demo-studyplanner \"node scripts/ci/firestore-profile-registration-rules.mjs\"",
     "test:nl": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs src/services/natural-language",
     "test:nl:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/services/natural-language",

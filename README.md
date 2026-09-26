@@ -149,6 +149,14 @@ npm run test:jev:live
 
 この試験は合成した日本語の `create_plan / fallback` 判定を実Jevへ1件送り、HTTP成功に加えてdecision・分布・入力tokenを確認します。1件の疎通成功は日本語品質や本番rolloutの承認を意味しません。キー未設定なら試験は明示的に失敗し、成功扱いにしません。
 
+人手レビュー前のshadow評価候補は `workers/ai-proxy/src/decision/evaluation/` にあります。通常・短い承認・否定・訂正・条件付き承認・mixed turn・stored/indirect injection・Unicode・異常値を `tuning` / `holdout` に会話group単位で分けています。全件 `synthetic_unreviewed` であり、人手確認済みgoldや本番有効化の根拠ではありません。通常CIはmock providerだけでgroup分離、既存gate、class別precision/recall、coverage、分母付きselective accuracy、false auto-`create_plan`、abstention/unavailable、latency、未知cost保持を検証します。既存生成LLMとの一致はaccuracyとして集計しません。
+
+候補を実OpenRouter adapterへ通す任意評価は、環境変数を明示したプロセスでのみ実行します。専用Vitest configで全候補を実行し、通常test globやCIには含まれません。`.env`を自動読込せず、入力本文・key・headerを出力しません。production validatorを通らない候補は`rejected_before_provider`として分離し、APIへ送らず、coverage/selective accuracyの分母から除外して件数を報告します。未知costがある場合、完全な総額は`null`のままです。人手レビューと費用承認の後にだけ実行してください。
+
+```bash
+npm run eval:jev:shadow
+```
+
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash

@@ -373,9 +373,6 @@ export async function tryFocusedAuthorizationRouteV5(
 
   try {
     const response = await run.client.createChatCompletion(request);
-    if (decisionContext && JSON.stringify(focusedDecisionContextV5(run.input)) !== JSON.stringify(decisionContext)) {
-      return { result: null, decision: null };
-    }
     const focusedDecision = parseFocusedAuthorizationDecisionV5(response);
     const decision = focusedDecision?.decision ?? null;
     recordWeeklyPlanningStableV5DebugTrace({

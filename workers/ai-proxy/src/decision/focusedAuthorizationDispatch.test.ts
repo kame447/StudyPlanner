@@ -26,16 +26,25 @@ function validResponse(independentMeaning = 0.001) {
   };
 }
 
-function execute(mode = 'off', options: { origin?: string; payload?: Record<string, unknown>; noLifecycle?: boolean } = {}) {
+function execute(mode = 'off', options: {
+  origin?: string;
+  payload?: Record<string, unknown>;
+  noLifecycle?: boolean;
+  openRouterApiKey?: string | null;
+  signal?: AbortSignal;
+} = {}) {
   const pending: Promise<unknown>[] = [];
   const env = {
-    OPENAI_API_KEY: crypto.randomUUID(), OPENROUTER_API_KEY: crypto.randomUUID(),
+    OPENAI_API_KEY: crypto.randomUUID(),
+    OPENROUTER_API_KEY: options.openRouterApiKey === undefined
+      ? crypto.randomUUID() : options.openRouterApiKey ?? undefined,
     FIREBASE_WEB_API_KEY: 'public-test-project', ALLOWED_ORIGIN: 'https://app.example',
     JEV_MODE: mode, JEV_CANARY_PERCENT: '100',
     AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: quotaAllowed, retryAfterSeconds: 1 }) }) },
   };
   const response = worker.fetch(new Request('https://proxy.example/chat/completions', {
     method: 'POST', headers: { Authorization: 'Bearer test-session', Origin: options.origin ?? 'https://app.example' },
+    signal: options.signal,
     body: JSON.stringify({
       purpose: 'weekly_planning_semantic_normalizer',
       messages: [{ role: 'user', content: 'baseline-messages' }],
@@ -92,9 +101,36 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({ outcome: 'shadow', comparisonMatches: false }));
   });
 
+  it('keeps bounded shadow evaluation alive after the client request is aborted', async () => {
+    let finish!: (value: Response) => void;
+    jevResponse = () => new Promise((resolve) => { finish = resolve; });
+    const controller = new AbortController();
+    const { response, pending } = execute('shadow', { signal: controller.signal });
+    expect(await (await response).json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    controller.abort();
+    finish(Response.json(validResponse()));
+    await Promise.all(pending);
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      outcome: 'shadow', gate: 'accepted', choice: 'create_plan',
+    }));
+  });
+
   it('does not start shadow work without waitUntil', async () => {
     await execute('shadow', { noLifecycle: true }).response;
     expect(calls.some((url) => url.includes('openrouter'))).toBe(false);
+  });
+
+  it.each([
+    ['shadow', null],
+    ['shadow', '   '],
+    ['canary', null],
+    ['canary', '   '],
+  ] as const)('treats %s with an absent or blank OpenRouter key as off', async (mode, openRouterApiKey) => {
+    const { response, pending } = execute(mode, { openRouterApiKey });
+    expect(await (await response).json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    expect(pending).toHaveLength(0);
+    expect(calls.filter((url) => url.endsWith('/api/alpha/decisions'))).toHaveLength(0);
+    expect(console.info).not.toHaveBeenCalledWith('[AI Decision]', expect.anything());
   });
 
   it('telemetry failure cannot replace the baseline response in shadow', async () => {
@@ -110,14 +146,17 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(await result.clone().json()).toMatchObject({ content: '{"decision":"create_plan"}', decisionContext: { inputRevision: 7, requestId: context.requestId } });
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(0);
     await Promise.all(pending);
-    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({ outcome: 'success', inputTokens: 200, reportedCostUsd: 0.0000084 }));
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      outcome: 'success', inputTokens: 200, reportedCostUsd: 0.0000084,
+      createPlanProbability: 1, fallbackProbability: 0,
+    }));
     const count = calls.length;
     await observeAiProxyRequest({ request: new Request('https://proxy.example/chat/completions', { method: 'POST' }), response: result, env: { ...env, OBSERVABILITY_IDENTITY_SECRET: 'x'.repeat(32) } as never, startedAtMs: 0, occurredAt: '' });
     expect(calls).toHaveLength(count);
     const logged = JSON.stringify(vi.mocked(console.info).mock.calls);
     expect(logged).not.toContain(context.state.currentUserText);
     expect(logged).not.toContain(context.state.lastAssistantMessage);
-    expect(logged).not.toContain(env.OPENROUTER_API_KEY);
+    expect(logged).not.toContain(env.OPENROUTER_API_KEY ?? 'missing-test-key');
   });
 
   it('sends definite mixed meaning to generic without a focused LLM overriding the guard', async () => {

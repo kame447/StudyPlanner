@@ -105,6 +105,7 @@ export interface AiRequestMetricPayload {
     choice: 'create_plan' | 'fallback' | null;
     confidence: number | null;
     createPlanProbability: number | null;
+    fallbackProbability: number | null;
     conditionChangeProbability: number | null;
     independentMeaningProbability: number | null;
   };
