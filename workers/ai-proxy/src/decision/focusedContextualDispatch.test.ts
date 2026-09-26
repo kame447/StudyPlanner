@@ -156,7 +156,7 @@ describe('focused contextual dispatch', () => {
       fallback,
       respond: (decision) => structuredResponse(decision),
       provider: provider(evaluated('remaining')),
-      isContextCurrent: () => false,
+      isHarnessContextCurrent: () => false,
     });
 
     expect(await response.json()).toMatchObject({

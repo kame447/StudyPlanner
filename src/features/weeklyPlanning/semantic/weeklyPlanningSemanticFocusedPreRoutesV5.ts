@@ -203,14 +203,18 @@ export async function tryFocusedContextualAnswerRouteV5(
     && target.estimateForWorkload !== null;
   const baseMessages = createExtendedContextualMessagesV5(run.input);
   let attemptMessages = baseMessages;
+  let forceLunaForRetry = false;
   const decisionContext = focusedContextualDecisionContextV5(run.input);
-  const initialRequest = {
-    ...(decisionContext ? { decisionContext } : {}),
+  const requestWithoutDecisionContext = {
     messages: baseMessages,
     temperature: 0,
     responseFormat: FOCUSED_CONTEXTUAL_ANSWER_WITH_PROVISIONAL_RESPONSE_FORMAT_V5,
     purpose: 'weekly_planning_semantic_normalizer' as const,
     maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
+  };
+  const initialRequest = {
+    ...(decisionContext ? { decisionContext } : {}),
+    ...requestWithoutDecisionContext,
   };
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: run.input.traceRequestId,
@@ -231,7 +235,7 @@ export async function tryFocusedContextualAnswerRouteV5(
   const requestBytes: number[] = [];
   for (let attempt = 1; attempt <= FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS; attempt += 1) {
     const request = {
-      ...initialRequest,
+      ...(forceLunaForRetry ? requestWithoutDecisionContext : initialRequest),
       messages: attemptMessages,
     };
     const requestByteLength = semanticNormalizerByteLength(request);
@@ -299,6 +303,7 @@ export async function tryFocusedContextualAnswerRouteV5(
             ...baseMessages,
             { role: 'user' as const, content: DUAL_TARGET_CONTEXTUAL_REPAIR_INSTRUCTION },
           ];
+          forceLunaForRetry = true;
           continue;
         }
         return null;

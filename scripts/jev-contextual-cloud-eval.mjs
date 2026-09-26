@@ -445,7 +445,7 @@ async function runCase(item, env, requestSignal, lunaOnly = false) {
       },
     }),
     provider,
-    isContextCurrent: () => item.fault !== 'stale_context',
+    isHarnessContextCurrent: () => item.fault !== 'stale_context',
   });
   if (!response.ok) throw new Error('Focused contextual dispatch failed.');
   const proxyPayload = await response.json();

@@ -12,8 +12,14 @@ import {
   type WeeklyPlanningTraceApiSession,
 } from './weeklyPlanningTraceApi';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
-import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
-import { isFocusedContextualDecisionContext } from '../../../shared/focusedContextualDecision';
+import {
+  isFocusedAuthorizationDecisionContext,
+  type FocusedAuthorizationDecisionContext,
+} from '../../../shared/focusedAuthorizationDecision';
+import {
+  isFocusedContextualDecisionContext,
+  type FocusedContextualDecisionContext,
+} from '../../../shared/focusedContextualDecision';
 import {
   dispatchFocusedAuthorization,
   resolveFocusedAuthorizationBaselineFailure,
@@ -240,6 +246,35 @@ async function requireFirebaseSession(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type FocusedDecisionContextClassification =
+  | { kind: 'none' }
+  | { kind: 'focused_authorization'; context: FocusedAuthorizationDecisionContext }
+  | { kind: 'focused_contextual'; context: FocusedContextualDecisionContext }
+  | { kind: 'unknown_purpose' }
+  | { kind: 'invalid' };
+
+function classifyFocusedDecisionContext(
+  value: unknown,
+): FocusedDecisionContextClassification {
+  if (value === undefined) return { kind: 'none' };
+  if (!isRecord(value) || typeof value.purpose !== 'string' || value.purpose.length === 0) {
+    return { kind: 'invalid' };
+  }
+  if (value.purpose === 'focused_authorization') {
+    return isFocusedAuthorizationDecisionContext(value)
+      ? { kind: 'focused_authorization', context: value }
+      : { kind: 'invalid' };
+  }
+  if (value.purpose === 'focused_contextual_answer') {
+    return isFocusedContextualDecisionContext(value)
+      ? { kind: 'focused_contextual', context: value }
+      : { kind: 'invalid' };
+  }
+  // Newer clients may add a focused purpose before this Worker is deployed.
+  // Ignore such contexts rather than rejecting an otherwise valid Luna request.
+  return { kind: 'unknown_purpose' };
 }
 
 function validateChatRequest(payload: unknown): string | null {
@@ -574,35 +609,42 @@ async function handleChatRequest(
     return jsonResponse(request, env, 400, { error: 'Requested model is not allowed.' });
   }
 
+  const focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  if (focusedContext.kind === 'invalid') {
+    return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
+  }
+  if (
+    (focusedContext.kind === 'focused_authorization'
+      || focusedContext.kind === 'focused_contextual')
+    && payload.purpose !== 'weekly_planning_semantic_normalizer'
+  ) {
+    return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
+  }
+
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
 
-  const context = payload.decisionContext;
-  if (context !== undefined) {
-    if (payload.purpose !== 'weekly_planning_semantic_normalizer') {
-      return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
-    }
-    if (isFocusedAuthorizationDecisionContext(context)) {
-      return dispatchFocusedAuthorization({
-        context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-        fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
-        respond: (decision) => jsonResponse(request, env, 200, {
-          content: JSON.stringify({ decision }),
-          decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
-        }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
-      });
-    }
-    if (isFocusedContextualDecisionContext(context)) {
-      return dispatchFocusedContextual({
-        context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-        fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
-        respond: (decision) => jsonResponse(request, env, 200, {
-          content: JSON.stringify(decision),
-          decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
-        }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
-      });
-    }
-    return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
+  if (focusedContext.kind === 'focused_authorization') {
+    const context = focusedContext.context;
+    return dispatchFocusedAuthorization({
+      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      respond: (decision) => jsonResponse(request, env, 200, {
+        content: JSON.stringify({ decision }),
+        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+    });
+  }
+  if (focusedContext.kind === 'focused_contextual') {
+    const context = focusedContext.context;
+    return dispatchFocusedContextual({
+      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      respond: (decision) => jsonResponse(request, env, 200, {
+        content: JSON.stringify(decision),
+        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+    });
   }
   return fetchChatCompletion(request, env, payload, modelResolution.model);
 }

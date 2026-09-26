@@ -1,6 +1,6 @@
 # Issue #305 — focused contextual answer の Jev 第一経路
 
-Status: ready for PR / preliminary holdout and local verification complete
+Status: PR #338 audit fixes in progress
 Updated: 2026-09-27
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335）
 
@@ -54,6 +54,20 @@ Worker は固定 Choice `target / remaining / completed / focused_luna / fallbac
 - uncertainty、head conflict、unavailable は Luna へ戻す。
 - accepted quantity role も Luna と同じ response shape を返し、既存 parser、document
   builder、binding を通す。
+- Worker がまだ知らない `decisionContext.purpose` は context なしと同じ通常 Luna
+  経路へ進め、upstream へ context を転送しない。既知 purpose の形式不正、非 object、
+  purpose 欠落は400にする。Browser の discriminated union は未知 purpose を型で拒否する。
+- completed/remaining の二つの対象を持つ effort question で focused retry する場合、
+  repair 指示を解釈する owner は Luna なので、2回目は `decisionContext` を送らない。
+
+## 前方互換とデプロイ順序
+
+監査時点の本番 Worker は #332 より前の `43aa4ab8` で、`decisionContext` を無視する
+版であるため、現行本番への即時回帰はない。一方、#332〜#337 の Worker は未知の
+context purpose を400にしていたため、新しい client を先に出すと非互換になり得た。
+本変更後のリリース順序は **Worker を先、client を後** とする。Worker 先行状態では
+未知 purpose が通常 Luna と同じ upstream body になることを回帰テストで固定し、今後の
+単位追加や client/Worker の一時的な版ずれでも通常経路を維持する。
 
 ## 評価規則
 
@@ -130,7 +144,7 @@ confidence 0.97 / selected probability 0.99 とし、definite auxiliary fallback
 | Luna fallback | 18 / 30 |
 | provider unavailable / unexpected output key | 0 / 0 |
 | Jev usage | input 25,254 / output 2,892 tokens、reported USD 0.001060668 |
-| Luna usage | prompt 10,834 / completion 1,855 tokens、cost unknown |
+| Luna usage | prompt 10,834 / completion 1,855 tokens、USD 0.00244268〜0.00493450 |
 
 Jev role accepted case IDs:
 `ctx-t-target-01`, `ctx-t-target-02`, `ctx-t-remaining-01`,
@@ -153,7 +167,7 @@ injected Jev outcome の後段は既存 Worker Secret を内部利用する actu
 | effort question + role choice | `deferred / cross_question_choice` | called | `effort_answer` with minutes |
 
 5/5 で Luna fallback が実動し、unexpected output key は0。Luna usage 合計は prompt
-2,967 / completion 278 tokens。価格表を渡していないため cost は未知であり0とは扱わない。
+2,967 / completion 278 tokens、cost は USD 0.00039294〜0.00107535。
 fault injection は semantic quality の正解率や gold ではない。
 
 追加 probe では low-confidence に加えて timeout、HTTP 429、HTTP 500、malformed、
@@ -161,16 +175,28 @@ model mismatch、provider cancelled、stale revision、effort cross-question を
 9/9 で production contextual dispatch から actual Luna が呼ばれ、8件は
 `quantity_role_answer / remaining`、effort cross-question は minutes を持つ
 `effort_answer` になった。unexpected output key は全件0、Luna usage 合計は prompt
-5,339 / completion 465 tokens。stale revision は高確信 role を応答へ合成する直前の
-current-context 再検証で棄却した。caller request 自体の abort は Luna も中断すべき
-別条件であり、この probe の `cancelled` は provider abort outcome を表す。
+5,339 / completion 465 tokens、cost は USD 0.00066478〜0.00189275。stale revision
+probe は evaluator harness 専用の current-context hook で高確信 role を棄却したもので、
+本番 Worker はこの hook を渡さない。本番の freshness 境界は client の revision echo
+検査と、active pending state からの target 再構築である。caller request 自体の abort は
+Luna も中断すべき別条件であり、この probe の `cancelled` は provider abort outcome を表す。
 
 ### 予備 holdout（gate/catalog 固定後の1回のみ）
 
 `ba8aa38f` で catalog v2 / gate v2 を固定してから、holdout 30件 / 25
 conversation groups を1回だけ実行した。結果を見た gate/catalog 変更や再実行は
 していない。すべて `synthetic_unreviewed` であり human gold ではないため、以下は
-予備的な boundary evidence である。
+予備的な boundary evidence である。ただし30件のうち12件は、tuning 結果を見た後に
+同じ作成者が追加しており、完全に独立した holdout ではない。この set は予備的かつ
+消費済みで、今後の受入れ判断には tuning 閲覧前に新しく封印し、独立レビューした
+set が必要である。
+
+freeze 時点の catalog/gate source SHA-256 は
+`b52dfb18c174bc30b49c56ffedd52409724d827a7e416e3c92a60978e988020c`
+（`workers/ai-proxy/src/decision/contextualDecisionPolicy.ts`）、corpus SHA-256 は
+`7f813b7d9711d10e53b83cbcdace369a209c3797016ef1b88f994a0d30e3e6e6`
+（`scripts/jev-contextual-corpus.mjs`）。runner の case 単位 typed record は一時 stdout
+だけで永続化しておらず、holdout 再実行を避けるため新たな artifact は作らない。
 
 | 指標 | holdout result |
 | --- | --- |
@@ -183,7 +209,7 @@ conversation groups を1回だけ実行した。結果を見た gate/catalog 変
 | Luna fallback | 19 / 30 |
 | provider unavailable / unexpected output key | 0 / 0 |
 | Jev usage | input 25,271 / output 2,894 tokens、reported USD 0.001061382 |
-| fallback Luna usage | prompt 11,461 / completion 2,007 tokens、cost unknown |
+| fallback Luna usage | prompt 11,461 / completion 2,007 tokens、USD 0.00263762〜0.00527365 |
 
 Jev role accepted case IDs:
 `ctx-h-target-02`, `ctx-h-remaining-01`, `ctx-h-remaining-02`,
@@ -207,13 +233,18 @@ Luna owner を迂回した場合だけを数える。
 | call reduction | 11/30（36.7%） | baseline |
 | latency p50 / p95 | 1,463 / 2,163 ms（paired estimate） | 1,415 / 1,956 ms（observed） |
 | provider token usage | Jev 25,271/2,894 + Luna 11,461/2,007 | Luna 18,057/2,819 |
-| cost | Jev known subtotal USD 0.001061382 + Luna unknown | Luna unknown |
+| cost | USD 0.003699002〜0.006335032 | USD 0.00374394〜0.00789705 |
 
-Jev-first latency は、holdout で観測した Jev latency に、fallback case だけ同一 case の
+Jev-first の最終判定、Luna 呼出し数、Luna token は production
+`dispatchFocusedContextual` の end-to-end 実行で実測した。Luna-only の結果を後から
+最終判定へ合成していない。推定なのは latency だけで、holdout で観測した Jev latency
+に、fallback case だけ同一 case の
 paired Luna-only latency を足した推定値である。別時刻のネットワーク揺らぎを含むため、
 実測 end-to-end と偽らない。この小標本では generative call 削減は示したが、p50/p95
-改善は示しておらず、むしろ Jev overhead 分だけ高い。価格表が提供されていないため
-Luna cost は unknown のままとし、0や推定価格に置換しない。
+改善は示しておらず、むしろ Jev overhead 分だけ高い。Luna cost は
+`AI_PRICING_VERSION=openai-public-2026-07-30-v1` の input/cached/cache-write/output
+単価（USD 0.20 / 0.02 / 0.25 / 1.20 per million tokens）を使った。cache 内訳がないため、
+prompt 全量 cached を下限、全量 cache-write を上限とする範囲であり、0とは扱わない。
 
 ### #335 safety regression
 

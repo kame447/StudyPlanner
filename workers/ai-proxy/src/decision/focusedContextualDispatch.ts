@@ -144,7 +144,8 @@ export async function dispatchFocusedContextual(params: {
   fallback: (signal?: AbortSignal) => Promise<Response>;
   respond: (decision: FocusedContextualDecisionResponse) => Response;
   provider?: DecisionProvider<FocusedContextualDecisionContext['state'], ContextualDecision>;
-  isContextCurrent?: () => boolean;
+  /** Evaluation-harness hook only; production freshness is enforced by the client revision echo. */
+  isHarnessContextCurrent?: () => boolean;
 }): Promise<Response> {
   const mode = contextualDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
@@ -286,7 +287,7 @@ export async function dispatchFocusedContextual(params: {
     if (controller.signal.aborted) {
       throw new Error('Focused contextual request cancelled or timed out.');
     }
-    if (params.isContextCurrent?.() === false) {
+    if (params.isHarnessContextCurrent?.() === false) {
       return markJevExecution(await fallbackWithFailureMarker(
         params.fallback,
         mode,
