@@ -1,13 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 function formatIsoDate(year, monthIndex, day) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function currentMonthDays() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const monthIndex = now.getMonth();
+  const [year, month] = E2E_TODAY.split('-').map(Number);
+  const monthIndex = month - 1;
 
   for (let day = 2; day <= 20; day += 1) {
     if (new Date(year, monthIndex, day).getDay() !== 1) {

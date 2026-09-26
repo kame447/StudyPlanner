@@ -1,7 +1,7 @@
 # Weekly Planning real-API evaluation policy
 
 Status: supporting quality policy
-Updated: 2026-08-23
+Updated: 2026-09-26
 
 Parent test policy: [test-philosophy.md](test-philosophy.md)
 
@@ -50,6 +50,8 @@ The repository supports repeated real-Luna execution from an AI-assisted GitHub 
 The canonical trigger is `.github/weekly-planning-real-api-command.json`. Updating that file on an `agent/**` branch starts `Weekly Planning Real API Checkpoint`. Change `profile` to either `checkpoint` or `merge-gate`, and change `request_id` for each requested run so the trigger commit is explicit and auditable. `reason` records why the run was requested.
 
 This command-file trigger is the preferred route when ChatGPT is actively auditing a PR. `workflow_dispatch` remains available for manual use. A normal source push still does not run the full real-API matrix unless the command file itself is updated.
+
+Issue #152 security suites use a separate, dispatch-only workflow: `.github/workflows/weekly-planning-issue152-adversarial.yml`. It has no push or pull_request trigger. The dispatcher passes suite keys, a `request_id` and a full 40-hex `ref`. Branch names and short SHAs are rejected. Anyone who can dispatch it can run the code at `ref` with the OpenAI credential, so `ref` must be a commit the dispatcher has reviewed. The credential is scoped to the provider smoke and Real suite steps only. A requested suite whose file does not exist at `ref` fails the run before any credentialed step.
 
 After each run, inspect the workflow conclusion and uploaded observation artifact. A green workflow is not sufficient by itself for a merge gate; visible transcripts and resulting machine state still require review.
 
