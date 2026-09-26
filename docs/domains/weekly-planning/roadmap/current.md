@@ -39,35 +39,37 @@ The evaluation harness is driven by the dispatch workflow that already lives on 
 
 ## Next priority: Issue #152 adversarial security
 
-Issue #152 remains a valid separate security scope. Its adversarial evaluation and fixes were completed and independently audited on the integration branch `test/issue152-adversarial-validation-lab` (Draft PR #174, tested HEAD `b75ebabd`, audit CLOSE-READY). PR #174 is **superseded and kept as evidence only**: do not merge it, and do not treat it as the merge path.
+Issue #152 remains a valid separate security scope. Its adversarial evaluation and fixes were completed and independently audited on the integration branch `test/issue152-adversarial-validation-lab` (closed Draft PR #174, tested HEAD `b75ebabd`, audit CLOSE-READY). PR #174 is **superseded and kept as evidence only**: do not merge it, and do not treat it as the merge path.
 
 The merge path is this replacement PR chain from main, in dependency order. Each PR targets `main`; dependent branches are built on their predecessor, and each PR states its review range:
 
-1. #323: dispatch-only Issue #152 Real API workflow (SHA-pinned `ref`, step-scoped credential)
-2. #324: numeric safety and planning-window year bound
+1. #323 (merged): dispatch-only Issue #152 Real API workflow (SHA-pinned `ref`, step-scoped credential)
+2. #324 (merged): numeric safety and planning-window year bound
 3. #326: durable user-context lifecycle
 4. #327: renderer integrity
 5. #329: typed channel provenance, evidence matcher, trust-boundary prompt, Real harness and suites
 6. #330: decision binding and the stored-durable suite
 7. #331: remaining evidence pins
 
-#325 (fixed-clock e2e seeds, owner #322) is independent general QA, not part of #152.
+#325 (merged; fixed-clock e2e seeds, owner #322) is independent general QA, not part of #152.
 
 Before each merge, re-fetch the PR's exact head and the latest Issue #152 checkpoint. PRs #329 and #330 need their Issue #152 Real suites ×3 at their exact SHA, which is possible only after #323 is on main. #152 closes only after the chain is merged and the final gate is terminal on the main SHA. The final gate is the six security suites (synthesized-evidence, stored-durable, renderer-influence, adversarial, indirect, stateful) plus a normal completed-save conversation. Branch-only semantic-quality rules, month-day planning windows and the retention suite are not part of this chain; they need a separate semantic owner if they are wanted.
 
 This security/provenance work is also an input to later #246 production consultation wiring and the applicable #305 Jev production rollout gates.
 
-## Issue #305: bounded Jev integration
+## Issues #305 / #333: bounded Jev integration and Japanese evaluation
 
-[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns the initial OpenRouter focused-authorization implementation and subsequent evaluation. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint remain in that Issue. The implementation defaults to off; the next operational step is an explicit real-API smoke, then non-authoritative shadow evaluation. Runtime code availability does not establish production enablement or calibrated quality.
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns integration and rollout. Its initial focused-authorization boundary and synthetic evaluation harness were merged through [PR #332](https://github.com/kame447/StudyPlanner/pull/332), with Jev disabled by default. The old implementation branch is completed history, not an active implementation queue. The earlier single-case real-API smoke proves connectivity only; it does not establish Japanese accuracy or authorize rollout.
 
-The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and its replacement PR chain (see the #152 section; PR #174 is evidence only); before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
+The next active work is [Issue #333](https://github.com/kame447/StudyPlanner/issues/333): separate tuning and fixed-holdout execution, preserve comparison evidence for failed Luna calls, compare Jev and the existing Luna path on the same cases/context, and add a minimal Gemini first-pass judge. Keep the existing 51 cases synthetic/unreviewed until human review. Reuse the completion-based Real Luna foundation from #136 / PR #144 / #145 rather than creating a second general evaluation framework. Current branch, agent ownership and exact verification checkpoints live in #333, not in this roadmap.
 
-After Japanese gold/holdout evaluation and calibration, enable only accepted eligible cases through a reversible canary. Low confidence, provider failure or mixed meaning must preserve the existing safe fallback and application authority. Numerical thresholds in the research are hypotheses to evaluate, not already-achieved guarantees or automatic rollout approval.
+Before canary, #333 must supply human-reviewed gold, tuning-only question/threshold calibration and fixed-holdout results with sample counts and uncertainty. Gemini judgments and Jev/Luna agreement are not ground truth. Keep production `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` during this comparison work; real-user shadow also requires the provider/privacy checks owned by #187 and tracked in #305. Runtime availability and a merged preparation PR are not production activation.
 
-Only after the first gate passes should the same boundary expand to focused contextual categorical fields, then user-context owner routing and the #246 TurnPurpose consumer when its production integration is ready. These are ordered evaluation scopes, not instructions to pre-create one Issue, branch or PR per field. Keep free-value extraction and prose with the existing generative paths unless a later measured change is explicitly accepted.
+Offline evaluation preparation may proceed alongside #152. Preserve #152's security priority and ownership of its replacement chain; before production rollout, consume the applicable security/provenance regressions. Do not mark #152 complete because Jev evaluation passed, or wait for unrelated future memory/consultation features before preparing evaluations.
 
-The #246/#294 memory and consultation owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 is separate from ordinary Stable V5 classification; neither integration replaces the other or becomes a new formal state authority.
+Only after the first quality and safety gates pass should an explicitly authorized, reversible canary adopt accepted eligible cases. Low confidence and provider failures keep the existing LLM fallback; mixed meaning goes through the existing semantic handling rather than being partly applied. Later focused contextual categorical fields, user-context owner routing and #246 TurnPurpose are evaluation candidates, not instructions to create branches or migrate all fields now. Free-value extraction and prose remain with the generative paths.
+
+The #246/#294 consultation and memory owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 remains separate from ordinary Stable V5 classification. Keep #305 and #333 open until their own acceptance conditions are met.
 
 ## Issue #246: learning consultation before scheduling
 
