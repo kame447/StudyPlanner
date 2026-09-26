@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 async function seedHome(page) {
   await page.addInitScript(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE');
     const now = new Date().toISOString();
     const user = {
       id: 'device-layout-user',

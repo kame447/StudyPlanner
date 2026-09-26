@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 const VIEWPORTS = [
   { name: 'small-phone', width: 320, height: 568, materialFits: false },
@@ -17,7 +17,7 @@ const MAX_BOTTOM_GAP = 18;
 
 async function seedHomeState(page, planCount = 1) {
   await page.addInitScript(({ count }) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE');
     const now = new Date().toISOString();
     const user = {
       id: 'home-layout-user',

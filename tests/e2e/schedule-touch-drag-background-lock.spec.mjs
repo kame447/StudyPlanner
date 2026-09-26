@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { E2E_TODAY, expect, newFixedClockContext, test } from './support/fixed-clock.mjs';
 
 function toIsoDate(value) {
   return [
@@ -6,10 +6,6 @@ function toIsoDate(value) {
     String(value.getMonth() + 1).padStart(2, '0'),
     String(value.getDate()).padStart(2, '0'),
   ].join('-');
-}
-
-function isoToday() {
-  return toIsoDate(new Date());
 }
 
 function weekStartFor(value) {
@@ -118,8 +114,8 @@ async function seedUser(page, { withPreview = false } = {}) {
       }),
     );
   }, {
-    today: isoToday(),
-    weekStartDate: weekStartFor(new Date()),
+    today: E2E_TODAY,
+    weekStartDate: weekStartFor(new Date(`${E2E_TODAY}T00:00:00`)),
     seedPreview: withPreview,
   });
 }
@@ -165,7 +161,7 @@ async function openSchedule(page) {
 }
 
 test('day long press waits for action, then movement locks background scrolling for drag', async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
@@ -211,7 +207,7 @@ test('day long press waits for action, then movement locks background scrolling 
 });
 
 test('AI preview stationary long press waits for action while movement starts drag', async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
