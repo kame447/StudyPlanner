@@ -1,6 +1,6 @@
 # 週間計画 focused authorization の日本語意味評価
 
-Status: active / 評価基盤は実装済み、human-reviewed gold は未作成
+Status: active / 評価基盤は実装済み、Gemini agent 実行と human-reviewed gold は未完了
 Updated: 2026-09-26
 Tracking: Issue #333（#305 の canary 前提条件の日本語品質 gate を所有する）
 
@@ -9,43 +9,58 @@ Tracking: Issue #333（#305 の canary 前提条件の日本語品質 gate を�
 ## 不変条件
 
 - 本番は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` のまま。この記録の作業はどれも shadow / canary を開始しない。
-- Gemini は評価専用の一次 judge であり、production の semantic model ではない。Gemini の判定は `gemini_judged_candidate` で、gold ではない。
-- 既存51件と追加候補は `synthetic_unreviewed` のまま。現在の「正解率」系の数値は、すべて暫定 label に対する一致度である（report は `provisional: true`）。
+- Gemini は Orrery 上で起動する評価専用の Antigravity agent であり、REST API adapter や `GEMINI_API_KEY` は使わない。production の semantic model でもない。
+- Gemini の判定は `gemini_judged_candidate` で、gold ではない。
+- 既存51件と追加80件は `synthetic_unreviewed` のまま。synthetic label を持つ51件との不一致は候補抽出であり、「正解率」ではない。
 - Jev と Luna の一致率（`jevLunaAgreement`）は正解率ではない。
-- 通常 CI（`npm run test:run`）は有料 API や secret を要求しない。実 API runner はすべて opt-in。
+- 通常 CI（`npm run test:run`）は有料 API、agent 起動、secret を要求しない。packet export と judgment import 自体にもネットワークは不要である。
 - Jev 置換単位ごとの安全性回帰は #335（#152 から移管）、dialogue quality は #156 が owner であり、この評価で代替しない。
 
 ## データの状態
 
 | 状態 | 意味 | 作る主体 |
 | --- | --- | --- |
-| `synthetic_unreviewed` | PR #332 の51件と、#333 の追加候補。追加候補は label を持たない | 作成者（モデル）|
-| `gemini_judged_candidate` | Gemini の一次判定。人手レビューの優先順位付けにだけ使う | Gemini |
+| `synthetic_unreviewed` | PR #332 の51件と、#333 の追加80件。追加候補は label を持たない | 作成者（モデル）|
+| `gemini_judged_candidate` | blind packet に対する Gemini agent の一次判定。人手レビューの優先順位付けにだけ使う | Orrery Gemini agent |
 | `needs_adjudication` | 2人の blind 判定が一致しない | 人手 |
 | `human_reviewed_gold` | 異なる2人の blind 一次判定が一致した、または記録付きの adjudication を経たもの | 人手 |
 
 split は会話 group 単位で固定する。同じ状況から派生した言い換えは同じ group に置き、group は split をまたがない（validator が拒否する）。既存51件の inventory では、「はい」が tuning と holdout で異なる文脈とともに重複している（`crossesSplits: true`）。これは意図的な文脈対比だが、human review で扱いを確認する。
 
-## 評価の実行
+## 評価 runner
 
 | 目的 | コマンド | 必要なもの |
 | --- | --- | --- |
 | Jev 単体（split 別） | `JEV_EVAL_SPLIT=tuning npm run eval:jev:shadow` | `OPENROUTER_API_KEY` |
 | Jev / Luna の同一 case 比較 | `JEV_EVAL_SPLIT=tuning npm run eval:jev-luna` | `OPENROUTER_API_KEY`, `OPENAI_API_KEY` |
-| Gemini 一次 judge | `GEMINI_JUDGE_MODEL=<model> npm run eval:gemini-judge` | `GEMINI_API_KEY` |
+| Gemini agent 用 packet export（通信なし） | `GEMINI_AGENT_JUDGE_RUNS=3 npm run eval:gemini-agent:packets` | なし |
+| Gemini agent 判定 import（通信なし） | `GEMINI_AGENT_JUDGE_RUNS=3 npm run eval:gemini-agent:import` | 各 run の `judgments.json` と `agent.json` |
 | 人手レビュー用シート（通信なし） | `npm run eval:review-sheets` | なし |
 
+`eval:gemini-agent:packets` と `eval:gemini-agent:import` は専用 Vitest config を使う opt-in script で、通常 CI には含めない。run 数は1〜3、既定3である。`eval:gemini-judge` は旧 REST runner なので削除する。
+
 - `JEV_EVAL_SPLIT` は `tuning` / `holdout`（Jev 単体のみ `all` も可）を明示指定する。未指定は通信前に失敗する。
-- 出力は gitignore 済みの `artifacts/issue333-gemini-judge/` に置き、commit しない。
-- 比較 report は focused boundary（Jev accepted ならJev、abstain / unavailable なら Luna）までを測る。fallback 後に続く generic semantic の latency / cost は含まず、その件数を `continuesToGenericSemantic` で示す。production validator が拒否する context は Jev を呼ばず、Luna のみの経路として別集計する。
+- Gemini agent artifacts は gitignore 済みの `artifacts/issue333-gemini-agent/` に置き、commit しない。
+- 比較 report は focused boundary（Jev accepted なら Jev、abstain / unavailable なら Luna）までを測る。fallback 後に続く generic semantic の latency / cost は含まず、その件数を `continuesToGenericSemantic` で示す。production validator が拒否する context は Jev を呼ばず、Luna のみの経路として別集計する。
 - 指標は件数と分母を先に見る：class 別 confusion count、false-positive `create_plan`、Clopper–Pearson 片側95%上限、Wilson 区間、Luna 単独と focused boundary の paired discordance（b/c と exact McNemar）。同じ会話 group の言い換えは独立標本ではない。
+
+## Orrery Gemini agent の blind 実行手順
+
+1. 親作業ツリーで packet runner を実行する。run ごとの `run-<k>/packet.json` と、agent に渡さない `mappings/run-<k>.json` が生成される。packet は `packetId`、prompt/rubric/schema、opaque `itemId`、直前の assistant 発話、現在の user 発話だけを含む。case id、会話 group、layer、split、source、synthetic label、Jev/Luna 出力は含まない。
+2. 各 run について `scripts/issue333-gemini-agent-blind-base.sh artifacts/issue333-gemini-agent/run-<k>/packet.json [task-readme.md]` を実行する。helper は親なし・ref なしの detached commit を作り、その tree には `packet.json` と任意の `README.md` しか置かない。`scripts/issue333-gemini-agent-blind-base.sh --check <sha>` の tree listing で確認する。
+3. 親がその SHA を agent worktree base として Orrery から Antigravity CLI（program `agy`、既定 launch model `gemini-3.8-flash-high`）の Gemini agent を起動する。repository、mapping、synthetic label は agent に見せない。agent は packet の `responseFormat` に厳密に従った `judgments.json` だけを書く。
+4. 親は `judgments.json` を対応する `run-<k>/` へ回収し、同じ場所へ `{ "name", "launchModel", "effort" }` の `agent.json` を書く。agent が実際の model を報告できる場合は `judgments.json` の `agentReportedModel` に記録する。
+5. import runner を実行する。packetId 不一致、JSON 不正、未知/重複 itemId は run 全体のエラーとする。既知 item の schema 不正は `invalid_response`、欠落は `missing` とし、値を補正しない。各 record は agent 名、program `antigravity`、launch/reported model、effort、packet SHA-256、prompt/schema version、run index を保持する。latency/token は agent transport から得られないため記録しない。
+6. import は `gemini-records.json`、`gemini-aggregates.json`、`summary.json`、`adjudication.json` / `.csv` を生成する。summary は judged/invalid/missing、class 分布、不安定 case、synthetic label を持つ51件だけの不一致を分ける。どの出力も gold と呼ばない。
+
+agent worktree の base に通常の branch/commit を使うと repository や label を読めるため禁止する。mapping は常に run directory の外に保ち、blind commit へ入れない。packet の SHA-256 は整形済み JSON bytes に対して計算され、import record まで保持される。
 
 ## Human review の手順
 
 1. `npm run eval:review-sheets` で A / B 2枚の blind sheet、opaque id の mapping、adjudication sheet を生成する。
 2. 日本語話者2名が別々に A / B を埋める。blind sheet には opaque id、直前の assistant 発話、ユーザー発話、rubric（`focused-authorization-rubric-v1`）だけが載る。Gemini の判定、synthetic label、layer、split、case id は見せない。
-3. 両方の一次判定を lock してから adjudication sheet で不一致を裁定する。Gemini の判定はこの段階で初めて参照してよい。裁定には reviewer、日付、メモが必須で、両方の一次判定を保持する。
-4. `ambiguous` と `exclude` は二値比較の label map から除外し、件数と case id を別に報告する。
+3. 両方の一次判定を lock してから、`GEMINI_AGENT_JUDGE_BLIND_REVIEW_A_CSV` と `GEMINI_AGENT_JUDGE_BLIND_REVIEW_B_CSV` を指定して import runner を再実行する。`buildAdjudicationSheet` が Gemini 集計を埋めた adjudication sheet を生成する。Gemini の判定はこの段階で初めて参照してよい。
+4. 不一致の裁定には reviewer、日付、メモが必須で、両方の一次判定を保持する。`ambiguous` と `exclude` は二値比較の label map から除外し、件数と case id を別に報告する。
 
 rubric v1 は実装側の草案である。gold 作成前に product owner が文言（特に「ありがとう」単独、既存条件の再確認、古い文脈の扱い）を確認する。
 
@@ -53,7 +68,7 @@ rubric v1 は実装側の草案である。gold 作成前に product owner が�
 
 - threshold、Jev の質問構成、judge prompt、rubric、corpus の調整は tuning の結果だけで行う。
 - holdout の結果を見たあとの変更は、その holdout を消費したものとして扱う。以後の acceptance には、新しい sealed group を用意する。
-- pipeline、rubric、gold 規則を固定してから holdout を開く。model / prompt / schema version を記録する。
+- pipeline、rubric、gold 規則を固定してから holdout を開く。agent、model、prompt、schema version を記録する。
 
 ## Luna 責務の棚卸し（比較対象の候補）
 
@@ -83,12 +98,12 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 - holdout での false-positive `create_plan` の件数と Clopper–Pearson 上限。ゼロ誤りでも、上限を 5% / 1% 未満にするには、それぞれ 59 / 299 件の独立した negative が必要である。
 - selective accuracy と coverage（accepted create / accepted fallback を分けて）、abstain / unavailable 率
 - Luna fallback を含む focused boundary の結果と、Luna 単独との paired 比較
-- Gemini と human gold の不一致一覧
+- Gemini agent と human gold の不一致一覧
 - 許容リスク（false-create 上限）は gold 収集前に owner が決める。
 
 ## 現在の checkpoint
 
-- branch: `feat/issue-333-japanese-semantic-eval`（base main `ef5102b2`）
-- 実装済み：tuning / holdout の別実行、51件の inventory、Luna fallback 例外時の turn 相関、Jev / Luna 比較 harness、Gemini judge contract、double blind review sheet
-- 未実行：実 API 比較。local にも GitHub secret にも OpenRouter / Gemini の key がないため。
+- branch: `feat/issue-333-japanese-semantic-eval`、repo-side agent boundary の作業起点: `b30c7c6845863ca18b0362bb09b59c82f35fff6e`
+- 実装済み：tuning / holdout の別実行、51件の inventory、追加80件、Luna fallback 例外時の turn 相関、Jev / Luna 比較 harness、Gemini agent 用 blind packet/export・structured import contract、double blind review sheet
+- 次の外部実行：親が packet ごとの detached blind base を作り、Orrery 上で Gemini agent を起動し、判定を回収して import する。API key 不足は blocker ではない。
 - 未完了（人手が必要）：human-reviewed gold v1、rubric の owner 確認、許容リスクの決定

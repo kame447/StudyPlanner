@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES } from '../focusedAuthorizationSyntheticCandidates';
-import { createGeminiJudge } from './geminiJudge';
+import {
+  buildGeminiAgentJudgePacket,
+  importGeminiAgentJudgments,
+  serializeGeminiAgentJudgePacket,
+  sha256Text,
+  type GeminiAgentJudgeMapping,
+} from './geminiAgentJudgePacket';
 import {
   aggregateGeminiJudgeCase,
   aggregateGeminiJudgeRecords,
@@ -41,14 +47,6 @@ const validJudgment: GeminiJudgment = {
   alternativeInterpretations: [],
 };
 
-function response(judgment: unknown = validJudgment): Response {
-  return Response.json({
-    modelVersion: 'gemini-served-fixture',
-    candidates: [{ content: { parts: [{ text: JSON.stringify(judgment) }] } }],
-    usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 8 },
-  });
-}
-
 function judged(
   caseId: string,
   judgedClass: GeminiJudgment['judgedClass'],
@@ -58,37 +56,39 @@ function judged(
     caseId,
     judgeStatus: 'gemini_judged_candidate',
     judgeProvider: 'gemini',
-    requestedModel: 'gemini-requested-fixture',
-    servedModel: 'gemini-served-fixture',
+    judgeTransport: 'orrery_agent',
+    agent: {
+      name: 'agent-fixture', program: 'antigravity', launchModel: 'gemini-launch-fixture',
+      effort: 'high', reportedModel: 'gemini-reported-fixture',
+    },
+    packetId: 'gajp-fixture',
+    packetSha256: 'a'.repeat(64),
     promptVersion: 'focused-authorization-judge-v1',
     schemaVersion: 'focused-authorization-judgment-v1',
-    runIndex: 0,
-    temperature: 0,
-    latencyMs: 4,
-    inputTokens: 12,
-    outputTokens: 8,
+    runIndex: 1,
     status: 'judged',
     reason: null,
     judgment: { ...validJudgment, judgedClass, reviewRequired },
   };
 }
 
-function unavailable(caseId: string, runIndex: number): GeminiJudgeRecord {
+function missing(caseId: string, runIndex: number): GeminiJudgeRecord {
   return {
     caseId,
     judgeStatus: 'gemini_judged_candidate',
     judgeProvider: 'gemini',
-    requestedModel: 'gemini-requested-fixture',
-    servedModel: null,
+    judgeTransport: 'orrery_agent',
+    agent: {
+      name: 'agent-fixture', program: 'antigravity', launchModel: 'gemini-launch-fixture',
+      effort: 'high', reportedModel: null,
+    },
+    packetId: 'gajp-fixture',
+    packetSha256: 'a'.repeat(64),
     promptVersion: 'focused-authorization-judge-v1',
     schemaVersion: 'focused-authorization-judgment-v1',
     runIndex,
-    temperature: 0,
-    latencyMs: 4,
-    inputTokens: null,
-    outputTokens: null,
-    status: 'unavailable',
-    reason: 'network',
+    status: 'missing',
+    reason: 'missing',
     judgment: null,
   };
 }
@@ -122,66 +122,98 @@ describe('Gemini judge response contract', () => {
   });
 });
 
-describe('Gemini REST judge', () => {
-  it('sends only blinded conversation data and keeps the API key out of the URL', async () => {
-    const fakeFetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response());
-    const judge = createGeminiJudge({
-      apiKey: 'secret-fixture-key',
-      model: 'gemini-model-fixture',
-      fetch: fakeFetch as typeof fetch,
-    });
-    const record = await judge.judge('case-id-must-not-be-sent', {
-      currentUserText: 'CURRENT_USER_MARKER',
-      lastAssistantMessage: 'LAST_ASSISTANT_MARKER',
-    }, 0);
-    expect(record).toMatchObject({
-      status: 'judged', requestedModel: 'gemini-model-fixture',
-      servedModel: 'gemini-served-fixture', inputTokens: 12, outputTokens: 8,
-    });
-    const [url, init] = fakeFetch.mock.calls[0];
-    expect(String(url)).not.toContain('secret-fixture-key');
-    expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('secret-fixture-key');
-    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    const serialized = JSON.stringify(body);
-    expect(serialized).toContain('CURRENT_USER_MARKER');
-    expect(serialized).toContain('LAST_ASSISTANT_MARKER');
-    expect(serialized).not.toContain('case-id-must-not-be-sent');
-    expect(serialized).not.toMatch(/"(?:expected|layer|split|caseId)"\s*:/);
-    expect(body).toMatchObject({
-      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-    });
+describe('Gemini Orrery agent packet', () => {
+  const inputs: FocusedAuthorizationReviewInput[] = [
+    {
+      id: 'negation-03', conversationGroupId: 'hidden-group', layer: 'negation', split: 'tuning',
+      lastAssistantMessage: '条件は以上でよいですか？', currentUserText: 'まだです。',
+      syntheticLabel: 'fallback', source: 'pr332_synthetic_v1',
+    },
+    {
+      id: 'x333-hidden-case', conversationGroupId: 'hidden-expansion', layer: 'colloquial', split: 'holdout',
+      lastAssistantMessage: 'この条件で案を作りますか？', currentUserText: 'うんそれで',
+      syntheticLabel: null, source: 'issue333_expansion_v1',
+    },
+    {
+      id: 'third-case', conversationGroupId: 'third-group', layer: 'mixed', split: 'tuning',
+      lastAssistantMessage: null, currentUserText: '案だけ見たい',
+      syntheticLabel: null, source: 'fixture',
+    },
+  ];
+
+  it('exports only opaque shuffled conversation items with a deterministic byte hash', async () => {
+    const first = await buildGeminiAgentJudgePacket(inputs, { runIndex: 1, seed: 'fixture-seed' });
+    const repeated = await buildGeminiAgentJudgePacket(inputs, { runIndex: 1, seed: 'fixture-seed' });
+    const serialized = serializeGeminiAgentJudgePacket(first.packet);
+    expect(first).toEqual(repeated);
+    expect(first.mapping.packetSha256).toBe(await sha256Text(serialized));
+    expect(serialized).not.toContain('negation-03');
+    expect(serialized).not.toContain('x333-');
+    expect(serialized).not.toMatch(/"(?:caseId|conversationGroupId|layer|split|source|syntheticLabel)"\s*:/);
+    expect(serialized).not.toMatch(/"(?:jev|luna)(?:Output|Decision|Result)?"\s*:/i);
+    expect(first.packet.items).toHaveLength(inputs.length);
+    expect(first.mapping.items.map((item) => item.caseId)).toEqual(expect.arrayContaining(
+      inputs.map((input) => input.id),
+    ));
   });
 
-  it('turns a malformed structured response into invalid_response', async () => {
-    const judge = createGeminiJudge({
-      apiKey: 'key', model: 'model',
-      fetch: vi.fn(async () => response({ ...validJudgment, extra: true })) as typeof fetch,
-    });
-    await expect(judge.judge('case', {
-      currentUserText: 'はい', lastAssistantMessage: '案を作りますか？',
-    }, 0)).resolves.toMatchObject({
-      status: 'invalid_response', reason: 'invalid_response', judgment: null,
-    });
+  it('changes both opaque ids and order between runs', async () => {
+    const first = await buildGeminiAgentJudgePacket(inputs, { runIndex: 1, seed: 333 });
+    const second = await buildGeminiAgentJudgePacket(inputs, { runIndex: 2, seed: 333 });
+    expect(second.packet.packetId).not.toBe(first.packet.packetId);
+    expect(second.packet.items.map((item) => item.itemId))
+      .not.toEqual(first.packet.items.map((item) => item.itemId));
+    expect(second.mapping.items.map((item) => item.caseId))
+      .not.toEqual(first.mapping.items.map((item) => item.caseId));
+  });
+});
+
+describe('Gemini Orrery agent judgment import', () => {
+  const mapping: GeminiAgentJudgeMapping = {
+    packetId: 'gajp-import-fixture', packetSha256: 'b'.repeat(64), runIndex: 1,
+    items: [
+      { itemId: 'item-a', caseId: 'case-a' },
+      { itemId: 'item-b', caseId: 'case-b' },
+      { itemId: 'item-c', caseId: 'case-c' },
+    ],
+  };
+  const agent = { name: 'GeminiJudge', launchModel: 'gemini-3.8-flash-high', effort: 'high' };
+
+  it('imports valid items and marks invalid or absent items without coercion', () => {
+    const records = importGeminiAgentJudgments(mapping, JSON.stringify({
+      packetId: mapping.packetId,
+      agentReportedModel: 'gemini-served-fixture',
+      judgments: [
+        { itemId: 'item-a', ...validJudgment },
+        { itemId: 'item-b', ...validJudgment, reviewRequired: 'false' },
+      ],
+    }), agent);
+    expect(records).toMatchObject([
+      {
+        caseId: 'case-a', status: 'judged', reason: null,
+        judgeTransport: 'orrery_agent',
+        agent: { program: 'antigravity', reportedModel: 'gemini-served-fixture' },
+      },
+      { caseId: 'case-b', status: 'invalid_response', reason: 'invalid_response', judgment: null },
+      { caseId: 'case-c', status: 'missing', reason: 'missing', judgment: null },
+    ]);
   });
 
-  it('classifies timeout as unavailable', async () => {
-    const fakeFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-      })) as typeof fetch;
-    const judge = createGeminiJudge({ apiKey: 'key', model: 'model', fetch: fakeFetch, timeoutMs: 5 });
-    await expect(judge.judge('case', {
-      currentUserText: 'はい', lastAssistantMessage: '案を作りますか？',
-    }, 0)).resolves.toMatchObject({ status: 'unavailable', reason: 'timeout' });
-  });
-
-  it('does not call fetch when required configuration is absent', async () => {
-    const fakeFetch = vi.fn(async () => response()) as typeof fetch;
-    const judge = createGeminiJudge({ model: 'model', fetch: fakeFetch });
-    await expect(judge.judge('case', {
-      currentUserText: 'はい', lastAssistantMessage: null,
-    }, 0)).resolves.toMatchObject({ status: 'unavailable', reason: 'configuration' });
-    expect(fakeFetch).not.toHaveBeenCalled();
+  it('rejects malformed wrappers, packet mismatches, and unknown or duplicate item ids', () => {
+    expect(() => importGeminiAgentJudgments(mapping, '{', agent)).toThrow(/not valid JSON/);
+    expect(() => importGeminiAgentJudgments(mapping, JSON.stringify({
+      packetId: 'wrong', judgments: [],
+    }), agent)).toThrow(/packetId mismatch/);
+    expect(() => importGeminiAgentJudgments(mapping, JSON.stringify({
+      packetId: mapping.packetId, judgments: [{ itemId: 'unknown', ...validJudgment }],
+    }), agent)).toThrow(/Unknown.*itemId/);
+    expect(() => importGeminiAgentJudgments(mapping, JSON.stringify({
+      packetId: mapping.packetId,
+      judgments: [
+        { itemId: 'item-a', ...validJudgment },
+        { itemId: 'item-a', ...validJudgment },
+      ],
+    }), agent)).toThrow(/Duplicate.*itemId/);
   });
 });
 
@@ -216,8 +248,11 @@ describe('Gemini judge aggregation', () => {
   });
 
   it('marks failed repetitions incomplete and never compares against a missing synthetic label', () => {
+    const invalid: GeminiJudgeRecord = {
+      ...missing('case', 2), status: 'invalid_response', reason: 'invalid_response',
+    };
     expect(aggregateGeminiJudgeRecords(null, [
-      judged('case', 'create_plan'), unavailable('case', 1), unavailable('case', 2),
+      judged('case', 'create_plan'), invalid, missing('case', 3),
     ])).toEqual({
       majorityClass: 'create_plan',
       unstable: true,
@@ -438,6 +473,24 @@ describe('independent double blind review and gold', () => {
     expect(resolved.summary).toMatchObject({
       agreedCount: 0, disagreedCount: 0, adjudicatedCount: 1, pendingCount: 0,
     });
+  });
+
+  it('round-trips a pre-review adjudication candidate with Gemini fields but no human label', () => {
+    const blind = buildBlindReviewPackage([inputs[0]]);
+    const aggregate = aggregateGeminiJudgeCase(inputs[0].id, inputs[0].syntheticLabel, [
+      judged(inputs[0].id, 'fallback', true),
+    ]);
+    const pending = extractDoubleBlindReview(blind.rows, blind.rows, blind.mapping);
+    const [row] = buildAdjudicationSheet(pending, [aggregate], [inputs[0]]);
+    expect(row).toMatchObject({
+      caseId: inputs[0].id,
+      geminiMajority: 'fallback',
+      geminiReviewRequired: true,
+      firstPassLabelA: '',
+      firstPassLabelB: '',
+      labelStatus: 'gemini_judged_candidate',
+    });
+    expect(parseAdjudicationCsv(serializeAdjudicationCsv([row]))).toEqual([row]);
   });
 
   it('turns only binary human gold into comparison labels and reports omissions', () => {

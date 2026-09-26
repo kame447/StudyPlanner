@@ -27,8 +27,9 @@ import {
 export async function generateEmptyReviewSheets(
   extraInputs: readonly FocusedAuthorizationReviewInput[] = [],
 ): Promise<void> {
-  const outputDirectory = process.env.GEMINI_JUDGE_OUTPUT_DIR?.trim()
-    || 'artifacts/issue333-gemini-judge';
+  const outputDirectory = process.env.GEMINI_AGENT_JUDGE_OUTPUT_DIR?.trim()
+    || process.env.GEMINI_JUDGE_OUTPUT_DIR?.trim()
+    || 'artifacts/issue333-gemini-agent';
   validateFocusedAuthorizationSyntheticCandidates(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES);
   const inputs = combineReviewInputs(
     adaptSyntheticReviewCandidates(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES),

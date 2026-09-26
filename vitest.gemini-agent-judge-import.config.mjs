@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/integration/gemini-judge.live.ts'],
-    testTimeout: 900_000,
+    include: ['tests/integration/gemini-agent-judge.import.ts'],
+    environment: 'node',
   },
 });

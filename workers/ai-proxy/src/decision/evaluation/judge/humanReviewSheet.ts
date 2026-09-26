@@ -11,7 +11,7 @@ import {
 import type { GeminiJudgedClass } from './geminiJudgeContract';
 
 export const BLIND_REVIEW_SHEET_SCHEMA_VERSION = 'focused-authorization-blind-review-v2' as const;
-export const ADJUDICATION_SHEET_SCHEMA_VERSION = 'focused-authorization-adjudication-v2' as const;
+export const ADJUDICATION_SHEET_SCHEMA_VERSION = 'focused-authorization-adjudication-v3' as const;
 export const HUMAN_REVIEW_RUBRIC_VERSION = 'focused-authorization-rubric-v1' as const;
 export const HUMAN_REVIEW_RUBRIC_TEXT = [
   'Judge only the meaning supported by lastAssistantMessage and currentUserText.',
@@ -139,11 +139,11 @@ export interface AdjudicationReviewRow {
   geminiFailedRunCount: number | null;
   geminiReviewRequired: boolean | null;
   geminiRationale: string;
-  firstPassLabelA: HumanReviewLabel;
+  firstPassLabelA: HumanReviewLabel | '';
   firstPassReviewerA: string;
   firstPassReviewedAtA: string;
   firstPassNotesA: string;
-  firstPassLabelB: HumanReviewLabel;
+  firstPassLabelB: HumanReviewLabel | '';
   firstPassReviewerB: string;
   firstPassReviewedAtB: string;
   firstPassNotesB: string;
@@ -151,7 +151,7 @@ export interface AdjudicationReviewRow {
   adjudicationReviewer: string;
   adjudicatedAt: string;
   adjudicationNotes: string;
-  labelStatus: 'needs_adjudication';
+  labelStatus: 'gemini_judged_candidate' | 'needs_adjudication';
 }
 
 export interface ComparisonGoldLabels {
@@ -330,9 +330,16 @@ function uniqueByCaseId<T extends { caseId: string }>(values: readonly T[], labe
 export function buildAdjudicationSheet(
   review: DoubleBlindReviewResult,
   aggregates: readonly GeminiJudgeCaseAggregate[],
+  pendingInputs: readonly FocusedAuthorizationReviewInput[] = [],
 ): AdjudicationReviewRow[] {
   const aggregateByCaseId = uniqueByCaseId(aggregates, 'Gemini judge aggregate');
-  return review.needsAdjudication.map((candidate): AdjudicationReviewRow => {
+  validateReviewInputs(pendingInputs);
+  const pendingCaseIds = new Set(review.pendingCaseIds);
+  const unexpectedPending = pendingInputs.find((input) => !pendingCaseIds.has(input.id));
+  if (unexpectedPending) {
+    throw new Error(`Adjudication candidate is not pending human review: ${unexpectedPending.id}`);
+  }
+  const humanDisagreements = review.needsAdjudication.map((candidate): AdjudicationReviewRow => {
     const aggregate = aggregateByCaseId.get(candidate.caseId) ?? null;
     const firstA = candidate.firstPass[0];
     const firstB = candidate.firstPass[1];
@@ -366,7 +373,41 @@ export function buildAdjudicationSheet(
       adjudicationNotes: '',
       labelStatus: 'needs_adjudication',
     };
-  }).sort((left, right) =>
+  });
+  const preReviewCandidates = pendingInputs.map((candidate): AdjudicationReviewRow => {
+    const aggregate = aggregateByCaseId.get(candidate.id) ?? null;
+    return {
+      caseId: candidate.id,
+      conversationGroupId: candidate.conversationGroupId,
+      split: candidate.split,
+      layer: candidate.layer,
+      source: candidate.source,
+      lastAssistantMessage: candidate.lastAssistantMessage,
+      currentUserText: candidate.currentUserText,
+      syntheticLabel: candidate.syntheticLabel,
+      geminiMajority: aggregate?.majorityClass ?? null,
+      geminiUnstable: aggregate?.unstable ?? null,
+      geminiIncomplete: aggregate?.incomplete ?? null,
+      geminiJudgedRunCount: aggregate?.judgedRunCount ?? null,
+      geminiFailedRunCount: aggregate?.failedRunCount ?? null,
+      geminiReviewRequired: aggregate?.anyReviewRequired ?? null,
+      geminiRationale: aggregate?.representativeRationale ?? '',
+      firstPassLabelA: '',
+      firstPassReviewerA: '',
+      firstPassReviewedAtA: '',
+      firstPassNotesA: '',
+      firstPassLabelB: '',
+      firstPassReviewerB: '',
+      firstPassReviewedAtB: '',
+      firstPassNotesB: '',
+      adjudicatedLabel: '',
+      adjudicationReviewer: '',
+      adjudicatedAt: '',
+      adjudicationNotes: '',
+      labelStatus: 'gemini_judged_candidate',
+    };
+  });
+  return [...humanDisagreements, ...preReviewCandidates].sort((left, right) =>
     geminiJudgeReviewPriority(aggregateByCaseId.get(left.caseId) ?? null)
       - geminiJudgeReviewPriority(aggregateByCaseId.get(right.caseId) ?? null)
     || left.caseId.localeCompare(right.caseId));
@@ -476,12 +517,6 @@ function humanLabel(value: string): HumanReviewLabel | '' {
   return value === '' ? '' : oneOf(value, REVIEW_LABELS, 'humanLabel');
 }
 
-function requiredHumanLabel(value: string, column: string): HumanReviewLabel {
-  const parsed = humanLabel(value);
-  if (parsed === '') throw new Error(`Missing ${column}.`);
-  return parsed;
-}
-
 export function parseBlindReviewCsv(csv: string): BlindReviewRow[] {
   return parseCsv<BlindReviewRow>(csv, BLIND_COLUMNS).map((value, index) => {
     if (!value.opaqueReviewId) throw new Error(`Missing opaque review id in row ${index + 2}.`);
@@ -543,11 +578,11 @@ export function parseAdjudicationCsv(csv: string): AdjudicationReviewRow[] {
         geminiFailedRunCount: integerOrNull(value.geminiFailedRunCount, 'geminiFailedRunCount'),
         geminiReviewRequired: booleanOrNull(value.geminiReviewRequired, 'geminiReviewRequired'),
         geminiRationale: value.geminiRationale,
-        firstPassLabelA: requiredHumanLabel(value.firstPassLabelA, 'firstPassLabelA'),
+        firstPassLabelA: humanLabel(value.firstPassLabelA),
         firstPassReviewerA: value.firstPassReviewerA,
         firstPassReviewedAtA: value.firstPassReviewedAtA,
         firstPassNotesA: value.firstPassNotesA,
-        firstPassLabelB: requiredHumanLabel(value.firstPassLabelB, 'firstPassLabelB'),
+        firstPassLabelB: humanLabel(value.firstPassLabelB),
         firstPassReviewerB: value.firstPassReviewerB,
         firstPassReviewedAtB: value.firstPassReviewedAtB,
         firstPassNotesB: value.firstPassNotesB,
@@ -555,7 +590,11 @@ export function parseAdjudicationCsv(csv: string): AdjudicationReviewRow[] {
         adjudicationReviewer: value.adjudicationReviewer,
         adjudicatedAt: value.adjudicatedAt,
         adjudicationNotes: value.adjudicationNotes,
-        labelStatus: oneOf(value.labelStatus, ['needs_adjudication'] as const, 'labelStatus'),
+        labelStatus: oneOf(
+          value.labelStatus,
+          ['gemini_judged_candidate', 'needs_adjudication'] as const,
+          'labelStatus',
+        ),
       };
     });
 }
@@ -769,6 +808,9 @@ export function applyAdjudication(
     if (!row) {
       remaining.push(source);
       continue;
+    }
+    if (row.labelStatus !== 'needs_adjudication') {
+      throw new Error(`Adjudication row is not backed by two human reviews: ${source.caseId}`);
     }
     if (!matchesAdjudicationSource(row, source)) {
       throw new Error(`First-pass review or source data changed during adjudication: ${source.caseId}`);

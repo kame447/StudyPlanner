@@ -44,7 +44,8 @@ export function aggregateGeminiJudgeRecords(
   const majorityClass = ranked.length > 0 && (ranked.length === 1 || ranked[0][1] > ranked[1][1])
     ? ranked[0][0] : null;
   const judgedRunCount = judgments.length;
-  const failedRunCount = records.length - judgedRunCount;
+  const failedRunCount = records.filter((record) =>
+    record.status === 'invalid_response' || record.status === 'missing').length;
   return {
     majorityClass,
     unstable: counts.size > 1 || failedRunCount > 0,
