@@ -1,6 +1,7 @@
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
+  ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
 import { estimateAiRequestCost } from './aiUsagePricing';
 import {
@@ -35,6 +36,7 @@ export interface RecordAiRequestMetricParams {
   firestoreTokenProvider?: FirestoreTokenProvider;
   firebaseUid: string;
   requestId: string;
+  correlation?: ObservabilityCorrelation;
   occurredAt: string;
   appVersion: string;
   operationKind: AiRequestMetricPayload['operationKind'];
@@ -49,6 +51,7 @@ export interface RecordAiRequestMetricParams {
   startedAtMs: number;
   nowMs?: number;
   onError?: (error: unknown) => void;
+  decision?: AiRequestMetricPayload['decision'];
 }
 
 const MIN_IDENTITY_SECRET_LENGTH = 32;
@@ -152,8 +155,10 @@ export async function recordAiRequestMetricBestEffort(
     responseBytes: params.responseBytes === null
       ? null
       : Math.max(0, Math.floor(params.responseBytes)),
-    pricingVersion: pricing.pricingVersion,
-    estimatedCostMicros: pricing.estimatedCostMicros,
+    pricingVersion: params.decision?.reportedCostUsd != null ? 'openrouter-reported-usd' : pricing.pricingVersion,
+    estimatedCostMicros: params.decision?.reportedCostUsd != null
+      ? Math.round(params.decision.reportedCostUsd * 1_000_000) : pricing.estimatedCostMicros,
+    ...(params.decision ? { decision: params.decision } : {}),
   };
 
   try {
@@ -163,6 +168,7 @@ export async function recordAiRequestMetricBestEffort(
     ).storeAiRequestMetric({
       firebaseUid: params.firebaseUid,
       requestId: params.requestId,
+      correlation: params.correlation,
       occurredAt: params.occurredAt,
       appVersion: params.appVersion,
       payload,

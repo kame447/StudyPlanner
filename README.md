@@ -125,6 +125,54 @@ npm run deploy:worker
 
 `workers/ai-proxy/wrangler.jsonc` の環境設定はデプロイ先に合わせて設定してください。
 
+### Jev focused authorization（OpenRouter）
+
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) の初回対象だけを実装しています。既存の認証済み `/chat/completions` に用途を限定したdecision contextを渡し、Worker内のprovider port / OpenRouter adapterで判定します。既存のfocused生成LLM、generic semantic、承認・保存の境界は維持します。TypeSafe直結やCloudflare Workers AIへの切替は、このprovider portへ別adapterを実装する責務です。
+
+OpenRouterのserver-only secretは次で登録します。値を引数、ソース、Issue、ログへ貼らないでください。
+
+```bash
+npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.jsonc
+```
+
+既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
+
+モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.13`、応答は公式に確認したrelease/dated snapshotのみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+
+低確信度・補助判定の不一致・欠落値・モデル不一致・通信障害は既存focused LLMへ戻します。明確な条件変更や独立した意味はgeneric semanticへ渡します。両providerの失敗は現行のcontrolled failureへ戻り、legacy自然言語parserは復活させません。汎用入力や長すぎる入力は従来経路を使います。
+
+[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
+
+通常テストはmockのみでキー不要です。実APIの疎通試験は環境変数 `OPENROUTER_API_KEY` を設定したプロセスで、次を明示実行します。`.env` の自動読込や通常CIからの課金API起動はありません。既存のsecret managerから環境変数を渡すか、ローカルではshell履歴へ値を残さない非表示入力を使ってください。
+
+```bash
+npm run test:jev:live
+```
+
+この試験は合成した日本語の `create_plan / fallback` 判定を実Jevへ1件送り、HTTP成功に加えてdecision・分布・入力tokenを確認します。1件の疎通成功は日本語品質や本番rolloutの承認を意味しません。キー未設定なら試験は明示的に失敗し、成功扱いにしません。
+
+人手レビュー前のshadow評価候補は `workers/ai-proxy/src/decision/evaluation/` にあります。通常・短い承認・否定・訂正・条件付き承認・mixed turn・stored/indirect injection・Unicode・異常値を `tuning` / `holdout` に会話group単位で分けています。全件 `synthetic_unreviewed` であり、人手確認済みgoldや本番有効化の根拠ではありません。通常CIはmock providerだけでgroup分離、既存gate、全体・split別・layer別のclass別precision/recall、coverage、分母付きselective accuracy、false auto-`create_plan`、abstention/unavailable、evaluated-onlyとunavailable込みを分離したlatency、未知cost保持を検証します。既存生成LLMとの一致はaccuracyとして集計しません。
+
+現在のholdoutは `create_plan` 6件 / `fallback` 16件にすぎません。誤り0件でも二項事象の95%上限を概算するrule of threeは約 `3/n`（それぞれ50% / 18.8%）であり、このsynthetic setからcanaryの安全性は主張できません。単に合成例を水増しせず、十分な件数を持つ人手レビュー済みgoldをcanaryの前提にします。校正は `tuning` だけで行い、`holdout` は最後に一度だけ開封し、各評価で実行したsplitを記録します。
+
+候補を実OpenRouter adapterへ通す任意評価は、環境変数を明示したプロセスでのみ実行します。専用Vitest configで全候補を実行し、通常test globやCIには含まれません。`.env`を自動読込せず、入力本文・key・headerを出力しません。production validatorを通らない候補は`rejected_before_provider`として分離し、APIへ送らず、coverage/selective accuracyの分母から除外して件数を報告します。各caseはthreshold sweep用のchoice・confidence・両class確率・condition/independent確率・modelを数値結果として保持し、reportはfixture/catalog/gate versionと全体・split別・layer別集計を出力します。未知costがある場合、完全な総額は`null`のままです。人手レビューと費用承認の後にだけ実行してください。
+
+```bash
+npm run eval:jev:shadow
+```
+
+キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
+
+```bash
+npm exec --yes --package=wrangler@4.140.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+```
+
+検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
+
+モデル、latency、成功/fallback、raw choiceとgate適用後routeそれぞれのshadow比較、token数、OpenRouter報告costを既存 `ai_request_metric` と内容を限定したWorkerログへ記録します。abstained/unavailableのgate比較は未決定の `null` とし、不明なusage/costもnullのまま保持します。provider callごとのevent IDは一意のまま、Jevが実行されたshadow/canaryではdecisionと既存baseline/fallback metricの `correlation.requestId` に同じopaqueなturn request IDを置き、turn単位でcostをjoinできます。`off` 相当では既存baseline metricのevent ID相関を変更しません。OpenRouterの応答本文、送信state、ユーザー入力全文、key、例外本文を新規のdecisionログやtraceへ保存しません。週間計画traceは既存の結果・byte数・状態を維持し、providerごとの安全な数値診断は#213のtelemetryを使います。運用上の総AI spendはheadline `ai` の総額に `aiByOperationKind.decision` の総額を加えます（decisionはheadlineから除外されます）。
+
+2026-09-26確認の一次資料は [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)、[Jev tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial)、[TypeSafe primitives](https://docs.typesafe.ai/introduction)、[TypeSafe confidence](https://docs.typesafe.ai/confidence) です。SDK互換やchat APIから仕様を推測せず、`POST https://openrouter.ai/api/alpha/decisions` の `state / questions / answers / usage` 契約を使います。
+
 ### スマートフォンからのローカル確認
 
 LAN 内の端末から HTTPS で開発環境へ接続する場合は、開発用証明書を生成できます。

@@ -1,4 +1,5 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import { focusedDecisionContextV5 } from './weeklyPlanningFocusedDecisionContextV5';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
@@ -349,7 +350,9 @@ export async function tryFocusedAuthorizationRouteV5(
   }
 
   const messages = createFocusedAuthorizationMessagesV5(run.input);
+  const decisionContext = focusedDecisionContextV5(run.input);
   const request = {
+    ...(decisionContext ? { decisionContext } : {}),
     messages,
     temperature: 0,
     responseFormat: FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5,

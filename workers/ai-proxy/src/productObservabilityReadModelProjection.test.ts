@@ -153,6 +153,39 @@ describe('product observability read model projection', () => {
     expect(second.aiByOperationKind?.[0]?.aggregate.requestCount).toBe(2);
   });
 
+  it('keeps decision calls out of headline AI totals and breakdowns while retaining the operation dimension', () => {
+    const chat = event<AiRequestMetricPayload>({
+      eventType: 'ai_request_metric',
+      payload: aiPayload({ estimatedCostMicros: 100, totalTokens: 20 }),
+    });
+    const decision = event<AiRequestMetricPayload>({
+      eventType: 'ai_request_metric',
+      payload: aiPayload({
+        operationKind: 'decision', provider: 'openrouter', model: 'typesafe/jev-1.13',
+        purpose: 'weekly_planning_focused_authorization', phase: 'single',
+        status: 'provider_error', errorCategory: 'provider_error',
+        estimatedCostMicros: 50, totalTokens: 5,
+      }),
+    });
+    const first = projectDailyRollup({
+      current: null, event: chat, actorDayWasNew: true, nowIso: chat.observedAt,
+    });
+    const second = projectDailyRollup({
+      current: first, event: decision, actorDayWasNew: false, nowIso: decision.observedAt,
+    });
+
+    expect(second.ai).toMatchObject({
+      requestCount: 1, failureCount: 0, totalTokens: 20, estimatedCostMicros: 100,
+    });
+    expect(second.aiByModel.map((value) => value.key)).toEqual(['gpt-5.6-luna']);
+    expect(second.aiByPurpose.map((value) => value.key)).toEqual(['weekly_planning_semantic_normalizer']);
+    expect(second.aiByPhase.map((value) => value.key)).toEqual(['initial']);
+    expect(second.aiByOperationKind).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'chat_completion', aggregate: expect.objectContaining({ requestCount: 1 }) }),
+      expect.objectContaining({ key: 'decision', aggregate: expect.objectContaining({ requestCount: 1, failureCount: 1 }) }),
+    ]));
+  });
+
   it('derives percentiles from mergeable latency buckets instead of averaging daily p95', () => {
     const first = projectDailyRollup({
       current: null,

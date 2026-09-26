@@ -89,6 +89,8 @@ export interface ObservabilityDailyRollup {
   aiByModel: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   aiByPurpose: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   aiByPhase: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
+  // The only AI dimension that includes decision events; its aggregate sum can
+  // exceed the headline `ai`, which intentionally contains non-decision requests.
   aiByOperationKind?: Array<ObservabilityDimensionAggregate<ObservabilityAiAggregate>>;
   planning: ObservabilityPlanningAggregate;
   planningBySchedulerVersion: Array<ObservabilityDimensionAggregate<ObservabilityPlanningAggregate>>;

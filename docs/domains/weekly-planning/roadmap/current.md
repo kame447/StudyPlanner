@@ -59,7 +59,7 @@ This security/provenance work is also an input to later #246 production consulta
 
 ## Issue #305: bounded Jev integration
 
-[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) turns the completed 2026-09-18 research into an implementation backlog. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint are owned by that Issue, not duplicated in a second design document. Jev is not connected to production by this roadmap change.
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns the initial OpenRouter focused-authorization implementation and subsequent evaluation. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint remain in that Issue. The implementation defaults to off; the next operational step is an explicit real-API smoke, then non-authoritative shadow evaluation. Runtime code availability does not establish production enablement or calibrated quality.
 
 The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and its replacement PR chain (see the #152 section; PR #174 is evidence only); before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
 

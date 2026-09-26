@@ -1,7 +1,9 @@
 import { getUtf8ByteLength } from '../../../shared/aiProxyContract';
+import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
+  ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
 import { resolveChatModel } from './modelPolicy';
 import {
@@ -14,6 +16,7 @@ import {
 } from './aiRequestObservability';
 import type { ProductObservabilityEnv } from './productObservabilityStore';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
+import type { JevExecutionMode } from './decision/decisionExecutionMarker';
 
 export interface AiProxyRequestObserverEnv extends ProductObservabilityEnv {
   FIREBASE_WEB_API_KEY?: string;
@@ -161,6 +164,21 @@ export function describeAiProxyOperation(
   return null;
 }
 
+export function resolveAiProxyMetricCorrelation(
+  payload: unknown,
+  decisionExecutionMode?: JevExecutionMode | null,
+): ObservabilityCorrelation | undefined {
+  if (!decisionExecutionMode
+    || !isRecord(payload)
+    || !isFocusedAuthorizationDecisionContext(payload.decisionContext)) {
+    return undefined;
+  }
+  return {
+    requestId: payload.decisionContext.requestId,
+    stateRevision: payload.decisionContext.inputRevision,
+  };
+}
+
 export function classifyAiProxyMetricStatus(
   responseStatus: number,
   responsePayload: unknown,
@@ -198,9 +216,12 @@ export async function observeAiProxyRequest(params: {
   startedAtMs: number;
   occurredAt: string;
   usage?: AiRequestUsage | null;
+  decisionExecutionMode?: JevExecutionMode | null;
   onError?: (error: unknown) => void;
 }): Promise<void> {
   if (!isAiRequestObservabilityConfigured(params.env)) return;
+  // Decision requests are recorded at the provider boundary, including shadow calls.
+  if (params.response.headers.get('X-StudyPlanner-AI-Provider') === 'openrouter') return;
   if (params.request.method !== 'POST') return;
   const pathname = new URL(params.request.url).pathname;
   if (!isObservableAiProxyPath(pathname)) return;
@@ -229,6 +250,10 @@ export async function observeAiProxyRequest(params: {
     firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
+    correlation: resolveAiProxyMetricCorrelation(
+      requestPayload,
+      params.decisionExecutionMode,
+    ),
     occurredAt: params.occurredAt,
     appVersion,
     operationKind: operation.operationKind,

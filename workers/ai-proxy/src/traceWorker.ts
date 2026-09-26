@@ -60,6 +60,10 @@ import {
   WorkerSubrequestBudgetExceededError,
 } from './workerSubrequestBudget';
 import worker from './worker';
+import {
+  jevExecutionMode,
+  stripJevExecutionMarker,
+} from './decision/decisionExecutionMarker';
 
 export { AiQuotaDurableObject };
 
@@ -255,18 +259,21 @@ export default {
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = await worker.fetch(request, env as never, tokenProvider);
+    const response = await worker.fetch(request, env as never, tokenProvider, executionContext);
+    const decisionExecutionMode = jevExecutionMode(response);
+    const publicResponse = stripJevExecutionMarker(response);
 
     if (observerRequest) {
       scheduleAiRequestMetric(
         executionContext,
         observeAiProxyRequest({
           request: observerRequest,
-          response: response.clone(),
+          response: publicResponse.clone(),
           env: observerEnv,
           firestoreTokenProvider: tokenProvider,
           startedAtMs,
           occurredAt,
+          decisionExecutionMode,
           onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
             message: error instanceof Error ? error.message : String(error),
           }),
@@ -274,13 +281,13 @@ export default {
       );
     }
 
-    if (!isWeeklyPlanningTracePath(pathname)) return response;
+    if (!isWeeklyPlanningTracePath(pathname)) return publicResponse;
 
-    const headers = new Headers(response.headers);
+    const headers = new Headers(publicResponse.headers);
     Object.entries(traceHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
+    return new Response(publicResponse.body, {
+      status: publicResponse.status,
+      statusText: publicResponse.statusText,
       headers,
     });
   },

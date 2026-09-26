@@ -291,7 +291,8 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
       || payload.phase === 'repair'
       || payload.phase === 'single'
       || payload.phase === 'unknown')
-    && (payload.provider === 'openai' || payload.provider === 'gemini')
+    && (payload.provider === 'openai' || payload.provider === 'gemini' || payload.provider === 'openrouter'
+      || payload.provider === 'typesafe' || payload.provider === 'cloudflare')
     && typeof payload.model === 'string'
     && typeof payload.status === 'string'
     && aiStatuses.has(payload.status as AiRequestMetricStatus)) {

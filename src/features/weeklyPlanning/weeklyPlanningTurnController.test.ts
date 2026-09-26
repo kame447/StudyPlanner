@@ -69,10 +69,11 @@ describe('weeklyPlanningTurnController', () => {
     ]);
   });
 
-  it('rejects a second active submission and silently discards a cancelled result', async () => {
+  it('owns turn staleness by rejecting a second submission and discarding a cancelled async result', async () => {
     const store = harness();
     const session = createWeeklyPlanningControllerSession('user-1', '2026-07-13', 'conversation-1');
     const pendingResult = deferred<typeof result>();
+    let discardedReason: string | null = null;
     const first = submitWeeklyPlanningControlledTurn({
       session,
       ownerId: 'user-1',
@@ -80,6 +81,7 @@ describe('weeklyPlanningTurnController', () => {
       getState: store.getState,
       dispatch: store.dispatch,
       execute: () => pendingResult.promise,
+      discardExecutionResult: ({ reason }) => { discardedReason = reason; },
     });
     const second = await submitWeeklyPlanningControlledTurn({
       session,
@@ -94,6 +96,7 @@ describe('weeklyPlanningTurnController', () => {
     expect(cancelWeeklyPlanningControlledTurn(store)).toBe(true);
     pendingResult.resolve(result);
     await expect(first).resolves.toEqual({ accepted: false, draftCandidates: [] });
+    expect(discardedReason).toBe('stale');
     expect(store.getState().messages).toHaveLength(1);
     expect(store.getState().messages[0].role).toBe('user');
   });

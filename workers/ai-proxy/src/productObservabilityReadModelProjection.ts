@@ -376,27 +376,34 @@ export function projectDailyRollup(params: {
 
   if (params.event.eventType === 'ai_request_metric') {
     const payload = params.event.payload as AiRequestMetricPayload;
+    const includeInHeadlineAi = payload.operationKind !== 'decision';
     return {
       ...next,
-      ai: addAiPayload(base.ai, payload),
-      aiByModel: updateDimension({
-        values: base.aiByModel,
-        key: payload.model,
-        create: createEmptyAiAggregate,
-        update: (current) => addAiPayload(current, payload),
-      }),
-      aiByPurpose: updateDimension({
-        values: base.aiByPurpose,
-        key: payload.purpose,
-        create: createEmptyAiAggregate,
-        update: (current) => addAiPayload(current, payload),
-      }),
-      aiByPhase: updateDimension({
-        values: base.aiByPhase,
-        key: payload.phase,
-        create: createEmptyAiAggregate,
-        update: (current) => addAiPayload(current, payload),
-      }),
+      ai: includeInHeadlineAi ? addAiPayload(base.ai, payload) : base.ai,
+      aiByModel: includeInHeadlineAi
+        ? updateDimension({
+            values: base.aiByModel,
+            key: payload.model,
+            create: createEmptyAiAggregate,
+            update: (current) => addAiPayload(current, payload),
+          })
+        : base.aiByModel,
+      aiByPurpose: includeInHeadlineAi
+        ? updateDimension({
+            values: base.aiByPurpose,
+            key: payload.purpose,
+            create: createEmptyAiAggregate,
+            update: (current) => addAiPayload(current, payload),
+          })
+        : base.aiByPurpose,
+      aiByPhase: includeInHeadlineAi
+        ? updateDimension({
+            values: base.aiByPhase,
+            key: payload.phase,
+            create: createEmptyAiAggregate,
+            update: (current) => addAiPayload(current, payload),
+          })
+        : base.aiByPhase,
       aiByOperationKind: updateDimension({
         values: base.aiByOperationKind ?? [],
         key: payload.operationKind,

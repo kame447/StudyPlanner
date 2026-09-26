@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-08-29
+Updated: 2026-09-26
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -33,6 +33,24 @@ Each durable entry should record:
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
 
 ---
+
+## Cloudflare remote dev: Jev smoke transport failures
+
+Verified on 2026-09-26 with Wrangler 4.140.0 and Worker compatibility date 2026-04-10.
+
+The temporary preview upload succeeded, but direct Python HTTP readiness requests returned 403. Using Wrangler's returned `worker.fetch()` interface reached the preview and confirmed the Secret binding without reading its value. The precise source of the earlier 403 was not established; do not attribute it to the OpenRouter key or weaken production origin/auth guards. Use `scripts/jev-cloud-smoke.mjs`, which owns server startup, requests and cleanup through the same Wrangler instance.
+
+The next failure was an immediate redirect-related TypeError from the Worker's outbound fetch, normalized by the adapter as `unavailable/network`. The configured runtime rejected `redirect: 'error'`. Use `redirect: 'manual'` and reject non-2xx responses without following Location. This preserves credential isolation; switching to automatic redirects is not an acceptable fix. Redirect regression tests cover 301/302/303/307/308.
+
+Prerequisites are an existing authenticated Wrangler session and `OPENROUTER_API_KEY` registered as a Secret on the selected Worker. The optional smoke uses a short-lived authenticated remote dev script and a fixed synthetic authorization input; it does not publish production code or change routing. Never export the Secret or print raw provider responses, exception messages or headers. The harness stops the development server and removes temporary files on completion. Verify an actual validated decision and usage, not just preview upload HTTP 200; record gate abstention separately from successful transport. See README for the invocation.
+
+## Wrangler production dry-run completes but the process does not exit
+
+Verified on 2026-09-26 with Wrangler 4.140.0 (`npx --yes wrangler@4.140.0 deploy --dry-run --config workers/ai-proxy/wrangler.jsonc`).
+
+Symptom: the output reaches `Total Upload`, the binding table and `--dry-run: exiting now.`, but the Node process stays alive with an open HTTPS connection to a Cloudflare address. The same run exited 0 about 40 minutes earlier on the same machine, and an older commit reproduced the hang afterwards, so it is environmental/post-exit network behaviour, not a code regression. `WRANGLER_SEND_METRICS=false` alone did not prevent it in this occurrence.
+
+Workaround: bound the run (for example `perl -e 'alarm 240; exec @ARGV' npx ...`) and treat the build evidence as the complete output (upload size and expected bindings such as `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`). Record that the exit code was not obtained; do not report it as exit 0. An alarm kills only the `npx` parent, so terminate leftover `wrangler deploy --dry-run` child processes afterwards. Confirm a regression suspicion by running the same command on the previous known-good commit in a temporary worktree before changing code.
 
 ## GitHub PR Ready-for-review transition can fail through the connector
 

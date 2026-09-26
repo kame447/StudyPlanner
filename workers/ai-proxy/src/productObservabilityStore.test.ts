@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ProductObservabilityStore } from './productObservabilityStore';
+import { JEV_MODEL } from './decision/decisionPolicy';
 
 class MemoryFirestore {
   readonly documents = new Map<string, Record<string, unknown>>();
@@ -120,6 +121,60 @@ function createStore(firestore: MemoryFirestore) {
 }
 
 describe('ProductObservabilityStore', () => {
+  it('persists Jev outcome and provider cost without converting missing usage to zero', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const decision = {
+      mode: 'shadow' as const, outcome: 'shadow' as const, gate: 'abstained' as const,
+      reason: 'uncertain', requestedModel: JEV_MODEL.request, catalogVersion: 'fixture', gateVersion: 'fixture',
+      inputRevision: 4, rawChoiceMatchesBaseline: false, gatedRouteMatchesBaseline: null,
+      reportedCostUsd: 0.00001344,
+      choice: 'create_plan' as const, confidence: 0.8, createPlanProbability: 0.9, fallbackProbability: 0.1,
+      conditionChangeProbability: 0.1, independentMeaningProbability: 0.2,
+    };
+    await store.storeAiRequestMetric({
+      firebaseUid: 'private-firebase-uid', requestId: 'jev-metric-fixture',
+      correlation: { requestId: 'turn-request-12345678', stateRevision: 4 },
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
+      payload: { ...validAiMetricPayload(), provider: 'openrouter', operationKind: 'decision', model: JEV_MODEL.request, decision },
+    });
+    const saved = [...firestore.documents.values()].find((value) => value.eventType === 'ai_request_metric');
+    expect(saved?.payload).toMatchObject({ provider: 'openrouter', promptTokens: null, decision });
+    expect(saved).toMatchObject({
+      eventId: 'jev-metric-fixture',
+      correlation: { requestId: 'turn-request-12345678', stateRevision: 4 },
+    });
+    expect(JSON.stringify([...firestore.documents.values()])).not.toContain('private-firebase-uid');
+  });
+  it('keeps unknown decision probabilities null and rejects incomplete or invalid distributions', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const baseDecision = {
+      mode: 'shadow' as const, outcome: 'shadow' as const, gate: 'unavailable' as const,
+      reason: 'configuration', requestedModel: JEV_MODEL.request, catalogVersion: 'fixture', gateVersion: 'fixture',
+      inputRevision: 4, rawChoiceMatchesBaseline: null, gatedRouteMatchesBaseline: null, reportedCostUsd: null,
+      choice: null, confidence: null, createPlanProbability: null, fallbackProbability: null,
+      conditionChangeProbability: null, independentMeaningProbability: null,
+    };
+    await store.storeAiRequestMetric({
+      firebaseUid: 'private-firebase-uid', requestId: 'jev-unknown-probability',
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
+      payload: { ...validAiMetricPayload(), provider: 'openrouter', operationKind: 'decision', model: JEV_MODEL.request, decision: baseDecision },
+    });
+    const saved = [...firestore.documents.values()].find((value) => value.eventId === 'jev-unknown-probability');
+    expect(saved?.payload).toMatchObject({
+      decision: { createPlanProbability: null, fallbackProbability: null },
+    });
+
+    await expect(store.storeAiRequestMetric({
+      firebaseUid: 'private-firebase-uid', requestId: 'jev-invalid-probability',
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
+      payload: {
+        ...validAiMetricPayload(), provider: 'openrouter', operationKind: 'decision', model: JEV_MODEL.request,
+        decision: { ...baseDecision, createPlanProbability: 0.9, fallbackProbability: null },
+      },
+    })).rejects.toThrow('Decision telemetry probabilities are invalid');
+  });
   it('looks up an actor without creating directory state on a read-only miss', async () => {
     const firestore = new MemoryFirestore();
     const store = createStore(firestore);

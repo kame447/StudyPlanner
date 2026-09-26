@@ -66,6 +66,7 @@ export type AiRequestMetricStatus =
   | 'unknown_failure';
 
 export type AiRequestOperationKind =
+  | 'decision'
   | 'chat_completion'
   | 'timetable_ocr'
   | 'planning_attachment'
@@ -75,7 +76,7 @@ export interface AiRequestMetricPayload {
   operationKind: AiRequestOperationKind;
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
-  provider: 'openai' | 'gemini';
+  provider: 'openai' | 'gemini' | import('./focusedAuthorizationDecision').DecisionProviderName;
   model: string;
   status: AiRequestMetricStatus;
   errorCategory: Exclude<AiRequestMetricStatus, 'success'> | null;
@@ -90,6 +91,25 @@ export interface AiRequestMetricPayload {
   responseBytes: number | null;
   pricingVersion: string | null;
   estimatedCostMicros: number | null;
+  decision?: {
+    mode: 'shadow' | 'canary';
+    outcome: 'success' | 'fallback' | 'shadow';
+    gate: 'accepted' | 'abstained' | 'unavailable';
+    reason: string | null;
+    requestedModel: string;
+    catalogVersion: string;
+    gateVersion: string;
+    inputRevision: number;
+    rawChoiceMatchesBaseline: boolean | null;
+    gatedRouteMatchesBaseline: boolean | null;
+    reportedCostUsd: number | null;
+    choice: 'create_plan' | 'fallback' | null;
+    confidence: number | null;
+    createPlanProbability: number | null;
+    fallbackProbability: number | null;
+    conditionChangeProbability: number | null;
+    independentMeaningProbability: number | null;
+  };
 }
 
 export const PLANNING_OUTCOME_TYPES = [

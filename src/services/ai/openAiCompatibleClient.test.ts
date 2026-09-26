@@ -63,6 +63,29 @@ afterEach(() => {
 });
 
 describe('openAiCompatibleClient model routing', () => {
+  it('forwards bounded decision context and rejects a response for another revision', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({
+      currentUser: { getIdToken: async () => 'id-token' },
+    } as unknown as ReturnType<typeof getFirebaseAuth>);
+    const decisionContext = {
+      purpose: 'focused_authorization' as const, requestId: 'request-context-fixture', inputRevision: 4,
+      previousStatus: 'needs_scope' as const, hasTasks: true as const, hasPendingQuestion: false as const,
+      state: { currentUserText: 'この条件で計画案を作って', lastAssistantMessage: null },
+    };
+    const fetchMock = mockFetchOnce({
+      content: '{"decision":"create_plan"}',
+      decisionContext: { requestId: decisionContext.requestId, inputRevision: 3 },
+    });
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({
+      messages: [{ role: 'user', content: 'context' }],
+      purpose: 'weekly_planning_semantic_normalizer', decisionContext,
+    })).rejects.toThrow('Decision response context did not match');
+    expect(lastRequestBody(fetchMock).decisionContext).toEqual(decisionContext);
+    expect(lastRequestBody(fetchMock)).not.toHaveProperty('model');
+  });
+
   it('sends purpose (and no model) to the proxy for purpose-based calls', async () => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
     vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
