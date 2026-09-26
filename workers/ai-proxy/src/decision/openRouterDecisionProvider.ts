@@ -93,7 +93,10 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
         latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null,
         requestBytes: new TextEncoder().encode(body).length, responseBytes: null,
       };
-      const failed = (reason: Extract<DecisionEvaluation, { status: 'unavailable' }>['reason'], httpStatus?: number): DecisionEvaluation => ({
+      const failed = (
+        reason: Extract<DecisionEvaluation<TDecision>, { status: 'unavailable' }>['reason'],
+        httpStatus?: number,
+      ): DecisionEvaluation<TDecision> => ({
         status: 'unavailable', reason, ...(httpStatus === undefined ? {} : { httpStatus }),
         metadata: { ...metadata, latencyMs: Date.now() - started },
       });

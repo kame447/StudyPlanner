@@ -1,6 +1,6 @@
 # Issue #305 — focused contextual answer の Jev 第一経路
 
-Status: active / calibrated, holdout pending
+Status: ready for PR / preliminary holdout and local verification complete
 Updated: 2026-09-27
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335）
 
@@ -156,11 +156,99 @@ injected Jev outcome の後段は既存 Worker Secret を内部利用する actu
 2,967 / completion 278 tokens。価格表を渡していないため cost は未知であり0とは扱わない。
 fault injection は semantic quality の正解率や gold ではない。
 
+追加 probe では low-confidence に加えて timeout、HTTP 429、HTTP 500、malformed、
+model mismatch、provider cancelled、stale revision、effort cross-question を実行した。
+9/9 で production contextual dispatch から actual Luna が呼ばれ、8件は
+`quantity_role_answer / remaining`、effort cross-question は minutes を持つ
+`effort_answer` になった。unexpected output key は全件0、Luna usage 合計は prompt
+5,339 / completion 465 tokens。stale revision は高確信 role を応答へ合成する直前の
+current-context 再検証で棄却した。caller request 自体の abort は Luna も中断すべき
+別条件であり、この probe の `cancelled` は provider abort outcome を表す。
+
+### 予備 holdout（gate/catalog 固定後の1回のみ）
+
+`ba8aa38f` で catalog v2 / gate v2 を固定してから、holdout 30件 / 25
+conversation groups を1回だけ実行した。結果を見た gate/catalog 変更や再実行は
+していない。すべて `synthetic_unreviewed` であり human gold ではないため、以下は
+予備的な boundary evidence である。
+
+| 指標 | holdout result |
+| --- | --- |
+| expected quantity role | 12 |
+| Jev role accepted / synthetic typed match | 8 / 8 |
+| quantity-role false accept | 0 / 30、片側95% Clopper–Pearson 上限 9.50% |
+| expected effort / provisional → generic miss | 0 / 8 |
+| effort question の cross-question role Choice | 1 / 12（Luna fallback） |
+| expected generic の Jev direct fallback | 3 / 10 |
+| Luna fallback | 19 / 30 |
+| provider unavailable / unexpected output key | 0 / 0 |
+| Jev usage | input 25,271 / output 2,894 tokens、reported USD 0.001061382 |
+| fallback Luna usage | prompt 11,461 / completion 2,007 tokens、cost unknown |
+
+Jev role accepted case IDs:
+`ctx-h-target-02`, `ctx-h-remaining-01`, `ctx-h-remaining-02`,
+`ctx-h-completed-01`, `ctx-h-completed-02`, `ctx-h-remaining-03`,
+`ctx-h-remaining-04`, `ctx-h-completed-04`。direct generic は
+`ctx-h-security-01`, `ctx-h-security-02`, `ctx-h-security-05`。
+
+### Luna-only paired comparison（同一 holdout）
+
+同じ30件を Luna-only でも1回評価した。`focused_luna` は「Luna が owner」である
+boundary label で、特定の一文を gold とするものではない。final boundary error は、
+quantity role の exact typed 不一致、generic expected の non-fallback、または
+Luna owner を迂回した場合だけを数える。
+
+| 指標 | Jev-first | Luna-only |
+| --- | ---: | ---: |
+| sample / groups | 30 / 25 | 30 / 25 |
+| final boundary error | 2/30 (`ctx-h-security-03`, `ctx-h-security-04`) | 3/30 (`ctx-h-security-01`, `ctx-h-security-03`, `ctx-h-security-04`) |
+| error の片側95%上限 | 19.53% | 23.86% |
+| generative LLM calls | 19 | 30 |
+| call reduction | 11/30（36.7%） | baseline |
+| latency p50 / p95 | 1,463 / 2,163 ms（paired estimate） | 1,415 / 1,956 ms（observed） |
+| provider token usage | Jev 25,271/2,894 + Luna 11,461/2,007 | Luna 18,057/2,819 |
+| cost | Jev known subtotal USD 0.001061382 + Luna unknown | Luna unknown |
+
+Jev-first latency は、holdout で観測した Jev latency に、fallback case だけ同一 case の
+paired Luna-only latency を足した推定値である。別時刻のネットワーク揺らぎを含むため、
+実測 end-to-end と偽らない。この小標本では generative call 削減は示したが、p50/p95
+改善は示しておらず、むしろ Jev overhead 分だけ高い。価格表が提供されていないため
+Luna cost は unknown のままとし、0や推定価格に置換しない。
+
+### #335 safety regression
+
+影響範囲の targeted regression は12 files / 214 tests green。strict bounded
+projection、unknown-key rejection、stale response correlation、current-turn provenance、
+protected projection、decision/approval、renderer integrity / memory、provisional の Luna
+所有、Jev accepted/fallback の parser shape を含む。remote holdout / faults でも
+quantity-role false accept 0、injection 3件の generic 直行、provider failure の actual
+Luna fallback、unexpected output key 0を確認した。Jev response は role または
+generic fallback に閉じ、preview authorization / approval / save authority を持たない。
+
+## Verification
+
+- `npm run typecheck`: success
+- `npm run test:run`: 572 files passed / 10 skipped、2,887 tests passed /
+  45 skipped / 5 todo
+- `npm run build`: success（2,214 modules transformed）
+- #335 affected targeted regression: 12 files / 214 tests passed
+- focused contextual policy / dispatch after final changes: 2 files / 28 tests passed
+- Wrangler-generated runtime types + strict `tsc`: changed decision modules 固有 error 0。
+  Worker dependency graph 全体では予約外の `materialMetadataApi.ts` 1件と
+  `weeklyPlanningTraceApi.ts` 3件で nonzero。`origin/main` archive に同じ Wrangler
+  4.140.0 / 同じ strict command を適用して同一4 errorsを再現したため baseline
+  harness debt と分類した
+- Wrangler 4.140.0 production dry-run: success、Total Upload 443.49 KiB / gzip
+  90.29 KiB、`JEV_MODE="off"` / `JEV_CANARY_PERCENT="0"`、`--dry-run: exiting now.`
+- `git diff --check origin/main`: success。変更22 filesは予約範囲内
+- `package-lock.json` / `workers/ai-proxy/wrangler.jsonc`: `origin/main` から変更なし
+- 本番 deploy、secret value の読出し・出力・保存は未実施
+
 ## 現在地
 
 - baseline: `e8a7ab48566e70aa2534ef49a405cc30ae05a3b8`
 - worktree branch: `feat/issue-305-jev-first-focused-contextual`
-- durable checkpoint: parent-assisted commit/push `e307fda4`（upstream 設定済み）。
+- durable checkpoint: parent-assisted commit/push `ba8aa38f`（gate v2 freeze、upstream 設定済み）。
   Codex sandbox は `.git` metadata write を拒否するため、以後の commit/push/PR は親が代行する。
 - 実装済み（未 commit checkpoint）:
   - shared contextual discriminated context と strict validator
@@ -172,23 +260,21 @@ fault injection は semantic quality の正解率や gold ではない。
   - client projection、response revision correlation、trace envelope privacy exclusion
   - tuning / holdout 合成 corpus v1（tuning 30件 / holdout 30件、計46 conversation groups）
   - short-lived remote-dev evaluation harness（raw text / prompt / raw response を出力しない）
-  - remote-dev fault probes 5件で actual Luna fallback 5/5
+  - remote-dev initial fault probes 5件で actual Luna fallback 5/5
   - tuning-only catalog/gate 校正と最終 remote-dev tuning 30件
+  - gate固定後の予備 holdout 30件（1回）と Luna-only paired baseline 30件
+  - 拡張 remote fault probes 9件と #335 targeted 12 files / 214 tests
 - 検証済み:
-  - `npm run typecheck`: success
-  - targeted Vitest: 9 files / 102 tests passed
-  - `git diff --check`: success（corpus追加前の checkpoint）
+  - 上記 Verification の local gate 一式
 - 本番 config / secret / package-lock は未変更。
 
 ## 次の具体作業
 
-1. 凍結済み catalog/gate で30件の holdout を1回だけ実行する。
-2. typed case 結果と集計（raw text / prompt / raw response なし）を本記録へ追加する。
-3. full typecheck / tests / build / worker typecheck / dry-run / diff を実行する。
-4. branch checkpoint、PR、CI terminal green、親への完了 Mail。
+1. 親へ commit/push と ready PR 作成を依頼する。
+2. PR CI を terminal green まで追い、親へ完了 Mail。
 
 ## 未解決
 
-- holdout の実 API は未実施。catalog/gate は tuning-only で凍結済み。
-- full regression / build / Worker dry-run / CI は未実施。
-- 次の意味 checkpoint で親へ commit/push を依頼する。
+- local gate は完了、PR / CI は未実施。
+- holdout は予備的な合成30件であり、false-accept 上限9.50%を超える強い主張はしない。
+- Luna cost は価格表がなく unknown。paired latency は end-to-end 実測ではなく推定。

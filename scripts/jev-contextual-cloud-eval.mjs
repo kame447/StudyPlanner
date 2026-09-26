@@ -28,7 +28,7 @@ async function loadWrangler() {
       resolve(dirname(executable), '../wrangler-dist/cli.js'),
     ).href);
   }
-  throw new Error('Run through npm exec --package=wrangler@4.140.0 so Wrangler is available.');
+  throw new Error('Put the verified Wrangler 4.140.0 binary on PATH before running this evaluator.');
 }
 
 function parseArgs() {
@@ -40,8 +40,9 @@ function parseArgs() {
   if (!worker || !/^[a-zA-Z0-9-]+$/.test(worker)) {
     throw new Error('Pass --worker followed by the existing Worker holding provider Secrets.');
   }
-  if (split !== 'tuning' && split !== 'holdout' && split !== 'faults') {
-    throw new Error('Pass --split tuning, holdout, or faults.');
+  if (split !== 'tuning' && split !== 'holdout'
+    && split !== 'luna-baseline' && split !== 'faults') {
+    throw new Error('Pass --split tuning, holdout, luna-baseline, or faults.');
   }
   return { worker, split };
 }
@@ -74,8 +75,12 @@ function faultCases() {
   return [
     { id: 'ctx-fault-abstain', fault: 'abstain' },
     { id: 'ctx-fault-timeout', fault: 'timeout' },
+    { id: 'ctx-fault-http-429', fault: 'http_429' },
+    { id: 'ctx-fault-http-500', fault: 'http_500' },
     { id: 'ctx-fault-malformed', fault: 'invalid_response' },
-    { id: 'ctx-fault-network', fault: 'network' },
+    { id: 'ctx-fault-model-mismatch', fault: 'model_mismatch' },
+    { id: 'ctx-fault-provider-abort', fault: 'cancelled' },
+    { id: 'ctx-fault-stale-revision', fault: 'stale_context' },
     { id: 'ctx-fault-cross-question', fault: 'cross_question' },
   ].map((item) => ({
     ...item,
@@ -89,6 +94,53 @@ function faultCases() {
       : '残っている分です。',
     expectedBoundary: 'focused_luna',
   }));
+}
+
+function percentile(values, quantile) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(quantile * sorted.length) - 1)] ?? null;
+}
+
+function finalMatchesSyntheticBoundary(record) {
+  if (record.expectedBoundary === 'quantity_role_answer') {
+    return record.finalDecision === 'quantity_role_answer'
+      && record.finalQuantityRole === record.expectedQuantityRole;
+  }
+  if (record.expectedBoundary === 'generic_semantic') {
+    return record.finalDecision === 'fallback';
+  }
+  return record.lunaCalled === true;
+}
+
+function summarizeLunaBaseline(records) {
+  const errors = records.filter((record) => !finalMatchesSyntheticBoundary(record));
+  const latencies = records.map((record) => record.lunaLatencyMs)
+    .filter((value) => typeof value === 'number');
+  return {
+    corpusVersion: JEV_CONTEXTUAL_CORPUS_VERSION,
+    split: 'luna-baseline',
+    cases: records.length,
+    conversationGroups: new Set(records.map((record) => record.group)).size,
+    labelStatus: 'synthetic_unreviewed',
+    generatedLlmCalls: records.filter((record) => record.lunaCalled).length,
+    finalBoundaryErrors: {
+      count: errors.length,
+      denominator: records.length,
+      caseIds: errors.map((record) => record.caseId),
+      upper95: clopperPearsonUpper95(errors.length, records.length),
+    },
+    latencyMs: {
+      p50: percentile(latencies, 0.5),
+      p95: percentile(latencies, 0.95),
+    },
+    usage: {
+      promptTokens: records.reduce((sum, record) => sum + (record.lunaPromptTokens ?? 0), 0),
+      completionTokens: records.reduce((sum, record) =>
+        sum + (record.lunaCompletionTokens ?? 0), 0),
+      costUsd: null,
+    },
+  };
 }
 
 function summarize(records) {
@@ -123,6 +175,8 @@ function summarize(records) {
     if (record.expectedBoundary === 'focused_luna') return record.lunaCalled;
     return record.finalDecision === 'fallback' && !record.lunaCalled;
   });
+  const finalBoundaryErrors = semanticRecords.filter((record) =>
+    !finalMatchesSyntheticBoundary(record));
 
   return {
     corpusVersion: JEV_CONTEXTUAL_CORPUS_VERSION,
@@ -168,6 +222,15 @@ function summarize(records) {
       count: syntheticLabelAgreement.length,
       denominator: semanticRecords.length,
       note: 'Agreement with synthetic_unreviewed labels; not accuracy and not gold.',
+    },
+    finalBoundaryErrors: {
+      count: finalBoundaryErrors.length,
+      denominator: semanticRecords.length,
+      caseIds: finalBoundaryErrors.map((record) => record.caseId),
+      upper95: clopperPearsonUpper95(
+        finalBoundaryErrors.length,
+        semanticRecords.length,
+      ),
     },
     jevUsage: {
       inputTokens: records.reduce((sum, record) => sum + (record.jevInputTokens ?? 0), 0),
@@ -270,8 +333,17 @@ function faultEvaluation(fault) {
     requestBytes: 1,
     responseBytes: 1,
   };
-  if (fault === 'timeout' || fault === 'invalid_response' || fault === 'network') {
+  if (fault === 'timeout' || fault === 'invalid_response'
+    || fault === 'model_mismatch' || fault === 'cancelled') {
     return { status: 'unavailable', reason: fault, metadata };
+  }
+  if (fault === 'http_429' || fault === 'http_500') {
+    return {
+      status: 'unavailable',
+      reason: 'http',
+      httpStatus: fault === 'http_429' ? 429 : 500,
+      metadata,
+    };
   }
   const decision = fault === 'cross_question' ? 'remaining' : 'remaining';
   return {
@@ -307,7 +379,8 @@ function safeUsage(value) {
   };
 }
 
-async function runCase(item, env, requestSignal) {
+async function runCase(item, env, requestSignal, lunaOnly = false) {
+  const startedAt = Date.now();
   const input = {
     userText: item.userText,
     traceRequestId: 'contextual-eval-' + item.id,
@@ -319,6 +392,7 @@ async function runCase(item, env, requestSignal) {
   let evaluation = null;
   let lunaCalled = false;
   let lunaUsage = { prompt: null, completion: null };
+  let lunaLatencyMs = null;
   const realProvider = createOpenRouterDecisionProvider({
     apiKey: env.OPENROUTER_API_KEY,
     timeoutMs: CONTEXTUAL_JEV_TIMEOUT_MS,
@@ -334,6 +408,7 @@ async function runCase(item, env, requestSignal) {
   };
   const fallback = async (signal) => {
     lunaCalled = true;
+    const lunaStartedAt = Date.now();
     const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       signal,
@@ -348,6 +423,7 @@ async function runCase(item, env, requestSignal) {
         max_completion_tokens: 320,
       }),
     });
+    lunaLatencyMs = Math.max(0, Date.now() - lunaStartedAt);
     if (!upstream.ok) return Response.json({ error: 'Luna request failed.' }, { status: 502 });
     const payload = await upstream.json();
     const content = payload?.choices?.[0]?.message?.content?.trim();
@@ -357,7 +433,7 @@ async function runCase(item, env, requestSignal) {
   };
   const response = await dispatchFocusedContextual({
     context,
-    env,
+    env: lunaOnly ? { ...env, JEV_MODE: 'off' } : env,
     firebaseUid: 'contextual-evaluation',
     signal: requestSignal,
     fallback,
@@ -369,6 +445,7 @@ async function runCase(item, env, requestSignal) {
       },
     }),
     provider,
+    isContextCurrent: () => item.fault !== 'stale_context',
   });
   if (!response.ok) throw new Error('Focused contextual dispatch failed.');
   const proxyPayload = await response.json();
@@ -393,6 +470,11 @@ async function runCase(item, env, requestSignal) {
     questionCode: item.questionCode,
     providerStatus: evaluation?.status ?? 'missing',
     providerReason: evaluation?.status === 'unavailable' ? evaluation.reason : null,
+    providerHttpStatus: evaluation?.status === 'unavailable'
+      && evaluation.reason === 'http'
+      ? evaluation.httpStatus ?? null
+      : null,
+    contextCurrent: item.fault !== 'stale_context',
     rawChoice: evaluation?.status === 'evaluated' ? evaluation.decision : null,
     confidence: evaluation?.status === 'evaluated' ? evaluation.confidence : null,
     selectedProbability: evaluation?.status === 'evaluated'
@@ -402,6 +484,8 @@ async function runCase(item, env, requestSignal) {
     independentMeaning: evaluation?.status === 'evaluated' ? evaluation.independentMeaning : null,
     gate,
     lunaCalled,
+    lunaLatencyMs,
+    totalLatencyMs: Math.max(0, Date.now() - startedAt),
     finalDecision: typeof final.decision === 'string' ? final.decision : null,
     finalQuantityRole: typeof final.quantityRole === 'string' ? final.quantityRole : null,
     finalHasMinutes: typeof final.minutes === 'number',
@@ -430,14 +514,17 @@ export default {
     }
     if (request.method !== 'POST') return new Response('Not found', { status: 404 });
     const body = await request.json();
-    if (!body || typeof body !== 'object' || Object.keys(body).length !== 1
-      || typeof body.caseId !== 'string') {
+    if (!body || typeof body !== 'object'
+      || ![1, 2].includes(Object.keys(body).length)
+      || typeof body.caseId !== 'string'
+      || (Object.keys(body).length === 2 && body.lunaOnly !== true)
+      || Object.keys(body).some((key) => key !== 'caseId' && key !== 'lunaOnly')) {
       return new Response('Invalid request', { status: 400 });
     }
     const item = CASES.find((candidate) => candidate.id === body.caseId);
     if (!item) return new Response('Not found', { status: 404 });
     try {
-      return Response.json(await runCase(item, env, request.signal), {
+      return Response.json(await runCase(item, env, request.signal, body.lunaOnly === true), {
         headers: { 'Cache-Control': 'no-store' },
       });
     } catch {
@@ -452,7 +539,8 @@ async function main() {
   const { worker: workerName, split } = parseArgs();
   const selectedCases = split === 'faults'
     ? faultCases()
-    : JEV_CONTEXTUAL_CASES.filter((item) => item.split === split);
+    : JEV_CONTEXTUAL_CASES.filter((item) =>
+      item.split === (split === 'luna-baseline' ? 'holdout' : split));
   assert.ok(selectedCases.length > 0, `No contextual cases found for ${split}.`);
   const { unstable_dev } = await loadWrangler();
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -512,13 +600,21 @@ async function main() {
       const response = await worker.fetch('/case', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId: item.id }),
+        body: JSON.stringify({
+          caseId: item.id,
+          ...(split === 'luna-baseline' ? { lunaOnly: true } : {}),
+        }),
         signal: AbortSignal.timeout(95_000),
       });
       assert.equal(response.status, 200, `Contextual case ${item.id} failed.`);
       records.push(await response.json());
     }
-    console.info(JSON.stringify({ summary: summarize(records), records }, null, 2));
+    console.info(JSON.stringify({
+      summary: split === 'luna-baseline'
+        ? summarizeLunaBaseline(records)
+        : summarize(records),
+      records,
+    }, null, 2));
   } finally {
     try { await worker?.stop(); } finally {
       await rm(directory, { recursive: true, force: true });

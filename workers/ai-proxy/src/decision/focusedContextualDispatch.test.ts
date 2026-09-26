@@ -139,6 +139,32 @@ describe('focused contextual dispatch', () => {
     expect(fallback).not.toHaveBeenCalled();
   });
 
+  it('rechecks the active revision before accepting and uses Luna when stale', async () => {
+    const fallback = vi.fn(async () => structuredResponse({
+      decision: 'quantity_role_answer',
+      effortTarget: null,
+      effortMeasurement: null,
+      minutes: null,
+      precision: null,
+      quantityRole: 'completed',
+    }));
+    const response = await dispatchFocusedContextual({
+      context: context(),
+      env: canaryEnv,
+      firebaseUid: 'user-fixture',
+      signal: new AbortController().signal,
+      fallback,
+      respond: (decision) => structuredResponse(decision),
+      provider: provider(evaluated('remaining')),
+      isContextCurrent: () => false,
+    });
+
+    expect(await response.json()).toMatchObject({
+      content: expect.stringContaining('"quantityRole":"completed"'),
+    });
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts definite independent meaning as the existing generic fallback shape', async () => {
     const fallback = vi.fn(async () => structuredResponse({ decision: 'quantity_role_answer' }));
     const response = await dispatchFocusedContextual({
@@ -177,8 +203,11 @@ describe('focused contextual dispatch', () => {
     ['low confidence', evaluated('remaining', { confidence: 0.5 })],
     ['timeout', { status: 'unavailable', reason: 'timeout', metadata }],
     ['network', { status: 'unavailable', reason: 'network', metadata }],
+    ['HTTP 429', { status: 'unavailable', reason: 'http', httpStatus: 429, metadata }],
+    ['HTTP 500', { status: 'unavailable', reason: 'http', httpStatus: 500, metadata }],
     ['malformed', { status: 'unavailable', reason: 'invalid_response', metadata }],
     ['model mismatch', { status: 'unavailable', reason: 'model_mismatch', metadata }],
+    ['provider abort', { status: 'unavailable', reason: 'cancelled', metadata }],
   ] as const)('uses Luna for %s', async (_name, evaluation) => {
     const luna = structuredResponse({
       decision: 'quantity_role_answer',

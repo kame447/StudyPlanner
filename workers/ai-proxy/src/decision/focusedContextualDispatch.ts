@@ -144,6 +144,7 @@ export async function dispatchFocusedContextual(params: {
   fallback: (signal?: AbortSignal) => Promise<Response>;
   respond: (decision: FocusedContextualDecisionResponse) => Response;
   provider?: DecisionProvider<FocusedContextualDecisionContext['state'], ContextualDecision>;
+  isContextCurrent?: () => boolean;
 }): Promise<Response> {
   const mode = contextualDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
@@ -284,6 +285,14 @@ export async function dispatchFocusedContextual(params: {
     else await metric;
     if (controller.signal.aborted) {
       throw new Error('Focused contextual request cancelled or timed out.');
+    }
+    if (params.isContextCurrent?.() === false) {
+      return markJevExecution(await fallbackWithFailureMarker(
+        params.fallback,
+        mode,
+        () => 'network',
+        controller.signal,
+      ), mode);
     }
     if (gate.status === 'accepted') {
       return markJevExecution(params.respond(responseForDecision(gate.decision)), mode);
