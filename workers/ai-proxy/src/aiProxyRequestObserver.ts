@@ -1,5 +1,5 @@
 import { getUtf8ByteLength } from '../../../shared/aiProxyContract';
-import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
+import { isFocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
@@ -173,7 +173,7 @@ export function resolveAiProxyMetricCorrelation(
 ): ObservabilityCorrelation | undefined {
   if (!decisionExecutionMode
     || !isRecord(payload)
-    || !isFocusedAuthorizationDecisionContext(payload.decisionContext)) {
+    || !isFocusedDecisionContext(payload.decisionContext)) {
     return undefined;
   }
   return {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import { canarySelected, decisionMode, gateDecision, JEV_MODEL } from './decisionPolicy';
+import type { DecisionQuestionCatalog } from './decisionProvider';
 
 const state = { currentUserText: '今の条件で計画案を作ってください', lastAssistantMessage: 'この条件で計画案を作りますか？' };
 
@@ -179,5 +180,64 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(canarySelected({ JEV_MODE: 'canary', JEV_CANARY_PERCENT: '5' }, 0.04)).toBe(true);
     expect(canarySelected({ JEV_MODE: 'canary', JEV_CANARY_PERCENT: '5' }, 0.06)).toBe(false);
     expect(canarySelected({ JEV_MODE: 'off', JEV_CANARY_PERCENT: '100' }, 0)).toBe(false);
+  });
+
+  it('supports a Worker-owned purpose catalog without changing the authorization default', async () => {
+    type ContextualChoice = 'target' | 'remaining' | 'completed' | 'focused_luna' | 'fallback';
+    const catalog: DecisionQuestionCatalog<ContextualChoice> = {
+      questions: {
+        contextual_answer: { type: 'choice', criteria: {} },
+        condition_change: { type: 'noul', criteria: {} },
+        independent_meaning: { type: 'noul', criteria: {} },
+      },
+      choiceAnswerKey: 'contextual_answer',
+      decisions: ['target', 'remaining', 'completed', 'focused_luna', 'fallback'],
+      conditionChangeAnswerKey: 'condition_change',
+      independentMeaningAnswerKey: 'independent_meaning',
+    };
+    const contextualResponse = {
+      model: JEV_MODEL.responses[1],
+      answers: {
+        contextual_answer: {
+          type: 'choice',
+          choice: 'remaining',
+          confidence: 0.999,
+          probabilities: {
+            target: 0.0001,
+            remaining: 0.9996,
+            completed: 0.0001,
+            focused_luna: 0.0001,
+            fallback: 0.0001,
+          },
+        },
+        condition_change: { type: 'noul', noul: 0.001 },
+        independent_meaning: { type: 'noul', noul: 0.001 },
+      },
+      usage: { input_tokens: 100, output_tokens: 20 },
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json(contextualResponse));
+    const provider = createOpenRouterDecisionProvider<typeof state, ContextualChoice>({
+      apiKey: crypto.randomUUID(),
+      fetch: fetchMock,
+      catalog,
+    });
+
+    expect(await provider.evaluate(state)).toMatchObject({
+      status: 'evaluated',
+      decision: 'remaining',
+      probabilities: { remaining: 0.9996 },
+    });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.questions).toEqual(catalog.questions);
+    expect(body.questions).not.toHaveProperty('authorization');
+
+    contextualResponse.answers.contextual_answer.probabilities = {
+      ...contextualResponse.answers.contextual_answer.probabilities,
+      save: 0,
+    } as never;
+    expect(await provider.evaluate(state)).toMatchObject({
+      status: 'unavailable',
+      reason: 'invalid_response',
+    });
   });
 });

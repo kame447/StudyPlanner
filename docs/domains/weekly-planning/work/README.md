@@ -14,6 +14,7 @@ Current durable records:
 - `20260731-trace-privacy-and-lifecycle.md` — Issue #45
 - `20260926-issue333-japanese-semantic-evaluation.md` — Issue #333（#305 canary 前の日本語品質 gate、Luna 責務の棚卸し）
 - `20260927-issue305-jev-first-focused-authorization.md` — Issue #305 置換単位1（focused authorization の Jev 第一経路のテスト環境での実動、Luna fallback、tuning だけでの校正、holdout、#335 回帰）
+- `20260927-issue305-jev-first-focused-contextual.md` — Issue #305 置換単位2（focused contextual answer の quantity role と独立した意味の判定を Jev 第一経路へ移し、effort と provisional は Luna に残す。前方互換の decisionContext 規則を含む）
 
 Issue-only active scopes such as #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
 

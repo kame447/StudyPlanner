@@ -15,11 +15,19 @@ export interface DecisionMetadata {
   responseBytes: number | null;
 }
 
-export type DecisionEvaluation = {
+export interface DecisionQuestionCatalog<TDecision extends string> {
+  questions: Record<string, unknown>;
+  choiceAnswerKey: string;
+  decisions: readonly TDecision[];
+  conditionChangeAnswerKey: string;
+  independentMeaningAnswerKey: string;
+}
+
+export type DecisionEvaluation<TDecision extends string = AuthorizationDecision> = {
   status: 'evaluated';
-  decision: AuthorizationDecision;
+  decision: TDecision;
   confidence: number;
-  probabilities: Record<AuthorizationDecision, number>;
+  probabilities: Record<TDecision, number>;
   conditionChange: number;
   independentMeaning: number;
   metadata: DecisionMetadata;
@@ -31,9 +39,12 @@ export type DecisionEvaluation = {
 };
 
 // Additional transports implement this port; the application owns gates and rollout.
-export interface DecisionProvider {
+export interface DecisionProvider<
+  TState = FocusedAuthorizationDecisionContext['state'],
+  TDecision extends string = AuthorizationDecision,
+> {
   evaluate(
-    state: FocusedAuthorizationDecisionContext['state'],
+    state: TState,
     signal?: AbortSignal,
-  ): Promise<DecisionEvaluation>;
+  ): Promise<DecisionEvaluation<TDecision>>;
 }

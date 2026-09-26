@@ -1,5 +1,8 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
-import { focusedDecisionContextV5 } from './weeklyPlanningFocusedDecisionContextV5';
+import {
+  focusedContextualDecisionContextV5,
+  focusedDecisionContextV5,
+} from './weeklyPlanningFocusedDecisionContextV5';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
@@ -50,7 +53,7 @@ const FOCUSED_CONTEXTUAL_PROVISIONAL_INSTRUCTION = [
   'If the turn introduces genuinely new independent planning meaning not represented by the typed context, use fallback so the generic semantic route can process it.',
 ].join(' ');
 
-const FOCUSED_CONTEXTUAL_ANSWER_WITH_PROVISIONAL_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
+export const FOCUSED_CONTEXTUAL_ANSWER_WITH_PROVISIONAL_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
     name: 'weekly_planning_focused_contextual_answer_v5',
@@ -160,7 +163,7 @@ function relationContext(input: WeeklyPlanningSemanticNormalizerInputV5): string
   return JSON.stringify(relations.slice(0, 16));
 }
 
-function createExtendedContextualMessagesV5(
+export function createExtendedContextualMessagesV5(
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ) {
   return [
@@ -200,12 +203,18 @@ export async function tryFocusedContextualAnswerRouteV5(
     && target.estimateForWorkload !== null;
   const baseMessages = createExtendedContextualMessagesV5(run.input);
   let attemptMessages = baseMessages;
-  const initialRequest = {
+  let forceLunaForRetry = false;
+  const decisionContext = focusedContextualDecisionContextV5(run.input);
+  const requestWithoutDecisionContext = {
     messages: baseMessages,
     temperature: 0,
     responseFormat: FOCUSED_CONTEXTUAL_ANSWER_WITH_PROVISIONAL_RESPONSE_FORMAT_V5,
     purpose: 'weekly_planning_semantic_normalizer' as const,
     maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
+  };
+  const initialRequest = {
+    ...(decisionContext ? { decisionContext } : {}),
+    ...requestWithoutDecisionContext,
   };
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: run.input.traceRequestId,
@@ -226,7 +235,7 @@ export async function tryFocusedContextualAnswerRouteV5(
   const requestBytes: number[] = [];
   for (let attempt = 1; attempt <= FOCUSED_CONTEXTUAL_ANSWER_MAX_ATTEMPTS; attempt += 1) {
     const request = {
-      ...initialRequest,
+      ...(forceLunaForRetry ? requestWithoutDecisionContext : initialRequest),
       messages: attemptMessages,
     };
     const requestByteLength = semanticNormalizerByteLength(request);
@@ -240,7 +249,13 @@ export async function tryFocusedContextualAnswerRouteV5(
       data: {
         attempt: attemptName,
         requestBytes: requestByteLength,
-        request,
+        request: {
+          messages: request.messages,
+          temperature: request.temperature,
+          responseFormat: request.responseFormat,
+          purpose: request.purpose,
+          maxCompletionTokens: request.maxCompletionTokens,
+        },
       },
     });
     try {
@@ -288,6 +303,7 @@ export async function tryFocusedContextualAnswerRouteV5(
             ...baseMessages,
             { role: 'user' as const, content: DUAL_TARGET_CONTEXTUAL_REPAIR_INSTRUCTION },
           ];
+          forceLunaForRetry = true;
           continue;
         }
         return null;

@@ -376,6 +376,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
       userText: '残っている量です。',
       publicStateSummary: publicStateSummary('quantity_role_unresolved'),
+      traceRequestId: 'quantity-role-turn',
     });
 
     expect(result.status).toBe('accepted');
@@ -390,6 +391,13 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
       }),
     ]);
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(client.createChatCompletion).mock.calls[0][0].decisionContext)
+      .toMatchObject({
+        purpose: 'focused_contextual_answer',
+        requestId: 'quantity-role-turn',
+        inputRevision: 2,
+        questionCode: 'quantity_role_unresolved',
+      });
   });
 
   it('falls back to generic semantics and rechecks a schema-valid no-op when the focused AI reports other planning facts', async () => {
