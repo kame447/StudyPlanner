@@ -1,5 +1,7 @@
 export const GEMINI_JUDGE_PROMPT_VERSION = 'focused-authorization-judge-v1' as const;
-export const GEMINI_JUDGE_SCHEMA_VERSION = 'focused-authorization-judgment-v1' as const;
+// v2: the published schema now requires non-empty strings, matching the validator.
+// v1 allowed "" and an empty-input case was rejected on import.
+export const GEMINI_JUDGE_SCHEMA_VERSION = 'focused-authorization-judgment-v2' as const;
 
 export const FOCUSED_AUTHORIZATION_JUDGE_PROMPT = [
   'You are a first-pass reviewer of Japanese product meaning. Return only JSON matching the supplied responseFormat.',
@@ -74,12 +76,13 @@ export const GEMINI_JUDGMENT_RESPONSE_SCHEMA = {
   properties: {
     judgedClass: { type: 'string', enum: ['create_plan', 'fallback', 'ambiguous'] },
     reviewRequired: { type: 'boolean' },
-    rationale: { type: 'string', maxLength: GEMINI_JUDGE_LIMITS.rationaleLength },
+    rationale: { type: 'string', minLength: 1, maxLength: GEMINI_JUDGE_LIMITS.rationaleLength },
     problematicExpressions: {
       type: 'array',
       maxItems: GEMINI_JUDGE_LIMITS.problematicExpressionCount,
       items: {
         type: 'string',
+        minLength: 1,
         maxLength: GEMINI_JUDGE_LIMITS.problematicExpressionLength,
       },
     },
@@ -94,6 +97,7 @@ export const GEMINI_JUDGMENT_RESPONSE_SCHEMA = {
           class: { type: 'string', enum: ['create_plan', 'fallback'] },
           reading: {
             type: 'string',
+            minLength: 1,
             maxLength: GEMINI_JUDGE_LIMITS.alternativeReadingLength,
           },
         },

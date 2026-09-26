@@ -12,6 +12,7 @@ import {
   aggregateGeminiJudgeRecords,
 } from './geminiJudgeAggregation';
 import {
+  GEMINI_JUDGMENT_RESPONSE_SCHEMA,
   parseGeminiJudgment,
   type GeminiJudgeRecord,
   type GeminiJudgment,
@@ -64,7 +65,7 @@ function judged(
     packetId: 'gajp-fixture',
     packetSha256: 'a'.repeat(64),
     promptVersion: 'focused-authorization-judge-v1',
-    schemaVersion: 'focused-authorization-judgment-v1',
+    schemaVersion: 'focused-authorization-judgment-v2',
     runIndex: 1,
     status: 'judged',
     reason: null,
@@ -85,7 +86,7 @@ function missing(caseId: string, runIndex: number): GeminiJudgeRecord {
     packetId: 'gajp-fixture',
     packetSha256: 'a'.repeat(64),
     promptVersion: 'focused-authorization-judge-v1',
-    schemaVersion: 'focused-authorization-judgment-v1',
+    schemaVersion: 'focused-authorization-judgment-v2',
     runIndex,
     status: 'missing',
     reason: 'missing',
@@ -119,6 +120,17 @@ describe('Gemini judge response contract', () => {
       ...validJudgment,
       alternativeInterpretations: [{ class: 'create_plan', reading: '候補', extra: true }],
     })).toBeNull();
+  });
+
+  it('publishes the same non-empty string rule that the validator enforces', () => {
+    // Regression: schema v1 allowed "" while the validator rejected it, so an
+    // agent that followed the published schema produced invalid_response.
+    const properties = GEMINI_JUDGMENT_RESPONSE_SCHEMA.properties;
+    expect(properties.rationale.minLength).toBe(1);
+    expect(properties.problematicExpressions.items.minLength).toBe(1);
+    expect(properties.alternativeInterpretations.items.properties.reading.minLength).toBe(1);
+    expect(parseGeminiJudgment({ ...validJudgment, problematicExpressions: [''] })).toBeNull();
+    expect(parseGeminiJudgment({ ...validJudgment, rationale: '' })).toBeNull();
   });
 });
 
