@@ -65,11 +65,32 @@ describe('userContextRoutingPolicy', () => {
       confidence: 0.96,
     }))).toEqual({ status: 'abstained', reason: 'uncertain' });
     expect(gateUserContextRoutingDecision(evaluated('schedule', {
-      independentMeaning: 0.051,
+      independentMeaning: 0.101,
     }))).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
     expect(gateUserContextRoutingDecision(evaluated('actual', {
-      conditionChange: 0.051,
+      conditionChange: 0.151,
     }))).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
+  });
+
+  it('accepts the tuning-only calibrated auxiliary boundary without weakening main evidence', () => {
+    expect(gateUserContextRoutingDecision(evaluated('schedule', {
+      confidence: 0.97,
+      probabilities: {
+        user_context: 0.002,
+        bookshelf: 0.002,
+        timetable: 0.002,
+        schedule: 0.99,
+        actual: 0.002,
+        uncertain: 0.002,
+      },
+      conditionChange: 0.15,
+      independentMeaning: 0.10,
+    }))).toEqual({ status: 'accepted', decision: 'schedule' });
+    expect(gateUserContextRoutingDecision(evaluated('schedule', {
+      confidence: 0.969,
+      conditionChange: 0.15,
+      independentMeaning: 0.10,
+    }))).toEqual({ status: 'abstained', reason: 'uncertain' });
   });
 
   it('routes every provider failure to the existing interpreter', () => {

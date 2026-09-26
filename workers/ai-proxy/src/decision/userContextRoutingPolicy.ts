@@ -13,15 +13,15 @@ export const USER_CONTEXT_ROUTING_JEV_MODEL = JEV_MODEL;
 export const USER_CONTEXT_ROUTING_CATALOG_VERSION =
   'user-context-routing-2026-09-27-v1';
 export const USER_CONTEXT_ROUTING_GATE_VERSION =
-  'user-context-routing-conservative-v1';
+  'user-context-routing-conservative-v2-tuning52';
 export const USER_CONTEXT_ROUTING_JEV_TIMEOUT_MS = 1_500;
 export const USER_CONTEXT_ROUTING_REQUEST_TIMEOUT_MS = 85_000;
 
 export const USER_CONTEXT_ROUTING_GATE_THRESHOLDS = {
   minimumConfidence: 0.97,
   minimumChoiceProbability: 0.99,
-  maximumMultipleDomains: 0.05,
-  maximumIndependentMeaning: 0.05,
+  maximumMultipleDomains: 0.15,
+  maximumIndependentMeaning: 0.10,
 } as const;
 
 export const USER_CONTEXT_ROUTING_DECISION_CATALOG:
