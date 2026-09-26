@@ -1,6 +1,6 @@
 # Issue #305 — focused contextual answer の Jev 第一経路
 
-Status: active / implementation and tuning preparation
+Status: active / calibrated, holdout pending
 Updated: 2026-09-27
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335）
 
@@ -62,6 +62,20 @@ tuning / holdout を分離する。ラベルは `synthetic_unreviewed` であり
 threshold / question catalog の調整は tuning のみで行い、固定後の holdout は1回だけ
 実行する。
 
+pending question の範囲内にある曖昧さは `focused_luna` とする。範囲外の独立した
+意味を高信頼で検出した場合だけ `generic_semantic` へ直行する。Jev 自身の低信頼や
+head conflict は意味上の generic 判定ではなく Luna fallback である。
+
+### 限定 judge（gold ではない）
+
+Label source: `opus-5.5-limited-judge`（claude-opus-5-5 / CleverDarwin）。
+
+| case | 判定 | 理由 |
+| --- | --- | --- |
+| `ctx-t-remaining-03` | `quantity_role_answer / remaining` | completed を否定して remaining を自己完結に示し、独立条件を含まない |
+| `ctx-t-generic-04` | `focused_luna` | 「その方」は pending question 内の参照が曖昧。generic 直行の根拠はなく、Luna focused が必要なら fallback する |
+| `ctx-t-effort-ambiguous-01` | `focused_luna` | 直前の見積もりへの同意とも読め、minutes 解釈の owner である Luna に残す |
+
 主要指標:
 
 - quantity role false accept（最優先）
@@ -80,11 +94,74 @@ provisional の Jev 昇格禁止、preview/approval/save authority 非付与、u
 revision rejection、Jev failure 後の Luna fallback を確認する。Jev response は typed role
 または existing fallback JSON にしかならず、formal mutation を直接返せない。
 
+## Remote-dev 実動結果
+
+### tuning-only 校正（catalog v2 / gate v2）
+
+初期の authorization 相当の保守 gate（Choice confidence 0.97、selected probability
+0.99、補助 Noul 0.01 以下）は、30件すべてを安全側の Luna に戻し、quantity role
+直行が0/12だった。候補を次のように比較した。
+
+| 候補 | tuning evidence / 反証条件 | blast radius | 判断 |
+| --- | --- | --- | --- |
+| 保守閾値を維持 | false accept は避けるが Jev 置換が0件。直行が目的でなければ成立 | 最小 | 不採用。実移行の完了条件を満たさない |
+| 補助 Noul を無視して Choice だけ緩和 | direct role の Choice は多くが正しい。一方、Unicode injection / 独立質問でも role Choice が出るため反証済み | security と generic 境界まで拡大 | 不採用 |
+| pending 内 ambiguity の catalog 定義を修正し、role 専用閾値と補助上限を校正 | direct role と負例が tuning 上で分離。holdout で false accept が出れば反証 | contextual role の canary のみ。authorization は不変 | 採用 |
+
+catalog v2 は pending question 内だけの曖昧さを `focused_luna`、範囲外の意味を
+`fallback` と明示し、選択肢間の否定・対比を別条件と数えない。gate v2 は role に限り
+confidence 0.80、selected probability 0.85、condition change 0.40 以下、independent
+meaning 0.60 以下を要求する。generic fallback の primary Choice は従来どおり
+confidence 0.97 / selected probability 0.99 とし、definite auxiliary fallback は0.95
+以上に限定する。effort question の role Choice と `focused_luna` はこれらの閾値より
+前に必ず Luna へ戻す。
+
+固定直前の tuning 実動は30件 / 21 conversation groups。合成ラベルは gold ではなく、
+以下の一致は accuracy と呼ばない。
+
+| 指標 | tuning result |
+| --- | --- |
+| expected quantity role | 12 |
+| Jev role accepted / synthetic typed match | 10 / 10 |
+| quantity-role false accept | 0 / 30、片側95% Clopper–Pearson 上限 9.50% |
+| expected effort / provisional → generic miss | 0 / 9 |
+| effort question の cross-question role Choice | 3 / 11（すべて Luna fallback） |
+| expected generic の Jev direct fallback | 2 / 9 |
+| Luna fallback | 18 / 30 |
+| provider unavailable / unexpected output key | 0 / 0 |
+| Jev usage | input 25,254 / output 2,892 tokens、reported USD 0.001060668 |
+| Luna usage | prompt 10,834 / completion 1,855 tokens、cost unknown |
+
+Jev role accepted case IDs:
+`ctx-t-target-01`, `ctx-t-target-02`, `ctx-t-remaining-01`,
+`ctx-t-remaining-02`, `ctx-t-remaining-03`, `ctx-t-completed-01`,
+`ctx-t-completed-02`, `ctx-t-completed-03`, `ctx-t-remaining-04`,
+`ctx-t-completed-04`。holdout を開く前に catalog / gate をこの状態で凍結した。
+
+### fault injection + actual Luna fallback
+
+Wrangler 4.140.0 の一時 remote dev で production contextual dispatch を使用し、
+injected Jev outcome の後段は既存 Worker Secret を内部利用する actual Luna で実行した。
+本番 deploy、設定変更、secret 値の読出しは行っていない。
+
+| probe | Jev gate | Luna | final typed result |
+| --- | --- | --- | --- |
+| low confidence | `abstained / uncertain` | called | `quantity_role_answer / remaining` |
+| timeout | `unavailable / timeout` | called | `quantity_role_answer / remaining` |
+| malformed | `unavailable / invalid_response` | called | `quantity_role_answer / remaining` |
+| network | `unavailable / network` | called | `quantity_role_answer / remaining` |
+| effort question + role choice | `deferred / cross_question_choice` | called | `effort_answer` with minutes |
+
+5/5 で Luna fallback が実動し、unexpected output key は0。Luna usage 合計は prompt
+2,967 / completion 278 tokens。価格表を渡していないため cost は未知であり0とは扱わない。
+fault injection は semantic quality の正解率や gold ではない。
+
 ## 現在地
 
 - baseline: `e8a7ab48566e70aa2534ef49a405cc30ae05a3b8`
-- worktree branch: rename 指示を受けたが Codex sandbox が `.git` ref log write を
-  `Operation not permitted` で拒否。親へ branch rename / checkpoint commit/push を依頼済み。
+- worktree branch: `feat/issue-305-jev-first-focused-contextual`
+- durable checkpoint: parent-assisted commit/push `e307fda4`（upstream 設定済み）。
+  Codex sandbox は `.git` metadata write を拒否するため、以後の commit/push/PR は親が代行する。
 - 実装済み（未 commit checkpoint）:
   - shared contextual discriminated context と strict validator
   - authorization default を保つ purpose-specific provider catalog 一般化
@@ -93,7 +170,10 @@ revision rejection、Jev failure 後の Luna fallback を確認する。Jev resp
   - effort / provisional / cross-question confusion の Luna fallback
   - contextual telemetry purpose と raw-text-free typed log
   - client projection、response revision correlation、trace envelope privacy exclusion
-  - tuning / holdout 合成 corpus v1
+  - tuning / holdout 合成 corpus v1（tuning 30件 / holdout 30件、計46 conversation groups）
+  - short-lived remote-dev evaluation harness（raw text / prompt / raw response を出力しない）
+  - remote-dev fault probes 5件で actual Luna fallback 5/5
+  - tuning-only catalog/gate 校正と最終 remote-dev tuning 30件
 - 検証済み:
   - `npm run typecheck`: success
   - targeted Vitest: 9 files / 102 tests passed
@@ -102,17 +182,13 @@ revision rejection、Jev failure 後の Luna fallback を確認する。Jev resp
 
 ## 次の具体作業
 
-1. remote-dev harness を `scripts/jev-contextual-*` に実装し、production projection /
-   dispatch / provider と actual Luna fallback を短命 preview で接続する。
-2. 難しい tuning case を親の `opus-5.5-limited-judge` へ送る。
-3. tuning だけで gate/catalog を校正し、固定後に holdout を1回実行する。
-4. typed case 結果と集計（raw text / prompt / raw response なし）を本記録へ追加する。
-5. full typecheck / tests / build / worker typecheck / dry-run / diff を実行する。
-6. branch checkpoint、PR、CI terminal green、親への完了 Mail。
+1. 凍結済み catalog/gate で30件の holdout を1回だけ実行する。
+2. typed case 結果と集計（raw text / prompt / raw response なし）を本記録へ追加する。
+3. full typecheck / tests / build / worker typecheck / dry-run / diff を実行する。
+4. branch checkpoint、PR、CI terminal green、親への完了 Mail。
 
 ## 未解決
 
-- remote-dev 実動と tuning / holdout は未実施。
-- difficult case の親 judge は未取得。
+- holdout の実 API は未実施。catalog/gate は tuning-only で凍結済み。
 - full regression / build / Worker dry-run / CI は未実施。
-- parent-assisted branch rename / commit / push が必要。
+- 次の意味 checkpoint で親へ commit/push を依頼する。

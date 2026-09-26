@@ -70,6 +70,15 @@ describe('focused contextual Jev gate', () => {
       evaluated('remaining'),
       'quantity_role_unresolved',
     )).toEqual({ status: 'accepted', decision: 'remaining' });
+    expect(gateContextualDecision(
+      evaluated('remaining', {
+        confidence: 0.8,
+        selectedProbability: 0.85,
+        conditionChange: 0.4,
+        independentMeaning: 0.6,
+      }),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'accepted', decision: 'remaining' });
   });
 
   it('routes definite independent meaning to generic semantics', () => {
@@ -85,9 +94,32 @@ describe('focused contextual Jev gate', () => {
       'quantity_role_unresolved',
     )).toEqual({ status: 'abstained', reason: 'uncertain' });
     expect(gateContextualDecision(
-      evaluated('remaining', { conditionChange: 0.2 }),
+      evaluated('remaining', { selectedProbability: 0.84 }),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'abstained', reason: 'uncertain' });
+    expect(gateContextualDecision(
+      evaluated('remaining', { conditionChange: 0.41 }),
       'quantity_role_unresolved',
     )).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
+    expect(gateContextualDecision(
+      evaluated('remaining', { independentMeaning: 0.61 }),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
+  });
+
+  it('keeps primary fallback acceptance stricter than calibrated role acceptance', () => {
+    expect(gateContextualDecision(
+      evaluated('fallback', { confidence: 0.96 }),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'abstained', reason: 'uncertain' });
+    expect(gateContextualDecision(
+      evaluated('fallback', { selectedProbability: 0.98 }),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'abstained', reason: 'uncertain' });
+    expect(gateContextualDecision(
+      evaluated('fallback'),
+      'quantity_role_unresolved',
+    )).toEqual({ status: 'accepted', decision: 'fallback' });
   });
 
   it('keeps provider failures unavailable for Luna fallback', () => {
