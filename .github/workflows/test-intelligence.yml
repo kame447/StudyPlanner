@@ -12,6 +12,7 @@ on:
           - all
           - coverage
           - mutation
+          - mutation-issue152
           - audit
   pull_request:
     branches:
@@ -66,9 +67,12 @@ jobs:
           retention-days: 30
 
   mutation:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' || inputs.suite == 'mutation-issue152' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MUTATION_CONFIG: ${{ inputs.suite == 'mutation-issue152' && 'stryker.issue152.config.mjs' || 'stryker.config.mjs' }}
+      MUTATION_ARTIFACT: ${{ inputs.suite == 'mutation-issue152' && 'mutation-issue152' || 'mutation-weekly-planning' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -89,12 +93,12 @@ jobs:
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
       - name: Run targeted weekly-planning mutation test
-        run: ./node_modules/.bin/stryker run stryker.config.mjs
+        run: ./node_modules/.bin/stryker run "$MUTATION_CONFIG"
       - name: Upload mutation intelligence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mutation-weekly-planning-${{ github.sha }}
+          name: ${{ env.MUTATION_ARTIFACT }}-${{ github.sha }}
           path: reports/stryker/
           if-no-files-found: ignore
           retention-days: 30
