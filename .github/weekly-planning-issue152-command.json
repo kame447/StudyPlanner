@@ -1,8 +1,11 @@
 {
-  "request_id": "20260926-issue152-retention-trace-1",
-  "reason": "Diagnostic Real run of the retention suite with semantic trace capture, to observe the raw single-day-plan provider output and validation errors for the systematic failure (runs 36192264791, 36198140451, 36199067958).",
-  "critical_repetitions": 1,
+  "request_id": "20260926-issue152-final-8cac480f-pinned-a",
+  "reason": "Real API verification at 8cac480f with request clocks pinned to the fixture date and month-day planning windows: adversarial, indirect, stateful, retention (harnesses that do not use the shared stored-rows helper).",
+  "critical_repetitions": 3,
   "suites": [
+    "adversarial",
+    "indirect",
+    "stateful",
     "retention"
   ]
 }
