@@ -141,6 +141,14 @@ export function stableV5MissingSchedulableWorkQuestion(
   });
 
   const componentById = new Map(active.components.map((component) => [component.id, component]));
+  const childIdsByParent = new Map<string, string[]>();
+  active.components.forEach((component) => {
+    if (!component.parentComponentId) return;
+    childIdsByParent.set(component.parentComponentId, [
+      ...(childIdsByParent.get(component.parentComponentId) ?? []),
+      component.id,
+    ]);
+  });
   const componentsCoveredByWorkload = new Set<string>();
   const markComponentAndAncestorsCovered = (initialComponentId: string | null): void => {
     let componentId = initialComponentId;
@@ -149,8 +157,32 @@ export function stableV5MissingSchedulableWorkQuestion(
       componentId = componentById.get(componentId)?.parentComponentId ?? null;
     }
   };
+  const markComponentAndDescendantsCovered = (initialComponentId: string): void => {
+    const pending = [initialComponentId];
+    while (pending.length > 0) {
+      const componentId = pending.pop()!;
+      if (componentsCoveredByWorkload.has(componentId)) {
+        pending.push(...(childIdsByParent.get(componentId) ?? []).filter(
+          (childId) => !componentsCoveredByWorkload.has(childId),
+        ));
+        continue;
+      }
+      componentsCoveredByWorkload.add(componentId);
+      pending.push(...(childIdsByParent.get(componentId) ?? []));
+    }
+  };
+  const markComponentScopeCovered = (componentId: string): void => {
+    markComponentAndAncestorsCovered(componentId);
+    markComponentAndDescendantsCovered(componentId);
+  };
   active.workloads.filter(isSchedulableWorkload).forEach((workload) => {
-    markComponentAndAncestorsCovered(workload.componentId);
+    if (workload.componentId) {
+      markComponentScopeCovered(workload.componentId);
+      return;
+    }
+    active.components
+      .filter((component) => component.taskId === workload.taskId)
+      .forEach((component) => componentsCoveredByWorkload.add(component.id));
   });
   active.components.forEach((component) => {
     if (targetIsComplete({
@@ -158,7 +190,7 @@ export function stableV5MissingSchedulableWorkQuestion(
       targetFactId: component.id,
       targetKind: 'component',
     })) {
-      markComponentAndAncestorsCovered(component.id);
+      markComponentScopeCovered(component.id);
     }
   });
 

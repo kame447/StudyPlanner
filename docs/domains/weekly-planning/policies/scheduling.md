@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-08-27
+Updated: 2026-09-01
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -21,6 +21,7 @@ References:
 - planning horizon外へ置かない
 - request-time `notBefore` より前へ新しい予定を置かない
 - existing StudyPlanner plans、timetable、accepted unavailable intervalと衝突させない
+- accepted daily capacityを超えて新しい学習予定を配置しない
 - hard deadline / allowed date / excluded date / relation orderingを破らない
 - required authoritative sourceを取得できない状態を「空いている」と解釈しない
 - explicit user constraintを一般heuristicやpersonalization scoreで上書きしない
@@ -74,6 +75,18 @@ current Stable V5はnormal daysの平均負荷をtargetとして用い、通常�
 これはhard capacityではなく**tunable scheduling policy**である。deadline、availability、explicit date/preference等のharder evidenceより優先しない。
 
 「必ず完全な6等分」することはproduct invariantではない。現在の原則は、normal daysへ現実的に分散し、reserve capacityを可能な限り保持することである。
+
+## Explicit daily study capacity
+
+「土日は1日8時間勉強できる」のように、時刻帯ではなく1日あたりの総学習時間が明示された場合は、clock availabilityへ変換せず、typed daily capacityとして扱う。
+
+- `8時間`はそのscopeの日に新しく配置するweekly-planning学習ブロックの合計上限480分を意味する
+- start/end timeを捏造して`00:00-24:00`等のavailabilityを作らない
+- weekday/date/recurrence scopeはsemantic layerで表現し、calendar展開はdeterministicに行う
+- 同じ日に複数のhard capacityが適用される場合は、より厳しい上限を採用する
+- sessionを追加すると上限を超える候補日は配置対象から除外する。全候補日で収まらなければcapacityを弱めず`insufficient_capacity`とする
+
+既存StudyPlanner plans、timetable、塾、固定予定等は、daily capacityへ勝手に算入・再解釈するのではなく、従来どおりoccupied/busy intervalとして配置可能時刻を減らす。したがってdaily capacityは「新規計画として何分割り当てるか」を所有し、availabilityは「その時間帯に置けるか」を所有する。この2責務を混同しない。
 
 ## Work-unit integrity
 

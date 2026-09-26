@@ -130,6 +130,7 @@ export function createWeeklyPlanningStableV5DialogueProjection(
       recurrenceKind: fact.recurrenceKind,
       days: fact.days,
       constraintLevel: fact.constraintLevel,
+      capacityMinutes: fact.capacityMinutes ?? null,
       resolutionStatus: fact.resolutionStatus,
     })),
     constraintSourceRequests: constraintSourceRequests.map((fact) => ({

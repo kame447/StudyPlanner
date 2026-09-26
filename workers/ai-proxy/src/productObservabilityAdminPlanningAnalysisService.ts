@@ -21,7 +21,10 @@ import type { ProductObservabilityReadModelEnv } from './productObservabilityRea
 const MAX_ANALYSIS_DAYS = 93;
 
 interface PlanningAnalysisFirestore {
-  getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
+  batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>>;
 }
 
 function isIsoDate(value: unknown): value is string {
@@ -159,15 +162,12 @@ export class ProductObservabilityAdminPlanningAnalysisService {
     toDate: string;
   }): Promise<ObservabilityPlanningAnalysisReadModel> {
     const dates = listDatesInclusive(params.fromDate, params.toDate);
-    const values = await Promise.all(dates.map(async (cohortDate) => ({
-      cohortDate,
-      value: await this.firestore.getDocument(
-        PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
-        planningDailyCohortDocumentId(params.environment, cohortDate),
-      ),
-    })));
+    const values = await this.firestore.batchGetDocuments(
+      PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
+      dates.map((cohortDate) => planningDailyCohortDocumentId(params.environment, cohortDate)),
+    );
     const daily = values
-      .map(({ cohortDate, value }) => readDailyCohort(value, params.environment, cohortDate))
+      .map((value, index) => readDailyCohort(value, params.environment, dates[index]))
       .filter((value): value is ObservabilityPlanningDailyCohort => Boolean(value));
     const aggregate = daily.length > 0
       ? mergePlanningSessionAggregates(daily.map((entry) => entry.aggregate))

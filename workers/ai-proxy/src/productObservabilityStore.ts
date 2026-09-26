@@ -21,6 +21,10 @@ export interface ProductObservabilityEnv extends FirestoreServiceAccountEnv {
 
 interface ObservabilityFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
+  batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>>;
   setImmutableDocument(
     collection: string,
     id: string,
@@ -130,6 +134,24 @@ export class ProductObservabilityStore {
     return typeof existingActor === 'string' && existingActor.trim()
       ? existingActor
       : null;
+  }
+
+  async lookupActorSubjectIds(firebaseUids: readonly string[]): Promise<Array<string | null>> {
+    const uids = firebaseUids.map((firebaseUid) => firebaseUid.trim());
+    if (uids.some((uid) => !uid)) throw new Error('Authenticated Firebase UID is required');
+    const directoryIds = await Promise.all(
+      uids.map((uid) => this.keyedId('actor-directory', uid)),
+    );
+    const documents = await this.firestore.batchGetDocuments(
+      ACTOR_DIRECTORY_COLLECTION,
+      directoryIds,
+    );
+    return documents.map((document) => {
+      const actorSubjectId = document?.actorSubjectId;
+      return typeof actorSubjectId === 'string' && actorSubjectId.trim()
+        ? actorSubjectId
+        : null;
+    });
   }
 
   async resolveActorSubjectId(firebaseUid: string): Promise<string> {

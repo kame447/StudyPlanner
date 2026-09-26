@@ -20,9 +20,14 @@ export type WeeklyPlanningActiveSchedulerGraphViewV5 =
 export function createWeeklyPlanningActiveSchedulerGraphViewV5(
   graph: WeeklyPlanningFactGraphV5,
 ): WeeklyPlanningActiveSchedulerGraphViewV5 {
-  const availabilityDeclarations = projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5(
-    filterActiveWeeklyPlanningFactsV5(graph, graph.availabilityDeclarations),
+  const activeAvailabilityDeclarations = filterActiveWeeklyPlanningFactsV5(
+    graph,
+    graph.availabilityDeclarations,
   );
+  const availabilityDeclarations = [
+    ...projectWeeklyPlanningSchedulerAvailabilityDeclarationsV5(activeAvailabilityDeclarations),
+    ...activeAvailabilityDeclarations.filter((declaration) => declaration.kind === 'capacity'),
+  ];
 
   return {
     revision: graph.revision,

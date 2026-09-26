@@ -26,16 +26,16 @@ function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProp
     boxSizing: 'border-box',
     minWidth: 0,
     height: '24px',
-    margin: '2px',
-    padding: '3px 6px',
+    margin: '2px 1px',
+    padding: '2px 2px',
     overflow: 'hidden',
     border: '1px solid color-mix(in srgb, var(--weekly-draft-tone) 46%, var(--border) 54%)',
     borderRadius: '6px',
     background: 'var(--weekly-draft-tone-bg)',
     color: 'var(--text)',
     font: 'inherit',
-    fontSize: '0.52rem',
-    fontWeight: 800,
+    fontSize: '0.47rem',
+    fontWeight: 850,
     lineHeight: 1.1,
     textAlign: 'center',
     textOverflow: 'ellipsis',
@@ -71,7 +71,7 @@ export function WeekSpanningEventsLane({
           paddingRight: '5px',
           borderRight: '1px solid var(--border)',
           color: 'var(--text-muted)',
-          fontSize: '0.52rem',
+          fontSize: '0.47rem',
           fontWeight: 850,
         }}
       >
@@ -82,9 +82,11 @@ export function WeekSpanningEventsLane({
         const plan = occurrence.source.backingKind === 'plan'
           ? plans.find((candidate) => candidate.id === occurrence.source.backingId)
           : undefined;
+        const isReadOnlyTimetable =
+          occurrence.source.backingKind === 'timetable-template';
         const commonProps = {
           className: toneClassForOccurrence(occurrence),
-          'data-schedule-occurrence-id': occurrence.id,
+          'data-schedule-occurrence-id': isReadOnlyTimetable ? undefined : occurrence.id,
           'data-week-spanning-event': 'true',
           style: cardStyle(item),
           title: `${occurrence.title} / ${occurrence.start.date} ${occurrence.start.time} - ${occurrence.end.date} ${occurrence.end.time}`,
@@ -110,8 +112,14 @@ export function WeekSpanningEventsLane({
           <span
             {...commonProps}
             key={occurrence.id}
-            aria-label={`${occurrence.title}。終日または日を跨ぐ予定。長押しで操作`}
-            onContextMenu={(event) => event.preventDefault()}
+            aria-label={
+              isReadOnlyTimetable
+                ? `${occurrence.title}。終日または日を跨ぐ時間割`
+                : `${occurrence.title}。終日または日を跨ぐ予定。長押しで操作`
+            }
+            onContextMenu={
+              isReadOnlyTimetable ? undefined : (event) => event.preventDefault()
+            }
           >
             {occurrence.title}
           </span>

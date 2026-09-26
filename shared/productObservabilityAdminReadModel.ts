@@ -5,7 +5,9 @@ import type {
   ProductActivityAction,
 } from './productObservabilityContract';
 import type {
+  ObservabilityActiveUserWindows,
   ObservabilityAiAggregate,
+  ObservabilityDailyRollup,
   ObservabilityRollupCheckpoint,
   ObservabilityUserSummary,
 } from './productObservabilityReadModel';
@@ -63,7 +65,7 @@ export interface ObservabilityAdminUserListItem {
   registeredAt: string | null;
   firstActivityAt: string | null;
   lastActivityAt: string | null;
-  activeDayCount: number;
+  activeDayCount: number | null;
   eventCount: number;
   productActivityCount: number;
   aiRequestCount: number;
@@ -71,6 +73,11 @@ export interface ObservabilityAdminUserListItem {
   recentErrorState: ObservabilityAdminRecentErrorState;
   recentErrorAt: string | null;
   recentErrorCategory: string | null;
+}
+
+export interface ObservabilityAdminUserTrend {
+  daily: ObservabilityDailyRollup[];
+  activeUsers: ObservabilityActiveUserWindows | null;
 }
 
 export interface ObservabilityUserTimelineAiDetail {

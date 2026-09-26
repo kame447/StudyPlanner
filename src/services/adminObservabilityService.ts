@@ -1,6 +1,7 @@
 import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
   ObservabilityAdminIdentityMatch,
+  ObservabilityAdminUserTrend,
   ObservabilityAdminUserListItem,
   ObservabilityAiAnalysisReadModel,
   ObservabilityUserInvestigationReadModel,
@@ -19,11 +20,103 @@ import { getFirebaseAuth } from '../lib/firebaseClient';
 export interface AdminObservabilityUserPage {
   users: ObservabilityAdminUserListItem[];
   nextCursor: string | null;
+  enrichmentReady: boolean;
+  trend: ObservabilityAdminUserTrend;
 }
 
 export interface AdminObservabilityUserInvestigation
   extends Omit<ObservabilityUserInvestigationReadModel, 'nextCursor'> {
   nextCursor: string | null;
+}
+
+function todayInTokyo(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function shiftDate(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(new Date(value).getTime());
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isActiveUserWindows(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return value.schemaVersion === 1
+    && (value.environment === 'production'
+      || value.environment === 'preview'
+      || value.environment === 'development'
+      || value.environment === 'test')
+    && isIsoDate(value.asOfDate)
+    && value.reportingTimeZone === 'Asia/Tokyo'
+    && isCount(value.today)
+    && isCount(value.last7Days)
+    && isCount(value.last30Days)
+    && Number(value.last7Days) >= Number(value.today)
+    && Number(value.last30Days) >= Number(value.last7Days)
+    && isIsoTimestamp(value.updatedAt)
+    && isIsoTimestamp(value.expireAt);
+}
+
+function readUserTrend(value: unknown): ObservabilityAdminUserTrend | null {
+  if (!isRecord(value) || !Array.isArray(value.daily)) return null;
+  if (!value.daily.every((entry) => isRecord(entry)
+    && isIsoDate(entry.localDate)
+    && isCount(entry.activeActorCount))) return null;
+  if (value.activeUsers !== null && !isActiveUserWindows(value.activeUsers)) return null;
+  return {
+    daily: value.daily as ObservabilityAdminUserTrend['daily'],
+    activeUsers: value.activeUsers as ObservabilityAdminUserTrend['activeUsers'],
+  };
+}
+
+function normalizeAdminUser(
+  user: ObservabilityAdminUserListItem,
+): ObservabilityAdminUserListItem {
+  const recentErrorState = user.recentErrorState === 'present'
+    || user.recentErrorState === 'absent'
+    || user.recentErrorState === 'unknown'
+    ? user.recentErrorState
+    : 'unknown';
+  return {
+    ...user,
+    activeDayCount: Number.isSafeInteger(user.activeDayCount)
+      && Number(user.activeDayCount) >= 0
+      ? Number(user.activeDayCount)
+      : null,
+    recentErrorState,
+    recentErrorAt: recentErrorState === 'present' && typeof user.recentErrorAt === 'string'
+      ? user.recentErrorAt
+      : null,
+    recentErrorCategory:
+      recentErrorState === 'present' && typeof user.recentErrorCategory === 'string'
+        ? user.recentErrorCategory
+        : null,
+  };
 }
 
 function proxyBaseUrl(): string {
@@ -187,10 +280,36 @@ export async function getAdminObservabilityUsers(params: {
     ok: true;
     users: ObservabilityAdminUserListItem[];
     nextCursor: string | null;
+    enrichmentReady?: boolean;
+    trend?: ObservabilityAdminUserTrend;
   }>('/observability/admin/users', query);
+  const hasEnrichmentField = Object.prototype.hasOwnProperty.call(payload, 'enrichmentReady');
+  const hasTrendField = Object.prototype.hasOwnProperty.call(payload, 'trend');
+  const hasCurrentResponseShape = hasEnrichmentField && hasTrendField;
+  let trend: ObservabilityAdminUserTrend;
+  if (hasCurrentResponseShape) {
+    const responseTrend = readUserTrend(payload.trend);
+    if (typeof payload.enrichmentReady !== 'boolean' || !responseTrend) {
+      throw new Error('Observability Users response was invalid.');
+    }
+    trend = responseTrend;
+  } else {
+    const toDate = todayInTokyo();
+    const overview = await getAdminObservabilityOverview({
+      environment: params.environment,
+      fromDate: shiftDate(toDate, -29),
+      toDate,
+    });
+    trend = {
+      daily: overview.daily,
+      activeUsers: overview.activeUsers,
+    };
+  }
   return {
-    users: payload.users,
+    users: payload.users.map(normalizeAdminUser),
     nextCursor: payload.nextCursor,
+    enrichmentReady: hasCurrentResponseShape ? payload.enrichmentReady ?? false : false,
+    trend,
   };
 }
 

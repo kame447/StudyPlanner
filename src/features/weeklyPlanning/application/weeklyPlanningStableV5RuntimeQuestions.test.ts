@@ -108,6 +108,43 @@ describe('Stable V5 missing schedulable work question', () => {
     expect(question.targetFactId).toBe('component-concrete-b');
   });
 
+  it('does not ask a child scope again when the parent scope already has schedulable progress evidence', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.tasks = [{ id: 'task-physics', category: 'study', title: '物理', source, createdRevision: 1 }];
+    graph.components = [
+      {
+        id: 'component-mechanics', taskId: 'task-physics', parentComponentId: null,
+        role: 'field', label: '力学', source, createdRevision: 2,
+      },
+      {
+        id: 'component-material', taskId: 'task-physics', parentComponentId: 'component-mechanics',
+        role: 'material', label: '良問の風・力学', source, createdRevision: 3,
+      },
+      {
+        id: 'component-chapters', taskId: 'task-physics', parentComponentId: 'component-material',
+        role: 'chapter', label: '良問の風・力学の章立てに沿った各章', source, createdRevision: 3,
+      },
+    ];
+    graph.workloads = [{
+      id: 'workload-mechanics', taskId: 'task-physics', componentId: 'component-mechanics',
+      quantityRole: 'remaining', amount: 100, unitCode: 'custom', unitLabel: '%',
+      rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+      source, createdRevision: 4,
+    }];
+    graph.factLifecycles = [
+      { factId: 'task-physics', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null },
+      { factId: 'component-mechanics', status: 'active', createdRevision: 2, terminalRevision: null, supersededByFactId: null },
+      { factId: 'component-material', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null },
+      { factId: 'component-chapters', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null },
+      { factId: 'workload-mechanics', status: 'active', createdRevision: 4, terminalRevision: null, supersededByFactId: null },
+    ];
+
+    const question = stableV5MissingSchedulableWorkQuestion(graph);
+
+    expect(question.targetFactId).toBeNull();
+    expect(question.message).not.toContain('良問の風・力学');
+  });
+
   it('prefers an uncovered leaf over its broader component parent', () => {
     const graph = createEmptyWeeklyPlanningFactGraphV5();
     graph.tasks = [{

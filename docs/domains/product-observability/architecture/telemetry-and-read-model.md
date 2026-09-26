@@ -1,8 +1,8 @@
 # Product Observability Telemetry and Read Model Architecture
 
 Status: canonical architecture contract
-Updated: 2026-08-28
-Owning Issue: #213
+Updated: 2026-09-25
+Owning Issues: #213, #308
 Parent requirement: `../spec/console-requirements.md`
 
 ## 1. Problem statement
@@ -331,6 +331,8 @@ AI request eventをvolume/index/retention上分離する必要がある場合は
 
 短中期のlightweight append-only journal。
 
+`actorSubjectId` と `environment` で絞り `occurredAt` で並べ替えるquery shapeはcomposite indexが必須であり、定義は `firestore.indexes.json` で管理する。
+
 ### observability_actor_day
 
 `actorSubjectId + localDate`で一意となるactivity presence marker。
@@ -620,3 +622,84 @@ consoleは`計測開始日`を保持し、期間がtelemetry開始前を含む�
 運用計測の結果、event volumeが極端に小さくserver rollupが不必要、Firestoreがanalytics workloadに不適切、または別のmanaged analytics storeの方が大幅に安全・安価であることが示された場合、physical storage / aggregation implementationは変更してよい。
 
 ただし、lightweight analyticsとdetailed traceの分離、metric semanticsの単一owner、best-effort observation、stable drill-down identity、UIからstorage/aggregation責務を外すという境界は、別案がこれらをより安全に満たす証拠がない限り維持する。
+
+## 22. Worker subrequest budget and measurement
+
+product-observability の Worker は Workers Free の 1 invocation あたり 50 external subrequests という上限内で動作させる。Paid plan や `limits.subrequests` の引き上げを前提にしない。Cloudflare の上限と redirect hop の計数規則は [Workers limits: Subrequests](https://developers.cloudflare.com/workers/platform/limits/#subrequests) を authority とする。
+
+アプリケーション側は次の安全余白を持つ。
+
+- 送信を試みた external request が 40 件に達した時点で sanitized warning を 1 回記録する
+- 45 件までを hard ceiling とし、46 件目は送信前に拒否する
+- budget 超過を admin client へ件数付きで返さず、既存の generic 503 contract を維持する
+- OAuth token exchange、Identity Toolkit lookup、Firestore REST request を同じ invocation-local tracker で数える
+- Google endpoint は `redirect: manual` とし、redirect response は失敗として扱う。手動追跡して追加 hop を発生させない
+
+tracker は module-global singleton にしない。`fetch()` または各 scheduled invocation の開始時に生成し、その invocation 内で共有する service-account token provider から全 Firestore client へ伝播させる。計測値は Cloudflare runtime の内部カウンタではなく、Worker が送信直前に数える **attempted external requests** である。
+
+completion log は invocation kind、固定の route / maintenance phase、合計、固定カテゴリ別件数だけを持つ。URL query、Firebase UID、actor/profile ID、Authorization、token、request/response body、secret は記録しない。client response にも計測値を含めない。
+
+admin read の現行最大形は次のとおりである。`auth 3` は cold invocation の Identity Toolkit 1 + OAuth 1 + `admins` document 1 を表す。
+
+| Admin path | 最大入力 | 最大 external requests |
+| --- | --- | ---: |
+| Overview | 93日 | 9 |
+| AI/API | 93日 | 5 |
+| Planning | 93日 | 4 |
+| Users、enrichment ready | profile 25件 + 30日trend | 8 |
+| Users、migration中 | profile 9件 + 30日trend | 42 |
+| User investigation | event 100件 | 6 |
+| Identity resolver | match 5件 | 6 |
+| Logs | session 50件 | 5 |
+| Log entries | entry 20件 | 6 |
+| Debug Bundle | filterなし、200 entry scan | 15 |
+| Debug Bundle | request filterあり | 7 |
+| System | 固定 probe | 6 |
+
+日付範囲と連番 entry は個別 GET の fan-out にせず、exact document name の Firestore `batchGet` を最大100件ずつ使用する。Firestore の `found` / `missing` は返却順を信用せず document name で要求順へ復元する。欠損日を隣の日付へずらさず、Overview の欠損日省略、Planning の0埋め、trace sequence / cursor の既存挙動を維持する。request body は Firestore の 10 MiB 上限未満であることを送信前に検査する。
+
+読み捨てる HTTP response body は status にかかわらず明示的に cancel または完全消費する。特に Firestore GET の 404、mutation の成功 body、non-2xx body を未処理のまま残さない。
+
+Users list のactive-day countと最新のtyped error分類は、environment別user summaryのadditive enrichmentとして保持する。rollupはactor-day markerを新規作成した時だけactive-day countをincrementし、既存のtyped AI / planning error分類だけからlatest errorを更新する。profileのemail、username、Firebase UID等のPIIをobservability collectionへ複製しない。Usersの通常readはprofile 25件を1 query、actor directoryとuser summaryを各1 `batchGet`、daily rollup・active-user window・rollup checkpointを1 cross-collection `batchGet`で取得する。Users responseが30日trendも所有するため、browserはOverviewを並列取得しない。
+
+rollout順序はPR merge → Pages自動配信 → Worker手動配信に固定し、merge後は速やかにWorkerを配信する。この間の新UI + 旧Workerでは、client serviceがUsers responseの`trend`または`enrichmentReady`欠損を旧shapeとして検出し、従来どおり30日Overviewを1回だけ追加取得してtrendへ正規化する。このfallbackは旧Workerの成功応答shapeの差だけを吸収し、legacy N+1がsubrequest上限へ達して返すgeneric 503は吸収しない。新shapeではUsers 1 requestを維持する。旧shapeの欠損enrichmentはunknownとして表示し、`0`、`null日`、`undefined日`を捏造・露出しない。新shapeのfieldが存在するのにnested valueが破損している場合はfallbackせず画面の既存エラー状態へ遷移する。旧UI + 新Workerは配信後も開かれている古いtabに限る。Workerのtop-level追加fieldはadditiveとし、既存user fieldの意味を維持する。既存型の拡張は、証明できないactive-day countだけを`null`にする場合に限定する。
+
+additive enrichmentのmigration readinessは専用checkpointのenvironment完了状態だけで判定する。一部documentにfieldが存在するだけではreadyとしない。migration中はserverがpageを9件へclampし、従来のdirectory / summary / actor-day COUNT / recent-error queryをbounded fallbackとして使う。actorを持つのにsummary/enrichmentが証明できない場合はactive daysとrecent errorをunknownとし、0やabsentを捏造しない。profile cursorは9件目から継続できる。ready後にsummaryが欠損または未versionedならN+1へ戻らずunknownを返す。
+
+user enrichment backfillはprofile registrationと同じscheduled phaseの残budgetで1 invocation最大17 summaryを処理する。各unitはactor-day COUNT 1回とrecent-error page 1回までとし、100 eventで30日境界またはtyped errorへ到達しなければactor cursorをcheckpointして次回再開する。summary query時のFirestore update timeをconditional bulk commitへ渡し、rollupが同じsummaryを更新した場合はsummary群とcheckpointをまとめて409/412 conflictにし、cursorを進めない。このupdate-time watermarkによりbackfillが新しいrollup値を上書きしない。既存のactor/environment equality + occurredAt order queryを再利用し、新しいcomposite indexは要求しない。
+
+scheduled maintenance は phase 分割、bulk write、checkpoint と一体で budget 適用する。分割前の rollup → snapshots → backfill → retention を単一 invocation のまま「bounded」とは扱わない。
+
+production の cron trigger はアカウント全体の trigger slot を増やさないよう、1 本の `* * * * *` とする。phase は実行開始時刻や `cron` 文字列ではなく、Cloudflare が渡す `scheduledTime` の UTC minute を 5 で割った余りだけで決める。
+
+| UTC minute mod 5 | phase |
+| ---: | --- |
+| 0 | rollup |
+| 1 | active-user snapshot |
+| 2 | profile registration + user enrichment backfill |
+| 3 | retention |
+| 4 | no-op |
+
+遅延実行でも予定時刻由来の phase は変えない。各 minute は別 invocation なので token provider、transaction、budget tracker を共有しない。no-op は token を取得せず external request 0 件で完了する。1分triggerは1日1,440 invocationで、Workers Free の日次100,000 request枠より十分小さい。
+
+cold OAuth を含む scheduled phase の実測上限contractは次のとおりである。
+
+| Phase / shape | External requests |
+| --- | ---: |
+| Rollup、empty | 6 |
+| Rollup、20 event × 5 batch | 31 |
+| Rollup、最後のbatchで transaction conflict 2回 | 45 |
+| Active-user snapshot、初回30日scan | 36 |
+| Active-user snapshot、dirtyなし / current snapshotあり | 3 |
+| Active-user snapshot、最大35 actor-day page + publish + dirty clear | 44 |
+| Active-user snapshot、最大scan後の transaction conflict | 42 |
+| Combined backfill、profile empty + user migration開始 / 両方completed | 7 / 3 |
+| Combined backfill、profile 100件 × 2 + user enrichment 17件 | 44 |
+| Retention、expiredなし / 4 collection × 100 delete × 2 batch | 5 / 11 |
+| no-op | 0 |
+
+rollup は1 batchを最大20 eventとし、既知のcheckpoint、actor-day、daily rollup、planning session、user summaryをtransaction token付きのcross-collection `batchGet` 1回で読む。session projectionから判明するplanning cohortも2回目の `batchGet` へまとめる。cursor確認、projection、checkpoint更新は同じtransactionでcommitし、競合してもcursorを先へ進めない。45件へ達したretryはfailure checkpointを無理に追加せず次回invocationへ繰り越す。
+
+active-user snapshot はdirty sourceの1 revision・1 target dateだけを一度に処理する。最大35 pageで止まり、job state、date cursor、64 shardのpseudonymous actor accumulatorを保存する。長いscan中はFirestore transactionを開いたままにせず、scan後の短いtransactionでjob/shardの再読取が開始時と一致する場合だけcheckpointまたはsnapshotをcommitする。canonical `observability_active_user_windows` は30日すべてのscanが終わるまで更新しない。accumulatorはactor IDをfield keyにしたmapではなく、shardごとにsort済みactor IDとwindow flagを1個のcanonical string fieldへencodeする。これによりactorごとの自動single-field index entryを生成しない。各shardはFirestoreのdocument name・field name/value・32-byte overhead式で450,000 bytes以下とし、publish transactionは削除する64 shardのdocument storageと既定の昇順/降順index entry、canonical snapshot/jobの更新前後を保守的に合算して8 MiB以下であることを事前検査する（Firestore hard limit 10 MiBに2 MiBの余白）。HTTP request bodyもtransportで別途10 MiB未満を再検査する。完成時はcanonical snapshotのpublish、idle job state、64 shard削除を1 transactionへまとめる。dirty sourceは同じrevisionだけを別transactionでclearするため、途中で新revisionが入っても古いjobが消さない。publish後にclearが失敗した場合はjobがidleなので、次回は同じsourceを再scanしてからclearし、古い完了jobが再利用されたrevisionを誤ってclearするABAを避ける。
+
+profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめ、その後の残budgetでuser enrichmentを最大17件進める。cold OAuthを共有した最大形はprofile 6 Firestore request + user enrichment `checkpoint 1 + summary page 1 + 17 × 2 reads + conditional commit 1 = 37` の合計44である。retention は4 collectionのexpired prefixを読み、最大400 deleteを1 commitにまとめる。いずれもcommit失敗時にcheckpointだけ、またはmutationの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。

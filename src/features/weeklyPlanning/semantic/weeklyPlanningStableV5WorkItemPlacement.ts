@@ -90,6 +90,21 @@ function eligibleDates(params: {
     && (!hardDateBound?.endDate || date <= hardDateBound.endDate));
 }
 
+function datesWithinDailyCapacity(params: {
+  context: WeeklyPlanningPlacementRuntimeContextV5;
+  dates: readonly string[];
+  duration: number;
+}): string[] {
+  const limits = new Map(
+    (params.context.input.dailyCapacityLimits ?? []).map((limit) => [limit.date, limit.maxMinutes]),
+  );
+  return params.dates.filter((date) => {
+    const maxMinutes = limits.get(date);
+    if (maxMinutes === undefined) return true;
+    return (params.context.dayLoads.get(date) ?? 0) + params.duration <= maxMinutes;
+  });
+}
+
 function findWorkItemSlot(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -98,10 +113,17 @@ function findWorkItemSlot(params: {
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment: boolean;
 }): MinuteInterval | null {
+  const capacitySafeDates = datesWithinDailyCapacity({
+    context: params.context,
+    dates: params.dates,
+    duration: params.duration,
+  });
+  if (capacitySafeDates.length === 0) return null;
+
   const explicitPreferences = preferredPlacementsForWorkItem({
     placements: params.context.input.preferredPlacements ?? [],
     item: params.item,
-    dates: params.dates,
+    dates: capacitySafeDates,
   });
   const preferredSlot = explicitPreferences.length > 0
     ? findPreferredPlacementSlot({
@@ -117,7 +139,7 @@ function findWorkItemSlot(params: {
       })
     : null;
   return preferredSlot ?? findPlacementSlot({
-    dates: params.dates,
+    dates: capacitySafeDates,
     duration: params.duration,
     windowsByDate: params.context.windowsByDate,
     busy: params.context.busy,

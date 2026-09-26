@@ -128,6 +128,21 @@ describe('Stable V5 work breakdown response contract', () => {
     })]))).toContain('document:work-breakdown-decomposed-without-constituents');
   });
 
+  it('rejects reopening work_breakdown on the same parent after decomposition is resolved', () => {
+    const value = document([task()]);
+    value.uncertainties = [{
+      localId: 'uncertainty-again',
+      targetLocalId: 'task-local',
+      field: 'work_breakdown',
+      reason: '具体的な問題数や総時間は分からない',
+      sourceText: '分からない量は作らないでください',
+    }];
+
+    expect(validate(value)).toContain(
+      'document:work-breakdown-decomposed-target-cannot-remain-uncertain',
+    );
+  });
+
   it('allows needs_breakdown to remain when the structured answer is still unresolved', () => {
     expect(validate(document([task({
       decompositionStatus: 'needs_breakdown',

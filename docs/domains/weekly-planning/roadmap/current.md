@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-09-05
+Updated: 2026-09-26
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -20,39 +20,22 @@ Scheduling Issue #278 is complete. PR #279 unified `ScheduleOccurrence` reads ac
 
 Issue #52 is complete. PR #283 removed the obsolete `WeeklyPlanningQuickEntryModal` compatibility wrapper, reduced generic `QuickEntryModal` to manual entry, and made `AiPlanningView` the user-facing owner for weekly-planning conversation, cancellation, preview and approval behavior. Generic QuickEntry must not regain weekly-planning state/callback plumbing.
 
-## Immediate active path: Issue #136 / PR #275
+## Completed: Issue #136 / PR #275
 
-Issue #136 owns the active Stable V5 semantic-regression implementation path.
+Issue #136 completed the Stable V5 semantic-regression path. PR #275 reconciled current main into `fix/issue136-semantic-regressions` by merge, carried the persisted Real Luna conversation to terminal save, and removed the temporary verification wiring it had added.
 
-- Issue: #136 `P1: Real Luna completion-based E2E regression tracker`
-- branch: `fix/issue136-semantic-regressions`
-- Draft PR: #275
+The completion-based evaluation reached `completed_saved` on reconciled code: preview, one user availability correction, regenerated preview, explicit approval, then 75 saved plans. Nothing was saved before approval.
 
-Exact branch HEAD, current-main divergence, Real Luna continuation state, verification evidence, and next action are owned by Issue #136 / PR #275. Re-fetch those mutable sources before resuming instead of copying their changing values into this roadmap.
-
-Resume order remains:
-
-```text
-re-fetch Issue #136 / PR #275 / current main
-→ reconcile current main into the existing branch when the active owner reaches that step
-→ classify conflicts by owner; preserve #278 ScheduleEvent authority
-→ rerun deterministic checks on the reconciled HEAD
-→ continue the persisted Real Luna checkpoint
-→ resolve remaining effort questions without inventing unknown quantities
-→ reach preview
-→ perform one correction
-→ explicit approval
-→ terminal save
-→ remove temporary Real Luna workflow/command wiring
-→ final CI / Browser Regression / diff audit
-→ merge/close decision for #136
-```
-
-Known durable behavior already established in this work includes:
+Durable behavior established by this work:
 
 - canonical weekday recurrence tokens are accepted by deterministic recurrence resolution while legacy aliases remain compatible.
 - weekend `1日8時間` is represented as a 480-minute daily capacity, not invented full-day clock availability.
-- physics/chemistry stale work-breakdown uncertainties were removed without inventing problem counts or total effort.
+- a separate Saturday unavailable interval stays distinct from capacity.
+- stale physics/chemistry work-breakdown uncertainties were removed without inventing problem counts or total effort; unresolved effort stays unresolved.
+- a corrected availability supersedes the exact fact it replaces, and the correction records both endpoints explicitly rather than inferring them.
+- a fact graph containing an availability correction survives persistence. The graph validator previously omitted availability declarations from the addressable correction targets, so such a conversation applied its correction in memory but could not be resumed from its saved form. Round-trip coverage now locks this.
+
+The evaluation harness is driven by the dispatch workflow that already lives on main. Do not reintroduce branch-scoped push or pull_request triggers for it: a pull_request trigger spends a real API credential on every pull request touching weekly planning.
 
 ## Next priority: Issue #152 adversarial security
 
@@ -62,9 +45,21 @@ Issue #152 remains a valid separate security scope.
 - Draft PR: #174
 - the branch is intentionally long-lived, but its historical verification is not current-main evidence.
 
-After #136 reaches a durable terminal point, reconcile PR #174 with current main before relying on it. Then continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification. Do not absorb #136 semantic-regression work or general UI QA into the security branch.
+Issue #136 has reached its durable terminal point. PR #174 has since resumed on the existing security branch and has reconciled current main during that work. Because the branch remains active, re-fetch its latest Issue checkpoint, HEAD and verification state before relying on any result; do not treat older validation as current evidence. Continue attack → evidence → owning-layer classification → minimal fix → Real API/browser re-verification without absorbing #136 semantic-regression work or general UI QA into the security branch.
 
-This security/provenance work is also an input to later #246 production consultation wiring.
+This security/provenance work is also an input to later #246 production consultation wiring and the applicable #305 Jev production rollout gates.
+
+## Issue #305: bounded Jev integration
+
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) turns the completed 2026-09-18 research into an implementation backlog. The detailed adapter boundary, failure handling, acceptance conditions and checkpoint are owned by that Issue, not duplicated in a second design document. Jev is not connected to production by this roadmap change.
+
+The first release unit is a protected provider boundary plus the existing focused authorization route, initially off and then shadow-only. Offline fixtures, provider-boundary work and non-authoritative shadow preparation may proceed without waiting for future memory or consultation features. Preserve the #152 security priority and existing PR #174; before production canary, consume the applicable security/provenance regressions and Japanese evaluation evidence. Do not equate completion of Jev preparation with completion of #152, or require unrelated future security features as a blanket dependency.
+
+After Japanese gold/holdout evaluation and calibration, enable only accepted eligible cases through a reversible canary. Low confidence, provider failure or mixed meaning must preserve the existing safe fallback and application authority. Numerical thresholds in the research are hypotheses to evaluate, not already-achieved guarantees or automatic rollout approval.
+
+Only after the first gate passes should the same boundary expand to focused contextual categorical fields, then user-context owner routing and the #246 TurnPurpose consumer when its production integration is ready. These are ordered evaluation scopes, not instructions to pre-create one Issue, branch or PR per field. Keep free-value extraction and prose with the existing generative paths unless a later measured change is explicitly accepted.
+
+The #246/#294 memory and consultation owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 is separate from ordinary Stable V5 classification; neither integration replaces the other or becomes a new formal state authority.
 
 ## Issue #246: learning consultation before scheduling
 

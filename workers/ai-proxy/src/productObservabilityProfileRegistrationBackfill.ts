@@ -4,6 +4,7 @@ import {
 } from '../../../shared/profileRegistrationTime';
 import {
   FirestoreServiceAccountClient,
+  type FirestoreBulkDocumentWrite,
   type FirestoreOrderedCursor,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
@@ -30,12 +31,7 @@ export interface ProfileRegistrationBackfillCheckpoint {
 
 interface ProfileRegistrationBackfillFirestore {
   getDocument(collection: string, id: string): Promise<Record<string, unknown> | null>;
-  setDocument(
-    collection: string,
-    id: string,
-    value: Record<string, unknown>,
-    updateMask?: string[],
-  ): Promise<void>;
+  commitWrites(writes: readonly FirestoreBulkDocumentWrite[]): Promise<void>;
   queryDocumentsAfter(params: {
     collection: string;
     orderByField: string;
@@ -155,6 +151,7 @@ export class ProductObservabilityProfileRegistrationBackfillService {
 
     let normalizedProfiles = current.normalizedProfiles;
     let malformedProfiles = current.malformedProfiles;
+    const writes: FirestoreBulkDocumentWrite[] = [];
     for (const row of rows) {
       const existingRegisteredAt = normalizeProfileRegistrationTimestamp(
         row[PROFILE_REGISTERED_AT_FIELD],
@@ -166,12 +163,12 @@ export class ProductObservabilityProfileRegistrationBackfillService {
         malformedProfiles += 1;
         continue;
       }
-      await this.firestore.setDocument(
-        PROFILE_COLLECTION,
-        row.id,
-        { [PROFILE_REGISTERED_AT_FIELD]: normalized },
-        [PROFILE_REGISTERED_AT_FIELD],
-      );
+      writes.push({
+        collection: PROFILE_COLLECTION,
+        id: row.id,
+        value: { [PROFILE_REGISTERED_AT_FIELD]: normalized },
+        updateMask: [PROFILE_REGISTERED_AT_FIELD],
+      });
       normalizedProfiles += 1;
     }
 
@@ -185,11 +182,12 @@ export class ProductObservabilityProfileRegistrationBackfillService {
       completed: rows.length < pageSize,
       updatedAt: nowIso,
     };
-    await this.firestore.setDocument(
-      PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION,
-      PROFILE_REGISTRATION_BACKFILL_STATE_ID,
-      next as unknown as Record<string, unknown>,
-    );
+    writes.push({
+      collection: PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION,
+      id: PROFILE_REGISTRATION_BACKFILL_STATE_ID,
+      value: next as unknown as Record<string, unknown>,
+    });
+    await this.firestore.commitWrites(writes);
     return next;
   }
 }

@@ -1,9 +1,10 @@
 # Scheduling roadmap
 
 Status: completed canonical baseline
-Updated: 2026-09-04
+Updated: 2026-09-10
 Owner Issue: #278 — completed
 Implementation PRs: #279 / #282 — merged
+Final consumer follow-up: `f846cfb874c4c26a9bfa355d8c5fe56c911ac705` — merged directly to `main` under the existing Issue checkpoint
 
 ## Current state
 
@@ -38,11 +39,13 @@ Merged by PR #279.
 
 ### Phase 2 — consumer migration
 
-Merged by PR #279.
+Merged by PR #279 and completed by the later Week timetable consumer follow-up.
 
 - Month / Week / Day / AI planning consume the common occurrence boundary.
 - the same scheduled item keeps consistent identity and time semantics across views.
 - `busy=false` remains a displayable event without becoming occupied time.
+- Week receives timetable template / term inputs through the same projection path instead of omitting unimported timetable occurrences.
+- timetable-template occurrences are display/read-only in Week, while imported timetable Plans remain normal editable scheduled events.
 
 ### Phase 3 — canonical persistence
 
@@ -102,15 +105,15 @@ Post-merge production evidence for PR #282:
 
 ## Completion evidence
 
-Pre-merge final PR #282 head:
+Phase 3 pre-merge PR #282 head:
 
 `3ae534fd6e888b9d56404bc045c0549aa5dfc37d`
 
-Post-merge main checkpoint:
+Phase 3 merge checkpoint:
 
 `4cbf7d7b18e337ff8c6903bc37211c544bf01c55`
 
-Post-merge verification:
+Phase 3 post-merge verification:
 
 - CI `33747201405`: success
 - Browser Regression `33747201413`: 209/209 passed
@@ -119,7 +122,25 @@ Post-merge verification:
 - UI Quality Automation `33747201491`: success
 - Deploy Firestore Rules `33747201456`: success
 
-Issue #278 was closed as completed after these gates reached terminal success.
+### Adversarial re-audit follow-up
+
+After the Phase 3 close, #278 was re-audited against current repository evidence. The shared resolver already supported timetable templates, but the Week consumer was not passing the timetable template / active-term inputs into the common projection. This meant an unimported class could still be absent from Week while Month / Day / AI used the shared source.
+
+The gap was fixed on `main` as:
+
+`f846cfb874c4c26a9bfa355d8c5fe56c911ac705` — `fix: show timetable occurrences in week schedule`
+
+Final exact-head verification for that follow-up:
+
+- CI `34440130973`: success, including TypeScript, full tests, Firestore rules regression and production build
+- Browser Regression `34440130883`: success
+- UI Regression Matrix `34440130881`: visual regression and cross-browser smoke success
+- UI Quality Automation `34440130856`: success
+- Admin Overview Render `34440130891`: success
+- Cloudflare Pages exact-head deploy check: success
+- exact-head check runs: no failure, pending or in-progress result at final audit
+
+Issue #278 was then closed as `completed` on the final baseline.
 
 ## Future work boundary
 

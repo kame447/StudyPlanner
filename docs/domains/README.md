@@ -3,6 +3,7 @@
 A domain directory owns current documentation for one product/runtime responsibility.
 
 - [`weekly-planning/`](weekly-planning/README.md): weekly planning conversation, semantics, scheduling, preview/approval, personalization and evaluation
+- [`user-context/`](user-context/README.md): app-wide durable user context, semantic/episodic memory, retrieval, lifecycle/forget and conversation surfacing
 - [`client-runtime/`](client-runtime/README.md): client-first execution and client/server authority boundaries
 - [`reporting/`](reporting/README.md): learning-activity aggregation and the user-facing learning report
 - [`product-observability/`](product-observability/README.md): service-wide telemetry, analytics read models and restricted diagnostic drill-down

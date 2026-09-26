@@ -2,7 +2,10 @@ import type {
   SemanticAvailabilityRecurrenceKindV5,
   SemanticRecurrenceKindV5,
 } from './weeklyPlanningSemanticTypesV5';
-import { calendarWeekday } from './weeklyPlanningCalendarResolver';
+import {
+  calendarWeekday,
+  canonicalWeekdayIndex,
+} from './weeklyPlanningCalendarResolver';
 
 export type WeeklyPlanningCalendarRecurrenceKindV5 =
   | SemanticRecurrenceKindV5
@@ -13,7 +16,7 @@ export interface WeeklyPlanningCalendarRecurrenceResolutionV5 {
   invalidDays: string[];
 }
 
-const WEEKDAY_INDEX: Readonly<Record<string, number>> = {
+const LEGACY_RECURRENCE_WEEKDAY_INDEX: Readonly<Record<string, number>> = {
   sun: 0,
   mon: 1,
   tue: 2,
@@ -22,6 +25,10 @@ const WEEKDAY_INDEX: Readonly<Record<string, number>> = {
   fri: 5,
   sat: 6,
 };
+
+function recurrenceWeekdayIndex(day: string): number | null {
+  return canonicalWeekdayIndex(day) ?? LEGACY_RECURRENCE_WEEKDAY_INDEX[day] ?? null;
+}
 
 function datesForWeekdayIndexes(
   dates: readonly string[],
@@ -44,8 +51,8 @@ function explicitWeekdayScope(params: {
   const indexes = new Set<number>();
   const invalidDays: string[] = [];
   for (const day of params.days) {
-    const index = WEEKDAY_INDEX[day];
-    if (index === undefined) {
+    const index = recurrenceWeekdayIndex(day);
+    if (index === null) {
       if (!invalidDays.includes(day)) invalidDays.push(day);
       continue;
     }

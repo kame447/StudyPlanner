@@ -337,7 +337,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     allFactIds,
     errors,
   );
-  validateFactArray(
+  const availabilityDeclarations = validateFactArray(
     value.availabilityDeclarations,
     'graph.availabilityDeclarations',
     revision,
@@ -369,6 +369,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
   const recurrenceIds = idsOf(recurrences);
   const relationIds = idsOf(relations);
   const planningWindowIds = idsOf(planningWindows);
+  const availabilityDeclarationIds = idsOf(availabilityDeclarations);
   const targetIds = new Set([
     ...taskIds,
     ...componentIds,
@@ -379,6 +380,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     ...recurrenceIds,
     ...relationIds,
     ...planningWindowIds,
+    ...availabilityDeclarationIds,
   ]);
   const taskOrComponentIds = new Set([...taskIds, ...componentIds]);
   const effortTargetIds = new Set([...taskIds, ...componentIds, ...workloadIds]);

@@ -462,6 +462,10 @@ export default function App() {
                 plans={plans}
                 actuals={actuals}
                 monthEvents={monthEvents}
+                scheduleTemplates={scheduleTemplates}
+                timetableTermId={activeTimetableTermId}
+                timetableTerm={activeTimetableTerm}
+                timetableTerms={timetableTerms}
                 weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}
                 onRemoveWeeklyDraftBlock={
                   weeklyPlanning.canEditDraftBlocks
