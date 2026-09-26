@@ -34,13 +34,14 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-// Measured sizes with the Issue #152 trust-boundary policy: 4,529 B policy,
-// 7,638 B generic system prompt, and 3,109 B supplemental policy overhead.
+// Measured sizes with the Issue #152 trust-boundary policy and decision-target
+// sentence: 4,667 B policy, 7,776 B generic system prompt, and 3,109 B
+// supplemental policy overhead.
 // Ceilings keep roughly 10% headroom rounded up to 50 bytes; they remain growth
 // guards, not compaction targets. PR #130 showed that forcing the budget lower
 // can delete application-critical meaning.
-const GENERIC_MEANING_POLICY_MAX_BYTES = 5_000;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_450;
+const GENERIC_MEANING_POLICY_MAX_BYTES = 5_150;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_600;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 // The focused response schema now carries target and measurement as separate
