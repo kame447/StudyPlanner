@@ -3,7 +3,7 @@ import {
   parseUserPlanningContextNaturalLanguageResultV2,
   USER_PLANNING_CONTEXT_RESPONSE_FORMAT_V2,
   type UserPlanningContextNaturalLanguageResultV2,
-} from '../../../../../src/features/userPlanningContext/userPlanningContextNaturalLanguageV2';
+} from '../../../../../src/features/userPlanningContext/userPlanningContextNaturalLanguageV2Contract';
 
 export const USER_CONTEXT_ROUTING_LUNA_MODEL = 'gpt-5.6-luna' as const;
 export const USER_CONTEXT_ROUTING_LUNA_MAX_COMPLETION_TOKENS = 700;

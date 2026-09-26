@@ -4,7 +4,7 @@ Status: active
 Owner: Issue #305 / #333 / #335
 Branch: `feat/issue-305-jev-first-user-context-routing`
 Base: `d3623479e07a6870f23c54a7631fe2761a408efa`
-Latest durable checkpoint: `b311b44bf4e748ec8aa4746517da2b703826aa60`
+Latest durable checkpoint: `2acc516a7ad2f0f75bff9d6543d1884e96df656f`
 Updated: 2026-09-27
 
 ## 目的と責任境界
@@ -79,6 +79,8 @@ retry / repair は今回の settings interpreter に存在しない。今後追�
 - holdout は tuning 前に `sealed_unconsumed` として封印済み。fingerprint は catalog=`c3a284e53846d229f1932cae34acf00efc98f266986100ba4efed60aac0bdc4e`、gate=`9bcb1fc70281dc2420cce5ad18b0254716b45a52fbdd0bfd90ca9e9b28c90854`、corpus=`0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6`。
 - runner は Wrangler 4.140.0 のみを受理し、holdout は上記 seal/hash が一致し `consumed=false` の場合だけ実行する。成功時は raw text を含まない typed result で同じ artifact を `consumed` に更新する。
 - exact checkpoint 後の local `npm run verify` は green: typecheck、583 test files / 3,024 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）、production build 2,215 modules。runner の `node --check` も green。build の既存 dynamic/static import と chunk-size warning 以外に失敗なし。
+- remote runner がブラウザ用 AI client / Firebase の実行時依存を引き込まないよう、既存 Luna schema・prompt・strict parser・message builder・固定 owner 案内を副作用のない contract module へ抽出した。従来 module は同じ public symbol を再 export するため、app 側の契約は不変。
+- contract 抽出後の focused verification は 11 files / 126 tests green（user-context routing、Luna evaluation、Worker containment、#335 security regression を含む）。`npm run typecheck` と production build 2,216 modules も green。既存 build warning 以外に失敗なし。
 - remote dev は Wrangler OAuth の期限切れで、親がユーザーの再ログイン待ち。親から再開通知が来るまで tuning / holdout / paired / fault probe は実行しない。
 
 次の具体作業:

@@ -4,7 +4,7 @@ import {
 } from '../../../../../shared/userContextRoutingDecision';
 import {
   parseUserPlanningContextNaturalLanguageResultV2,
-} from '../../../../../src/features/userPlanningContext/userPlanningContextNaturalLanguageV2';
+} from '../../../../../src/features/userPlanningContext/userPlanningContextNaturalLanguageV2Contract';
 import { estimateLunaTextUsageCostRange } from '../../aiUsagePricing';
 import {
   dispatchUserContextRouting,

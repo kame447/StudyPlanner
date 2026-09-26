@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import holdoutSeal from './evidence/user-context-routing-holdout-20260927.json';
 import {
   userContextRoutingPolicyFingerprints,
 } from './userContextRoutingPolicyFingerprint';
+import { userContextRoutingCorpus } from './userContextRoutingCorpus';
 
 describe('user-context routing policy fingerprints', () => {
   it('fingerprints the sealed catalog, gate and complete corpus', async () => {
@@ -11,5 +13,20 @@ describe('user-context routing policy fingerprints', () => {
       gateSha256: '9bcb1fc70281dc2420cce5ad18b0254716b45a52fbdd0bfd90ca9e9b28c90854',
       corpusSha256: '0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6',
     });
+  });
+
+  it('keeps the unconsumed holdout seal aligned with the frozen policy and corpus', async () => {
+    const fingerprints = await userContextRoutingPolicyFingerprints();
+    const holdout = userContextRoutingCorpus('holdout');
+    expect(holdoutSeal).toMatchObject({
+      status: 'sealed_unconsumed',
+      createdBeforeTuning: true,
+      consumed: false,
+      caseCount: holdout.length,
+      conversationGroupCount: new Set(holdout.map((item) => item.conversationGroupId)).size,
+      policy: fingerprints,
+      results: null,
+    });
+    expect(holdoutSeal.caseCount).toBe(64);
   });
 });
