@@ -755,15 +755,33 @@ function rendererResponse(messages: Array<{ role: string; content: string }>): s
   });
 }
 
+/**
+ * The scripted normalizer reads the conversation channels (userText, supplementalContext, starter target,
+ * recentConversation) but not `publicStateSummary`, the application state and durable-context summary sent as
+ * reference data. Scanning that summary would let a poisoned durable record change the fixture's own answer
+ * and break the poisoned-vs-control metamorphic pair.
+ */
+function scriptedSemanticSource(messages: Array<{ role: string; content: string }>): string {
+  const userMessages = messages.filter((message) => message.role === 'user');
+  const last = userMessages[userMessages.length - 1]?.content ?? '';
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(last);
+  } catch {
+    return last;
+  }
+  if (typeof envelope !== 'object' || envelope === null || !('userText' in envelope)) return last;
+  const { publicStateSummary: _referenceState, ...conversation } = envelope as Record<string, unknown>;
+  return JSON.stringify(conversation);
+}
+
 export function defaultFixtureProviderResponse(input: {
   purpose: string | undefined;
   messages: Array<{ role: string; content: string }>;
 }): string {
   if (input.purpose === 'weekly_planning_renderer') return rendererResponse(input.messages);
   if (input.purpose === 'weekly_planning_semantic_normalizer') {
-    const userMessages = input.messages.filter((message) => message.role === 'user');
-    const last = userMessages[userMessages.length - 1]?.content ?? '';
-    return JSON.stringify(semanticDocument(last));
+    return JSON.stringify(semanticDocument(scriptedSemanticSource(input.messages)));
   }
   return JSON.stringify({
     targetDomain: 'user_context',
@@ -776,6 +794,20 @@ export function defaultFixtureProviderResponse(input: {
   });
 }
 
+/**
+ * Sensitivity control only: a scripted normalizer that takes semantics from the whole request envelope,
+ * including durable context in `publicStateSummary`. It stands in for a context-influenced model so a dry run
+ * can prove the protected-projection oracle detects the resulting preview/draft authority delta.
+ */
+export function contextEchoingFixtureProviderResponse(input: {
+  purpose: string | undefined;
+  messages: Array<{ role: string; content: string }>;
+}): string {
+  if (input.purpose !== 'weekly_planning_semantic_normalizer') return defaultFixtureProviderResponse(input);
+  const userMessages = input.messages.filter((message) => message.role === 'user');
+  return JSON.stringify(semanticDocument(userMessages[userMessages.length - 1]?.content ?? ''));
+}
+
 export function completeScopeFixtureProviderResponse(input: {
   purpose: string | undefined;
   messages: Array<{ role: string; content: string }>;
@@ -784,9 +816,7 @@ export function completeScopeFixtureProviderResponse(input: {
     return JSON.stringify({ decision: 'create_plan' });
   }
   if (input.purpose === 'weekly_planning_semantic_normalizer') {
-    const userMessages = input.messages.filter((message) => message.role === 'user');
-    const lastUser = userMessages[userMessages.length - 1]?.content ?? '';
-    return JSON.stringify(semanticDocument(lastUser));
+    return JSON.stringify(semanticDocument(scriptedSemanticSource(input.messages)));
   }
   if (input.purpose === 'weekly_planning_renderer') {
     return JSON.stringify({
@@ -924,6 +954,8 @@ export async function runIssue152Conversation(
         supplementalContext: params.supplementalContexts?.[turnIndex] ?? undefined,
         selectedStarterTarget: params.selectedStarterTargets?.[turnIndex] ?? undefined,
         selectedDate: ISSUE152_REFERENCE_DATE,
+        // Pin the request clock to the fixture date: it is the semantic reference date.
+        now: () => '2026-08-17T00:00:00.000Z',
         plans: [],
         studyMaterials: params.studyMaterials,
         scheduleTemplates: [],
