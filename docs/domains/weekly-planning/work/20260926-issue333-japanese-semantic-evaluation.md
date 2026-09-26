@@ -4,7 +4,7 @@ Status: active / 評価基盤は実装済み、human-reviewed gold は未作成
 Updated: 2026-09-26
 Tracking: Issue #333（#305 の canary 前提条件の日本語品質 gate を所有する）
 
-この記録は、「既存の条件から未保存の計画案を作ってよいか」の二択（`create_plan` / `fallback`）について、Jev と既存 Luna の日本語解釈を同じデータで評価する手順と、gold を確定する条件を保持する。実行順序は [`../roadmap/current.md`](../roadmap/current.md)、Jev の rollout 条件は #305 が owner であり、ここでは重複させない。
+この記録は、Jev と既存 Luna の日本語解釈を同じデータで評価する手順と、gold を確定する条件を保持する。最初の評価単位は「既存の条件から未保存の計画案を作ってよいか」の二択（`create_plan` / `fallback`）である。これは Jev の恒久的な範囲ではない。Luna が担う意味解釈・判断を責務ごとに比較し、条件を満たした単位から段階的に Jev へ移す（採否と順序は #305）。実行順序は [`../roadmap/current.md`](../roadmap/current.md)、Jev の rollout 条件は #305 が owner であり、ここでは重複させない。
 
 ## 不変条件
 
@@ -13,7 +13,7 @@ Tracking: Issue #333（#305 の canary 前提条件の日本語品質 gate を�
 - 既存51件と追加候補は `synthetic_unreviewed` のまま。現在の「正解率」系の数値は、すべて暫定 label に対する一致度である（report は `provisional: true`）。
 - Jev と Luna の一致率（`jevLunaAgreement`）は正解率ではない。
 - 通常 CI（`npm run test:run`）は有料 API や secret を要求しない。実 API runner はすべて opt-in。
-- #152 security gate、#156 dialogue quality は、この評価で代替しない。
+- Jev 置換単位ごとの安全性回帰は #335（#152 から移管）、dialogue quality は #156 が owner であり、この評価で代替しない。
 
 ## データの状態
 
