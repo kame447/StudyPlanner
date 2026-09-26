@@ -13,10 +13,15 @@ import {
 } from './weeklyPlanningTraceApi';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
+import { isFocusedContextualDecisionContext } from '../../../shared/focusedContextualDecision';
 import {
   dispatchFocusedAuthorization,
   resolveFocusedAuthorizationBaselineFailure,
 } from './decision/focusedAuthorizationDispatch';
+import {
+  dispatchFocusedContextual,
+  resolveFocusedContextualBaselineFailure,
+} from './decision/focusedContextualDispatch';
 import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
 
@@ -574,18 +579,30 @@ async function handleChatRequest(
 
   const context = payload.decisionContext;
   if (context !== undefined) {
-    if (payload.purpose !== 'weekly_planning_semantic_normalizer'
-      || !isFocusedAuthorizationDecisionContext(context)) {
+    if (payload.purpose !== 'weekly_planning_semantic_normalizer') {
       return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
     }
-    return dispatchFocusedAuthorization({
-      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
-      respond: (decision) => jsonResponse(request, env, 200, {
-        content: JSON.stringify({ decision }),
-        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
-      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
-    });
+    if (isFocusedAuthorizationDecisionContext(context)) {
+      return dispatchFocusedAuthorization({
+        context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+        fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+        respond: (decision) => jsonResponse(request, env, 200, {
+          content: JSON.stringify({ decision }),
+          decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+        }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+      });
+    }
+    if (isFocusedContextualDecisionContext(context)) {
+      return dispatchFocusedContextual({
+        context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+        fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+        respond: (decision) => jsonResponse(request, env, 200, {
+          content: JSON.stringify(decision),
+          decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+        }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+      });
+    }
+    return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
   }
   return fetchChatCompletion(request, env, payload, modelResolution.model);
 }
@@ -976,7 +993,8 @@ export default {
       try {
         return await handleChatRequest(request, env, tokenProvider, executionContext);
       } catch (error) {
-        const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error);
+        const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error)
+          ?? resolveFocusedContextualBaselineFailure(error);
         // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
         console.error('[AI Proxy] unexpected chat handler failure',
           baselineFailure && error instanceof Error ? error.cause : error);

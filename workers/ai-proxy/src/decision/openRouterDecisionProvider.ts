@@ -1,4 +1,11 @@
-import type { DecisionEvaluation, DecisionMetadata, DecisionProvider } from './decisionProvider';
+import type { FocusedAuthorizationDecisionContext } from '../../../../shared/focusedAuthorizationDecision';
+import type {
+  AuthorizationDecision,
+  DecisionEvaluation,
+  DecisionMetadata,
+  DecisionProvider,
+  DecisionQuestionCatalog,
+} from './decisionProvider';
 import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
@@ -55,11 +62,32 @@ export function createOpenRouterDecisionProvider(options: {
   apiKey?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-}): DecisionProvider {
+}): DecisionProvider;
+export function createOpenRouterDecisionProvider<TState, TDecision extends string>(options: {
+  apiKey?: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+  catalog: DecisionQuestionCatalog<TDecision>;
+}): DecisionProvider<TState, TDecision>;
+export function createOpenRouterDecisionProvider<TState, TDecision extends string>(options: {
+  apiKey?: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+  catalog?: DecisionQuestionCatalog<TDecision>;
+}): DecisionProvider<TState, TDecision> {
+  const defaultCatalog: DecisionQuestionCatalog<AuthorizationDecision> = {
+    questions: AUTHORIZATION_QUESTIONS,
+    choiceAnswerKey: 'authorization',
+    decisions: ['create_plan', 'fallback'],
+    conditionChangeAnswerKey: 'condition_change',
+    independentMeaningAnswerKey: 'independent_meaning',
+  };
+  const catalog = options.catalog
+    ?? defaultCatalog as unknown as DecisionQuestionCatalog<TDecision>;
   return {
     async evaluate(state, signal) {
       const started = Date.now();
-      const body = JSON.stringify({ model: JEV_MODEL.request, state, questions: AUTHORIZATION_QUESTIONS });
+      const body = JSON.stringify({ model: JEV_MODEL.request, state, questions: catalog.questions });
       const metadata: DecisionMetadata = {
         provider: 'openrouter', requestedModel: JEV_MODEL.request, servedModel: null,
         latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null,
@@ -100,26 +128,41 @@ export function createOpenRouterDecisionProvider(options: {
         }
         metadata.servedModel = root.model;
         const answers = record(root.answers);
-        const auth = record(answers?.authorization);
-        const distribution = record(auth?.probabilities);
-        const changes = record(answers?.condition_change);
-        const independent = record(answers?.independent_meaning);
-        if (auth?.type !== 'choice'
-          || (auth.choice !== 'create_plan' && auth.choice !== 'fallback')
-          || !probability(auth.confidence)
-          || !distribution || Object.keys(distribution).length !== 2
-          || !probability(distribution.create_plan) || !probability(distribution.fallback)
-          || Math.abs(distribution.create_plan + distribution.fallback - 1) > 0.02
-          || (auth.choice === 'create_plan'
-            ? distribution.create_plan < distribution.fallback
-            : distribution.fallback < distribution.create_plan)
+        const choiceAnswer = record(answers?.[catalog.choiceAnswerKey]);
+        const distribution = record(choiceAnswer?.probabilities);
+        const changes = record(answers?.[catalog.conditionChangeAnswerKey]);
+        const independent = record(answers?.[catalog.independentMeaningAnswerKey]);
+        const choice = choiceAnswer?.choice;
+        const distributionKeys = distribution ? Object.keys(distribution) : [];
+        const probabilities = Object.fromEntries(catalog.decisions.map((decision) => [
+          decision,
+          distribution?.[decision],
+        ])) as Record<TDecision, unknown>;
+        const selectedProbability = typeof choice === 'string'
+          ? probabilities[choice as TDecision]
+          : undefined;
+        if (choiceAnswer?.type !== 'choice'
+          || typeof choice !== 'string'
+          || !catalog.decisions.includes(choice as TDecision)
+          || !probability(choiceAnswer.confidence)
+          || !distribution
+          || distributionKeys.length !== catalog.decisions.length
+          || distributionKeys.some((key) => !catalog.decisions.includes(key as TDecision))
+          || catalog.decisions.some((decision) => !probability(probabilities[decision]))
+          || Math.abs(catalog.decisions.reduce(
+            (sum, decision) => sum + Number(probabilities[decision]),
+            0,
+          ) - 1) > 0.02
+          || !probability(selectedProbability)
+          || catalog.decisions.some((decision) =>
+            Number(probabilities[decision]) > selectedProbability)
           || changes?.type !== 'noul' || !probability(changes.noul)
           || independent?.type !== 'noul' || !probability(independent.noul)
         ) return failed('invalid_response');
         if (controller.signal.aborted) return failed(signal?.aborted ? 'cancelled' : 'timeout');
         return {
-          status: 'evaluated', decision: auth.choice, confidence: auth.confidence,
-          probabilities: { create_plan: distribution.create_plan, fallback: distribution.fallback },
+          status: 'evaluated', decision: choice as TDecision, confidence: choiceAnswer.confidence,
+          probabilities: probabilities as Record<TDecision, number>,
           conditionChange: changes.noul, independentMeaning: independent.noul,
           metadata: { ...metadata, latencyMs: Date.now() - started },
         };

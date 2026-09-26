@@ -81,6 +81,30 @@ describe('AI proxy request observer', () => {
     }, 'shadow')).toBeUndefined();
   });
 
+  it('correlates the bounded contextual purpose without accepting unknown fields', () => {
+    const decisionContext = {
+      purpose: 'focused_contextual_answer',
+      requestId: 'turn-contextual-12345678',
+      inputRevision: 11,
+      questionCode: 'quantity_role_unresolved',
+      state: {
+        currentUserText: '残りです。',
+        pendingQuestion: {
+          targetQuantityRole: 'declared',
+          questionBasis: null,
+          hasEstimateTarget: false,
+        },
+      },
+    };
+    expect(resolveAiProxyMetricCorrelation({ decisionContext }, 'canary')).toEqual({
+      requestId: 'turn-contextual-12345678',
+      stateRevision: 11,
+    });
+    expect(resolveAiProxyMetricCorrelation({
+      decisionContext: { ...decisionContext, model: 'client-controlled-model' },
+    }, 'canary')).toBeUndefined();
+  });
+
   it('does not authenticate or persist anything when observability is unconfigured', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

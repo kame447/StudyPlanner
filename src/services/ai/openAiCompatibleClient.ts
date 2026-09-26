@@ -3,7 +3,7 @@ import {
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
-import type { FocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
+import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 import {
@@ -285,7 +285,7 @@ async function runFetchWithTimeout<T>(
 
 export interface OpenAiCompatibleClient {
   createChatCompletion(input: {
-    decisionContext?: FocusedAuthorizationDecisionContext;
+    decisionContext?: FocusedDecisionContext;
     messages: ChatMessage[];
     temperature?: number;
     responseFormat?: JsonSchemaResponseFormat;

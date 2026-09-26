@@ -86,6 +86,58 @@ describe('openAiCompatibleClient model routing', () => {
     expect(lastRequestBody(fetchMock)).not.toHaveProperty('model');
   });
 
+  it('forwards a discriminated contextual context and rejects a stale echoed revision', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({
+      currentUser: { getIdToken: async () => 'id-token' },
+    } as unknown as ReturnType<typeof getFirebaseAuth>);
+    const decisionContext = {
+      purpose: 'focused_contextual_answer' as const,
+      requestId: 'request-contextual-fixture',
+      inputRevision: 9,
+      questionCode: 'quantity_role_unresolved' as const,
+      state: {
+        currentUserText: '残りです。',
+        pendingQuestion: {
+          targetQuantityRole: 'declared' as const,
+          questionBasis: null,
+          hasEstimateTarget: false,
+        },
+      },
+    };
+    const fetchMock = mockFetchOnce({
+      content: JSON.stringify({
+        decision: 'quantity_role_answer',
+        effortTarget: null,
+        effortMeasurement: null,
+        minutes: null,
+        precision: null,
+        quantityRole: 'remaining',
+      }),
+      decisionContext: { requestId: decisionContext.requestId, inputRevision: 8 },
+    });
+
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({
+      messages: [{ role: 'user', content: 'context' }],
+      purpose: 'weekly_planning_semantic_normalizer',
+      decisionContext,
+    })).rejects.toThrow('Decision response context did not match');
+    expect(lastRequestBody(fetchMock).decisionContext).toEqual(decisionContext);
+  });
+
+  it('keeps the decision context union closed by purpose at compile time', () => {
+    type CompletionInput = Parameters<
+      ReturnType<typeof createOpenAiCompatibleClient>['createChatCompletion']
+    >[0];
+    const invalidContext: CompletionInput = {
+      messages: [{ role: 'user', content: 'context' }],
+      // @ts-expect-error unknown decision purpose must not cross the client boundary
+      decisionContext: { purpose: 'save_plan' },
+    };
+    expect(invalidContext.decisionContext).toEqual({ purpose: 'save_plan' });
+  });
+
   it('sends purpose (and no model) to the proxy for purpose-based calls', async () => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
     vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
