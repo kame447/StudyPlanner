@@ -1,6 +1,6 @@
 # 週間計画 focused authorization の日本語意味評価
 
-Status: active / 評価基盤は実装済み、Gemini agent 実行と human-reviewed gold は未完了
+Status: active / 評価基盤は実装済み、Gemini agent は pilot 1 run のみ（反復は quota 待ち）、human-reviewed gold は未作成
 Updated: 2026-09-26
 Tracking: Issue #333（#305 の canary 前提条件の日本語品質 gate を所有する）
 
@@ -103,7 +103,19 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 
 ## 現在の checkpoint
 
-- branch: `feat/issue-333-japanese-semantic-eval`、repo-side agent boundary の作業起点: `b30c7c6845863ca18b0362bb09b59c82f35fff6e`
-- 実装済み：tuning / holdout の別実行、51件の inventory、追加80件、Luna fallback 例外時の turn 相関、Jev / Luna 比較 harness、Gemini agent 用 blind packet/export・structured import contract、double blind review sheet
-- 次の外部実行：親が packet ごとの detached blind base を作り、Orrery 上で Gemini agent を起動し、判定を回収して import する。API key 不足は blocker ではない。
-- 未完了（人手が必要）：human-reviewed gold v1、rubric の owner 確認、許容リスクの決定
+- branch: `feat/issue-333-japanese-semantic-eval`（base main `c98d18e0`）
+- 実装済み：tuning / holdout の別実行、51件の inventory、追加80件（label なし）、Luna fallback 例外時の turn 相関、Jev / Luna 比較 harness（pre-provider parity、paired 統計）、Orrery Gemini agent 用の blind packet export と strict import、double blind review sheet、Luna 責務の棚卸し
+
+### Gemini agent 一次判定（pilot）
+
+- 実施：2026-09-26。schema v1、1 run、Orrery の Antigravity agent（launch model `gemini-3.8-flash-high`、自己申告 `Gemini 3.8 Flash`）。対象は blind packet の131件。agent の worktree には packet と README しか置いていない。
+- 結果：judged 130 / invalid 1 / missing 0。51件は create_plan 18 / fallback 31 / ambiguous 1、追加80件は create_plan 32 / fallback 44 / ambiguous 4。reviewRequired は51件で4、追加80件で22。
+- synthetic label との不一致は2件（`stored-injection-07` を create_plan、`abnormal-value-04` を ambiguous）。どちらも human review での裁定対象である。これは gold ではなく、正解率でもない。
+- invalid 1件は contract の不整合による：v1 の公開 schema は空文字列を許していたが、validator は拒否した。schema v2 で公開 schema を validator に合わせた（version を上げたので v1 と v2 は混ぜない）。pilot の結果は v1 の記録として保持し、安定性の評価には使わない。
+- 反復（v2、3 run）は未完了：3回の起動が失敗した。原因は、起動時の認証確認での通信失敗が2回、実行途中の `UNAUTHENTICATED (401)` が2回で、その後の起動は Antigravity の個人 quota 上限（約7日後にリセット）で停止した。v2 packet と blind base は生成済みなので、quota が戻ったら run 1〜3 を1本ずつ実行し、`npm run eval:gemini-agent:import` で取り込む。
+
+### 未完了（人手・外部が必要）
+
+- human-reviewed gold v1（2名の blind review と裁定）、rubric v1 の owner 確認、許容リスク（false-create 上限）の決定
+- Gemini agent v2 の3 run（quota 待ち）
+- Jev / Luna の実 API 比較（OpenRouter の key が local / GitHub secret にない）
