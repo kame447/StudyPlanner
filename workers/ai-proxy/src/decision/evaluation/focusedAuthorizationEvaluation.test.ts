@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { DecisionEvaluation, DecisionMetadata, DecisionProvider } from '../decisionProvider';
+import { JEV_CATALOG_VERSION, JEV_GATE_VERSION } from '../decisionPolicy';
 import { evaluateFocusedAuthorizationCandidates } from './focusedAuthorizationEvaluation';
 import {
   FOCUSED_AUTHORIZATION_EVALUATION_LAYERS,
   FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES,
+  FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
   validateFocusedAuthorizationSyntheticCandidates,
   type FocusedAuthorizationSyntheticCandidate,
 } from './focusedAuthorizationSyntheticCandidates';
@@ -51,6 +53,12 @@ describe('focused authorization synthetic candidates', () => {
         .toEqual(new Set(['tuning', 'holdout']));
     }
     expect(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES.every((value) => value.reviewStatus === 'synthetic_unreviewed')).toBe(true);
+    const holdoutCounts = FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES
+      .filter((value) => value.split === 'holdout')
+      .reduce((counts, value) => ({ ...counts, [value.expected]: counts[value.expected] + 1 }), {
+        create_plan: 0, fallback: 0,
+      });
+    expect(holdoutCounts).toEqual({ create_plan: 6, fallback: 16 });
   });
 
   it('rejects paraphrases from one conversation group crossing tuning and holdout', () => {
@@ -85,7 +93,7 @@ describe('focused authorization evaluation metrics', () => {
     expect(report.cases.map((value) => value.gateOutcome)).toEqual([
       'rejected_before_provider', 'rejected_before_provider', 'accepted_create_plan',
     ]);
-    expect(report.metrics).toMatchObject({
+    expect(report.metrics.global).toMatchObject({
       fixtureCaseCount: 3,
       evaluationEligibleCaseCount: 1,
       rejectedBeforeProviderCount: 2,
@@ -100,7 +108,7 @@ describe('focused authorization evaluation metrics', () => {
       evaluated('create_plan', 20, 0.02),
       evaluated('fallback', 30, null),
       evaluated('create_plan', 40, 0.04, 0.5),
-      { status: 'unavailable', reason: 'timeout', metadata: metadata(50, 0.05) },
+      { status: 'unavailable', reason: 'timeout', metadata: metadata(100, 0.05) },
       evaluated('fallback', 60, 0.06),
     ];
     const provider: DecisionProvider = {
@@ -125,26 +133,45 @@ describe('focused authorization evaluation metrics', () => {
       'accepted_create_plan', 'accepted_create_plan', 'accepted_fallback',
       'abstained', 'unavailable', 'accepted_fallback',
     ]);
-    expect(report.metrics.gateOutcomes).toEqual({
+    expect(report.metrics.global.gateOutcomes).toEqual({
       accepted_create_plan: 2, accepted_fallback: 2, abstained: 1, unavailable: 1,
     });
-    expect(report.metrics).toMatchObject({
+    expect(report.metrics.global).toMatchObject({
       fixtureCaseCount: 6, evaluationEligibleCaseCount: 6, rejectedBeforeProviderCount: 0,
     });
-    expect(report.metrics.coverage).toEqual({ numerator: 4, denominator: 6, value: 4 / 6 });
-    expect(report.metrics.selectiveAccuracy).toEqual({ numerator: 2, denominator: 4, value: 0.5 });
-    expect(report.metrics.falseAutoCreatePlanCount).toBe(1);
-    expect(report.metrics.byClass.create_plan.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
-    expect(report.metrics.byClass.create_plan.recall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
-    expect(report.metrics.byClass.fallback.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
-    expect(report.metrics.byClass.fallback.recall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
-    expect(report.metrics.abstentionRate).toEqual({ numerator: 1, denominator: 6, value: 1 / 6 });
-    expect(report.metrics.unavailableRate).toEqual({ numerator: 1, denominator: 6, value: 1 / 6 });
-    expect(report.metrics.latencyMs).toEqual({ sampleCount: 6, p50: 30, p95: 60, p99: 60 });
-    expect(report.metrics.reportedCostUsd).toMatchObject({
+    expect(report.metrics.global.coverage).toEqual({ numerator: 4, denominator: 6, value: 4 / 6 });
+    expect(report.metrics.global.selectiveAccuracy).toEqual({ numerator: 2, denominator: 4, value: 0.5 });
+    expect(report.metrics.global.falseAutoCreatePlanCount).toBe(1);
+    expect(report.metrics.global.byClass.create_plan.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
+    expect(report.metrics.global.byClass.create_plan.recall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
+    expect(report.metrics.global.byClass.fallback.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
+    expect(report.metrics.global.byClass.fallback.recall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
+    expect(report.metrics.global.abstentionRate).toEqual({ numerator: 1, denominator: 6, value: 1 / 6 });
+    expect(report.metrics.global.unavailableRate).toEqual({ numerator: 1, denominator: 6, value: 1 / 6 });
+    expect(report.metrics.global.latencyMs).toEqual({
+      evaluatedOnly: { sampleCount: 5, p50: 30, p95: 60, p99: 60 },
+      allSamples: { sampleCount: 6, p50: 30, p95: 100, p99: 100 },
+    });
+    expect(report.metrics.global.reportedCostUsd).toMatchObject({
       reportedCaseCount: 5, unknownCaseCount: 1, completeTotal: null,
     });
-    expect(report.metrics.reportedCostUsd.knownSubtotal).toBeCloseTo(0.18);
+    expect(report.metrics.global.reportedCostUsd.knownSubtotal).toBeCloseTo(0.18);
+    expect(report).toMatchObject({
+      fixtureSetVersion: FOCUSED_AUTHORIZATION_SYNTHETIC_FIXTURE_SET_VERSION,
+      catalogVersion: JEV_CATALOG_VERSION,
+      gateVersion: JEV_GATE_VERSION,
+    });
+    expect(report.cases[0]).toMatchObject({
+      choice: 'create_plan', confidence: 0.999,
+      probabilities: { create_plan: 0.999, fallback: 0.001 },
+      conditionChange: 0.001, independentMeaning: 0.001,
+      requestedModel: 'mock-jev', servedModel: 'mock-jev',
+    });
+    expect(report.cases[4]).toMatchObject({
+      choice: null, confidence: null, probabilities: null,
+      conditionChange: null, independentMeaning: null,
+      requestedModel: null, servedModel: null,
+    });
 
     const unknownCostProvider: DecisionProvider = {
       evaluate: async () => ({
@@ -154,8 +181,46 @@ describe('focused authorization evaluation metrics', () => {
     const unknownCostReport = await evaluateFocusedAuthorizationCandidates(
       [fixture('unknown-cost', 'fallback')], unknownCostProvider,
     );
-    expect(unknownCostReport.metrics.reportedCostUsd).toEqual({
+    expect(unknownCostReport.metrics.global.reportedCostUsd).toEqual({
       reportedCaseCount: 0, unknownCaseCount: 1, knownSubtotal: null, completeTotal: null,
+    });
+    expect(unknownCostReport.metrics.global.latencyMs.evaluatedOnly)
+      .toEqual({ sampleCount: 0, p50: null, p95: null, p99: null });
+  });
+
+  it('summarizes the same gate metrics globally and by split and layer', async () => {
+    const evaluations = [evaluated('create_plan', 10, null), evaluated('fallback', 20, null)];
+    const provider: DecisionProvider = {
+      evaluate: async () => {
+        const result = evaluations.shift();
+        if (!result) throw new Error('Unexpected mock provider call.');
+        return result;
+      },
+    };
+    const candidates: FocusedAuthorizationSyntheticCandidate[] = [
+      fixture('tuning-create', 'create_plan'),
+      { ...fixture('holdout-fallback', 'fallback'), split: 'holdout', layer: 'negation' },
+      {
+        ...fixture('holdout-rejected', 'fallback'), split: 'holdout', layer: 'abnormal_values',
+        currentUserText: '',
+      },
+    ];
+
+    const report = await evaluateFocusedAuthorizationCandidates(candidates, provider);
+
+    expect(report.metrics.global).toMatchObject({
+      fixtureCaseCount: 3, evaluationEligibleCaseCount: 2, rejectedBeforeProviderCount: 1,
+    });
+    expect(report.metrics.bySplit.tuning).toMatchObject({
+      fixtureCaseCount: 1, evaluationEligibleCaseCount: 1, rejectedBeforeProviderCount: 0,
+    });
+    expect(report.metrics.bySplit.holdout).toMatchObject({
+      fixtureCaseCount: 2, evaluationEligibleCaseCount: 1, rejectedBeforeProviderCount: 1,
+    });
+    expect(report.metrics.byLayer.plain_authorization.gateOutcomes.accepted_create_plan).toBe(1);
+    expect(report.metrics.byLayer.negation.gateOutcomes.accepted_fallback).toBe(1);
+    expect(report.metrics.byLayer.abnormal_values).toMatchObject({
+      fixtureCaseCount: 1, evaluationEligibleCaseCount: 0, rejectedBeforeProviderCount: 1,
     });
   });
 });

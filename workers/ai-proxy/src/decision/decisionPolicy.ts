@@ -47,6 +47,10 @@ export function gateDecision(result: DecisionEvaluation): DecisionGate {
   return { status: 'accepted', decision: 'create_plan' };
 }
 
+// TypeSafe documents that jev-1.13 does not treat state as hostile. Calling
+// conversation fields "untrusted" below is advisory prompt wording, not an
+// injection boundary. Safety comes from deterministic route eligibility and
+// containment: this gate can only request an unsaved draft, never approval/save.
 export const AUTHORIZATION_QUESTIONS = {
   authorization: {
     type: 'choice',

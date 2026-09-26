@@ -29,7 +29,12 @@ it('prints an opt-in Jev shadow evaluation without treating synthetic labels as 
   console.log(JSON.stringify({
     event: 'jev_shadow_evaluation_completed',
     fixtureStatus: report.fixtureStatus,
-    metrics: report.metrics,
+    fixtureSetVersion: report.fixtureSetVersion,
+    catalogVersion: report.catalogVersion,
+    gateVersion: report.gateVersion,
+    global: report.metrics.global,
+    bySplit: report.metrics.bySplit,
+    byLayer: report.metrics.byLayer,
   }, null, 2));
   expect(report.cases).toHaveLength(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES.length);
 }, 180_000);

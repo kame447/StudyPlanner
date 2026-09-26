@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import { JEV_MODEL } from './decisionPolicy';
 import { observeAiProxyRequest } from '../aiProxyRequestObserver';
+import { dispatchFocusedAuthorization } from './focusedAuthorizationDispatch';
+import type { DecisionProvider } from './decisionProvider';
 
 const context = {
   purpose: 'focused_authorization', requestId: 'request-fixture-305', inputRevision: 7,
   previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
   state: { currentUserText: 'private-user-text', lastAssistantMessage: 'private-assistant-context' },
-};
+} as const;
 const calls: string[] = [];
 let jevResponse: () => Promise<Response>;
 let quotaAllowed = true;
@@ -131,6 +133,40 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(pending).toHaveLength(0);
     expect(calls.filter((url) => url.endsWith('/api/alpha/decisions'))).toHaveLength(0);
     expect(console.info).not.toHaveBeenCalledWith('[AI Decision]', expect.anything());
+  });
+
+  it('does not require an OpenRouter key from an injected DecisionProvider', async () => {
+    const pending: Promise<unknown>[] = [];
+    const provider: DecisionProvider = {
+      evaluate: vi.fn(async () => ({
+        status: 'evaluated', decision: 'create_plan', confidence: 0.999,
+        probabilities: { create_plan: 1, fallback: 0 },
+        conditionChange: 0, independentMeaning: 0,
+        metadata: {
+          provider: 'typesafe', requestedModel: 'injected-test-model', servedModel: 'injected-test-model',
+          latencyMs: 3, inputTokens: null, outputTokens: null, costUsd: null,
+          requestBytes: 10, responseBytes: 10,
+        },
+      })),
+    };
+
+    const response = await dispatchFocusedAuthorization({
+      context,
+      env: { JEV_MODE: 'shadow', JEV_CANARY_PERCENT: '0' },
+      firebaseUid: 'user-fixture',
+      executionContext: { waitUntil: (promise) => pending.push(promise) },
+      signal: new AbortController().signal,
+      fallback: async () => Response.json({ content: '{"decision":"fallback"}' }),
+      respond: (decision) => Response.json({ content: JSON.stringify({ decision }) }),
+      provider,
+    });
+
+    expect(await response.json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    await Promise.all(pending);
+    expect(provider.evaluate).toHaveBeenCalledTimes(1);
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      provider: 'typesafe', outcome: 'shadow', choice: 'create_plan',
+    }));
   });
 
   it('telemetry failure cannot replace the baseline response in shadow', async () => {

@@ -20,6 +20,13 @@ export interface ClassMetrics {
   recall: RatioMetric;
 }
 
+export interface LatencyPercentiles {
+  sampleCount: number;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
 export interface FocusedAuthorizationEvaluationMetrics {
   fixtureCaseCount: number;
   evaluationEligibleCaseCount: number;
@@ -32,10 +39,8 @@ export interface FocusedAuthorizationEvaluationMetrics {
   abstentionRate: RatioMetric;
   unavailableRate: RatioMetric;
   latencyMs: {
-    sampleCount: number;
-    p50: number | null;
-    p95: number | null;
-    p99: number | null;
+    evaluatedOnly: LatencyPercentiles;
+    allSamples: LatencyPercentiles;
   };
   reportedCostUsd: {
     reportedCaseCount: number;
@@ -60,6 +65,15 @@ function percentile(values: readonly number[], quantile: number): number | null 
   return sorted[Math.max(0, Math.ceil(quantile * sorted.length) - 1)];
 }
 
+function latencyPercentiles(values: readonly number[]): LatencyPercentiles {
+  return {
+    sampleCount: values.length,
+    p50: percentile(values, 0.5),
+    p95: percentile(values, 0.95),
+    p99: percentile(values, 0.99),
+  };
+}
+
 export function summarizeFocusedAuthorizationEvaluation(
   samples: readonly FocusedAuthorizationEvaluationSample[],
   rejectedBeforeProviderCount = 0,
@@ -75,13 +89,17 @@ export function summarizeFocusedAuthorizationEvaluation(
   let falseAutoCreatePlanCount = 0;
   let knownCostSubtotal = 0;
   let reportedCostCount = 0;
-  const latencies: number[] = [];
+  const evaluatedLatencies: number[] = [];
+  const allLatencies: number[] = [];
 
   for (const sample of samples) {
     expectedCounts[sample.expected] += 1;
     const gate = gateDecision(sample.evaluation);
     gateOutcomes[outcome(gate)] += 1;
-    latencies.push(sample.evaluation.metadata.latencyMs);
+    allLatencies.push(sample.evaluation.metadata.latencyMs);
+    if (sample.evaluation.status === 'evaluated') {
+      evaluatedLatencies.push(sample.evaluation.metadata.latencyMs);
+    }
     const cost = sample.evaluation.metadata.costUsd;
     if (cost !== null) {
       reportedCostCount += 1;
@@ -121,10 +139,8 @@ export function summarizeFocusedAuthorizationEvaluation(
     abstentionRate: ratio(gateOutcomes.abstained, samples.length),
     unavailableRate: ratio(gateOutcomes.unavailable, samples.length),
     latencyMs: {
-      sampleCount: latencies.length,
-      p50: percentile(latencies, 0.5),
-      p95: percentile(latencies, 0.95),
-      p99: percentile(latencies, 0.99),
+      evaluatedOnly: latencyPercentiles(evaluatedLatencies),
+      allSamples: latencyPercentiles(allLatencies),
     },
     reportedCostUsd: {
       reportedCaseCount: reportedCostCount,
