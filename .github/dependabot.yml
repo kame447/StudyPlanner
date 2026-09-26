@@ -9,6 +9,10 @@ updates:
       timezone: Asia/Tokyo
     open-pull-requests-limit: 5
     groups:
+      vitest:
+        patterns:
+          - vitest
+          - '@vitest/*'
       development-minor-patch:
         dependency-type: development
         update-types:
