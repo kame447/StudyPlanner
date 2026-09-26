@@ -2,6 +2,10 @@ import {
   isFocusedAuthorizationDecisionContext,
   type FocusedAuthorizationDecisionContext,
 } from './focusedAuthorizationDecision';
+import {
+  isTemporalScopeRepairDecisionContext,
+  type TemporalScopeRepairDecisionContext,
+} from './temporalScopeRepairDecision';
 
 export const FOCUSED_CONTEXTUAL_QUESTION_CODES = [
   'missing_effort_estimate',
@@ -38,7 +42,8 @@ export interface FocusedContextualDecisionContext {
 
 export type FocusedDecisionContext =
   | FocusedAuthorizationDecisionContext
-  | FocusedContextualDecisionContext;
+  | FocusedContextualDecisionContext
+  | TemporalScopeRepairDecisionContext;
 
 export type FocusedContextualDecisionResponse = {
   decision: 'quantity_role_answer';
@@ -132,5 +137,6 @@ export function isFocusedContextualDecisionContext(
 
 export function isFocusedDecisionContext(value: unknown): value is FocusedDecisionContext {
   return isFocusedAuthorizationDecisionContext(value)
-    || isFocusedContextualDecisionContext(value);
+    || isFocusedContextualDecisionContext(value)
+    || isTemporalScopeRepairDecisionContext(value);
 }
