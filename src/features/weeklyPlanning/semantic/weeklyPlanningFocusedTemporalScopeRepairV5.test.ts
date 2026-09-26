@@ -6,6 +6,7 @@ import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
   applyFocusedTemporalScopeRepairV5,
   createFocusedTemporalScopeRepairDecisionContextV5,
   createFocusedTemporalScopeRepairMessagesV5,
@@ -152,6 +153,10 @@ const errors = [
 ];
 
 describe('Stable V5 focused temporal-scope repair', () => {
+  it('reserves reasoning headroom before Luna emits the strict decision', () => {
+    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(320);
+  });
+
   it('extracts only the exact invalid temporal fact selected by validation', () => {
     const candidate = readFocusedTemporalScopeRepairCandidateV5({
       rawResponse: invalidResponse(),

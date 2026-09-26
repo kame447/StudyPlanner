@@ -8,7 +8,7 @@ export interface TemporalScopeRepairEvaluationRecord {
   caseClass: TemporalScopeRepairCaseClass | 'fault';
   labelSource: 'synthetic_unreviewed' | 'fault_injection';
   expected: 'plan_unavailable' | 'uncertain';
-  route: 'jev_first' | 'luna_only';
+  route: 'jev_first' | 'luna_only_fixed' | 'luna_only_legacy60';
   providerStatus: 'evaluated' | 'unavailable' | 'not_called';
   providerReason: string | null;
   providerHttpStatus: number | null;
@@ -18,9 +18,11 @@ export interface TemporalScopeRepairEvaluationRecord {
   conditionChange: number | null;
   independentMeaning: number | null;
   gate: TemporalScopeRepairDecisionGate | null;
+  caseFailure: string | null;
   lunaCalled: boolean;
+  lunaMaxCompletionTokens: number;
   lunaStatus: number | null;
-  finalDecision: 'plan_unavailable' | 'uncertain';
+  finalDecision: 'plan_unavailable' | 'uncertain' | null;
   unexpectedResponseKeys: string[];
   unexpectedDecisionKeys: string[];
   totalLatencyMs: number;

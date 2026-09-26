@@ -7,22 +7,22 @@ export const TEMPORAL_SCOPE_REPAIR_JEV_MODEL = JEV_MODEL;
 export const TEMPORAL_SCOPE_REPAIR_CATALOG_VERSION =
   'temporal-scope-repair-2026-09-27-v1';
 export const TEMPORAL_SCOPE_REPAIR_GATE_VERSION =
-  'temporal-scope-repair-conservative-v1';
+  'temporal-scope-repair-conservative-v2-tuning48';
 export const TEMPORAL_SCOPE_REPAIR_JEV_TIMEOUT_MS = 1_500;
 export const TEMPORAL_SCOPE_REPAIR_REQUEST_TIMEOUT_MS = 85_000;
 
 export const TEMPORAL_SCOPE_REPAIR_GATE_THRESHOLDS = {
   planUnavailable: {
-    confidence: 0.97,
-    probability: 0.99,
-    conditionChangeMaximum: 0.05,
-    independentMeaningMaximum: 0.05,
+    confidence: 0.85,
+    probability: 0.9,
+    conditionChangeMaximum: 0.6,
+    independentMeaningMaximum: 0.65,
   },
   uncertain: {
     confidence: 0.8,
     probability: 0.85,
-    conditionChangeMaximum: 0.4,
-    independentMeaningMaximum: 0.6,
+    conditionChangeMaximum: 0.9,
+    independentMeaningMaximum: 0.95,
   },
 } as const;
 

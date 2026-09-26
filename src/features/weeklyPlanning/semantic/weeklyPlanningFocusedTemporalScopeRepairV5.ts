@@ -7,7 +7,11 @@ import {
   type TemporalScopeRepairDecisionContext,
 } from '../../../../shared/temporalScopeRepairDecision';
 
-export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = 60;
+// GPT-5.6 Luna uses completion tokens for reasoning before emitting the tiny
+// structured answer. Sixty tokens can therefore return HTTP 200 with no
+// content. This matches the established focused contextual-repair budget and
+// remains well below the Worker-wide output ceiling.
+export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = 320;
 
 export const FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',

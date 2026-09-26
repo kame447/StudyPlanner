@@ -52,10 +52,10 @@ describe('temporal-scope repair Jev gate', () => {
     expect(gateTemporalScopeRepairDecision(evaluated('plan_unavailable')))
       .toEqual({ status: 'accepted', decision: 'plan_unavailable' });
     expect(gateTemporalScopeRepairDecision(evaluated('plan_unavailable', {
-      confidence: 0.969,
+      confidence: 0.849,
     }))).toEqual({ status: 'abstained', reason: 'uncertain' });
     expect(gateTemporalScopeRepairDecision(evaluated('plan_unavailable', {
-      selectedProbability: 0.989,
+      selectedProbability: 0.899,
     }))).toEqual({ status: 'abstained', reason: 'uncertain' });
   });
 
@@ -63,17 +63,17 @@ describe('temporal-scope repair Jev gate', () => {
     expect(gateTemporalScopeRepairDecision(evaluated('uncertain', {
       confidence: 0.8,
       selectedProbability: 0.85,
-      conditionChange: 0.4,
-      independentMeaning: 0.6,
+      conditionChange: 0.9,
+      independentMeaning: 0.95,
     }))).toEqual({ status: 'accepted', decision: 'uncertain' });
   });
 
   it('abstains on conflicting auxiliary heads for either choice', () => {
     expect(gateTemporalScopeRepairDecision(evaluated('plan_unavailable', {
-      conditionChange: 0.051,
+      conditionChange: 0.601,
     }))).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
     expect(gateTemporalScopeRepairDecision(evaluated('uncertain', {
-      independentMeaning: 0.601,
+      independentMeaning: 0.951,
     }))).toEqual({ status: 'abstained', reason: 'conflicting_heads' });
   });
 

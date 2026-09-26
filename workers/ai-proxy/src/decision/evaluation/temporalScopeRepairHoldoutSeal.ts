@@ -12,6 +12,7 @@ export const TEMPORAL_SCOPE_REPAIR_PRE_TUNING_SEAL = {
 // mismatch and is separately disabled after its single allowed run.
 export const TEMPORAL_SCOPE_REPAIR_HOLDOUT_SEAL = {
   ...TEMPORAL_SCOPE_REPAIR_PRE_TUNING_SEAL,
+  gateSha256: 'a5c07054ced1a030e55b59d5c1a7f7775a084ac4c95c167131c08acf36998ea5',
   consumed: false,
 } as const;
 

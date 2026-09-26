@@ -145,6 +145,12 @@ function summarizeRoute(records) {
       caseIds: falseAccepts.map((record) => record.caseId),
     },
     syntheticLabelAgreement: { count: agreements.length, denominator: semantic.length },
+    caseFailures: records.filter((record) => record.caseFailure !== null).map((record) => ({
+      caseId: record.caseId,
+      route: record.route,
+      failure: record.caseFailure,
+      lunaStatus: record.lunaStatus,
+    })),
     providerReasons: Object.fromEntries([...new Set(records.map((record) =>
       record.providerReason).filter(Boolean))].map((reason) => [reason, records.filter((record) =>
       record.providerReason === reason).length])),
@@ -159,17 +165,24 @@ function summarizeRoute(records) {
 function summarize(split, records) {
   if (split !== 'holdout') return summarizeRoute(records);
   const jevFirst = records.filter((record) => record.route === 'jev_first');
-  const lunaOnly = records.filter((record) => record.route === 'luna_only');
+  const lunaOnlyFixed = records.filter((record) => record.route === 'luna_only_fixed');
+  const lunaOnlyLegacy60 = records.filter((record) => record.route === 'luna_only_legacy60');
   const jevSummary = summarizeRoute(jevFirst);
-  const lunaSummary = summarizeRoute(lunaOnly);
+  const lunaFixedSummary = summarizeRoute(lunaOnlyFixed);
+  const lunaLegacy60Summary = summarizeRoute(lunaOnlyLegacy60);
   return {
     pairedCases: jevFirst.length,
     jevFirst: jevSummary,
-    lunaOnly: lunaSummary,
+    lunaOnlyFixed: lunaFixedSummary,
+    lunaOnlyLegacy60: lunaLegacy60Summary,
     pairedObservation: {
       jevFirstFalsePlanUnavailable: jevSummary.planUnavailableFalseAccept.cases,
-      lunaOnlyFalsePlanUnavailable: lunaSummary.planUnavailableFalseAccept.cases,
-      note: 'One paired run on synthetic_unreviewed labels; not a broad no-degradation claim.',
+      lunaOnlyFixedFalsePlanUnavailable: lunaFixedSummary.planUnavailableFalseAccept.cases,
+      lunaOnlyLegacy60FalsePlanUnavailable: lunaLegacy60Summary.planUnavailableFalseAccept.cases,
+      note: [
+        'One paired run on synthetic_unreviewed labels; not a broad no-degradation claim.',
+        'The legacy-60 comparison documents the pre-existing Luna defect and is not credited to Jev.',
+      ].join(' '),
     },
   };
 }
@@ -298,7 +311,7 @@ function candidate(item) {
   };
 }
 
-async function runCase(item, env, requestSignal, lunaOnly) {
+async function runCase(item, env, requestSignal, route) {
   const startedAt = Date.now();
   const context = {
     purpose: 'temporal_scope_repair',
@@ -307,6 +320,10 @@ async function runCase(item, env, requestSignal, lunaOnly) {
     state: item.state,
   };
   const messages = createFocusedTemporalScopeRepairMessagesV5(candidate(item));
+  const lunaOnly = route !== 'jev_first';
+  const lunaMaxCompletionTokens = route === 'luna_only_legacy60'
+    ? 60
+    : FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS;
   let evaluation = null;
   let lunaCalled = false;
   let lunaStatus = null;
@@ -339,7 +356,7 @@ async function runCase(item, env, requestSignal, lunaOnly) {
         model: 'gpt-5.6-luna',
         messages,
         response_format: FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
-        max_completion_tokens: FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
+        max_completion_tokens: lunaMaxCompletionTokens,
       }),
     });
     lunaLatencyMs = Math.max(0, Date.now() - lunaStartedAt);
@@ -363,15 +380,22 @@ async function runCase(item, env, requestSignal, lunaOnly) {
     }),
     provider,
   });
-  if (!response.ok) throw new Error('Temporal dispatch failed.');
-  const proxyPayload = await response.json();
-  const final = JSON.parse(String(proxyPayload.content ?? ''));
+  const proxyPayload = await response.json().catch(() => ({}));
+  let final = null;
+  try {
+    const parsed = JSON.parse(String(proxyPayload.content ?? ''));
+    if (parsed && typeof parsed === 'object') final = parsed;
+  } catch {
+    // Preserve only the typed failure below; never surface provider text.
+  }
   const gate = evaluation ? gateTemporalScopeRepairDecision(evaluation) : null;
   const allowedResponseKeys = new Set(['content', 'decisionContext', 'usage']);
   const allowedDecisionKeys = new Set(['decision']);
-  if (final.decision !== 'plan_unavailable' && final.decision !== 'uncertain') {
-    throw new Error('Temporal decision was outside the closed set.');
-  }
+  const finalDecision = final?.decision === 'plan_unavailable' || final?.decision === 'uncertain'
+    ? final.decision : null;
+  const caseFailure = !response.ok
+    ? 'dispatch_http_' + response.status
+    : finalDecision === null ? 'invalid_final_decision' : null;
   return {
     caseId: item.id,
     group: item.group,
@@ -379,7 +403,7 @@ async function runCase(item, env, requestSignal, lunaOnly) {
     caseClass: item.caseClass,
     labelSource: item.labelSource,
     expected: item.expected,
-    route: lunaOnly ? 'luna_only' : 'jev_first',
+    route,
     providerStatus: evaluation?.status ?? 'not_called',
     providerReason: evaluation?.status === 'unavailable' ? evaluation.reason : null,
     providerHttpStatus: evaluation?.status === 'unavailable' && evaluation.reason === 'http'
@@ -391,11 +415,15 @@ async function runCase(item, env, requestSignal, lunaOnly) {
     conditionChange: evaluation?.status === 'evaluated' ? evaluation.conditionChange : null,
     independentMeaning: evaluation?.status === 'evaluated' ? evaluation.independentMeaning : null,
     gate,
+    caseFailure,
     lunaCalled,
+    lunaMaxCompletionTokens,
     lunaStatus,
-    finalDecision: final.decision,
+    finalDecision,
     unexpectedResponseKeys: Object.keys(proxyPayload).filter((key) => !allowedResponseKeys.has(key)),
-    unexpectedDecisionKeys: Object.keys(final).filter((key) => !allowedDecisionKeys.has(key)),
+    unexpectedDecisionKeys: final
+      ? Object.keys(final).filter((key) => !allowedDecisionKeys.has(key))
+      : ['invalid_decision_payload'],
     totalLatencyMs: Math.max(0, Date.now() - startedAt),
     jevLatencyMs: evaluation?.metadata?.latencyMs ?? null,
     jevInputTokens: evaluation?.metadata?.inputTokens ?? null,
@@ -428,12 +456,12 @@ export default {
     if (!body || typeof body !== 'object'
       || !Number.isSafeInteger(body.index)
       || body.index < 0 || body.index >= cases.length
-      || typeof body.lunaOnly !== 'boolean'
-      || Object.keys(body).some((key) => key !== 'index' && key !== 'lunaOnly')) {
+      || !['jev_first', 'luna_only_fixed', 'luna_only_legacy60'].includes(body.route)
+      || Object.keys(body).some((key) => key !== 'index' && key !== 'route')) {
       return new Response('Invalid request', { status: 400 });
     }
     try {
-      return Response.json(await runCase(cases[body.index], env, request.signal, body.lunaOnly), {
+      return Response.json(await runCase(cases[body.index], env, request.signal, body.route), {
         headers: { 'Cache-Control': 'no-store' },
       });
     } catch {
@@ -510,18 +538,20 @@ async function main() {
     assert.ok(Number.isSafeInteger(readiness.caseCount) && readiness.caseCount > 0);
 
     const records = [];
-    const routes = split === 'holdout' ? [false, true] : [false];
-    for (const lunaOnly of routes) {
+    const routes = split === 'holdout'
+      ? ['jev_first', 'luna_only_fixed', 'luna_only_legacy60']
+      : ['jev_first'];
+    for (const route of routes) {
       for (let index = 0; index < readiness.caseCount; index += 1) {
         const response = await worker.fetch('/case', {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index, lunaOnly }),
+          body: JSON.stringify({ index, route }),
           signal: AbortSignal.timeout(95_000),
         });
         if (response.status !== 200) {
           throw new Error(
-            `Temporal case index ${index} (${lunaOnly ? 'luna_only' : 'jev_first'}) failed with status ${response.status}.`,
+            `Temporal case index ${index} (${route}) failed with status ${response.status}.`,
           );
         }
         records.push(await response.json());
@@ -531,7 +561,7 @@ async function main() {
       }
     }
     const result = {
-      schemaVersion: 'temporal-scope-repair-evidence-v1',
+      schemaVersion: 'temporal-scope-repair-evidence-v2',
       generatedAt: new Date().toISOString(),
       split,
       fingerprints: readiness.fingerprints,
