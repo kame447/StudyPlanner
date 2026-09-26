@@ -4,7 +4,7 @@ Status: active
 Owner: Issue #305 / #333 / #335
 Branch: `feat/issue-305-jev-first-user-context-routing`
 Base: `d3623479e07a6870f23c54a7631fe2761a408efa`
-Latest durable checkpoint: `2acc516a7ad2f0f75bff9d6543d1884e96df656f`
+Latest durable checkpoint: `dbc0861de6a691cde9fd200ec077c68103bd7a37`
 Updated: 2026-09-27
 
 ## 目的と責任境界
@@ -81,6 +81,8 @@ retry / repair は今回の settings interpreter に存在しない。今後追�
 - exact checkpoint 後の local `npm run verify` は green: typecheck、583 test files / 3,024 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）、production build 2,215 modules。runner の `node --check` も green。build の既存 dynamic/static import と chunk-size warning 以外に失敗なし。
 - remote runner がブラウザ用 AI client / Firebase の実行時依存を引き込まないよう、既存 Luna schema・prompt・strict parser・message builder・固定 owner 案内を副作用のない contract module へ抽出した。従来 module は同じ public symbol を再 export するため、app 側の契約は不変。
 - contract 抽出後の focused verification は 11 files / 126 tests green（user-context routing、Luna evaluation、Worker containment、#335 security regression を含む）。`npm run typecheck` と production build 2,216 modules も green。既存 build warning 以外に失敗なし。
+- remote runner は Luna-only を始める前に holdout の消費済み状態・case 配列・policy/corpus hash・manifest 件数を検証する。fault probe は各 case で実 Luna の呼出し、評価成功、final route、HTTP 200 を assertion し、満たさなければ evidence を書かない。外部 owner の誤案内と呼出し削減の取りこぼしも case / conversation group の両方で CP 上限を集計する。
+- 上記 guard と集計変更後の exact tree で full test は green: 583 test files / 3,026 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）。runner `node --check` と `npm run typecheck` も再度 green。
 - remote dev は Wrangler OAuth の期限切れで、親がユーザーの再ログイン待ち。親から再開通知が来るまで tuning / holdout / paired / fault probe は実行しない。
 
 次の具体作業:

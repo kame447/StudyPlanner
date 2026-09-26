@@ -515,11 +515,19 @@ export function summarizeUserContextRouting(
       caseLevel: countBound(security.filter(falseAccept).length, security.length),
       conversationGroupLevel: groupErrorBound(security, falseAccept),
     },
-    wrongExternalGuide: countBound(wrongExternalGuide.length, external.length),
-    externalMissedReduction: countBound(
-      external.filter((value) => value.luna.called).length,
-      external.length,
-    ),
+    wrongExternalGuide: {
+      caseLevel: countBound(wrongExternalGuide.length, external.length),
+      conversationGroupLevel: groupErrorBound(external, (value) =>
+        value.route === 'jev_external_owner'
+        && value.final.targetDomain !== value.expectedTargetDomain),
+    },
+    externalMissedReduction: {
+      caseLevel: countBound(
+        external.filter((value) => value.luna.called).length,
+        external.length,
+      ),
+      conversationGroupLevel: groupErrorBound(external, (value) => value.luna.called),
+    },
     provisionalLabelDisagreement: {
       caseLevel: countBound(finalErrors.length, cases.length),
       conversationGroupLevel: groupErrorBound(cases, (value) =>

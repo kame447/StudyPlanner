@@ -176,6 +176,14 @@ describe('user-context routing evaluation', () => {
       occurrences: 0,
       sampleCount: 1,
     });
+    expect(summary.wrongExternalGuide).toMatchObject({
+      caseLevel: { occurrences: 0, sampleCount: 0 },
+      conversationGroupLevel: { occurrences: 0, sampleCount: 0 },
+    });
+    expect(summary.externalMissedReduction).toMatchObject({
+      caseLevel: { occurrences: 0, sampleCount: 0 },
+      conversationGroupLevel: { occurrences: 0, sampleCount: 0 },
+    });
     expect(summary.generativeLlmCalls).toBe(1);
   });
 
@@ -203,6 +211,36 @@ describe('user-context routing evaluation', () => {
         pricingVersion: expect.any(String),
         minimumCostMicros: expect.any(Number),
         maximumCostMicros: expect.any(Number),
+      },
+    });
+  });
+
+  it('reports external routing quality at case and conversation-group levels', async () => {
+    const wrongGuide = await evaluateUserContextRoutingCase({
+      candidate: {
+        ...candidate('wrong-guide', 'external_clear', 'external_owner', 'bookshelf'),
+        conversationGroupId: 'external-quality-group',
+      },
+      provider: provider(evaluated('schedule')),
+      luna: luna('bookshelf'),
+    });
+    const missedReduction = await evaluateUserContextRoutingCase({
+      candidate: {
+        ...candidate('missed-reduction', 'external_clear', 'external_owner', 'bookshelf'),
+        conversationGroupId: 'external-quality-group',
+      },
+      provider: provider(evaluated('user_context')),
+      luna: luna('bookshelf'),
+    });
+
+    expect(summarizeUserContextRouting([wrongGuide, missedReduction])).toMatchObject({
+      wrongExternalGuide: {
+        caseLevel: { occurrences: 1, sampleCount: 2 },
+        conversationGroupLevel: { occurrences: 1, sampleCount: 1 },
+      },
+      externalMissedReduction: {
+        caseLevel: { occurrences: 1, sampleCount: 2 },
+        conversationGroupLevel: { occurrences: 1, sampleCount: 1 },
       },
     });
   });

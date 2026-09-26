@@ -247,11 +247,21 @@ async function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const outputPath = resolve(root, OUTPUTS[options.suite]);
   const sealPath = resolve(root, OUTPUTS.holdout);
-  const seal = options.suite === 'holdout' ? JSON.parse(await readFile(sealPath, 'utf8')) : null;
+  const requiresHoldoutArtifact = options.suite === 'holdout'
+    || options.suite === 'luna-baseline';
+  const holdoutArtifact = requiresHoldoutArtifact
+    ? JSON.parse(await readFile(sealPath, 'utf8'))
+    : null;
+  const seal = options.suite === 'holdout' ? holdoutArtifact : null;
   if (seal) {
     assert.equal(seal.status, 'sealed_unconsumed', 'Holdout is not sealed and unconsumed.');
     assert.equal(seal.consumed, false, 'Holdout has already been consumed.');
     assert.equal(seal.createdBeforeTuning, true, 'Holdout was not sealed before tuning.');
+  }
+  if (options.suite === 'luna-baseline') {
+    assert.equal(holdoutArtifact?.status, 'consumed', 'Run the sealed Jev-first holdout first.');
+    assert.equal(holdoutArtifact?.consumed, true, 'The Jev-first holdout is not marked consumed.');
+    assert.ok(Array.isArray(holdoutArtifact?.cases), 'Consumed holdout cases are unavailable.');
   }
 
   const directory = await mkdtemp(join(tmpdir(), 'studyplanner-jev-user-context-'));
@@ -306,10 +316,10 @@ async function main() {
     const fingerprintResponse = await worker.fetch('/fingerprints', { headers });
     assert.equal(fingerprintResponse.status, 200);
     const fingerprints = await fingerprintResponse.json();
-    if (seal) assert.deepEqual(fingerprints, {
-      catalogSha256: seal.policy.catalogSha256,
-      gateSha256: seal.policy.gateSha256,
-      corpusSha256: seal.policy.corpusSha256,
+    if (holdoutArtifact) assert.deepEqual(fingerprints, {
+      catalogSha256: holdoutArtifact.policy.catalogSha256,
+      gateSha256: holdoutArtifact.policy.gateSha256,
+      corpusSha256: holdoutArtifact.policy.corpusSha256,
     }, 'Holdout policy/corpus fingerprint mismatch.');
 
     let cases = [];
@@ -322,7 +332,13 @@ async function main() {
       ];
       for (const id of faultIds) {
         failureStage = `fault:${id}`;
-        cases.push(await postJson(worker, '/fault', headers, { id }));
+        const result = await postJson(worker, '/fault', headers, { id });
+        assert.equal(result.luna?.called, true, `Luna fallback was not called for ${id}.`);
+        assert.equal(result.luna?.status, 'evaluated', `Luna fallback failed for ${id}.`);
+        assert.equal(result.final?.status, 'evaluated', `Final routing failed for ${id}.`);
+        assert.equal(result.final?.route, 'luna', `Final routing bypassed Luna for ${id}.`);
+        assert.equal(result.final?.httpStatus, 200, `Final Luna response failed for ${id}.`);
+        cases.push(result);
       }
       summary = await postJson(worker, '/summary', headers, { cases });
     } else {
@@ -330,6 +346,9 @@ async function main() {
       const manifestResponse = await worker.fetch(`/manifest?split=${split}`, { headers });
       assert.equal(manifestResponse.status, 200);
       let ids = (await manifestResponse.json()).ids;
+      if (options.suite === 'holdout' || options.suite === 'luna-baseline') {
+        assert.equal(ids.length, holdoutArtifact.caseCount, 'Holdout manifest count mismatch.');
+      }
       if (options.maxCases !== null) ids = ids.slice(0, options.maxCases);
       const endpoint = options.suite === 'luna-baseline' ? '/luna-case' : '/case';
       for (const id of ids) {
@@ -343,8 +362,6 @@ async function main() {
         { cases },
       );
       if (options.suite === 'luna-baseline') {
-        const holdoutArtifact = JSON.parse(await readFile(sealPath, 'utf8'));
-        assert.equal(holdoutArtifact.status, 'consumed', 'Run the sealed Jev-first holdout first.');
         paired = await postJson(worker, '/paired', headers, {
           firstRoute: holdoutArtifact.cases,
           lunaOnly: cases,
