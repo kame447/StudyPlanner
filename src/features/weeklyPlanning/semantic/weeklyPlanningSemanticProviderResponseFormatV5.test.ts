@@ -47,14 +47,19 @@ describe('Stable V5 provider representation schema', () => {
     const absolute = planningWindowBranch('absolute');
     const properties = record(absolute.properties);
 
-    expect(record(properties.start)).toMatchObject({
-      type: 'string',
-      pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-    });
-    expect(record(properties.end)).toMatchObject({
-      type: 'string',
-      pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-    });
+    for (const bound of [record(properties.start), record(properties.end)]) {
+      expect(bound).toMatchObject({
+        type: 'string',
+        pattern: '^(?:\\d{4}-\\d{2}-\\d{2}|--\\d{2}-\\d{2})$',
+      });
+      const pattern = new RegExp(String(bound.pattern));
+      expect(pattern.test('2026-08-25')).toBe(true);
+      // ISO 8601 month-day for a user date stated without a year.
+      expect(pattern.test('--08-25')).toBe(true);
+      expect(pattern.test('8月25日')).toBe(false);
+      expect(pattern.test('08-25')).toBe(false);
+      expect(pattern.test('next_week')).toBe(false);
+    }
   });
 
   it('restricts relative planning windows to canonical finite values', () => {

@@ -114,7 +114,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'single_day_plan_vs_day_off',
     retentionBasis: 'language_interpretation',
     retentionReason: 'A request to create a plan for one day and a statement that the whole day is unavailable can mention the same date but require different semantic objects; schema cannot choose between them.',
-    instruction: 'A request to plan one specific day uses an absolute planningWindow whose start and end are that same date. A statement that a whole day is unavailable for planning is a plan-wide hard unavailable availability declaration for that date with no clock bounds, not a task deadline or a substitute planningWindow.',
+    instruction: 'A request to plan one specific day uses an absolute planningWindow whose start and end are that same date. A statement that a whole day is unavailable for planning is a plan-wide hard unavailable availability declaration for that date with no clock bounds, not a task deadline or a substitute planningWindow. For a planningWindow date whose month and day are stated without a year, write start/end as --MM-DD and let code resolve the year from calendarContext; write YYYY-MM-DD only when the year is stated.',
   },
   {
     id: 'event_occurrence_vs_work_deadline',

@@ -137,6 +137,36 @@ export function isCanonicalDateExpressionSyntax(value: string): boolean {
   );
 }
 
+const CANONICAL_MONTH_DAY_PATTERN = /^--(\d{2})-(\d{2})$/;
+// Four years always contains a leap year, so --02-29 resolves; eight covers century gaps.
+const MAX_MONTH_DAY_YEAR_SEARCH = 8;
+
+/** ISO 8601 month-day notation (--MM-DD): the user stated a month and day but no year. */
+export function isCanonicalMonthDayExpression(value: string): boolean {
+  return CANONICAL_MONTH_DAY_PATTERN.test(value);
+}
+
+/**
+ * Resolves a year-less --MM-DD to its first occurrence on or after notBefore, the same
+ * next-occurrence rule used for canonical weekday expressions. Returns null for an
+ * impossible month-day or an invalid reference date.
+ */
+export function resolveCanonicalMonthDayOnOrAfter(
+  expression: string,
+  notBefore: string,
+): string | null {
+  const match = CANONICAL_MONTH_DAY_PATTERN.exec(expression);
+  if (!match || !isValidCalendarDate(notBefore)) return null;
+  const referenceYear = Number(notBefore.slice(0, 4));
+  for (let offset = 0; offset <= MAX_MONTH_DAY_YEAR_SEARCH; offset += 1) {
+    const year = referenceYear + offset;
+    if (year > 9999) return null;
+    const candidate = `${String(year).padStart(4, '0')}-${match[1]}-${match[2]}`;
+    if (isValidCalendarDate(candidate) && candidate >= notBefore) return candidate;
+  }
+  return null;
+}
+
 export function compareCalendarDates(left: string, right: string): number {
   return left.localeCompare(right);
 }

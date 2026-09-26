@@ -10,7 +10,8 @@ import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
 } from './weeklyPlanningSemanticSchemaV5';
 
-const ISO_DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
+// A year-less user date stays ISO 8601 month-day; code resolves the year from calendarContext.
+const PLANNING_WINDOW_BOUND_PATTERN = '^(?:\\d{4}-\\d{2}-\\d{2}|--\\d{2}-\\d{2})$';
 const AVAILABILITY_REFERENCE_KIND = 'availability_declaration';
 
 const nullableStringSchema = { type: ['string', 'null'] } as const;
@@ -32,8 +33,8 @@ const absolutePlanningWindowSchema = {
     localId: { type: 'string' },
     kind: { type: 'string', const: 'absolute' },
     value: { type: 'string' },
-    start: { type: 'string', pattern: ISO_DATE_PATTERN },
-    end: { type: 'string', pattern: ISO_DATE_PATTERN },
+    start: { type: 'string', pattern: PLANNING_WINDOW_BOUND_PATTERN },
+    end: { type: 'string', pattern: PLANNING_WINDOW_BOUND_PATTERN },
     ...sourceTextProperty,
   },
 } as const;
@@ -205,7 +206,7 @@ function buildProviderResponseFormatV5(): JsonSchemaResponseFormat {
  * The semantic TypeScript model intentionally remains broad enough to decode
  * historical/checkpoint data. New AI responses are stricter: relative date
  * windows select canonical finite values, absolute windows use ISO-shaped
- * start/end values, recurrence days use the canonical weekday:<english-day>
+ * start/end values (YYYY-MM-DD, or --MM-DD when the user stated no year), recurrence days use the canonical weekday:<english-day>
  * vocabulary, and explicit availability corrections may address an existing
  * availability declaration by its public ID. Representation rules therefore
  * live in JSON Schema instead of being repeated in deterministic text parsing.

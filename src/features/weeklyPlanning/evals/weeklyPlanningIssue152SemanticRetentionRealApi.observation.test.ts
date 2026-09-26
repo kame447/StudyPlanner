@@ -129,6 +129,9 @@ async function runTurn(params: {
     ownerId,
     userText: params.userText,
     selectedDate: '2026-08-17',
+    // The captured request clock is the semantic reference date; pin it to the
+    // fixture week so date expectations (8月25日 -> 2026-08-25) do not drift with CI time.
+    now: () => '2026-08-17T00:00:00.000Z',
       plans: [],
       scheduleTemplates: [],
       plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),

@@ -80,7 +80,7 @@ Record<
   },
   planning_window_wire: {
     category: 'canonicalization_bridge',
-    owningInvariant: 'valid interpreted absolute planning-window bounds have one derived canonical wire value',
+    owningInvariant: 'valid interpreted absolute planning-window bounds, including year-less --MM-DD bounds resolved against calendarContext.currentDate, have one derived canonical wire value',
   },
   task_decomposition_uncertainty: {
     category: 'semantic_invariant_derivation',
@@ -152,6 +152,14 @@ interface RawNormalizationResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function calendarReferenceDateV5(
+  publicStateSummary: Record<string, unknown> | undefined,
+): string | null {
+  const context = publicStateSummary?.calendarContext;
+  if (!isRecord(context)) return null;
+  return typeof context.currentDate === 'string' ? context.currentDate : null;
 }
 
 function isEmptyArray(value: unknown): boolean {
@@ -250,7 +258,10 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
   applyStage('empty_semantic_delta_envelope', (value) =>
     normalizeEmptySemanticDeltaEnvelopeV5(value));
   applyStage('planning_window_wire', (value) =>
-    normalizePlanningWindowCanonicalRawV5(value));
+    normalizePlanningWindowCanonicalRawV5(
+      value,
+      calendarReferenceDateV5(params.publicStateSummary),
+    ));
   applyStage('task_decomposition_uncertainty', (value) =>
     normalizeTaskDecompositionUncertaintiesV5(value));
   applyStage('copied_user_context_delta', (value) =>
