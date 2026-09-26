@@ -20,6 +20,9 @@ on:
     paths:
       - '.github/workflows/test-intelligence.yml'
       - 'stryker.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.mjs'
   schedule:
     - cron: '37 19 * * 6'
 
@@ -50,7 +53,12 @@ jobs:
         shell: bash
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
       - name: Install matching Vitest coverage provider without changing manifests
-        run: npm install --no-save --package-lock=false @vitest/coverage-v8@3.2.4
+        shell: bash
+        run: |
+          vitest_version=$(node -p "require('./node_modules/vitest/package.json').version")
+          npm install --no-save --package-lock=false "@vitest/coverage-v8@$vitest_version"
+          test "$(node -p "require('./node_modules/vitest/package.json').version")" = "$vitest_version"
+          test "$(node -p "require('./node_modules/@vitest/coverage-v8/package.json').version")" = "$vitest_version"
       - name: Verify coverage install did not mutate manifests
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
