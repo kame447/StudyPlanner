@@ -282,6 +282,7 @@ describe('focused contextual Worker dispatch', () => {
   it.each([
     ['non-object', []],
     ['missing purpose', { requestId: 'missing-purpose', inputRevision: 1 }],
+    ['blank purpose', { purpose: '   ', requestId: 'blank-purpose', inputRevision: 1 }],
   ])('rejects a %s context before either paid provider is called', async (_name, context) => {
     const { response } = execute({ context });
     expect((await response).status).toBe(400);

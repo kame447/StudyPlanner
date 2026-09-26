@@ -259,7 +259,7 @@ function classifyFocusedDecisionContext(
   value: unknown,
 ): FocusedDecisionContextClassification {
   if (value === undefined) return { kind: 'none' };
-  if (!isRecord(value) || typeof value.purpose !== 'string' || value.purpose.length === 0) {
+  if (!isRecord(value) || typeof value.purpose !== 'string' || value.purpose.trim().length === 0) {
     return { kind: 'invalid' };
   }
   if (value.purpose === 'focused_authorization') {

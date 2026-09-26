@@ -1,6 +1,6 @@
 # Issue #305 — focused contextual answer の Jev 第一経路
 
-Status: PR #338 audit fixes in progress
+Status: PR #338 audit fixes locally verified / awaiting parent commit
 Updated: 2026-09-27
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335）
 
@@ -255,23 +255,29 @@ protected projection、decision/approval、renderer integrity / memory、provisi
 quantity-role false accept 0、injection 3件の generic 直行、provider failure の actual
 Luna fallback、unexpected output key 0を確認した。Jev response は role または
 generic fallback に閉じ、preview authorization / approval / save authority を持たない。
+加えて、攻撃文に対して mock Jev が高確信 `remaining` と低い補助 head を返す回帰を
+固定した。その場合にも出力は exact pending workload に後段で束縛される role だけで、
+approval / save / scheduler permission は付与されない。既存 injection case は
+independent-meaning gate の配管回帰として区別した。
 
 ## Verification
 
 - `npm run typecheck`: success
-- `npm run test:run`: 572 files passed / 10 skipped、2,887 tests passed /
+- `npm run test:run`: 572 files passed / 10 skipped、2,892 tests passed /
   45 skipped / 5 todo
 - `npm run build`: success（2,214 modules transformed）
 - #335 affected targeted regression: 12 files / 214 tests passed
-- focused contextual policy / dispatch after final changes: 2 files / 28 tests passed
+- audit targeted regression（contextual Worker/dispatch、authorization、dual-target retry、
+  client）: 5 files / 77 tests passed。retry 境界を限定した追試: 3 files / 43 tests passed。
+  blank-purpose edge 追加後の最終 Worker 追試: 1 file / 11 tests passed
 - Wrangler-generated runtime types + strict `tsc`: changed decision modules 固有 error 0。
   Worker dependency graph 全体では予約外の `materialMetadataApi.ts` 1件と
   `weeklyPlanningTraceApi.ts` 3件で nonzero。`origin/main` archive に同じ Wrangler
   4.140.0 / 同じ strict command を適用して同一4 errorsを再現したため baseline
   harness debt と分類した
-- Wrangler 4.140.0 production dry-run: success、Total Upload 443.49 KiB / gzip
-  90.29 KiB、`JEV_MODE="off"` / `JEV_CANARY_PERCENT="0"`、`--dry-run: exiting now.`
-- `git diff --check origin/main`: success。変更22 filesは予約範囲内
+- Wrangler 4.140.0 production dry-run: success、Total Upload 444.37 KiB / gzip
+  90.44 KiB、`JEV_MODE="off"` / `JEV_CANARY_PERCENT="0"`、`--dry-run: exiting now.`
+- `git diff --check`: success。PR 全体23 files、監査修正8 filesは予約範囲内
 - `package-lock.json` / `workers/ai-proxy/wrangler.jsonc`: `origin/main` から変更なし
 - 本番 deploy、secret value の読出し・出力・保存は未実施
 
@@ -279,7 +285,10 @@ generic fallback に閉じ、preview authorization / approval / save authority �
 
 - baseline: `e8a7ab48566e70aa2534ef49a405cc30ae05a3b8`
 - worktree branch: `feat/issue-305-jev-first-focused-contextual`
-- durable checkpoint: parent-assisted commit/push `ba8aa38f`（gate v2 freeze、upstream 設定済み）。
+- PR #338 current HEAD: `66a1d9e280d100aec46232feed4f659d49efe019`（監査修正の
+  periodic checkpoint、CI 実行中）。blank-purpose edge とこの記録を含む最終3-file
+  delta は親 commit 待ち。
+- gate freeze checkpoint: parent-assisted commit/push `ba8aa38f`（upstream 設定済み）。
   Codex sandbox は `.git` metadata write を拒否するため、以後の commit/push/PR は親が代行する。
 - 実装済み（未 commit checkpoint）:
   - shared contextual discriminated context と strict validator
@@ -295,17 +304,20 @@ generic fallback に閉じ、preview authorization / approval / save authority �
   - tuning-only catalog/gate 校正と最終 remote-dev tuning 30件
   - gate固定後の予備 holdout 30件（1回）と Luna-only paired baseline 30件
   - 拡張 remote fault probes 9件と #335 targeted 12 files / 214 tests
+  - 監査修正: unknown-purpose 前方互換、dual-target Luna repair、harness-only stale hook、
+    高確信攻撃 role の authority 境界、Luna cost range、holdout 独立性限界
 - 検証済み:
   - 上記 Verification の local gate 一式
 - 本番 config / secret / package-lock は未変更。
 
 ## 次の具体作業
 
-1. 親へ commit/push と ready PR 作成を依頼する。
-2. PR CI を terminal green まで追い、親へ完了 Mail。
+1. 親へ監査修正8 filesの commit/pushを依頼する。
+2. 更新後の PR #338 CI と再監査を terminal state まで追う。
 
 ## 未解決
 
-- local gate は完了、PR / CI は未実施。
-- holdout は予備的な合成30件であり、false-accept 上限9.50%を超える強い主張はしない。
-- Luna cost は価格表がなく unknown。paired latency は end-to-end 実測ではなく推定。
+- audit fix の local gate は完了。親 commit/push、更新後 CI、再監査は未実施。
+- holdout は予備的・消費済みの合成30件で、うち12件は tuning 閲覧後に同じ作成者が
+  追加した。false-accept 上限9.50%を超える強い主張や正式受入れには使わない。
+- cache 内訳がないため Luna cost は範囲。paired latency は end-to-end 実測ではなく推定。
