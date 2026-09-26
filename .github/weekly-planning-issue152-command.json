@@ -1,10 +1,11 @@
 {
-  "request_id": "20260926-issue152-final-296796ff-A",
-  "reason": "Exact final code HEAD 296796ff: synthesized-evidence, stored-durable, renderer-influence with pinned fixture clocks. Final batch A of 2.",
+  "request_id": "20260926-issue152-final-296796ff-B",
+  "reason": "Exact final code HEAD 296796ff: adversarial, indirect, stateful, retention with pinned fixture clocks. Final batch B of 2. Batch A run 36210194569 passed.",
   "critical_repetitions": 3,
   "suites": [
-    "synthesized-evidence",
-    "stored-durable",
-    "renderer-influence"
+    "adversarial",
+    "indirect",
+    "stateful",
+    "retention"
   ]
 }
