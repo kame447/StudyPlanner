@@ -36,6 +36,7 @@ export interface FocusedAuthorizationEvaluationMetrics {
   coverage: RatioMetric;
   selectiveAccuracy: RatioMetric;
   falseAutoCreatePlanCount: number;
+  falseAutoCreatePlanRate: RatioMetric;
   abstentionRate: RatioMetric;
   unavailableRate: RatioMetric;
   latencyMs: {
@@ -136,6 +137,7 @@ export function summarizeFocusedAuthorizationEvaluation(
     coverage: ratio(acceptedCount, samples.length),
     selectiveAccuracy: ratio(acceptedCorrectCount, acceptedCount),
     falseAutoCreatePlanCount,
+    falseAutoCreatePlanRate: ratio(falseAutoCreatePlanCount, expectedCounts.fallback),
     abstentionRate: ratio(gateOutcomes.abstained, samples.length),
     unavailableRate: ratio(gateOutcomes.unavailable, samples.length),
     latencyMs: {

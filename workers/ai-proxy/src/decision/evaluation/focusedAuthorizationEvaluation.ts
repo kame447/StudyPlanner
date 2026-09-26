@@ -136,8 +136,8 @@ export async function evaluateFocusedAuthorizationCandidates(
       probabilities: evaluation.status === 'evaluated' ? evaluation.probabilities : null,
       conditionChange: evaluation.status === 'evaluated' ? evaluation.conditionChange : null,
       independentMeaning: evaluation.status === 'evaluated' ? evaluation.independentMeaning : null,
-      requestedModel: evaluation.status === 'evaluated' ? evaluation.metadata.requestedModel : null,
-      servedModel: evaluation.status === 'evaluated' ? evaluation.metadata.servedModel : null,
+      requestedModel: evaluation.metadata.requestedModel,
+      servedModel: evaluation.metadata.servedModel,
     };
     verdicts.push(verdict);
     onCase?.(verdict);

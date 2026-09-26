@@ -108,7 +108,10 @@ describe('focused authorization evaluation metrics', () => {
       evaluated('create_plan', 20, 0.02),
       evaluated('fallback', 30, null),
       evaluated('create_plan', 40, 0.04, 0.5),
-      { status: 'unavailable', reason: 'timeout', metadata: metadata(100, 0.05) },
+      {
+        status: 'unavailable', reason: 'timeout',
+        metadata: { ...metadata(100, 0.05), servedModel: null },
+      },
       evaluated('fallback', 60, 0.06),
     ];
     const provider: DecisionProvider = {
@@ -142,6 +145,8 @@ describe('focused authorization evaluation metrics', () => {
     expect(report.metrics.global.coverage).toEqual({ numerator: 4, denominator: 6, value: 4 / 6 });
     expect(report.metrics.global.selectiveAccuracy).toEqual({ numerator: 2, denominator: 4, value: 0.5 });
     expect(report.metrics.global.falseAutoCreatePlanCount).toBe(1);
+    expect(report.metrics.global.falseAutoCreatePlanRate)
+      .toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
     expect(report.metrics.global.byClass.create_plan.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
     expect(report.metrics.global.byClass.create_plan.recall).toEqual({ numerator: 1, denominator: 3, value: 1 / 3 });
     expect(report.metrics.global.byClass.fallback.precision).toEqual({ numerator: 1, denominator: 2, value: 0.5 });
@@ -170,7 +175,7 @@ describe('focused authorization evaluation metrics', () => {
     expect(report.cases[4]).toMatchObject({
       choice: null, confidence: null, probabilities: null,
       conditionChange: null, independentMeaning: null,
-      requestedModel: null, servedModel: null,
+      requestedModel: 'mock-jev', servedModel: null,
     });
 
     const unknownCostProvider: DecisionProvider = {
@@ -219,8 +224,11 @@ describe('focused authorization evaluation metrics', () => {
     });
     expect(report.metrics.byLayer.plain_authorization.gateOutcomes.accepted_create_plan).toBe(1);
     expect(report.metrics.byLayer.negation.gateOutcomes.accepted_fallback).toBe(1);
+    expect(report.metrics.byLayer.negation.falseAutoCreatePlanRate)
+      .toEqual({ numerator: 0, denominator: 1, value: 0 });
     expect(report.metrics.byLayer.abnormal_values).toMatchObject({
       fixtureCaseCount: 1, evaluationEligibleCaseCount: 0, rejectedBeforeProviderCount: 1,
+      falseAutoCreatePlanRate: { numerator: 0, denominator: 0, value: null },
     });
   });
 });
