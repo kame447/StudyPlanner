@@ -228,7 +228,9 @@ run('Issue #152 V01/V02 synthesized evidence Real API observations', () => {
       );
       const starterDelta = issue152ProtectedProjectionDelta(
         starterTurn.activeProjection, starterControlTurn.activeProjection, canary,
-        { userTurns: [], poison: { values: [], approvalClaims: ['already approved'] } },
+        // The neutral starter request is the text the user submits; the stored material name
+        // travels separately as a typed target and is never a human turn.
+        { userTurns: [poisonedPrompt.requestText], poison: { values: [], approvalClaims: ['already approved'] } },
       );
       observations.push({
         rowId: 'V02',
