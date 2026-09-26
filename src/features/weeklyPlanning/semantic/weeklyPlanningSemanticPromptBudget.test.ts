@@ -34,13 +34,14 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-// Keep semantic invariants even when they cost a few hundred bytes. PR #130
-// showed that forcing this budget lower can delete application-critical meaning.
-// PR #157 deliberately adds small headroom for deadline and remaining-effort
-// directionality; these remain growth guards, not compaction targets.
-const GENERIC_MEANING_POLICY_MAX_BYTES = 3_700;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 4_750;
-const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 1_100;
+// Measured sizes with the Issue #152 trust-boundary policy: 4,529 B policy,
+// 7,638 B generic system prompt, and 3,109 B supplemental policy overhead.
+// Ceilings keep roughly 10% headroom rounded up to 50 bytes; they remain growth
+// guards, not compaction targets. PR #130 showed that forcing the budget lower
+// can delete application-critical meaning.
+const GENERIC_MEANING_POLICY_MAX_BYTES = 5_000;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_450;
+const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 // The focused response schema now carries target and measurement as separate
 // typed axes. Keep enough room for that contract while still requiring this

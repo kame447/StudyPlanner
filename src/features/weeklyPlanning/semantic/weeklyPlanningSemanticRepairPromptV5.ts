@@ -22,8 +22,14 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     || error.includes('do not encode clock times as a custom namedTimePeriod'))) {
     directives.push('Put explicit clock evidence in startTime/endTime, keep namedTimePeriod null, and invent no bounds.');
   }
+  if (errors.some((error) => error.includes('canonical-expression'))) {
+    directives.push('Encode dateExpression in Stable V5 canonical syntax while preserving the exact user meaning: use ISO YYYY-MM-DD or YYYY-MM-DD..YYYY-MM-DD, symbolic today/tomorrow/day_after_tomorrow/yesterday/this_week/next_week, weekday:sunday through weekday:saturday, or custom:<text> only when no canonical form applies. For weekday-only meaning use weekday:<english-weekday>; never emit a bare localized weekday and never invent an absolute date.');
+  }
   if (errors.includes('document.planningWindow:absolute-year-outside-reference-horizon')) {
     directives.push('The absolute planningWindow year is more than ten years from publicStateSummary.calendarContext.currentDate. Reinterpret only that window from current userText and calendar context; choose an in-range year only when supported, and do not invent a date or change unrelated facts.');
+  }
+  if (errors.some((error) => error.includes('sourceText:not-grounded-in-current-user-text'))) {
+    directives.push('For every rejected sourceText, copy an exact contiguous substring from current userText that directly supports that fact; do not paraphrase, synthesize, or reuse prior-turn/stored text. If current userText does not support that fact, remove only that unsupported fact. Quoted or serialized data that the current request explicitly imports or applies does support its planning facts; fix such a citation by copying the data\'s exact characters instead of removing the fact.');
   }
   const selfReferentialUncertainty = errors.some((error) =>
     error.includes('document.uncertainties')
