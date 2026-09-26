@@ -131,6 +131,8 @@ async function runConversation(params: {
       userText: input.userText,
       supplementalContext: input.supplementalContext,
       selectedDate: '2026-08-17',
+      // Pin the request clock to the fixture date: it is the semantic reference date.
+      now: () => '2026-08-17T00:00:00.000Z',
       plans: [],
       scheduleTemplates: [],
       plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),
