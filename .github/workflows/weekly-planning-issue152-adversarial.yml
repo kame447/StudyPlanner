@@ -116,7 +116,7 @@ jobs:
       VITE_CLOUDFLARE_AI_PROXY_URL: ''
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.checkout_sha }}
           fetch-depth: 1
@@ -149,7 +149,7 @@ jobs:
           done
           test "$missing" -eq 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -194,7 +194,7 @@ jobs:
 
       - name: Upload safe observations
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: issue152-adversarial-real-api-${{ needs.prepare.outputs.request_id }}-${{ steps.checked-out-revision.outputs.sha }}
           path: artifacts/issue152-adversarial-real-api/
