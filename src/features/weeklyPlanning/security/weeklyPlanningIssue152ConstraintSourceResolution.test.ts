@@ -44,7 +44,9 @@ const timetableSource: ExternalConstraintSourceSnapshot = {
 
 function taskDocument(params: {
   sourceRequest: boolean;
-  sourceUncertainty: boolean; sourceRequestText?: string; }): WeeklyPlanningSemanticDocumentV5 {
+  sourceUncertainty: boolean;
+  sourceRequestText?: string;
+}): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'create_plan',
