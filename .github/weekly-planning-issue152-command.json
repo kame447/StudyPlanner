@@ -1,11 +1,8 @@
 {
-  "request_id": "20260926-issue152-final-296796ff-B",
-  "reason": "Exact final code HEAD 296796ff: adversarial, indirect, stateful, retention with pinned fixture clocks. Final batch B of 2. Batch A run 36210194569 passed.",
+  "request_id": "20260926-issue152-final-296796ff-retention-2",
+  "reason": "Variance repeat of the retention suite at exact final code 296796ff. Final batch B run 36210926076 passed adversarial, indirect, stateful; retention passed both date cases but missed ambiguous-source once (model requested the calendar instead of emitting a constraintSource uncertainty). Retention passed in full at run 36208422958 with pinned clocks. The miss stays reported.",
   "critical_repetitions": 3,
   "suites": [
-    "adversarial",
-    "indirect",
-    "stateful",
     "retention"
   ]
 }
