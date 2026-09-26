@@ -22,6 +22,9 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     || error.includes('do not encode clock times as a custom namedTimePeriod'))) {
     directives.push('Put explicit clock evidence in startTime/endTime, keep namedTimePeriod null, and invent no bounds.');
   }
+  if (errors.includes('document.planningWindow:absolute-year-outside-reference-horizon')) {
+    directives.push('The absolute planningWindow year is more than ten years from publicStateSummary.calendarContext.currentDate. Reinterpret only that window from current userText and calendar context; choose an in-range year only when supported, and do not invent a date or change unrelated facts.');
+  }
   const selfReferentialUncertainty = errors.some((error) =>
     error.includes('document.uncertainties')
     && error.includes('.targetLocalId:self-reference'));

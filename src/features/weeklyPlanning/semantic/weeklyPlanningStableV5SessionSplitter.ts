@@ -3,6 +3,9 @@ import type {
   WeeklyPlanningSessionPolicyV5,
 } from './weeklyPlanningStableV5ExecutionProfile';
 import { WEEKLY_PLANNING_STABLE_V5_SESSION_QUANTUM_MINUTES } from './weeklyPlanningStableV5ExecutionProfile';
+import {
+  WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5,
+} from './weeklyPlanningNumericSafetyV5';
 
 function roundToQuantum(value: number): number {
   return Math.round(value / WEEKLY_PLANNING_STABLE_V5_SESSION_QUANTUM_MINUTES)
@@ -39,7 +42,11 @@ function candidateForChunkCount(
   chunkCount: number,
   policy: WeeklyPlanningSessionPolicyV5,
 ): number[] | null {
-  if (chunkCount <= 0) return null;
+  if (
+    chunkCount <= 0
+    || !Number.isSafeInteger(chunkCount)
+    || chunkCount > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5
+  ) return null;
   const chunks = Array.from({ length: chunkCount }, () => policy.targetSessionMinutes);
   let delta = totalMinutes - sum(chunks);
 
@@ -138,15 +145,25 @@ export function splitWeeklyPlanningSessionMinutesV5(params: {
   policy: WeeklyPlanningSessionPolicyV5;
   profile: WeeklyPlanningExecutionProfileV5;
 }): number[] {
-  const total = Math.max(0, Math.round(params.totalMinutes));
+  if (!Number.isFinite(params.totalMinutes) || params.totalMinutes <= 0) return [];
+  const total = Math.round(params.totalMinutes);
   if (total <= 0) return [];
   if (total <= params.policy.maxSessionMinutes) return [total];
 
   const minCount = Math.max(1, Math.ceil(total / params.policy.maxSessionMinutes));
+  if (
+    !Number.isSafeInteger(minCount)
+    || minCount > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5
+  ) return [];
+
   const minimumChunkMinutes = params.policy.allowSmallRemainder
     ? 1
     : params.policy.minSessionMinutes;
-  const maxCount = Math.max(minCount, Math.ceil(total / minimumChunkMinutes));
+  const uncappedMaxCount = Math.max(minCount, Math.ceil(total / minimumChunkMinutes));
+  const maxCount = Math.min(
+    WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5,
+    uncappedMaxCount,
+  );
   const preferredCount = Math.max(minCount, Math.round(total / params.policy.targetSessionMinutes));
   const counts = new Set<number>([
     minCount,
@@ -157,12 +174,20 @@ export function splitWeeklyPlanningSessionMinutesV5(params: {
   for (let offset = -4; offset <= 4; offset += 1) counts.add(preferredCount + offset);
 
   const candidates = Array.from(counts)
-    .filter((count) => count >= minCount && count <= maxCount)
+    .filter((count) =>
+      Number.isSafeInteger(count)
+      && count >= minCount
+      && count <= maxCount
+      && count <= WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5)
     .map((count) => candidateForChunkCount(total, count, params.policy))
     .filter((candidate): candidate is number[] => candidate !== null);
 
   if (candidates.length === 0) {
     const count = Math.max(1, Math.ceil(total / params.policy.maxSessionMinutes));
+    if (
+      !Number.isSafeInteger(count)
+      || count > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5
+    ) return [];
     const base = Math.floor(total / count);
     const remainder = total % count;
     return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0))
