@@ -5,6 +5,7 @@ import type { ProductObservabilityEnv } from '../productObservabilityStore';
 import type { FirestoreTokenProvider } from '../firestoreServiceAccountClient';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import { markJevExecution } from './decisionExecutionMarker';
 import {
   canarySelected, decisionMode, gateDecision, JEV_CATALOG_VERSION, JEV_GATE_VERSION,
   FOCUSED_REQUEST_TIMEOUT_MS, type DecisionEnv,
@@ -98,7 +99,7 @@ export async function dispatchFocusedAuthorization(params: {
 
   if (mode === 'shadow') {
     const evaluation = provider.evaluate(params.context.state);
-    const baseline = params.fallback();
+    const baseline = params.fallback().then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])
         .then(([result, decision]) => record(result, decision)).catch(() => undefined),
@@ -118,8 +119,8 @@ export async function dispatchFocusedAuthorization(params: {
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) throw new Error('Focused authorization request cancelled or timed out.');
-    if (gate.status === 'accepted') return params.respond(gate.decision);
-    return await params.fallback(controller.signal);
+    if (gate.status === 'accepted') return markJevExecution(params.respond(gate.decision), mode);
+    return markJevExecution(await params.fallback(controller.signal), mode);
   } finally {
     clearTimeout(timer);
     params.signal.removeEventListener('abort', abort);

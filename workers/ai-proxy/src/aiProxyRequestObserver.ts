@@ -16,6 +16,7 @@ import {
 } from './aiRequestObservability';
 import type { ProductObservabilityEnv } from './productObservabilityStore';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
+import type { JevExecutionMode } from './decision/decisionExecutionMarker';
 
 export interface AiProxyRequestObserverEnv extends ProductObservabilityEnv {
   FIREBASE_WEB_API_KEY?: string;
@@ -163,8 +164,13 @@ export function describeAiProxyOperation(
   return null;
 }
 
-export function resolveAiProxyMetricCorrelation(payload: unknown): ObservabilityCorrelation | undefined {
-  if (!isRecord(payload) || !isFocusedAuthorizationDecisionContext(payload.decisionContext)) {
+export function resolveAiProxyMetricCorrelation(
+  payload: unknown,
+  decisionExecutionMode?: JevExecutionMode | null,
+): ObservabilityCorrelation | undefined {
+  if (!decisionExecutionMode
+    || !isRecord(payload)
+    || !isFocusedAuthorizationDecisionContext(payload.decisionContext)) {
     return undefined;
   }
   return {
@@ -210,6 +216,7 @@ export async function observeAiProxyRequest(params: {
   startedAtMs: number;
   occurredAt: string;
   usage?: AiRequestUsage | null;
+  decisionExecutionMode?: JevExecutionMode | null;
   onError?: (error: unknown) => void;
 }): Promise<void> {
   if (!isAiRequestObservabilityConfigured(params.env)) return;
@@ -243,7 +250,10 @@ export async function observeAiProxyRequest(params: {
     firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
-    correlation: resolveAiProxyMetricCorrelation(requestPayload),
+    correlation: resolveAiProxyMetricCorrelation(
+      requestPayload,
+      params.decisionExecutionMode,
+    ),
     occurredAt: params.occurredAt,
     appVersion,
     operationKind: operation.operationKind,

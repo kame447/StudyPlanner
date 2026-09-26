@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import { JEV_MODEL } from './decisionPolicy';
 import { observeAiProxyRequest } from '../aiProxyRequestObserver';
+import { jevExecutionMode } from './decisionExecutionMarker';
 import { dispatchFocusedAuthorization } from './focusedAuthorizationDispatch';
 import type { DecisionProvider } from './decisionProvider';
 
@@ -16,6 +17,19 @@ let quotaAllowed = true;
 let authAllowed = true;
 let baselineStatus = 200;
 let baselineDecisionValue: 'create_plan' | 'fallback' = 'fallback';
+type FirestoreField = {
+  stringValue?: string;
+  integerValue?: string;
+  mapValue?: { fields?: Record<string, FirestoreField> };
+};
+const firestoreWrites: Array<{ fields?: Record<string, FirestoreField> }> = [];
+
+function storedAiMetricFields(): Array<Record<string, FirestoreField>> {
+  return firestoreWrites
+    .map((write) => write.fields)
+    .filter((fields): fields is Record<string, FirestoreField> =>
+      fields?.eventType?.stringValue === 'ai_request_metric');
+}
 
 function validResponse(independentMeaning = 0.001) {
   return {
@@ -35,6 +49,7 @@ function execute(mode = 'off', options: {
   noLifecycle?: boolean;
   openRouterApiKey?: string | null;
   signal?: AbortSignal;
+  observability?: boolean;
 } = {}) {
   const pending: Promise<unknown>[] = [];
   const env = {
@@ -43,9 +58,16 @@ function execute(mode = 'off', options: {
       ? crypto.randomUUID() : options.openRouterApiKey ?? undefined,
     FIREBASE_WEB_API_KEY: 'public-test-project', ALLOWED_ORIGIN: 'https://app.example',
     JEV_MODE: mode, JEV_CANARY_PERCENT: '100',
+    ...(options.observability ? {
+      FIREBASE_PROJECT_ID: 'test-project',
+      FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
+      FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused-with-test-token-provider',
+      OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
+      ENVIRONMENT: 'test',
+    } : {}),
     AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: quotaAllowed, retryAfterSeconds: 1 }) }) },
   };
-  const response = worker.fetch(new Request('https://proxy.example/chat/completions', {
+  const request = new Request('https://proxy.example/chat/completions', {
     method: 'POST', headers: { Authorization: 'Bearer test-session', Origin: options.origin ?? 'https://app.example' },
     signal: options.signal,
     body: JSON.stringify({
@@ -53,8 +75,17 @@ function execute(mode = 'off', options: {
       messages: [{ role: 'user', content: 'baseline-messages' }],
       decisionContext: context, ...options.payload,
     }),
-  }), env as never, undefined, options.noLifecycle ? undefined : { waitUntil: (p: Promise<unknown>) => pending.push(p) } as unknown as ExecutionContext);
-  return { response, pending, env };
+  });
+  const tokenProvider = { getToken: async () => 'test-firestore-token' };
+  const response = worker.fetch(
+    request.clone(),
+    env as never,
+    tokenProvider,
+    options.noLifecycle ? undefined : {
+      waitUntil: (p: Promise<unknown>) => pending.push(p),
+    } as unknown as ExecutionContext,
+  );
+  return { response, pending, env, request, tokenProvider };
 }
 
 beforeEach(() => {
@@ -63,6 +94,7 @@ beforeEach(() => {
   authAllowed = true;
   baselineStatus = 200;
   baselineDecisionValue = 'fallback';
+  firestoreWrites.length = 0;
   jevResponse = async () => Response.json(validResponse());
   vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -83,6 +115,13 @@ beforeEach(() => {
         choices: [{ message: { content: JSON.stringify({ decision: baselineDecisionValue }) } }],
         usage: { prompt_tokens: 10 },
       }, { status: baselineStatus });
+    }
+    if (url.includes('firestore.googleapis.com')) {
+      if (init?.method === 'POST') {
+        firestoreWrites.push(JSON.parse(String(init.body)) as { fields?: Record<string, FirestoreField> });
+        return Response.json({});
+      }
+      return new Response(null, { status: 404 });
     }
     throw new Error('Unexpected network call');
   }));
@@ -169,10 +208,74 @@ describe('focused authorization deployed proxy dispatch', () => {
     ['canary', '   '],
   ] as const)('treats %s with an absent or blank OpenRouter key as off', async (mode, openRouterApiKey) => {
     const { response, pending } = execute(mode, { openRouterApiKey });
-    expect(await (await response).json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    const result = await response;
+    expect(jevExecutionMode(result)).toBeNull();
+    expect(await result.json()).toMatchObject({ content: '{"decision":"fallback"}' });
     expect(pending).toHaveLength(0);
     expect(calls.filter((url) => url.endsWith('/api/alpha/decisions'))).toHaveLength(0);
     expect(console.info).not.toHaveBeenCalledWith('[AI Decision]', expect.anything());
+  });
+
+  it.each([
+    ['off', undefined],
+    ['shadow', null],
+  ] as const)('keeps baseline telemetry on its event ID when %s behaves as off', async (mode, openRouterApiKey) => {
+    const { response, pending, env, request, tokenProvider } = execute(mode, {
+      openRouterApiKey,
+      observability: true,
+    });
+    const result = await response;
+    const executionMode = jevExecutionMode(result);
+    expect(executionMode).toBeNull();
+
+    await observeAiProxyRequest({
+      request,
+      response: result.clone(),
+      env: env as never,
+      firestoreTokenProvider: tokenProvider,
+      startedAtMs: Date.now(),
+      occurredAt: new Date().toISOString(),
+      decisionExecutionMode: executionMode,
+    });
+    await Promise.all(pending);
+
+    const [baseline] = storedAiMetricFields();
+    expect(storedAiMetricFields()).toHaveLength(1);
+    expect(baseline.correlation.mapValue?.fields).toEqual({
+      requestId: baseline.eventId,
+    });
+  });
+
+  it('joins shadow decision and baseline metrics with the same turn correlation', async () => {
+    const { response, pending, env, request, tokenProvider } = execute('shadow', {
+      observability: true,
+    });
+    const result = await response;
+    const executionMode = jevExecutionMode(result);
+    expect(executionMode).toBe('shadow');
+
+    await observeAiProxyRequest({
+      request,
+      response: result.clone(),
+      env: env as never,
+      firestoreTokenProvider: tokenProvider,
+      startedAtMs: Date.now(),
+      occurredAt: new Date().toISOString(),
+      decisionExecutionMode: executionMode,
+    });
+    await Promise.all(pending);
+
+    const metrics = storedAiMetricFields();
+    expect(metrics).toHaveLength(2);
+    expect(new Set(metrics.map((metric) => metric.eventId.stringValue))).toHaveProperty('size', 2);
+    expect(metrics.map((metric) => metric.payload.mapValue?.fields?.operationKind.stringValue).sort())
+      .toEqual(['chat_completion', 'decision']);
+    metrics.forEach((metric) => {
+      expect(metric.correlation.mapValue?.fields).toEqual({
+        requestId: { stringValue: context.requestId },
+        stateRevision: { integerValue: String(context.inputRevision) },
+      });
+    });
   });
 
   it('does not require an OpenRouter key from an injected DecisionProvider', async () => {
@@ -250,7 +353,9 @@ describe('focused authorization deployed proxy dispatch', () => {
       return Response.json(value);
     };
     const { response, pending } = execute('canary');
-    expect(await (await response).json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    const result = await response;
+    expect(jevExecutionMode(result)).toBe('canary');
+    expect(await result.json()).toMatchObject({ content: '{"decision":"fallback"}' });
     await Promise.all(pending);
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(1);
     expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({ outcome: 'fallback' }));
