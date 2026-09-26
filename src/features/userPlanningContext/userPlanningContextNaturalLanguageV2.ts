@@ -9,6 +9,10 @@ import {
   type UserPlanningContextRecordV1,
   type UserPlanningContextSemanticKindV1,
 } from './userPlanningContextTypes';
+import {
+  isUserContextRoutingDecisionResponse,
+  type UserContextRoutingDecisionContext,
+} from '../../../shared/userContextRoutingDecision';
 
 const USER_CONTEXT_TARGET_DOMAINS_V2 = [
   'user_context',
@@ -184,6 +188,13 @@ function defaultClient(): OpenAiCompatibleClient {
   return createOpenAiCompatibleClient(aiConfig);
 }
 
+function userContextRoutingRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `user-context-routing:${crypto.randomUUID()}`;
+  }
+  return `user-context-routing:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
 export async function interpretUserPlanningContextNaturalLanguageV2(params: {
   text: string;
   existingRecord?: UserPlanningContextRecordV1 | null;
@@ -193,7 +204,17 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
   if (!text) throw new Error('覚えておいてほしいことを入力してください。');
   if (text.length > 2000) throw new Error('覚えておく内容が長すぎます。');
 
+  const decisionContext: UserContextRoutingDecisionContext = {
+    purpose: 'user_context_routing',
+    requestId: userContextRoutingRequestId(),
+    // This settings operation has no planning-turn graph revision. The unique
+    // requestId binds the response; the existing save path retains record ownership.
+    inputRevision: 0,
+    state: { currentUserText: text },
+  };
+
   const raw = await (params.client ?? defaultClient()).createChatCompletion({
+    decisionContext,
     purpose: 'user_context_interpreter',
     temperature: 0,
     maxCompletionTokens: 700,
@@ -215,6 +236,9 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
     parsed = JSON.parse(raw) as unknown;
   } catch {
     throw new Error('AIが覚える内容を整理できませんでした。');
+  }
+  if (isUserContextRoutingDecisionResponse(parsed)) {
+    throw new Error(userPlanningContextExternalOwnerMessageV2(parsed.targetDomain));
   }
   return parseUserPlanningContextNaturalLanguageResultV2(parsed);
 }
