@@ -1,11 +1,10 @@
 {
-  "request_id": "20260926-issue152-final-8cac480f-pinned-a",
-  "reason": "Real API verification at 8cac480f with request clocks pinned to the fixture date and month-day planning windows: adversarial, indirect, stateful, retention (harnesses that do not use the shared stored-rows helper).",
+  "request_id": "20260926-issue152-d208f381-pinned-helper",
+  "reason": "Real API run at d208f381 with the shared stored-rows helper clock pinned to the fixture date: synthesized-evidence, stored-durable, renderer-influence.",
   "critical_repetitions": 3,
   "suites": [
-    "adversarial",
-    "indirect",
-    "stateful",
-    "retention"
+    "synthesized-evidence",
+    "stored-durable",
+    "renderer-influence"
   ]
 }
