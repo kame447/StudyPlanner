@@ -1,4 +1,3 @@
-import type { ObservabilityActiveUserDirtySource } from '../../../shared/productObservabilityReadModel';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
@@ -37,6 +36,11 @@ import {
   type ProductObservabilityProfileRegistrationBackfillEnv,
 } from './productObservabilityProfileRegistrationBackfill';
 import {
+  ProductObservabilityUserEnrichmentBackfillService,
+  USER_ENRICHMENT_BACKFILL_BATCH_SIZE,
+  type ProductObservabilityUserEnrichmentBackfillEnv,
+} from './productObservabilityUserEnrichmentBackfill';
+import {
   ProductObservabilityRetentionService,
   type ProductObservabilityRetentionEnv,
 } from './productObservabilityRetention';
@@ -44,17 +48,47 @@ import {
   ProductObservabilityRollupEngine,
   type ProductObservabilityRollupEnv,
 } from './productObservabilityRollup';
+import {
+  FirestoreServiceAccountClient,
+  FirestoreServiceAccountTokenProvider,
+  type FirestoreServiceAccountEnv,
+  type FirestoreTokenProvider,
+} from './firestoreServiceAccountClient';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
+import {
+  WorkerSubrequestBudget,
+  WorkerSubrequestBudgetExceededError,
+} from './workerSubrequestBudget';
 import worker from './worker';
 
 export { AiQuotaDurableObject };
 
-const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 10;
-const ROLLUP_BATCH_SIZE = 50;
+const MAX_ROLLUP_BATCHES_PER_SCHEDULE = 5;
+const ROLLUP_BATCH_SIZE = 20;
 const MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE = 2;
 const PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
 const RETENTION_BATCH_SIZE = 100;
+export const SCHEDULED_INVOCATIONS_PER_DAY = 24 * 60;
+
+export type ScheduledObservabilityPhase =
+  | 'rollup'
+  | 'active_user_snapshot'
+  | 'profile_registration_backfill'
+  | 'retention'
+  | 'no_op';
+
+export function scheduledObservabilityPhase(scheduledTime: number): ScheduledObservabilityPhase {
+  if (!Number.isFinite(scheduledTime)) return 'no_op';
+  const minute = new Date(scheduledTime).getUTCMinutes();
+  switch (minute % 5) {
+    case 0: return 'rollup';
+    case 1: return 'active_user_snapshot';
+    case 2: return 'profile_registration_backfill';
+    case 3: return 'retention';
+    default: return 'no_op';
+  }
+}
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
   const correlationId = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
@@ -81,37 +115,46 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
   };
 }
 
-async function runScheduledObservabilityRollup(env: Record<string, unknown>): Promise<{
-  engine: ProductObservabilityRollupEngine;
-  dirtySources: ObservabilityActiveUserDirtySource[];
-}> {
+async function runScheduledObservabilityRollup(
+  env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
+): Promise<void> {
   const engine = new ProductObservabilityRollupEngine(
     env as unknown as ProductObservabilityRollupEnv,
+    firestore,
   );
-  let dirtySources: ObservabilityActiveUserDirtySource[] = [];
   for (let index = 0; index < MAX_ROLLUP_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await engine.runBatch(ROLLUP_BATCH_SIZE);
-    dirtySources = result.checkpoint.activeUserDirtySources;
     if (!result.hasMore) break;
   }
-  return { engine, dirtySources };
 }
 
 async function runScheduledActiveUserSnapshots(
   env: Record<string, unknown>,
-  dirtySources: readonly ObservabilityActiveUserDirtySource[],
+  firestore: FirestoreServiceAccountClient,
 ): Promise<void> {
+  const rollup = new ProductObservabilityRollupEngine(
+    env as unknown as ProductObservabilityRollupEnv,
+    firestore,
+  );
+  const checkpoint = await rollup.currentCheckpoint();
   const snapshots = new ProductObservabilityActiveUserSnapshotService(
     env as unknown as ProductObservabilityActiveUserSnapshotEnv,
+    firestore,
   );
-  await snapshots.refreshAffected(dirtySources);
+  const result = await snapshots.runBatch(checkpoint.activeUserDirtySources);
+  if (result.completedSource) {
+    await rollup.clearActiveUserDirtySources([result.completedSource]);
+  }
 }
 
 async function runScheduledProfileRegistrationBackfill(
   env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
 ): Promise<void> {
   const backfill = new ProductObservabilityProfileRegistrationBackfillService(
     env as unknown as ProductObservabilityProfileRegistrationBackfillEnv,
+    firestore,
   );
   for (
     let index = 0;
@@ -119,13 +162,22 @@ async function runScheduledProfileRegistrationBackfill(
     index += 1
   ) {
     const checkpoint = await backfill.runBatch(PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE);
-    if (checkpoint.completed) return;
+    if (checkpoint.completed) break;
   }
+  const userEnrichment = new ProductObservabilityUserEnrichmentBackfillService(
+    env as unknown as ProductObservabilityUserEnrichmentBackfillEnv,
+    firestore,
+  );
+  await userEnrichment.runBatch(USER_ENRICHMENT_BACKFILL_BATCH_SIZE);
 }
 
-async function runScheduledObservabilityRetention(env: Record<string, unknown>): Promise<void> {
+async function runScheduledObservabilityRetention(
+  env: Record<string, unknown>,
+  firestore: FirestoreServiceAccountClient,
+): Promise<void> {
   const retention = new ProductObservabilityRetentionService(
     env as unknown as ProductObservabilityRetentionEnv,
+    firestore,
   );
   for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await retention.runBatch(RETENTION_BATCH_SIZE);
@@ -133,36 +185,28 @@ async function runScheduledObservabilityRetention(env: Record<string, unknown>):
   }
 }
 
-async function runScheduledObservabilityMaintenance(env: Record<string, unknown>): Promise<void> {
-  let rollup: Awaited<ReturnType<typeof runScheduledObservabilityRollup>> | null = null;
-  try {
-    rollup = await runScheduledObservabilityRollup(env);
-  } catch (error) {
-    console.error('[Product Observability] scheduled rollup failed', {
-      message: error instanceof Error ? error.message : String(error),
-    });
+async function runScheduledObservabilityMaintenance(
+  env: Record<string, unknown>,
+  phase: Exclude<ScheduledObservabilityPhase, 'no_op'>,
+  tokenProvider: FirestoreTokenProvider,
+): Promise<void> {
+  const firestore = new FirestoreServiceAccountClient(
+    env as unknown as FirestoreServiceAccountEnv,
+    tokenProvider,
+  );
+  switch (phase) {
+    case 'rollup':
+      await runScheduledObservabilityRollup(env, firestore);
+      return;
+    case 'active_user_snapshot':
+      await runScheduledActiveUserSnapshots(env, firestore);
+      return;
+    case 'profile_registration_backfill':
+      await runScheduledProfileRegistrationBackfill(env, firestore);
+      return;
+    case 'retention':
+      await runScheduledObservabilityRetention(env, firestore);
   }
-
-  if (rollup) {
-    try {
-      await runScheduledActiveUserSnapshots(env, rollup.dirtySources);
-      await rollup.engine.clearActiveUserDirtySources(rollup.dirtySources);
-    } catch (error) {
-      console.error('[Product Observability] active-user snapshot refresh failed', {
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  try {
-    await runScheduledProfileRegistrationBackfill(env);
-  } catch (error) {
-    console.error('[Product Observability] profile registration backfill failed', {
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  await runScheduledObservabilityRetention(env);
 }
 
 export default {
@@ -172,19 +216,34 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    const adminBudget = isProductObservabilityAdminPath(pathname)
+      ? new WorkerSubrequestBudget('fetch', pathname)
+      : null;
+    const tokenProvider = new FirestoreServiceAccountTokenProvider(
+      env as unknown as FirestoreServiceAccountEnv,
+      undefined,
+      undefined,
+      adminBudget ?? undefined,
+    );
     if (isProductObservabilityAdminPath(pathname)) {
-      return await handleProductObservabilityAdminApi(request, env);
+      try {
+        return await handleProductObservabilityAdminApi(request, env, tokenProvider);
+      } finally {
+        adminBudget?.logCompletion();
+      }
     }
     if (isProductObservabilityPath(pathname)) {
       return await handleProductObservabilityApi(
         request,
         env as unknown as ProductObservabilityApiEnv,
+        tokenProvider,
       );
     }
     if (isMaterialMetadataPath(pathname)) {
       return await handleMaterialMetadataApi(
         request,
         env as unknown as MaterialMetadataApiEnv,
+        tokenProvider,
       );
     }
 
@@ -196,7 +255,7 @@ export default {
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = await worker.fetch(request, env as never);
+    const response = await worker.fetch(request, env as never, tokenProvider);
 
     if (observerRequest) {
       scheduleAiRequestMetric(
@@ -205,6 +264,7 @@ export default {
           request: observerRequest,
           response: response.clone(),
           env: observerEnv,
+          firestoreTokenProvider: tokenProvider,
           startedAtMs,
           occurredAt,
           onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
@@ -225,16 +285,37 @@ export default {
     });
   },
   async scheduled(
-    _controller: unknown,
+    controller: { scheduledTime?: number },
     env: Record<string, unknown>,
     executionContext: ExecutionContext,
   ): Promise<void> {
+    const phase = scheduledObservabilityPhase(controller.scheduledTime ?? Number.NaN);
+    const budget = new WorkerSubrequestBudget('scheduled', phase);
+    if (phase === 'no_op') {
+      budget.logCompletion();
+      return;
+    }
+    const tokenProvider = new FirestoreServiceAccountTokenProvider(
+      env as unknown as FirestoreServiceAccountEnv,
+      undefined,
+      undefined,
+      budget,
+    );
     executionContext.waitUntil(
-      runScheduledObservabilityMaintenance(env).catch((error) => {
-        console.error('[Product Observability] scheduled retention failed', {
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }),
+      runScheduledObservabilityMaintenance(env, phase, tokenProvider)
+        .catch((error) => {
+          if (error instanceof WorkerSubrequestBudgetExceededError) {
+            console.info('[Product Observability] scheduled work deferred by subrequest budget', {
+              phase,
+            });
+            return;
+          }
+          console.error('[Product Observability] scheduled maintenance failed', {
+            phase,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => budget.logCompletion()),
     );
   },
 };

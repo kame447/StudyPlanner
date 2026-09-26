@@ -3,6 +3,7 @@ import { ProductObservabilityStore } from './productObservabilityStore';
 
 class MemoryFirestore {
   readonly documents = new Map<string, Record<string, unknown>>();
+  batchGetCallCount = 0;
 
   private key(collection: string, id: string): string {
     return `${collection}/${id}`;
@@ -11,6 +12,14 @@ class MemoryFirestore {
   async getDocument(collection: string, id: string): Promise<Record<string, unknown> | null> {
     const value = this.documents.get(this.key(collection, id));
     return value ? { ...value, id } : null;
+  }
+
+  async batchGetDocuments(
+    collection: string,
+    ids: readonly string[],
+  ): Promise<Array<Record<string, unknown> | null>> {
+    this.batchGetCallCount += 1;
+    return await Promise.all(ids.map((id) => this.getDocument(collection, id)));
   }
 
   async setImmutableDocument(
@@ -122,6 +131,20 @@ describe('ProductObservabilityStore', () => {
     expect(created).toMatch(/^actor-/);
     expect(await store.lookupActorSubjectId('raw-firebase-uid-123')).toBe(created);
     expect(firestore.documents.size).toBe(1);
+  });
+
+  it('looks up a bounded identity set with one exact-ID batch read and preserves misses', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const first = await store.resolveActorSubjectId('firebase-uid-1');
+    const third = await store.resolveActorSubjectId('firebase-uid-3');
+
+    await expect(store.lookupActorSubjectIds([
+      'firebase-uid-1',
+      'firebase-uid-2',
+      'firebase-uid-3',
+    ])).resolves.toEqual([first, null, third]);
+    expect(firestore.batchGetCallCount).toBe(1);
   });
 
   it('stores a pseudonymous activity event without persisting the raw Firebase UID', async () => {

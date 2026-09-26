@@ -8,12 +8,9 @@ function clientWithFetcher(fetcher: typeof fetch): FirestoreServiceAccountClient
       FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
       FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
     },
-    fetcher,
+    { getToken: async () => 'cached-token' },
   );
-  Object.assign(client as unknown as Record<string, unknown>, {
-    accessToken: 'cached-token',
-    accessTokenExpiresAt: Date.now() + 3_600_000,
-  });
+  Object.assign(client as unknown as Record<string, unknown>, { fetcher });
   return client;
 }
 
