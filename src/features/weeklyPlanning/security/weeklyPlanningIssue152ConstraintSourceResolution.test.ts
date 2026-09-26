@@ -18,6 +18,7 @@ const ambiguousSourceText = '来週の計画を作りたいです。予定を見
 const failedRealResponse = '{"schemaVersion":"weekly-planning-semantic-v5","planningIntent":"create_plan","planningWindow":{"localId":"window_1","kind":"relative_week","value":"next_week","start":null,"end":null,"sourceText":"来週"},"tasks":[],"relations":[],"availabilityDeclarations":[],"constraintSourceRequests":[{"localId":"source_request_1","kind":"calendar","selector":"active","requestedAction":"use","sourceText":"予定を見て調整してください"}],"userContextFacts":[],"uncertainties":[],"corrections":[],"decisions":[]}';
 
 const userText = '来週、問題集を10ページ1時間で進めたい。予定を見て調整して';
+const explicitTimetableUserText = '来週、問題集を10ページ1時間で進めたい。時間割を見て調整して';
 const schedulerContext = {
   ownerId: 'owner-1',
   currentDate: '2026-07-27',
@@ -43,8 +44,7 @@ const timetableSource: ExternalConstraintSourceSnapshot = {
 
 function taskDocument(params: {
   sourceRequest: boolean;
-  sourceUncertainty: boolean;
-}): WeeklyPlanningSemanticDocumentV5 {
+  sourceUncertainty: boolean; sourceRequestText?: string; }): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'create_plan',
@@ -94,7 +94,7 @@ function taskDocument(params: {
           kind: 'timetable',
           selector: 'active',
           requestedAction: 'use',
-          sourceText: '予定を見て調整して',
+          sourceText: params.sourceRequestText ?? '予定を見て調整して',
         }]
       : [],
     uncertainties: params.sourceUncertainty
@@ -248,15 +248,16 @@ describe('Issue 152 constraint source request lifecycle', () => {
   });
 
   it('imports an explicitly requested timetable in one turn (benign control)', async () => {
+    // The user names the timetable explicitly; an ambiguous 予定 must go through the question path above.
     const pipeline = createWeeklyPlanningSemanticPipelineV5(scriptedNormalizer([
-      taskDocument({ sourceRequest: true, sourceUncertainty: false }),
+      taskDocument({ sourceRequest: true, sourceUncertainty: false, sourceRequestText: '時間割を見て調整して' }),
     ]));
     const result = await pipeline.run({
       graph: createEmptyWeeklyPlanningFactGraphV5(),
       conversationId: 'conversation-1',
       turnId: 'turn-1',
       expectedRevision: 0,
-      userText,
+      userText: explicitTimetableUserText,
       schedulerContext,
       externalSources: [timetableSource],
     });
