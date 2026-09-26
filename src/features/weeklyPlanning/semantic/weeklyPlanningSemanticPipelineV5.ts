@@ -172,6 +172,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
           expectedRevision: input.expectedRevision,
           graph,
           userText: input.userText,
+          supplementalContext: input.supplementalContext,
+          selectedStarterTarget: input.selectedStarterTarget,
           recentConversation: input.recentConversation,
           publicStateSummary,
           schedulerContext: input.schedulerContext,
@@ -181,6 +183,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
 
       const normalization = await normalizer.normalize({
         userText: input.userText,
+        supplementalContext: input.supplementalContext,
+        selectedStarterTarget: input.selectedStarterTarget,
         recentConversation: input.recentConversation,
         publicStateSummary,
         traceRequestId: input.turnId,

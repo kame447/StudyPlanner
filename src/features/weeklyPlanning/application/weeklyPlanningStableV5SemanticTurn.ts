@@ -176,6 +176,8 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     turnId: input.traceRequestId,
     expectedRevision: runtimeSession.graph.revision,
     userText: input.userText,
+    supplementalContext: input.supplementalContext,
+    selectedStarterTarget: input.selectedStarterTarget,
     recentConversation,
     publicStateSummary: stateSummary,
     schedulerContext: initialSchedulerContext,

@@ -1,11 +1,11 @@
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
+import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
   'weekly-planning-semantic-normalizer-v5' as const;
 
-export interface WeeklyPlanningSemanticNormalizerInputV5 {
-  userText: string;
+export interface WeeklyPlanningSemanticNormalizerInputV5 extends WeeklyPlanningTurnEvidenceV5 {
   recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
   traceRequestId?: string;

@@ -91,16 +91,22 @@ test('AI planning starters use registered exam, unfinished task, and active mate
   await page.locator('.home-bottom-nav button').first().click();
   await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
 
-  const expected = [
+  const expectedDisplay = [
     `${shortDate(examDate)}の情報処理試験に向けて学習計画を作って`,
     `英語レポートを${shortDate(todoDate)}までに終えられるように計画して`,
     `基本情報問題集を${shortDate(materialDate)}までに終えられるように計画して`,
   ];
+  const expectedRequest = [
+    `${shortDate(examDate)}のこの模試に向けて学習計画を作って`,
+    `このTodoを${shortDate(todoDate)}までに終えられるように計画して`,
+    `この教材を${shortDate(materialDate)}までに終えられるように計画して`,
+  ];
 
-  for (let index = 0; index < expected.length; index += 1) {
-    await expect(page.locator('.ai-planning-starter-list button').nth(index)).toHaveText(expected[index]);
+  for (let index = 0; index < expectedDisplay.length; index += 1) {
+    await expect(page.locator('.ai-planning-starter-list button').nth(index)).toHaveText(expectedDisplay[index]);
   }
 
   await page.locator('.ai-planning-starter-list button').nth(1).click();
-  await expect(page.locator('.ai-planning-composer textarea')).toHaveValue(expected[1]);
+  await expect(page.locator('.ai-planning-composer textarea')).toHaveValue(expectedRequest[1]);
+  await expect(page.locator('.ai-planning-composer textarea')).not.toHaveValue(/英語レポート/);
 });

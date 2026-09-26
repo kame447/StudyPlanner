@@ -1,11 +1,10 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import {
   createWeeklyPlanningSemanticMeaningPolicyV5,
-  createWeeklyPlanningSemanticUserContextPayloadV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 
-export interface WeeklyPlanningSemanticPromptInputV5 {
-  userText: string;
+export interface WeeklyPlanningSemanticPromptInputV5 extends WeeklyPlanningTurnEvidenceV5 {
   recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
   traceRequestId?: string;
@@ -30,6 +29,15 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
         SEMANTIC_DELTA_CONTEXT_INSTRUCTION_V5,
       ].join('\n'),
     },
-    { role: 'user', content: createWeeklyPlanningSemanticUserContextPayloadV5(input) },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        userText: input.userText,
+        supplementalContext: input.supplementalContext ?? null,
+        selectedStarterTarget: input.selectedStarterTarget ?? null,
+        recentConversation: input.recentConversation ?? [],
+        publicStateSummary: input.publicStateSummary ?? {},
+      }),
+    },
   ];
 }

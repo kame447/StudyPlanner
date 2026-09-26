@@ -1,4 +1,5 @@
 import type { Plan, StudyMaterial, TodoTask } from '../../../types/domain';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 
 export const AI_PLANNING_FALLBACK_PROMPTS = [
   '今週の課題を優先して、空き時間に無理なく入れて',
@@ -6,9 +7,15 @@ export const AI_PLANNING_FALLBACK_PROMPTS = [
   '毎日少しずつ続けられる学習計画を作って',
 ] as const;
 
-interface StarterPromptCandidate {
-  key: string;
+export interface AiPlanningStarterPromptOption {
+  displayText: string;
   prompt: string;
+  requestText: string;
+  target: WeeklyPlanningSelectedStarterTargetV5 | null;
+}
+
+interface StarterPromptCandidate extends AiPlanningStarterPromptOption {
+  key: string;
   priority: number;
   date: string | null;
 }
@@ -46,6 +53,10 @@ function compareCandidates(left: StarterPromptCandidate, right: StarterPromptCan
   return left.prompt.localeCompare(right.prompt, 'ja');
 }
 
+function storedValue(value: string): string {
+  return JSON.stringify(value);
+}
+
 function addCandidate(
   candidates: StarterPromptCandidate[],
   seenTargets: Set<string>,
@@ -57,14 +68,12 @@ function addCandidate(
   candidates.push(candidate);
 }
 
-export function buildAiPlanningStarterPrompts({
+function buildCandidates({
   referenceDate,
   plans,
   todos,
   materials,
-  limit = 3,
-}: BuildAiPlanningStarterPromptsInput): string[] {
-  const normalizedLimit = Math.max(1, Math.floor(limit));
+}: BuildAiPlanningStarterPromptsInput): StarterPromptCandidate[] {
   const candidates: StarterPromptCandidate[] = [];
   const seenTargets = new Set<string>();
 
@@ -74,7 +83,10 @@ export function buildAiPlanningStarterPrompts({
     .forEach((plan) => {
       addCandidate(candidates, seenTargets, {
         key: plan.title,
-        prompt: `${formatShortDate(plan.date)}の${plan.title}に向けて学習計画を作って`,
+        displayText: `${formatShortDate(plan.date)}の${plan.title}に向けて学習計画を作って`,
+        prompt: `登録済み模試名: ${storedValue(plan.title)}。${formatShortDate(plan.date)}のこの模試に向けて学習計画を作って`,
+        requestText: `${formatShortDate(plan.date)}のこの模試に向けて学習計画を作って`,
+        target: { kind: 'plan', id: plan.id, label: plan.title, targetDate: plan.date },
         priority: 0,
         date: plan.date,
       });
@@ -93,14 +105,26 @@ export function buildAiPlanningStarterPrompts({
     })
     .forEach((todo) => {
       const overdue = Boolean(todo.dueDate && todo.dueDate < referenceDate);
-      const prompt = todo.dueDate
+      const displayText = todo.dueDate
         ? overdue
           ? `${todo.title}を優先して終えられるように計画して`
           : `${todo.title}を${formatShortDate(todo.dueDate)}までに終えられるように計画して`
         : `${todo.title}を進める学習計画を作って`;
+      const prompt = todo.dueDate
+        ? overdue
+          ? `登録済みTodo名: ${storedValue(todo.title)}。このTodoを優先して終えられるように計画して`
+          : `登録済みTodo名: ${storedValue(todo.title)}。このTodoを${formatShortDate(todo.dueDate)}までに終えられるように計画して`
+        : `登録済みTodo名: ${storedValue(todo.title)}。このTodoを進める学習計画を作って`;
       addCandidate(candidates, seenTargets, {
         key: todo.title,
+        displayText,
         prompt,
+        requestText: todo.dueDate
+          ? overdue
+            ? 'このTodoを優先して終えられるように計画して'
+            : `このTodoを${formatShortDate(todo.dueDate)}までに終えられるように計画して`
+          : 'このTodoを進める学習計画を作って',
+        target: { kind: 'todo', id: todo.id, label: todo.title, targetDate: todo.dueDate ?? null },
         priority: 1,
         date: todo.dueDate,
       });
@@ -119,14 +143,26 @@ export function buildAiPlanningStarterPrompts({
     .forEach((material) => {
       const targetDate = material.targetDate ?? null;
       const overdue = Boolean(targetDate && targetDate < referenceDate);
-      const prompt = targetDate
+      const displayText = targetDate
         ? overdue
           ? `${material.name}を優先して進める学習計画を作って`
           : `${material.name}を${formatShortDate(targetDate)}までに終えられるように計画して`
         : `${material.name}を今週進める学習計画を作って`;
+      const prompt = targetDate
+        ? overdue
+          ? `登録済み教材名: ${storedValue(material.name)}。この教材を優先して進める学習計画を作って`
+          : `登録済み教材名: ${storedValue(material.name)}。この教材を${formatShortDate(targetDate)}までに終えられるように計画して`
+        : `登録済み教材名: ${storedValue(material.name)}。この教材を今週進める学習計画を作って`;
       addCandidate(candidates, seenTargets, {
         key: material.name,
+        displayText,
         prompt,
+        requestText: targetDate
+          ? overdue
+            ? 'この教材を優先して進める学習計画を作って'
+            : `この教材を${formatShortDate(targetDate)}までに終えられるように計画して`
+          : 'この教材を今週進める学習計画を作って',
+        target: { kind: 'material', id: material.id, label: material.name, targetDate },
         priority: 2,
         date: targetDate,
       });
@@ -138,21 +174,39 @@ export function buildAiPlanningStarterPrompts({
     .forEach((plan) => {
       addCandidate(candidates, seenTargets, {
         key: plan.title,
-        prompt: `${plan.title}を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        displayText: `${plan.title}を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        prompt: `登録済み期限予定名: ${storedValue(plan.title)}。この予定を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        requestText: `この予定を${formatShortDate(plan.date)}までに終えられるように計画して`,
+        target: { kind: 'plan', id: plan.id, label: plan.title, targetDate: plan.date },
         priority: 1,
         date: plan.date,
       });
     });
 
-  const prompts = candidates
+  return candidates;
+}
+
+export function buildAiPlanningStarterPromptOptions(
+  input: BuildAiPlanningStarterPromptsInput,
+): AiPlanningStarterPromptOption[] {
+  const normalizedLimit = Math.max(1, Math.floor(input.limit ?? 3));
+  const options = buildCandidates(input)
     .sort(compareCandidates)
     .slice(0, normalizedLimit)
-    .map((candidate) => candidate.prompt);
+    .map(({ displayText, prompt, requestText, target }) => ({ displayText, prompt, requestText, target }));
 
   for (const fallback of AI_PLANNING_FALLBACK_PROMPTS) {
-    if (prompts.length >= normalizedLimit) break;
-    if (!prompts.includes(fallback)) prompts.push(fallback);
+    if (options.length >= normalizedLimit) break;
+    if (!options.some((option) => option.prompt === fallback)) {
+      options.push({ displayText: fallback, prompt: fallback, requestText: fallback, target: null });
+    }
   }
 
-  return prompts.slice(0, normalizedLimit);
+  return options.slice(0, normalizedLimit);
+}
+
+export function buildAiPlanningStarterPrompts(
+  input: BuildAiPlanningStarterPromptsInput,
+): string[] {
+  return buildAiPlanningStarterPromptOptions(input).map((option) => option.prompt);
 }

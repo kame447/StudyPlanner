@@ -8,6 +8,7 @@ import type {
 } from '../../../types/domain';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import {
   executeWeeklyPlanningTurn,
 } from '../weeklyPlanningTurnExecutor';
@@ -37,6 +38,8 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   snapshot: PlanningState;
   pending: WeeklyPlanningPendingTurn;
   userText: string;
+  supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   selectedDate: string;
   userId: string;
   plans: Plan[];
@@ -76,6 +79,8 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         previousState: params.snapshot.intakeState,
         messages: params.snapshot.messages,
         userText: params.userText,
+        supplementalContext: params.supplementalContext,
+        selectedStarterTarget: params.selectedStarterTarget,
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,
