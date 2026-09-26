@@ -219,13 +219,94 @@ describe('product observability read model projection', () => {
     const summary = projectUserSummary({
       current: null,
       event: activity,
+      actorDayWasNew: true,
       nowIso: activity.observedAt,
     });
 
     expect(summary.actorSubjectId).toBe('actor-12345678');
     expect(summary.productActivityCount).toBe(1);
+    expect(summary.activeDayCount).toBe(1);
     expect(summary.lastProductAction).toBe('actual_recorded');
     expect(JSON.stringify(summary)).not.toContain('firebase');
     expect(JSON.stringify(summary)).not.toContain('userText');
+  });
+
+  it('increments enriched active days only for a new actor-day and keeps the latest typed error', () => {
+    const firstEvent = event<ProductActivityTelemetryDraft['payload']>({
+      eventType: 'product_activity',
+      payload: { action: 'plan_created' },
+    });
+    const first = projectUserSummary({
+      current: null,
+      event: firstEvent,
+      actorDayWasNew: true,
+      nowIso: '2026-08-28T00:00:01.000Z',
+    });
+    const failed = event<AiRequestMetricPayload>({
+      eventType: 'ai_request_metric',
+      payload: aiPayload({ status: 'provider_error', errorCategory: 'provider_error' }),
+      occurredAt: '2026-08-28T01:00:00.000Z',
+    });
+    const second = projectUserSummary({
+      current: first,
+      event: failed,
+      actorDayWasNew: false,
+      nowIso: '2026-08-28T01:00:01.000Z',
+    });
+    const nextDay = event<ProductActivityTelemetryDraft['payload']>({
+      eventType: 'product_activity',
+      payload: { action: 'actual_recorded' },
+      occurredAt: '2026-08-29T01:00:00.000Z',
+    });
+    const third = projectUserSummary({
+      current: second,
+      event: nextDay,
+      actorDayWasNew: true,
+      nowIso: '2026-08-29T01:00:01.000Z',
+    });
+
+    expect(second).toMatchObject({
+      activeDayCount: 1,
+      latestErrorAt: '2026-08-28T01:00:00.000Z',
+      latestErrorCategory: 'provider_error',
+    });
+    expect(third).toMatchObject({
+      activeDayCount: 2,
+      latestErrorAt: '2026-08-28T01:00:00.000Z',
+      latestErrorCategory: 'provider_error',
+    });
+  });
+
+  it('does not mark a legacy summary ready from one new event', () => {
+    const legacy = {
+      ...projectUserSummary({
+        current: null,
+        event: event<ProductActivityTelemetryDraft['payload']>({
+          eventType: 'product_activity',
+          payload: { action: 'plan_created' },
+        }),
+        actorDayWasNew: true,
+        nowIso: '2026-08-28T00:00:01.000Z',
+      }),
+    };
+    delete legacy.userEnrichmentVersion;
+    delete legacy.activeDayCount;
+    delete legacy.latestErrorAt;
+    delete legacy.latestErrorCategory;
+    delete legacy.userEnrichmentUpdatedAt;
+
+    const next = projectUserSummary({
+      current: legacy,
+      event: event<AiRequestMetricPayload>({
+        eventType: 'ai_request_metric',
+        payload: aiPayload({ status: 'timeout', errorCategory: 'timeout' }),
+      }),
+      actorDayWasNew: false,
+      nowIso: '2026-08-28T02:00:01.000Z',
+    });
+
+    expect(next.userEnrichmentVersion).toBeUndefined();
+    expect(next.activeDayCount).toBeUndefined();
+    expect(next.latestErrorAt).toBeUndefined();
   });
 });

@@ -21,6 +21,7 @@ import {
   FirestoreTransactionConflictError,
   type FirestoreOrderedDocument,
   type FirestoreServiceAccountEnv,
+  type FirestoreTransactionDocumentKey,
   type FirestoreTransactionDocumentWrite,
 } from './firestoreServiceAccountClient';
 import {
@@ -45,7 +46,8 @@ const USER_SUMMARY_COLLECTION_PREFIX = 'observability_user_summary';
 const DAILY_ROLLUP_COLLECTION = 'observability_daily_rollups';
 const ROLLUP_STATE_COLLECTION = 'observability_rollup_state';
 const ROLLUP_STATE_ID = 'main';
-const DEFAULT_BATCH_SIZE = 50;
+const DEFAULT_BATCH_SIZE = 20;
+const MAX_BATCH_SIZE = 20;
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const MAX_ACTIVE_USER_DIRTY_SOURCES = 128;
 const ROLLUP_SETTLE_LAG_MS = 5 * 60 * 1000;
@@ -70,11 +72,10 @@ interface ObservabilityRollupFirestore {
     limit?: number;
   }): Promise<FirestoreOrderedDocument[]>;
   beginTransaction(): Promise<string>;
-  getDocumentInTransaction(
-    collection: string,
-    id: string,
+  batchGetDocumentKeys(
+    keys: readonly FirestoreTransactionDocumentKey[],
     transaction: string,
-  ): Promise<Record<string, unknown> | null>;
+  ): Promise<Array<Record<string, unknown> | null>>;
   commitTransaction(
     transaction: string,
     writes: readonly FirestoreTransactionDocumentWrite[],
@@ -246,6 +247,14 @@ function cacheKey(collection: string, id: string): string {
   return `${collection}/${id}`;
 }
 
+function uniqueDocumentKeys(
+  keys: readonly FirestoreTransactionDocumentKey[],
+): FirestoreTransactionDocumentKey[] {
+  const byKey = new Map<string, FirestoreTransactionDocumentKey>();
+  keys.forEach((key) => byKey.set(cacheKey(key.collection, key.id), key));
+  return [...byKey.values()];
+}
+
 function withoutStorageId<T>(value: Record<string, unknown> | null): T | null {
   if (!value) return null;
   const { id: _id, ...document } = value;
@@ -289,7 +298,7 @@ export class ProductObservabilityRollupEngine {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  private async checkpoint(): Promise<ObservabilityRollupCheckpoint> {
+  async currentCheckpoint(): Promise<ObservabilityRollupCheckpoint> {
     const nowIso = this.now().toISOString();
     return readCheckpoint(
       await this.firestore.getDocument(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID),
@@ -302,14 +311,11 @@ export class ProductObservabilityRollupEngine {
       const nowIso = this.now().toISOString();
       const transaction = await this.firestore.beginTransaction();
       try {
-        const latest = readCheckpoint(
-          await this.firestore.getDocumentInTransaction(
-            ROLLUP_STATE_COLLECTION,
-            ROLLUP_STATE_ID,
-            transaction,
-          ),
-          nowIso,
-        );
+        const [storedCheckpoint] = await this.firestore.batchGetDocumentKeys([{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+        }], transaction);
+        const latest = readCheckpoint(storedCheckpoint, nowIso);
         const failed: ObservabilityRollupCheckpoint = {
           ...latest,
           lastFailureAt: nowIso,
@@ -349,14 +355,11 @@ export class ProductObservabilityRollupEngine {
       const nowIso = this.now().toISOString();
       const transaction = await this.firestore.beginTransaction();
       try {
-        const latest = readCheckpoint(
-          await this.firestore.getDocumentInTransaction(
-            ROLLUP_STATE_COLLECTION,
-            ROLLUP_STATE_ID,
-            transaction,
-          ),
-          nowIso,
-        );
+        const [storedCheckpoint] = await this.firestore.batchGetDocumentKeys([{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+        }], transaction);
+        const latest = readCheckpoint(storedCheckpoint, nowIso);
         const remaining = latest.activeUserDirtySources.filter((source) => {
           const processedRevision = processed.get(dirtySourceKey(source));
           return processedRevision === undefined || processedRevision !== source.revision;
@@ -390,9 +393,10 @@ export class ProductObservabilityRollupEngine {
   }
 
   async runBatch(limit = DEFAULT_BATCH_SIZE): Promise<ProductObservabilityRollupResult> {
+    const pageSize = Math.max(1, Math.min(MAX_BATCH_SIZE, Math.floor(limit)));
     let lastError: unknown = null;
     for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
-      const before = await this.checkpoint();
+      const before = await this.currentCheckpoint();
       const runStarted = this.now();
       const runStartedAt = runStarted.toISOString();
       const settleCutoff = new Date(runStarted.getTime() - ROLLUP_SETTLE_LAG_MS).toISOString();
@@ -405,17 +409,48 @@ export class ProductObservabilityRollupEngine {
               documentName: before.cursor.documentName,
             }
           : null,
-        limit,
+        limit: pageSize,
       });
       const settledEvents = eligibleDocuments(orderedEvents, settleCutoff);
       const transaction = await this.firestore.beginTransaction();
       try {
+        const eventRows = settledEvents.map((document) => ({
+          document,
+          event: storedEventFromOrderedDocument(document),
+        }));
+        const firstReadKeys: FirestoreTransactionDocumentKey[] = [{
+          collection: ROLLUP_STATE_COLLECTION,
+          id: ROLLUP_STATE_ID,
+        }];
+        for (const { event } of eventRows) {
+          firstReadKeys.push(
+            { collection: ACTOR_DAY_COLLECTION, id: actorDayId(event) },
+            { collection: DAILY_ROLLUP_COLLECTION, id: dailyRollupId(event) },
+            { collection: userSummaryCollection(event), id: event.actorSubjectId },
+          );
+          if (event.eventType === 'planning_outcome') {
+            const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
+            const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
+            if (!featureSessionId) throw new Error('invalid_planning_session_event');
+            firstReadKeys.push({
+              collection: PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
+              id: planningSessionDocumentId(event.environment, featureSessionId),
+            });
+          }
+        }
+        const cache = new Map<string, Record<string, unknown> | null>();
+        const load = async (keys: readonly FirestoreTransactionDocumentKey[]) => {
+          const unread = uniqueDocumentKeys(keys).filter((key) =>
+            !cache.has(cacheKey(key.collection, key.id)));
+          if (unread.length === 0) return;
+          const values = await this.firestore.batchGetDocumentKeys(unread, transaction);
+          unread.forEach((key, index) => {
+            cache.set(cacheKey(key.collection, key.id), values[index] ?? null);
+          });
+        };
+        await load(firstReadKeys);
         const transactionalCheckpoint = readCheckpoint(
-          await this.firestore.getDocumentInTransaction(
-            ROLLUP_STATE_COLLECTION,
-            ROLLUP_STATE_ID,
-            transaction,
-          ),
+          cache.get(cacheKey(ROLLUP_STATE_COLLECTION, ROLLUP_STATE_ID)) ?? null,
           runStartedAt,
         );
         if (!sameCursor(transactionalCheckpoint.cursor, before.cursor)) {
@@ -440,19 +475,42 @@ export class ProductObservabilityRollupEngine {
           return { processed: 0, hasMore: false, checkpoint };
         }
 
-        const eventRows = settledEvents.map((document) => ({
-          document,
-          event: storedEventFromOrderedDocument(document),
-        }));
-        const cache = new Map<string, Record<string, unknown> | null>();
+        const planningSessionPreview = new Map<string, ObservabilityPlanningSessionSummary | null>();
+        const cohortReadKeys: FirestoreTransactionDocumentKey[] = [];
+        for (const { event } of eventRows) {
+          if (event.eventType !== 'planning_outcome') continue;
+          const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
+          const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
+          const sessionId = planningSessionDocumentId(event.environment, featureSessionId);
+          const sessionKey = cacheKey(
+            PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
+            sessionId,
+          );
+          const current = planningSessionPreview.has(sessionKey)
+            ? planningSessionPreview.get(sessionKey) ?? null
+            : withoutStorageId<ObservabilityPlanningSessionSummary>(cache.get(sessionKey) ?? null);
+          const next = projectPlanningSessionSummary({
+            current,
+            event: planningEvent,
+            nowIso: runStartedAt,
+          });
+          const cohortDates = new Set<string>();
+          if (current?.startedDate) cohortDates.add(current.startedDate);
+          if (next.startedDate) cohortDates.add(next.startedDate);
+          cohortDates.forEach((cohortDate) => cohortReadKeys.push({
+            collection: PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
+            id: planningDailyCohortDocumentId(event.environment, cohortDate),
+          }));
+          planningSessionPreview.set(sessionKey, next);
+        }
+        await load(cohortReadKeys);
+
         const writes = new Map<string, FirestoreTransactionDocumentWrite>();
         const changedActorSources = new Map<string, ActiveUserDirtySourceKey>();
         const read = async (collection: string, id: string) => {
           const key = cacheKey(collection, id);
-          if (cache.has(key)) return cache.get(key) ?? null;
-          const value = await this.firestore.getDocumentInTransaction(collection, id, transaction);
-          cache.set(key, value);
-          return value;
+          if (!cache.has(key)) throw new Error('observability_rollup_prefetch_incomplete');
+          return cache.get(key) ?? null;
         };
         const stage = (
           collection: string,
@@ -553,6 +611,7 @@ export class ProductObservabilityRollupEngine {
           const nextUser = projectUserSummary({
             current: userBefore,
             event,
+            actorDayWasNew: actorDayBefore === null,
             nowIso: runStartedAt,
           });
           stage(
@@ -591,7 +650,7 @@ export class ProductObservabilityRollupEngine {
         const hasFreshTail = settledEvents.length < orderedEvents.length;
         return {
           processed: eventRows.length,
-          hasMore: !hasFreshTail && orderedEvents.length >= Math.max(1, Math.floor(limit)),
+          hasMore: !hasFreshTail && orderedEvents.length >= pageSize,
           checkpoint,
         };
       } catch (error) {

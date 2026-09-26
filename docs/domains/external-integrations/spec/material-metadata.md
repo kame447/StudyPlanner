@@ -1,7 +1,7 @@
 # 教材メタデータ取得 要件
 
 Status: canonical product/integration requirement
-Updated: 2026-08-29
+Updated: 2026-09-26
 Owning Issue: [#187](https://github.com/kame447/StudyPlanner/issues/187)
 
 ## 1. 目的
@@ -238,6 +238,16 @@ built-in候補をNDLで補完した場合も、`catalogEntryId` はStudyPlanner�
 手入力だけで作成した教材、または既存の旧教材にはこれらのフィールドがなくてもよい。migrationで架空のリンクを付与しない。
 
 カタログリンクは書誌・検索identityへの参照であり、ユーザー固有の教科、現在位置、目標日、学習速度、進捗単位などを共有catalogへ逆流させない。
+
+### 9.2 週間計画での登録済み教材利用
+
+登録済み教材の現在値はBookshelf側を正本とし、週間計画のFact Graphやdurable conversation memoryへ複製しない。
+
+- 一意に対応する教材でペース管理が有効かつ総量・現在進捗が有効なら、既知の総量や現在地を再質問せず、今回の計画で扱う対象範囲だけを確認する。
+- ユーザーが「残り全部」を明示的に選んだturnでは、その教材のcurrent remaining quantityをplan-localな`remaining` workloadのgroundingとして利用できる。
+- このplan-local workloadは今回の計画対象を表し、Bookshelfの`scope_total` / `completed`をcurrent-turn user factとしてFact Graphへ複製するものではない。
+- 教材名の曖昧一致、複数候補、無効な進捗、異なるevidenceを持つ候補では自動bindしない。
+- AI promptへ渡す教材情報は必要最小限のtyped contextに限定し、保存済み教材本文をinstruction authorityへ昇格させない。
 
 ## 10. Security / failure isolation
 

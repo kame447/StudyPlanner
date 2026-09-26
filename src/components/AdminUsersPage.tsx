@@ -13,11 +13,9 @@ import type {
 } from '../../shared/productObservabilityAdminReadModel';
 import type {
   ObservabilityDailyRollup,
-  ObservabilityOverviewReadModel,
 } from '../../shared/productObservabilityReadModel';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import {
-  getAdminObservabilityOverview,
   getAdminObservabilityUsers,
   resolveAdminObservabilityUserIdentity,
   type AdminObservabilityUserPage,
@@ -42,23 +40,6 @@ function formatOpaqueId(value: string): string {
     : value;
 }
 
-function todayInTokyo(): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function shiftDate(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
-
 function shortDate(localDate: string): string {
   return new Intl.DateTimeFormat('ja-JP', {
     month: 'numeric',
@@ -79,7 +60,7 @@ type UserSort = 'recent' | 'events' | 'actor';
 
 interface UsersPageData {
   page: AdminObservabilityUserPage;
-  trend: ObservabilityOverviewReadModel;
+  trend: AdminObservabilityUserPage['trend'];
 }
 
 function initialFilter(): UserFilter {
@@ -119,84 +100,21 @@ function UserTrend({ daily }: { daily: ObservabilityDailyRollup[] }) {
 
 export function AdminUsersPage({ navigate }: { navigate: (path: string) => void }) {
   const loadUsers = useCallback(async (): Promise<UsersPageData> => {
-    const toDate = todayInTokyo();
-    const [page, trend] = await Promise.all([
-      getAdminObservabilityUsers({ environment: 'production', limit: 25 }),
-      getAdminObservabilityOverview({
-        environment: 'production',
-        fromDate: shiftDate(toDate, -29),
-        toDate,
-      }),
-    ]);
-    return { page, trend };
+    const page = await getAdminObservabilityUsers({ environment: 'production', limit: 25 });
+    return { page, trend: page.trend };
   }, []);
   const { loadState, data, errorMessage } = useAdminDataLoader<UsersPageData>(
     loadUsers,
     {
-      page: { users: [], nextCursor: null },
+      page: {
+        users: [],
+        nextCursor: null,
+        enrichmentReady: false,
+        trend: { daily: [], activeUsers: null },
+      },
       trend: {
-        schemaVersion: 1,
-        fromDate: '',
-        toDate: '',
-        reportingTimeZone: 'Asia/Tokyo',
-        registeredUsers: {
-          total: 0,
-          newInPeriod: null,
-          registrationIndexReady: false,
-          scope: 'firebase_project',
-        },
-        period: {
-          processedEventCount: 0,
-          firstOccurredAt: null,
-          lastOccurredAt: null,
-          productActivity: { eventCount: 0, actionCounts: {} },
-          ai: {
-            requestCount: 0,
-            successCount: 0,
-            failureCount: 0,
-            statusCounts: {},
-            promptTokens: 0,
-            promptTokensUnknownCount: 0,
-            completionTokens: 0,
-            completionTokensUnknownCount: 0,
-            totalTokens: 0,
-            totalTokensUnknownCount: 0,
-            cachedTokens: 0,
-            cachedTokensUnknownCount: 0,
-            estimatedCostMicros: 0,
-            estimatedCostUnknownCount: 0,
-            latency: {
-              version: 'latency-ms-v1',
-              bucketCounts: Array(10).fill(0),
-              sampleCount: 0,
-              sumMs: 0,
-              minMs: null,
-              maxMs: null,
-            },
-          },
-          planning: {
-            outcomeCounts: {},
-            previewCountSum: 0,
-            previewCountUnknownCount: 0,
-            unscheduledCountSum: 0,
-            unscheduledCountUnknownCount: 0,
-          },
-        },
         daily: [],
         activeUsers: null,
-        aiLatencyP50Ms: null,
-        aiLatencyP95Ms: null,
-        rollupCheckpoint: {
-          schemaVersion: 1,
-          cursor: null,
-          processedEventCount: 0,
-          activeUserDirtySources: [],
-          lastRunStartedAt: null,
-          lastSuccessfulRunAt: null,
-          lastFailureAt: null,
-          lastFailureCategory: null,
-          updatedAt: new Date(0).toISOString(),
-        },
       },
     },
     'ユーザー分析を取得できませんでした。',
@@ -437,7 +355,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
                   </span>
                   <span className="admin-user-stats">
                     <span>最終利用 <strong>{formatTimestamp(user.lastActivityAt)}</strong></span>
-                    <span>利用日数 <strong>{user.activeDayCount}日</strong></span>
+                    <span>利用日数 <strong>{user.activeDayCount == null ? '未確認' : `${user.activeDayCount}日`}</strong></span>
                     <span>操作 <strong>{user.productActivityCount}件</strong></span>
                     <span><Bot aria-hidden="true" size={14} /> AI <strong>{user.aiRequestCount}件</strong></span>
                     <span>計画 <strong>{user.planningOutcomeCount}件</strong></span>

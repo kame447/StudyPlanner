@@ -9,6 +9,7 @@ type Row = Record<string, unknown> & {
 class MemoryRetentionFirestore {
   readonly rows = new Map<string, Row[]>();
   readonly deleted: string[] = [];
+  commitFails = false;
 
   add(collection: string, id: string, expireAt: string): void {
     const current = this.rows.get(collection) ?? [];
@@ -32,12 +33,17 @@ class MemoryRetentionFirestore {
       .map((row) => ({ ...row }));
   }
 
-  async deleteDocument(collection: string, id: string): Promise<void> {
-    this.deleted.push(`${collection}/${id}`);
-    this.rows.set(
-      collection,
-      (this.rows.get(collection) ?? []).filter((row) => row.id !== id),
-    );
+  async commitWrites(
+    writes: readonly Array<{ collection: string; id: string; delete: true }>,
+  ): Promise<void> {
+    if (this.commitFails) throw new Error('injected bulk delete failure');
+    for (const { collection, id } of writes) {
+      this.deleted.push(`${collection}/${id}`);
+      this.rows.set(
+        collection,
+        (this.rows.get(collection) ?? []).filter((row) => row.id !== id),
+      );
+    }
   }
 }
 
@@ -87,5 +93,19 @@ describe('ProductObservabilityRetentionService', () => {
 
     expect(result.deleted).toBe(2);
     expect(result.hasMore).toBe(true);
+  });
+
+  it('leaves every expired document retryable when the bulk delete fails', async () => {
+    const firestore = new MemoryRetentionFirestore();
+    firestore.add('observability_events', 'expired-1', '2026-08-27T10:00:00.000Z');
+    firestore.add('observability_actor_day', 'expired-2', '2026-08-27T11:00:00.000Z');
+    firestore.commitFails = true;
+
+    await expect(service(firestore).runBatch(100))
+      .rejects.toThrow('injected bulk delete failure');
+
+    expect(firestore.deleted).toEqual([]);
+    expect(firestore.rows.get('observability_events')).toHaveLength(1);
+    expect(firestore.rows.get('observability_actor_day')).toHaveLength(1);
   });
 });
