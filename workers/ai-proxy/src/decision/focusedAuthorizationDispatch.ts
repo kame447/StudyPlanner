@@ -5,11 +5,48 @@ import type { ProductObservabilityEnv } from '../productObservabilityStore';
 import type { FirestoreTokenProvider } from '../firestoreServiceAccountClient';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
-import { markJevExecution } from './decisionExecutionMarker';
+import {
+  markJevExecution,
+  type JevExecutionMode,
+  type LunaBaselineFailure,
+} from './decisionExecutionMarker';
 import {
   canarySelected, decisionMode, gateDecision, JEV_CATALOG_VERSION, JEV_GATE_VERSION,
   FOCUSED_REQUEST_TIMEOUT_MS, type DecisionEnv,
 } from './decisionPolicy';
+
+class FocusedAuthorizationBaselineError extends Error {
+  constructor(
+    readonly mode: JevExecutionMode,
+    readonly failure: LunaBaselineFailure,
+    cause: unknown,
+  ) {
+    // Keep the original error for Worker logs; telemetry reads only mode/failure.
+    super('Focused authorization Luna baseline failed.', { cause });
+    this.name = 'FocusedAuthorizationBaselineError';
+  }
+}
+
+export function resolveFocusedAuthorizationBaselineFailure(
+  error: unknown,
+): { mode: JevExecutionMode; failure: LunaBaselineFailure } | null {
+  return error instanceof FocusedAuthorizationBaselineError
+    ? { mode: error.mode, failure: error.failure }
+    : null;
+}
+
+async function fallbackWithFailureMarker(
+  fallback: (signal?: AbortSignal) => Promise<Response>,
+  mode: JevExecutionMode,
+  failure: () => LunaBaselineFailure,
+  signal?: AbortSignal,
+): Promise<Response> {
+  try {
+    return await fallback(signal);
+  } catch (error) {
+    throw new FocusedAuthorizationBaselineError(mode, failure(), error);
+  }
+}
 
 function metricStatus(result: DecisionEvaluation): AiRequestMetricStatus {
   if (result.status === 'evaluated') return 'success';
@@ -99,7 +136,11 @@ export async function dispatchFocusedAuthorization(params: {
 
   if (mode === 'shadow') {
     const evaluation = provider.evaluate(params.context.state);
-    const baseline = params.fallback().then((response) => markJevExecution(response, mode));
+    const baseline = fallbackWithFailureMarker(
+      params.fallback,
+      mode,
+      () => 'network',
+    ).then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])
         .then(([result, decision]) => record(result, decision)).catch(() => undefined),
@@ -108,10 +149,19 @@ export async function dispatchFocusedAuthorization(params: {
   }
 
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  params.signal.addEventListener('abort', abort, { once: true });
-  if (params.signal.aborted) abort();
-  const timer = setTimeout(abort, FOCUSED_REQUEST_TIMEOUT_MS);
+  let cancelled = false;
+  let timedOut = false;
+  const cancel = () => {
+    cancelled = true;
+    controller.abort();
+  };
+  params.signal.addEventListener('abort', cancel, { once: true });
+  if (params.signal.aborted) cancel();
+  const timer = setTimeout(() => {
+    if (controller.signal.aborted) return;
+    timedOut = true;
+    controller.abort();
+  }, FOCUSED_REQUEST_TIMEOUT_MS);
   try {
     const evaluation = await provider.evaluate(params.context.state, controller.signal);
     const gate = gateDecision(evaluation);
@@ -120,9 +170,14 @@ export async function dispatchFocusedAuthorization(params: {
     else await metric;
     if (controller.signal.aborted) throw new Error('Focused authorization request cancelled or timed out.');
     if (gate.status === 'accepted') return markJevExecution(params.respond(gate.decision), mode);
-    return markJevExecution(await params.fallback(controller.signal), mode);
+    return markJevExecution(await fallbackWithFailureMarker(
+      params.fallback,
+      mode,
+      () => timedOut ? 'timeout' : cancelled ? 'cancelled' : 'network',
+      controller.signal,
+    ), mode);
   } finally {
     clearTimeout(timer);
-    params.signal.removeEventListener('abort', abort);
+    params.signal.removeEventListener('abort', cancel);
   }
 }

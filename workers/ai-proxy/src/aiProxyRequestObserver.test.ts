@@ -59,6 +59,9 @@ describe('AI proxy request observer', () => {
     expect(classifyAiProxyMetricStatus(502, { error: 'OpenAI request failed.' }))
       .toBe('provider_error');
     expect(classifyAiProxyMetricStatus(500, {})).toBe('unknown_failure');
+    expect(classifyAiProxyMetricStatus(500, {}, 'network')).toBe('network_failure');
+    expect(classifyAiProxyMetricStatus(500, {}, 'cancelled')).toBe('cancelled');
+    expect(classifyAiProxyMetricStatus(500, {}, 'timeout')).toBe('timeout');
     expect(classifyAiProxyMetricStatus(400, {})).toBeNull();
     expect(classifyAiProxyMetricStatus(401, {})).toBeNull();
   });

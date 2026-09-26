@@ -13,7 +13,11 @@ import {
 } from './weeklyPlanningTraceApi';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
-import { dispatchFocusedAuthorization } from './decision/focusedAuthorizationDispatch';
+import {
+  dispatchFocusedAuthorization,
+  resolveFocusedAuthorizationBaselineFailure,
+} from './decision/focusedAuthorizationDispatch';
+import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
 
 export { AiQuotaDurableObject };
@@ -973,7 +977,11 @@ export default {
         return await handleChatRequest(request, env, tokenProvider, executionContext);
       } catch (error) {
         console.error('[AI Proxy] unexpected chat handler failure', error);
-        return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
+        const response = jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
+        const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error);
+        return baselineFailure
+          ? markLunaBaselineFailure(response, baselineFailure.mode, baselineFailure.failure)
+          : response;
       }
     }
 

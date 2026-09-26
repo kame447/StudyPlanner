@@ -16,7 +16,10 @@ import {
 } from './aiRequestObservability';
 import type { ProductObservabilityEnv } from './productObservabilityStore';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
-import type { JevExecutionMode } from './decision/decisionExecutionMarker';
+import type {
+  JevExecutionMode,
+  LunaBaselineFailure,
+} from './decision/decisionExecutionMarker';
 
 export interface AiProxyRequestObserverEnv extends ProductObservabilityEnv {
   FIREBASE_WEB_API_KEY?: string;
@@ -182,7 +185,11 @@ export function resolveAiProxyMetricCorrelation(
 export function classifyAiProxyMetricStatus(
   responseStatus: number,
   responsePayload: unknown,
+  lunaFailure?: LunaBaselineFailure | null,
 ): AiRequestMetricStatus | null {
+  if (lunaFailure === 'network') return 'network_failure';
+  if (lunaFailure === 'cancelled') return 'cancelled';
+  if (lunaFailure === 'timeout') return 'timeout';
   if (responseStatus >= 200 && responseStatus < 300) return 'success';
   if (responseStatus === 429) return 'quota_rejected';
   if (responseStatus === 502) {
@@ -217,6 +224,7 @@ export async function observeAiProxyRequest(params: {
   occurredAt: string;
   usage?: AiRequestUsage | null;
   decisionExecutionMode?: JevExecutionMode | null;
+  lunaBaselineFailure?: LunaBaselineFailure | null;
   onError?: (error: unknown) => void;
 }): Promise<void> {
   if (!isAiRequestObservabilityConfigured(params.env)) return;
@@ -233,7 +241,11 @@ export async function observeAiProxyRequest(params: {
 
   const responseText = await params.response.text();
   const responsePayload = await parseJsonOrNull(responseText);
-  const status = classifyAiProxyMetricStatus(params.response.status, responsePayload);
+  const status = classifyAiProxyMetricStatus(
+    params.response.status,
+    responsePayload,
+    params.decisionExecutionMode ? params.lunaBaselineFailure : null,
+  );
   if (!status) return;
 
   const firebaseUid = await resolveFirebaseUid(params.request, params.env);
