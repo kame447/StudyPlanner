@@ -12,6 +12,7 @@ import {
 } from './decisionExecutionMarker';
 import {
   canarySelected, decisionMode, gateDecision, JEV_CATALOG_VERSION, JEV_GATE_VERSION,
+  type DecisionGate,
   FOCUSED_REQUEST_TIMEOUT_MS, type DecisionEnv,
 } from './decisionPolicy';
 
@@ -77,6 +78,8 @@ export async function dispatchFocusedAuthorization(params: {
   fallback: (signal?: AbortSignal) => Promise<Response>;
   respond: (decision: 'create_plan' | 'fallback') => Response;
   provider?: DecisionProvider;
+  /** Evaluation/test hook for a request whose machine revision changed in flight. */
+  isContextCurrent?: () => boolean;
 }): Promise<Response> {
   const mode = decisionMode(params.env);
   if (mode === 'off') return params.fallback();
@@ -91,8 +94,11 @@ export async function dispatchFocusedAuthorization(params: {
   const provider = params.provider ?? createOpenRouterDecisionProvider({ apiKey: params.env.OPENROUTER_API_KEY });
   const requestId = createAiRequestId();
   const startedAtMs = Date.now();
-  const record = async (evaluation: DecisionEvaluation, baseline: string | null) => {
-    const gate = gateDecision(evaluation);
+  const record = async (
+    evaluation: DecisionEvaluation,
+    baseline: string | null,
+    gate: DecisionGate = gateDecision(evaluation),
+  ) => {
     const metadata = evaluation.metadata;
     const decision: NonNullable<AiRequestMetricPayload['decision']> = {
       mode, outcome: mode === 'shadow' ? 'shadow' : gate.status === 'accepted' && gate.decision === 'create_plan' ? 'success' : 'fallback',
@@ -164,8 +170,10 @@ export async function dispatchFocusedAuthorization(params: {
   }, FOCUSED_REQUEST_TIMEOUT_MS);
   try {
     const evaluation = await provider.evaluate(params.context.state, controller.signal);
-    const gate = gateDecision(evaluation);
-    const metric = record(evaluation, null).catch(() => undefined);
+    const gate: DecisionGate = params.isContextCurrent?.() === false
+      ? { status: 'unavailable', reason: 'stale_context' }
+      : gateDecision(evaluation);
+    const metric = record(evaluation, null, gate).catch(() => undefined);
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) throw new Error('Focused authorization request cancelled or timed out.');
