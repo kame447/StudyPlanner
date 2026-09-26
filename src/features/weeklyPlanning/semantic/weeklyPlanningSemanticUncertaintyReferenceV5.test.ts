@@ -27,7 +27,7 @@ describe('Stable V5 uncertainty reference validation', () => {
   it('rejects an uncertainty that targets itself', () => {
     const result = validateWeeklyPlanningSemanticResponseV5(
       JSON.stringify(documentWithUncertainty('uncertainty-1')),
-      {},
+      { currentUserText: '片方' },
     );
 
     expect(result.document).toBeNull();
@@ -40,7 +40,7 @@ describe('Stable V5 uncertainty reference validation', () => {
     const source = documentWithUncertainty('document');
     const result = validateWeeklyPlanningSemanticResponseV5(
       JSON.stringify(source),
-      {},
+      { currentUserText: '片方' },
     );
 
     expect(result.document).toEqual(source);

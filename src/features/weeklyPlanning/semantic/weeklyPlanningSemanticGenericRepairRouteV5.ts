@@ -58,7 +58,12 @@ export async function runGenericSemanticRepairRouteV5(params: {
 
   const repairedValidation = validateWeeklyPlanningSemanticResponseV5(
     repairedResponse,
-    { publicStateSummary: params.run.input.publicStateSummary },
+    {
+      currentUserText: params.run.input.userText,
+      supplementalContext: params.run.input.supplementalContext,
+      selectedStarterTarget: params.run.input.selectedStarterTarget,
+      publicStateSummary: params.run.input.publicStateSummary,
+    },
   );
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);
   const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({

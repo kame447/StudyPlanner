@@ -267,7 +267,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         userText: input.userText,
         pendingQuestion,
       });
-      const contextualAnswerEligible = pendingQuestion
+      const contextualAnswerEligible = pendingQuestion && !input.supplementalContext?.trim()
         ? shouldAttemptWeeklyPlanningContextualAnswerV5({
             document: normalization.document,
             pendingQuestion,
@@ -314,6 +314,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
         conversationId: input.conversationId,
         turnId: input.turnId,
         expectedRevision: input.expectedRevision,
+        userText: input.userText,
+        supplementalContext: input.supplementalContext,
       };
       const baseCanonicalization = contextualAnswer
         ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({

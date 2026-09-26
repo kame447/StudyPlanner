@@ -162,7 +162,10 @@ describe('Stable V5 availability corrections', () => {
     const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, graph);
     const validation = validateWeeklyPlanningSemanticResponseV5(
       providerCorrectionResponse(old.id),
-      { publicStateSummary },
+      {
+        publicStateSummary,
+        currentUserText: '水曜日の勉強できる時間を、21時から23時ではなく20時30分から23時に変更してください。',
+      },
     );
 
     expect(validation.errors).toEqual([]);
@@ -216,7 +219,10 @@ describe('Stable V5 availability corrections', () => {
     const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, graph);
     const validation = validateWeeklyPlanningSemanticResponseV5(
       providerCorrectionResponse(old.id),
-      { publicStateSummary },
+      {
+        publicStateSummary,
+        currentUserText: '水曜日の勉強できる時間を、21時から23時ではなく20時30分から23時に変更してください。',
+      },
     );
     const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
       graph,

@@ -35,7 +35,12 @@ import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemant
 type SemanticValidationResultV5 = ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
 
 function validationState(run: WeeklyPlanningSemanticNormalizerRunV5) {
-  return { publicStateSummary: run.input.publicStateSummary };
+  return {
+    currentUserText: run.input.userText,
+    supplementalContext: run.input.supplementalContext,
+    selectedStarterTarget: run.input.selectedStarterTarget,
+    publicStateSummary: run.input.publicStateSummary,
+  };
 }
 
 function rejectedResult(

@@ -262,7 +262,12 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
 
   const retryValidation = validateWeeklyPlanningSemanticResponseV5(
     retryResponse,
-    { publicStateSummary: params.run.input.publicStateSummary },
+    {
+      currentUserText: params.run.input.userText,
+      supplementalContext: params.run.input.supplementalContext,
+      selectedStarterTarget: params.run.input.selectedStarterTarget,
+      publicStateSummary: params.run.input.publicStateSummary,
+    },
   );
   params.run.addAlgorithmicRepairs(retryValidation.algorithmicRepairs);
   recordWeeklyPlanningStableV5DebugTrace({
