@@ -55,6 +55,28 @@ rubric v1 は実装側の草案である。gold 作成前に product owner が�
 - holdout の結果を見たあとの変更は、その holdout を消費したものとして扱う。以後の acceptance には、新しい sealed group を用意する。
 - pipeline、rubric、gold 規則を固定してから holdout を開く。model / prompt / schema version を記録する。
 
+## Luna 責務の棚卸し（比較対象の候補）
+
+Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意味解釈・判断を一覧にする。棚卸しは `cc0a53c7` 時点のコードを読み取ったものである。Jev への適合度と順序は評価前の提案であり、採否と順序は #305 が、置換単位ごとの安全性回帰は #335 が決める。「全面的に置換できる」ことは、どの行についても実証していない。
+
+| # | 責務 | 出力 | Jev 適合（提案） | 比較に必要な証拠 / 安全上の懸念 |
+| --- | --- | --- | --- | --- |
+| 1 | focused authorization（未保存の計画案を作ってよいか） | 二択 | 実装済みの候補（off / shadow / canary） | 本記録の評価。create でない発話を create にする誤りが最重要 |
+| 2 | focused contextual answer（pending question への返答の解釈） | 列挙値4種 + 分の数値 | 分解可能：decision / effortTarget / quantityRole は選択式。`minutes` は Luna に残す | pending target ごとの typed tuple gold。provisional_timebox は scheduler 許可になるため厳格に |
+| 3 | generic semantic normalization（文書全体の抽出） | 構造化された自由値 | 置換困難（開集合の抽出） | 将来、振り分けだけの前段分類なら検討の余地 |
+| 4 | generic repair | 文書全体 | 置換困難 | — |
+| 5 | dense turn の網羅性 audit | complete / incomplete + 不足ヒント | 分解可能：判定は真偽の問いにできる。低確信度は incomplete（Luna の再試行）に倒す | complete の誤判定で事実が落ちる |
+| 6 | no-op completeness retry | 文書全体 | 置換困難 | — |
+| 7 | pending task への時間的な制約の付随 | 列挙値 + 日付・時刻 | 分解可能：制約の有無・種類は選択式。日付・時刻は Luna | plan 全体の不可を task に誤って付ける |
+| 8 | temporal scope repair（plan 全体の不可か、不確実か） | 二択 | 候補：abstain が安全側（`uncertain`）と一致する | 発生頻度が低く、合成ケースが中心になる |
+| 9 | user context の日付 repair | ISO 日付 | Jev の対象外（決定的な日付計算の owner かどうかは別途判断） | — |
+| 10 | planning window repair | ISO 範囲 | 置換困難 | — |
+| 11 | dialogue renderer | 文章 | 対象外（判断は既に決定的なコードが持つ） | — |
+| 12 | 「AIが覚えていること」の解釈（`user_context_interpreter`） | 列挙値（domain / kind）+ 自由値 | 分解可能：domain / kind は選択式。自由値は Luna | 一時的な条件を永続記憶として保存する誤り |
+| 13 | 添付画像の読み取り | 文字起こし | 対象外 | — |
+
+順序の提案は、#1 の証拠を完成させたうえで、#8 → #2 の閉じた分岐（quantity role / provisional timebox）→ #12 → #5 / #7 である。「分解可能」な行では、選択を Jev、値を Luna が持つ形になり、意味の owner が分かれる。これは `weekly-planning-semantic-ownership-boundary-v5.md` の「一つの意味には一つの owner」に照らした確認が必要である。
+
 ## canary 判断へ返すもの（#305）
 
 - human-reviewed gold の件数（class 別、split 別、group 数）
