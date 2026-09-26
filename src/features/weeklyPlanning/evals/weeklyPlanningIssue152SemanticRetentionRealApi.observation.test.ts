@@ -19,6 +19,10 @@ import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSes
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  resetWeeklyPlanningStableV5DebugTraceForTest,
+  takeWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import {
   createWeeklyPlanningControllerSession,
@@ -32,6 +36,7 @@ const outputDir = process.env.WEEKLY_PLANNING_ISSUE152_OUTPUT_DIR
   ?? 'artifacts/issue152-adversarial-real-api';
 const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE152_TIMEOUT_MS ?? '300000');
 const maxProviderRetries = 2;
+const observations: Record<string, unknown> = {};
 
 interface ObservedTurn {
   userText: string;
@@ -72,6 +77,10 @@ function recordObservation(
   writeArtifact(observations);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function runTurn(params: {
   conversationId: string;
   userText: string;
@@ -96,10 +105,12 @@ async function runTurn(params: {
     params.conversationId,
   );
   let capturedResult: WeeklyPlanningTurnExecutionResult | null = null;
+  let requestId: string | null = null;
   const services: WeeklyPlanningTurnApplicationServices = {
     submitControlledTurn: submitWeeklyPlanningControlledTurn,
     runtimeGateway: {
       async execute(runtimeParams) {
+        requestId = runtimeParams.pending.requestId;
         capturedResult = await weeklyPlanningTurnRuntimeGateway.execute(runtimeParams);
         return capturedResult;
       },
@@ -124,7 +135,35 @@ async function runTurn(params: {
       weekStartsOn: 'monday',
     getState: store.getState,
     dispatch: store.dispatch,
-  }, services);
+  }, services).finally(() => {
+    const debugTrace = requestId ? takeWeeklyPlanningStableV5DebugTrace(requestId) : [];
+    const semanticInput = debugTrace.find((event) => event.stage === 'semantic_pipeline_input');
+    const publicStateSummary = isRecord(semanticInput?.data)
+      ? semanticInput.data.publicStateSummary
+      : null;
+    const calendarContext = isRecord(publicStateSummary)
+      ? publicStateSummary.calendarContext ?? null
+      : null;
+    const previous = Array.isArray(observations.semanticTraces)
+      ? observations.semanticTraces
+      : [];
+    recordObservation(observations, 'semanticTraces', [
+      ...previous,
+      {
+        conversationId: params.conversationId,
+        providerRetryAttempt: params.providerRetryAttempt ?? 0,
+        requestId,
+        calendarContext,
+        providerResponses: debugTrace
+          .filter((event) => event.stage === 'semantic_provider_response')
+          .map((event) => event.data),
+        validationResults: debugTrace
+          .filter((event) => event.stage === 'semantic_validation_result')
+          .map((event) => event.data),
+        debugTrace,
+      },
+    ]);
+  });
   expect(submission.accepted).toBe(true);
   if (!capturedResult) throw new Error(`semantic-retention runtime result missing: ${params.conversationId}`);
   const result: WeeklyPlanningTurnExecutionResult = capturedResult;
@@ -174,7 +213,8 @@ const run = shouldRun ? describe : describe.skip;
 
 run('Issue #152 compacted semantic retention Real API audit', () => {
   it('preserves load-bearing distinctions that prompt compaction previously shortened', async () => {
-    const observations: Record<string, unknown> = {};
+    for (const key of Object.keys(observations)) delete observations[key];
+    resetWeeklyPlanningStableV5DebugTraceForTest();
 
     const ambiguousModifier = await runTurn({
       conversationId: 'ambiguous-modifier',
