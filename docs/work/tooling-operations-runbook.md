@@ -44,6 +44,14 @@ The next failure was an immediate redirect-related TypeError from the Worker's o
 
 Prerequisites are an existing authenticated Wrangler session and `OPENROUTER_API_KEY` registered as a Secret on the selected Worker. The optional smoke uses a short-lived authenticated remote dev script and a fixed synthetic authorization input; it does not publish production code or change routing. Never export the Secret or print raw provider responses, exception messages or headers. The harness stops the development server and removes temporary files on completion. Verify an actual validated decision and usage, not just preview upload HTTP 200; record gate abstention separately from successful transport. See README for the invocation.
 
+## Wrangler production dry-run completes but the process does not exit
+
+Verified on 2026-09-26 with Wrangler 4.140.0 (`npx --yes wrangler@4.140.0 deploy --dry-run --config workers/ai-proxy/wrangler.jsonc`).
+
+Symptom: the output reaches `Total Upload`, the binding table and `--dry-run: exiting now.`, but the Node process stays alive with an open HTTPS connection to a Cloudflare address. The same run exited 0 about 40 minutes earlier on the same machine, and an older commit reproduced the hang afterwards, so it is environmental/post-exit network behaviour, not a code regression. `WRANGLER_SEND_METRICS=false` alone did not prevent it in this occurrence.
+
+Workaround: bound the run (for example `perl -e 'alarm 240; exec @ARGV' npx ...`) and treat the build evidence as the complete output (upload size and expected bindings such as `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`). Record that the exit code was not obtained; do not report it as exit 0. An alarm kills only the `npx` parent, so terminate leftover `wrangler deploy --dry-run` child processes afterwards. Confirm a regression suspicion by running the same command on the previous known-good commit in a temporary worktree before changing code.
+
 ## GitHub PR Ready-for-review transition can fail through the connector
 
 Operation / symptom:
