@@ -6,6 +6,9 @@ import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
+  validateWeeklyPlanningSemanticNumericSafetyV5,
+} from './weeklyPlanningNumericSafetyV5';
+import {
   validateWeeklyPlanningRecurrenceConsistencyV5,
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
@@ -92,6 +95,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   ];
   const document = normalized.document;
   const errors = [
+    ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(document.planningWindow),
     ...validateWeeklyPlanningTemporalClockEncodingV5(document),
     ...validateWeeklyPlanningWeekdayEncodingV5(document),
