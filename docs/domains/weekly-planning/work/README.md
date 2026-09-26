@@ -14,7 +14,7 @@ Current durable records:
 - `20260731-trace-privacy-and-lifecycle.md` — Issue #45
 - `20260926-issue333-japanese-semantic-evaluation.md` — Issue #333（#305 canary 前の日本語品質 gate、human review 手順）
 
-Issue-only active scopes such as #128, #152, [#305](https://github.com/kame447/StudyPlanner/issues/305) and [#333](https://github.com/kame447/StudyPlanner/issues/333) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
+Issue-only active scopes such as #128, [#305](https://github.com/kame447/StudyPlanner/issues/305) and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
 
 Issue #52 was completed by PR #283 and is no longer an active scope. Its implementation history remains in the closed Issue/PR and repository history rather than in this active-work index.
 

@@ -976,9 +976,11 @@ export default {
       try {
         return await handleChatRequest(request, env, tokenProvider, executionContext);
       } catch (error) {
-        console.error('[AI Proxy] unexpected chat handler failure', error);
-        const response = jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
         const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error);
+        // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
+        console.error('[AI Proxy] unexpected chat handler failure',
+          baselineFailure && error instanceof Error ? error.cause : error);
+        const response = jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
         return baselineFailure
           ? markLunaBaselineFailure(response, baselineFailure.mode, baselineFailure.failure)
           : response;

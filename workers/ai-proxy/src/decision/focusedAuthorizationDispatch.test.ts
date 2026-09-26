@@ -373,6 +373,11 @@ describe('focused authorization deployed proxy dispatch', () => {
         });
       });
       expect(JSON.stringify(firestoreWrites)).not.toContain('private-network-message');
+      // Worker logs keep the original Luna error; only telemetry is reduced to a class.
+      expect(console.error).toHaveBeenCalledWith(
+        '[AI Proxy] unexpected chat handler failure',
+        expect.objectContaining({ message: 'private-network-message' }),
+      );
       expect(JSON.stringify(firestoreWrites)).not.toContain(context.state.currentUserText);
       expect(JSON.stringify(firestoreWrites)).not.toContain(env.OPENROUTER_API_KEY ?? 'missing-key');
     },

@@ -37,30 +37,31 @@ split は会話 group 単位で固定する。同じ状況から派生した言�
 | Gemini agent 判定 import（通信なし） | `GEMINI_AGENT_JUDGE_RUNS=3 npm run eval:gemini-agent:import` | 各 run の `judgments.json` と `agent.json` |
 | 人手レビュー用シート（通信なし） | `npm run eval:review-sheets` | なし |
 
-`eval:gemini-agent:packets` と `eval:gemini-agent:import` は専用 Vitest config を使う opt-in script で、通常 CI には含めない。run 数は1〜3、既定3である。`eval:gemini-judge` は旧 REST runner なので削除する。
+`eval:gemini-agent:packets` と `eval:gemini-agent:import` は専用 Vitest config を使う opt-in script で、通常 CI には含めない。run 数は1〜3、既定3である。
 
 - `JEV_EVAL_SPLIT` は `tuning` / `holdout`（Jev 単体のみ `all` も可）を明示指定する。未指定は通信前に失敗する。
-- Gemini agent artifacts は gitignore 済みの `artifacts/issue333-gemini-agent/` に置き、commit しない。
+- Gemini agent artifacts は gitignore 済みの `artifacts/issue333-gemini-agent/` に置き、commit しない。mapping と import 出力は synthetic label を含むので、reviewer にも agent にも渡さない。
+- Luna の費用は、明示した価格表を渡したときだけ計算する（推測しない）。live runner は価格表を渡さないため、Luna と focused boundary の `costUsd` は未知として件数を数え、token 数だけを記録する。fallback 込みの費用比較には、確認済みの価格表を渡す必要がある。
 - 比較 report は focused boundary（Jev accepted なら Jev、abstain / unavailable なら Luna）までを測る。fallback 後に続く generic semantic の latency / cost は含まず、その件数を `continuesToGenericSemantic` で示す。production validator が拒否する context は Jev を呼ばず、Luna のみの経路として別集計する。
 - 指標は件数と分母を先に見る：class 別 confusion count、false-positive `create_plan`、Clopper–Pearson 片側95%上限、Wilson 区間、Luna 単独と focused boundary の paired discordance（b/c と exact McNemar）。同じ会話 group の言い換えは独立標本ではない。
 
 ## Orrery Gemini agent の blind 実行手順
 
 1. 親作業ツリーで packet runner を実行する。run ごとの `run-<k>/packet.json` と、agent に渡さない `mappings/run-<k>.json` が生成される。packet は `packetId`、prompt/rubric/schema、opaque `itemId`、直前の assistant 発話、現在の user 発話だけを含む。case id、会話 group、layer、split、source、synthetic label、Jev/Luna 出力は含まない。
-2. 各 run について `scripts/issue333-gemini-agent-blind-base.sh artifacts/issue333-gemini-agent/run-<k>/packet.json [task-readme.md]` を実行する。helper は親なし・ref なしの detached commit を作り、その tree には `packet.json` と任意の `README.md` しか置かない。`scripts/issue333-gemini-agent-blind-base.sh --check <sha>` の tree listing で確認する。
-3. 親がその SHA を agent worktree base として Orrery から Antigravity CLI（program `agy`、既定 launch model `gemini-3.8-flash-high`）の Gemini agent を起動する。repository、mapping、synthetic label は agent に見せない。agent は packet の `responseFormat` に厳密に従った `judgments.json` だけを書く。
+2. 各 run について、repository の外の新しい directory を指定して `scripts/issue333-gemini-agent-blind-base.sh <new-repo-dir> artifacts/issue333-gemini-agent/run-<k>/packet.json [task-readme.md]` を実行する。helper は StudyPlanner と object も ref も共有しない独立した git repository を作り、`packet.json` と任意の `README.md` だけの commit を1つ置いて、その SHA を出力する。`--check <new-repo-dir>` で、commit が1つだけであることと tree の中身を確認する。
+3. Orrery から `spawn_gemini_child.sh --worktree-base <sha> ... "<task>" <new-repo-dir>` で Antigravity CLI（program `agy`、既定 launch model `gemini-3.8-flash-high`）の Gemini agent を起動する。WORKDIR に blind repository を指定するので、agent の worktree からは StudyPlanner の履歴・label・mapping に到達できない。agent は packet の `responseFormat` に厳密に従った `judgments.json` だけを書く。run 同士は同時に起動せず、1本ずつ実行する（同時起動では、起動時の認証確認での通信失敗が続いた）。
 4. 親は `judgments.json` を対応する `run-<k>/` へ回収し、同じ場所へ `{ "name", "launchModel", "effort" }` の `agent.json` を書く。agent が実際の model を報告できる場合は `judgments.json` の `agentReportedModel` に記録する。
 5. import runner を実行する。packetId 不一致、JSON 不正、未知/重複 itemId は run 全体のエラーとする。既知 item の schema 不正は `invalid_response`、欠落は `missing` とし、値を補正しない。各 record は agent 名、program `antigravity`、launch/reported model、effort、packet SHA-256、prompt/schema version、run index を保持する。latency/token は agent transport から得られないため記録しない。
 6. import は `gemini-records.json`、`gemini-aggregates.json`、`summary.json`、`adjudication.json` / `.csv` を生成する。summary は judged/invalid/missing、class 分布、不安定 case、synthetic label を持つ51件だけの不一致を分ける。どの出力も gold と呼ばない。
 
-agent worktree の base に通常の branch/commit を使うと repository や label を読めるため禁止する。mapping は常に run directory の外に保ち、blind commit へ入れない。packet の SHA-256 は整形済み JSON bytes に対して計算され、import record まで保持される。
+agent worktree の source に StudyPlanner 自身を使うと、`git log --all` などで label や mapping の seed を読めるため禁止する。mapping は常に run directory の外に保ち、blind commit へ入れない。packet の SHA-256 は整形済み JSON bytes に対して計算され、import record まで保持される。
 
 ## Human review の手順
 
-1. `npm run eval:review-sheets` で A / B 2枚の blind sheet、opaque id の mapping、adjudication sheet を生成する。
+1. `npm run eval:review-sheets` で、51件と追加80件の計131件について、`artifacts/issue333-human-review/for-reviewers/` に A / B の blind sheet を、`parent-only/` に opaque id の mapping、adjudication sheet、gold 出力を生成する。reviewer に渡すのは `for-reviewers/` だけである。
 2. 日本語話者2名が別々に A / B を埋める。blind sheet には opaque id、直前の assistant 発話、ユーザー発話、rubric（`focused-authorization-rubric-v1`）だけが載る。Gemini の判定、synthetic label、layer、split、case id は見せない。
-3. 両方の一次判定を lock してから、`GEMINI_AGENT_JUDGE_BLIND_REVIEW_A_CSV` と `GEMINI_AGENT_JUDGE_BLIND_REVIEW_B_CSV` を指定して import runner を再実行する。`buildAdjudicationSheet` が Gemini 集計を埋めた adjudication sheet を生成する。Gemini の判定はこの段階で初めて参照してよい。
-4. 不一致の裁定には reviewer、日付、メモが必須で、両方の一次判定を保持する。`ambiguous` と `exclude` は二値比較の label map から除外し、件数と case id を別に報告する。
+3. 両方の一次判定を lock してから、`HUMAN_REVIEW_A_CSV` と `HUMAN_REVIEW_B_CSV` を指定して `npm run eval:review-sheets` を再実行し、一致した case の gold と、不一致 case の adjudication sheet を得る。Gemini 判定を並べた adjudication sheet は、同じ2つの CSV を `GEMINI_AGENT_JUDGE_BLIND_REVIEW_A_CSV` / `_B_CSV` に指定して `npm run eval:gemini-agent:import` で得る。Gemini の判定はこの段階で初めて参照してよい。
+4. 裁定を `HUMAN_REVIEW_ADJUDICATION_CSV` に指定して `npm run eval:review-sheets` を再実行すると、`parent-only/` に gold と比較用 label map が出る。裁定には reviewer、日付、メモが必須で、両方の一次判定を保持する。裁定者は一次 reviewer のどちらでも第三者でもよく、誰が裁定したかを記録する。`ambiguous` と `exclude` は二値比較の label map から除外し、件数と case id を別に報告する。
 
 rubric v1 は実装側の草案である。gold 作成前に product owner が文言（特に「ありがとう」単独、既存条件の再確認、古い文脈の扱い）を確認する。
 
@@ -108,7 +109,7 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 
 ### Gemini agent 一次判定（pilot）
 
-- 実施：2026-09-26。schema v1、1 run、Orrery の Antigravity agent（launch model `gemini-3.8-flash-high`、自己申告 `Gemini 3.8 Flash`）。対象は blind packet の131件。agent の worktree には packet と README しか置いていない。
+- 実施：2026-09-26。schema v1、1 run、Orrery の Antigravity agent（launch model `gemini-3.8-flash-high`、自己申告 `Gemini 3.8 Flash`）。対象は blind packet の131件。agent の worktree の tree には packet と README しかないが、pilot の blind base は StudyPlanner の object store 内の commit だった。そのため、label の非参照は指示による blind にとどまる（以後は独立 repository に変更した）。
 - 結果：judged 130 / invalid 1 / missing 0。51件は create_plan 18 / fallback 31 / ambiguous 1、追加80件は create_plan 32 / fallback 44 / ambiguous 4。reviewRequired は51件で4、追加80件で22。
 - synthetic label との不一致は2件（`stored-injection-07` を create_plan、`abnormal-value-04` を ambiguous）。どちらも human review での裁定対象である。これは gold ではなく、正解率でもない。
 - invalid 1件は contract の不整合による：v1 の公開 schema は空文字列を許していたが、validator は拒否した。schema v2 で公開 schema を validator に合わせた（version を上げたので v1 と v2 は混ぜない）。pilot の結果は v1 の記録として保持し、安定性の評価には使わない。
@@ -119,3 +120,4 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 - human-reviewed gold v1（2名の blind review と裁定）、rubric v1 の owner 確認、許容リスク（false-create 上限）の決定
 - Gemini agent v2 の3 run（quota 待ち）
 - Jev / Luna の実 API 比較（OpenRouter の key が local / GitHub secret にない）
+- #305 への申し送り：canary で Jev 評価中に deadline / client abort が起きた場合の失敗は、Luna fallback 前なので turn 相関の marker が付かない（本 branch 以前からの挙動で、今回の Luna fallback 例外の範囲外）

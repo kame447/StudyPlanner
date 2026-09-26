@@ -27,19 +27,22 @@ import {
 export async function generateEmptyReviewSheets(
   extraInputs: readonly FocusedAuthorizationReviewInput[] = [],
 ): Promise<void> {
-  const outputDirectory = process.env.GEMINI_AGENT_JUDGE_OUTPUT_DIR?.trim()
-    || process.env.GEMINI_JUDGE_OUTPUT_DIR?.trim()
-    || 'artifacts/issue333-gemini-agent';
+  const outputDirectory = process.env.HUMAN_REVIEW_OUTPUT_DIR?.trim()
+    || 'artifacts/issue333-human-review';
+  // Only for-reviewers/ may be handed to reviewers; parent-only/ holds the
+  // opaque-id mapping, synthetic labels and gold outputs.
+  const reviewerDirectory = path.join(outputDirectory, 'for-reviewers');
+  const parentDirectory = path.join(outputDirectory, 'parent-only');
   validateFocusedAuthorizationSyntheticCandidates(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES);
   const inputs = combineReviewInputs(
     adaptSyntheticReviewCandidates(FOCUSED_AUTHORIZATION_SYNTHETIC_CANDIDATES),
     extraInputs,
   );
   const blind = buildBlindReviewPackage(inputs);
-  const slotAPath = process.env.GEMINI_JUDGE_BLIND_REVIEW_A_CSV?.trim();
-  const slotBPath = process.env.GEMINI_JUDGE_BLIND_REVIEW_B_CSV?.trim();
+  const slotAPath = process.env.HUMAN_REVIEW_A_CSV?.trim();
+  const slotBPath = process.env.HUMAN_REVIEW_B_CSV?.trim();
   if (Boolean(slotAPath) !== Boolean(slotBPath)) {
-    throw new Error('Set both GEMINI_JUDGE_BLIND_REVIEW_A_CSV and GEMINI_JUDGE_BLIND_REVIEW_B_CSV.');
+    throw new Error('Set both HUMAN_REVIEW_A_CSV and HUMAN_REVIEW_B_CSV.');
   }
   const review = slotAPath && slotBPath
     ? extractDoubleBlindReview(
@@ -49,7 +52,7 @@ export async function generateEmptyReviewSheets(
     )
     : extractDoubleBlindReview(blind.rows, blind.rows, blind.mapping);
   const adjudication = buildAdjudicationSheet(review, []);
-  const adjudicationPath = process.env.GEMINI_JUDGE_ADJUDICATION_CSV?.trim();
+  const adjudicationPath = process.env.HUMAN_REVIEW_ADJUDICATION_CSV?.trim();
   if (adjudicationPath && (!slotAPath || !slotBPath)) {
     throw new Error('Adjudication requires both completed blind review CSV files.');
   }
@@ -59,37 +62,37 @@ export async function generateEmptyReviewSheets(
       ? parseAdjudicationCsv(await readFile(adjudicationPath, 'utf8'))
       : [],
   );
-  await mkdir(outputDirectory, { recursive: true });
+  await Promise.all([reviewerDirectory, parentDirectory].map((directory) => mkdir(directory, { recursive: true })));
   await Promise.all([
     ...(['A', 'B'] as const).flatMap((slot) => [
       writeFile(
-        path.join(outputDirectory, `focused-authorization-blind-review-${slot}.empty.json`),
+        path.join(reviewerDirectory, `focused-authorization-blind-review-${slot}.empty.json`),
         serializeBlindReviewJson(blind.rows, slot),
         'utf8',
       ),
       writeFile(
-        path.join(outputDirectory, `focused-authorization-blind-review-${slot}.empty.csv`),
+        path.join(reviewerDirectory, `focused-authorization-blind-review-${slot}.empty.csv`),
         serializeBlindReviewCsv(blind.rows),
         'utf8',
       ),
     ]),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-blind-review-mapping.json'),
+      path.join(parentDirectory, 'focused-authorization-blind-review-mapping.json'),
       serializeBlindReviewMappingJson(blind.mapping),
       'utf8',
     ),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-adjudication.empty.json'),
+      path.join(parentDirectory, 'focused-authorization-adjudication.empty.json'),
       serializeAdjudicationJson(adjudication),
       'utf8',
     ),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-adjudication.empty.csv'),
+      path.join(parentDirectory, 'focused-authorization-adjudication.empty.csv'),
       serializeAdjudicationCsv(adjudication),
       'utf8',
     ),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-human-review-summary.empty.json'),
+      path.join(parentDirectory, 'focused-authorization-human-review-summary.empty.json'),
       JSON.stringify({
         rubricVersion: HUMAN_REVIEW_RUBRIC_VERSION,
         summary: resolution.summary,
@@ -97,7 +100,7 @@ export async function generateEmptyReviewSheets(
       'utf8',
     ),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-human-reviewed-gold.empty.json'),
+      path.join(parentDirectory, 'focused-authorization-human-reviewed-gold.empty.json'),
       JSON.stringify({
         rubricVersion: HUMAN_REVIEW_RUBRIC_VERSION,
         summary: resolution.summary,
@@ -106,7 +109,7 @@ export async function generateEmptyReviewSheets(
       'utf8',
     ),
     writeFile(
-      path.join(outputDirectory, 'focused-authorization-comparison-labels.empty.json'),
+      path.join(parentDirectory, 'focused-authorization-comparison-labels.empty.json'),
       JSON.stringify(toComparisonGoldLabels(resolution.goldCases), null, 2),
       'utf8',
     ),

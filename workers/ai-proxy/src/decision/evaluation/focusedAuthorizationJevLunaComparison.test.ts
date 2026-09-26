@@ -485,6 +485,10 @@ describe('Jev/Luna focused-boundary comparison', () => {
 describe('focused-authorization exact statistical helpers', () => {
   it('matches known exact and Wilson values without external dependencies', () => {
     expect(exactClopperPearsonUpperBound95(0, 16)).toBeCloseTo(0.17075, 5);
+    // Regression: near k = n the summation used to underflow and understate the bound.
+    expect(exactClopperPearsonUpperBound95(130, 131)).toBeCloseTo(0.99961, 5);
+    expect(exactClopperPearsonUpperBound95(500, 1000)).toBeCloseTo(0.52648, 5);
+    expect(exactClopperPearsonUpperBound95(0, 299)).toBeCloseTo(0.00997, 5);
     expect(exactTwoSidedMcNemarPValue(0, 5)).toBe(0.0625);
     expect(exactTwoSidedMcNemarPValue(0, 0)).toBe(1);
     const interval = wilsonInterval95(5, 10);

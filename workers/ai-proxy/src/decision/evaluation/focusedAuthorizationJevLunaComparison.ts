@@ -246,13 +246,17 @@ function validCount(value: number): boolean {
 function binomialCdf(successes: number, trials: number, probability: number): number {
   if (successes >= trials || probability === 0) return 1;
   if (successes < 0 || probability === 1) return 0;
-  let term = (1 - probability) ** trials;
-  let total = term;
+  // Sum in log space: starting from (1 - p)^n underflows when p is near 1 or n is large.
+  const logP = Math.log(probability);
+  const logQ = Math.log1p(-probability);
+  let logTerm = trials * logQ;
+  let logTotal = logTerm;
   for (let index = 0; index < successes; index += 1) {
-    term *= ((trials - index) / (index + 1)) * (probability / (1 - probability));
-    total += term;
+    logTerm += Math.log((trials - index) / (index + 1)) + logP - logQ;
+    const high = Math.max(logTotal, logTerm);
+    logTotal = high + Math.log(Math.exp(logTotal - high) + Math.exp(logTerm - high));
   }
-  return Math.min(1, Math.max(0, total));
+  return Math.min(1, Math.max(0, Math.exp(logTotal)));
 }
 
 export function exactClopperPearsonUpperBound95(
