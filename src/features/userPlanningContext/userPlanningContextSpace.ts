@@ -27,7 +27,9 @@ const stagedContexts = new Map<string, {
   ownerId: string;
   conversationId: string;
   requestId: string;
-  snapshot: UserPlanningContextSnapshotV1;
+  observedDate: string;
+  facts: UserPlanningContextSemanticFactV1[];
+  now: string;
 }>();
 
 export interface UserPlanningContextFinalizeReceiptV1 {
@@ -274,7 +276,10 @@ export function loadUserPlanningContextSnapshotV1(params: {
 }
 
 function normalizeIdentityPart(value: string | null): string {
-  return (value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
+  return (value ?? '').normalize('NFKC')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 export function userPlanningContextDurableKeyV1(params: {
@@ -304,6 +309,42 @@ export function userPlanningContextRecordIdentityV1(params: {
     userPlanningContextDurableKeyV1(params),
     recordIdentityValue(params),
   ].join('|');
+}
+
+function retentionPriority(record: UserPlanningContextRecordV1): number {
+  if (record.status === 'revoked') return 2;
+  return record.origin === 'user_confirmed' ? 1 : 0;
+}
+
+function compareRecordedAt(left: UserPlanningContextRecordV1, right: UserPlanningContextRecordV1): number {
+  return Date.parse(left.recordedAt) - Date.parse(right.recordedAt);
+}
+
+/**
+ * Storage holds at most 200 records. Revocations and user-confirmed records
+ * take the available slots before inferred records; within each authority
+ * level the newest records win. The returned order remains newest first.
+ */
+export function retainUserPlanningContextRecordsV1(
+  records: Iterable<UserPlanningContextRecordV1>,
+): UserPlanningContextRecordV1[] {
+  const byIdentity = new Map<string, UserPlanningContextRecordV1>();
+  for (const record of records) {
+    const identity = userPlanningContextRecordIdentityV1(record);
+    const previous = byIdentity.get(identity);
+    if (!previous
+      || retentionPriority(record) > retentionPriority(previous)
+      || (retentionPriority(record) === retentionPriority(previous)
+        && compareRecordedAt(record, previous) >= 0)) {
+      byIdentity.set(identity, record);
+    }
+  }
+  return [...byIdentity.values()]
+    .sort((left, right) => retentionPriority(right) - retentionPriority(left)
+      || compareRecordedAt(right, left))
+    .slice(0, MAX_CONTEXT_RECORDS)
+    .sort((left, right) => compareRecordedAt(right, left))
+    .map((record) => ({ ...record }));
 }
 
 function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
@@ -341,9 +382,9 @@ function mergeFacts(params: {
 }): UserPlanningContextSnapshotV1 {
   const byIdentity = new Map<string, UserPlanningContextRecordV1>();
   const protectedDurableKeys = new Set<string>();
-  for (const record of params.snapshot.records) {
+  for (const record of retainUserPlanningContextRecordsV1(params.snapshot.records)) {
     byIdentity.set(userPlanningContextRecordIdentityV1(record), record);
-    if (record.origin === 'user_confirmed') {
+    if (record.status === 'revoked' || record.origin === 'user_confirmed') {
       protectedDurableKeys.add(userPlanningContextDurableKeyV1(record));
     }
   }
@@ -353,6 +394,7 @@ function mergeFacts(params: {
     if (protectedDurableKeys.has(durableKey)) continue;
     const identity = recordIdentity(fact);
     const previous = byIdentity.get(identity);
+    if (previous && Date.parse(previous.recordedAt) > Date.parse(params.now)) continue;
     const resolvedDate = resolveUserPlanningContextLifecycleDateV1(
       fact.dateExpression,
       params.observedDate,
@@ -375,14 +417,15 @@ function mergeFacts(params: {
     });
   }
 
-  const records = [...byIdentity.values()]
-    .sort((left, right) => right.recordedAt.localeCompare(left.recordedAt))
-    .slice(0, MAX_CONTEXT_RECORDS);
+  const records = retainUserPlanningContextRecordsV1(byIdentity.values());
   return {
     version: USER_PLANNING_CONTEXT_STORAGE_VERSION,
     ownerId: params.ownerId,
     records,
-    updatedAt: params.now,
+    updatedAt: new Date(Math.max(
+      Date.parse(params.snapshot.updatedAt),
+      Date.parse(params.now),
+    )).toISOString(),
   };
 }
 
@@ -447,23 +490,13 @@ export function stageUserPlanningContextFactsV1(params: {
     stagedContexts.delete(key);
     return;
   }
-  const current = loadUserPlanningContextSnapshotV1({
-    ownerId: params.ownerId,
-    currentDate: params.observedDate,
-  });
   stagedContexts.set(key, {
     ownerId: params.ownerId,
     conversationId: params.conversationId,
     requestId: params.requestId,
-    snapshot: mergeFacts({
-      snapshot: current,
-      facts: params.facts,
-      ownerId: params.ownerId,
-      conversationId: params.conversationId,
-      requestId: params.requestId,
-      observedDate: params.observedDate,
-      now: params.now ?? new Date().toISOString(),
-    }),
+    observedDate: params.observedDate,
+    facts: params.facts.map((fact) => ({ ...fact })),
+    now: params.now ?? new Date().toISOString(),
   });
 }
 
@@ -485,14 +518,30 @@ export function finalizeStagedUserPlanningContextV1(params: {
   if (staged.ownerId !== params.ownerId) {
     throw new Error('User planning context owner mismatch.');
   }
+  const current = loadUserPlanningContextSnapshotV1({
+    ownerId: params.ownerId,
+    currentDate: staged.observedDate,
+  });
   const previousRaw = readRaw(params.ownerId);
-  const committedRecords = staged.snapshot.records.filter(
+  const merged = mergeFacts({
+    snapshot: current,
+    facts: staged.facts,
+    ownerId: params.ownerId,
+    conversationId: params.conversationId,
+    requestId: params.requestId,
+    observedDate: staged.observedDate,
+    now: staged.now,
+  });
+  const committedRecords = merged.records.filter(
     (record) => record.sourceConversationId === params.conversationId
       && record.sourceTurnId === params.requestId
       && record.origin === 'user_stated',
   );
-  writeRaw(params.ownerId, JSON.stringify(staged.snapshot));
+  if (committedRecords.length > 0) {
+    writeRaw(params.ownerId, JSON.stringify(merged));
+  }
   stagedContexts.delete(key);
+  if (committedRecords.length === 0) return null;
   return {
     ownerId: params.ownerId,
     previousRaw,

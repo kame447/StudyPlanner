@@ -183,4 +183,49 @@ describe('userPlanningContextRepository merge policy', () => {
       origin: 'user_confirmed',
     });
   });
+
+  it('uses the current durable identity for legacy stored tombstones without changing their display text', () => {
+    const snapshot = {
+      ...createEmptyUserPlanningContextSnapshotV1(OWNER),
+      records: [record({
+        id: 'legacy-tombstone',
+        kind: 'concern',
+        label: '数\u2060学',
+        status: 'revoked',
+        origin: 'user_confirmed',
+      })],
+    };
+    const merged = mergeInferredUserPlanningContextRecordsV1({
+      snapshot,
+      records: [
+        record({ id: 'blocked-variant', kind: 'concern', label: '数学', value: '別の不安' }),
+        record({ id: 'ordinary-physics', kind: 'concern', label: '物理', value: '別の不安' }),
+      ],
+      now: '2026-08-29T00:00:00.000Z',
+    });
+
+    expect(merged.records).toHaveLength(2);
+    expect(merged.records).toContainEqual(expect.objectContaining({
+      id: 'legacy-tombstone',
+      label: '数\u2060学',
+      status: 'revoked',
+    }));
+    expect(merged.records).toContainEqual(expect.objectContaining({
+      id: 'ordinary-physics',
+      status: 'active',
+    }));
+    expect(merged.records.some((candidate) => candidate.id === 'blocked-variant')).toBe(false);
+  });
+
+  it('keeps a newer stored inference when an older inferred update arrives', () => {
+    const current = record({ id: 'newer', recordedAt: '2026-08-29T08:30:00.000Z' });
+    const older = record({ id: 'older', recordedAt: '2026-08-29T10:00:00.000+02:00' });
+    const merged = mergeInferredUserPlanningContextRecordsV1({
+      snapshot: { ...createEmptyUserPlanningContextSnapshotV1(OWNER), records: [current] },
+      records: [older],
+      now: '2026-08-29T09:00:00.000Z',
+    });
+
+    expect(merged.records).toEqual([expect.objectContaining({ id: 'newer' })]);
+  });
 });
