@@ -1,6 +1,6 @@
 {
-  "request_id": "20260926-issue152-d208f381-pinned-helper",
-  "reason": "Real API run at d208f381 with the shared stored-rows helper clock pinned to the fixture date: synthesized-evidence, stored-durable, renderer-influence.",
+  "request_id": "20260926-issue152-final-296796ff-A",
+  "reason": "Exact final code HEAD 296796ff: synthesized-evidence, stored-durable, renderer-influence with pinned fixture clocks. Final batch A of 2.",
   "critical_repetitions": 3,
   "suites": [
     "synthesized-evidence",
