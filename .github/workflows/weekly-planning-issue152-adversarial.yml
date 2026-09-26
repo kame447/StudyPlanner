@@ -88,7 +88,7 @@ jobs:
               renderer-influence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152RendererInfluenceRealApi.observation.test.ts") ;;
               *) echo "unsupported suite: $suite" >&2; exit 1 ;;
             esac
-          done < <(printf '%s' "$ISSUE152_SUITES" | tr ',[:space:]' '\n')
+          done < <(printf '%s\n' "$ISSUE152_SUITES" | tr ',[:space:]' '\n')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "at least one Issue 152 suite is required" >&2
             exit 1
