@@ -1,13 +1,4 @@
-import { expect, test } from '@playwright/test';
-
-function isoToday() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-}
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 async function seedBaseUser(page, extend = {}) {
   await page.addInitScript(({ today, extra }) => {
@@ -78,7 +69,7 @@ async function seedBaseUser(page, extend = {}) {
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
     localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
-  }, { today: isoToday(), extra: extend });
+  }, { today: E2E_TODAY, extra: extend });
 }
 
 async function openSchedule(page) {

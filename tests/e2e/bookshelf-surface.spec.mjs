@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 async function seedBookshelf(page) {
   await page.addInitScript(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE');
     const tomorrowDate = new Date(`${today}T00:00:00`);
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
     const tomorrow = [

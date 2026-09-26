@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixed-clock.mjs';
 
 async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
   await page.addInitScript(({ seededMessageCount }) => {

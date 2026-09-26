@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, newFixedClockContext, test } from './support/fixed-clock.mjs';
 
 async function seedPreviewRemovalState(page, { phase }) {
   await page.addInitScript(({ seededPhase }) => {
@@ -245,7 +245,7 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
 });
 
 test('AI planning day preview touch long press reveals action while still held', async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
@@ -272,7 +272,7 @@ test('AI planning day preview touch long press reveals action while still held',
 });
 
 test('AI planning default overview touch long press reveals, removes, and still hands movement to drag', async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
