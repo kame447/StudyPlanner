@@ -1,9 +1,8 @@
 {
-  "request_id": "20260926-issue152-final-f086aa80-variance-1",
-  "reason": "Variance check at code f086aa80 for the two suites that failed once in batch B run 36198140451 (adversarial explicit-import rep 3: model emitted no task without any validation failure; retention: one model schema/reference rejection in a 20-turn chain). The earlier failures stay reported.",
-  "critical_repetitions": 3,
+  "request_id": "20260926-issue152-retention-trace-1",
+  "reason": "Diagnostic Real run of the retention suite with semantic trace capture, to observe the raw single-day-plan provider output and validation errors for the systematic failure (runs 36192264791, 36198140451, 36199067958).",
+  "critical_repetitions": 1,
   "suites": [
-    "adversarial",
     "retention"
   ]
 }
