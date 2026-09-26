@@ -11,6 +11,7 @@ import {
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import type { SemanticPlanningWindowV5 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
 function absoluteWindow(
   partial: Partial<SemanticPlanningWindowV5> = {},
@@ -105,6 +106,32 @@ function focusedRepairResponse(): string {
   });
 }
 
+function singleDayResponse(
+  date: string,
+  sourceText = '8月25日だけの計画',
+): string {
+  return JSON.stringify({
+    schemaVersion: 'weekly-planning-semantic-v5',
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'planning-window-1',
+      kind: 'absolute',
+      value: `${date}/${date}`,
+      start: date,
+      end: date,
+      sourceText,
+    },
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  });
+}
+
 describe('Stable V5 planning window validation boundary', () => {
   it('keeps the canonical runtime vocabulary resolvable', () => {
     for (const expression of [
@@ -188,6 +215,86 @@ describe('Stable V5 planning window validation boundary', () => {
     }))).toEqual([
       'document.planningWindow.value:absolute-canonical-range:2026-08-17/2026-08-23',
     ]);
+  });
+
+  it('rejects an implausible absolute year against the captured calendar date', () => {
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      singleDayResponse('8190-08-25'),
+      {
+        publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
+      },
+    );
+    expect(validation.document).toBeNull();
+    expect(validation.errors).toContain('document.planningWindow:absolute-year-outside-reference-horizon');
+    expect(validation.parsedDocument?.planningWindow?.start).toBe('8190-08-25');
+  });
+
+  it('keeps an explicitly stated next-year exam date', () => {
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      singleDayResponse('2027-08-25', '2027年8月25日の試験'),
+      {
+        publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
+      },
+    );
+    expect(validation.errors).toEqual([]);
+    expect(validation.document?.planningWindow?.start).toBe('2027-08-25');
+  });
+
+  it('bounds both ends to ten calendar years without changing valid dates', () => {
+    expect(planningWindowCanonicalValueErrors(absoluteWindow({
+      value: '2036-08-25/2036-08-25',
+      start: '2036-08-25',
+      end: '2036-08-25',
+    }), '2026-08-17')).toEqual([]);
+    expect(planningWindowCanonicalValueErrors(absoluteWindow({
+      value: '2037-08-25/2037-08-25',
+      start: '2037-08-25',
+      end: '2037-08-25',
+    }), '2026-08-17')).toEqual([
+      'document.planningWindow:absolute-year-outside-reference-horizon',
+    ]);
+  });
+
+  it('repairs an out-of-horizon year once and revalidates the whole response', async () => {
+    const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
+    const responses = [singleDayResponse('8190-08-25'), singleDayResponse('2026-08-25')];
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion(request) {
+        calls.push(request);
+        const response = responses.shift();
+        if (!response) throw new Error('response sequence exhausted');
+        return response;
+      },
+    };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '8月25日だけの計画を作りたいです。',
+      publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
+    });
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow?.start).toBe('2026-08-25');
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+    expect(calls).toHaveLength(2);
+    const repairMessage = calls[1].messages[calls[1].messages.length - 1]?.content;
+    expect(repairMessage).toContain('absolute-year-outside-reference-horizon');
+    expect(repairMessage).toContain('more than ten years');
+  });
+
+  it('does not commit an implausible year if the one repair repeats it', async () => {
+    const responses = [singleDayResponse('8190-08-25'), singleDayResponse('8190-08-25')];
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion() {
+        const response = responses.shift();
+        if (!response) throw new Error('response sequence exhausted');
+        return response;
+      },
+    };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '8月25日だけの計画を作りたいです。',
+      publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
+    });
+    expect(result.status).toBe('rejected');
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
   });
 
   it('repairs only a missing absolute range while preserving valid current-turn facts', async () => {

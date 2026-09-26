@@ -18,6 +18,8 @@ import type { SemanticPlanningWindowV5 } from './weeklyPlanningSemanticDocumentV
 export const WEEKLY_PLANNING_CANONICAL_WINDOW_CONTRACT_V5 =
   'weekly-planning-canonical-window-contract-v5' as const;
 
+const MAX_ABSOLUTE_WINDOW_YEAR_DISTANCE = 10;
+
 export interface PlanningWindowCanonicalNormalizationV5 {
   window: SemanticPlanningWindowV5 | null;
   repairs: string[];
@@ -97,6 +99,7 @@ export function normalizePlanningWindowCanonicalRawV5(
 
 export function planningWindowCanonicalValueErrors(
   window: SemanticPlanningWindowV5 | null,
+  referenceDate: string | null = null,
 ): string[] {
   if (!window) return [];
 
@@ -117,6 +120,17 @@ export function planningWindowCanonicalValueErrors(
       return [
         `document.planningWindow.value:absolute-canonical-range:${canonicalValue}`,
       ];
+    }
+    if (referenceDate && isValidCalendarDate(referenceDate)) {
+      const referenceYear = Number(referenceDate.slice(0, 4));
+      const startYear = Number(window.start.slice(0, 4));
+      const endYear = Number(window.end.slice(0, 4));
+      if (
+        Math.abs(startYear - referenceYear) > MAX_ABSOLUTE_WINDOW_YEAR_DISTANCE
+        || Math.abs(endYear - referenceYear) > MAX_ABSOLUTE_WINDOW_YEAR_DISTANCE
+      ) {
+        return ['document.planningWindow:absolute-year-outside-reference-horizon'];
+      }
     }
     return [];
   }

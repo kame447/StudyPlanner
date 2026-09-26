@@ -57,6 +57,15 @@ function uniqueErrors(errors: string[]): string[] {
   return [...new Set(errors)];
 }
 
+function calendarReferenceDate(
+  publicStateSummary: Record<string, unknown> | undefined,
+): string | null {
+  const context = publicStateSummary?.calendarContext;
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return null;
+  const currentDate = (context as Record<string, unknown>).currentDate;
+  return typeof currentDate === 'string' ? currentDate : null;
+}
+
 export function validateWeeklyPlanningSemanticResponseV5(
   rawResponse: string,
   input: WeeklyPlanningSemanticResponseValidationInputV5,
@@ -96,7 +105,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const document = normalized.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
-    ...planningWindowCanonicalValueErrors(document.planningWindow),
+    ...planningWindowCanonicalValueErrors(
+      document.planningWindow,
+      calendarReferenceDate(input.publicStateSummary),
+    ),
     ...validateWeeklyPlanningTemporalClockEncodingV5(document),
     ...validateWeeklyPlanningWeekdayEncodingV5(document),
     ...validateWeeklyPlanningCorrectionTargetReferencesV5(
