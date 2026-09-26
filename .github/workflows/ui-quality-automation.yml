@@ -60,11 +60,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -104,7 +104,7 @@ jobs:
             "${extra_args[@]}"
       - name: Upload browser quality artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-browser-quality-${{ github.sha }}
           path: |
@@ -119,11 +119,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -135,7 +135,7 @@ jobs:
         run: node scripts/ci/check-bundle-budget.mjs
       - name: Upload bundle budget report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-bundle-budget-${{ github.sha }}
           path: artifacts/quality-gate/bundle-budget.json
@@ -147,11 +147,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -165,7 +165,7 @@ jobs:
         run: /tmp/studyplanner-lhci/node_modules/.bin/lhci autorun --config=tests/quality/lighthouserc.cjs
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-lighthouse-${{ github.sha }}
           path: artifacts/lighthouse/
@@ -177,11 +177,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -197,7 +197,7 @@ jobs:
         run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --repeat-each=3 --retries=0
       - name: Upload stability artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-stability-${{ github.sha }}
           path: |
