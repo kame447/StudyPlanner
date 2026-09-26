@@ -255,7 +255,7 @@ export default {
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = await worker.fetch(request, env as never, tokenProvider);
+    const response = await worker.fetch(request, env as never, tokenProvider, executionContext);
 
     if (observerRequest) {
       scheduleAiRequestMetric(

@@ -12,10 +12,13 @@ import {
   type WeeklyPlanningTraceApiSession,
 } from './weeklyPlanningTraceApi';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
+import { isFocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
+import { dispatchFocusedAuthorization } from './decision/focusedAuthorizationDispatch';
+import type { DecisionEnv } from './decision/decisionPolicy';
 
 export { AiQuotaDurableObject };
 
-interface Env extends WeeklyPlanningTraceApiEnv {
+interface Env extends WeeklyPlanningTraceApiEnv, DecisionEnv {
   OPENAI_API_KEY: string;
   OPENAI_BASE_URL?: string;
   OPENAI_TRANSCRIPTION_MODEL?: string;
@@ -39,6 +42,7 @@ interface ChatMessage {
 }
 
 interface ChatCompletionRequest {
+  decisionContext?: unknown;
   model?: string;
   purpose?: string;
   temperature?: number;
@@ -515,7 +519,10 @@ function bodyTooLargeResponse(
   });
 }
 
-async function handleChatRequest(request: Request, env: Env): Promise<Response> {
+async function handleChatRequest(
+  request: Request, env: Env, tokenProvider?: FirestoreTokenProvider,
+  executionContext?: ExecutionContext,
+): Promise<Response> {
   if (!env.OPENAI_API_KEY?.trim()) {
     return jsonResponse(request, env, 500, {
       error: 'OPENAI_API_KEY is not configured.',
@@ -561,20 +568,42 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
 
+  const context = payload.decisionContext;
+  if (context !== undefined) {
+    if (payload.purpose !== 'weekly_planning_semantic_normalizer'
+      || !isFocusedAuthorizationDecisionContext(context)) {
+      return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
+    }
+    return dispatchFocusedAuthorization({
+      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      respond: (decision) => jsonResponse(request, env, 200, {
+        content: JSON.stringify({ decision }),
+        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+    });
+  }
+  return fetchChatCompletion(request, env, payload, modelResolution.model);
+}
+
+async function fetchChatCompletion(
+  request: Request, env: Env, payload: ChatCompletionRequest, model: string, signal?: AbortSignal,
+): Promise<Response> {
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1')
     .replace(/\/$/, '');
   const upstreamTemperature = resolveOpenAiChatTemperature(
-    modelResolution.model,
+    model,
     getChatTemperature(payload),
   );
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    ...(signal ? { signal } : {}),
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
     },
     body: JSON.stringify({
-      model: modelResolution.model,
+      model,
       ...(upstreamTemperature === undefined ? {} : { temperature: upstreamTemperature }),
       messages: payload.messages,
       response_format: payload.response_format,
@@ -869,6 +898,7 @@ export default {
     request: Request,
     env: Env,
     tokenProvider?: FirestoreTokenProvider,
+    executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isWeeklyPlanningTracePath(pathname)) {
@@ -940,7 +970,7 @@ export default {
         return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
       }
       try {
-        return await handleChatRequest(request, env);
+        return await handleChatRequest(request, env, tokenProvider, executionContext);
       } catch (error) {
         console.error('[AI Proxy] unexpected chat handler failure', error);
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });

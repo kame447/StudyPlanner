@@ -83,7 +83,7 @@ export interface ObservabilityAdminUserTrend {
 export interface ObservabilityUserTimelineAiDetail {
   purpose: string;
   phase: 'initial' | 'repair' | 'single' | 'unknown';
-  provider: 'openai' | 'gemini';
+  provider: import('./productObservabilityContract').AiRequestMetricPayload['provider'];
   model: string;
   status: AiRequestMetricStatus;
   totalTokens: number | null;

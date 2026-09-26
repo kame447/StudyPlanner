@@ -201,6 +201,8 @@ export async function observeAiProxyRequest(params: {
   onError?: (error: unknown) => void;
 }): Promise<void> {
   if (!isAiRequestObservabilityConfigured(params.env)) return;
+  // Decision requests are recorded at the provider boundary, including shadow calls.
+  if (params.response.headers.get('X-StudyPlanner-AI-Provider') === 'openrouter') return;
   if (params.request.method !== 'POST') return;
   const pathname = new URL(params.request.url).pathname;
   if (!isObservableAiProxyPath(pathname)) return;

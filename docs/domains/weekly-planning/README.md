@@ -55,7 +55,7 @@ These documents supplement the canonical owners above; they do not override them
 - Trace privacy/recovery, personalization/cloud authority, multi-device approval uniqueness, saved-preview migration and AI-cost observability remain independent Issues.
 - Client-first execution is a separate responsibility under [`../client-runtime/`](../client-runtime/README.md).
 
-[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns the planned, bounded Jev integration based on the completed research. It starts with the existing focused authorization classifier, not a replacement of the full semantic document or the consultation foundation. The implementation design and acceptance detail live in the Issue; execution ordering lives in [the roadmap](roadmap/current.md). Jev is not yet a production provider, and this documentation change does not alter runtime or approval/save authority.
+[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns bounded Jev integration. The first implementation connects the existing focused authorization classifier through a server-side OpenRouter adapter, defaulting to off. The implementation design and acceptance detail live in the Issue; execution ordering lives in [the roadmap](roadmap/current.md), and setup/test commands in [the repository README](../../../README.md#jev-focused-authorizationopenrouter). Runtime wiring is not production rollout: Japanese evaluation and applicable security gates remain required before canary. The full semantic document, consultation foundation and approval/save authority remain with their existing owners.
 
 ## Historical documents
 

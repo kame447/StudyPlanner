@@ -3,6 +3,7 @@ import {
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
+import type { FocusedAuthorizationDecisionContext } from '../../../shared/focusedAuthorizationDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 import {
@@ -64,6 +65,7 @@ interface ChatCompletionResponse {
 }
 
 interface AiProxyResponse {
+  decisionContext?: { requestId: string; inputRevision: number };
   content?: string;
   error?: string;
   usage?: ChatCompletionUsage;
@@ -283,6 +285,7 @@ async function runFetchWithTimeout<T>(
 
 export interface OpenAiCompatibleClient {
   createChatCompletion(input: {
+    decisionContext?: FocusedAuthorizationDecisionContext;
     messages: ChatMessage[];
     temperature?: number;
     responseFormat?: JsonSchemaResponseFormat;
@@ -297,6 +300,7 @@ export function createOpenAiCompatibleClient(
   const requestTimeoutMs = resolvedTimeoutMs(config.requestTimeoutMs);
   return {
     async createChatCompletion({
+      decisionContext,
       messages,
       temperature = 0.2,
       responseFormat,
@@ -318,6 +322,7 @@ export function createOpenAiCompatibleClient(
         const idToken = await firebaseAuth.currentUser.getIdToken();
 
         const proxyBody = {
+          ...(decisionContext ? { decisionContext } : {}),
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,
           messages,
@@ -350,6 +355,10 @@ export function createOpenAiCompatibleClient(
               async (response) => (await response.json()) as AiProxyResponse,
             );
             const proxiedContent = result.content?.trim();
+            if (result.decisionContext && (
+              result.decisionContext.requestId !== decisionContext?.requestId
+              || result.decisionContext.inputRevision !== decisionContext?.inputRevision
+            )) throw new Error('Decision response context did not match the active request.');
 
             if (!proxiedContent) {
               const responseMessage =
