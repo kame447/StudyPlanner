@@ -62,6 +62,7 @@ import {
 import worker from './worker';
 import {
   jevExecutionMode,
+  lunaBaselineFailure,
   stripJevExecutionMarker,
 } from './decision/decisionExecutionMarker';
 
@@ -261,6 +262,7 @@ export default {
 
     const response = await worker.fetch(request, env as never, tokenProvider, executionContext);
     const decisionExecutionMode = jevExecutionMode(response);
+    const baselineFailure = lunaBaselineFailure(response);
     const publicResponse = stripJevExecutionMarker(response);
 
     if (observerRequest) {
@@ -274,6 +276,7 @@ export default {
           startedAtMs,
           occurredAt,
           decisionExecutionMode,
+          lunaBaselineFailure: baselineFailure,
           onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
             message: error instanceof Error ? error.message : String(error),
           }),

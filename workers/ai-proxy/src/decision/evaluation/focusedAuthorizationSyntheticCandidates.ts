@@ -16,9 +16,11 @@ export const FOCUSED_AUTHORIZATION_EVALUATION_LAYERS = [
 ] as const;
 
 export const FOCUSED_AUTHORIZATION_EVALUATION_SPLITS = ['tuning', 'holdout'] as const;
+export const FOCUSED_AUTHORIZATION_REQUESTED_SPLITS = ['tuning', 'holdout', 'all'] as const;
 
 export type FocusedAuthorizationEvaluationLayer = typeof FOCUSED_AUTHORIZATION_EVALUATION_LAYERS[number];
 export type FocusedAuthorizationEvaluationSplit = typeof FOCUSED_AUTHORIZATION_EVALUATION_SPLITS[number];
+export type FocusedAuthorizationRequestedSplit = typeof FOCUSED_AUTHORIZATION_REQUESTED_SPLITS[number];
 
 export interface FocusedAuthorizationSyntheticCandidate {
   id: string;
@@ -319,4 +321,19 @@ export function validateFocusedAuthorizationSyntheticCandidates(
       throw new Error(`Synthetic candidate is incorrectly marked as reviewed: ${value.id}`);
     }
   }
+}
+
+export function selectFocusedAuthorizationCandidates(
+  candidates: readonly FocusedAuthorizationSyntheticCandidate[],
+  split: FocusedAuthorizationRequestedSplit,
+): FocusedAuthorizationSyntheticCandidate[] {
+  validateFocusedAuthorizationSyntheticCandidates(candidates);
+  return split === 'all' ? [...candidates] : candidates.filter((value) => value.split === split);
+}
+
+export function parseFocusedAuthorizationEvaluationSplit(
+  value: string | undefined,
+): FocusedAuthorizationRequestedSplit {
+  if (value === 'tuning' || value === 'holdout' || value === 'all') return value;
+  throw new Error('JEV_EVAL_SPLIT must be explicitly set to tuning, holdout, or all.');
 }

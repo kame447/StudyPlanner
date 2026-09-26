@@ -2,11 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import traceWorker from '../traceWorker';
 import { FirestoreServiceAccountTokenProvider } from '../firestoreServiceAccountClient';
-import { JEV_MODEL } from './decisionPolicy';
+import { FOCUSED_REQUEST_TIMEOUT_MS, JEV_MODEL } from './decisionPolicy';
 import { observeAiProxyRequest } from '../aiProxyRequestObserver';
 import { jevExecutionMode } from './decisionExecutionMarker';
-import { dispatchFocusedAuthorization } from './focusedAuthorizationDispatch';
-import type { DecisionProvider } from './decisionProvider';
+import {
+  dispatchFocusedAuthorization,
+  resolveFocusedAuthorizationBaselineFailure,
+} from './focusedAuthorizationDispatch';
+import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import type { DecisionEnv } from './decisionPolicy';
+import type { ProductObservabilityEnv } from '../productObservabilityStore';
 
 const context = {
   purpose: 'focused_authorization', requestId: 'request-fixture-305', inputRevision: 7,
@@ -19,6 +24,7 @@ let quotaAllowed = true;
 let authAllowed = true;
 let baselineStatus = 200;
 let baselineDecisionValue: 'create_plan' | 'fallback' = 'fallback';
+let baselineNetworkFailure = false;
 type FirestoreField = {
   stringValue?: string;
   integerValue?: string;
@@ -42,6 +48,24 @@ function validResponse(independentMeaning = 0.001) {
       independent_meaning: { type: 'noul', noul: independentMeaning },
     },
     usage: { input_tokens: 200, output_tokens: 30, cost: 0.0000084 },
+  };
+}
+
+const canaryEnv = { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' } as DecisionEnv & ProductObservabilityEnv;
+
+function abstainingDecisionProvider(): DecisionProvider {
+  return {
+    evaluate: vi.fn(async (): Promise<DecisionEvaluation> => ({
+      status: 'evaluated', decision: 'create_plan', confidence: 0.5,
+      probabilities: { create_plan: 0.5, fallback: 0.5 },
+      conditionChange: 0, independentMeaning: 0,
+      metadata: {
+        provider: 'typesafe', requestedModel: 'injected-test-model',
+        servedModel: 'injected-test-model', latencyMs: 3,
+        inputTokens: null, outputTokens: null, costUsd: null,
+        requestBytes: 10, responseBytes: 10,
+      },
+    })),
   };
 }
 
@@ -95,10 +119,12 @@ beforeEach(() => {
   authAllowed = true;
   baselineStatus = 200;
   baselineDecisionValue = 'fallback';
+  baselineNetworkFailure = false;
   firestoreWrites.length = 0;
   jevResponse = async () => Response.json(validResponse());
   vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
   vi.stubGlobal('fetch', vi.fn(async (input, init) => {
     const url = String(input);
     calls.push(url);
@@ -111,6 +137,7 @@ beforeEach(() => {
       return jevResponse();
     }
     if (url.endsWith('/chat/completions')) {
+      if (baselineNetworkFailure) throw new TypeError('private-network-message');
       expect(JSON.parse(String(init?.body))).not.toHaveProperty('decisionContext');
       return Response.json({
         choices: [{ message: { content: JSON.stringify({ decision: baselineDecisionValue }) } }],
@@ -128,7 +155,7 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('focused authorization deployed proxy dispatch', () => {
   it('off preserves the original response and does not call Jev', async () => {
@@ -310,6 +337,74 @@ describe('focused authorization deployed proxy dispatch', () => {
     });
   });
 
+  it.each(['shadow', 'canary'] as const)(
+    'records one correlated %s baseline row when Luna throws a network error',
+    async (mode) => {
+      baselineNetworkFailure = true;
+      if (mode === 'canary') {
+        const uncertain = validResponse();
+        uncertain.answers.authorization.confidence = 0.5;
+        jevResponse = async () => Response.json(uncertain);
+      }
+      vi.spyOn(FirestoreServiceAccountTokenProvider.prototype, 'getToken')
+        .mockResolvedValue('test-firestore-token');
+
+      const { response, pending, env } = execute(mode, {
+        observability: true,
+        throughTraceWorker: true,
+      });
+      const result = await response;
+      expect(result.status).toBe(500);
+      expect(await result.json()).toEqual({ error: 'Unexpected worker error.' });
+      expect(result.headers.get('X-StudyPlanner-Internal-Jev-Mode')).toBeNull();
+      expect(result.headers.get('X-StudyPlanner-Internal-Luna-Baseline-Failure')).toBeNull();
+      await Promise.all(pending);
+
+      const metrics = storedAiMetricFields();
+      expect(metrics).toHaveLength(2);
+      const baselines = metrics.filter((metric) =>
+        metric.payload.mapValue?.fields?.operationKind.stringValue === 'chat_completion');
+      expect(baselines).toHaveLength(1);
+      expect(baselines[0].payload.mapValue?.fields?.status.stringValue).toBe('network_failure');
+      metrics.forEach((metric) => {
+        expect(metric.correlation.mapValue?.fields).toEqual({
+          requestId: { stringValue: context.requestId },
+          stateRevision: { integerValue: String(context.inputRevision) },
+        });
+      });
+      expect(JSON.stringify(firestoreWrites)).not.toContain('private-network-message');
+      // Worker logs keep the original Luna error; only telemetry is reduced to a class.
+      expect(console.error).toHaveBeenCalledWith(
+        '[AI Proxy] unexpected chat handler failure',
+        expect.objectContaining({ message: 'private-network-message' }),
+      );
+      expect(JSON.stringify(firestoreWrites)).not.toContain(context.state.currentUserText);
+      expect(JSON.stringify(firestoreWrites)).not.toContain(env.OPENROUTER_API_KEY ?? 'missing-key');
+    },
+  );
+
+  it('keeps off-mode failure response and telemetry unmarked and uncorrelated', async () => {
+    baselineNetworkFailure = true;
+    vi.spyOn(FirestoreServiceAccountTokenProvider.prototype, 'getToken')
+      .mockResolvedValue('test-firestore-token');
+
+    const { response, pending } = execute('off', {
+      observability: true,
+      throughTraceWorker: true,
+    });
+    const result = await response;
+    expect(result.status).toBe(500);
+    expect(await result.json()).toEqual({ error: 'Unexpected worker error.' });
+    expect(result.headers.get('X-StudyPlanner-Internal-Jev-Mode')).toBeNull();
+    expect(result.headers.get('X-StudyPlanner-Internal-Luna-Baseline-Failure')).toBeNull();
+    await Promise.all(pending);
+
+    const [baseline] = storedAiMetricFields();
+    expect(storedAiMetricFields()).toHaveLength(1);
+    expect(baseline.payload.mapValue?.fields?.status.stringValue).toBe('unknown_failure');
+    expect(baseline.correlation.mapValue?.fields).toEqual({ requestId: baseline.eventId });
+  });
+
   it('does not require an OpenRouter key from an injected DecisionProvider', async () => {
     const pending: Promise<unknown>[] = [];
     const provider: DecisionProvider = {
@@ -342,6 +437,65 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
       provider: 'typesafe', outcome: 'shadow', choice: 'create_plan',
     }));
+  });
+
+  it('classifies a Luna abort after Jev ran as cancelled', async () => {
+    const controller = new AbortController();
+    const provider = abstainingDecisionProvider();
+    let fallbackStarted = false;
+    const response = dispatchFocusedAuthorization({
+      context,
+      env: canaryEnv,
+      firebaseUid: 'user-fixture',
+      signal: controller.signal,
+      fallback: (signal) => new Promise((_resolve, reject) => {
+        fallbackStarted = true;
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+          once: true,
+        });
+      }),
+      respond: (decision) => Response.json({ content: JSON.stringify({ decision }) }),
+      provider,
+    });
+    const failure = response.catch((value: unknown) => value);
+    await vi.waitFor(() => expect(fallbackStarted).toBe(true));
+    controller.abort();
+
+    const error = await failure;
+    expect(resolveFocusedAuthorizationBaselineFailure(error)).toEqual({
+      mode: 'canary', failure: 'cancelled',
+    });
+    expect(provider.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies the focused request deadline during Luna fallback as timeout', async () => {
+    vi.useFakeTimers();
+    const provider = abstainingDecisionProvider();
+    let fallbackStarted = false;
+    const response = dispatchFocusedAuthorization({
+      context,
+      env: canaryEnv,
+      firebaseUid: 'user-fixture',
+      signal: new AbortController().signal,
+      fallback: (signal) => new Promise((_resolve, reject) => {
+        fallbackStarted = true;
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+          once: true,
+        });
+      }),
+      respond: (decision) => Response.json({ content: JSON.stringify({ decision }) }),
+      provider,
+    });
+    const failure = response.catch((value: unknown) => value);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fallbackStarted).toBe(true);
+    await vi.advanceTimersByTimeAsync(FOCUSED_REQUEST_TIMEOUT_MS);
+
+    const error = await failure;
+    expect(resolveFocusedAuthorizationBaselineFailure(error)).toEqual({
+      mode: 'canary', failure: 'timeout',
+    });
+    expect(provider.evaluate).toHaveBeenCalledTimes(1);
   });
 
   it('telemetry failure cannot replace the baseline response in shadow', async () => {
