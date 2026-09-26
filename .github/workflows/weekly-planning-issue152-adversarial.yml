@@ -1,29 +1,16 @@
 name: Issue 152 Adversarial Real API
 
-# Real-credential runs are requested explicitly for a reviewed ref:
-# gh workflow run weekly-planning-issue152-adversarial.yml \
-#   -f suites=diagnostics,adversarial -f request_id=<id> -f ref=<sha>
+# Real-credential runs are requested explicitly by committing a new request_id in
+# .github/weekly-planning-issue152-command.json on the Issue #152 validation branch.
+# Pushes that only touch harness or semantic files do not spend the credential.
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-issue152-command.json'
+      - '.github/workflows/weekly-planning-issue152-adversarial.yml'
   workflow_dispatch:
-    inputs:
-      suites:
-        description: Comma- or space-separated Issue 152 suite keys
-        required: true
-        type: string
-      critical_repetitions:
-        description: Repetitions for critical scenarios (1-5)
-        required: false
-        default: '3'
-        type: string
-      request_id:
-        description: Auditable identifier using A-Z a-z 0-9 . _ - only
-        required: true
-        type: string
-      ref:
-        description: Commit SHA or branch to check out (defaults to the dispatched ref)
-        required: false
-        default: ''
-        type: string
 
 permissions:
   contents: read
@@ -34,31 +21,36 @@ concurrency:
 
 jobs:
   prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'test/issue152-adversarial-validation-lab' }}
     runs-on: ubuntu-22.04
     outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
       files: ${{ steps.resolve.outputs.files }}
       repetitions: ${{ steps.resolve.outputs.repetitions }}
       request_id: ${{ steps.resolve.outputs.request_id }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
           persist-credentials: false
       - id: resolve
         name: Resolve requested Issue 152 suites
         shell: bash
-        env:
-          ISSUE152_SUITES: ${{ inputs.suites }}
-          ISSUE152_CRITICAL_REPETITIONS: ${{ inputs.critical_repetitions }}
-          ISSUE152_REQUEST_ID: ${{ inputs.request_id }}
         run: |
           set -euo pipefail
-          request_id=$ISSUE152_REQUEST_ID
+          command_file=.github/weekly-planning-issue152-command.json
+          should_run=true
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] \
+            && ! git diff-tree --no-commit-id --name-only -r HEAD | grep -Fxq "$command_file"; then
+            should_run=false
+          fi
+          request_id=$(jq -r '.request_id // ""' "$command_file")
           case "$request_id" in
-            ''|*[!A-Za-z0-9._-]*) echo "request_id may contain only A-Z a-z 0-9 . _ -" >&2; exit 1 ;;
+            ''|none) ;;
+            *[!A-Za-z0-9._-]*) echo "request_id may contain only A-Z a-z 0-9 . _ -" >&2; exit 1 ;;
           esac
-          repetitions=$ISSUE152_CRITICAL_REPETITIONS
+          repetitions=$(jq -r '.critical_repetitions // 3' "$command_file")
           case "$repetitions" in
             ''|*[!0-9]*) echo "critical_repetitions must be an integer" >&2; exit 1 ;;
           esac
@@ -68,7 +60,6 @@ jobs:
           fi
           files=()
           while IFS= read -r suite; do
-            [ -z "$suite" ] && continue
             case "$suite" in
               diagnostics) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152FailureDiagnosticsRealApi.observation.test.ts") ;;
               adversarial) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152AdversarialRealApi.observation.test.ts") ;;
@@ -80,17 +71,18 @@ jobs:
               renderer-influence) files+=("src/features/weeklyPlanning/evals/weeklyPlanningIssue152RendererInfluenceRealApi.observation.test.ts") ;;
               *) echo "unsupported suite: $suite" >&2; exit 1 ;;
             esac
-          done < <(printf '%s' "$ISSUE152_SUITES" | tr ',[:space:]' '\n')
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "at least one Issue 152 suite is required" >&2
-            exit 1
+          done < <(jq -r '.suites[]' "$command_file")
+          if [ "${#files[@]}" -eq 0 ] || [ -z "$request_id" ] || [ "$request_id" = "none" ]; then
+            should_run=false
           fi
-          echo "files=${files[*]}" >> "$GITHUB_OUTPUT"
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "files=${files[*]:-}" >> "$GITHUB_OUTPUT"
           echo "repetitions=$repetitions" >> "$GITHUB_OUTPUT"
           echo "request_id=$request_id" >> "$GITHUB_OUTPUT"
 
   adversarial-real-api:
     needs: prepare
+    if: ${{ needs.prepare.outputs.should_run == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -110,14 +102,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
-
-      - id: checked-out-revision
-        name: Resolve checked-out commit SHA
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -168,7 +155,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue152-adversarial-real-api-${{ needs.prepare.outputs.request_id }}-${{ steps.checked-out-revision.outputs.sha }}
+          name: issue152-adversarial-real-api-${{ needs.prepare.outputs.request_id }}-${{ github.sha }}
           path: artifacts/issue152-adversarial-real-api/
           if-no-files-found: warn
           retention-days: 30

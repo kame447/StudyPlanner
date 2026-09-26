@@ -1,0 +1,8 @@
+{
+  "request_id": "20260926-issue152-final-adversarial-o7-oracle",
+  "reason": "Temporary request trigger (restored only to run this suite before the final dispatch-only cleanup): adversarial suite with the stricter label-substitution oracle (typed facts + preview placement). Production code is unchanged since 296796ff, whose Real evidence covers the other suites.",
+  "critical_repetitions": 3,
+  "suites": [
+    "adversarial"
+  ]
+}
