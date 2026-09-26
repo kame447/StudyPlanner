@@ -161,4 +161,49 @@ describe('Issue #335 temporal-scope Worker response containment', () => {
     expect(upstreamBodies).toHaveLength(1);
     expect(upstreamBodies[0]).not.toHaveProperty('decisionContext');
   });
+
+  it('omits decision context from the real Luna repair fallback', async () => {
+    const upstreamBodies: Record<string, unknown>[] = [];
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+      }
+      if (url === 'https://openrouter.ai/api/alpha/decisions') {
+        return Response.json({
+          model: 'typesafe/jev-1.13',
+          answers: {
+            temporal_scope: {
+              type: 'choice',
+              choice: 'plan_unavailable',
+              confidence: 0.5,
+              probabilities: { plan_unavailable: 0.5, uncertain: 0.5 },
+            },
+            condition_change: { type: 'noul', noul: 0.2 },
+            independent_meaning: { type: 'noul', noul: 0.2 },
+          },
+          usage: { input_tokens: 10, output_tokens: 2 },
+        });
+      }
+      if (url.endsWith('/chat/completions')) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        upstreamBodies.push(body);
+        return Response.json({
+          choices: [{ message: { content: '{"decision":"uncertain"}' } }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const response = await worker.fetch(
+      focusedRequest('luna-fallback', 'この数学だけ火曜の夜を避けてください。'),
+      environment() as never,
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { content: string };
+    expect(JSON.parse(payload.content)).toEqual({ decision: 'uncertain' });
+    expect(upstreamBodies).toHaveLength(1);
+    expect(upstreamBodies[0]).not.toHaveProperty('decisionContext');
+  });
 });

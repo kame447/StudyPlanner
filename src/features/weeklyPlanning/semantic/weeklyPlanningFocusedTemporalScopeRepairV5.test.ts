@@ -170,6 +170,20 @@ describe('Stable V5 focused temporal-scope repair', () => {
     });
   });
 
+  it('does not enter the focused route for multiple or unsupported validation errors', () => {
+    expect(readFocusedTemporalScopeRepairCandidateV5({
+      rawResponse: invalidResponse(),
+      validationErrors: [
+        ...errors,
+        'document.tasks[0].title:required',
+      ],
+    })).toBeNull();
+    expect(readFocusedTemporalScopeRepairCandidateV5({
+      rawResponse: invalidResponse(),
+      validationErrors: ['document.tasks[0].temporalConstraints[0]:unsupported-kind'],
+    })).toBeNull();
+  });
+
   it('sends only source evidence, current attachment and interpreted time', () => {
     const candidate = readFocusedTemporalScopeRepairCandidateV5({
       rawResponse: invalidResponse(),

@@ -67,22 +67,43 @@ Completed:
 - production dispatch with off/shadow/canary behavior and real Luna fallback
 - group-separated 96-case corpus and pre-tuning seal
 - local focused tests: 30/30 passing at the first seal checkpoint
+- Issue #335 routing plus real Worker containment: 89/89 passing; an additional
+  Worker regression proves a low-confidence Jev result reaches Luna without
+  forwarding `decisionContext`
+- exact route exclusion for multiple/unsupported validation errors
+- runner finalized with verified Wrangler version, expiring token-protected
+  remote preview, production dispatch, real Luna fallback, paired holdout mode,
+  typed raw-text-free output, and fail-closed output overwrite protection
+- full verification on the current tree:
+  - `tsc --noEmit`: pass
+  - build typecheck and Vite production build: pass (2,215 modules)
+  - full Vitest: 582 files passed / 10 skipped; 3,085 tests passed / 45 skipped /
+    5 todo
+  - Worker `wrangler 4.140.0 deploy --dry-run`: exit 0, 459.46 KiB upload /
+    92.08 KiB gzip, `JEV_MODE="off"`, `JEV_CANARY_PERCENT="0"`
+  - catalog/gate/corpus fingerprints still exactly match the pre-tuning seal
+  - `git diff --check`: pass
 
 Next concrete work:
 
-1. Add dispatch and real `worker.ts` containment regressions, including Issue
-   #335 attack text and closed response keys/decision set.
-2. Add the remote production-dispatch evaluation runner and raw-text-free typed
-   evidence schema.
-3. Run tuning only, freeze the gate, then execute the sealed holdout once and a
+1. After the operator restores Wrangler authentication, run tuning only and
+   inspect the raw-text-free typed result.
+2. Freeze the tuned gate/catalog hashes, then execute the sealed holdout once and a
    paired Luna-only comparison on the same holdout.
-4. Calculate case/group Clopper–Pearson bounds, latency, and Jev/Luna cost ranges;
+3. Run the remote fault matrix through production dispatch with real Luna
+   fallback.
+4. Commit the typed evidence and calculate case/group Clopper–Pearson bounds,
+   latency, and Jev/Luna cost ranges;
    update this record without overclaiming accuracy or broad non-degradation.
-5. Run focused tests, full typecheck/test/build, shared Wrangler dry-run, request
-   parent commit/push/PR, then follow CI to a terminal state.
+5. Request parent commit/push/PR, then follow CI to a terminal state.
 
 Unresolved:
 
-- tuning/holdout remote evidence has not yet been produced
-- no difficult case has yet required the one allowed parent judge batch
+- tuning/holdout/fault remote evidence has not yet been produced
+- remote attempts produced no case evidence because Wrangler OAuth had
+  expired before remote dev startup (`wrangler whoami` confirmed non-interactive
+  refresh was unavailable); parent/operator credential restoration is pending
+- label audit completed before tuning; all labels follow explicit plan-wide,
+  task-specific/safe-uncertain, or security-safe-uncertain rules, so no difficult
+  case required the one allowed parent judge batch
 - production configuration remains intentionally off; no rollout is authorized
