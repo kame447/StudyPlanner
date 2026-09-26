@@ -172,6 +172,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
           expectedRevision: input.expectedRevision,
           graph,
           userText: input.userText,
+          supplementalContext: input.supplementalContext,
+          selectedStarterTarget: input.selectedStarterTarget,
           recentConversation: input.recentConversation,
           publicStateSummary,
           schedulerContext: input.schedulerContext,
@@ -181,8 +183,11 @@ export function createWeeklyPlanningSemanticPipelineV5(
 
       const normalization = await normalizer.normalize({
         userText: input.userText,
+        supplementalContext: input.supplementalContext,
+        selectedStarterTarget: input.selectedStarterTarget,
         recentConversation: input.recentConversation,
         publicStateSummary,
+        committedGraph: graph,
         traceRequestId: input.turnId,
       });
       recordWeeklyPlanningStableV5DebugTrace({
@@ -263,7 +268,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         userText: input.userText,
         pendingQuestion,
       });
-      const contextualAnswerEligible = pendingQuestion
+      const contextualAnswerEligible = pendingQuestion && !input.supplementalContext?.trim()
         ? shouldAttemptWeeklyPlanningContextualAnswerV5({
             document: normalization.document,
             pendingQuestion,
@@ -310,6 +315,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
         conversationId: input.conversationId,
         turnId: input.turnId,
         expectedRevision: input.expectedRevision,
+        userText: input.userText,
+        supplementalContext: input.supplementalContext,
       };
       const baseCanonicalization = contextualAnswer
         ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({

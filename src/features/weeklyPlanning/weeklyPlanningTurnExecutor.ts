@@ -34,6 +34,8 @@ export async function executeWeeklyPlanningTurn(
     previousState: input.previousState,
     messages: input.messages,
     userText: input.userText,
+    supplementalContext: input.supplementalContext,
+    selectedStarterTarget: input.selectedStarterTarget,
     selectedDate: input.selectedDate,
     userId: input.userId,
     plans: input.plans,

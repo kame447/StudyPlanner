@@ -21,6 +21,17 @@ export interface PlanningFactSourceV5 {
   semanticLocalId: string;
   sourceText: string;
   origin: 'user';
+  /** Absent on existing saved facts; only attachment-derived descriptive facts carry this marker. */
+  provenanceChannel?: 'supplemental';
+}
+
+export function isUserUtteranceSourcedV5(
+  source: Pick<PlanningFactSourceV5, 'origin' | 'provenanceChannel'>
+    | { channel: 'user' | 'supplemental' | 'ambiguous' | null },
+): boolean {
+  if ('channel' in source) return source.channel === 'user';
+  // A missing marker is the persisted V5 user source. New OCR facts carry an explicit marker.
+  return source.origin === 'user' && source.provenanceChannel !== 'supplemental';
 }
 
 export interface PlanningTaskFactV5 {

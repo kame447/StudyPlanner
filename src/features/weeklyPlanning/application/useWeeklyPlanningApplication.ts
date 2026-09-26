@@ -19,6 +19,7 @@ import type {
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
@@ -78,6 +79,7 @@ export interface WeeklyPlanningApplication {
   submitTurn: (
     userText: string,
     supplementalContext?: string,
+    selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
   ) => Promise<WeeklyPlanningTurnSubmissionResult>;
   cancelTurn: () => boolean;
   clearConversation: () => boolean;
@@ -186,6 +188,7 @@ export function useWeeklyPlanningApplication({
   async function submitTurn(
     userText: string,
     supplementalContext?: string,
+    selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
   ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
     if (!userId || !session) return { accepted: false, draftCandidates: [] };
@@ -195,6 +198,7 @@ export function useWeeklyPlanningApplication({
       ownerId,
       userText,
       supplementalContext,
+      selectedStarterTarget,
       selectedDate,
       plans,
       monthEvents,

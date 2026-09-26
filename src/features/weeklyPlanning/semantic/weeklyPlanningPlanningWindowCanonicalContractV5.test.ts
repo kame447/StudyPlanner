@@ -221,6 +221,7 @@ describe('Stable V5 planning window validation boundary', () => {
     const validation = validateWeeklyPlanningSemanticResponseV5(
       singleDayResponse('8190-08-25'),
       {
+        currentUserText: '8月25日だけの計画を作りたいです。',
         publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
       },
     );
@@ -233,6 +234,7 @@ describe('Stable V5 planning window validation boundary', () => {
     const validation = validateWeeklyPlanningSemanticResponseV5(
       singleDayResponse('2027-08-25', '2027年8月25日の試験'),
       {
+        currentUserText: '2027年8月25日の試験に向けた計画を作りたいです。',
         publicStateSummary: { calendarContext: { currentDate: '2026-08-17' } },
       },
     );

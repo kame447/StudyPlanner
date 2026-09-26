@@ -74,7 +74,9 @@ describe('Stable V5 absence versus positive availability validation', () => {
       startTime: null,
     }];
 
-    const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(response), {});
+    const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(response), {
+      currentUserText: '来週、英単語220語を覚えたい。今週は特に予定ない',
+    });
     expect(result.errors).toEqual([]);
     expect(result.document?.availabilityDeclarations).toEqual([
       expect.objectContaining({
@@ -107,7 +109,9 @@ describe('Stable V5 absence versus positive availability validation', () => {
       startTime: '18:00',
     }];
 
-    const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(response), {});
+    const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(response), {
+      currentUserText: '来週、英単語220語を覚えたい。月曜は18時から20時なら空いてる',
+    });
     expect(result.errors).toEqual([]);
     expect(result.document?.availabilityDeclarations).toEqual([
       expect.objectContaining({

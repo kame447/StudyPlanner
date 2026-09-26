@@ -208,7 +208,14 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
   const validation = document
     ? validateWeeklyPlanningSemanticResponseV5(
         JSON.stringify(document),
-        { publicStateSummary },
+        {
+          currentUserText: params.run.input.userText,
+          supplementalContext: params.run.input.supplementalContext,
+          selectedStarterTarget: params.run.input.selectedStarterTarget,
+          recentConversation: params.run.input.recentConversation,
+          publicStateSummary,
+          committedGraph: params.run.input.committedGraph,
+        },
       )
     : null;
   if (validation) params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
@@ -351,7 +358,14 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
 
     const validation = validateWeeklyPlanningSemanticResponseV5(
       response,
-      { publicStateSummary: params.run.input.publicStateSummary },
+      {
+        currentUserText: params.run.input.userText,
+        supplementalContext: params.run.input.supplementalContext,
+        selectedStarterTarget: params.run.input.selectedStarterTarget,
+        recentConversation: params.run.input.recentConversation,
+        publicStateSummary: params.run.input.publicStateSummary,
+        committedGraph: params.run.input.committedGraph,
+      },
     );
     params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
     const stillNoOp = validation.document

@@ -5,6 +5,14 @@ import {
   createWeeklyPlanningSemanticMeaningPolicyV5,
 } from './weeklyPlanningSemanticMeaningPolicyV5';
 
+function instructionFor(id: string): string {
+  const rule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!rule) throw new Error(`missing semantic meaning rule: ${id}`);
+  return rule.instruction;
+}
+
 describe('Stable V5 semantic meaning-rule inventory', () => {
   it('assigns every always-on rule a unique stable ID and an explicit retention basis', () => {
     const ids = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.map((rule) => rule.id);
@@ -40,6 +48,10 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
       expect(prompt).not.toContain(rule.retentionBasis);
       expect(prompt).not.toContain(rule.id);
     }
+  });
+
+  it('keeps historically load-bearing semantic distinctions explicit after prompt compaction audits', () => {
+    expect(instructionFor('semantic_meaning_ownership')).toContain('does not recover semantic meaning');
   });
 
   it('keeps qualitative scope structural and does not reopen an approved material breakdown', () => {

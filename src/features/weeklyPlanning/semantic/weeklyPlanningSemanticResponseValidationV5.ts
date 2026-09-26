@@ -3,6 +3,9 @@ import {
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
 import {
+  validateWeeklyPlanningCurrentTurnProvenanceV5,
+} from './weeklyPlanningCurrentTurnProvenanceV5';
+import {
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -41,9 +44,16 @@ import {
 import {
   validateWeeklyPlanningWeekdayEncodingV5,
 } from './weeklyPlanningWeekdayEncodingV5';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningTurnEvidenceV5';
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
+  currentUserText?: string;
+  supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  recentConversation?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
+  committedGraph?: WeeklyPlanningFactGraphV5;
 }
 
 export interface WeeklyPlanningSemanticValidationAttemptV5 {
@@ -125,6 +135,15 @@ export function validateWeeklyPlanningSemanticResponseV5(
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
+    ...validateWeeklyPlanningCurrentTurnProvenanceV5({
+      document,
+      currentUserText: input.currentUserText,
+      supplementalContext: input.supplementalContext,
+      selectedStarterTarget: input.selectedStarterTarget,
+      recentConversation: input.recentConversation,
+      publicStateSummary: input.publicStateSummary,
+      committedGraph: input.committedGraph,
+    }),
   ];
   return {
     document: errors.length === 0 ? document : null,

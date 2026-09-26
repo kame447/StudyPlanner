@@ -11,6 +11,7 @@ import type {
   TimetableTerm,
 } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
   WeeklyPlanningTurnSubmissionResult,
@@ -52,6 +53,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   ownerId: string;
   userText: string;
   supplementalContext?: string;
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   selectedDate: string;
   plans: Plan[];
   monthEvents?: MonthEvent[];
@@ -82,14 +84,17 @@ export function submitWeeklyPlanningApplicationTurn(
     ownerId: params.userId,
     userText: params.userText,
     supplementalContext: params.supplementalContext,
+    selectedStarterTarget: params.selectedStarterTarget,
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
-    execute({ snapshot, pending, userText }) {
+    execute({ snapshot, pending, userText, supplementalContext, selectedStarterTarget }) {
       return services.runtimeGateway.execute({
         snapshot,
         pending,
         userText,
+        supplementalContext,
+        selectedStarterTarget,
         selectedDate: params.selectedDate,
         userId: params.userId,
         plans: params.plans,

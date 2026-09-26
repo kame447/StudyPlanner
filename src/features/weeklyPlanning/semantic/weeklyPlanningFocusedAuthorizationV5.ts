@@ -6,6 +6,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import { isUserUtteranceSourcedV5 } from './weeklyPlanningFactGraphV5';
 
 export const FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS = 80;
 
@@ -39,16 +40,20 @@ export interface FocusedAuthorizationDecisionV5 {
 
 export interface FocusedAuthorizationInputV5 {
   userText: string;
+  supplementalContext?: string;
   publicStateSummary?: Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function focusedAuthorizationEligibleV5(
   input: FocusedAuthorizationInputV5,
 ): boolean {
+  if (!isUserUtteranceSourcedV5({
+    channel: input.supplementalContext?.trim() ? 'supplemental' : 'user',
+  })) return false;
   const summary = input.publicStateSummary;
   if (!isRecord(summary)) return false;
   if (summary.pendingQuestion !== null && summary.pendingQuestion !== undefined) return false;
@@ -81,6 +86,10 @@ export function parseFocusedAuthorizationDecisionV5(
   try {
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
+    if (
+      Object.keys(value).length !== 1
+      || !Object.prototype.hasOwnProperty.call(value, 'decision')
+    ) return null;
     const decision = value.decision;
     if (decision !== 'create_plan' && decision !== 'fallback') return null;
     return { decision };

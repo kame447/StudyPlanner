@@ -23,16 +23,17 @@ describe('weekly planning attachment context', () => {
     expect(executionText).toContain('範囲: p.30〜80');
   });
 
-  it('truncates attachment facts instead of exceeding the existing execution budget', () => {
+  it('preserves complete attachment facts so an over-budget turn can be rejected', () => {
     const executionText = buildWeeklyPlanningExecutionText(
       'a'.repeat(3_500),
       'b'.repeat(MAX_WEEKLY_PLANNING_SUPPLEMENTAL_CONTEXT_LENGTH),
     );
 
-    expect(executionText.length).toBeLessThanOrEqual(
+    expect(executionText.length).toBeGreaterThan(
       MAX_WEEKLY_PLANNING_EXECUTION_TEXT_LENGTH,
     );
     expect(executionText).toContain('添付画像から読み取った参考情報');
+    expect(executionText.endsWith('b'.repeat(MAX_WEEKLY_PLANNING_SUPPLEMENTAL_CONTEXT_LENGTH))).toBe(true);
   });
 
   it('keeps the supplemental-context budget aligned with the attachment extractor', () => {
