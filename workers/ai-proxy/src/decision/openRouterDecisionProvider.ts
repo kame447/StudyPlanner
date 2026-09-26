@@ -42,7 +42,8 @@ export function createOpenRouterDecisionProvider(options: {
       const timer = setTimeout(abort, options.timeoutMs ?? JEV_TIMEOUT_MS);
       try {
         const response = await (options.fetch ?? fetch)(DECISIONS_URL, {
-          method: 'POST', redirect: 'error', signal: controller.signal,
+          // Manual mode also works in the deployed Workers compatibility date; reject 3xx below.
+          method: 'POST', redirect: 'manual', signal: controller.signal,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.apiKey.trim()}` },
           body,
         });

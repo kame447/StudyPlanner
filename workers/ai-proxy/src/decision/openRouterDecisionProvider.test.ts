@@ -32,7 +32,7 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(gateDecision(result)).toEqual({ status: 'accepted', decision: 'create_plan' });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://openrouter.ai/api/alpha/decisions');
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     const body = JSON.parse(String(init?.body));
     expect(body.model).toBe(JEV_MODEL.request);
     expect(body.state).toEqual(state);
@@ -47,6 +47,16 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(result).toMatchObject({ status: 'unavailable', reason: 'http', httpStatus: status });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(result)).not.toContain('private-upstream-message');
+  });
+
+  it.each([301, 302, 303, 307, 308])('rejects redirect %i without forwarding credentials to its destination', async (status) => {
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      expect(init?.redirect).toBe('manual');
+      return new Response(null, { status, headers: { Location: 'https://untrusted.example/decisions' } });
+    });
+    const provider = createOpenRouterDecisionProvider({ apiKey: crypto.randomUUID(), fetch: fetchMock });
+    expect(await provider.evaluate(state)).toMatchObject({ status: 'unavailable', reason: 'http', httpStatus: status });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([

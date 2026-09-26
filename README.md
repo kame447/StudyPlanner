@@ -149,6 +149,14 @@ npm run test:jev:live
 
 この試験は合成した日本語の `create_plan / fallback` 判定を実Jevへ1件送り、HTTP成功に加えてdecision・分布・入力tokenを確認します。1件の疎通成功は日本語品質や本番rolloutの承認を意味しません。キー未設定なら試験は明示的に失敗し、成功扱いにしません。
 
+キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
+
+```bash
+npm exec --yes --package=wrangler@4.140.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+```
+
+検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
+
 モデル、latency、成功/fallback、shadow比較、token数、OpenRouter報告costを既存 `ai_request_metric` と内容を限定したWorkerログへ記録します。不明なusage/costはnullのまま保持します。OpenRouterの応答本文、送信state、ユーザー入力全文、key、例外本文を新規のdecisionログやtraceへ保存しません。週間計画traceは既存の結果・byte数・状態を維持し、providerごとの安全な数値診断は#213のtelemetryを使います。
 
 2026-09-26確認の一次資料は [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)、[Jev tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial)、[TypeSafe primitives](https://docs.typesafe.ai/introduction)、[TypeSafe confidence](https://docs.typesafe.ai/confidence) です。SDK互換やchat APIから仕様を推測せず、`POST https://openrouter.ai/api/alpha/decisions` の `state / questions / answers / usage` 契約を使います。
