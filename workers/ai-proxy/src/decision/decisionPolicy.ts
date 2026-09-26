@@ -5,10 +5,18 @@ export const JEV_MODEL = {
   request: 'typesafe/jev-1.13',
   responses: ['typesafe/jev-1.13', 'typesafe/jev-1.13-20260917'] as readonly string[],
 } as const;
-export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-26';
-export const JEV_GATE_VERSION = 'authorization-conservative-v1-uncalibrated';
+export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
+export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
 export const JEV_TIMEOUT_MS = 1_500;
 export const FOCUSED_REQUEST_TIMEOUT_MS = 85_000;
+export const FOCUSED_AUTHORIZATION_GATE_THRESHOLDS = {
+  strongAuxiliaryFallback: 0.9,
+  fallbackConfidence: 0.8,
+  fallbackProbability: 0.9,
+  createConfidence: 0.9,
+  createProbability: 0.95,
+  createAuxiliaryVeto: 0.5,
+} as const;
 
 export interface DecisionEnv {
   OPENROUTER_API_KEY?: string;
@@ -34,14 +42,22 @@ export type DecisionGate = { status: 'accepted'; decision: 'create_plan' | 'fall
 // not a proven contradiction, and agreement is not an independent safety guarantee.
 export function gateDecision(result: DecisionEvaluation): DecisionGate {
   if (result.status === 'unavailable') return { status: result.status, reason: result.reason };
-  if (result.conditionChange >= 0.97 || result.independentMeaning >= 0.97) {
+  if (result.conditionChange >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.strongAuxiliaryFallback
+    || result.independentMeaning >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.strongAuxiliaryFallback) {
     return { status: 'accepted', decision: 'fallback' };
   }
-  if (result.confidence < 0.97 || result.probabilities[result.decision] < 0.99) {
+  if (result.decision === 'fallback') {
+    return result.confidence >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.fallbackConfidence
+      && result.probabilities.fallback >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.fallbackProbability
+      ? { status: 'accepted', decision: 'fallback' }
+      : { status: 'abstained', reason: 'uncertain' };
+  }
+  if (result.confidence < FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createConfidence
+    || result.probabilities.create_plan < FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createProbability) {
     return { status: 'abstained', reason: 'uncertain' };
   }
-  if (result.decision === 'fallback') return { status: 'accepted', decision: 'fallback' };
-  if (result.conditionChange > 0.01 || result.independentMeaning > 0.01) {
+  if (result.conditionChange >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createAuxiliaryVeto
+    || result.independentMeaning >= FOCUSED_AUTHORIZATION_GATE_THRESHOLDS.createAuxiliaryVeto) {
     return { status: 'abstained', reason: 'conflicting_heads' };
   }
   return { status: 'accepted', decision: 'create_plan' };

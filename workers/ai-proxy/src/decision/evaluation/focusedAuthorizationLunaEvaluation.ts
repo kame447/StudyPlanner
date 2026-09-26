@@ -38,13 +38,16 @@ export type LunaFocusedAuthorizationEvaluation = {
   metadata: LunaEvaluationMetadata;
 } | {
   status: 'unavailable';
-  reason: 'configuration' | 'timeout' | 'network' | 'http';
+  reason: 'configuration' | 'timeout' | 'cancelled' | 'network' | 'http';
   httpStatus?: number;
   metadata: LunaEvaluationMetadata;
 };
 
 export interface LunaFocusedAuthorizationEvaluator {
-  evaluate(context: FocusedAuthorizationEvaluationContext): Promise<LunaFocusedAuthorizationEvaluation>;
+  evaluate(
+    context: FocusedAuthorizationEvaluationContext,
+    signal?: AbortSignal,
+  ): Promise<LunaFocusedAuthorizationEvaluation>;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -80,14 +83,14 @@ function costForUsage(
 
 export function createLunaFocusedAuthorizationEvaluator(options: {
   apiKey?: string;
-  fetch: typeof fetch;
+  fetch?: typeof fetch;
   baseUrl?: string;
   timeoutMs?: number;
   pricing?: LunaPricingTable;
 }): LunaFocusedAuthorizationEvaluator {
   const requestedModel = LUNA_FOCUSED_AUTHORIZATION_MODEL;
   return {
-    async evaluate(context) {
+    async evaluate(context, signal) {
       const startedAt = Date.now();
       let servedModel: string | null = null;
       let promptTokens: number | null = null;
@@ -115,10 +118,21 @@ export function createLunaFocusedAuthorizationEvaluator(options: {
         publicStateSummary: { lastAssistantMessage: context.lastAssistantMessage },
       });
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 90_000);
+      let cancelled = false;
+      let timedOut = false;
+      const cancel = () => {
+        cancelled = true;
+        controller.abort();
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) cancel();
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, options.timeoutMs ?? 90_000);
       try {
         const baseUrl = (options.baseUrl?.trim() || 'https://api.openai.com/v1').replace(/\/$/, '');
-        const response = await options.fetch(`${baseUrl}/chat/completions`, {
+        const response = await (options.fetch ?? fetch)(`${baseUrl}/chat/completions`, {
           method: 'POST',
           signal: controller.signal,
           headers: {
@@ -163,11 +177,12 @@ export function createLunaFocusedAuthorizationEvaluator(options: {
       } catch {
         return {
           status: 'unavailable',
-          reason: controller.signal.aborted ? 'timeout' : 'network',
+          reason: cancelled ? 'cancelled' : timedOut ? 'timeout' : 'network',
           metadata: metadata(),
         };
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', cancel);
       }
     },
   };
