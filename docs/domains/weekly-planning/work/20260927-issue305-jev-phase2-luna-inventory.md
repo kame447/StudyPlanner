@@ -138,7 +138,7 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 | --- | --- | --- |
 | C9 提示済み proposal への reject | **no-go（評価済み）** | 上記の holdout の結果 |
 | C9 の accept 側（または reject と accept を合わせた choice） | **no-go** | 同じ構造（generic の前段で自由な返答を分類する）で、同じ corpus に対する再 tuning は禁止している。accept は preview と planningIntent の意味を伴うので、誤受理の損失が reject より大きい |
-| C5 閉じた選択肢を持つ pending question（effort estimate の候補選択を含む） | **hold のまま** | binding で解けるのは提示の対応だけである。固有の blocker は残る：選択を適用する scope と期間、global な supersession、候補を提示していない質問文（renderer と質問の変更は UX 方針の判断を伴う）。さらに C9 と同じ構造の問題があり、対象は repair の状態で頻度も低い |
+| C5 閉じた選択肢を持つ pending question（effort estimate の候補選択を含む） | **hold のまま** | binding で解けるのは提示の対応だけである。固有の blocker は残る：選択を適用する scope と期間、global な supersession、候補を提示していない質問文（renderer と質問の変更は UX 方針の判断を伴う）。さらに C9 と同じ構造の問題がある。発生頻度は、#347 の記録どおり未計測である |
 | C2 provisional_timebox | **hold のまま** | scheduler の許可と preview の authorization に及ぶので、#335 の不変条件（Jev に scheduler の権限を与えない）と衝突する |
 | C3 / C4 / C6 / C8 / C1 | **#347 の判断を維持** | 前提条件が変わっていない |
 | generic の初回・repair、renderer、日付・window の repair、添付 | **Luna に残す** | 生成と開いた抽出であり、閉じた集合にならない |

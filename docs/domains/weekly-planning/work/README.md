@@ -17,7 +17,7 @@ Current durable records:
 - `20260927-issue305-jev-first-focused-contextual.md` — Issue #305 置換単位2（focused contextual answer の quantity role と独立した意味の判定を Jev 第一経路へ移し、effort と provisional は Luna に残す。前方互換の decisionContext 規則を含む）
 - `20260927-issue305-jev-first-temporal-scope-repair.md` — Issue #305 置換単位3（temporal scope repair の Jev 第一経路。既存の Luna repair の token 上限 60→320 の修正を含む）
 - `20260927-issue305-jev-first-temporal-side-contribution.md` — Issue #305 置換単位5（temporal side contribution の Jev 第一経路は不採用とした。既存の Luna の token 上限 320→640 と `namedTimePeriod` schema の修正を含む）
-- `20260927-issue305-jev-phase2-luna-inventory.md` — Issue #305 第二段階（単位1〜5の後の Luna 呼出し経路の再棚卸し。採用なし。C3 no-op 確認 gate は no-go、C9 proposal reject は前提条件付きの次候補）
+- `20260927-issue305-jev-phase2-luna-inventory.md` — Issue #305 第二段階（単位1〜5の後の Luna 呼出し経路の再棚卸し。採用なし。C3 no-op 確認 gate は no-go。当時は C9 proposal reject を前提条件付きの次候補としたが、第三段階で no-go とした。同じ文書の末尾に、第三段階の再棚卸しを追記してある）
 - `20260928-issue305-question-presentation-binding.md` — Issue #305 第三段階（提示済み質問と、それを提示した assistant message・revision を結ぶ binding 基盤。C9 / C5 の前提条件 (a)）
 - `20260928-issue305-jev-first-proposal-reject.md` — Issue #305 C9（提示済み proposal への純粋な reject を Jev 第一経路にする案）。sealed holdout で事前登録 gate を満たさず no-go（直接受理 1/16、pure reject の p50 が悪化）。runtime は撤去済みで、型付きの evidence だけを残す
 - 置換単位4（user context の保存先 owner の判定）の記録は user-context domain の [`../../user-context/work/20260927-issue305-jev-first-user-context-routing.md`](../../user-context/work/20260927-issue305-jev-first-user-context-routing.md) にある。単位1〜5 の結果の一覧は `20260926-issue333-japanese-semantic-evaluation.md` の「置換の結果」にある。
