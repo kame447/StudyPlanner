@@ -15,6 +15,9 @@ describe('temporal-scope repair holdout seal', () => {
     });
     expect(TEMPORAL_SCOPE_REPAIR_HOLDOUT_SEAL.corpusSha256)
       .toBe(TEMPORAL_SCOPE_REPAIR_PRE_TUNING_SEAL.corpusSha256);
-    await expect(assertTemporalScopeRepairHoldoutSeal()).resolves.toBeUndefined();
+    expect(TEMPORAL_SCOPE_REPAIR_HOLDOUT_SEAL.consumed).toBe(true);
+    await expect(assertTemporalScopeRepairHoldoutSeal()).rejects.toThrow(
+      'Temporal-scope repair holdout has already been consumed.',
+    );
   });
 });
