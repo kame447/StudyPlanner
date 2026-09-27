@@ -46,3 +46,5 @@ These checks verified the evaluated implementation before its removal. The no-go
 - PR #349: https://github.com/kame447/StudyPlanner/pull/349 (base `main`, existing Issue #305 and branch reused; no new Issue or branch).
 - C9-removal commit: `1b7dd5e6aad7b267f62868d356bfe37ef06982fe`, pushed to `origin/feat/issue-305-jev-first-proposal-reject`.
 - The PR file list is exactly this record plus the four typed evidence artifacts. GitHub checks are running on the PR; review/merge remains for the repository's normal review process.
+
+- PR checks on code-identical commit `f8b74de2aec5432a8d2cc6dfffb571bfa913a847`: Cloudflare Pages pass; Admin Overview Render pass; Browser Regression pass; CI verify pass. Run IDs: `36337981484`, `36337981481`, `36337981512` respectively (Cloudflare deployment `1207d021-8c56-4e6d-a9e3-0d849040b5ea`).
