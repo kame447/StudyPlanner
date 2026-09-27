@@ -115,6 +115,8 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 | 12 | 一部採用（off） | 新規の入力の保存先 owner だけ。既存の記録の編集は Luna に残した（編集対象の文脈を含めた評価が必要なため、保留）。安全性の指標は満たしたが、呼出しの削減は 10.9% で、latency と費用は改善しない | #339 / `docs/domains/user-context/work/20260927-issue305-jev-first-user-context-routing.md` |
 | 13 | 対象外 | 画像の読み取りである | — |
 
+単位1〜5の後の再棚卸し（第二段階）では、採用できる単位はなかった。no-go / 保留の理由と、次候補（提示済み proposal への純粋な reject）の前提条件は [`20260927-issue305-jev-phase2-luna-inventory.md`](20260927-issue305-jev-phase2-luna-inventory.md) にある。
+
 Jev への置換とは別に、次の点が分かった。Jev が保留した後の Luna fallback、または Luna 単独が、注入文に従って誤判定した case がある。その case ID は #335 に記録した。Jev が直接受理した判定には、この種の誤りは観測されていない。本番 canary の判断には、ユーザーの明示的な承認、新しく封印した holdout（可能なら human-reviewed の label）、#187 の provider / privacy 条件が必要である。
 
 ## canary 判断へ返すもの（#305）
