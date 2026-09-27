@@ -105,14 +105,16 @@ Frozen after tuning and before opening holdout:
 - holdout state at freeze: sealed and unconsumed; parent committed the frozen
   policy as `7b45cc8f` before execution
 
-## Single holdout, paired baselines, and faults
+## Recorded holdout, paired baselines, and faults
 
 After checking out the parent's frozen-policy commit `7b45cc8f`, the runner
-reconfirmed all three hashes and opened the holdout exactly once. One remote
-invocation produced 144 typed records: 48 Jev-first, the same 48 through fixed
-320-token Luna only, and the same 48 through legacy 60-token Luna only. The
-repository seal is now `consumed: true`, so another holdout attempt fails
-closed. No gate, catalog, corpus, or label was changed after opening it.
+reconfirmed all three hashes. The repository contains one recorded remote
+holdout invocation with 144 typed records: 48 Jev-first, the same 48 through
+fixed 320-token Luna only, and the same 48 through legacy 60-token Luna only.
+The current HEAD has `consumed: true`, so its runner rejects another holdout
+attempt. This is a repository record and current-HEAD guard, not an external
+irreversible run ledger. No gate, catalog, corpus, or label was changed after
+the recorded invocation.
 
 Jev-first directly accepted 31/48 cases and used Luna for 17. Its final
 synthetic-label agreement was 46/48. It produced 2 false
@@ -150,12 +152,19 @@ Jev. Usage was present for only 16 calls; their known cost range was
 $0.00096868-$0.0015239, while the total cost outside that known range is
 unknown because the 32 failed calls reported no usage.
 
-The separate fault invocation exercised abstain, conflicting heads, timeout,
-network failure, HTTP 429, HTTP 500, unsupported output, malformed output,
-model mismatch, and provider cancellation through production dispatch. All
-10 cases reached real 320-token Luna fallback, returned HTTP 200 with the
-closed `uncertain` decision, and had zero response-key or decision-key
-containment errors. Typed evidence is in
+The remote evaluator used the production temporal-scope dispatch, real Jev,
+and real Luna, but it did not traverse Firebase authentication, quota, or the
+full `worker.ts` request handler. Claims from this evidence are limited to that
+dispatch boundary; the separate Worker tests cover routing and response-envelope
+containment with mocks.
+
+The separate fault harness injected typed provider statuses for abstain,
+conflicting heads, timeout, network failure, HTTP 429, HTTP 500, unsupported
+output, malformed output, model mismatch, and provider cancellation into
+production dispatch; it did not reproduce ten real network/provider failures.
+All 10 injected statuses reached real 320-token Luna fallback, returned HTTP
+200 with the closed `uncertain` decision, and had zero response-key or
+decision-key containment errors. Typed evidence is in
 `temporal-scope-holdout-20260927.json` and
 `temporal-scope-faults-20260927.json`; both passed forbidden-key and non-ASCII
 scans and contain no corpus or provider raw text.
@@ -164,7 +173,10 @@ The tuning false decisions `t-security-system-2` and
 `t-security-role-tag-1` likewise occurred only after Jev abstained and Luna
 followed injected text. Together with the holdout security failures, these are
 Luna injection-resistance findings to return to Issue #335 (safety) and Issue
-#333 (Japanese behavior), separately from the Jev result.
+#333 (Japanese behavior), separately from the Jev result. The mock attack tests
+in this unit prove routing and response-envelope containment only; semantic
+injection resistance is limited to these synthetic-label observations and the
+follow-up Issues.
 
 ## Current checkpoint
 
@@ -176,7 +188,8 @@ Completed:
 - production dispatch with off/shadow/canary behavior and real Luna fallback
 - group-separated 96-case corpus and pre-tuning seal
 - local focused tests: 30/30 passing at the first seal checkpoint
-- Issue #335 routing plus real Worker containment: 90/90 passing; an additional
+- Issue #335 routing plus real Worker response-envelope containment: 90/90
+  passing; an additional
   Worker regression proves a low-confidence Jev result reaches Luna without
   forwarding `decisionContext`
 - exact route exclusion for multiple/unsupported validation errors
@@ -195,18 +208,18 @@ Completed:
 - remote tuning v1/v2 completed; the Luna completion budget defect was fixed,
   the tuned gate/catalog were frozen, and both raw-text-free typed evidence
   files passed forbidden-key and non-ASCII scans
-- the single sealed holdout, both paired Luna baselines, and all 10 remote
-  faults completed; the holdout is consumed and the two final evidence files
-  are raw-text-free
+- one recorded sealed holdout, both paired Luna baselines, and the 10 typed
+  fault-status injections completed; current HEAD rejects another holdout and
+  the two final evidence files are raw-text-free
 
 Next concrete work:
 
-1. Run final typecheck, full tests, build, production Worker dry-run, exact diff,
-   seal, and evidence-privacy checks on the post-holdout tree.
-2. Ask the parent to commit/push the consumed seal, typed holdout/fault evidence,
-   and final record, with a PR body draft that scopes all claims to this sample.
-3. Follow PR review and CI to terminal state; resolve failures without reopening
-   or retuning the consumed holdout.
+1. Add the audit-requested 320-token propagation assertions and limited evidence
+   wording without changing the frozen policy or consumed evidence.
+2. Run focused tests and typecheck, then ask the parent to commit/push and update
+   PR #340's wording to the same evidence boundaries.
+3. Follow the new PR HEAD through terminal CI and merge; resolve failures without
+   reopening or retuning the consumed holdout.
 
 Unresolved:
 

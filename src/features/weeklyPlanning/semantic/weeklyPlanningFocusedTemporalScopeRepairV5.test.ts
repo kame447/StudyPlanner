@@ -353,6 +353,7 @@ describe('Stable V5 focused temporal-scope repair', () => {
     expect(calls[1].responseFormat?.json_schema.name).toBe(
       'weekly_planning_focused_temporal_scope_repair_v5',
     );
+    expect(calls[1].maxCompletionTokens).toBe(320);
     expect(calls[1].decisionContext).toMatchObject({
       purpose: 'temporal_scope_repair',
       requestId: 'temporal-route-request',

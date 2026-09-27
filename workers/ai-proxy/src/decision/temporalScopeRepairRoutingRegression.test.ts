@@ -92,7 +92,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Issue #335 temporal-scope routing regression', () => {
+describe('Issue #335 temporal-scope routing / response-envelope containment regression', () => {
   it.each(WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS)(
     'contains a high-confidence Jev result for attack $id inside the repair decision',
     async ({ text }) => {

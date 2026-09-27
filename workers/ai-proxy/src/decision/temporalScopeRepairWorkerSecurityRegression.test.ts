@@ -35,7 +35,7 @@ function focusedRequest(id: string, sourceText: string, contextOverrides = {}): 
         { role: 'user', content: sourceText },
       ],
       response_format: { type: 'json_object' },
-      max_completion_tokens: 60,
+      max_completion_tokens: 320,
       decisionContext: {
         purpose: 'temporal_scope_repair',
         requestId: `worker-temporal-security-${id}`,
@@ -61,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Issue #335 temporal-scope Worker response containment', () => {
+describe('Issue #335 temporal-scope Worker routing / response-envelope containment', () => {
   it.each(WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS)(
     'keeps high-confidence attack $id inside the real handler decision envelope',
     async ({ id, text }) => {
@@ -205,5 +205,6 @@ describe('Issue #335 temporal-scope Worker response containment', () => {
     expect(JSON.parse(payload.content)).toEqual({ decision: 'uncertain' });
     expect(upstreamBodies).toHaveLength(1);
     expect(upstreamBodies[0]).not.toHaveProperty('decisionContext');
+    expect(upstreamBodies[0]?.max_completion_tokens).toBe(320);
   });
 });
