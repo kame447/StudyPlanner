@@ -127,14 +127,23 @@ function withAssistantMessage(params: {
 }
 
 function questionPresentationContent(params: {
+  result: WeeklyPlanningTurnExecutionResult;
   renderInput: WeeklyPlanningStableV5DialogueRenderInput;
   responseSource: 'ai' | 'deterministic_fallback';
   notice: string | null;
 }): WeeklyPlanningQuestionPresentationContent {
+  // Mirrors what the renderer receives as groundingContext (non-rejected records).
+  const unresolved = (params.result.state.groundingRecords ?? [])
+    .filter((record) => record.status === 'proposed' || record.status === 'contested');
   return {
     responseSource: params.responseSource,
     currentTurnGrounding: params.renderInput.currentTurnGrounding?.mode ?? 'none',
     selfRepairNotice: params.notice !== null,
+    groundingContext: {
+      proposed: unresolved.filter((record) => record.status === 'proposed').length,
+      contested: unresolved.filter((record) => record.status === 'contested').length,
+    },
+    previewPromotionControl: params.renderInput.previewPromotionControlLabel != null,
   };
 }
 
@@ -373,6 +382,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
       questionPresentationContent: questionPresentationContent({
+        result: params.result,
         renderInput,
         responseSource: 'deterministic_fallback',
         notice,
@@ -406,6 +416,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     responseSource: 'ai',
     dialogueRendererTrace,
     questionPresentationContent: questionPresentationContent({
+      result: params.result,
       renderInput,
       responseSource: 'ai',
       notice,

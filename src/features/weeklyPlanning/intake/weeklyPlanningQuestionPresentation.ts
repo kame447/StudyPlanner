@@ -43,16 +43,45 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isCount(value: unknown): value is number {
+  return isNonNegativeInteger(value);
+}
+
 function isPresentationContent(
   value: unknown,
 ): value is WeeklyPlanningQuestionPresentationContent {
   return isRecord(value)
-    && hasExactKeys(value, ['responseSource', 'currentTurnGrounding', 'selfRepairNotice'])
+    && hasExactKeys(value, [
+      'responseSource',
+      'currentTurnGrounding',
+      'selfRepairNotice',
+      'groundingContext',
+      'previewPromotionControl',
+    ])
     && (value.responseSource === 'ai' || value.responseSource === 'deterministic_fallback')
     && (value.currentTurnGrounding === 'none'
       || value.currentTurnGrounding === 'recommended'
       || value.currentTurnGrounding === 'required_before_resume')
-    && typeof value.selfRepairNotice === 'boolean';
+    && typeof value.selfRepairNotice === 'boolean'
+    && isRecord(value.groundingContext)
+    && hasExactKeys(value.groundingContext, ['proposed', 'contested'])
+    && isCount(value.groundingContext.proposed)
+    && isCount(value.groundingContext.contested)
+    && typeof value.previewPromotionControl === 'boolean';
+}
+
+/**
+ * True only when nothing machine-known other than the question itself may have been
+ * rendered in the presenting message. It says nothing about the AI text's semantics.
+ */
+export function isWeeklyPlanningQuestionPresentationUnaccompanied(
+  content: WeeklyPlanningQuestionPresentationContent,
+): boolean {
+  return content.currentTurnGrounding === 'none'
+    && !content.selfRepairNotice
+    && content.groundingContext.proposed === 0
+    && content.groundingContext.contested === 0
+    && !content.previewPromotionControl;
 }
 
 /** Strict decoder: persisted state is untrusted, and anything unexpected fails closed. */
@@ -82,7 +111,10 @@ export function decodeWeeklyPlanningQuestionPresentation(
     assistantMessageId: value.assistantMessageId,
     planningStateRevision: value.planningStateRevision,
     graphRevision: value.graphRevision,
-    content: { ...value.content },
+    content: {
+      ...value.content,
+      groundingContext: { ...value.content.groundingContext },
+    },
   };
 }
 

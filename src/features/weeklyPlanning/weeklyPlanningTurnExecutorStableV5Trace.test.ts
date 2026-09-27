@@ -96,7 +96,8 @@ function renderedRuntimeResult() {
       responseSource: 'deterministic_fallback' as const,
       currentTurnGrounding: 'none' as const,
       selfRepairNotice: false,
-    },
+    groundingContext: { proposed: 0, contested: 0 },
+    previewPromotionControl: false,},
   };
 }
 

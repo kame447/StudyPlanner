@@ -89,7 +89,8 @@ describe('Stable V5 question presentation content', () => {
       responseSource: 'ai',
       currentTurnGrounding: 'none',
       selfRepairNotice: false,
-    });
+    groundingContext: { proposed: 0, contested: 0 },
+    previewPromotionControl: false,});
   });
 
   it('records the grounding and self-repair notice rendered with the question', async () => {
@@ -105,7 +106,8 @@ describe('Stable V5 question presentation content', () => {
       responseSource: 'deterministic_fallback',
       currentTurnGrounding: 'recommended',
       selfRepairNotice: true,
-    });
+    groundingContext: { proposed: 0, contested: 0 },
+    previewPromotionControl: false,});
   });
 
   it('does not describe a presentation when no question is pending', async () => {
@@ -126,7 +128,8 @@ describe('Stable V5 question presentation content', () => {
       responseSource: 'system',
       questionPresentationContent: {
         responseSource: 'ai', currentTurnGrounding: 'none', selfRepairNotice: false,
-      },
+      groundingContext: { proposed: 0, contested: 0 },
+      previewPromotionControl: false,},
     });
 
     const result = await execute();
@@ -148,5 +151,43 @@ describe('Stable V5 question presentation content', () => {
     });
 
     expect(runtimeMock).toHaveBeenCalledWith(expect.objectContaining({ inputStateRevision: 9 }));
+  });
+
+  it('counts the unresolved grounding interpretations the renderer may mention with the question', async () => {
+    const grounding = (id: string, status: 'proposed' | 'contested' | 'rejected' | 'explicitly_accepted') => ({
+      id,
+      targetFactId: 'window-1',
+      interpretationKind: 'relative_date_resolution' as const,
+      status,
+      sourceExpression: '来週',
+      startDate: '2026-08-17',
+      endDate: '2026-08-23',
+      proposedAtTurnId: 'turn-1',
+      acceptedAtTurnId: status === 'explicitly_accepted' ? 'turn-1' : null,
+    });
+    runtimeMock.mockResolvedValue({
+      state: {
+        ...questionState(),
+        groundingRecords: [
+          grounding('g-proposed', 'proposed'),
+          grounding('g-contested', 'contested'),
+          grounding('g-rejected', 'rejected'),
+          grounding('g-accepted', 'explicitly_accepted'),
+        ],
+      },
+      message: '確認してください。', draftCandidates: [],
+      stableV5Graph: createEmptyWeeklyPlanningFactGraphV5(),
+    });
+    rendererMock.mockResolvedValue({ status: 'rendered', text: '確認してください。', rawResponse: '{}' });
+
+    const result = await execute();
+
+    expect(result.questionPresentationContent).toEqual({
+      responseSource: 'ai',
+      currentTurnGrounding: 'none',
+      selfRepairNotice: false,
+      groundingContext: { proposed: 1, contested: 1 },
+      previewPromotionControl: false,
+    });
   });
 });

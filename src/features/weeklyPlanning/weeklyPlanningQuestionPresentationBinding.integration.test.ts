@@ -73,7 +73,8 @@ function presentingResult(
       responseSource: 'ai',
       currentTurnGrounding: 'none',
       selfRepairNotice: false,
-    },
+    groundingContext: { proposed: 0, contested: 0 },
+    previewPromotionControl: false,},
     ...overrides,
   };
 }
@@ -135,7 +136,8 @@ describe('question presentation binding across the turn commit boundary', () => 
         responseSource: 'ai',
         currentTurnGrounding: 'none',
         selfRepairNotice: false,
-      },
+      groundingContext: { proposed: 0, contested: 0 },
+      previewPromotionControl: false,},
     });
   });
 

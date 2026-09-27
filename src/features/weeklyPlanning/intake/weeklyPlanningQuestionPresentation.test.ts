@@ -6,6 +6,7 @@ import type {
 import {
   bindWeeklyPlanningQuestionPresentation,
   decodeWeeklyPlanningQuestionPresentation,
+  isWeeklyPlanningQuestionPresentationUnaccompanied,
   resolveWeeklyPlanningQuestionPresentationFreshness,
 } from './weeklyPlanningQuestionPresentation';
 import type { WeeklyPlanningMessage } from '../types';
@@ -14,6 +15,8 @@ const CONTENT = {
   responseSource: 'ai',
   currentTurnGrounding: 'none',
   selfRepairNotice: false,
+  groundingContext: { proposed: 0, contested: 0 },
+  previewPromotionControl: false,
 } as const;
 
 function state(overrides: Partial<PlanningIntakeState> = {}): PlanningIntakeState {
@@ -137,9 +140,30 @@ describe('question presentation binding', () => {
     ['unknown grounding mode', { ...presentation(), content: { ...CONTENT, currentTurnGrounding: 'maybe' } }],
     ['extra content key', { ...presentation(), content: { ...CONTENT, renderedText: 'はい' } }],
     ['missing content', { ...presentation(), content: undefined }],
+    ['negative grounding count', { ...presentation(), content: { ...CONTENT, groundingContext: { proposed: -1, contested: 0 } } }],
+    ['extra grounding key', { ...presentation(), content: { ...CONTENT, groundingContext: { proposed: 0, contested: 0, accepted: 1 } } }],
+    ['non-boolean preview control', { ...presentation(), content: { ...CONTENT, previewPromotionControl: 'yes' } }],
     ['non-object', 'turn-3:assistant'],
   ])('rejects a persisted presentation with %s', (_label, value) => {
     expect(decodeWeeklyPlanningQuestionPresentation(value)).toBeNull();
+  });
+});
+
+describe('question presentation accompaniment', () => {
+  it('is unaccompanied only when no machine-known content shared the message', () => {
+    expect(isWeeklyPlanningQuestionPresentationUnaccompanied(CONTENT)).toBe(true);
+  });
+
+  it.each([
+    ['current-turn grounding', { currentTurnGrounding: 'recommended' }],
+    ['required current-turn grounding', { currentTurnGrounding: 'required_before_resume' }],
+    ['a self-repair notice', { selfRepairNotice: true }],
+    ['a proposed grounding interpretation', { groundingContext: { proposed: 1, contested: 0 } }],
+    ['a contested grounding interpretation', { groundingContext: { proposed: 0, contested: 1 } }],
+    ['the preview promotion control', { previewPromotionControl: true }],
+  ] as const)('is accompanied by %s', (_label, overrides) => {
+    expect(isWeeklyPlanningQuestionPresentationUnaccompanied({ ...CONTENT, ...overrides }))
+      .toBe(false);
   });
 });
 

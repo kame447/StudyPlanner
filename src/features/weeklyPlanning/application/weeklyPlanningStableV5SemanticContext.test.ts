@@ -206,7 +206,8 @@ describe('Stable V5 semantic public-state question presentation exclusion', () =
             responseSource: 'ai',
             currentTurnGrounding: 'none',
             selfRepairNotice: false,
-          },
+          groundingContext: { proposed: 0, contested: 0 },
+          previewPromotionControl: false,},
         },
       },
     };
