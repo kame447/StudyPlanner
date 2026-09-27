@@ -1,7 +1,7 @@
 # User Context Regression Scenarios
 
 Status: canonical quality contract
-Updated: 2026-09-11
+Updated: 2026-09-27
 Owner Issue: #294
 
 Architecture: [../architecture/memory-and-conversation.md](../architecture/memory-and-conversation.md)
@@ -315,6 +315,41 @@ Expected:
 - no all-record prompt regression
 
 No exact latency/token budget is canonical yet. Phase implementation must establish measured budgets before production rollout.
+
+### Retrieval experiment gate — baseline / semantic discovery / Jev rerank
+
+A retrieval change must be compared on the same sealed cases rather than against a different corpus.
+
+The evaluation should isolate these configurations where they are applicable:
+
+```text
+A: lexical/entity baseline
+B: A + semantic/vector candidate discovery
+C: chosen candidate-discovery path + bounded Jev rerank
+```
+
+The test set must contain not only obvious topical matches, but also paraphrases, exact rare entities, relevant-but-semantically-distant constraints, irrelevant high-similarity memories, stale/superseded evidence, revoked items, current Structured State conflicts, and no-match cases.
+
+Report these dimensions separately:
+
+- retrieval miss before final context selection
+- false selected context
+- stale/currentness failure
+- wrong-owner/scope/lifecycle eligibility failure
+- final selected context count and bytes/tokens
+- reranker abstain/unavailable/malformed/fallback counts
+- latency
+- provider/model calls
+- measured or bounded cost
+
+Jev confidence or relevance score is not semantic authority. A high-scoring revoked, superseded, wrong-owner, or stale-as-current item is still ineligible.
+
+Do not copy thresholds or holdout conclusions from another Jev purpose. In particular, the user-context owner-routing evaluation from PR #339 does not validate memory retrieval. Memory rerank requires a separate purpose-specific corpus and gate.
+
+Human-reviewed Japanese gold is preferred for final adoption. Synthetic/model-judge labels may accelerate development, but agreement with them must not be reported as user-context retrieval accuracy without human validation.
+
+If C does not materially improve the relevant quality/context-budget objective over the simpler configuration, keep the simpler path. Adding Jev is not itself a success criterion.
+
 
 ## 6. Surface Planner scenarios
 
