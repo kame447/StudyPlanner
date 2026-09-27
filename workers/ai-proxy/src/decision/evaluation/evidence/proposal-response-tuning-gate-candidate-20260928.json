@@ -22,10 +22,11 @@
     "genericLunaCalls": 77,
     "lunaOnlyCalls": 80,
     "pureRejectLatencyMs": {
-      "jevFirstP50": 229,
-      "lunaOnlyP50": 2485,
-      "jevFirstP95": 4378,
-      "lunaOnlyP95": 3113
+      "jevDirectAcceptedProviderP50": 229,
+      "jevFirstAllPureRejectP95": 4378,
+      "lunaOnlyAllPureRejectP50": 2485,
+      "lunaOnlyAllPureRejectP95": 3113,
+      "comparisonNote": "The 229 ms value is provider latency for the direct-accepted Jev subset; it is not an end-to-end metric and must not be compared with the Luna-only p50."
     },
     "allLatencyMs": {
       "jevFirstP95": 15584,
@@ -45,6 +46,7 @@
   },
   "limitations": [
     "Threshold fit is based only on the tuning split.",
+    "The direct-accepted Jev provider p50 and the Luna-only end-to-end p50 are intentionally recorded as non-comparable metrics.",
     "Luna output variance is visible in paired end-to-end tail latency and retry counts.",
     "This analysis does not establish production frequency, human-gold quality, or holdout acceptance."
   ],
