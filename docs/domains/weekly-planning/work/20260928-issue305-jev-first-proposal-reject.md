@@ -45,7 +45,12 @@ These checks verified the evaluated implementation before its removal. The no-go
 
 - PR #349: https://github.com/kame447/StudyPlanner/pull/349 (base `main`, existing Issue #305 and branch reused; no new Issue or branch).
 - C9-removal commit: `1b7dd5e6aad7b267f62868d356bfe37ef06982fe`, pushed to `origin/feat/issue-305-jev-first-proposal-reject`.
-- The PR file list is exactly this record plus the four typed evidence artifacts. GitHub checks are running on the PR; review/merge remains for the repository's normal review process.
+- At PR opening (`1b7dd5e6`), the file list was exactly this record plus the four typed evidence artifacts.
+- Current scope (after review follow-ups) is seven files, all docs or typed evidence, with no runtime code:
+  - this record
+  - the four typed evidence artifacts
+  - `20260927-issue305-jev-phase2-luna-inventory.md` (phase 3 re-inventory appended)
+  - `work/README.md` (index entries) GitHub checks are running on the PR; review/merge remains for the repository's normal review process.
 
 - PR checks on code-identical commit `f8b74de2aec5432a8d2cc6dfffb571bfa913a847`, all success:
   - CI / verify — Actions run `36337981512`
