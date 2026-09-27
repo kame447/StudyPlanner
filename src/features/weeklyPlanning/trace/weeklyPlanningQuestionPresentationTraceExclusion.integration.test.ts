@@ -7,6 +7,15 @@ import {
   prepareWeeklyPlanningTraceServerWrite,
 } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import {
+  executeWeeklyPlanningStableV5RuntimeTurn,
+} from '../application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+import {
+  hydrateWeeklyPlanningStableV5RuntimeSession,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from '../application/weeklyPlanningStableV5RuntimeSession';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
@@ -154,6 +163,7 @@ beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
   resetWeeklyPlanningStableV5DebugTraceForTest();
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
 });
 
 afterEach(() => {
@@ -214,5 +224,86 @@ describe('question presentation binding trace exclusion gate', () => {
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
+  });
+
+  it('keeps the binding out of the local outbox on a real suppressed duplicate turn', async () => {
+    const requestId = `${CONVERSATION_ID}:request:dup`;
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: USER_ID,
+      weekStartDate: '2026-09-28',
+      conversationId: CONVERSATION_ID,
+      graph: {
+        ...createEmptyWeeklyPlanningFactGraphV5(),
+        revision: 3,
+        appliedTurnKeys: [`${CONVERSATION_ID}:${requestId}`],
+      },
+    });
+    const previousState = {
+      status: 'revision_pending',
+      intent: 'weekly_study_planning',
+      tasks: [],
+      progress: [],
+      unitRates: [],
+      constraints: [],
+      priorityPolicy: { kind: 'unknown' },
+      missing: [],
+      assumptions: [],
+      uncertainties: [],
+      questions: ['分散学習の提案について、採用するか教えてください。'],
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+      draftGenerationIntent: 'not_requested',
+      sourceTurns: [],
+      lastQuestionContext: boundQuestionContext(),
+    } as PlanningIntakeState;
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState,
+      messages: [],
+      userText: 'いいえ',
+      selectedDate: '2026-09-28',
+      userId: USER_ID,
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: CONVERSATION_ID,
+      traceRequestId: requestId,
+      requestContext: {
+        startedAtIso: '2026-09-28T00:00:00.000Z',
+        timeZone: 'Asia/Tokyo',
+        currentDate: '2026-09-28',
+        currentTime: '09:00',
+        notBeforeDate: '2026-09-28',
+        notBeforeTime: '09:00',
+        weekStartsOn: 'monday',
+      },
+    });
+    expect(result.message).toContain('重複');
+    expect(result.state.lastQuestionContext).toMatchObject({ actionId: 'wpp_memory_trace' });
+    expect(result.state.lastQuestionContext).not.toHaveProperty('presentation');
+
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    expect(events.map((event) => event.stage)).toContain('runtime_turn_output');
+    expect(JSON.stringify(events)).not.toContain(SENTINEL);
+
+    const harness = repositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput(requestId, events));
+    const queued = listWeeklyPlanningTraceOutboxItems({
+      userId: USER_ID,
+      conversationId: CONVERSATION_ID,
+    });
+    expect(queued).toHaveLength(1);
+    expect(JSON.stringify(queued)).not.toContain(SENTINEL);
+
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput(`${CONVERSATION_ID}:request:after`, []));
+    expect(harness.writes).toHaveLength(2);
+    expect(JSON.stringify(harness.writes[0])).not.toContain(SENTINEL);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: harness.writes[0].session as unknown as Record<string, unknown>,
+      entries: harness.writes[0].entries as unknown as Record<string, unknown>[],
+    }, subject, canonicalIds, '2026-09-28T00:00:00.000Z');
+    expect(JSON.stringify(prepared.entries)).not.toContain(SENTINEL);
   });
 });

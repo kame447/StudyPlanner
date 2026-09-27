@@ -119,10 +119,24 @@ export function decodeWeeklyPlanningQuestionPresentation(
 }
 
 /**
+ * Removes the application-owned binding from a question context. Used wherever a
+ * question context is reused outside the committing controller or recorded as
+ * diagnostics, so a binding never outlives its commit or reaches trace storage.
+ */
+export function withoutWeeklyPlanningQuestionPresentation(
+  context: WeeklyPlanningQuestionContext | undefined,
+): WeeklyPlanningQuestionContext | undefined {
+  if (!context || context.presentation === undefined) return context;
+  const { presentation: _presentation, ...unbound } = context;
+  return unbound;
+}
+
+/**
  * Binds the question that the turn leaves pending to the assistant message that
  * presents it. Called by the turn controller immediately before the commit that
- * atomically stores the state and that message. Without a pending question or
- * presentation content there is nothing to bind, and the state is returned unchanged.
+ * atomically stores the state and that message. A state without a pending question
+ * is returned unchanged; without presentation content or a committed graph, any
+ * carried-over binding is removed and nothing new is bound.
  */
 export function bindWeeklyPlanningQuestionPresentation(params: {
   state: PlanningIntakeState;
@@ -134,7 +148,7 @@ export function bindWeeklyPlanningQuestionPresentation(params: {
 }): PlanningIntakeState {
   const questionContext = params.state.lastQuestionContext;
   if (!questionContext) return params.state;
-  const { presentation: _previous, ...unboundContext } = questionContext;
+  const unboundContext = withoutWeeklyPlanningQuestionPresentation(questionContext)!;
   const presentation = params.content && params.graphRevision !== undefined
     ? decodeWeeklyPlanningQuestionPresentation({
         version: WEEKLY_PLANNING_QUESTION_PRESENTATION_VERSION,

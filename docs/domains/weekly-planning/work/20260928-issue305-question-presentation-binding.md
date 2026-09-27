@@ -55,7 +55,12 @@ Tracking: Issue #305（C9 / C5 の前提条件 (a)。正本の契約は `../arch
   - C9 が保存前の検証を必要とする場合は、#164 と調整する。
 - **P2：trace の除外を durable な境界で確認していない。**
   - 対応：`trace/weeklyPlanningQuestionPresentationTraceExclusion.integration.test.ts` を追加した。質問の context を運ぶすべての debug stage に sentinel を意図的に入れ、outbox retry → turn diagnostic → Worker preparation → byte 上限を通しても、durable な document に sentinel が残らないことを固定した。
-  - local の retry outbox は、記録した debug event をそのまま保持する。本番では binding は debug event に入らない。これは、controller が runtime の後に付けることと、public state summary の除外テストによる。
+  - 再監査（#1817）では、次の経路が指摘された。idempotency で抑止された重複 turn の結果は、前回の `lastQuestionContext` を binding ごと再利用する。それが `runtime_turn_output` として debug event に入り、append に失敗したときに local の retry outbox へ残る。
+    - 対応1（発生源）：重複 turn の結果を作るときに binding を外す（`withoutWeeklyPlanningQuestionPresentation`）。
+    - 対応2（trace の境界）：`runtime_turn_output` の記録でも binding を外す。
+    - 実際の重複経路の回帰テストで、次のいずれにも sentinel が残らないことを固定した：debug event、local の outbox（retry の前）、retry 後の document、Worker preparation。
+    - 修正を外すとこのテストが失敗することも確認した。
+  - その他の debug stage については、確認した結果を残す。runtime の後に controller が付けるので、現在の turn の結果には binding がない。また、前回の state は public state summary（除外テスト済み）以外の経路では記録されない。
 
 ## Trace persistence gate（`src/features/weeklyPlanning/AGENTS.md`）
 
