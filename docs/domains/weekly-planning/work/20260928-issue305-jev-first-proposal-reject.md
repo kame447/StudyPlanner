@@ -103,4 +103,12 @@ holdout を追加した直後、tuning の provider 呼出しの前に、catalog
 - **no-go**：direct Jev acceptは1件で、必要な4件以上に届かなかった。pure-reject p50もJev-first 3,227ms、Luna-only 2,596msで悪化した。gate項目4と5を満たさないため採用しない。
 - 他の観測：negative direct accept 0件、final negative pure rejectは13件（Luna-only 14件）、positive final pure rejectは15/16（Luna-only 15/16）、generic Luna callsは87（Luna-only 95）、containment errors 0件。
 - latency tailも悪化し、全体p95はJev-first 19,305ms、Luna-only 16,422ms。cost rangeはJev `USD 0.002213946` を含めても、このcorpus上ではLuna-onlyより約 `USD 0.00266–0.01067`低い推定だった。速度とdirect-accept coverageの必須gate不通過をcost便益で相殺しない。
-- next action: fault injection 10種類と#335 regressionsの最終確認後、C9のproduction route wiringを除去してno-goを確定し、typecheck/build/relevant full testsを再実行する。`JEV_MODE=off` / canary 0を維持し、deployしない。
+- 全10種類のfault injectionは完了し、すべてgeneric Lunaへfallbackした。最終の#335/security・typecheck・build・relevant full testsを再実行する。
+- **Disposition: no-go / hold。** eligibilityとsemantic routingはこの未公開branch上の評価対象として残すが、C9はmerge/PR/production deploymentしない。production設定は引き続き `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`。新しい独立評価データなしにこのconsumed corpusで再調整・再holdoutしない。
+
+## Fault-injection checkpoint — 2026-09-28
+
+- durable evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-faults-20260928.json`
+- injected faults: abstain、conflicting heads、timeout、network、HTTP 429、HTTP 500、unsupported output、invalid response、model mismatch、cancelled（10/10）。
+- 10件すべて `lunaCalls=1`、normalizer accepted、containment error 0。raw provider responseやprompt/user textはevidenceに含めない。
+- final action: C9をno-go/holdとして閉じ、productionで off / canary 0 を維持する。PRは作らない。
