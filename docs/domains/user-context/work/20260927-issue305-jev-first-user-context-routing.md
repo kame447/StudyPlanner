@@ -4,7 +4,7 @@ Status: active
 Owner: Issue #305 / #333 / #335
 Branch: `feat/issue-305-jev-first-user-context-routing`
 Base: `d3623479e07a6870f23c54a7631fe2761a408efa`
-Latest durable checkpoint: `f1e2c1ea44e6664a0b4ffb215ecc6b4b3810038a`
+Latest durable checkpoint: `8b28a898b21d281592d6d085a9eae01187eaab09`
 Updated: 2026-09-27
 
 ## 目的と責任境界
@@ -109,14 +109,14 @@ gate は tuning 52件の typed heads だけから補助閾値を校正し、cata
 - tuning の typed heads だけを再 gate し、主閾値 confidence 0.97 / selected probability 0.99 は維持、補助閾値だけ multiple domains 0.15 / independent meaning 0.10 に校正した。final gate は external 11/16を受理し、negative false-accept 0/36、誤った external owner 0/16。catalog/corpus は変更せず、holdout は見ていない。gate version は `user-context-routing-conservative-v2-tuning52`。
 - final gate commit 後、holdout 64件を1回だけ実行して `consumed` に更新し、Luna-only paired と fault 9件も完了した。remote の typed evidence 3 artifact は raw text key を含まない。
 - #335 の routing / 実 Worker containment、user-context dispatch / Worker / client projection を再確認し、focused 5 files / 100 tests green。
+- exact final tree の `npm run verify` は green: typecheck、583 test files / 3,027 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）、production build 2,216 modules。既存の dynamic/static import と chunk-size warning 以外に失敗なし。
 
 次の具体作業:
 
-1. exact tree で typecheck / full test / build を再実行する。
-2. typed evidence と本記録を親へ final commit 依頼し、上記 PR 本文案を送る。
-3. 親の PR 作成・独立監査後、CI を terminal success まで追う。
+1. typed evidence と本記録を親へ final commit 依頼し、上記 PR 本文案を送る。
+2. 親の PR 作成・独立監査後、CI を terminal success まで追う。
 
 未解決:
 
 - remote tuning / gate固定 / holdout 1回 / paired / fault / #335 focused regression は完了。holdout は消費済みで再実行禁止。
-- exact final tree の full verification、親の final commit / PR / independent audit / CI が未完了。
+- 親の final commit / PR / independent audit / CI が未完了。

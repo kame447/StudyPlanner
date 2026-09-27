@@ -15,18 +15,22 @@ describe('user-context routing policy fingerprints', () => {
     });
   });
 
-  it('keeps the unconsumed holdout seal aligned with the frozen policy and corpus', async () => {
+  it('keeps the consumed holdout aligned with the frozen policy and corpus', async () => {
     const fingerprints = await userContextRoutingPolicyFingerprints();
     const holdout = userContextRoutingCorpus('holdout');
     expect(holdoutSeal).toMatchObject({
-      status: 'sealed_unconsumed',
+      status: 'consumed',
       createdBeforeTuning: true,
-      consumed: false,
+      consumed: true,
       caseCount: holdout.length,
       conversationGroupCount: new Set(holdout.map((item) => item.conversationGroupId)).size,
       policy: fingerprints,
+      rawTextIncluded: false,
+      summary: { caseCount: holdout.length },
       results: null,
     });
     expect(holdoutSeal.caseCount).toBe(64);
+    expect(holdoutSeal.cases).toHaveLength(64);
+    expect(JSON.stringify(holdoutSeal)).not.toContain('currentUserText');
   });
 });
