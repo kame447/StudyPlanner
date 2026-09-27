@@ -3,9 +3,9 @@ import { proposalResponsePolicyFingerprints } from './proposalResponsePolicyFing
 // Captured after the independent holdout was authored and before any tuning
 // provider call. The corpus is immutable after this point.
 export const PROPOSAL_RESPONSE_PRE_TUNING_SEAL = {
-  catalogSha256: 'unsealed',
-  gateSha256: 'unsealed',
-  corpusSha256: 'unsealed',
+  catalogSha256: '18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86',
+  gateSha256: '73700b0641e2042b05be73c185d92b6d8a7e81c1f7740b8452fad7245c5a2f70',
+  corpusSha256: '659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6',
 } as const;
 
 // Catalog/gate may change only through tuning evidence before the holdout opens;
