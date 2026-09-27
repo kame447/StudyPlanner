@@ -2,7 +2,6 @@ import type {
   ChatMessage,
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
-import type { FocusedDecisionContext } from '../../../../shared/focusedContextualDecision';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
 import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
@@ -80,10 +79,8 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
   async callGeneric(
     messages: ChatMessage[],
     attempt: GenericSemanticAttempt,
-    decisionContext?: FocusedDecisionContext,
   ): Promise<string> {
     return this.callTracked({
-      ...(decisionContext ? { decisionContext } : {}),
       messages,
       temperature: 0,
       responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,

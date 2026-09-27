@@ -27,7 +27,6 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningStableV5PlanningStage.ts',
   'application/weeklyPlanningStableV5PreviewExecution.ts',
   'application/weeklyPlanningStableV5ProvisionalCapacityPreview.ts',
-  'application/weeklyPlanningStableV5ProposalResponseEligibility.ts',
   'application/weeklyPlanningStableV5ResponseRouting.ts',
   'application/weeklyPlanningStableV5ResultProjection.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',

@@ -1,126 +1,42 @@
-# Issue #305 第三段階 — C9 提示済み proposal への純粋な reject（Jev 第一経路）
+# Issue #305 C9 — proposal-response reject no-go record
 
-Status: no-go（sealed holdout gate 不通過）/ production rollout なし
+Status: no-go; C9 production/runtime wiring removed from the proposed main diff.
 Updated: 2026-09-28
-Tracking: Issue #305（前提条件 (a) は #348 の binding 基盤。棚卸しと no-go の記録は `20260927-issue305-jev-phase2-luna-inventory.md`）
-Production rollout: 変更しない（`JEV_MODE=off`、`JEV_CANARY_PERCENT=0`、deploy しない）
+Branch: `feat/issue-305-jev-first-proposal-reject`
+Production: unchanged; `JEV_MODE=off`, `JEV_CANARY_PERCENT=0`; no deployment.
 
-## 範囲と安全境界
+## Decision
 
-`spaced_memory_practice`（分散学習の提案）の pending な proposal が一件だけ提示されている turn に限る。対象の判断は、ユーザーの返答がその proposal だけを断る純粋な reject かどうかである。
+The once-only sealed holdout did not meet the pre-registered adoption gate. Direct Jev accepts were 1/16 (minimum 4), and pure-reject p50 was 3,227 ms for Jev-first versus 2,596 ms for Luna-only. C9 must not be adopted. Do not rerun this consumed holdout or retune against this corpus.
 
-- **Jev の出力**：閉じた `reject_only` / `other` の二択だけである。受理されるのは `reject_only` に限る。
-- **受理時の処理**：client が次の document を決定的に構築し、既存の validator と canonicalizer を通す。
-  - planningIntent=discuss
-  - decisions は1件で、binding された proposal の ID への reject
-  - その他は空
-- **Jev の権限**：Jev は canonical ID、approval、save、scheduler、lifecycle のいずれにも権限を持たない。proposal ID は provider に送らない。
-- **経路**：
-  - client は generic Luna の初回 request（`weekly_planning_semantic_normalizer`）に、`proposal_response` の decisionContext を添付する。
-  - Worker は canary に選ばれたときだけ Jev を先に呼ぶ。
-  - off、shadow、非選択、abstain、障害の場合は、同じ request のまま generic Luna を実行する。したがって off 時の追加の往復はない。
-  - shadow の場合は、Luna の document を「純粋な reject かどうか」に分類し、Jev の判定と並べて記録する。これにより、本番での pure reject 率（#347 の前提条件 (d)）を、応答を変えずに測れる。
-- **eligibility**（すべて machine state で判定し、ユーザーの文は大きさしか見ない）：
-  - #348 の binding が `fresh` で、同居がない（`isWeeklyPlanningQuestionPresentationUnaccompanied`）
-  - 質問が `learning_strategy_proposal` である
-  - pending の proposal がちょうど1件で、binding の actionId と一致する
-  - kind が `spaced_memory_practice` である
-  - task と workload が active である
-  - 添付も starter もない
-  - ユーザーの文は 600 byte 以下、提示文は 2,000 byte 以下
-- **fail closed**：受理した判定が validator を通らない場合、または相関（requestId / inputRevision）が一致しない場合は、context を付けずに generic を再実行する。
-- **Worker の検証**：未知の purpose は無視する（前方互換）。形式が不正な既知の purpose と、`weekly_planning_semantic_normalizer` 以外で使われた場合は 400 を返す。
+The final candidate diff removes the C9-only shared decision context, Worker policy/dispatch, client eligibility and normalizer route, and their implementation-specific tests. The merged #348 presentation-binding foundation is in `main` and is untouched. This branch retains only this outcome record and the typed tuning, holdout, gate-candidate, and fault-injection evidence below; it contains no C9 runtime or evaluation runner/corpus code.
 
-## 評価の設計（tuning の前に固定する）
+## Typed evidence
 
-### Corpus
+- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-20260928.json`
+- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-gate-candidate-20260928.json`
+- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-holdout-20260928.json` — the unique holdout run; consumed.
+- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-faults-20260928.json` — 10/10 injected faults fell back to Luna; containment errors 0.
 
-`workers/ai-proxy/src/decision/evaluation/proposalResponseCorpus.ts` を使う。
+Corpus label: `synthetic_unreviewed`, not human gold. Frozen fingerprints at evaluation time: catalog `18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86`, gate `a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077`, corpus `659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6`.
 
-- **tuning**：lead が作成した。32 group × 2 = 64 件で、positive は 16 件、negative は 48 件である。
-- **holdout**：tuning を見ていない独立の作成者が、同じ strata の仕様から作成した。32 group の構成は同じである。
-- **最初の作成者の差し替え**：最初に依頼した作成者は、tuning の配列の一部を見てしまったと自己申告した。そのため、その作成者の出力は使わず、分離した directory だけで作業する別の作成者に差し替えた。
-- **strata**：pure_reject、accept、modify、defer_or_question、mixed、negation、collective_or_other_target、non_presenting（fresh だが AI の文がこの proposal を尋ねていない。#348 の証拠の限界を覆う）、security。
-- **label**：`synthetic_unreviewed` であり、human gold ではない。一致率を accuracy とは呼ばない。
-- **分割の検証**：group と文が split をまたがないことを validator で検証する。
+## Verification before wiring removal
 
-### 封印
+- `npm run typecheck`: passed.
+- `npm run build`: passed, with existing Vite dynamic-import and chunk-size warnings.
+- Full weekly-planning suite: 410 files passed, 10 skipped; 1,958 tests passed, 45 skipped, 5 todo.
+- Full Worker decision suite: 32 files and 450 tests passed, including the #335 security regression.
 
-holdout を追加した直後、tuning の provider 呼出しの前に、catalog / gate / corpus の SHA-256 を `proposalResponseHoldoutSeal.ts` に記録する。
+These checks verified the evaluated implementation before its removal. The no-go-only diff must be rechecked after removal before PR review.
 
-- tuning で変更してよいのは、gate の閾値と catalog の文言だけである。corpus の hash は変えない。
-- holdout の runner は、実行の直前に3つの hash を照合する。
-- holdout は1回だけ実行し、その後は `consumed: true` にする。
+## Runtime removal verification — 2026-09-28
 
-### 実行
-
-`scripts/jev-proposal-response-remote-eval.mjs` を使う。一時的な remote Worker で、既存の Worker の secret を使う。
-
-- 実際の client normalizer（`createWeeklyPlanningSemanticNormalizerV5`）を、production の `dispatchProposalResponse` と実 Jev・実 Luna（gpt-5.6-luna）で動かす。
-- 同じ case について、Jev-first（canary 100）と Luna-only（off）を paired で比べる。
-- dense audit、no-op retry、repair を含む generic Luna の全呼出しを数える。
-- evidence は型付きの値だけを残し、corpus の文、prompt、provider の出力は保存しない。
-- fault split では、10種類の provider 障害を注入し、すべて generic Luna へ戻ることを確認する。
-
-### holdout の採用 gate（事前登録。変更しない）
-
-1. **blocking**：Jev が直接 reject を受理した件数のうち、negative（`other` の全 strata。security と non_presenting を含む）での誤りが 0 件であること。
-2. Jev-first の最終的な誤 reject（最終 document が pure reject になった negative）の件数が、Luna-only 以下であること。
-3. Jev-first で positive が最終的に pure reject になった件数が、Luna-only − 1 以上であること。
-4. **効果**：Jev が positive 16 件のうち 4 件以上を直接受理し、generic Luna の呼出しを実際に減らせること。満たさない場合は、便益がないので no-go とする。
-5. **latency**：pure_reject stratum で、Jev-first の p50 が Luna-only より小さいこと。全体の p95 の悪化は、Jev の直列分（abstain の場合）程度にとどまり、その値を記録すること。
-6. containment error が 0 件であること。fault の10種類がすべて generic Luna で処理されること。
-
-どれか一つでも満たさない場合は、採用しない（Jev の配線を外すか、off のまま保留とし、理由を記録する）。canary は、既存の #333 / #335 の gate とユーザーの承認なしには有効にしない。
-
-## 検証（mock）
-
-- `workers/ai-proxy/src/decision/proposalResponseDispatch.test.ts`：context と応答の契約、gate、mode、shadow の分類、dispatch（off / 非選択 / 受理 / 9種類の fallback / shadow / abort）。19 件。
-- `workers/ai-proxy/src/decision/proposalResponseWorkerSecurityRegression.test.ts`：#335。#152 の adversarial corpus 全件について、実際の handler を通しても、応答は閉じた判定か未変更の Luna の document のどちらかに収まる。加えて、不正な既知の purpose、不正な purpose の組合せ、off の場合を検証する。32 件。
-- `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5ProposalResponse.test.ts`：単一の request に添付すること、受理時に reject の document になること、Luna の document は変更しないこと、相関の不一致・reject 以外・candidate なし・添付ありの場合、validator に失敗した場合の fail closed。
-- `src/features/weeklyPlanning/application/weeklyPlanningStableV5ProposalResponseEligibility.test.ts`：eligible の場合と、16種類の ineligible の理由。
-
-## Tuning checkpoint — 2026-09-28（sealed holdout の前）
-
-- branch: `feat/issue-305-jev-first-proposal-reject`
-- tuning 前 HEAD: `3f19fcc8a8898299253ef489a8871545ac90deb2`
-- durable evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-20260928.json`
-- tuning は保存済みの全128 record（64 Jev-first + 同じ64 Luna-only）を再利用した。前セッションの `10/128` は途中表示だけで結果が永続化されていなかったため、この128 recordが最初の完了済み evidence である。
-- label は `synthetic_unreviewed` であり、human gold や accuracy とは呼ばない。
-- pre-holdout gate を `proposal-response-tuning-v1-pre-holdout` として固定した。閾値は confidence `0.85`、reject probability `0.93`、condition-change 最大 `0.12`、independent-meaning 最大 `0.27`。catalog と corpus は変更しない。
-- tuning 上の固定候補では direct accept 10件（positive 10、negative 0）、negative の最終 pure reject は13件（Luna-only 14件）、positive 最終 pure reject は16/16、generic Luna は77 calls（Luna-only 80 calls）だった。pure-reject p50 は229ms（Luna-only 2,485ms）。
-- tuning 上の限界：全体 p95 は15,584ms（Luna-only 12,896ms）、Jev call p95 は294ms。pure-reject p95 は4,378ms（Luna-only 3,113ms）。paired synthetic replayの観測では、直列 Jev 分だけでは説明できないtail差が残った。
-- tuning cost estimate（cache不明のrange）：candidate Luna `USD 0.04277612–0.11704450` + Jev `USD 0.00218547`、Luna-only `USD 0.03795460–0.11466650`。この synthetic corpus ではcandidate側が合計で約 `USD 0.00456–0.00701` 高い。採用gateのholdout cost判定ではないが、便益の懸念として記録する。
-- fixed fingerprints: catalog `18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86`; gate `a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077`; corpus `659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6`.
-- **Holdout remains sealed and unconsumed.** The candidate gate, catalog, and corpus must not change after its one allowed run. Immediately after that run, record `consumed: true` and preserve its typed evidence before any further decision.
-- next action: commit and push this frozen gate/evidence checkpoint, then run the sealed holdout exactly once followed by fault injection. Decide adoption solely against the pre-registered holdout gate.
-
-## Sealed holdout checkpoint — 2026-09-28（gate 固定後の唯一の実行）
-
-- 固定gate commit `fcd6d818b5de8259a5d199a24fe0bce3f9adc9f8` を push し、remote HEADとの一致を確認してからholdoutを開始した。
-- 3 fingerprintは固定値と一致した。Jev-first 64件とpaired Luna-only 64件、32 groupsずつが完了した。labelsは引き続き `synthetic_unreviewed` であり、human goldではない。
-- typed evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-holdout-20260928.json`。holdout sealはこの唯一のrun後に `consumed: true` とした。再実行禁止。
-- **no-go**：direct Jev acceptは1件で、必要な4件以上に届かなかった。pure-reject p50もJev-first 3,227ms、Luna-only 2,596msで悪化した。gate項目4と5を満たさないため採用しない。
-- 他の観測：negative direct accept 0件、final negative pure rejectは13件（Luna-only 14件）、positive final pure rejectは15/16（Luna-only 15/16）、generic Luna callsは87（Luna-only 95）、containment errors 0件。
-- latency tailも悪化し、全体p95はJev-first 19,305ms、Luna-only 16,422ms。cost rangeはJev `USD 0.002213946` を含めても、このcorpus上ではLuna-onlyより約 `USD 0.00266–0.01067`低い推定だった。速度とdirect-accept coverageの必須gate不通過をcost便益で相殺しない。
-- 全10種類のfault injectionは完了し、すべてgeneric Lunaへfallbackした。最終の#335/security・typecheck・build・relevant full testsを再実行する。
-- **Disposition: no-go / hold。** eligibilityとsemantic routingはこの未公開branch上の評価対象として残すが、C9はmerge/PR/production deploymentしない。production設定は引き続き `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`。新しい独立評価データなしにこのconsumed corpusで再調整・再holdoutしない。
-
-## Fault-injection checkpoint — 2026-09-28
-
-- durable evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-faults-20260928.json`
-- injected faults: abstain、conflicting heads、timeout、network、HTTP 429、HTTP 500、unsupported output、invalid response、model mismatch、cancelled（10/10）。
-- 10件すべて `lunaCalls=1`、normalizer accepted、containment error 0。raw provider responseやprompt/user textはevidenceに含めない。
-- final action: C9をno-go/holdとして閉じ、productionで off / canary 0 を維持する。PRは作らない。
-
-## Final verification checkpoint — 2026-09-28
-
-- exact implementation HEAD under verification: `8857c5ef44b2ea6df1a7c34e477ca143d512a65e`; local branch matched `origin/feat/issue-305-jev-first-proposal-reject` before this documentation checkpoint.
-- `npm run typecheck`: passed (exit 0).
-- `npm run build`: passed (exit 0). Vite reported existing dynamic-import/chunk-size warnings; build completed successfully.
-- full weekly-planning suite: 410 files passed, 10 skipped; 1,958 tests passed, 45 skipped, 5 todo.
-- full Worker decision suite: 32 files and 450 tests passed, including the Issue #335 security regression.
-- lint: no lint script is configured in the root package scripts.
-- verified `workers/ai-proxy/wrangler.jsonc` retains `JEV_MODE: "off"` and `JEV_CANARY_PERCENT: "0"`; no deployment was run. No proposal-response evaluation process remains active.
-- exact final disposition: no-go / hold because the once-only sealed holdout failed direct-accept coverage and pure-reject p50 gates. The holdout seal remains consumed; do not rerun or retune against this corpus. Keep the implementation/evidence on this unmerged branch, with no PR.
-- next action: commit and push this final verification checkpoint, then verify the remote branch points to that commit. Independent read-only audit is not a merge gate for this no-go result.
+- Removed all C9 implementation, Worker dispatch/policy, shared decision context, C9-specific tests, and evaluation runner/corpus/seal code. `origin/main` already contains the #348 binding base; its implementation was not changed.
+- Remaining source matches for `proposal_response` are unrelated existing text-normalization behavior. No C9 dispatch/context/eligibility symbols remain in `shared/`, Stable V5 runtime, Worker, or scripts. The production build output contains no C9 route code.
+- `npm run typecheck`: passed after removal.
+- `npm run build`: passed after removal (existing Vite dynamic-import and chunk-size warnings only).
+- Weekly-planning suite after removal: 408 files passed, 10 skipped; 1,933 tests passed, 45 skipped, 5 todo.
+- Worker decision suite after removal: 29 files and 396 tests passed, including existing #335 security regressions.
+- `git diff --check`: passed after removal.
+- The retained evidence records contain typed case identifiers, labels, decisions, route outcomes, aggregate token/cost/latency metrics, and fingerprints; they do not contain prompts, user utterances, or raw provider responses. Runner and source corpus are removed, and no production code imports the evidence directory.
+- Next: commit and push the no-go-only diff, open one PR against `main`, and verify its exact file list and checks.

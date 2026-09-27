@@ -1,4 +1,3 @@
-import type { WeeklyPlanningProposalResponseCandidateV5 } from './weeklyPlanningFocusedProposalResponseV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
@@ -13,11 +12,6 @@ export interface WeeklyPlanningSemanticNormalizerInputV5 extends WeeklyPlanningT
   /** Internal committed evidence only; never serialized into the provider prompt. */
   committedGraph?: WeeklyPlanningFactGraphV5;
   traceRequestId?: string;
-  /**
-   * Application-resolved eligibility for the bounded proposal-response decision.
-   * Never serialized into the provider prompt.
-   */
-  proposalResponseCandidate?: WeeklyPlanningProposalResponseCandidateV5;
 }
 
 export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {

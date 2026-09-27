@@ -25,10 +25,6 @@ import {
   type TemporalScopeRepairDecisionContext,
 } from '../../../shared/temporalScopeRepairDecision';
 import {
-  isProposalResponseDecisionContext,
-  type ProposalResponseDecisionContext,
-} from '../../../shared/proposalResponseDecision';
-import {
   isUserContextRoutingDecisionContext,
   type UserContextRoutingDecisionContext,
 } from '../../../shared/userContextRoutingDecision';
@@ -44,10 +40,6 @@ import {
   dispatchTemporalScopeRepair,
   resolveTemporalScopeRepairBaselineFailure,
 } from './decision/temporalScopeRepairDispatch';
-import {
-  dispatchProposalResponse,
-  resolveProposalResponseBaselineFailure,
-} from './decision/proposalResponseDispatch';
 import {
   dispatchUserContextRouting,
   resolveUserContextRoutingBaselineFailure,
@@ -278,7 +270,6 @@ type FocusedDecisionContextClassification =
   | { kind: 'focused_contextual'; context: FocusedContextualDecisionContext }
   | { kind: 'temporal_scope_repair'; context: TemporalScopeRepairDecisionContext }
   | { kind: 'user_context_routing'; context: UserContextRoutingDecisionContext }
-  | { kind: 'proposal_response'; context: ProposalResponseDecisionContext }
   | { kind: 'unknown_purpose' }
   | { kind: 'invalid' };
 
@@ -307,11 +298,6 @@ function classifyFocusedDecisionContext(
   if (value.purpose === 'user_context_routing') {
     return isUserContextRoutingDecisionContext(value)
       ? { kind: 'user_context_routing', context: value }
-      : { kind: 'invalid' };
-  }
-  if (value.purpose === 'proposal_response') {
-    return isProposalResponseDecisionContext(value)
-      ? { kind: 'proposal_response', context: value }
       : { kind: 'invalid' };
   }
   // Newer clients may add a focused purpose before this Worker is deployed.
@@ -658,8 +644,7 @@ async function handleChatRequest(
   if (
     (focusedContext.kind === 'focused_authorization'
       || focusedContext.kind === 'focused_contextual'
-      || focusedContext.kind === 'temporal_scope_repair'
-      || focusedContext.kind === 'proposal_response')
+      || focusedContext.kind === 'temporal_scope_repair')
     && payload.purpose !== 'weekly_planning_semantic_normalizer'
   ) {
     return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
@@ -714,18 +699,6 @@ async function handleChatRequest(
       fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
-        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
-      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
-    });
-  }
-  if (focusedContext.kind === 'proposal_response') {
-    const context = focusedContext.context;
-    // The fallback is the unchanged generic semantic normalizer request itself.
-    return dispatchProposalResponse({
-      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
-      respond: (content) => jsonResponse(request, env, 200, {
-        content: JSON.stringify(content),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
       }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
     });
@@ -1122,8 +1095,7 @@ export default {
         const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error)
           ?? resolveFocusedContextualBaselineFailure(error)
           ?? resolveTemporalScopeRepairBaselineFailure(error)
-          ?? resolveUserContextRoutingBaselineFailure(error)
-          ?? resolveProposalResponseBaselineFailure(error);
+          ?? resolveUserContextRoutingBaselineFailure(error);
         // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
         console.error('[AI Proxy] unexpected chat handler failure',
           baselineFailure && error instanceof Error ? error.cause : error);

@@ -3,10 +3,6 @@ import {
   type FocusedAuthorizationDecisionContext,
 } from './focusedAuthorizationDecision';
 import {
-  isProposalResponseDecisionContext,
-  type ProposalResponseDecisionContext,
-} from './proposalResponseDecision';
-import {
   isTemporalScopeRepairDecisionContext,
   type TemporalScopeRepairDecisionContext,
 } from './temporalScopeRepairDecision';
@@ -52,8 +48,7 @@ export type FocusedDecisionContext =
   | FocusedAuthorizationDecisionContext
   | FocusedContextualDecisionContext
   | TemporalScopeRepairDecisionContext
-  | UserContextRoutingDecisionContext
-  | ProposalResponseDecisionContext;
+  | UserContextRoutingDecisionContext;
 
 export type FocusedContextualDecisionResponse = {
   decision: 'quantity_role_answer';
@@ -149,6 +144,5 @@ export function isFocusedDecisionContext(value: unknown): value is FocusedDecisi
   return isFocusedAuthorizationDecisionContext(value)
     || isFocusedContextualDecisionContext(value)
     || isTemporalScopeRepairDecisionContext(value)
-    || isUserContextRoutingDecisionContext(value)
-    || isProposalResponseDecisionContext(value);
+    || isUserContextRoutingDecisionContext(value);
 }
