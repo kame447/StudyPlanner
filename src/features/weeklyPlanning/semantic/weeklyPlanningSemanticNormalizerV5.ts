@@ -13,6 +13,10 @@ import {
 } from './weeklyPlanningSemanticFocusedPreRoutesV5';
 import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
 import {
+  acceptProposalResponseDecisionV5,
+  proposalResponseDecisionContextV5,
+} from './weeklyPlanningFocusedProposalResponseV5';
+import {
   tryWeeklyPlanningSemanticNoOpCompletenessRetryV5,
 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
 import {
@@ -148,9 +152,26 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         },
       });
 
+      // A proposal-response context rides on the unchanged generic request, so an
+      // off/unselected Worker answers with the normal document at no extra cost.
+      const proposalResponseContext = proposalResponseDecisionContextV5(input);
       let initialResponse: string;
       try {
-        initialResponse = await run.callGeneric(baseMessages, 'initial');
+        initialResponse = await run.callGeneric(baseMessages, 'initial', proposalResponseContext);
+        if (proposalResponseContext) {
+          const proposalResponse = acceptProposalResponseDecisionV5({
+            run,
+            context: proposalResponseContext,
+            response: initialResponse,
+          });
+          if (proposalResponse && proposalResponse !== 'invalid_decision') {
+            return finish(proposalResponse);
+          }
+          if (proposalResponse === 'invalid_decision') {
+            // Fail closed to the ordinary generic interpretation.
+            initialResponse = await run.callGeneric(baseMessages, 'initial');
+          }
+        }
       } catch (error) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'provider_failure',

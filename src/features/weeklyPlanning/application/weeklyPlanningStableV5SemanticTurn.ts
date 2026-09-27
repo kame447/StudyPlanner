@@ -1,3 +1,6 @@
+import {
+  resolveWeeklyPlanningProposalResponseEligibilityV5,
+} from './weeklyPlanningStableV5ProposalResponseEligibility';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -141,6 +144,15 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     horizon: fallbackHorizon,
     requestContext,
   });
+  const proposalResponse = resolveWeeklyPlanningProposalResponseEligibilityV5({
+    previousState: input.previousState,
+    inputStateRevision: input.inputStateRevision,
+    messages: input.messages,
+    graph: runtimeSession.graph,
+    userText: input.userText,
+    supplementalContext: input.supplementalContext,
+    hasSelectedStarterTarget: Boolean(input.selectedStarterTarget),
+  });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
     stage: 'runtime_session_context_prepared',
@@ -181,6 +193,9 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     recentConversation,
     publicStateSummary: stateSummary,
     schedulerContext: initialSchedulerContext,
+    ...(proposalResponse.status === 'eligible'
+      ? { proposalResponseCandidate: proposalResponse.candidate }
+      : {}),
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
