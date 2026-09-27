@@ -11,6 +11,7 @@ import {
   FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
   FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
   applyFocusedTemporalScopeRepairV5,
+  createFocusedTemporalScopeRepairDecisionContextV5,
   createFocusedTemporalScopeRepairMessagesV5,
   parseFocusedTemporalScopeRepairDecisionV5,
   readFocusedTemporalScopeRepairCandidateV5,
@@ -292,7 +293,16 @@ async function tryFocusedTemporalScopeRepairRouteV5(params: {
   if (!candidate) return null;
 
   const messages = createFocusedTemporalScopeRepairMessagesV5(candidate);
+  const graphRevision = params.run.input.publicStateSummary?.graphRevision;
+  const decisionContext = createFocusedTemporalScopeRepairDecisionContextV5({
+    candidate,
+    requestId: params.run.input.traceRequestId,
+    inputRevision: Number.isSafeInteger(graphRevision) && Number(graphRevision) >= 0
+      ? Number(graphRevision)
+      : 0,
+  });
   const request = {
+    ...(decisionContext ? { decisionContext } : {}),
     messages,
     temperature: 0,
     responseFormat: FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,

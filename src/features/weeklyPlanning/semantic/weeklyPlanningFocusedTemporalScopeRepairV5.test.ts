@@ -6,7 +6,9 @@ import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
   applyFocusedTemporalScopeRepairV5,
+  createFocusedTemporalScopeRepairDecisionContextV5,
   createFocusedTemporalScopeRepairMessagesV5,
   parseFocusedTemporalScopeRepairDecisionV5,
   readFocusedTemporalScopeRepairCandidateV5,
@@ -151,6 +153,10 @@ const errors = [
 ];
 
 describe('Stable V5 focused temporal-scope repair', () => {
+  it('reserves reasoning headroom before Luna emits the strict decision', () => {
+    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(320);
+  });
+
   it('extracts only the exact invalid temporal fact selected by validation', () => {
     const candidate = readFocusedTemporalScopeRepairCandidateV5({
       rawResponse: invalidResponse(),
@@ -167,6 +173,20 @@ describe('Stable V5 focused temporal-scope repair', () => {
       startTime: '18:00',
       endTime: '20:00',
     });
+  });
+
+  it('does not enter the focused route for multiple or unsupported validation errors', () => {
+    expect(readFocusedTemporalScopeRepairCandidateV5({
+      rawResponse: invalidResponse(),
+      validationErrors: [
+        ...errors,
+        'document.tasks[0].title:required',
+      ],
+    })).toBeNull();
+    expect(readFocusedTemporalScopeRepairCandidateV5({
+      rawResponse: invalidResponse(),
+      validationErrors: ['document.tasks[0].temporalConstraints[0]:unsupported-kind'],
+    })).toBeNull();
   });
 
   it('sends only source evidence, current attachment and interpreted time', () => {
@@ -189,6 +209,42 @@ describe('Stable V5 focused temporal-scope repair', () => {
       },
     });
     expect(messages[1]?.content).not.toContain('英単語');
+  });
+
+  it('projects only the bounded typed decision state without formal IDs', () => {
+    const candidate = readFocusedTemporalScopeRepairCandidateV5({
+      rawResponse: invalidResponse(),
+      validationErrors: errors,
+    });
+    if (!candidate) throw new Error('candidate missing');
+    const context = createFocusedTemporalScopeRepairDecisionContextV5({
+      candidate,
+      requestId: 'temporal-repair-request',
+      inputRevision: 9,
+    });
+
+    expect(context).toEqual({
+      purpose: 'temporal_scope_repair',
+      requestId: 'temporal-repair-request',
+      inputRevision: 9,
+      state: {
+        sourceText: '火曜日の18時から20時は予定があるので避けてください',
+        currentAttachedTask: { title: '数学の問題を進める' },
+        interpretedTime: {
+          dateExpression: 'weekday:tuesday',
+          namedTimePeriod: null,
+          startTime: '18:00',
+          endTime: '20:00',
+        },
+      },
+    });
+    expect(JSON.stringify(context)).not.toContain('t1');
+    expect(JSON.stringify(context)).not.toContain('tc1');
+    expect(createFocusedTemporalScopeRepairDecisionContextV5({
+      candidate,
+      requestId: undefined,
+      inputRevision: 9,
+    })).toBeUndefined();
   });
 
   it('moves a confirmed plan-wide busy interval to availability without rewriting the task', () => {
@@ -271,7 +327,9 @@ describe('Stable V5 focused temporal-scope repair', () => {
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
       userText: '8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。',
+      traceRequestId: 'temporal-route-request',
       publicStateSummary: {
+        graphRevision: 4,
         calendarContext: {
           currentDate: '2026-08-12',
           timeZone: 'Asia/Tokyo',
@@ -295,6 +353,12 @@ describe('Stable V5 focused temporal-scope repair', () => {
     expect(calls[1].responseFormat?.json_schema.name).toBe(
       'weekly_planning_focused_temporal_scope_repair_v5',
     );
+    expect(calls[1].maxCompletionTokens).toBe(320);
+    expect(calls[1].decisionContext).toMatchObject({
+      purpose: 'temporal_scope_repair',
+      requestId: 'temporal-route-request',
+      inputRevision: 4,
+    });
     expect(JSON.stringify(calls[1]).length).toBeLessThan(
       JSON.stringify(calls[0]).length / 8,
     );

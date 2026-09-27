@@ -2,8 +2,16 @@ import type {
   ChatMessage,
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
+import {
+  isTemporalScopeRepairDecisionContext,
+  type TemporalScopeRepairDecisionContext,
+} from '../../../../shared/temporalScopeRepairDecision';
 
-export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = 60;
+// GPT-5.6 Luna uses completion tokens for reasoning before emitting the tiny
+// structured answer. Sixty tokens can therefore return HTTP 200 with no
+// content. This matches the established focused contextual-repair budget and
+// remains well below the Worker-wide output ceiling.
+export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = 320;
 
 export const FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
@@ -144,6 +152,31 @@ export function createFocusedTemporalScopeRepairMessagesV5(
       }),
     },
   ];
+}
+
+export function createFocusedTemporalScopeRepairDecisionContextV5(params: {
+  candidate: FocusedTemporalScopeRepairCandidateV5;
+  requestId?: string;
+  inputRevision: number;
+}): TemporalScopeRepairDecisionContext | undefined {
+  const context = {
+    purpose: 'temporal_scope_repair' as const,
+    requestId: params.requestId,
+    inputRevision: params.inputRevision,
+    state: {
+      sourceText: params.candidate.sourceText,
+      currentAttachedTask: {
+        title: params.candidate.taskTitle,
+      },
+      interpretedTime: {
+        dateExpression: params.candidate.dateExpression,
+        namedTimePeriod: params.candidate.namedTimePeriod,
+        startTime: params.candidate.startTime,
+        endTime: params.candidate.endTime,
+      },
+    },
+  };
+  return isTemporalScopeRepairDecisionContext(context) ? context : undefined;
 }
 
 export function parseFocusedTemporalScopeRepairDecisionV5(
