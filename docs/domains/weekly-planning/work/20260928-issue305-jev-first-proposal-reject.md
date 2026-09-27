@@ -112,3 +112,15 @@ holdout を追加した直後、tuning の provider 呼出しの前に、catalog
 - injected faults: abstain、conflicting heads、timeout、network、HTTP 429、HTTP 500、unsupported output、invalid response、model mismatch、cancelled（10/10）。
 - 10件すべて `lunaCalls=1`、normalizer accepted、containment error 0。raw provider responseやprompt/user textはevidenceに含めない。
 - final action: C9をno-go/holdとして閉じ、productionで off / canary 0 を維持する。PRは作らない。
+
+## Final verification checkpoint — 2026-09-28
+
+- exact implementation HEAD under verification: `8857c5ef44b2ea6df1a7c34e477ca143d512a65e`; local branch matched `origin/feat/issue-305-jev-first-proposal-reject` before this documentation checkpoint.
+- `npm run typecheck`: passed (exit 0).
+- `npm run build`: passed (exit 0). Vite reported existing dynamic-import/chunk-size warnings; build completed successfully.
+- full weekly-planning suite: 410 files passed, 10 skipped; 1,958 tests passed, 45 skipped, 5 todo.
+- full Worker decision suite: 32 files and 450 tests passed, including the Issue #335 security regression.
+- lint: no lint script is configured in the root package scripts.
+- verified `workers/ai-proxy/wrangler.jsonc` retains `JEV_MODE: "off"` and `JEV_CANARY_PERCENT: "0"`; no deployment was run. No proposal-response evaluation process remains active.
+- exact final disposition: no-go / hold because the once-only sealed holdout failed direct-accept coverage and pure-reject p50 gates. The holdout seal remains consumed; do not rerun or retune against this corpus. Keep the implementation/evidence on this unmerged branch, with no PR.
+- next action: commit and push this final verification checkpoint, then verify the remote branch points to that commit. Independent read-only audit is not a merge gate for this no-go result.
