@@ -4,21 +4,21 @@ import { JEV_MODEL } from './decisionPolicy';
 
 export const PROPOSAL_RESPONSE_JEV_MODEL = JEV_MODEL;
 export const PROPOSAL_RESPONSE_CATALOG_VERSION = 'proposal-response-2026-09-28-v1';
-export const PROPOSAL_RESPONSE_GATE_VERSION = 'proposal-response-sealed-v1-untuned';
+export const PROPOSAL_RESPONSE_GATE_VERSION = 'proposal-response-tuning-v1-pre-holdout';
 export const PROPOSAL_RESPONSE_JEV_TIMEOUT_MS = 1_500;
 export const PROPOSAL_RESPONSE_REQUEST_TIMEOUT_MS = 85_000;
 
 /*
  * Only reject_only can be accepted; `other` is never auto-applied because the
- * generic semantic path already handles it. These are the sealed pre-tuning
- * hypotheses; tuning may only tighten or loosen them before the holdout is opened.
+ * generic semantic path already handles it. These thresholds are frozen from
+ * tuning evidence before the sealed holdout is opened.
  */
 export const PROPOSAL_RESPONSE_GATE_THRESHOLDS = {
   rejectOnly: {
-    confidence: 0.9,
-    probability: 0.95,
-    conditionChangeMaximum: 0.2,
-    independentMeaningMaximum: 0.2,
+    confidence: 0.85,
+    probability: 0.93,
+    conditionChangeMaximum: 0.12,
+    independentMeaningMaximum: 0.27,
   },
 } as const;
 

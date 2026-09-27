@@ -5,6 +5,7 @@ import {
   validateProposalResponseCorpus,
 } from './proposalResponseCorpus';
 import {
+  assertProposalResponseHoldoutSeal,
   PROPOSAL_RESPONSE_HOLDOUT_SEAL,
   PROPOSAL_RESPONSE_PRE_TUNING_SEAL,
 } from './proposalResponseHoldoutSeal';
@@ -33,5 +34,12 @@ describe('proposal-response evaluation corpus', () => {
     expect(actual.corpusSha256).toBe(PROPOSAL_RESPONSE_PRE_TUNING_SEAL.corpusSha256);
     expect(PROPOSAL_RESPONSE_HOLDOUT_SEAL.corpusSha256)
       .toBe(PROPOSAL_RESPONSE_PRE_TUNING_SEAL.corpusSha256);
+    expect(actual.catalogSha256).toBe(PROPOSAL_RESPONSE_HOLDOUT_SEAL.catalogSha256);
+    expect(actual.gateSha256).toBe(PROPOSAL_RESPONSE_HOLDOUT_SEAL.gateSha256);
+    if (PROPOSAL_RESPONSE_HOLDOUT_SEAL.consumed) {
+      await expect(assertProposalResponseHoldoutSeal()).rejects.toThrow(/already been consumed/);
+    } else {
+      await expect(assertProposalResponseHoldoutSeal()).resolves.toBeUndefined();
+    }
   });
 });

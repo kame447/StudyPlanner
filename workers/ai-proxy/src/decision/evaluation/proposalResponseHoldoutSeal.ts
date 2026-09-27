@@ -13,6 +13,7 @@ export const PROPOSAL_RESPONSE_PRE_TUNING_SEAL = {
 // is disabled after its single allowed run.
 export const PROPOSAL_RESPONSE_HOLDOUT_SEAL = {
   ...PROPOSAL_RESPONSE_PRE_TUNING_SEAL,
+  gateSha256: 'a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077',
   consumed: false,
 } as const;
 

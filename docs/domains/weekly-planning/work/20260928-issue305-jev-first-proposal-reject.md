@@ -1,6 +1,6 @@
 # Issue #305 第三段階 — C9 提示済み proposal への純粋な reject（Jev 第一経路）
 
-Status: 実装中 / 評価設計を事前登録済み（tuning 前）
+Status: 実装・tuning 完了 / gate 固定済み / sealed holdout は未消費
 Updated: 2026-09-28
 Tracking: Issue #305（前提条件 (a) は #348 の binding 基盤。棚卸しと no-go の記録は `20260927-issue305-jev-phase2-luna-inventory.md`）
 Production rollout: 変更しない（`JEV_MODE=off`、`JEV_CANARY_PERCENT=0`、deploy しない）
@@ -79,3 +79,18 @@ holdout を追加した直後、tuning の provider 呼出しの前に、catalog
 - `workers/ai-proxy/src/decision/proposalResponseWorkerSecurityRegression.test.ts`：#335。#152 の adversarial corpus 全件について、実際の handler を通しても、応答は閉じた判定か未変更の Luna の document のどちらかに収まる。加えて、不正な既知の purpose、不正な purpose の組合せ、off の場合を検証する。32 件。
 - `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5ProposalResponse.test.ts`：単一の request に添付すること、受理時に reject の document になること、Luna の document は変更しないこと、相関の不一致・reject 以外・candidate なし・添付ありの場合、validator に失敗した場合の fail closed。
 - `src/features/weeklyPlanning/application/weeklyPlanningStableV5ProposalResponseEligibility.test.ts`：eligible の場合と、16種類の ineligible の理由。
+
+## Tuning checkpoint — 2026-09-28（sealed holdout の前）
+
+- branch: `feat/issue-305-jev-first-proposal-reject`
+- tuning 前 HEAD: `3f19fcc8a8898299253ef489a8871545ac90deb2`
+- durable evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-20260928.json`
+- tuning は保存済みの全128 record（64 Jev-first + 同じ64 Luna-only）を再利用した。前セッションの `10/128` は途中表示だけで結果が永続化されていなかったため、この128 recordが最初の完了済み evidence である。
+- label は `synthetic_unreviewed` であり、human gold や accuracy とは呼ばない。
+- pre-holdout gate を `proposal-response-tuning-v1-pre-holdout` として固定した。閾値は confidence `0.85`、reject probability `0.93`、condition-change 最大 `0.12`、independent-meaning 最大 `0.27`。catalog と corpus は変更しない。
+- tuning 上の固定候補では direct accept 10件（positive 10、negative 0）、negative の最終 pure reject は13件（Luna-only 14件）、positive 最終 pure reject は16/16、generic Luna は77 calls（Luna-only 80 calls）だった。pure-reject p50 は229ms（Luna-only 2,485ms）。
+- tuning 上の限界：全体 p95 は15,584ms（Luna-only 12,896ms）、Jev call p95 は294ms。pure-reject p95 は4,378ms（Luna-only 3,113ms）。paired synthetic replayの観測では、直列 Jev 分だけでは説明できないtail差が残った。
+- tuning cost estimate（cache不明のrange）：candidate Luna `USD 0.04277612–0.11704450` + Jev `USD 0.00218547`、Luna-only `USD 0.03795460–0.11466650`。この synthetic corpus ではcandidate側が合計で約 `USD 0.00456–0.00701` 高い。採用gateのholdout cost判定ではないが、便益の懸念として記録する。
+- fixed fingerprints: catalog `18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86`; gate `a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077`; corpus `659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6`.
+- **Holdout remains sealed and unconsumed.** The candidate gate, catalog, and corpus must not change after its one allowed run. Immediately after that run, record `consumed: true` and preserve its typed evidence before any further decision.
+- next action: commit and push this frozen gate/evidence checkpoint, then run the sealed holdout exactly once followed by fault injection. Decide adoption solely against the pre-registered holdout gate.
