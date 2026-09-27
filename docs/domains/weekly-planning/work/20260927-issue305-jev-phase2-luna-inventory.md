@@ -125,7 +125,7 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 
 - 固定した gate での Jev の直接受理は、tuning（lead が作成）では positive の 10/16 だった。一方、独立の作成者の holdout では 1/16 に落ちた。
   - raw の choice は holdout でも 13/16 が `reject_only` だった。confidence と補助 head が安全閾値を下回った。
-  - 同じ閾値でも、negative の `non_presenting`（提示していない AI の文に対する「いいえ」）は raw で `reject_only` を返す。そのため、閾値は緩められない。
+  - holdout の negative の `non_presenting`（提示していない AI の文に対する「いいえ」）では、4件中2件で raw の choice が `reject_only` だった（いずれも gate で abstain した）。したがって、固定した gate を単純に緩めると誤 reject を招く危険がある。これは、将来、別に校正した設計で閾値を変えることが不可能だという証明ではない。
 - 日本語の自由な返答を generic interpreter の前段で分類する構造では、次の3点がそろう。
   - 安全側の gate を課すと coverage が低い。
   - coverage は言い回しの分布に敏感である。
