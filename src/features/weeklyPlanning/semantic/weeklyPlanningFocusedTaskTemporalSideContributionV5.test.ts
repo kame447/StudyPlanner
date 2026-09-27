@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
   parseFocusedTaskTemporalSideContributionDecisionV5,
 } from './weeklyPlanningFocusedTaskTemporalSideContributionV5';
 
@@ -14,6 +15,23 @@ const baseDecision = {
 } as const;
 
 describe('focused task temporal side-contribution date contract', () => {
+  it('constrains named periods to the parser-supported canonical vocabulary', () => {
+    const schema = FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5.json_schema.schema;
+    const namedTimePeriod = (schema.properties as Record<string, unknown>).namedTimePeriod;
+    expect(namedTimePeriod).toEqual({
+      anyOf: [
+        { type: 'string', enum: [
+          'morning', 'afternoon', 'evening', 'night',
+          'before_sleep', 'before_meal', 'after_meal',
+        ] },
+        { type: 'string', pattern: '^custom:.+$' },
+        { type: 'null' },
+      ],
+    });
+    expect(parseFocusedTaskTemporalSideContributionDecisionV5(JSON.stringify({
+      ...baseDecision, dateExpression: 'tomorrow', namedTimePeriod: 'weekday_evening',
+    }))).toBeNull();
+  });
   it('accepts canonical relative date tokens', () => {
     const parsed = parseFocusedTaskTemporalSideContributionDecisionV5(
       JSON.stringify({ ...baseDecision, dateExpression: 'tomorrow' }),

@@ -11,15 +11,15 @@ export const TEMPORAL_SIDE_CONTRIBUTION_JEV_MODEL = JEV_MODEL;
 export const TEMPORAL_SIDE_CONTRIBUTION_CATALOG_VERSION =
   'temporal-side-contribution-2026-09-27-v1';
 export const TEMPORAL_SIDE_CONTRIBUTION_GATE_VERSION =
-  'temporal-side-contribution-conservative-v1';
+  'temporal-side-contribution-moderate-v2-tuning48';
 export const TEMPORAL_SIDE_CONTRIBUTION_JEV_TIMEOUT_MS = 1_500;
 export const TEMPORAL_SIDE_CONTRIBUTION_REQUEST_TIMEOUT_MS = 85_000;
 
 export const TEMPORAL_SIDE_CONTRIBUTION_GATE_THRESHOLDS = {
   confidence: 0.97,
   probability: 0.98,
-  temporalPossibilityMaximum: 0.05,
-  ambiguityMaximum: 0.1,
+  temporalPossibilityMaximum: 0.25,
+  ambiguityMaximum: 0.5,
 } as const;
 
 export const TEMPORAL_SIDE_CONTRIBUTION_DECISION_CATALOG:

@@ -4,8 +4,10 @@ import {
   FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS,
   FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
   createFocusedTaskTemporalSideContributionDocumentV5,
+  focusedTaskTemporalSideContributionDecisionContextV5,
   createFocusedTaskTemporalSideContributionMessagesV5,
   focusedTaskTemporalSideContributionEligibleV5,
+  isNoTemporalSideContributionDecisionV5,
   parseFocusedTaskTemporalSideContributionDecisionV5,
 } from './weeklyPlanningFocusedTaskTemporalSideContributionV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
@@ -177,6 +179,11 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
   let response: string;
   try {
     response = await params.run.callTracked({
+      decisionContext: focusedTaskTemporalSideContributionDecisionContextV5({
+        userText: params.run.input.userText,
+        traceRequestId: params.run.input.traceRequestId,
+        publicStateSummary,
+      }),
       messages,
       temperature: 0,
       responseFormat: FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
@@ -192,6 +199,19 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
         accepted: false,
         fallback: 'generic_completeness_retry',
         error: semanticNormalizerErrorDetails(error),
+      },
+    });
+    return { attempted: true, result: null };
+  }
+
+  if (isNoTemporalSideContributionDecisionV5(response)) {
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId,
+      stage: 'semantic_focused_task_temporal_side_contribution_result',
+      data: {
+        accepted: false,
+        decision: 'no_temporal_side_contribution',
+        fallback: 'generic_completeness_retry',
       },
     });
     return { attempted: true, result: null };

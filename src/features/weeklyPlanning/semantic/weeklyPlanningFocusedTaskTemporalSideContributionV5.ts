@@ -3,6 +3,10 @@ import type {
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
+  isTemporalSideContributionDecisionContext,
+  type TemporalSideContributionDecisionContext,
+} from '../../../../shared/temporalSideContributionDecision';
+import {
   CANONICAL_RELATIVE_DATE_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
   isCanonicalDateExpressionSyntax,
@@ -21,7 +25,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
-export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS = 320;
+export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS = 640;
 
 export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
@@ -78,7 +82,13 @@ export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5: JsonSch
             { type: 'null' },
           ],
         },
-        namedTimePeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        namedTimePeriod: {
+          anyOf: [
+            { type: 'string', enum: [...SEMANTIC_NAMED_TIME_PERIODS_V5] },
+            { type: 'string', pattern: '^custom:.+$' },
+            { type: 'null' },
+          ],
+        },
         startTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         endTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         precision: {
@@ -120,6 +130,17 @@ export interface FocusedTaskTemporalSideContributionDecisionV5 {
   precision: 'exact' | 'approximate' | 'unspecified' | null;
 }
 
+export function isNoTemporalSideContributionDecisionV5(raw: string): boolean {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return isRecord(value)
+      && Object.keys(value).length === 1
+      && value.decision === 'no_temporal_side_contribution';
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -153,6 +174,27 @@ export function focusedTaskTemporalSideContributionEligibleV5(params: {
   publicStateSummary?: Record<string, unknown>;
 }): boolean {
   return existingTaskTarget(params.publicStateSummary) !== null;
+}
+
+export function focusedTaskTemporalSideContributionDecisionContextV5(params: {
+  userText: string;
+  traceRequestId?: string;
+  publicStateSummary?: Record<string, unknown>;
+}): TemporalSideContributionDecisionContext | undefined {
+  const target = existingTaskTarget(params.publicStateSummary);
+  const pendingQuestion = params.publicStateSummary?.pendingQuestion;
+  if (!target || !isRecord(pendingQuestion)) return undefined;
+  const context = {
+    purpose: 'temporal_side_contribution' as const,
+    requestId: params.traceRequestId,
+    inputRevision: params.publicStateSummary?.graphRevision,
+    state: {
+      currentUserText: params.userText,
+      knownTask: { title: target.title, category: target.category },
+      pendingQuestion: { questionCode: pendingQuestion.questionCode },
+    },
+  };
+  return isTemporalSideContributionDecisionContext(context) ? context : undefined;
 }
 
 export function createFocusedTaskTemporalSideContributionMessagesV5(params: {
