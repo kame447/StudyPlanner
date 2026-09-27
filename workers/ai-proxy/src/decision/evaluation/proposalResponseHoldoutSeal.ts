@@ -14,7 +14,7 @@ export const PROPOSAL_RESPONSE_PRE_TUNING_SEAL = {
 export const PROPOSAL_RESPONSE_HOLDOUT_SEAL = {
   ...PROPOSAL_RESPONSE_PRE_TUNING_SEAL,
   gateSha256: 'a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077',
-  consumed: false,
+  consumed: true,
 } as const;
 
 export async function assertProposalResponseCorpusSealed(): Promise<void> {

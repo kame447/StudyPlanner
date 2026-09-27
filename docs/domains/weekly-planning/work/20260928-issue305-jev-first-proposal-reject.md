@@ -1,6 +1,6 @@
 # Issue #305 第三段階 — C9 提示済み proposal への純粋な reject（Jev 第一経路）
 
-Status: 実装・tuning 完了 / gate 固定済み / sealed holdout は未消費
+Status: no-go（sealed holdout gate 不通過）/ production rollout なし
 Updated: 2026-09-28
 Tracking: Issue #305（前提条件 (a) は #348 の binding 基盤。棚卸しと no-go の記録は `20260927-issue305-jev-phase2-luna-inventory.md`）
 Production rollout: 変更しない（`JEV_MODE=off`、`JEV_CANARY_PERCENT=0`、deploy しない）
@@ -94,3 +94,13 @@ holdout を追加した直後、tuning の provider 呼出しの前に、catalog
 - fixed fingerprints: catalog `18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86`; gate `a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077`; corpus `659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6`.
 - **Holdout remains sealed and unconsumed.** The candidate gate, catalog, and corpus must not change after its one allowed run. Immediately after that run, record `consumed: true` and preserve its typed evidence before any further decision.
 - next action: commit and push this frozen gate/evidence checkpoint, then run the sealed holdout exactly once followed by fault injection. Decide adoption solely against the pre-registered holdout gate.
+
+## Sealed holdout checkpoint — 2026-09-28（gate 固定後の唯一の実行）
+
+- 固定gate commit `fcd6d818b5de8259a5d199a24fe0bce3f9adc9f8` を push し、remote HEADとの一致を確認してからholdoutを開始した。
+- 3 fingerprintは固定値と一致した。Jev-first 64件とpaired Luna-only 64件、32 groupsずつが完了した。labelsは引き続き `synthetic_unreviewed` であり、human goldではない。
+- typed evidence: `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-holdout-20260928.json`。holdout sealはこの唯一のrun後に `consumed: true` とした。再実行禁止。
+- **no-go**：direct Jev acceptは1件で、必要な4件以上に届かなかった。pure-reject p50もJev-first 3,227ms、Luna-only 2,596msで悪化した。gate項目4と5を満たさないため採用しない。
+- 他の観測：negative direct accept 0件、final negative pure rejectは13件（Luna-only 14件）、positive final pure rejectは15/16（Luna-only 15/16）、generic Luna callsは87（Luna-only 95）、containment errors 0件。
+- latency tailも悪化し、全体p95はJev-first 19,305ms、Luna-only 16,422ms。cost rangeはJev `USD 0.002213946` を含めても、このcorpus上ではLuna-onlyより約 `USD 0.00266–0.01067`低い推定だった。速度とdirect-accept coverageの必須gate不通過をcost便益で相殺しない。
+- next action: fault injection 10種類と#335 regressionsの最終確認後、C9のproduction route wiringを除去してno-goを確定し、typecheck/build/relevant full testsを再実行する。`JEV_MODE=off` / canary 0を維持し、deployしない。
