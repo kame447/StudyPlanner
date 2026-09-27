@@ -1,7 +1,7 @@
 # Issue #305 第二段階 — Luna 責務の再棚卸しと次の置換単位の判断
 
-Status: 判断記録（runtime 変更なし）/ 次候補 C9 は前提条件が未充足
-Updated: 2026-09-27
+Status: 判断記録（runtime 変更なし）/ 第三段階（binding 基盤 #348、C9 の no-go）を追記
+Updated: 2026-09-28
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335、memory rerank は #294 で別 purpose）
 
 ## 結論
@@ -107,3 +107,42 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 1. C9 を進める場合は、上の前提条件 (a) の binding 契約を、owning Issue（#305、または保存 state の owner）で先に決める。
 2. C3 を扱い直す場合は、実 initial no-op の分布を収集する方法（#213 の typed telemetry で、raw text を保存せずに route の件数を数える）を先に決める。C4 を扱い直す場合は、dense audit の対象となる実入力と候補文書のペアを、評価の前提として別に用意する。
 3. 本番の canary の条件は、#305 の既存の checkpoint から変わっていない。
+
+## 第三段階の追記 — 2026-09-28（binding 基盤の後の再棚卸し）
+
+### 実施したこと
+
+- **binding 基盤（PR #348、merge 済み）**：前提条件 (a) を StudyPlanner 全体の state 契約として実装した（`current-contract-v5.md`「Pending question presentation binding」）。
+  - 質問を提示した message、revision、graph、同居した内容を結び、fail closed で扱う。
+  - AI の文が実際に質問しているかどうかは検証していない。freshness は1つの tab の範囲に限られる。
+- **C9（PR #349、no-go）**：前提条件 (b)〜(d) を満たした状態で実装し、評価した。
+  - 前提条件：単一の kind への限定、事前に封印した corpus、shadow での頻度計測の経路。
+  - 評価：tuning の後に gate を固定した。独立した作成者が tuning を見ずに書いた holdout を、1回だけ実行した。
+  - 結果：直接受理が 1/16（gate は 4 以上）、pure reject の p50 が 3,227ms（Luna-only は 2,596ms）で、事前登録の gate を満たさなかった。
+  - 対応：runtime は撤去した。記録は `20260928-issue305-jev-first-proposal-reject.md` にある。
+
+### C9 から得た一般的な教訓（証拠つき）
+
+- 固定した gate での Jev の直接受理は、tuning（lead が作成）では positive の 10/16 だった。一方、独立の作成者の holdout では 1/16 に落ちた。
+  - raw の choice は holdout でも 13/16 が `reject_only` だった。confidence と補助 head が安全閾値を下回った。
+  - 同じ閾値でも、negative の `non_presenting`（提示していない AI の文に対する「いいえ」）は raw で `reject_only` を返す。そのため、閾値は緩められない。
+- 日本語の自由な返答を generic interpreter の前段で分類する構造では、次の3点がそろう。
+  - 安全側の gate を課すと coverage が低い。
+  - coverage は言い回しの分布に敏感である。
+  - abstain のたびに Jev の直列分（evidence では約300ms）が加わる。
+  - このため、latency と費用の優先順位を満たしにくい。この結論は、focused な Luna の呼出しを置き換えた単位1・3（closed な判断を focused Luna から Jev へ移したもの）には当てはまらない。
+
+### 再棚卸しの結論（main `7fe8f9bb` の実コード。#347 の表から Luna の経路は変わっていない）
+
+| 候補 | binding の後の判断 | 理由 |
+| --- | --- | --- |
+| C9 提示済み proposal への reject | **no-go（評価済み）** | 上記の holdout の結果 |
+| C9 の accept 側（または reject と accept を合わせた choice） | **no-go** | 同じ構造（generic の前段で自由な返答を分類する）で、同じ corpus に対する再 tuning は禁止している。accept は preview と planningIntent の意味を伴うので、誤受理の損失が reject より大きい |
+| C5 閉じた選択肢を持つ pending question（effort estimate の候補選択を含む） | **hold のまま** | binding で解けるのは提示の対応だけである。固有の blocker は残る：選択を適用する scope と期間、global な supersession、候補を提示していない質問文（renderer と質問の変更は UX 方針の判断を伴う）。さらに C9 と同じ構造の問題があり、対象は repair の状態で頻度も低い |
+| C2 provisional_timebox | **hold のまま** | scheduler の許可と preview の authorization に及ぶので、#335 の不変条件（Jev に scheduler の権限を与えない）と衝突する |
+| C3 / C4 / C6 / C8 / C1 | **#347 の判断を維持** | 前提条件が変わっていない |
+| generic の初回・repair、renderer、日付・window の repair、添付 | **Luna に残す** | 生成と開いた抽出であり、閉じた集合にならない |
+
+この cycle の実コードと実測の範囲では、安全性・速度・費用の優先順位を満たし、Jev に追加で置換できる候補は残っていない。前提基盤を足すことで開く候補も、C9 の実測によって、同じ構造では採算が合わないことが示された。
+- 本番の canary の条件（ユーザーの承認、新しく封印した holdout、#187 の provider / privacy 条件、単位1 の p95）は変わっていない。
+- `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` のまま、deploy もしていない。
