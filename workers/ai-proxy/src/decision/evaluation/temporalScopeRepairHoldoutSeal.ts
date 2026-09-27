@@ -13,7 +13,7 @@ export const TEMPORAL_SCOPE_REPAIR_PRE_TUNING_SEAL = {
 export const TEMPORAL_SCOPE_REPAIR_HOLDOUT_SEAL = {
   ...TEMPORAL_SCOPE_REPAIR_PRE_TUNING_SEAL,
   gateSha256: 'a5c07054ced1a030e55b59d5c1a7f7775a084ac4c95c167131c08acf36998ea5',
-  consumed: false,
+  consumed: true,
 } as const;
 
 export async function assertTemporalScopeRepairHoldoutSeal(): Promise<void> {
