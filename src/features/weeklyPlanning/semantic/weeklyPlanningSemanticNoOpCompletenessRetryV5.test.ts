@@ -176,6 +176,7 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(fake.calls[1].responseFormat).toMatchObject({
       json_schema: { name: 'weekly_planning_focused_task_temporal_side_contribution_v5' },
     });
+    expect(fake.calls[1].maxCompletionTokens).toBe(640);
     const focusedPrompt = fake.calls[1].messages.map((message) => message.content).join('\n');
     expect(focusedPrompt).toContain('states a temporal constraint on knownTask');
     expect(focusedPrompt).toContain(userText);

@@ -93,6 +93,30 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 
 順序の提案は、#1 の証拠を完成させたうえで、#8 → #2 の閉じた分岐（quantity role / provisional timebox）→ #12 → #5 / #7 である。「分解可能」な行では、選択を Jev、値を Luna が持つ形になり、意味の owner が分かれる。これは `weekly-planning-semantic-ownership-boundary-v5.md` の「一つの意味には一つの owner」に照らした確認が必要である。
 
+### 置換の結果（2026-09-27、#305）
+
+上の表は評価前に立てた提案であり、当時の記録として残す。各行を実際にどう扱ったかを、以下にまとめる。
+
+「採用（off）」の意味は次のとおり。テスト環境の実 API で Jev 第一経路を動かし、低信頼・保留・障害の場合に Luna fallback へ回ることを確認した。tuning だけで gate を固定し、封印した holdout を1回だけ実行した。Luna 単独とも paired で比べた。#335 の回帰と独立監査を行ったうえで main に merge した。本番は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` のままである。label はすべて synthetic、または `opus-5.5-limited-judge` であり、human gold ではない。各単位の holdout は消費済みである。
+
+| # | 結果 | 範囲と根拠 | PR / 記録 |
+| --- | --- | --- | --- |
+| 1 | 採用（off） | `create_plan` / `fallback`。Jev が完結したのは 68%。Jev が受理した経路の誤 create は 0/37（上限は case 7.78% / group 12.73%）。p50 は改善し、p95 は悪化した | #337 / `20260927-issue305-jev-first-focused-authorization.md` |
+| 2 | 一部採用（off） | 採用したのは quantity role と、独立した意味による fallback だけ。`effort_answer`（minutes と同じ組）と `provisional_timebox` は Luna に残した（owner を分けないため。後者は scheduler への許可に当たるため） | #338 / `20260927-issue305-jev-first-focused-contextual.md` |
+| 3 | 置換しない | 開集合の抽出であり、候補集合を閉じられない | — |
+| 4 | 置換しない | 同上 | — |
+| 5 | 保留 | complete と誤判定すると事実が黙って落ちる。complete を安全に受理できる根拠がない | — |
+| 6 | 置換しない | 文書全体の生成である | — |
+| 7 | **不採用** | 「該当しない」だけを Jev で判定した。holdout では、直接受理が 3/48 で誤受理は0だった。一方で generic の Luna 呼出しは 57 対 53 に増え、回収は 15/16 対 16/16 に下がり（原因は未確定）、p50 と p95 も悪化した。費用は、範囲の上下限がともに高いが、範囲が重なるため実費の優劣は未確定である。Jev の配線は本番のコードから外した。調査の中で、既存の Luna の欠陥（token 上限 320→640、`namedTimePeriod` の schema と parser の不整合）を見つけて修正した | `20260927-issue305-jev-first-temporal-side-contribution.md`（評価コードは `eb8f227e`） |
+| 8 | 採用（off） | Jev が直接受理した 31/48 に誤りはなかった。この repair の Luna 呼出しは 31/48 減り、p50 は 1,208→374ms に改善した。既存の欠陥（Luna の token 上限 60→320）も修正した | #340 / `20260927-issue305-jev-first-temporal-scope-repair.md` |
+| 9 | 置換しない | 日付の値の repair である | — |
+| 10 | 置換しない | 範囲の値の repair である | — |
+| 11 | 対象外 | 文章の生成である | — |
+| 12 | 一部採用（off） | 新規の入力の保存先 owner だけ。既存の記録の編集は Luna に残した（編集対象の文脈を含めた評価が必要なため、保留）。安全性の指標は満たしたが、呼出しの削減は 10.9% で、latency と費用は改善しない | #339 / `docs/domains/user-context/work/20260927-issue305-jev-first-user-context-routing.md` |
+| 13 | 対象外 | 画像の読み取りである | — |
+
+Jev への置換とは別に、次の点が分かった。Jev が保留した後の Luna fallback、または Luna 単独が、注入文に従って誤判定した case がある。その case ID は #335 に記録した。Jev が直接受理した判定には、この種の誤りは観測されていない。本番 canary の判断には、ユーザーの明示的な承認、新しく封印した holdout（可能なら human-reviewed の label）、#187 の provider / privacy 条件が必要である。
+
 ## canary 判断へ返すもの（#305）
 
 - human-reviewed gold の件数（class 別、split 別、group 数）

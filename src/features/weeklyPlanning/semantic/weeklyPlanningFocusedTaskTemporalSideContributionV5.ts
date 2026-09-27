@@ -21,7 +21,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
-export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS = 320;
+export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS = 640;
 
 export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
@@ -78,7 +78,13 @@ export const FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5: JsonSch
             { type: 'null' },
           ],
         },
-        namedTimePeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        namedTimePeriod: {
+          anyOf: [
+            { type: 'string', enum: [...SEMANTIC_NAMED_TIME_PERIODS_V5] },
+            { type: 'string', pattern: '^custom:.+$' },
+            { type: 'null' },
+          ],
+        },
         startTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         endTime: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         precision: {
