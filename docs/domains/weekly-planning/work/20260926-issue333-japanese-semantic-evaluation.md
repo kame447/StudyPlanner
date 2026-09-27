@@ -107,7 +107,7 @@ Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意�
 | 4 | 置換しない | 同上 | — |
 | 5 | 保留 | complete と誤判定すると事実が黙って落ちる。complete を安全に受理できる根拠がない | — |
 | 6 | 置換しない | 文書全体の生成である | — |
-| 7 | **不採用** | 「該当しない」だけを Jev で判定した。holdout では、直接受理が 3/48 で誤受理は0だった。一方で generic の Luna 呼出しは 57 対 53 に増え、回収は 15/16 対 16/16 に下がり、p50 と p95 と費用も悪化した。Jev の配線は本番のコードから外した。調査の中で、既存の Luna の欠陥（token 上限 320→640、`namedTimePeriod` の schema と parser の不整合）を見つけて修正した | `20260927-issue305-jev-first-temporal-side-contribution.md`（評価コードは `eb8f227e`） |
+| 7 | **不採用** | 「該当しない」だけを Jev で判定した。holdout では、直接受理が 3/48 で誤受理は0だった。一方で generic の Luna 呼出しは 57 対 53 に増え、回収は 15/16 対 16/16 に下がり（原因は未確定）、p50 と p95 も悪化した。費用は、範囲の上下限がともに高いが、範囲が重なるため実費の優劣は未確定である。Jev の配線は本番のコードから外した。調査の中で、既存の Luna の欠陥（token 上限 320→640、`namedTimePeriod` の schema と parser の不整合）を見つけて修正した | `20260927-issue305-jev-first-temporal-side-contribution.md`（評価コードは `eb8f227e`） |
 | 8 | 採用（off） | Jev が直接受理した 31/48 に誤りはなかった。この repair の Luna 呼出しは 31/48 減り、p50 は 1,208→374ms に改善した。既存の欠陥（Luna の token 上限 60→320）も修正した | #340 / `20260927-issue305-jev-first-temporal-scope-repair.md` |
 | 9 | 置換しない | 日付の値の repair である | — |
 | 10 | 置換しない | 範囲の値の repair である | — |

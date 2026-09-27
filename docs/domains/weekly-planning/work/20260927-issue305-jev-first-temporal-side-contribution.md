@@ -18,9 +18,11 @@ temporal tuple, and generic retry, validation, state transitions, preview,
 approval, save, and scheduling were unchanged.
 
 **Decision: do not adopt the Jev first route.** The one sealed holdout saved
-only three focused Luna calls in 48 cases while increasing generic Luna calls,
-measured post-no-op latency, and known total cost. Temporal recovery was 15/16
-versus 16/16 with corrected Luna alone. The Jev client and Worker routing were
+only three focused Luna calls in 48 cases while increasing generic Luna calls
+(57 versus 53) and measured post-no-op latency. The known total cost ranges
+overlap, so the actual cost difference is not established. Temporal recovery
+was 15/16 versus 16/16 with corrected Luna alone; the cause of that difference
+is not established. The Jev client and Worker routing were
 removed from the PR. Production keeps the existing Luna route and receives two
 independent fixes to that route's token budget and response schema.
 
@@ -138,13 +140,20 @@ zero security accepts. These limits are wide. Jev and Luna-only 640 each had
 that is neither human-gold accuracy nor a broad no-degradation result.
 
 The Jev route made 102 Luna calls including generic retries, versus 101 for
-Luna-only 640. Its total known cost was higher despite three focused calls
-saved; this total includes reported Jev cost ($0.001541) and a Luna input-cache
+Luna-only 640. Both bounds of its known cost range were higher despite three
+focused calls saved, but the ranges overlap and the actual cost difference is
+not established; the range includes reported Jev cost ($0.001541) and a Luna input-cache
 price range from `aiUsagePricing.ts`. The Jev route and legacy 320 each failed
 to recover timing in `h-mixed-correction-time-2`, while corrected Luna-only
 recovered it. No direct Jev false negative caused this observed difference;
-one paired stochastic run cannot establish its cause. The 640-versus-320
-comparison is evidence for the independent Luna budget repair, not for Jev.
+one paired stochastic run cannot establish its cause. In that case all three
+focused Luna calls returned HTTP 200 with `finish_reason=stop` and accepted
+content (the 320 route used 225 completion tokens), so the holdout 16/16 versus
+15/16 difference is an observed difference, not evidence that the 640-token
+budget caused it. The direct evidence for the budget repair is tuning v2, where
+two HTTP 200 replies ended with `finish_reason=length` at 320/320 tokens and
+empty content; v3/v4 at 640 had no empty replies. Neither observation is
+evidence for Jev.
 
 Fault injection after the holdout covered abstain, conflicting heads, timeout,
 network, HTTP 429/500, unsupported/malformed output, model mismatch, and
@@ -198,7 +207,8 @@ followed by real Luna. The direct temporal false-accept count was 0/16 cases
 and 0/8 groups, but its one-sided 95% upper limits are 17.07% and 31.23%.
 The single synthetic run does not establish general model accuracy or a
 causal quality difference. Do not attribute the corrected Luna 640-versus-320
-recovery observation (16/16 versus 15/16) to Jev.
+recovery observation (16/16 versus 15/16) to Jev or to the budget repair; its
+cause is not established.
 
 **Reproducibility:** The holdout corpus was sealed before tuning at `374fa643`,
 and policy, runner, and full fingerprints were frozen at `eb8f227e`. The
