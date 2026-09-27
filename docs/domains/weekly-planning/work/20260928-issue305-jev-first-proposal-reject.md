@@ -40,3 +40,9 @@ These checks verified the evaluated implementation before its removal. The no-go
 - `git diff --check`: passed after removal.
 - The retained evidence records contain typed case identifiers, labels, decisions, route outcomes, aggregate token/cost/latency metrics, and fingerprints; they do not contain prompts, user utterances, or raw provider responses. Runner and source corpus are removed, and no production code imports the evidence directory.
 - Next: commit and push the no-go-only diff, open one PR against `main`, and verify its exact file list and checks.
+
+## Pull request checkpoint — 2026-09-28
+
+- PR #349: https://github.com/kame447/StudyPlanner/pull/349 (base `main`, existing Issue #305 and branch reused; no new Issue or branch).
+- C9-removal commit: `1b7dd5e6aad7b267f62868d356bfe37ef06982fe`, pushed to `origin/feat/issue-305-jev-first-proposal-reject`.
+- The PR file list is exactly this record plus the four typed evidence artifacts. GitHub checks are running on the PR; review/merge remains for the repository's normal review process.
