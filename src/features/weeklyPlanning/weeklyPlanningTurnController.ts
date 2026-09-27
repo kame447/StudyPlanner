@@ -1,5 +1,6 @@
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import { bindWeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PlanningState,
@@ -307,7 +308,15 @@ export async function submitWeeklyPlanningControlledTurn(
     const committed = params.dispatch({
       type: 'commit_turn',
       pending,
-      intakeState: executionResult.state,
+      intakeState: bindWeeklyPlanningQuestionPresentation({
+        state: executionResult.state,
+        content: executionResult.questionPresentationContent,
+        turnId: envelope.turnId,
+        assistantMessageId: assistantMessage.id,
+        // canCommitTurn accepts only begin_turn (+1) followed by this commit (+1).
+        planningStateRevision: pending.baseRevision + 2,
+        graphRevision: executionResult.stableV5Graph?.revision,
+      }),
       assistantMessage,
       draftCandidates: executionResult.draftCandidates,
       preservePreviewCandidates: executionResult.preserveExistingPreview,

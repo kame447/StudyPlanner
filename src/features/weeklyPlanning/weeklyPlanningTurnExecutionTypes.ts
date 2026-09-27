@@ -7,7 +7,10 @@ import type {
   TimetableTerm,
 } from '../../types/domain';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
-import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type {
+  PlanningIntakeState,
+  WeeklyPlanningQuestionPresentationContent,
+} from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
@@ -41,6 +44,8 @@ export interface WeeklyPlanningTurnExecutionInput {
    * callers once before entering Stable V5, whose runtime contract requires this context.
    */
   requestContext?: WeeklyPlanningTurnRequestContext;
+  /** PlanningState.revision at turn start; binds the previous question presentation. */
+  inputStateRevision?: number;
 }
 
 export type WeeklyPlanningTurnFailureCode =
@@ -79,6 +84,11 @@ export interface WeeklyPlanningTurnExecutionResult {
   responseSource?: WeeklyPlanningTraceResponseSource;
   dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
   observability?: WeeklyPlanningTurnObservability;
+  /**
+   * Set by the Stable V5 dialogue step for the message that presents the pending
+   * question. The turn controller binds it to the committed assistant message.
+   */
+  questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

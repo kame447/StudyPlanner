@@ -92,6 +92,11 @@ function renderedRuntimeResult() {
         finalMessage: '確認してください。',
       },
     },
+    questionPresentationContent: {
+      responseSource: 'deterministic_fallback' as const,
+      currentTurnGrounding: 'none' as const,
+      selfRepairNotice: false,
+    },
   };
 }
 

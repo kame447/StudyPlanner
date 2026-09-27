@@ -343,6 +343,33 @@ export interface WeeklyPlanningQuestionContext {
   actionId?: string;
   estimateForWorkloadFactId?: string;
   questionBasis?: 'completed_workload_total';
+  presentation?: WeeklyPlanningQuestionPresentation;
+}
+
+/**
+ * What the application knows about the assistant message that presented a question,
+ * beyond the question itself. Rendered text stays presentation-only; these are the
+ * machine-known accompaniments that can change what a short reply refers to.
+ */
+export interface WeeklyPlanningQuestionPresentationContent {
+  responseSource: 'ai' | 'deterministic_fallback';
+  currentTurnGrounding: 'none' | 'recommended' | 'required_before_resume';
+  selfRepairNotice: boolean;
+}
+
+/**
+ * Machine-readable binding between the pending question and the committed assistant
+ * message that presented it. Written only when the turn commit is accepted.
+ */
+export interface WeeklyPlanningQuestionPresentation {
+  version: 1;
+  turnId: string;
+  assistantMessageId: string;
+  /** PlanningState.revision immediately after the presenting turn committed. */
+  planningStateRevision: number;
+  /** Stable V5 graph revision committed by the presenting turn. */
+  graphRevision: number;
+  content: WeeklyPlanningQuestionPresentationContent;
 }
 
 export interface PlanningIntakeState {

@@ -49,6 +49,7 @@ export async function executeWeeklyPlanningTurn(
     conversationId: input.conversationId,
     traceRequestId: input.traceRequestId,
     requestContext,
+    inputStateRevision: input.inputStateRevision,
   });
   return weeklyPlanningStableV5TurnResultProjector.project({ input, result });
 }

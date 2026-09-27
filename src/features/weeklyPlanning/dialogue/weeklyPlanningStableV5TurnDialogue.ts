@@ -37,6 +37,7 @@ import {
 import {
   createWeeklyPlanningStableV5DialogueProjection,
 } from '../semantic/weeklyPlanningStableV5DialogueProjection';
+import type { WeeklyPlanningQuestionPresentationContent } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
   WeeklyPlanningTurnExecutionInput,
@@ -104,16 +105,36 @@ function withAssistantMessage(params: {
   message: string;
   responseSource: 'ai' | 'deterministic_fallback' | 'rules' | 'system';
   dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace;
+  questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
 }): WeeklyPlanningTurnExecutionResult {
   const state = params.result.state.questions.length > 0
     ? { ...params.result.state, questions: [params.message] }
     : params.result.state;
+  const {
+    questionPresentationContent: _unrenderedContent,
+    ...result
+  } = params.result;
   return {
-    ...params.result,
+    ...result,
     state,
     message: params.message,
     responseSource: params.responseSource,
     dialogueRendererTrace: params.dialogueRendererTrace,
+    ...(params.questionPresentationContent && state.lastQuestionContext
+      ? { questionPresentationContent: params.questionPresentationContent }
+      : {}),
+  };
+}
+
+function questionPresentationContent(params: {
+  renderInput: WeeklyPlanningStableV5DialogueRenderInput;
+  responseSource: 'ai' | 'deterministic_fallback';
+  notice: string | null;
+}): WeeklyPlanningQuestionPresentationContent {
+  return {
+    responseSource: params.responseSource,
+    currentTurnGrounding: params.renderInput.currentTurnGrounding?.mode ?? 'none',
+    selfRepairNotice: params.notice !== null,
   };
 }
 
@@ -351,6 +372,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
       message: finalMessage,
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
+      questionPresentationContent: questionPresentationContent({
+        renderInput,
+        responseSource: 'deterministic_fallback',
+        notice,
+      }),
     });
     recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,
@@ -379,6 +405,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     message: finalMessage,
     responseSource: 'ai',
     dialogueRendererTrace,
+    questionPresentationContent: questionPresentationContent({
+      renderInput,
+      responseSource: 'ai',
+      notice,
+    }),
   });
   recordWeeklyPlanningDialogueDecisionV5({
     requestId: params.input.traceRequestId,

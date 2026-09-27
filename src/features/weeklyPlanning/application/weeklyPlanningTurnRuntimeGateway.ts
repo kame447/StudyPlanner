@@ -95,6 +95,7 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         traceRequestId: params.pending.requestId,
         weekStartsOn: requestContext.weekStartsOn,
         requestContext,
+        inputStateRevision: params.pending.baseRevision,
       });
     },
   };
