@@ -15,6 +15,9 @@ Current durable records:
 - `20260926-issue333-japanese-semantic-evaluation.md` — Issue #333（#305 canary 前の日本語品質 gate、Luna 責務の棚卸し）
 - `20260927-issue305-jev-first-focused-authorization.md` — Issue #305 置換単位1（focused authorization の Jev 第一経路のテスト環境での実動、Luna fallback、tuning だけでの校正、holdout、#335 回帰）
 - `20260927-issue305-jev-first-focused-contextual.md` — Issue #305 置換単位2（focused contextual answer の quantity role と独立した意味の判定を Jev 第一経路へ移し、effort と provisional は Luna に残す。前方互換の decisionContext 規則を含む）
+- `20260927-issue305-jev-first-temporal-scope-repair.md` — Issue #305 置換単位3（temporal scope repair の Jev 第一経路。既存の Luna repair の token 上限 60→320 の修正を含む）
+- `20260927-issue305-jev-first-temporal-side-contribution.md` — Issue #305 置換単位5（temporal side contribution の Jev 第一経路は不採用とした。既存の Luna の token 上限 320→640 と `namedTimePeriod` schema の修正を含む）
+- 置換単位4（user context の保存先 owner の判定）の記録は user-context domain の [`../../user-context/work/20260927-issue305-jev-first-user-context-routing.md`](../../user-context/work/20260927-issue305-jev-first-user-context-routing.md) にある。単位1〜5 の結果の一覧は `20260926-issue333-japanese-semantic-evaluation.md` の「置換の結果」にある。
 
 Issue-only active scopes such as #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
 
