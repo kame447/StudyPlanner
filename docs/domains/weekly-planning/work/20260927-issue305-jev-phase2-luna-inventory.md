@@ -27,7 +27,7 @@ Tracking: Issue #305（品質証拠 #333、安全性回帰 #335、memory rerank 
 | `tryFocusedAuthorizationRouteV5` | create_plan / fallback | eligibility、document の構築 | 済（#337） | 保留・境界の判断 |
 | generic initial（`run.callGeneric`） | 文書全体 | validator、canonicalizer | — | 開集合の抽出 |
 | dense turn audit（`weeklyPlanningSemanticDenseTurnCompletenessV5.ts`） | complete / incomplete + missingFacts（自由文）。incomplete の場合は文書全体を再生成し、無効なら generic repair へ進む | 対象の判定（byte 数） | C4（保留） | missingFacts、完全性の判断、再生成 |
-| no-op completeness retry（`weeklyPlanningSemanticNoOpCompletenessRetryV5.ts`） | focused temporal（#341 で不採用）→ generic retry 最大2回 | eligibility | C3（no-go） | 文書全体の再生成 |
+| no-op completeness retry（`weeklyPlanningSemanticNoOpCompletenessRetryV5.ts`） | Luna の focused temporal（その前に置く Jev gate は #341 で不採用）→ generic retry 最大2回 | eligibility | C3（no-go） | 文書全体の再生成 |
 | focused repair：user context の日付、planning window（`weeklyPlanningFocusedUserContextDateRepairV5.ts`、`...PlanningWindowRepairV5.ts`） | ISO 日付・範囲 | typed な日付計算、canonical start/end → value | — | 相対日付の解釈（生の日本語文を regex で決定論化しない） |
 | focused repair：temporal scope | plan_unavailable / uncertain | eligibility、typed patch、参照を保った再検証 | 済（#340） | 保留した判断 |
 | generic repair（`weeklyPlanningSemanticGenericRepairRouteV5.ts`） | 文書全体。repair 後に no-op になった場合は no-op completeness retry へ進む | validator | — | 全体 |
@@ -105,5 +105,5 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 ## 次の具体作業
 
 1. C9 を進める場合は、上の前提条件 (a) の binding 契約を、owning Issue（#305、または保存 state の owner）で先に決める。
-2. C3 / C4 を扱い直す場合は、実 initial no-op の分布を収集する方法（#213 の typed telemetry で、raw text を保存せずに route の件数を数える）を先に決める。
+2. C3 を扱い直す場合は、実 initial no-op の分布を収集する方法（#213 の typed telemetry で、raw text を保存せずに route の件数を数える）を先に決める。C4 を扱い直す場合は、dense audit の対象となる実入力と候補文書のペアを、評価の前提として別に用意する。
 3. 本番の canary の条件は、#305 の既存の checkpoint から変わっていない。
