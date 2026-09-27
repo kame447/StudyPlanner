@@ -32,7 +32,7 @@ PR #302でcanonical文書の導入は完了した。旧documentation branchは�
 
 ## Responsibility map
 
-`architecture/` はcanonicalな全体境界とそのsupporting interface設計を持つ。`policies/` はauthority、write、supersession、forget、privacy、surfacingの規則を持つ。`quality/` は縦断・敵対的・会話横断の品質契約を持つ。`roadmap/` は実行順の正本、`work/` は未完了の実装単位と検証計画を持つ。完了したworkは不変条件をcurrent ownerへ移した上でarchiveする。
+`architecture/` はcanonicalな全体境界とそのsupporting interface設計を持つ。`policies/` はauthority、write、supersession、forget、privacy、surfacingの規則を持つ。`quality/` は縦断・敵対的・会話横断の品質契約を持つ。`roadmap/` は実行順の正本、`work/` は未完了の実装単位と検証計画を持つ。Jev 段階置換（Issue #305）のうち、「AIが覚えていること」の保存先 owner の判定の記録は [`work/20260927-issue305-jev-first-user-context-routing.md`](work/20260927-issue305-jev-first-user-context-routing.md) にある。完了したworkは不変条件をcurrent ownerへ移した上でarchiveする。
 
 ## Related owners
 
