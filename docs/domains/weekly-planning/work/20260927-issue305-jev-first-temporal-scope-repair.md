@@ -1,9 +1,9 @@
 # Issue #305 — Jev-first temporal-scope repair
 
-Status: active  
-Owner: LivelyYukawa (Executor A)  
-Branch: `feat/issue-305-jev-first-temporal-scope-repair`  
-Base: `origin/main` at `d3623479`  
+Status: active
+Owner: LivelyYukawa (Executor A)
+Branch: `feat/issue-305-jev-first-temporal-scope-repair`
+Base: `origin/main` at `d3623479`
 Production rollout: unchanged (`JEV_MODE=off`, `JEV_CANARY_PERCENT=0`); no deploy
 
 ## Scope and safety boundary
