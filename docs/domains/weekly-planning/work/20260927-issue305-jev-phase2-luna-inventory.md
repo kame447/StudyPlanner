@@ -132,7 +132,7 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
   - abstain のたびに Jev の直列分（evidence では約300ms）が加わる。
   - このため、latency と費用の優先順位を満たしにくい。この結論は、focused な Luna の呼出しを置き換えた単位1・3（closed な判断を focused Luna から Jev へ移したもの）には当てはまらない。
 
-### 再棚卸しの結論（main `7fe8f9bb` の実コード。#347 の表から Luna の経路は変わっていない）
+### 再棚卸しの結論（main `7fe8f9bb` の実コード。`createChatCompletion` の呼出し元と Worker の purpose を全件列挙して確認した）
 
 | 候補 | binding の後の判断 | 理由 |
 | --- | --- | --- |
@@ -142,6 +142,7 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 | C2 provisional_timebox | **hold のまま** | scheduler の許可と preview の authorization に及ぶので、#335 の不変条件（Jev に scheduler の権限を与えない）と衝突する |
 | C3 / C4 / C6 / C8 / C1 | **#347 の判断を維持** | 前提条件が変わっていない |
 | generic の初回・repair、renderer、日付・window の repair、添付 | **Luna に残す** | 生成と開いた抽出であり、閉じた集合にならない |
+| 旧 MVP の自然文追加・編集（`src/services/naturalLanguagePlanner.ts` の3箇所。#347 の表にはなかった） | **対象外** | `NaturalLanguageAssistant` は main のどこからも import されておらず、本番で Luna を呼ぶ経路ではない。出力も開いた抽出（title、分、時刻）で、唯一の categorical な `kind` は同じ抽出の一部なので、分けても呼出しは減らない（C1 と同じ構造） |
 
 この cycle の実コードと実測の範囲では、安全性・速度・費用の優先順位を満たし、Jev に追加で置換できる候補は残っていない。前提基盤を足すことで開く候補も、C9 の実測によって、同じ構造では採算が合わないことが示された。
 - 本番の canary の条件（ユーザーの承認、新しく封印した holdout、#187 の provider / privacy 条件、単位1 の p95）は変わっていない。
