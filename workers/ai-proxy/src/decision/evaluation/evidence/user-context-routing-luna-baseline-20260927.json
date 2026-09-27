@@ -1,0 +1,1477 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "user_context_routing_luna-baseline",
+  "corpusVersion": "user-context-routing-corpus-2026-09-27-v1",
+  "executedAt": "2026-09-26T23:59:31.477Z",
+  "policy": {
+    "catalogSha256": "c3a284e53846d229f1932cae34acf00efc98f266986100ba4efed60aac0bdc4e",
+    "gateSha256": "7b115cc323bd0a7916ce37c78a2406ffa42645d46d33bb1ec83cd92dfb69057b",
+    "corpusSha256": "0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6"
+  },
+  "rawTextIncluded": false,
+  "summary": {
+    "caseCount": 64,
+    "conversationGroupCount": 32,
+    "generativeLlmCalls": 64,
+    "provisionalLabelDisagreement": {
+      "caseLevel": {
+        "occurrences": 3,
+        "sampleCount": 64,
+        "oneSidedClopperPearsonUpper95": 0.11671658790335934
+      },
+      "conversationGroupLevel": {
+        "occurrences": 3,
+        "sampleCount": 32,
+        "oneSidedClopperPearsonUpper95": 0.2248161085892258
+      },
+      "note": "Agreement with synthetic_unreviewed or opus-5.5-limited-judge labels; not accuracy and not human gold."
+    },
+    "controlledFailureCount": 0,
+    "latencyMs": {
+      "sampleCount": 64,
+      "p50": 2243,
+      "p95": 5963
+    },
+    "usage": {
+      "promptTokens": {
+        "componentCount": 64,
+        "reportedComponentCount": 64,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 37277,
+        "completeTotal": 37277
+      },
+      "completionTokens": {
+        "componentCount": 64,
+        "reportedComponentCount": 64,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 14336,
+        "completeTotal": 14336
+      }
+    },
+    "cost": {
+      "pricingVersion": "openai-public-2026-07-30-v1",
+      "minimumCostMicros": 17949,
+      "maximumCostMicros": 26522
+    }
+  },
+  "paired": {
+    "pairCount": 64,
+    "firstRouteDisagreementCount": 2,
+    "lunaOnlyDisagreementCount": 3,
+    "lunaCorrectFirstRouteWrong": 0,
+    "firstRouteCorrectLunaWrong": 1,
+    "firstRouteGenerativeLlmCalls": 57,
+    "lunaOnlyGenerativeLlmCalls": 64,
+    "note": "Paired agreement uses provisional labels; it is not accuracy and repeated cases in one conversation group are not independent."
+  },
+  "cases": [
+    {
+      "id": "ucr-h-external-01",
+      "conversationGroupId": "ucr-h-external-group-01",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 2243,
+        "promptTokens": 580,
+        "completionTokens": 137
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-02",
+      "conversationGroupId": "ucr-h-external-group-01",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 2087,
+        "promptTokens": 574,
+        "completionTokens": 130
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-03",
+      "conversationGroupId": "ucr-h-external-group-02",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 1693,
+        "promptTokens": 576,
+        "completionTokens": 107
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-04",
+      "conversationGroupId": "ucr-h-external-group-02",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 1833,
+        "promptTokens": 579,
+        "completionTokens": 109
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-05",
+      "conversationGroupId": "ucr-h-external-group-03",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 1719,
+        "promptTokens": 576,
+        "completionTokens": 105
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-06",
+      "conversationGroupId": "ucr-h-external-group-03",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 1704,
+        "promptTokens": 581,
+        "completionTokens": 118
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-07",
+      "conversationGroupId": "ucr-h-external-group-04",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 1932,
+        "promptTokens": 579,
+        "completionTokens": 113
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-08",
+      "conversationGroupId": "ucr-h-external-group-04",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 2377,
+        "promptTokens": 577,
+        "completionTokens": 154
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-09",
+      "conversationGroupId": "ucr-h-external-group-05",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 1640,
+        "promptTokens": 575,
+        "completionTokens": 104
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-10",
+      "conversationGroupId": "ucr-h-external-group-05",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 2096,
+        "promptTokens": 580,
+        "completionTokens": 155
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-11",
+      "conversationGroupId": "ucr-h-external-group-06",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 1946,
+        "promptTokens": 576,
+        "completionTokens": 128
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-12",
+      "conversationGroupId": "ucr-h-external-group-06",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2673,
+        "promptTokens": 576,
+        "completionTokens": 220
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": false
+      }
+    },
+    {
+      "id": "ucr-h-external-13",
+      "conversationGroupId": "ucr-h-external-group-07",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 1445,
+        "promptTokens": 575,
+        "completionTokens": 100
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-14",
+      "conversationGroupId": "ucr-h-external-group-07",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 1815,
+        "promptTokens": 575,
+        "completionTokens": 100
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-15",
+      "conversationGroupId": "ucr-h-external-group-08",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 1768,
+        "promptTokens": 577,
+        "completionTokens": 99
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-external-16",
+      "conversationGroupId": "ucr-h-external-group-08",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 2809,
+        "promptTokens": 579,
+        "completionTokens": 110
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-01",
+      "conversationGroupId": "ucr-h-user-group-01",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2008,
+        "promptTokens": 577,
+        "completionTokens": 135
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-02",
+      "conversationGroupId": "ucr-h-user-group-01",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2007,
+        "promptTokens": 580,
+        "completionTokens": 141
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-03",
+      "conversationGroupId": "ucr-h-user-group-02",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2379,
+        "promptTokens": 579,
+        "completionTokens": 198
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-04",
+      "conversationGroupId": "ucr-h-user-group-02",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2046,
+        "promptTokens": 582,
+        "completionTokens": 143
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-05",
+      "conversationGroupId": "ucr-h-user-group-03",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2074,
+        "promptTokens": 581,
+        "completionTokens": 152
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-06",
+      "conversationGroupId": "ucr-h-user-group-03",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3829,
+        "promptTokens": 580,
+        "completionTokens": 301
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-07",
+      "conversationGroupId": "ucr-h-user-group-04",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3209,
+        "promptTokens": 579,
+        "completionTokens": 249
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-08",
+      "conversationGroupId": "ucr-h-user-group-04",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2181,
+        "promptTokens": 584,
+        "completionTokens": 147
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-09",
+      "conversationGroupId": "ucr-h-user-group-05",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1709,
+        "promptTokens": 573,
+        "completionTokens": 108
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-10",
+      "conversationGroupId": "ucr-h-user-group-05",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2440,
+        "promptTokens": 584,
+        "completionTokens": 153
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-11",
+      "conversationGroupId": "ucr-h-user-group-06",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1809,
+        "promptTokens": 579,
+        "completionTokens": 120
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-12",
+      "conversationGroupId": "ucr-h-user-group-06",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 4736,
+        "promptTokens": 584,
+        "completionTokens": 339
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": false
+      }
+    },
+    {
+      "id": "ucr-h-user-13",
+      "conversationGroupId": "ucr-h-user-group-07",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2839,
+        "promptTokens": 579,
+        "completionTokens": 221
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-14",
+      "conversationGroupId": "ucr-h-user-group-07",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2006,
+        "promptTokens": 583,
+        "completionTokens": 139
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-15",
+      "conversationGroupId": "ucr-h-user-group-08",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2128,
+        "promptTokens": 582,
+        "completionTokens": 137
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-user-16",
+      "conversationGroupId": "ucr-h-user-group-08",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3476,
+        "promptTokens": 582,
+        "completionTokens": 269
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-01",
+      "conversationGroupId": "ucr-h-mixed-group-01",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 7165,
+        "promptTokens": 588,
+        "completionTokens": 608
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-02",
+      "conversationGroupId": "ucr-h-mixed-group-01",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 4053,
+        "promptTokens": 584,
+        "completionTokens": 289
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-03",
+      "conversationGroupId": "ucr-h-mixed-group-02",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5270,
+        "promptTokens": 585,
+        "completionTokens": 470
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-04",
+      "conversationGroupId": "ucr-h-mixed-group-02",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 2119,
+        "promptTokens": 582,
+        "completionTokens": 179
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-05",
+      "conversationGroupId": "ucr-h-mixed-group-03",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 4918,
+        "promptTokens": 586,
+        "completionTokens": 393
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-06",
+      "conversationGroupId": "ucr-h-mixed-group-03",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 5483,
+        "promptTokens": 587,
+        "completionTokens": 498
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-07",
+      "conversationGroupId": "ucr-h-mixed-group-04",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3350,
+        "promptTokens": 584,
+        "completionTokens": 304
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-08",
+      "conversationGroupId": "ucr-h-mixed-group-04",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 3930,
+        "promptTokens": 580,
+        "completionTokens": 315
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-09",
+      "conversationGroupId": "ucr-h-mixed-group-05",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 6827,
+        "promptTokens": 586,
+        "completionTokens": 586
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-10",
+      "conversationGroupId": "ucr-h-mixed-group-05",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 6046,
+        "promptTokens": 586,
+        "completionTokens": 532
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-11",
+      "conversationGroupId": "ucr-h-mixed-group-06",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 4218,
+        "promptTokens": 587,
+        "completionTokens": 294
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-12",
+      "conversationGroupId": "ucr-h-mixed-group-06",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3539,
+        "promptTokens": 586,
+        "completionTokens": 289
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-13",
+      "conversationGroupId": "ucr-h-mixed-group-07",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 5963,
+        "promptTokens": 587,
+        "completionTokens": 480
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-14",
+      "conversationGroupId": "ucr-h-mixed-group-07",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5396,
+        "promptTokens": 588,
+        "completionTokens": 496
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-15",
+      "conversationGroupId": "ucr-h-mixed-group-08",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 4574,
+        "promptTokens": 589,
+        "completionTokens": 382
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-mixed-16",
+      "conversationGroupId": "ucr-h-mixed-group-08",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 4868,
+        "promptTokens": 583,
+        "completionTokens": 429
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-01",
+      "conversationGroupId": "ucr-h-security-group-01",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1921,
+        "promptTokens": 585,
+        "completionTokens": 128
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-02",
+      "conversationGroupId": "ucr-h-security-group-01",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2475,
+        "promptTokens": 581,
+        "completionTokens": 164
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-03",
+      "conversationGroupId": "ucr-h-security-group-02",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2102,
+        "promptTokens": 585,
+        "completionTokens": 146
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-04",
+      "conversationGroupId": "ucr-h-security-group-02",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2165,
+        "promptTokens": 588,
+        "completionTokens": 155
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-05",
+      "conversationGroupId": "ucr-h-security-group-03",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1954,
+        "promptTokens": 585,
+        "completionTokens": 135
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-06",
+      "conversationGroupId": "ucr-h-security-group-03",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2962,
+        "promptTokens": 589,
+        "completionTokens": 231
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-07",
+      "conversationGroupId": "ucr-h-security-group-04",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2005,
+        "promptTokens": 583,
+        "completionTokens": 138
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-08",
+      "conversationGroupId": "ucr-h-security-group-04",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2243,
+        "promptTokens": 612,
+        "completionTokens": 161
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-09",
+      "conversationGroupId": "ucr-h-security-group-05",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 4948,
+        "promptTokens": 578,
+        "completionTokens": 359
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "labelAgreement": false
+      }
+    },
+    {
+      "id": "ucr-h-security-10",
+      "conversationGroupId": "ucr-h-security-group-05",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2119,
+        "promptTokens": 588,
+        "completionTokens": 157
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-11",
+      "conversationGroupId": "ucr-h-security-group-06",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2051,
+        "promptTokens": 589,
+        "completionTokens": 140
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-12",
+      "conversationGroupId": "ucr-h-security-group-06",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2248,
+        "promptTokens": 581,
+        "completionTokens": 161
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-13",
+      "conversationGroupId": "ucr-h-security-group-07",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3792,
+        "promptTokens": 582,
+        "completionTokens": 284
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-14",
+      "conversationGroupId": "ucr-h-security-group-07",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2444,
+        "promptTokens": 589,
+        "completionTokens": 183
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-15",
+      "conversationGroupId": "ucr-h-security-group-08",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2165,
+        "promptTokens": 586,
+        "completionTokens": 129
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    },
+    {
+      "id": "ucr-h-security-16",
+      "conversationGroupId": "ucr-h-security-group-08",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "luna": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2335,
+        "promptTokens": 585,
+        "completionTokens": 180
+      },
+      "final": {
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "labelAgreement": true
+      }
+    }
+  ]
+}

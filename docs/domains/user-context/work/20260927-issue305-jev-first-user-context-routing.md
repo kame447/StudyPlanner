@@ -4,7 +4,7 @@ Status: active
 Owner: Issue #305 / #333 / #335
 Branch: `feat/issue-305-jev-first-user-context-routing`
 Base: `d3623479e07a6870f23c54a7631fe2761a408efa`
-Latest durable checkpoint: `2bdeea43ddd684cf3af137c68e09627082ee270f`
+Latest durable checkpoint: `f1e2c1ea44e6664a0b4ffb215ecc6b4b3810038a`
 Updated: 2026-09-27
 
 ## 目的と責任境界
@@ -55,6 +55,28 @@ Jev は保存内容を生成せず、record、ID、revision、承認、保存、
 
 retry / repair は今回の settings interpreter に存在しない。今後追加する場合も focused context を再送しない。production dispatch に harness 専用 hook は置かない。
 
+## Remote holdout と paired 結果
+
+final gate を `f1e2c1ea` で固定した後、封印 holdout 64件を1回だけ実行し、artifact を `consumed` にした。以下は synthetic / `opus-5.5-limited-judge` の provisional label との一致であり、human gold accuracy ではない。
+
+- negative 48件の external false-accept は 0件。one-sided 95% CP 上限は case 6.05%、conversation group 11.73%（0/24 groups）。
+- pure user context と security はそれぞれ 0/16 cases（上限 17.07%）、0/8 groups（上限 31.23%）。
+- external 16件中7件を Jev が直行し、7件すべて owner が一致。wrong guide は 0/16 cases（上限 17.07%）、0/8 groups（上限 31.23%）。9/16 cases は Luna に残り、削減の取りこぼしとして集計した。
+- Jev-first の provisional disagreement は 2/64 cases（上限 9.51%）、2/32 groups（上限 18.39%）。2件とも Jev 直行ではなく実 Luna fallback の targetDomain が label と異なった case である。controlled failure と unexpected output key は0件。
+- Luna-only は provisional disagreement 3/64 cases（上限 11.67%）、3/32 groups（上限 22.48%）。paired では first-route correct / Luna-only wrong が1件、逆は0件。
+- 生成 LLM 呼出しは Jev-first 57回、Luna-only 64回。同一 holdout の external owner 7件（10.94%）だけを削減した。
+- 実測 latency p50 / p95 は Jev-first 2329 / 6021ms、Luna-only 2243 / 5963ms。latency 改善は観測していない。
+- Jev-first の Jev reported cost は $0.001997772、Luna cost range は $0.016578–$0.024224、合計は $0.018575772–$0.026221772。Luna-only は $0.017949–$0.026522。cache 内訳がないため幅が重なり、費用削減は主張しない。
+- fault probe 9件（low confidence、user_context defer、mixed heads、timeout、429、500、malformed、model mismatch、provider abort）は全件 production dispatch から実 Luna を呼び、Luna evaluated、final HTTP 200。controlled failure は0件。
+
+## PR 本文案
+
+Issue #305 / #333 / #335 の単位4として、「AIが覚えていること」の保存先 owner だけを Jev 第一経路で判定する。高確信の単一 external owner は既存の固定案内へ直行し、`user_context`、曖昧、mixed、低信頼、provider 障害は既存 Luna interpreter に全て委ねる。Jev は自由文・record field・保存・承認・revision・lifecycle を生成または変更しない。
+
+decision context / response は閉じた discriminated union とし、Worker は purpose ごとに quota 前検証する。未知 purpose は前方互換のため context なしの Luna 経路へ流す。client / Worker のどちらが先に配備されても旧側は Luna を使う。本番 `JEV_MODE=off` / canary 0 は変更しない。
+
+gate は tuning 52件の typed heads だけから補助閾値を校正し、catalog/corpus と主 confidence 0.97 / selected 0.99 は維持した。holdout は tuning 前に corpus/label を封印し、final gate の commit/hash 固定後に1回だけ実行した。holdout 64件では false-accept 0/48、wrong owner guide 0/16、生成 LLM 呼出し 57対64。label は provisional で accuracy ではなく、CP 上限・latency・費用範囲は上記のとおり。fault 9件は全て実 Luna fallback に到達した。
+
 ## 完了条件
 
 - typed context / response、gate、dispatch、client projection、Worker 分岐が実装済み。
@@ -85,14 +107,16 @@ retry / repair は今回の settings interpreter に存在しない。今後追�
 - 上記 guard と集計変更後の exact tree で full test は green: 583 test files / 3,026 passed（10 files / 45 tests skipped、5 todo は既存 observation contract）。runner `node --check` と `npm run typecheck` も再度 green。
 - remote tuning 52件は Wrangler 4.140.0 の temporary remote dev で完了。旧 gate 実行では direct 0件、false-accept 0/36、誤案内 0/16、controlled failure 0、label disagreement 0/52。これは provisional label との一致であり accuracy ではない。
 - tuning の typed heads だけを再 gate し、主閾値 confidence 0.97 / selected probability 0.99 は維持、補助閾値だけ multiple domains 0.15 / independent meaning 0.10 に校正した。final gate は external 11/16を受理し、negative false-accept 0/36、誤った external owner 0/16。catalog/corpus は変更せず、holdout は見ていない。gate version は `user-context-routing-conservative-v2-tuning52`。
+- final gate commit 後、holdout 64件を1回だけ実行して `consumed` に更新し、Luna-only paired と fault 9件も完了した。remote の typed evidence 3 artifact は raw text key を含まない。
+- #335 の routing / 実 Worker containment、user-context dispatch / Worker / client projection を再確認し、focused 5 files / 100 tests green。
 
 次の具体作業:
 
-1. tuning evidence と final gate/hash の commit を親へ依頼し、確定 HEAD を待つ。
-2. commit 確認後にだけ、封印 holdout 1回 → Luna-only paired → faults の順に実行する。
-3. typed evidence と集計を本記録へ反映し、#335 を再確認して親へ最終 commit / PR 依頼を送る。
+1. exact tree で typecheck / full test / build を再実行する。
+2. typed evidence と本記録を親へ final commit 依頼し、上記 PR 本文案を送る。
+3. 親の PR 作成・独立監査後、CI を terminal success まで追う。
 
 未解決:
 
-- remote tuning と gate 校正は完了。holdout / paired / fault は gate 固定 commit 待ちで未実行。holdout は封印済み・未消費。
-- holdout の実費用/latency、CI は未完了。local full test/build は green。
+- remote tuning / gate固定 / holdout 1回 / paired / fault / #335 focused regression は完了。holdout は消費済みで再実行禁止。
+- exact final tree の full verification、親の final commit / PR / independent audit / CI が未完了。

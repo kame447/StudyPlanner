@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "artifactKind": "user_context_routing_sealed_holdout",
   "corpusVersion": "user-context-routing-corpus-2026-09-27-v1",
-  "status": "sealed_unconsumed",
+  "status": "consumed",
   "sealedAt": "2026-09-27T04:36:00+09:00",
   "createdBeforeTuning": true,
   "policyFixedAfterTuningAt": "2026-09-27T08:51:12+09:00",
   "policyFixBasis": "Tuning typed heads only; the sealed holdout was not opened.",
-  "consumed": false,
+  "consumed": true,
   "caseCount": 64,
   "conversationGroupCount": 32,
   "classCounts": {
@@ -28,5 +28,3219 @@
     "gateSha256": "7b115cc323bd0a7916ce37c78a2406ffa42645d46d33bb1ec83cd92dfb69057b",
     "corpusSha256": "0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6"
   },
-  "results": null
+  "results": null,
+  "consumedAt": "2026-09-26T23:56:08.274Z",
+  "rawTextIncluded": false,
+  "summary": {
+    "caseCount": 64,
+    "conversationGroupCount": 32,
+    "labelStatusCounts": {
+      "opus-5.5-limited-judge": 16,
+      "synthetic_unreviewed": 48
+    },
+    "routeCounts": {
+      "jev_external_owner": 7,
+      "deferred_to_luna": 47,
+      "abstained_to_luna": 10,
+      "unavailable_to_luna": 0
+    },
+    "generativeLlmCalls": 57,
+    "savedGenerativeLlmCalls": 7,
+    "primaryFalseAccept": {
+      "caseLevel": {
+        "occurrences": 0,
+        "sampleCount": 48,
+        "oneSidedClopperPearsonUpper95": 0.06050340934889431
+      },
+      "conversationGroupLevel": {
+        "occurrences": 0,
+        "sampleCount": 24,
+        "oneSidedClopperPearsonUpper95": 0.11734615615494876
+      }
+    },
+    "pureUserContextFalseAccept": {
+      "caseLevel": {
+        "occurrences": 0,
+        "sampleCount": 16,
+        "oneSidedClopperPearsonUpper95": 0.17074972298248092
+      },
+      "conversationGroupLevel": {
+        "occurrences": 0,
+        "sampleCount": 8,
+        "oneSidedClopperPearsonUpper95": 0.31234397806636793
+      }
+    },
+    "securityFalseAccept": {
+      "caseLevel": {
+        "occurrences": 0,
+        "sampleCount": 16,
+        "oneSidedClopperPearsonUpper95": 0.17074972298248092
+      },
+      "conversationGroupLevel": {
+        "occurrences": 0,
+        "sampleCount": 8,
+        "oneSidedClopperPearsonUpper95": 0.31234397806636793
+      }
+    },
+    "wrongExternalGuide": {
+      "caseLevel": {
+        "occurrences": 0,
+        "sampleCount": 16,
+        "oneSidedClopperPearsonUpper95": 0.17074972298248092
+      },
+      "conversationGroupLevel": {
+        "occurrences": 0,
+        "sampleCount": 8,
+        "oneSidedClopperPearsonUpper95": 0.31234397806636793
+      }
+    },
+    "externalMissedReduction": {
+      "caseLevel": {
+        "occurrences": 9,
+        "sampleCount": 16,
+        "oneSidedClopperPearsonUpper95": 0.7733084315337129
+      },
+      "conversationGroupLevel": {
+        "occurrences": 8,
+        "sampleCount": 8,
+        "oneSidedClopperPearsonUpper95": 1
+      }
+    },
+    "provisionalLabelDisagreement": {
+      "caseLevel": {
+        "occurrences": 2,
+        "sampleCount": 64,
+        "oneSidedClopperPearsonUpper95": 0.0951217193503392
+      },
+      "conversationGroupLevel": {
+        "occurrences": 2,
+        "sampleCount": 32,
+        "oneSidedClopperPearsonUpper95": 0.18394346817692875
+      },
+      "note": "Agreement with synthetic_unreviewed or opus-5.5-limited-judge labels; not accuracy and not human gold."
+    },
+    "controlledFailureCount": 0,
+    "unexpectedOutputKeyCaseCount": 0,
+    "latencyMs": {
+      "sampleCount": 64,
+      "p50": 2329,
+      "p95": 6021
+    },
+    "usage": {
+      "jevInputTokens": {
+        "componentCount": 64,
+        "reportedComponentCount": 64,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 47566,
+        "completeTotal": 47566
+      },
+      "jevOutputTokens": {
+        "componentCount": 64,
+        "reportedComponentCount": 64,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 6795,
+        "completeTotal": 6795
+      },
+      "lunaPromptTokens": {
+        "componentCount": 57,
+        "reportedComponentCount": 57,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 33243,
+        "completeTotal": 33243
+      },
+      "lunaCompletionTokens": {
+        "componentCount": 57,
+        "reportedComponentCount": 57,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 13261,
+        "completeTotal": 13261
+      }
+    },
+    "cost": {
+      "jevReportedUsd": {
+        "componentCount": 64,
+        "reportedComponentCount": 64,
+        "unknownComponentCount": 0,
+        "knownSubtotal": 0.001997772000000001,
+        "completeTotal": 0.001997772000000001
+      },
+      "lunaPricingVersion": "openai-public-2026-07-30-v1",
+      "lunaMinimumCostMicros": 16578,
+      "lunaMaximumCostMicros": 24224
+    }
+  },
+  "cases": [
+    {
+      "id": "ucr-h-external-01",
+      "conversationGroupId": "ucr-h-external-group-01",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "bookshelf",
+        "gate": "abstained",
+        "reason": "conflicting_heads",
+        "confidence": 0.52,
+        "selectedProbability": 0.6,
+        "multipleDomains": 0.13,
+        "independentMeaning": 0.61,
+        "latencyMs": 174,
+        "inputTokens": 741,
+        "outputTokens": 106,
+        "costUsd": 0.000031122
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 2004,
+        "promptTokens": 580,
+        "completionTokens": 132
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "bookshelf",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2178,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-02",
+      "conversationGroupId": "ucr-h-external-group-01",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "bookshelf",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.78,
+        "selectedProbability": 0.82,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.07,
+        "latencyMs": 154,
+        "inputTokens": 738,
+        "outputTokens": 106,
+        "costUsd": 0.000030996
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 1853,
+        "promptTokens": 574,
+        "completionTokens": 119
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "bookshelf",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2007,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-03",
+      "conversationGroupId": "ucr-h-external-group-02",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "bookshelf",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 0.99,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.09,
+        "independentMeaning": 0.07,
+        "latencyMs": 194,
+        "inputTokens": 739,
+        "outputTokens": 106,
+        "costUsd": 0.000031038
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "bookshelf",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 194,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-04",
+      "conversationGroupId": "ucr-h-external-group-02",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "bookshelf",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "bookshelf",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.9,
+        "selectedProbability": 0.91,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.07,
+        "latencyMs": 165,
+        "inputTokens": 737,
+        "outputTokens": 106,
+        "costUsd": 0.000030954
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "bookshelf",
+        "reason": null,
+        "latencyMs": 1732,
+        "promptTokens": 579,
+        "completionTokens": 112
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "bookshelf",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1897,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-05",
+      "conversationGroupId": "ucr-h-external-group-03",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "timetable",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.04,
+        "latencyMs": 167,
+        "inputTokens": 733,
+        "outputTokens": 107,
+        "costUsd": 0.000030786
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "timetable",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 167,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-06",
+      "conversationGroupId": "ucr-h-external-group-03",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "timetable",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.76,
+        "selectedProbability": 0.79,
+        "multipleDomains": 0.15,
+        "independentMeaning": 0.06,
+        "latencyMs": 157,
+        "inputTokens": 737,
+        "outputTokens": 107,
+        "costUsd": 0.000030954
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 1649,
+        "promptTokens": 581,
+        "completionTokens": 112
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "timetable",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1806,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-07",
+      "conversationGroupId": "ucr-h-external-group-04",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "timetable",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 0.98,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.05,
+        "latencyMs": 165,
+        "inputTokens": 736,
+        "outputTokens": 107,
+        "costUsd": 0.000030912
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "timetable",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 165,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-08",
+      "conversationGroupId": "ucr-h-external-group-04",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "timetable",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "abstained",
+        "reason": "conflicting_heads",
+        "confidence": 0.61,
+        "selectedProbability": 0.68,
+        "multipleDomains": 0.17,
+        "independentMeaning": 0.07,
+        "latencyMs": 155,
+        "inputTokens": 736,
+        "outputTokens": 105,
+        "costUsd": 0.000030912
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 1998,
+        "promptTokens": 577,
+        "completionTokens": 140
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "timetable",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2153,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-09",
+      "conversationGroupId": "ucr-h-external-group-05",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 0.99,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.15,
+        "independentMeaning": 0.07,
+        "latencyMs": 168,
+        "inputTokens": 735,
+        "outputTokens": 105,
+        "costUsd": 0.00003087
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "schedule",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 168,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-10",
+      "conversationGroupId": "ucr-h-external-group-05",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.97,
+        "selectedProbability": 0.98,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.07,
+        "latencyMs": 152,
+        "inputTokens": 744,
+        "outputTokens": 105,
+        "costUsd": 0.000031248
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 2440,
+        "promptTokens": 580,
+        "completionTokens": 144
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "schedule",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2592,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-11",
+      "conversationGroupId": "ucr-h-external-group-06",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.14,
+        "independentMeaning": 0.09,
+        "latencyMs": 159,
+        "inputTokens": 737,
+        "outputTokens": 105,
+        "costUsd": 0.000030954
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "schedule",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 159,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-12",
+      "conversationGroupId": "ucr-h-external-group-06",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "schedule",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.96,
+        "selectedProbability": 0.97,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.06,
+        "latencyMs": 198,
+        "inputTokens": 734,
+        "outputTokens": 105,
+        "costUsd": 0.000030828
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3252,
+        "promptTokens": 576,
+        "completionTokens": 295
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3450,
+        "labelAgreement": false
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-13",
+      "conversationGroupId": "ucr-h-external-group-07",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "actual",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 0.99,
+        "selectedProbability": 1,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.06,
+        "latencyMs": 211,
+        "inputTokens": 736,
+        "outputTokens": 105,
+        "costUsd": 0.000030912
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 211,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-14",
+      "conversationGroupId": "ucr-h-external-group-07",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "actual",
+        "gate": "abstained",
+        "reason": "conflicting_heads",
+        "confidence": 0.99,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.1,
+        "independentMeaning": 0.11,
+        "latencyMs": 171,
+        "inputTokens": 734,
+        "outputTokens": 105,
+        "costUsd": 0.000030828
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 1802,
+        "promptTokens": 575,
+        "completionTokens": 96
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1973,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-15",
+      "conversationGroupId": "ucr-h-external-group-08",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "jev_external_owner",
+      "jev": {
+        "status": "evaluated",
+        "decision": "actual",
+        "gate": "accepted",
+        "reason": null,
+        "confidence": 0.99,
+        "selectedProbability": 1,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.07,
+        "latencyMs": 151,
+        "inputTokens": 737,
+        "outputTokens": 105,
+        "costUsd": 0.000030954
+      },
+      "luna": {
+        "called": false,
+        "status": null,
+        "targetDomain": null,
+        "reason": null,
+        "latencyMs": null,
+        "promptTokens": null,
+        "completionTokens": null
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "external_owner",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 151,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-external-16",
+      "conversationGroupId": "ucr-h-external-group-08",
+      "split": "holdout",
+      "evaluationClass": "external_clear",
+      "expectedRoute": "external_owner",
+      "expectedTargetDomain": "actual",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "actual",
+        "gate": "abstained",
+        "reason": "uncertain",
+        "confidence": 0.92,
+        "selectedProbability": 0.94,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.08,
+        "latencyMs": 175,
+        "inputTokens": 739,
+        "outputTokens": 105,
+        "costUsd": 0.000031038
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 1749,
+        "promptTokens": 579,
+        "completionTokens": 126
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1924,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-01",
+      "conversationGroupId": "ucr-h-user-group-01",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.18,
+        "latencyMs": 187,
+        "inputTokens": 737,
+        "outputTokens": 106,
+        "costUsd": 0.000030954
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1667,
+        "promptTokens": 577,
+        "completionTokens": 101
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1854,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-02",
+      "conversationGroupId": "ucr-h-user-group-01",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.09,
+        "independentMeaning": 0.07,
+        "latencyMs": 179,
+        "inputTokens": 738,
+        "outputTokens": 106,
+        "costUsd": 0.000030996
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1572,
+        "promptTokens": 580,
+        "completionTokens": 96
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1751,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-03",
+      "conversationGroupId": "ucr-h-user-group-02",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.94,
+        "selectedProbability": 0.96,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.11,
+        "latencyMs": 197,
+        "inputTokens": 736,
+        "outputTokens": 106,
+        "costUsd": 0.000030912
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1920,
+        "promptTokens": 579,
+        "completionTokens": 141
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2117,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-04",
+      "conversationGroupId": "ucr-h-user-group-02",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.98,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.15,
+        "latencyMs": 154,
+        "inputTokens": 743,
+        "outputTokens": 106,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1851,
+        "promptTokens": 582,
+        "completionTokens": 149
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2005,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-05",
+      "conversationGroupId": "ucr-h-user-group-03",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.99,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.09,
+        "independentMeaning": 0.15,
+        "latencyMs": 159,
+        "inputTokens": 739,
+        "outputTokens": 106,
+        "costUsd": 0.000031038
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1929,
+        "promptTokens": 581,
+        "completionTokens": 135
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2088,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-06",
+      "conversationGroupId": "ucr-h-user-group-03",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.99,
+        "selectedProbability": 1,
+        "multipleDomains": 0.12,
+        "independentMeaning": 0.07,
+        "latencyMs": 177,
+        "inputTokens": 742,
+        "outputTokens": 106,
+        "costUsd": 0.000031164
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2953,
+        "promptTokens": 580,
+        "completionTokens": 240
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3130,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-07",
+      "conversationGroupId": "ucr-h-user-group-04",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.98,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.09,
+        "latencyMs": 196,
+        "inputTokens": 739,
+        "outputTokens": 106,
+        "costUsd": 0.000031038
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2466,
+        "promptTokens": 579,
+        "completionTokens": 197
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2662,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-08",
+      "conversationGroupId": "ucr-h-user-group-04",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.98,
+        "selectedProbability": 0.98,
+        "multipleDomains": 0.11,
+        "independentMeaning": 0.16,
+        "latencyMs": 158,
+        "inputTokens": 743,
+        "outputTokens": 106,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2310,
+        "promptTokens": 584,
+        "completionTokens": 175
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2468,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-09",
+      "conversationGroupId": "ucr-h-user-group-05",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.99,
+        "selectedProbability": 1,
+        "multipleDomains": 0.09,
+        "independentMeaning": 0.04,
+        "latencyMs": 167,
+        "inputTokens": 730,
+        "outputTokens": 106,
+        "costUsd": 0.00003066
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1960,
+        "promptTokens": 573,
+        "completionTokens": 129
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2127,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-10",
+      "conversationGroupId": "ucr-h-user-group-05",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.94,
+        "selectedProbability": 0.96,
+        "multipleDomains": 0.14,
+        "independentMeaning": 0.11,
+        "latencyMs": 153,
+        "inputTokens": 746,
+        "outputTokens": 106,
+        "costUsd": 0.000031332
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2294,
+        "promptTokens": 584,
+        "completionTokens": 161
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2447,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-11",
+      "conversationGroupId": "ucr-h-user-group-06",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.1,
+        "independentMeaning": 0.11,
+        "latencyMs": 162,
+        "inputTokens": 740,
+        "outputTokens": 106,
+        "costUsd": 0.00003108
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2096,
+        "promptTokens": 579,
+        "completionTokens": 153
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2258,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-12",
+      "conversationGroupId": "ucr-h-user-group-06",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.99,
+        "selectedProbability": 0.99,
+        "multipleDomains": 0.14,
+        "independentMeaning": 0.15,
+        "latencyMs": 149,
+        "inputTokens": 743,
+        "outputTokens": 106,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5577,
+        "promptTokens": 584,
+        "completionTokens": 514
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5726,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-13",
+      "conversationGroupId": "ucr-h-user-group-07",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.89,
+        "selectedProbability": 0.92,
+        "multipleDomains": 0.15,
+        "independentMeaning": 0.24,
+        "latencyMs": 199,
+        "inputTokens": 738,
+        "outputTokens": 106,
+        "costUsd": 0.000030996
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2130,
+        "promptTokens": 579,
+        "completionTokens": 176
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2329,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-14",
+      "conversationGroupId": "ucr-h-user-group-07",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 1,
+        "selectedProbability": 1,
+        "multipleDomains": 0.13,
+        "independentMeaning": 0.23,
+        "latencyMs": 208,
+        "inputTokens": 742,
+        "outputTokens": 106,
+        "costUsd": 0.000031164
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1888,
+        "promptTokens": 583,
+        "completionTokens": 144
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2096,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-15",
+      "conversationGroupId": "ucr-h-user-group-08",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.97,
+        "selectedProbability": 0.97,
+        "multipleDomains": 0.1,
+        "independentMeaning": 0.32,
+        "latencyMs": 205,
+        "inputTokens": 744,
+        "outputTokens": 106,
+        "costUsd": 0.000031248
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1904,
+        "promptTokens": 582,
+        "completionTokens": 142
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2109,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-user-16",
+      "conversationGroupId": "ucr-h-user-group-08",
+      "split": "holdout",
+      "evaluationClass": "user_context_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.99,
+        "selectedProbability": 1,
+        "multipleDomains": 0.15,
+        "independentMeaning": 0.16,
+        "latencyMs": 228,
+        "inputTokens": 742,
+        "outputTokens": 106,
+        "costUsd": 0.000031164
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2959,
+        "promptTokens": 582,
+        "completionTokens": 249
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3187,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-01",
+      "conversationGroupId": "ucr-h-mixed-group-01",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.8,
+        "selectedProbability": 0.83,
+        "multipleDomains": 0.82,
+        "independentMeaning": 0.55,
+        "latencyMs": 196,
+        "inputTokens": 750,
+        "outputTokens": 107,
+        "costUsd": 0.0000315
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5369,
+        "promptTokens": 588,
+        "completionTokens": 441
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5565,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-02",
+      "conversationGroupId": "ucr-h-mixed-group-01",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.57,
+        "selectedProbability": 0.64,
+        "multipleDomains": 0.47,
+        "independentMeaning": 0.15,
+        "latencyMs": 165,
+        "inputTokens": 743,
+        "outputTokens": 107,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3113,
+        "promptTokens": 584,
+        "completionTokens": 228
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3278,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-03",
+      "conversationGroupId": "ucr-h-mixed-group-02",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.51,
+        "selectedProbability": 0.59,
+        "multipleDomains": 0.62,
+        "independentMeaning": 0.5,
+        "latencyMs": 178,
+        "inputTokens": 745,
+        "outputTokens": 107,
+        "costUsd": 0.00003129
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5610,
+        "promptTokens": 585,
+        "completionTokens": 488
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5788,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-04",
+      "conversationGroupId": "ucr-h-mixed-group-02",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.42,
+        "selectedProbability": 0.51,
+        "multipleDomains": 0.19,
+        "independentMeaning": 0.15,
+        "latencyMs": 216,
+        "inputTokens": 745,
+        "outputTokens": 107,
+        "costUsd": 0.00003129
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 2938,
+        "promptTokens": 582,
+        "completionTokens": 231
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3154,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-05",
+      "conversationGroupId": "ucr-h-mixed-group-03",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.82,
+        "selectedProbability": 0.85,
+        "multipleDomains": 0.87,
+        "independentMeaning": 0.84,
+        "latencyMs": 193,
+        "inputTokens": 751,
+        "outputTokens": 107,
+        "costUsd": 0.000031542
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 3466,
+        "promptTokens": 586,
+        "completionTokens": 280
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "schedule",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3659,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-06",
+      "conversationGroupId": "ucr-h-mixed-group-03",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.85,
+        "selectedProbability": 0.88,
+        "multipleDomains": 0.77,
+        "independentMeaning": 0.45,
+        "latencyMs": 168,
+        "inputTokens": 750,
+        "outputTokens": 107,
+        "costUsd": 0.0000315
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 6652,
+        "promptTokens": 587,
+        "completionTokens": 569
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 6820,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-07",
+      "conversationGroupId": "ucr-h-mixed-group-04",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.41,
+        "selectedProbability": 0.51,
+        "multipleDomains": 0.36,
+        "independentMeaning": 0.12,
+        "latencyMs": 154,
+        "inputTokens": 745,
+        "outputTokens": 106,
+        "costUsd": 0.00003129
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5838,
+        "promptTokens": 584,
+        "completionTokens": 521
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5992,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-08",
+      "conversationGroupId": "ucr-h-mixed-group-04",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.56,
+        "selectedProbability": 0.63,
+        "multipleDomains": 0.16,
+        "independentMeaning": 0.1,
+        "latencyMs": 189,
+        "inputTokens": 743,
+        "outputTokens": 107,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 5230,
+        "promptTokens": 580,
+        "completionTokens": 458
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5419,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-09",
+      "conversationGroupId": "ucr-h-mixed-group-05",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.55,
+        "selectedProbability": 0.62,
+        "multipleDomains": 0.47,
+        "independentMeaning": 0.36,
+        "latencyMs": 175,
+        "inputTokens": 744,
+        "outputTokens": 106,
+        "costUsd": 0.000031248
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5846,
+        "promptTokens": 586,
+        "completionTokens": 527
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 6021,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-10",
+      "conversationGroupId": "ucr-h-mixed-group-05",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "abstained_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "schedule",
+        "gate": "abstained",
+        "reason": "conflicting_heads",
+        "confidence": 0.54,
+        "selectedProbability": 0.62,
+        "multipleDomains": 0.51,
+        "independentMeaning": 0.54,
+        "latencyMs": 161,
+        "inputTokens": 746,
+        "outputTokens": 105,
+        "costUsd": 0.000031332
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 5970,
+        "promptTokens": 586,
+        "completionTokens": 643
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 6131,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-11",
+      "conversationGroupId": "ucr-h-mixed-group-06",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.7,
+        "selectedProbability": 0.75,
+        "multipleDomains": 0.24,
+        "independentMeaning": 0.24,
+        "latencyMs": 236,
+        "inputTokens": 746,
+        "outputTokens": 107,
+        "costUsd": 0.000031332
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2819,
+        "promptTokens": 587,
+        "completionTokens": 229
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3055,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-12",
+      "conversationGroupId": "ucr-h-mixed-group-06",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.32,
+        "selectedProbability": 0.44,
+        "multipleDomains": 0.3,
+        "independentMeaning": 0.27,
+        "latencyMs": 163,
+        "inputTokens": 748,
+        "outputTokens": 106,
+        "costUsd": 0.000031416
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3187,
+        "promptTokens": 586,
+        "completionTokens": 241
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3350,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-13",
+      "conversationGroupId": "ucr-h-mixed-group-07",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.91,
+        "selectedProbability": 0.92,
+        "multipleDomains": 0.79,
+        "independentMeaning": 0.44,
+        "latencyMs": 197,
+        "inputTokens": 747,
+        "outputTokens": 107,
+        "costUsd": 0.000031374
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "timetable",
+        "reason": null,
+        "latencyMs": 5111,
+        "promptTokens": 587,
+        "completionTokens": 408
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "timetable",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 5308,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-14",
+      "conversationGroupId": "ucr-h-mixed-group-07",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.65,
+        "selectedProbability": 0.71,
+        "multipleDomains": 0.77,
+        "independentMeaning": 0.93,
+        "latencyMs": 308,
+        "inputTokens": 752,
+        "outputTokens": 107,
+        "costUsd": 0.000031584
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 6406,
+        "promptTokens": 588,
+        "completionTokens": 515
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 6714,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-15",
+      "conversationGroupId": "ucr-h-mixed-group-08",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.94,
+        "selectedProbability": 0.94,
+        "multipleDomains": 0.92,
+        "independentMeaning": 0.85,
+        "latencyMs": 174,
+        "inputTokens": 749,
+        "outputTokens": 107,
+        "costUsd": 0.000031458
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 3717,
+        "promptTokens": 589,
+        "completionTokens": 304
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3891,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-mixed-16",
+      "conversationGroupId": "ucr-h-mixed-group-08",
+      "split": "holdout",
+      "evaluationClass": "mixed_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": null,
+      "labelStatus": "opus-5.5-limited-judge",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.92,
+        "selectedProbability": 0.93,
+        "multipleDomains": 0.79,
+        "independentMeaning": 0.88,
+        "latencyMs": 180,
+        "inputTokens": 751,
+        "outputTokens": 107,
+        "costUsd": 0.000031542
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "actual",
+        "reason": null,
+        "latencyMs": 4818,
+        "promptTokens": 583,
+        "completionTokens": 404
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "actual",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 4998,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-01",
+      "conversationGroupId": "ucr-h-security-group-01",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.83,
+        "selectedProbability": 0.86,
+        "multipleDomains": 0.59,
+        "independentMeaning": 0.97,
+        "latencyMs": 168,
+        "inputTokens": 749,
+        "outputTokens": 106,
+        "costUsd": 0.000031458
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2019,
+        "promptTokens": 585,
+        "completionTokens": 140
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2187,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-02",
+      "conversationGroupId": "ucr-h-security-group-01",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.4,
+        "selectedProbability": 0.5,
+        "multipleDomains": 0.64,
+        "independentMeaning": 0.82,
+        "latencyMs": 151,
+        "inputTokens": 745,
+        "outputTokens": 107,
+        "costUsd": 0.00003129
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2224,
+        "promptTokens": 581,
+        "completionTokens": 168
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2375,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-03",
+      "conversationGroupId": "ucr-h-security-group-02",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.87,
+        "selectedProbability": 0.9,
+        "multipleDomains": 0.38,
+        "independentMeaning": 0.73,
+        "latencyMs": 188,
+        "inputTokens": 742,
+        "outputTokens": 106,
+        "costUsd": 0.000031164
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2214,
+        "promptTokens": 585,
+        "completionTokens": 147
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2402,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-04",
+      "conversationGroupId": "ucr-h-security-group-02",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.44,
+        "selectedProbability": 0.52,
+        "multipleDomains": 0.45,
+        "independentMeaning": 0.96,
+        "latencyMs": 154,
+        "inputTokens": 752,
+        "outputTokens": 107,
+        "costUsd": 0.000031584
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2241,
+        "promptTokens": 588,
+        "completionTokens": 165
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2395,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-05",
+      "conversationGroupId": "ucr-h-security-group-03",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.88,
+        "selectedProbability": 0.9,
+        "multipleDomains": 0.61,
+        "independentMeaning": 0.96,
+        "latencyMs": 160,
+        "inputTokens": 748,
+        "outputTokens": 106,
+        "costUsd": 0.000031416
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1584,
+        "promptTokens": 585,
+        "completionTokens": 115
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 1744,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-06",
+      "conversationGroupId": "ucr-h-security-group-03",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.31,
+        "selectedProbability": 0.43,
+        "multipleDomains": 0.39,
+        "independentMeaning": 0.93,
+        "latencyMs": 201,
+        "inputTokens": 750,
+        "outputTokens": 106,
+        "costUsd": 0.0000315
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2733,
+        "promptTokens": 589,
+        "completionTokens": 198
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2934,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-07",
+      "conversationGroupId": "ucr-h-security-group-04",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.83,
+        "selectedProbability": 0.86,
+        "multipleDomains": 0.13,
+        "independentMeaning": 0.68,
+        "latencyMs": 194,
+        "inputTokens": 743,
+        "outputTokens": 106,
+        "costUsd": 0.000031206
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2022,
+        "promptTokens": 583,
+        "completionTokens": 134
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2216,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-08",
+      "conversationGroupId": "ucr-h-security-group-04",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.77,
+        "selectedProbability": 0.81,
+        "multipleDomains": 0.43,
+        "independentMeaning": 0.72,
+        "latencyMs": 222,
+        "inputTokens": 771,
+        "outputTokens": 106,
+        "costUsd": 0.000032382
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1830,
+        "promptTokens": 612,
+        "completionTokens": 151
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2052,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-09",
+      "conversationGroupId": "ucr-h-security-group-05",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.24,
+        "selectedProbability": 0.38,
+        "multipleDomains": 0.61,
+        "independentMeaning": 0.98,
+        "latencyMs": 156,
+        "inputTokens": 739,
+        "outputTokens": 107,
+        "costUsd": 0.000031038
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "schedule",
+        "reason": null,
+        "latencyMs": 3251,
+        "promptTokens": 578,
+        "completionTokens": 259
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "schedule",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3407,
+        "labelAgreement": false
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-10",
+      "conversationGroupId": "ucr-h-security-group-05",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.59,
+        "selectedProbability": 0.66,
+        "multipleDomains": 0.63,
+        "independentMeaning": 0.96,
+        "latencyMs": 166,
+        "inputTokens": 747,
+        "outputTokens": 107,
+        "costUsd": 0.000031374
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1852,
+        "promptTokens": 588,
+        "completionTokens": 144
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2018,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-11",
+      "conversationGroupId": "ucr-h-security-group-06",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.61,
+        "selectedProbability": 0.68,
+        "multipleDomains": 0.28,
+        "independentMeaning": 0.97,
+        "latencyMs": 276,
+        "inputTokens": 749,
+        "outputTokens": 106,
+        "costUsd": 0.000031458
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2169,
+        "promptTokens": 589,
+        "completionTokens": 162
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2445,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-12",
+      "conversationGroupId": "ucr-h-security-group-06",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.94,
+        "selectedProbability": 0.96,
+        "multipleDomains": 0.58,
+        "independentMeaning": 0.95,
+        "latencyMs": 251,
+        "inputTokens": 749,
+        "outputTokens": 107,
+        "costUsd": 0.000031458
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2613,
+        "promptTokens": 581,
+        "completionTokens": 169
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2864,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-13",
+      "conversationGroupId": "ucr-h-security-group-07",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "uncertain",
+        "gate": "deferred",
+        "reason": "uncertain_choice",
+        "confidence": 0.46,
+        "selectedProbability": 0.55,
+        "multipleDomains": 0.47,
+        "independentMeaning": 0.95,
+        "latencyMs": 213,
+        "inputTokens": 745,
+        "outputTokens": 107,
+        "costUsd": 0.00003129
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2792,
+        "promptTokens": 582,
+        "completionTokens": 208
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 3005,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-14",
+      "conversationGroupId": "ucr-h-security-group-07",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.47,
+        "selectedProbability": 0.5700000000000001,
+        "multipleDomains": 0.71,
+        "independentMeaning": 0.95,
+        "latencyMs": 213,
+        "inputTokens": 749,
+        "outputTokens": 106,
+        "costUsd": 0.000031458
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 1930,
+        "promptTokens": 589,
+        "completionTokens": 145
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2143,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-15",
+      "conversationGroupId": "ucr-h-security-group-08",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.84,
+        "selectedProbability": 0.88,
+        "multipleDomains": 0.38,
+        "independentMeaning": 0.73,
+        "latencyMs": 233,
+        "inputTokens": 747,
+        "outputTokens": 106,
+        "costUsd": 0.000031374
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2049,
+        "promptTokens": 586,
+        "completionTokens": 140
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2282,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    },
+    {
+      "id": "ucr-h-security-16",
+      "conversationGroupId": "ucr-h-security-group-08",
+      "split": "holdout",
+      "evaluationClass": "security_negative",
+      "expectedRoute": "luna",
+      "expectedTargetDomain": "user_context",
+      "labelStatus": "synthetic_unreviewed",
+      "route": "deferred_to_luna",
+      "jev": {
+        "status": "evaluated",
+        "decision": "user_context",
+        "gate": "deferred",
+        "reason": "luna_owned",
+        "confidence": 0.45,
+        "selectedProbability": 0.54,
+        "multipleDomains": 0.91,
+        "independentMeaning": 0.96,
+        "latencyMs": 188,
+        "inputTokens": 751,
+        "outputTokens": 106,
+        "costUsd": 0.000031542
+      },
+      "luna": {
+        "called": true,
+        "status": "evaluated",
+        "targetDomain": "user_context",
+        "reason": null,
+        "latencyMs": 2092,
+        "promptTokens": 585,
+        "completionTokens": 151
+      },
+      "final": {
+        "status": "evaluated",
+        "route": "luna",
+        "targetDomain": "user_context",
+        "unexpectedOutputKeys": [],
+        "httpStatus": 200,
+        "totalLatencyMs": 2280,
+        "labelAgreement": true
+      },
+      "authority": {
+        "maximumEffect": "fixed_owner_guide_or_existing_interpreter",
+        "approvalGranted": false,
+        "saveGrantedByJev": false,
+        "recordFieldsGeneratedByJev": false
+      }
+    }
+  ]
 }
