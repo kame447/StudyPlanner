@@ -1,7 +1,7 @@
 # User Context：read/writeサービスの詳細設計
 
 Status: supporting target architecture / not a shipped runtime guarantee
-Updated: 2026-09-12
+Updated: 2026-09-27
 Owner Issue: #294
 
 この文書は [Memory and conversation architecture](memory-and-conversation.md) を、実装インターフェースと処理境界へ具体化する補助設計である。authority・lifecycle・forget・surfacingの正仕様は [既存policy](../policies/memory-lifecycle-and-surfacing.md)、品質要件は [既存quality](../quality/regression-scenarios.md) に置く。この文書を第二の正仕様や、実装済みの宣言として扱わない。矛盾が見つかったら担当canonical文書を明示的に改訂するまで実装を止める。
@@ -126,13 +126,53 @@ type ContextBundle<CurrentFacts, WorkingState> = {
 
 検索engineへ渡す前にowner/access/scope/lifecycle/期間/sensitivityを絞り、返却後にも正本のID/revisionを検証する。revokedを低スコアにするだけの実装は禁止する。現在値を聞かれた検索と過去の経緯を聞かれた検索を分け、historicalやneeds_reviewを現在の確定条件へ混ぜない。
 
-初期実装は現行snapshot上限内の純粋走査とする。明示scope一致、entity、語彙的関連性、時期、重複を用い、tie-breakをstable IDで固定する。文字検索は候補発見であって意味解釈ではない。検索した文章から承認・予定変更・永続保存の意思をコードで推定しない。
+### 6.1 候補発見のbaseline
+
+初期baselineは現行snapshot上限内の純粋走査とする。明示scope一致、entity、語彙的関連性、時期、重複を用い、tie-breakをstable IDで固定する。文字検索は候補発見であって意味解釈ではない。検索した文章から承認・予定変更・永続保存の意思をコードで推定しない。
 
 無関係なrecent fallbackで枠を埋めず、no_matchを正常結果として認める。使用回数は補助信号に留め、過去に使った記憶が永久に勝つ自己強化を避ける。候補数上限、採用件数、request全体のtoken/bytes予算を分ける。候補40件・採用12件・memory領域2,000推定token等は実験候補にすぎず、測定前の保証値にしない。
 
-embeddingは許可済み候補の言い換えmiss改善を測ってから導入する。indexはsource ID/revision/scope/index versionで正本へ戻し、古いindexを直接信じない。外部vector DBを初期必須dependencyにせず、失敗時は検証済みlexical baselineへ戻す。owner/forgetのfilterを迂回するfallbackは禁止する。
+embeddingはbaselineのparaphrase missを同一corpusで測ってから追加する。indexはsource ID/revision/scope/index versionで正本へ戻し、古いindexを直接信じない。外部vector DBを初期必須dependencyにせず、失敗時は検証済みlexical baselineへ戻す。owner/forgetのfilterを迂回するfallbackは禁止する。
 
-AI rerankerも必要性の確認後に、候補数上限と1回上限を持つ任意処理にする。出力は候補IDの順位と理由のみで、本文・authority・lifecycleを変更できない。追加読取とrerankerを同時導入せず、どの変更で改善したかを分離する。
+### 6.2 rerank方式の比較
+
+候補は概念レベルで並列な代替案であり、同時に全部導入する前提ではない。
+
+1. lexical/entity baselineだけで採用する。
+   - 支持する証拠: 現行件数と会話corpusで必要なmemoryを十分なprecision/recallで取得できる。
+   - 反証条件: 言い換え、遠い文脈依存、複数候補の必要性判断で再現可能なmissが残る。
+   - blast radius: 最小。provider依存も追加しない。
+   - 直接検証: longitudinal corpusでretrieval miss、false selection、context量を測る。
+2. lexical/entityにsemantic/vector candidate discoveryだけを追加する。
+   - 支持する証拠: baselineが落とすparaphraseを回収し、false candidate増加を後段のdeterministic policyで十分抑えられる。
+   - 反証条件: semantic similarityだけでは「今この処理に必要か」を区別できず、context汚染が増える。
+   - blast radius: index lifecycle、forget propagation、migration/運用が増える。
+   - 直接検証: 同一sealed corpusでbaselineとの差分を測り、index失効・revoke回帰を実行する。
+3. bounded candidate discoveryの後にJev等のtyped semantic rerankerを追加する。
+   - 支持する証拠: 候補は列挙できるが、現在の依頼に本当に必要かという意味判断でbaseline/embeddingだけではprecisionを満たせない。JevのScore/Choice型へ自然に落とせる。
+   - 反証条件: baselineまたはembeddingのみで同等以上の品質・context削減を達成する、またはrerankのlatency/cost/failureが利益を上回る。
+   - blast radius: AI gateway、評価corpus、gate、fallback、telemetryが増える。ただしmemoryのwrite/lifecycle ownerは増やさない。
+   - 直接検証: 同一sealed corpusで「候補発見まで同じ」に固定し、rerank有無だけを比較する。
+
+現時点のtarget architectureは3を「必要なら評価する候補」として明示するが、本番採用を先に決めない。最小baselineで品質gateを満たすならrerankerを入れない。
+
+### 6.3 Jev rerankerの責任境界
+
+Jevを使う場合、入力はeligibilityと既知のconflict解決後のbounded candidateと、現在のrequest/interactionを説明する最小限のtyped contextに限定する。Jevに全履歴、revoked本文、別ownerのcurrent stateを無差別に渡さない。
+
+出力は候補IDに対するvalidated relevance judgmentに限定し、本文、canonical ID、authority、scope、validity、supersession、lifecycle、保存先を変更できない。正式な候補IDとのbindingはapplicationが保持する。providerが候補集合外のIDや未知fieldを返したら棄却する。
+
+一候補ごとの独立remote requestを履歴件数に比例して発行しない。provider primitiveが許す場合は、同じbounded stateに対する複数judgmentを一回のbounded operationへまとめる。採用数とmodel-facing context budgetはreranker自身ではなくapplication policyが決める。
+
+Jevのtimeout、429/5xx、malformed、model mismatch、低confidence、abstainは意味上の「irrelevant」と混同しない。verified baselineへのfallbackまたはmemory追加なしのdegraded pathとして区別し、core planning/saveを止めない。
+
+### 6.4 Issue所有権とrollout
+
+memory retrievalの正しさ、candidate policy、currentness、context projection、rollout/rollbackは#294が所有する。#305から再利用するのはJev provider port、typed validation、gate/telemetry/evaluationの設計知見であり、#305がmemoryの正本になるわけではない。
+
+PR #339で導入したuser-context保存先owner routingとは目的・入力分布・誤りの意味が異なる。したがって、そのholdout、threshold、canary結果をmemory rerankへ転用しない。rerank用に別purpose、別sealed corpus、別gateを持ち、まずoff/shadow相当でbaseline比較を行う。
+
+追加読取、embedding、Jev rerankを一つのrelease unitで同時に導入しない。どの変更がretrieval miss、false selection、context量、latency、costへ効いたかを分離して評価する。
 
 ## 7. 必要時の追加読取
 

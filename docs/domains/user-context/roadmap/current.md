@@ -1,7 +1,7 @@
 # User Context Current Roadmap
 
 Status: canonical current execution order
-Updated: 2026-09-13
+Updated: 2026-09-27
 Owner Issue: #294
 
 全体の責務は [architecture](../architecture/memory-and-conversation.md)、継続する規則は [policy](../policies/memory-lifecycle-and-surfacing.md)、品質条件は [quality](../quality/regression-scenarios.md) を正とする。実装インターフェースは [supporting service design](../architecture/context-service-contract.md)、変更箇所と受入条件は [実装work](../work/20260912-context-harness-delivery.md) を参照する。
@@ -48,15 +48,34 @@ Exit gateは訂正が競合するactive truthを作らず、forgetがreloadと�
 
 ## Phase 2 — episodic memory and bounded retrieval
 
-UC-P2A/P2Bでowner/scope/lifecycle資格、exact entity/lexical、必要性を検証したsemantic retrieval、上限付き候補とcontextを提供する。UC-P3で会話横断episodeのprovenance/timeと永続処理を追加し、既存Graph-derived episodeとは区別する。embedding実装自体を目的化しない。
+UC-P2Aでowner/scope/lifecycle/accessのeligibilityとexact entity/lexical baselineを固定する。まず「全件をpromptへ渡さない」ことと、authoritative empty / no_match / unavailableを区別するread contractを完成させる。
+
+UC-P2Bではbaselineの再現可能なmissに対してだけsemantic/vector candidate discoveryを比較する。embedding実装そのものを目的化せず、同一corpusでparaphrase recall、false candidate、index失効、forget、context量、latencyを測る。改善がなければbaselineを維持する。
+
+UC-P3で会話横断episodeのprovenance/timeと永続処理を追加し、既存Graph-derived episodeとは区別する。
 
 Exit gateは関連情報を会話横断で取得でき、wrong-owner/scope/revokedがsimilarityに関係なく除外され、unavailableとauthoritative emptyを区別し、保存履歴全体に比例したprompt増大へ戻らないこと。callbackはこのphaseの必須ではない。
 
-## Phase 3 — temporal conflict resolution and rerank
+## Phase 3 — temporal conflict resolution and bounded semantic rerank
 
-current Structured State、supersession、origin/authority、validity、conflict分類を検索とprojectionに反映する。AIへ同じ重みのcurrent factとして矛盾情報を丸投げしない。bounded rerankは必要な場合だけ導入する。
+current Structured State、supersession、origin/authority、validity、conflict分類を検索とprojectionに反映する。AIへ同じ重みのcurrent factとして矛盾情報を丸投げしない。deterministicに解ける古い/currentの関係を解決してからsemantic rerankへ進む。
 
-Exit gateは古い教材progress・予定・preferenceが現在値をshadowせず、既知の機械的根拠で解ける矛盾を解消してからモデルへ渡すこと。初期の安全条件はUC-P2Aのrelease前から必須とする。
+baselineまたはsemantic candidate discoveryだけでは「今この依頼に必要なmemoryか」を十分に絞れない場合、Jevをbounded rerankerとして比較する。これは#294のretrieval release unitであり、#305のJev provider/typed validation/gating/evaluation基盤を再利用してよいが、PR #339のuser-context保存先routingとは別purpose・別corpus・別gateとする。
+
+導入順は次の差分を一度に一つだけ比較できるよう固定する。
+
+```text
+lexical/entity baseline
+→ 必要なら semantic/vector candidate discovery
+→ 必要なら Jev bounded rerank
+→ selected context
+```
+
+Jev評価では、候補集合をapplicationが先にboundedに固定し、候補外ID、malformed、低confidence、timeout、provider unavailableを棄却する。Jevはauthority、lifecycle、current truth、保存、supersessionを決めない。失敗時は検証済みbaselineまたはmemory追加なしへdegradeし、core planning/saveを止めない。
+
+本番採用前に同一sealed corpusでrerankなし/ありを比較し、retrieval miss、false selected context、stale/currentness failure、context bytes/tokens、latency、cost、remote model call数を別々に記録する。thresholdは他のJev用途から転用せず、このpurposeの調整用setと固定holdoutから決める。human-reviewed goldを優先し、synthetic judgeだけの一致率をaccuracyと呼ばない。
+
+Exit gateは古い教材progress・予定・preferenceが現在値をshadowせず、既知の機械的根拠で解ける矛盾を解消してからモデルへ渡すこと。Jevを採用する場合は、baselineに対する明確な品質またはcontext-budget上の利益があり、latency/cost/failure増加を含めてもrelease条件を満たすこと。改善が確認できなければJev rerankは導入しない。
 
 ## Phase 4 — surface planning and natural realization
 

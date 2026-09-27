@@ -1,7 +1,7 @@
 # User Context
 
 Status: canonical domain index
-Updated: 2026-09-13
+Updated: 2026-09-27
 Owner Issue: #294
 
 このdomainは、アプリ全体で使うdurable user context、semantic/episodic memory、検索、lifecycle/forget、検索した記憶を会話へ出してよいかの判断を所有する。StudyPlannerを開発するエージェントのskills/orchestrationは#212の別scopeであり、ここへ統合しない。
@@ -21,6 +21,10 @@ Agents APIの用途は、複数情報源を調べる学習相談の助言候補�
 current structured stateは担当domainの現在の正本、semantic/profile memoryは別の現在値ownerがない再利用可能なユーザー固有の意味、episodic evidenceは時期と出典を持つ過去の根拠、working stateは現在のinteraction/sessionである。回復のため保存した会話状態を、そのまま恒常的なユーザーの好みと解釈しない。
 
 検索に出ることと、現在正しいことと、口に出してよいことは別である。古い記憶で現在値を上書きせず、取得しただけで毎回callbackしない。AIは意味候補を出し、owner、ID、revision、正式な変更、承認、保存はアプリが決める。
+
+retrievalは「保存形式」と「検索方法」を同一視しない。正本のmemory itemはidentity/provenance/authority/lifecycle/timeを保持し、lexical/entityやembeddingは候補発見、必要ならJev等のbounded semantic rerankerはその候補が現在の依頼に役立つかの絞り込みを担当する。Jevが高い関連度を返しても、revoked、wrong-scope、superseded、別domainが所有するcurrent truthを復活させない。
+
+Jevをmemory retrievalへ使う場合の機能ownerは#294のまま維持する。#305からprovider/typed validation/gate/evaluationの仕組みを再利用してよいが、保存先owner routingや他のJev用途のthreshold/corpusをそのまま流用しない。詳細は [Memory and conversation architecture](architecture/memory-and-conversation.md)、[read/writeサービスの詳細設計](architecture/context-service-contract.md)、[Current roadmap](roadmap/current.md) を参照する。
 
 ## Current state
 

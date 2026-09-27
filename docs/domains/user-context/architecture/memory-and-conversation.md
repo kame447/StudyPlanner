@@ -1,7 +1,7 @@
 # User Context Memory and Conversation Architecture
 
 Status: canonical architecture contract
-Updated: 2026-09-11
+Updated: 2026-09-27
 Owner Issue: #294
 
 Parent index: [../README.md](../README.md)
@@ -225,7 +225,7 @@ No raw-text regex, keyword table, or legacy parser becomes the semantic authorit
 
 ## 6. Read and retrieval architecture
 
-Memory must not be loaded wholesale into every model request.
+Memory must not be loaded wholesale into every model request. Retrieval is a staged reduction problem: first determine what is eligible and potentially relevant, then decide which of those candidates materially helps the current interaction.
 
 The target pipeline is:
 
@@ -236,34 +236,44 @@ current request
         ↓
 owner / user / scope / lifecycle eligibility filter
         ↓
-lexical retrieval + semantic retrieval
+bounded candidate discovery
+  lexical / entity baseline
+  + optional semantic / vector retrieval
         ↓
 temporal / authority / supersession conflict resolution
         ↓
 bounded relevance rerank
+  deterministic baseline first
+  Jev is an evaluation candidate where a typed relevance judgment fits
+        ↓
+selected context
         ↓
 Surface Planner
         ↓
-selected context projection
+model-facing context projection
         ↓
 response realization
 ```
 
+This pipeline intentionally separates storage, candidate discovery, semantic relevance, current-truth resolution, and conversational surfacing. No retrieval model becomes a new memory store or source of truth.
+
 ### 6.1 Eligibility filter comes before ranking
 
-Revoked, wrong-owner, invalid-scope, expired-as-current, superseded, or otherwise ineligible items must not survive simply because they have high semantic similarity.
+Revoked, wrong-owner, invalid-scope, expired-as-current, superseded, inaccessible, or otherwise ineligible items must not survive simply because they have high lexical, vector, or model relevance.
 
-Security and lifecycle filters are not relevance scores.
+Security, authority, lifecycle, and access checks are predicates, not ranking features. A reranker is never allowed to recover an item that deterministic eligibility excluded.
 
-### 6.2 Hybrid retrieval
+### 6.2 Candidate discovery is hybrid and replaceable
 
-Semantic/vector similarity may be useful for paraphrases. Lexical/entity matching may be useful for exact names, stable identifiers, or rare terms. Neither becomes the sole authority.
+Lexical/entity retrieval remains the minimum baseline because exact material names, stable identifiers, and rare terms may have weak semantic similarity. Semantic/vector retrieval may be added when measured evaluation shows that it recovers paraphrases or conceptually related evidence that the baseline misses.
 
-A future implementation may combine them, but the architecture contract is about behavior rather than choosing one vendor or vector database.
+Embedding is a derived search projection, not the canonical representation of memory. The authoritative item remains the source record with stable identity, provenance, scope, lifecycle, revision, and time semantics.
 
-### 6.3 Temporal and authority conflict resolution
+The architecture does not require a vector database. A future implementation may combine lexical and semantic retrieval, but each additional retrieval mechanism must justify its latency, privacy, operational, and correctness cost against the existing baseline.
 
-When multiple items refer to the same semantic target, retrieval must resolve which item may represent current meaning before model realization.
+### 6.3 Temporal and authority conflict resolution precedes semantic rerank
+
+When multiple items refer to the same semantic target, retrieval must resolve which item may represent current meaning before a semantic reranker decides usefulness.
 
 Inputs include:
 
@@ -275,23 +285,41 @@ Inputs include:
 - revoke state
 - scope
 
-Do not ask the LLM to freely choose between contradictory records after all of them have already been promoted as equally trusted prompt facts.
+Do not ask Jev, Luna, or another model to freely choose between contradictory records after all of them have already been promoted as equally trusted prompt facts. If deterministic evidence can establish that one item is stale, revoked, superseded, or owned by another current-state domain, resolve that relation before reranking.
 
-### 6.4 Bounded rerank
+### 6.4 Jev may be evaluated as a bounded relevance reranker
 
-Reranking is allowed after eligibility and conflict resolution to choose the small set that best supports the current interaction.
+Jev is a good architectural candidate when the application can enumerate a bounded candidate set and ask a closed or scored question such as whether each candidate is useful for the current request. In this role Jev does not generate memory, discover arbitrary IDs, or decide formal lifecycle transitions.
 
-The reranker may use current intent, topic, entity overlap, recency, importance, and other validated signals.
+The application remains responsible for:
 
-It must remain bounded. The production path must not regress to serially evaluating an unbounded memory history with expensive model calls.
+- candidate identity and candidate-count limits
+- eligibility and conflict resolution
+- the current request/context projection given to the reranker
+- accepted score/choice schema and validation
+- threshold/gate policy
+- timeout, unavailable, and abstain handling
+- final selected-context budget
 
-### 6.5 Context projection
+Where the provider supports evaluating multiple judgments from the same bounded state, prefer one bounded rerank operation over one network/model call per memory item. The implementation must not scale remote model calls linearly with stored history.
+
+Jev failure, low confidence, malformed output, or provider unavailability must degrade to a verified bounded baseline or to no additional memory context for that purpose. It must not block core planning, approval, or save.
+
+This use is functionally owned by Issue #294 because it changes memory retrieval behavior. Issue #305 owns reusable Jev provider/typed-decision/gating/evaluation infrastructure. A memory-retrieval corpus, threshold, and rollout decision are separate from the merged user-context owner-routing unit and must not inherit that unit's gate merely because both use Jev.
+
+### 6.5 Rerank and embedding solve different problems
+
+Semantic/vector retrieval answers roughly: "which stored items are plausible candidates for this request?" A relevance reranker answers roughly: "among already eligible candidates, which items are actually useful to the current interaction?"
+
+Either layer may be omitted when the simpler pipeline meets the quality and budget gates. Introducing Jev does not imply that embeddings are required, and introducing embeddings does not remove the need for authority/lifecycle conflict resolution.
+
+### 6.6 Context projection
 
 The final model-facing projection contains only what the current purpose needs.
 
 It must preserve enough provenance and confidence/temporal meaning to prevent historical or inferred material from appearing as unquestioned current user fact.
 
-Raw storage records, internal database metadata, embeddings, or tombstone text need not be sent to the answer model.
+Raw storage records, internal database metadata, embeddings, tombstone text, and reranker implementation details need not be sent to the answer model.
 
 ## 7. Surface Planner
 
