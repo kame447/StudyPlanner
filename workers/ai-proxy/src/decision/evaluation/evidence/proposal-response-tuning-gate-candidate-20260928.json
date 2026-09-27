@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "proposal-response-tuning-gate-candidate-v1",
+  "sourceEvidence": "workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-20260928.json",
+  "split": "tuning",
+  "labelStatus": "synthetic_unreviewed; not human gold or accuracy",
+  "frozenGate": {
+    "version": "proposal-response-tuning-v1-pre-holdout",
+    "confidence": 0.85,
+    "probability": 0.93,
+    "conditionChangeMaximum": 0.12,
+    "independentMeaningMaximum": 0.27
+  },
+  "metrics": {
+    "caseCount": 64,
+    "directAccepts": 10,
+    "directPositiveAccepts": 10,
+    "directNegativeAccepts": 0,
+    "finalNegativePureRejects": 13,
+    "lunaOnlyFinalNegativePureRejects": 14,
+    "finalPositivePureRejects": 16,
+    "lunaOnlyFinalPositivePureRejects": 16,
+    "genericLunaCalls": 77,
+    "lunaOnlyCalls": 80,
+    "pureRejectLatencyMs": {
+      "jevDirectAcceptedProviderP50": 229,
+      "jevFirstAllPureRejectP95": 4378,
+      "lunaOnlyAllPureRejectP50": 2485,
+      "lunaOnlyAllPureRejectP95": 3113,
+      "comparisonNote": "The 229 ms value is provider latency for the direct-accepted Jev subset; it is not an end-to-end metric and must not be compared with the Luna-only p50."
+    },
+    "allLatencyMs": {
+      "jevFirstP95": 15584,
+      "lunaOnlyP95": 12896,
+      "pairedDifferenceP95": 9757,
+      "jevSerialP95": 294
+    },
+    "costUsd": {
+      "jev": 0.00218547,
+      "jevFirstLunaLower": 0.04277612,
+      "jevFirstLunaUpper": 0.1170445,
+      "lunaOnlyLower": 0.0379546,
+      "lunaOnlyUpper": 0.1146665,
+      "deltaAtLowerRatesUsd": 0.007006990000000005,
+      "deltaAtUpperRatesUsd": 0.004563469999999986
+    }
+  },
+  "limitations": [
+    "Threshold fit is based only on the tuning split.",
+    "The direct-accepted Jev provider p50 and the Luna-only end-to-end p50 are intentionally recorded as non-comparable metrics.",
+    "Luna output variance is visible in paired end-to-end tail latency and retry counts.",
+    "This analysis does not establish production frequency, human-gold quality, or holdout acceptance."
+  ],
+  "sourceFingerprints": {
+    "catalogSha256": "18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86",
+    "gateSha256": "73700b0641e2042b05be73c185d92b6d8a7e81c1f7740b8452fad7245c5a2f70",
+    "corpusSha256": "659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6"
+  },
+  "frozenFingerprints": {
+    "catalogSha256": "18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86",
+    "gateSha256": "a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077",
+    "corpusSha256": "659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6"
+  }
+}
