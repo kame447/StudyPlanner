@@ -1,5 +1,3 @@
-import { temporalSideContributionPolicyFingerprints } from './temporalSideContributionPolicyFingerprint';
-
 // Recorded immediately after corpus/catalog/gate creation, before provider
 // tuning. The holdout is never used to select or change these values.
 export const TEMPORAL_SIDE_CONTRIBUTION_PRE_TUNING_SEAL = {
@@ -11,17 +9,5 @@ export const TEMPORAL_SIDE_CONTRIBUTION_PRE_TUNING_SEAL = {
 export const TEMPORAL_SIDE_CONTRIBUTION_HOLDOUT_SEAL = {
   ...TEMPORAL_SIDE_CONTRIBUTION_PRE_TUNING_SEAL,
   gateSha256: '63a41202c79f060accc52d8b969d2062d730843a904ffeb7a738e8014d75cd9b',
-  consumed: false,
+  consumed: true,
 } as const;
-
-export async function assertTemporalSideContributionHoldoutSeal(): Promise<void> {
-  if (TEMPORAL_SIDE_CONTRIBUTION_HOLDOUT_SEAL.consumed) {
-    throw new Error('Temporal-side holdout has already been consumed.');
-  }
-  const actual = await temporalSideContributionPolicyFingerprints();
-  for (const key of ['catalogSha256', 'gateSha256', 'corpusSha256'] as const) {
-    if (actual[key] !== TEMPORAL_SIDE_CONTRIBUTION_HOLDOUT_SEAL[key]) {
-      throw new Error(`Temporal-side holdout seal mismatch: ${key}.`);
-    }
-  }
-}

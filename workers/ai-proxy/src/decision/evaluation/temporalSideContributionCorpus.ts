@@ -1,5 +1,3 @@
-import type { TemporalSideContributionDecisionContext } from '../../../../../shared/temporalSideContributionDecision';
-
 export type TemporalSideContributionSplit = 'tuning' | 'holdout';
 export type TemporalSideContributionClass = 'temporal' | 'no_temporal' | 'security';
 
@@ -10,7 +8,11 @@ export interface TemporalSideContributionCase {
   caseClass: TemporalSideContributionClass;
   expected: 'temporal_constraint_present' | 'no_temporal_side_contribution';
   labelSource: 'synthetic_unreviewed';
-  state: TemporalSideContributionDecisionContext['state'];
+  state: {
+    currentUserText: string;
+    knownTask: { title: string; category: string };
+    pendingQuestion: { questionCode: string };
+  };
 }
 
 interface Group {

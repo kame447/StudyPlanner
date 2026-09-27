@@ -3,10 +3,6 @@ import type {
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
-  isTemporalSideContributionDecisionContext,
-  type TemporalSideContributionDecisionContext,
-} from '../../../../shared/temporalSideContributionDecision';
-import {
   CANONICAL_RELATIVE_DATE_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
   isCanonicalDateExpressionSyntax,
@@ -130,17 +126,6 @@ export interface FocusedTaskTemporalSideContributionDecisionV5 {
   precision: 'exact' | 'approximate' | 'unspecified' | null;
 }
 
-export function isNoTemporalSideContributionDecisionV5(raw: string): boolean {
-  try {
-    const value = JSON.parse(raw) as unknown;
-    return isRecord(value)
-      && Object.keys(value).length === 1
-      && value.decision === 'no_temporal_side_contribution';
-  } catch {
-    return false;
-  }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -174,27 +159,6 @@ export function focusedTaskTemporalSideContributionEligibleV5(params: {
   publicStateSummary?: Record<string, unknown>;
 }): boolean {
   return existingTaskTarget(params.publicStateSummary) !== null;
-}
-
-export function focusedTaskTemporalSideContributionDecisionContextV5(params: {
-  userText: string;
-  traceRequestId?: string;
-  publicStateSummary?: Record<string, unknown>;
-}): TemporalSideContributionDecisionContext | undefined {
-  const target = existingTaskTarget(params.publicStateSummary);
-  const pendingQuestion = params.publicStateSummary?.pendingQuestion;
-  if (!target || !isRecord(pendingQuestion)) return undefined;
-  const context = {
-    purpose: 'temporal_side_contribution' as const,
-    requestId: params.traceRequestId,
-    inputRevision: params.publicStateSummary?.graphRevision,
-    state: {
-      currentUserText: params.userText,
-      knownTask: { title: target.title, category: target.category },
-      pendingQuestion: { questionCode: pendingQuestion.questionCode },
-    },
-  };
-  return isTemporalSideContributionDecisionContext(context) ? context : undefined;
 }
 
 export function createFocusedTaskTemporalSideContributionMessagesV5(params: {

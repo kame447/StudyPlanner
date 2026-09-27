@@ -212,35 +212,6 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(retryInstruction).toContain('side contributions unrelated to the pending question');
   });
 
-  it('lets a bounded Jev negative skip focused Luna while generic retry can recover timing', async () => {
-    const fake = fakeClient([
-      JSON.stringify(existingTaskShell()),
-      JSON.stringify({ decision: 'no_temporal_side_contribution' }),
-      JSON.stringify(recoveredDeadline()),
-    ]);
-    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
-      userText,
-      traceRequestId: 'temporal-side-test-request',
-      publicStateSummary: publicStateSummary(),
-    });
-
-    expect(fake.calls).toHaveLength(3);
-    expect(fake.calls[1].decisionContext).toMatchObject({
-      purpose: 'temporal_side_contribution',
-      requestId: 'temporal-side-test-request',
-      inputRevision: 2,
-      state: {
-        currentUserText: userText,
-        knownTask: { title: '研究室のレポートを仕上げる', category: 'study' },
-        pendingQuestion: { questionCode: 'missing_schedulable_work' },
-      },
-    });
-    expect(fake.calls[2].decisionContext).toBeUndefined();
-    expect(result.document?.tasks[0].temporalConstraints).toEqual([
-      expect.objectContaining({ kind: 'deadline', dateExpression: 'tomorrow' }),
-    ]);
-  });
-
   it('uses a fresh semantic context for the final generic retry after focused fallback and one no-op', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),
