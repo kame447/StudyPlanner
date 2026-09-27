@@ -15,7 +15,7 @@ The final candidate diff removes the C9-only shared decision context, Worker pol
 
 - `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-20260928.json`
 - `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-tuning-gate-candidate-20260928.json`
-- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-holdout-20260928.json` — the unique holdout run; consumed.
+- `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-holdout-20260928.json` — the unique holdout run; consumed. Its `finalPureReject` aggregate is shape-only (it does not exclude `planningIntent` other than `discuss`); see the file's `metricDefinitions`. The no-go does not depend on it.
 - `workers/ai-proxy/src/decision/evaluation/evidence/proposal-response-faults-20260928.json` — 10/10 injected faults fell back to Luna; containment errors 0.
 
 Corpus label: `synthetic_unreviewed`, not human gold. Frozen fingerprints at evaluation time: catalog `18178fee99ce475b4e2a784001818d10ae44a90d7b77201376608fc4b99eba86`, gate `a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077`, corpus `659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6`.
@@ -47,4 +47,9 @@ These checks verified the evaluated implementation before its removal. The no-go
 - C9-removal commit: `1b7dd5e6aad7b267f62868d356bfe37ef06982fe`, pushed to `origin/feat/issue-305-jev-first-proposal-reject`.
 - The PR file list is exactly this record plus the four typed evidence artifacts. GitHub checks are running on the PR; review/merge remains for the repository's normal review process.
 
-- PR checks on code-identical commit `f8b74de2aec5432a8d2cc6dfffb571bfa913a847`: Cloudflare Pages pass; Admin Overview Render pass; Browser Regression pass; CI verify pass. Run IDs: `36337981484`, `36337981481`, `36337981512` respectively (Cloudflare deployment `1207d021-8c56-4e6d-a9e3-0d849040b5ea`).
+- PR checks on code-identical commit `f8b74de2aec5432a8d2cc6dfffb571bfa913a847`, all success:
+  - CI / verify — Actions run `36337981512`
+  - Browser Regression / chromium — Actions run `36337981481`
+  - Admin Overview Render / chromium — Actions run `36337981484`
+  - Cloudflare Pages — deployment `1207d021-8c56-4e6d-a9e3-0d849040b5ea` (not a GitHub Actions run)
+- Later commits on the PR change only this record and typed evidence metadata. Checks on the final PR head are recorded in the Issue #305 checkpoint, not here.

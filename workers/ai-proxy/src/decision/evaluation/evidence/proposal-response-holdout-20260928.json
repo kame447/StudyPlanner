@@ -7,6 +7,10 @@
     "gateSha256": "a5bd99046b9e08326e697f47d7ce78525f2209b48735e26aebc3c55d90e43077",
     "corpusSha256": "659ce70ab6a0dd8f3e885cf258ce8c8a1a20adaee0f90a11f6faa151966465a6"
   },
+  "metricDefinitions": {
+    "finalPureReject": "Historical shape-only aggregate: finalShape === \"pure_reject\". It does not require planningIntent === \"discuss\" and must not be interpreted by itself as the pre-registered product-level final-document pure-reject gate.",
+    "preRegisteredFinalRejectGate": "The retained summary cannot establish this gate from finalShape alone because planningIntent is recorded separately. The C9 no-go does not depend on this aggregate: direct Jev positive accepts were 1/16 (minimum 4) and pure-reject end-to-end p50 was 3227 ms versus 2596 ms for Luna-only."
+  },
   "summary": {
     "jevFirst": {
       "route": "jev_first",
