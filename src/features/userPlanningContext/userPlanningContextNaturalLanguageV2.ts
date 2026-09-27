@@ -49,17 +49,19 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
   if (!text) throw new Error('覚えておいてほしいことを入力してください。');
   if (text.length > 2000) throw new Error('覚えておく内容が長すぎます。');
 
-  const decisionContext: UserContextRoutingDecisionContext = {
-    purpose: 'user_context_routing',
-    requestId: userContextRoutingRequestId(),
-    // This settings operation has no planning-turn graph revision. The unique
-    // requestId binds the response; the existing save path retains record ownership.
-    inputRevision: 0,
-    state: { currentUserText: text },
-  };
+  const decisionContext: UserContextRoutingDecisionContext | undefined = params.existingRecord
+    ? undefined
+    : {
+      purpose: 'user_context_routing',
+      requestId: userContextRoutingRequestId(),
+      // This settings operation has no planning-turn graph revision. The unique
+      // requestId binds the response; the existing save path retains record ownership.
+      inputRevision: 0,
+      state: { currentUserText: text },
+    };
 
   const raw = await (params.client ?? defaultClient()).createChatCompletion({
-    decisionContext,
+    ...(decisionContext ? { decisionContext } : {}),
     purpose: 'user_context_interpreter',
     temperature: 0,
     maxCompletionTokens: 700,
