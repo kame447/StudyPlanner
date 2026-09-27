@@ -1,7 +1,7 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-09-27
+Updated: 2026-09-28
 
 This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
 
@@ -18,6 +18,7 @@ Current durable records:
 - `20260927-issue305-jev-first-temporal-scope-repair.md` — Issue #305 置換単位3（temporal scope repair の Jev 第一経路。既存の Luna repair の token 上限 60→320 の修正を含む）
 - `20260927-issue305-jev-first-temporal-side-contribution.md` — Issue #305 置換単位5（temporal side contribution の Jev 第一経路は不採用とした。既存の Luna の token 上限 320→640 と `namedTimePeriod` schema の修正を含む）
 - `20260927-issue305-jev-phase2-luna-inventory.md` — Issue #305 第二段階（単位1〜5の後の Luna 呼出し経路の再棚卸し。採用なし。C3 no-op 確認 gate は no-go、C9 proposal reject は前提条件付きの次候補）
+- `20260928-issue305-question-presentation-binding.md` — Issue #305 第三段階（提示済み質問と、それを提示した assistant message・revision を結ぶ binding 基盤。C9 / C5 の前提条件 (a)）
 - 置換単位4（user context の保存先 owner の判定）の記録は user-context domain の [`../../user-context/work/20260927-issue305-jev-first-user-context-routing.md`](../../user-context/work/20260927-issue305-jev-first-user-context-routing.md) にある。単位1〜5 の結果の一覧は `20260926-issue333-japanese-semantic-evaluation.md` の「置換の結果」にある。
 
 Issue-only active scopes such as #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.

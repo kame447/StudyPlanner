@@ -1,4 +1,7 @@
 import {
+  withoutWeeklyPlanningQuestionPresentation,
+} from '../intake/weeklyPlanningQuestionPresentation';
+import {
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -19,7 +22,9 @@ function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
   return {
     compatibilityStatus: result.state.status,
     questions: result.state.questions,
-    lastQuestionContext: result.state.lastQuestionContext ?? null,
+    // The presentation binding is application state and is excluded from trace storage.
+    lastQuestionContext:
+      withoutWeeklyPlanningQuestionPresentation(result.state.lastQuestionContext) ?? null,
     shouldCreateDraft: result.state.shouldCreateDraft,
     draftGenerationIntent: result.state.draftGenerationIntent,
     previewCandidateCount: result.draftCandidates.length,

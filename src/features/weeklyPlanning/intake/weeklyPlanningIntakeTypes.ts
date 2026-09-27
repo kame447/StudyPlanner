@@ -343,6 +343,41 @@ export interface WeeklyPlanningQuestionContext {
   actionId?: string;
   estimateForWorkloadFactId?: string;
   questionBasis?: 'completed_workload_total';
+  presentation?: WeeklyPlanningQuestionPresentation;
+}
+
+/**
+ * What the application knows about the assistant message that presented a question,
+ * beyond the question itself. Rendered text stays presentation-only; these are the
+ * machine-known accompaniments that can change what a short reply refers to.
+ *
+ * `responseSource: 'deterministic_fallback'` means the application's typed question
+ * text was shown. `'ai'` means only that the renderer echoed this question's typed
+ * action contract and passed validation; whether its free text actually asks the
+ * question is not verified and must not be assumed by a consumer.
+ */
+export interface WeeklyPlanningQuestionPresentationContent {
+  responseSource: 'ai' | 'deterministic_fallback';
+  currentTurnGrounding: 'none' | 'recommended' | 'required_before_resume';
+  selfRepairNotice: boolean;
+  /** Unresolved grounding interpretations the renderer was allowed to mention. */
+  groundingContext: { proposed: number; contested: number };
+  previewPromotionControl: boolean;
+}
+
+/**
+ * Machine-readable binding between the pending question and the committed assistant
+ * message that presented it. Written only when the turn commit is accepted.
+ */
+export interface WeeklyPlanningQuestionPresentation {
+  version: 1;
+  turnId: string;
+  assistantMessageId: string;
+  /** PlanningState.revision immediately after the presenting turn committed. */
+  planningStateRevision: number;
+  /** Stable V5 graph revision committed by the presenting turn. */
+  graphRevision: number;
+  content: WeeklyPlanningQuestionPresentationContent;
 }
 
 export interface PlanningIntakeState {

@@ -30,4 +30,6 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   conversationId: string;
   traceRequestId: string;
   requestContext: WeeklyPlanningTurnRequestContext;
+  /** PlanningState.revision at turn start; binds the previous question presentation. */
+  inputStateRevision?: number;
 }

@@ -179,3 +179,52 @@ describe('Stable V5 semantic public-state question binding', () => {
     });
   });
 });
+
+describe('Stable V5 semantic public-state question presentation exclusion', () => {
+  it('keeps the presentation binding out of the semantic model input', () => {
+    const unbound: PlanningIntakeState = {
+      ...baseState(),
+      lastQuestionContext: {
+        kind: 'options',
+        targetSlot: 'stable_v5:learning_strategy_proposal',
+        intent: 'learning_strategy_proposal',
+        topicId: 'workload-1',
+        actionId: 'proposal-1',
+      },
+    };
+    const bound: PlanningIntakeState = {
+      ...unbound,
+      lastQuestionContext: {
+        ...unbound.lastQuestionContext!,
+        presentation: {
+          version: 1,
+          turnId: 'turn-presentation-sentinel',
+          assistantMessageId: 'turn-presentation-sentinel:assistant',
+          planningStateRevision: 8,
+          graphRevision: 2,
+          content: {
+            responseSource: 'ai',
+            currentTurnGrounding: 'none',
+            selfRepairNotice: false,
+          groundingContext: { proposed: 0, contested: 0 },
+          previewPromotionControl: false,},
+        },
+      },
+    };
+    const graph = { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2 };
+
+    const boundSummary = createStableV5SemanticPublicStateSummary({
+      graph,
+      messages: [],
+      previousState: bound,
+    });
+
+    // The binding is application-owned freshness evidence; semantic interpretation is unchanged.
+    expect(boundSummary).toEqual(createStableV5SemanticPublicStateSummary({
+      graph,
+      messages: [],
+      previousState: unbound,
+    }));
+    expect(JSON.stringify(boundSummary)).not.toContain('turn-presentation-sentinel');
+  });
+});

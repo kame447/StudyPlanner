@@ -10,7 +10,7 @@ const pending = {
   turnId: 'conversation-1:turn:1',
   requestId: 'conversation-1:request:1',
   weekStartDate: '2026-09-07',
-  baseRevision: 0,
+  baseRevision: 6,
   startedAt: '2026-08-11T05:55:30.000Z',
 };
 
@@ -54,6 +54,7 @@ describe('weeklyPlanningTurnRuntimeGateway', () => {
       conversationId: 'conversation-1',
       traceRequestId: 'conversation-1:request:1',
       weekStartsOn: 'monday',
+      inputStateRevision: 6,
       requestContext: {
         startedAtIso: '2026-08-11T05:55:30.000Z',
         timeZone: 'Asia/Tokyo',

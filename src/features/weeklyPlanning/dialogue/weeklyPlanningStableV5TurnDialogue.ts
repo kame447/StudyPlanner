@@ -37,6 +37,7 @@ import {
 import {
   createWeeklyPlanningStableV5DialogueProjection,
 } from '../semantic/weeklyPlanningStableV5DialogueProjection';
+import type { WeeklyPlanningQuestionPresentationContent } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
   WeeklyPlanningTurnExecutionInput,
@@ -104,16 +105,45 @@ function withAssistantMessage(params: {
   message: string;
   responseSource: 'ai' | 'deterministic_fallback' | 'rules' | 'system';
   dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace;
+  questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
 }): WeeklyPlanningTurnExecutionResult {
   const state = params.result.state.questions.length > 0
     ? { ...params.result.state, questions: [params.message] }
     : params.result.state;
+  const {
+    questionPresentationContent: _unrenderedContent,
+    ...result
+  } = params.result;
   return {
-    ...params.result,
+    ...result,
     state,
     message: params.message,
     responseSource: params.responseSource,
     dialogueRendererTrace: params.dialogueRendererTrace,
+    ...(params.questionPresentationContent && state.lastQuestionContext
+      ? { questionPresentationContent: params.questionPresentationContent }
+      : {}),
+  };
+}
+
+function questionPresentationContent(params: {
+  result: WeeklyPlanningTurnExecutionResult;
+  renderInput: WeeklyPlanningStableV5DialogueRenderInput;
+  responseSource: 'ai' | 'deterministic_fallback';
+  notice: string | null;
+}): WeeklyPlanningQuestionPresentationContent {
+  // Mirrors what the renderer receives as groundingContext (non-rejected records).
+  const unresolved = (params.result.state.groundingRecords ?? [])
+    .filter((record) => record.status === 'proposed' || record.status === 'contested');
+  return {
+    responseSource: params.responseSource,
+    currentTurnGrounding: params.renderInput.currentTurnGrounding?.mode ?? 'none',
+    selfRepairNotice: params.notice !== null,
+    groundingContext: {
+      proposed: unresolved.filter((record) => record.status === 'proposed').length,
+      contested: unresolved.filter((record) => record.status === 'contested').length,
+    },
+    previewPromotionControl: params.renderInput.previewPromotionControlLabel != null,
   };
 }
 
@@ -351,6 +381,12 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
       message: finalMessage,
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
+      questionPresentationContent: questionPresentationContent({
+        result: params.result,
+        renderInput,
+        responseSource: 'deterministic_fallback',
+        notice,
+      }),
     });
     recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,
@@ -379,6 +415,12 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     message: finalMessage,
     responseSource: 'ai',
     dialogueRendererTrace,
+    questionPresentationContent: questionPresentationContent({
+      result: params.result,
+      renderInput,
+      responseSource: 'ai',
+      notice,
+    }),
   });
   recordWeeklyPlanningDialogueDecisionV5({
     requestId: params.input.traceRequestId,

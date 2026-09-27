@@ -1,4 +1,7 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import {
+  withoutWeeklyPlanningQuestionPresentation,
+} from '../intake/weeklyPlanningQuestionPresentation';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
@@ -43,6 +46,8 @@ function duplicateTurnResult(
   return {
     state: {
       ...previous,
+      // The suppressed request presents nothing new; the previous binding must not travel.
+      lastQuestionContext: withoutWeeklyPlanningQuestionPresentation(previous.lastQuestionContext),
       shouldCreateDraft: false,
       shouldSavePlan: false,
       draftGenerationIntent: 'not_requested',
