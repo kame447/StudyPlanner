@@ -15,6 +15,12 @@ interface PricingEstimate {
   estimatedCostMicros: number | null;
 }
 
+export interface LunaTextCostRangeEstimate {
+  pricingVersion: string | null;
+  minimumCostMicros: number | null;
+  maximumCostMicros: number | null;
+}
+
 const GPT_5_6_LUNA_TEXT: TokenPricing = {
   inputMicrosPerMillion: 200_000,
   cachedInputMicrosPerMillion: 20_000,
@@ -52,6 +58,44 @@ function estimateLunaTextUsage(usage: AiRequestUsage): number | null {
     + costMicros(usage.cachedTokens, GPT_5_6_LUNA_TEXT.cachedInputMicrosPerMillion ?? 0)
     + costMicros(usage.cacheWriteTokens, GPT_5_6_LUNA_TEXT.cacheWriteMicrosPerMillion ?? 0)
     + costMicros(usage.completionTokens, GPT_5_6_LUNA_TEXT.outputMicrosPerMillion);
+}
+
+export function estimateLunaTextUsageCostRange(params: {
+  promptTokens: number | null;
+  completionTokens: number | null;
+}): LunaTextCostRangeEstimate {
+  const validPrompt = params.promptTokens !== null
+    && Number.isSafeInteger(params.promptTokens)
+    && params.promptTokens >= 0
+    && params.promptTokens <= GPT_5_6_LONG_CONTEXT_THRESHOLD;
+  const validCompletion = params.completionTokens !== null
+    && Number.isSafeInteger(params.completionTokens)
+    && params.completionTokens >= 0;
+  if (!validPrompt || !validCompletion) {
+    return {
+      pricingVersion: AI_PRICING_VERSION,
+      minimumCostMicros: null,
+      maximumCostMicros: null,
+    };
+  }
+  const outputCost = costMicros(
+    params.completionTokens,
+    GPT_5_6_LUNA_TEXT.outputMicrosPerMillion,
+  );
+  return {
+    pricingVersion: AI_PRICING_VERSION,
+    minimumCostMicros: costMicros(
+      params.promptTokens,
+      GPT_5_6_LUNA_TEXT.cachedInputMicrosPerMillion ?? 0,
+    ) + outputCost,
+    maximumCostMicros: costMicros(
+      params.promptTokens,
+      Math.max(
+        GPT_5_6_LUNA_TEXT.inputMicrosPerMillion,
+        GPT_5_6_LUNA_TEXT.cacheWriteMicrosPerMillion ?? 0,
+      ),
+    ) + outputCost,
+  };
 }
 
 function estimateTranscriptionUsage(usage: AiRequestUsage): number | null {

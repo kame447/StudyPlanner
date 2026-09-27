@@ -25,6 +25,10 @@ import {
   type TemporalScopeRepairDecisionContext,
 } from '../../../shared/temporalScopeRepairDecision';
 import {
+  isUserContextRoutingDecisionContext,
+  type UserContextRoutingDecisionContext,
+} from '../../../shared/userContextRoutingDecision';
+import {
   dispatchFocusedAuthorization,
   resolveFocusedAuthorizationBaselineFailure,
 } from './decision/focusedAuthorizationDispatch';
@@ -36,6 +40,10 @@ import {
   dispatchTemporalScopeRepair,
   resolveTemporalScopeRepairBaselineFailure,
 } from './decision/temporalScopeRepairDispatch';
+import {
+  dispatchUserContextRouting,
+  resolveUserContextRoutingBaselineFailure,
+} from './decision/userContextRoutingDispatch';
 import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
 
@@ -261,6 +269,7 @@ type FocusedDecisionContextClassification =
   | { kind: 'focused_authorization'; context: FocusedAuthorizationDecisionContext }
   | { kind: 'focused_contextual'; context: FocusedContextualDecisionContext }
   | { kind: 'temporal_scope_repair'; context: TemporalScopeRepairDecisionContext }
+  | { kind: 'user_context_routing'; context: UserContextRoutingDecisionContext }
   | { kind: 'unknown_purpose' }
   | { kind: 'invalid' };
 
@@ -284,6 +293,11 @@ function classifyFocusedDecisionContext(
   if (value.purpose === 'temporal_scope_repair') {
     return isTemporalScopeRepairDecisionContext(value)
       ? { kind: 'temporal_scope_repair', context: value }
+      : { kind: 'invalid' };
+  }
+  if (value.purpose === 'user_context_routing') {
+    return isUserContextRoutingDecisionContext(value)
+      ? { kind: 'user_context_routing', context: value }
       : { kind: 'invalid' };
   }
   // Newer clients may add a focused purpose before this Worker is deployed.
@@ -635,6 +649,12 @@ async function handleChatRequest(
   ) {
     return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
   }
+  if (
+    focusedContext.kind === 'user_context_routing'
+    && payload.purpose !== 'user_context_interpreter'
+  ) {
+    return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
+  }
 
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
@@ -664,6 +684,17 @@ async function handleChatRequest(
   if (focusedContext.kind === 'temporal_scope_repair') {
     const context = focusedContext.context;
     return dispatchTemporalScopeRepair({
+      context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      respond: (decision) => jsonResponse(request, env, 200, {
+        content: JSON.stringify(decision),
+        decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
+      }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
+    });
+  }
+  if (focusedContext.kind === 'user_context_routing') {
+    const context = focusedContext.context;
+    return dispatchUserContextRouting({
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
       fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
       respond: (decision) => jsonResponse(request, env, 200, {
@@ -1063,7 +1094,8 @@ export default {
       } catch (error) {
         const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error)
           ?? resolveFocusedContextualBaselineFailure(error)
-          ?? resolveTemporalScopeRepairBaselineFailure(error);
+          ?? resolveTemporalScopeRepairBaselineFailure(error)
+          ?? resolveUserContextRoutingBaselineFailure(error);
         // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
         console.error('[AI Proxy] unexpected chat handler failure',
           baselineFailure && error instanceof Error ? error.cause : error);
