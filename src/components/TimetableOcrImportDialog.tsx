@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { timetableTimeToMinutes } from '../lib/timetableTime';
 import {
   inferSubjectFromTitle,
   isClassroomOnlyTitle,
@@ -49,17 +50,12 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'sat', label: '土' },
 ];
 
-function toMinutes(time: string): number {
-  const [hour, minute] = time.split(':').map(Number);
-  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : 0;
-}
-
 function isValidTimeRange(startTime: string | null, endTime: string | null): boolean {
   if (!startTime || !endTime) {
     return false;
   }
 
-  return toMinutes(endTime) > toMinutes(startTime);
+  return timetableTimeToMinutes(endTime) > timetableTimeToMinutes(startTime);
 }
 
 function isImportableItem(item: EditableItem): boolean {
