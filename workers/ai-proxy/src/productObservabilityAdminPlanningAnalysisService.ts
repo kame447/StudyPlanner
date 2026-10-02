@@ -1,4 +1,5 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
+import { listObservabilityDatesInclusive } from '../../../shared/productObservabilityDateRange';
 import { PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE } from '../../../shared/productObservabilityReadModel';
 import {
   PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
@@ -27,28 +28,8 @@ interface PlanningAnalysisFirestore {
   ): Promise<Array<Record<string, unknown> | null>>;
 }
 
-function isIsoDate(value: unknown): value is string {
-  return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && Number.isFinite(new Date(`${value}T00:00:00.000Z`).getTime());
-}
-
 function isIsoTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(new Date(value).getTime());
-}
-
-function listDatesInclusive(fromDate: string, toDate: string): string[] {
-  if (!isIsoDate(fromDate) || !isIsoDate(toDate) || fromDate > toDate) {
-    throw new Error('observability_date_range_invalid');
-  }
-  const start = new Date(`${fromDate}T00:00:00.000Z`);
-  const end = new Date(`${toDate}T00:00:00.000Z`);
-  const result: string[] = [];
-  for (let value = start.getTime(); value <= end.getTime(); value += 86_400_000) {
-    result.push(new Date(value).toISOString().slice(0, 10));
-    if (result.length > MAX_ANALYSIS_DAYS) throw new Error('observability_date_range_too_large');
-  }
-  return result;
 }
 
 function nonNegativeInteger(value: unknown): value is number {
@@ -161,7 +142,7 @@ export class ProductObservabilityAdminPlanningAnalysisService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityPlanningAnalysisReadModel> {
-    const dates = listDatesInclusive(params.fromDate, params.toDate);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_ANALYSIS_DAYS);
     const values = await this.firestore.batchGetDocuments(
       PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
       dates.map((cohortDate) => planningDailyCohortDocumentId(params.environment, cohortDate)),
