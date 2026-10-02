@@ -24,6 +24,10 @@ import type {
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 import {
+  prepareRecurringPlanWrite,
+  stripUndefinedDeep,
+} from './plannerWritePreparation';
+import {
   dedupeLinkedActualRecords,
   normalizeActualRecord,
   normalizePlanRecord,
@@ -88,24 +92,6 @@ function assertOwnedRecords(
   if (records.some((record) => record.userId !== userId)) {
     throw new Error(`${label} の所有者が一致しません。`);
   }
-}
-
-function stripUndefinedDeep<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => stripUndefinedDeep(item))
-      .filter((item) => item !== undefined) as T;
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entryValue]) => entryValue !== undefined)
-        .map(([key, entryValue]) => [key, stripUndefinedDeep(entryValue)]),
-    ) as T;
-  }
-
-  return value;
 }
 
 async function listByUserId<T extends PlannerDoc>(
@@ -381,83 +367,66 @@ export function createFirebasePlannerRepository(
       }
     },
     async applyRecurringPlanMutation(userId, mutation) {
-    try {
-      assertOwnedRecords(
-        userId,
-        [
-...mutation.planUpserts,
-...mutation.planDeletes,
-...mutation.actualUpserts,
-...mutation.actualDeletes,
-        ],
-        '繰り返し予定更新',
-      );
-      const reboundIds = new Set(
-        mutation.actualUpserts.map((actual) => actual.id),
-      );
-      const [linkedActuals, duplicateOccurrenceActuals] = await Promise.all([
-        Promise.all(
-mutation.planDeletes.map((plan) =>
-  listActualsByPlanId(firestoreDb, userId, plan.id),
-),
-        ).then((groups) => groups.flat()),
-        Promise.all(
-mutation.actualDeletes.map((actual) =>
-  listActualsByPlanOccurrence(firestoreDb, actual),
-),
-        ).then((groups) => groups.flat()),
-      ]);
-      const actualDeletesById = new Map(
-        [
-...mutation.actualDeletes,
-...duplicateOccurrenceActuals,
-...linkedActuals,
-        ]
-.filter((actual) => !reboundIds.has(actual.id))
-.map((actual) => [actual.id, actual]),
-      );
-      const operationCount =
-        mutation.planUpserts.length +
-        mutation.planDeletes.length +
-        mutation.actualUpserts.length +
-        actualDeletesById.size;
+      try {
+        assertOwnedRecords(
+          userId,
+          [
+            ...mutation.planUpserts,
+            ...mutation.planDeletes,
+            ...mutation.actualUpserts,
+            ...mutation.actualDeletes,
+          ],
+          '繰り返し予定更新',
+        );
+        const [linkedActuals, duplicateOccurrenceActuals] = await Promise.all([
+          Promise.all(
+            mutation.planDeletes.map((plan) =>
+              listActualsByPlanId(firestoreDb, userId, plan.id),
+            ),
+          ).then((groups) => groups.flat()),
+          Promise.all(
+            mutation.actualDeletes.map((actual) =>
+              listActualsByPlanOccurrence(firestoreDb, actual),
+            ),
+          ).then((groups) => groups.flat()),
+        ]);
+        const { actualDeletes, operationCount } = prepareRecurringPlanWrite(mutation, {
+          linkedActuals,
+          duplicateOccurrenceActuals,
+        });
+        if (operationCount === 0) return;
 
-      if (operationCount > 500) {
-        throw new Error('Recurring plan mutation exceeds the Firestore batch limit.');
+        const batch = writeBatch(firestoreDb);
+        mutation.planUpserts.forEach((plan) => {
+          batch.set(
+            doc(firestoreDb, 'plans', plan.id),
+            stripUndefinedDeep(plan),
+            { merge: true },
+          );
+        });
+        mutation.planDeletes.forEach((plan) => {
+          batch.delete(doc(firestoreDb, 'plans', plan.id));
+        });
+        mutation.actualUpserts.forEach((actual) => {
+          batch.set(
+            doc(firestoreDb, 'actuals', actual.id),
+            stripUndefinedDeep(actual),
+            { merge: true },
+          );
+        });
+        actualDeletes.forEach((actual) => {
+          batch.delete(doc(firestoreDb, 'actuals', actual.id));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '繰り返し予定を保存できませんでした。',
+            error as FirebaseLikeError,
+          ),
+        );
       }
-      if (operationCount === 0) return;
-
-      const batch = writeBatch(firestoreDb);
-      mutation.planUpserts.forEach((plan) => {
-        batch.set(
-doc(firestoreDb, 'plans', plan.id),
-stripUndefinedDeep(plan),
-{ merge: true },
-        );
-      });
-      mutation.planDeletes.forEach((plan) => {
-        batch.delete(doc(firestoreDb, 'plans', plan.id));
-      });
-      mutation.actualUpserts.forEach((actual) => {
-        batch.set(
-doc(firestoreDb, 'actuals', actual.id),
-stripUndefinedDeep(actual),
-{ merge: true },
-        );
-      });
-      actualDeletesById.forEach((actual) => {
-        batch.delete(doc(firestoreDb, 'actuals', actual.id));
-      });
-      await batch.commit();
-    } catch (error) {
-      throw new Error(
-        normalizeErrorMessage(
-'繰り返し予定を保存できませんでした。',
-error as FirebaseLikeError,
-        ),
-      );
-    }
-  },
+    },
     async deletePlanWithDependents(mutation) {
       try {
         assertOwnedRecords(
