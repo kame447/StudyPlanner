@@ -1,4 +1,3 @@
-import { onAuthStateChanged } from 'firebase/auth';
 import {
   Activity,
   ArrowLeft,
@@ -8,9 +7,9 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAdminStatus } from '../hooks/useAdminStatus';
-import { getFirebaseAuth } from '../lib/firebaseClient';
+import { createAuthSessionService, type AuthSessionService } from '../services/authSession';
 import '../styles/admin-phase5.css';
 import '../styles/admin-phase6.css';
 import '../styles/admin-phase7.css';
@@ -18,7 +17,13 @@ import '../styles/admin-phase8.css';
 import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
 
-export function AdminApp() {
+export function AdminApp({
+  authSession: injectedAuthSession,
+}: { authSession?: AuthSessionService } = {}) {
+  const authSession = useMemo(
+    () => injectedAuthSession ?? createAuthSessionService(),
+    [injectedAuthSession],
+  );
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [userId, setUserId] = useState<string | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
@@ -44,17 +49,16 @@ export function AdminApp() {
   );
 
   useEffect(() => {
-    const auth = getFirebaseAuth();
-    if (!auth) {
+    if (!authSession.available) {
       setUserId(null);
       setAuthResolved(true);
       return undefined;
     }
-    return onAuthStateChanged(auth, (user) => {
-      setUserId(user?.uid ?? null);
+    return authSession.subscribe((user) => {
+      setUserId(user?.id ?? null);
       setAuthResolved(true);
     });
-  }, []);
+  }, [authSession]);
 
   useEffect(() => {
     const handlePopState = () => setCurrentPath(window.location.pathname);
