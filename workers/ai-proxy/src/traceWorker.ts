@@ -6,6 +6,7 @@ import {
 import {
   isObservableAiProxyPath,
   observeAiProxyRequest,
+  type AiProxyObservationContext,
   type AiProxyRequestObserverEnv,
 } from './aiProxyRequestObserver';
 import {
@@ -256,31 +257,41 @@ export default {
     const shouldObserveAiRequest = request.method === 'POST'
       && isObservableAiProxyPath(pathname)
       && isAiRequestObservabilityConfigured(observerEnv);
-    const observerRequest = shouldObserveAiRequest ? request.clone() : null;
+    const observationContext: AiProxyObservationContext | undefined = shouldObserveAiRequest
+      ? { identity: { kind: 'resolve_from_request' } }
+      : undefined;
+    // Only legacy OCR consumes its body without returning parsed handler metadata.
+    const observerRequest = shouldObserveAiRequest && pathname === '/timetable-ocr'
+      ? request.clone()
+      : request;
     const startedAtMs = shouldObserveAiRequest ? Date.now() : 0;
     const occurredAt = shouldObserveAiRequest ? new Date(startedAtMs).toISOString() : '';
 
-    const response = await worker.fetch(request, env as never, tokenProvider, executionContext);
+    const response = await worker.fetch(
+      request, env as never, tokenProvider, executionContext, observationContext,
+    );
     const decisionExecutionMode = jevExecutionMode(response);
     const baselineFailure = lunaBaselineFailure(response);
     const publicResponse = stripJevExecutionMarker(response);
 
-    if (observerRequest) {
+    if (observationContext) {
+      const onError = (error: unknown) => console.warn('[AI Proxy] observability metric write failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
       scheduleAiRequestMetric(
         executionContext,
         observeAiProxyRequest({
           request: observerRequest,
           response: publicResponse.clone(),
+          context: observationContext,
           env: observerEnv,
           firestoreTokenProvider: tokenProvider,
           startedAtMs,
           occurredAt,
           decisionExecutionMode,
           lunaBaselineFailure: baselineFailure,
-          onError: (error) => console.warn('[AI Proxy] observability metric write failed', {
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        }),
+          onError,
+        }).catch(onError),
       );
     }
 

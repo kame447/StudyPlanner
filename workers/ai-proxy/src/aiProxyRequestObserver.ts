@@ -27,6 +27,16 @@ export interface AiProxyRequestObserverEnv extends ProductObservabilityEnv {
   OPENAI_TRANSCRIPTION_MODEL?: string;
 }
 
+/** Invocation-local facts supplied by the request handler, never by client headers. */
+export interface AiProxyObservationContext {
+  identity:
+    | { kind: 'authenticated'; firebaseUid: string }
+    | { kind: 'resolve_from_request' };
+  requestBody?:
+    | { kind: 'text'; text: string }
+    | { kind: 'parsed'; payload: unknown; bytes: number };
+}
+
 interface FirebaseLookupResponse {
   users?: Array<{
     localId?: string;
@@ -218,6 +228,7 @@ async function parseJsonOrNull(text: string): Promise<unknown> {
 export async function observeAiProxyRequest(params: {
   request: Request;
   response: Response;
+  context?: AiProxyObservationContext;
   env: AiProxyRequestObserverEnv;
   firestoreTokenProvider?: FirestoreTokenProvider;
   startedAtMs: number;
@@ -233,11 +244,8 @@ export async function observeAiProxyRequest(params: {
   if (params.request.method !== 'POST') return;
   const pathname = new URL(params.request.url).pathname;
   if (!isObservableAiProxyPath(pathname)) return;
-
-  const requestText = await params.request.text();
-  const requestPayload = await parseJsonOrNull(requestText);
-  const operation = describeAiProxyOperation(pathname, requestPayload, params.env);
-  if (!operation) return;
+  const context: AiProxyObservationContext = params.context
+    ?? { identity: { kind: 'resolve_from_request' } };
 
   const responseText = await params.response.text();
   const responsePayload = await parseJsonOrNull(responseText);
@@ -248,7 +256,23 @@ export async function observeAiProxyRequest(params: {
   );
   if (!status) return;
 
-  const firebaseUid = await resolveFirebaseUid(params.request, params.env);
+  let requestBody = context.requestBody;
+  if (!requestBody) {
+    // Legacy callers and failures before body consumption still have a readable request.
+    requestBody = { kind: 'text', text: await params.request.text() };
+  }
+  const requestPayload = requestBody.kind === 'parsed'
+    ? requestBody.payload
+    : await parseJsonOrNull(requestBody.text);
+  const requestBytes = requestBody.kind === 'parsed'
+    ? requestBody.bytes
+    : getUtf8ByteLength(requestBody.text);
+  const operation = describeAiProxyOperation(pathname, requestPayload, params.env);
+  if (!operation) return;
+
+  const firebaseUid = context.identity.kind === 'authenticated'
+    ? context.identity.firebaseUid
+    : await resolveFirebaseUid(params.request, params.env);
   if (!firebaseUid) return;
 
   const requestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER))
@@ -274,7 +298,7 @@ export async function observeAiProxyRequest(params: {
     provider: operation.provider,
     model: operation.model,
     status,
-    requestBytes: getUtf8ByteLength(requestText),
+    requestBytes,
     responseBytes: getUtf8ByteLength(responseText),
     usage,
     startedAtMs: params.startedAtMs,
