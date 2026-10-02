@@ -381,6 +381,7 @@ export function calculateNextMaterialUnit(
 export function applyMaterialProgressUpdate(
   material: StudyMaterial,
   update: ActualMaterialProgressUpdate,
+  now = new Date().toISOString(),
 ): StudyMaterial {
   const nextCurrentUnit = calculateNextMaterialUnit(material, update);
 
@@ -391,13 +392,14 @@ export function applyMaterialProgressUpdate(
   return {
     ...material,
     currentUnit: nextCurrentUnit,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
 }
 
 export function applyMaterialProgressUpdates(
   materials: StudyMaterial[],
   updates: ActualMaterialProgressUpdate[] | null | undefined,
+  now = new Date().toISOString(),
 ): StudyMaterial[] {
   if (!updates || updates.length === 0) {
     return materials;
@@ -406,7 +408,7 @@ export function applyMaterialProgressUpdates(
   return materials.map((material) =>
     updates.reduce(
       (currentMaterial, update) =>
-        applyMaterialProgressUpdate(currentMaterial, update),
+        applyMaterialProgressUpdate(currentMaterial, update, now),
       material,
     ),
   );
