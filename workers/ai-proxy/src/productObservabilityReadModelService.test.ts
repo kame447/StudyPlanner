@@ -196,6 +196,35 @@ function service(firestore: MemoryReadFirestore): ProductObservabilityReadModelS
 }
 
 describe('ProductObservabilityReadModelService', () => {
+  describe.each(['getDailyRollups', 'getOverview', 'getUserTrend'] as const)('%s date range', (method) => {
+    it('accepts exactly 93 inclusive days', async () => {
+      const firestore = new MemoryReadFirestore();
+
+      await expect(service(firestore)[method]({
+        environment: 'production',
+        fromDate: '2026-01-01',
+        toDate: '2026-04-03',
+      })).resolves.toBeDefined();
+      expect(firestore.batchGetCallCount).toBe(1);
+    });
+
+    it.each([
+      ['2026-01-01', '2026-04-04', 'observability_date_range_too_large'],
+      ['', '', 'observability_date_range_invalid'],
+      ['2026-01-02', '2026-01-01', 'observability_date_range_invalid'],
+      ['2026-13-01', '2026-13-01', 'observability_date_range_invalid'],
+    ])('rejects %s through %s before fetching daily data', async (fromDate, toDate, error) => {
+      const firestore = new MemoryReadFirestore();
+
+      await expect(service(firestore)[method]({
+        environment: 'production', fromDate, toDate,
+      })).rejects.toThrow(error);
+      expect(firestore.batchGetCallCount).toBe(0);
+      expect(firestore.countCallCount).toBe(0);
+      expect(firestore.queryCallCount).toBe(0);
+    });
+  });
+
   it('keeps later daily rollups on their requested date when a middle document is missing', async () => {
     const firestore = new MemoryReadFirestore();
     firestore.setDocument(
