@@ -32,8 +32,9 @@ export function createTimetableTermLabel(
   year: number,
   kind: TimetableTermKind,
   fallbackLabel?: string,
+  now = new Date().toISOString(),
 ): string {
-  const normalizedYear = Number.isFinite(year) ? Math.round(year) : new Date().getFullYear();
+  const normalizedYear = Number.isFinite(year) ? Math.round(year) : new Date(now).getFullYear();
   const customLabel = fallbackLabel?.trim();
 
   if (kind === 'custom' && customLabel) {
@@ -65,10 +66,14 @@ function getTimetableTermKindKey(kind: TimetableTermKind): string {
   }
 }
 
-export function createTimetableTermId(year: number, kind: TimetableTermKind): string {
+export function createTimetableTermId(
+  year: number,
+  kind: TimetableTermKind,
+  now = new Date().toISOString(),
+): string {
   const normalizedYear = Number.isFinite(year)
     ? Math.round(year)
-    : new Date().getFullYear();
+    : new Date(now).getFullYear();
 
   return `${normalizedYear}-${getTimetableTermKindKey(kind)}`;
 }
@@ -90,12 +95,11 @@ export function normalizeTimetableDate(value: string | null | undefined): string
     : null;
 }
 
-function createDefaultTimetableTerm(userId: string): TimetableTerm {
-  const now = new Date().toISOString();
-  const year = new Date().getFullYear();
+function createDefaultTimetableTerm(userId: string, now: string): TimetableTerm {
+  const year = new Date(now).getFullYear();
 
   return {
-    id: createTimetableTermId(year, 'fullYear'),
+    id: createTimetableTermId(year, 'fullYear', now),
     userId,
     year,
     kind: 'fullYear',
@@ -138,19 +142,19 @@ export function sortTimetableTerms(terms: TimetableTerm[]): TimetableTerm[] {
 export function normalizeTimetableTermsByYearAndKind(
   userId: string,
   terms: TimetableTerm[],
+  now = new Date().toISOString(),
 ): {
   terms: TimetableTerm[];
   termIdMap: Map<string, string>;
   obsoleteTermIds: string[];
 } {
-  const now = new Date().toISOString();
-  const sourceTerms = terms.length > 0 ? terms : [createDefaultTimetableTerm(userId)];
+  const sourceTerms = terms.length > 0 ? terms : [createDefaultTimetableTerm(userId, now)];
   const groupedTerms = new Map<string, TimetableTerm[]>();
   const termIdMap = new Map<string, string>();
 
   sourceTerms.forEach((term) => {
     const stableId =
-      term.kind === 'custom' ? term.id : createTimetableTermId(term.year, term.kind);
+      term.kind === 'custom' ? term.id : createTimetableTermId(term.year, term.kind, now);
     const group = groupedTerms.get(stableId) ?? [];
 
     group.push(term);
@@ -165,7 +169,7 @@ export function normalizeTimetableTermsByYearAndKind(
   const activeStableId = termIdMap.get(activeSourceTerm.id) ?? (
     activeSourceTerm.kind === 'custom'
       ? activeSourceTerm.id
-      : createTimetableTermId(activeSourceTerm.year, activeSourceTerm.kind)
+      : createTimetableTermId(activeSourceTerm.year, activeSourceTerm.kind, now)
   );
 
   if (!termIdMap.has('default')) {
@@ -186,7 +190,7 @@ export function normalizeTimetableTermsByYearAndKind(
       ...latest,
       id: stableId,
       userId,
-      label: createTimetableTermLabel(latest.year, latest.kind, latest.label),
+      label: createTimetableTermLabel(latest.year, latest.kind, latest.label, now),
       isActive: stableId === activeStableId,
       updatedAt: latest.id === stableId ? latest.updatedAt : now,
     };
