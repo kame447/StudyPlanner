@@ -12,6 +12,7 @@ import {
   type WeeklyPlanningTraceApiSession,
 } from './weeklyPlanningTraceApi';
 import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
+import type { AiProxyObservationContext } from './aiProxyRequestObserver';
 import {
   isFocusedAuthorizationDecisionContext,
   type FocusedAuthorizationDecisionContext,
@@ -594,6 +595,7 @@ function bodyTooLargeResponse(
 async function handleChatRequest(
   request: Request, env: Env, tokenProvider?: FirestoreTokenProvider,
   executionContext?: ExecutionContext,
+  observationContext?: AiProxyObservationContext,
 ): Promise<Response> {
   if (!env.OPENAI_API_KEY?.trim()) {
     return jsonResponse(request, env, 500, {
@@ -603,6 +605,9 @@ async function handleChatRequest(
 
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
+  if (observationContext) {
+    observationContext.identity = { kind: 'authenticated', firebaseUid: session.uid };
+  }
 
   const declaredBytes = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
   if (
@@ -613,6 +618,7 @@ async function handleChatRequest(
   }
 
   const requestText = await request.text();
+  if (observationContext) observationContext.requestBody = { kind: 'text', text: requestText };
   const requestBytes = getUtf8ByteLength(requestText);
   if (requestBytes > AI_PROXY_CHAT_REQUEST_LIMITS.maxRequestBodyBytes) {
     return bodyTooLargeResponse(request, env, requestBytes);
@@ -623,6 +629,9 @@ async function handleChatRequest(
     payload = JSON.parse(requestText) as ChatCompletionRequest;
   } catch {
     return jsonResponse(request, env, 400, { error: 'Invalid JSON payload.' });
+  }
+  if (observationContext) {
+    observationContext.requestBody = { kind: 'parsed', payload, bytes: requestBytes };
   }
   const validationError = validateChatRequest(payload);
   if (validationError) {
@@ -761,6 +770,7 @@ async function fetchChatCompletion(
 async function handlePlanningAttachmentRequest(
   request: Request,
   env: Env,
+  observationContext?: AiProxyObservationContext,
 ): Promise<Response> {
   if (!env.OPENAI_API_KEY?.trim()) {
     return jsonResponse(request, env, 500, {
@@ -770,6 +780,9 @@ async function handlePlanningAttachmentRequest(
 
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
+  if (observationContext) {
+    observationContext.identity = { kind: 'authenticated', firebaseUid: session.uid };
+  }
 
   const declaredBytes = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
   if (
@@ -780,7 +793,9 @@ async function handlePlanningAttachmentRequest(
   }
 
   const requestText = await request.text();
-  if (getUtf8ByteLength(requestText) > MAX_PLANNING_ATTACHMENT_BODY_BYTES) {
+  if (observationContext) observationContext.requestBody = { kind: 'text', text: requestText };
+  const requestBytes = getUtf8ByteLength(requestText);
+  if (requestBytes > MAX_PLANNING_ATTACHMENT_BODY_BYTES) {
     return jsonResponse(request, env, 413, { error: 'Image request body was too large.' });
   }
 
@@ -789,6 +804,9 @@ async function handlePlanningAttachmentRequest(
     rawPayload = JSON.parse(requestText) as unknown;
   } catch {
     return jsonResponse(request, env, 400, { error: 'Invalid JSON payload.' });
+  }
+  if (observationContext) {
+    observationContext.requestBody = { kind: 'parsed', payload: rawPayload, bytes: requestBytes };
   }
   const parsedPayload = parsePlanningAttachmentRequest(rawPayload);
   if (parsedPayload.error || !parsedPayload.payload) {
@@ -888,6 +906,7 @@ async function handlePlanningAttachmentRequest(
 async function handlePlanningTranscriptionRequest(
   request: Request,
   env: Env,
+  observationContext?: AiProxyObservationContext,
 ): Promise<Response> {
   if (!env.OPENAI_API_KEY?.trim()) {
     return jsonResponse(request, env, 500, {
@@ -897,6 +916,9 @@ async function handlePlanningTranscriptionRequest(
 
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
+  if (observationContext) {
+    observationContext.identity = { kind: 'authenticated', firebaseUid: session.uid };
+  }
 
   const declaredBytes = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
   if (
@@ -907,7 +929,9 @@ async function handlePlanningTranscriptionRequest(
   }
 
   const requestText = await request.text();
-  if (getUtf8ByteLength(requestText) > MAX_PLANNING_TRANSCRIPTION_BODY_BYTES) {
+  if (observationContext) observationContext.requestBody = { kind: 'text', text: requestText };
+  const requestBytes = getUtf8ByteLength(requestText);
+  if (requestBytes > MAX_PLANNING_TRANSCRIPTION_BODY_BYTES) {
     return jsonResponse(request, env, 413, { error: 'Audio request body was too large.' });
   }
 
@@ -918,6 +942,9 @@ async function handlePlanningTranscriptionRequest(
     return jsonResponse(request, env, 400, { error: 'Invalid JSON payload.' });
   }
 
+  if (observationContext) {
+    observationContext.requestBody = { kind: 'parsed', payload: rawPayload, bytes: requestBytes };
+  }
   const parsedPayload = parsePlanningTranscriptionRequest(rawPayload);
   if (parsedPayload.error || !parsedPayload.payload) {
     return jsonResponse(request, env, 400, {
@@ -1019,6 +1046,7 @@ export default {
     env: Env,
     tokenProvider?: FirestoreTokenProvider,
     executionContext?: ExecutionContext,
+    observationContext?: AiProxyObservationContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isWeeklyPlanningTracePath(pathname)) {
@@ -1042,7 +1070,7 @@ export default {
         return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
       }
       try {
-        return await handlePlanningTranscriptionRequest(request, env);
+        return await handlePlanningTranscriptionRequest(request, env, observationContext);
       } catch (error) {
         console.error('[AI Proxy] unexpected planning transcription failure', error);
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
@@ -1066,7 +1094,7 @@ export default {
         return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
       }
       try {
-        return await handlePlanningAttachmentRequest(request, env);
+        return await handlePlanningAttachmentRequest(request, env, observationContext);
       } catch (error) {
         console.error('[AI Proxy] unexpected planning attachment failure', error);
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
@@ -1090,7 +1118,7 @@ export default {
         return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
       }
       try {
-        return await handleChatRequest(request, env, tokenProvider, executionContext);
+        return await handleChatRequest(request, env, tokenProvider, executionContext, observationContext);
       } catch (error) {
         const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error)
           ?? resolveFocusedContextualBaselineFailure(error)
