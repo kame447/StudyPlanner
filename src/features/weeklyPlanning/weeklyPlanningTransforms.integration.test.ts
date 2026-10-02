@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { createPlanDraftFromWeeklyDraftBlock } from './application/weeklyPlanningDraftConversion';
 import {
   applyWeeklyPlanningConditionOverride,
   assessWeeklyPlanningRequest,
   createAvailabilityAwareWeeklyDraftBlocksFromText,
   createFallbackWeeklyDraftBlock,
-  createPlanDraftFromWeeklyDraftBlock,
   createSimpleWeeklyDraftBlocksFromText,
   createWeeklyDraftBlockFromPlanDraft,
   createWeeklyPlanningPendingConfig,
