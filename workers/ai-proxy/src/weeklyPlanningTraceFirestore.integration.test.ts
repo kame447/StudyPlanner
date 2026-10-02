@@ -252,3 +252,172 @@ describe('weekly planning trace Firestore protocol integration', () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 });
+
+function appendFixture(options: {
+  entryState?: 'matching' | 'mismatching' | 'missing' | 'last-mismatching' | 'last-missing';
+  storedCount?: number | null;
+  loseFirstResponse?: boolean;
+  commitStatus?: number;
+} = {}) {
+  const entries = Array.from({ length: 100 }, (_, sequence) => ({
+    id: `${SESSION_ID}-${String(sequence).padStart(8, '0')}`,
+    value: {
+      sessionId: SESSION_ID,
+      sequence,
+      content: `entry ${sequence}`,
+      expireAt: '2027-01-14T00:00:01.000Z',
+    },
+  }));
+  const params = {
+    entryCollection: 'weekly_planning_trace_entries',
+    entries,
+    sessionCollection: 'weekly_planning_trace_sessions',
+    sessionId: SESSION_ID,
+    sessionValue: { entryCount: 100, status: 'active' },
+    maximumFieldPath: 'entryCount',
+    maximum: 100,
+  };
+  const name = (collection: string, id: string) => (
+    `projects/integration-project/databases/(default)/documents/${collection}/${id}`
+  );
+  const stored = new Map<string, ReturnType<typeof firestoreDocument>['fields']>();
+  if (!options.loseFirstResponse) {
+    entries.forEach((entry, index) => {
+      if (options.entryState === 'missing'
+        || (options.entryState === 'last-missing' && index === 99)) return;
+      stored.set(name(params.entryCollection, entry.id), firestoreDocument('', {
+        ...entry.value,
+        id: '[UUID]',
+        content: options.entryState === 'mismatching'
+          || (options.entryState === 'last-mismatching' && index === 99)
+          ? 'different' : entry.value.content,
+        expireAt: '2027-01-14T00:00:00.000Z',
+      }).fields);
+    });
+  }
+  const aggregateName = name(params.sessionCollection, SESSION_ID);
+  if (options.storedCount !== null) {
+    stored.set(aggregateName, firestoreDocument('', {
+      status: 'active',
+      entryCount: options.storedCount ?? (options.loseFirstResponse ? 0 : 100),
+    }).fields);
+  }
+  const batchSizes: number[] = [];
+  let commitAttempts = 0;
+  const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === 'https://oauth2.googleapis.com/token') {
+      return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }));
+    }
+    if (url.endsWith('/documents:commit')) {
+      commitAttempts += 1;
+      if (options.loseFirstResponse && commitAttempts === 1) {
+        const { writes } = JSON.parse(String(init?.body));
+        expect(writes).toHaveLength(102);
+        for (const write of writes) {
+          if (write.update) {
+            expect(write.currentDocument.exists).toBe(write.update.name === aggregateName);
+            if (write.update.name === aggregateName) {
+              expect(write.update.fields.entryCount).toBeUndefined();
+              expect(write.updateMask.fieldPaths).not.toContain('entryCount');
+            }
+            stored.set(write.update.name, { ...stored.get(write.update.name), ...write.update.fields });
+          } else {
+            expect(write.transform.document).toBe(aggregateName);
+            expect(write.transform.fieldTransforms).toEqual([{
+              fieldPath: 'entryCount', maximum: { integerValue: '100' },
+            }]);
+            const aggregate = stored.get(aggregateName)!;
+            aggregate.entryCount = { integerValue: String(Math.max(
+              Number(aggregate.entryCount.integerValue),
+              Number(write.transform.fieldTransforms[0].maximum.integerValue),
+            )) };
+          }
+        }
+        throw new Error('response lost after commit');
+      }
+      return new Response('{}', { status: options.commitStatus ?? 409 });
+    }
+    if (url.endsWith('/documents:batchGet')) {
+      const { documents } = JSON.parse(String(init?.body)) as { documents: string[] };
+      batchSizes.push(documents.length);
+      return new Response(JSON.stringify(documents.map((documentName) => {
+        const fields = stored.get(documentName);
+        return fields ? { found: { name: documentName, fields } } : { missing: documentName };
+      }).reverse()));
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+  return {
+    client: new WeeklyPlanningTraceFirestoreClient(env(), fetcher as typeof fetch, fakeCrypto()),
+    params,
+    fetcher,
+    stored,
+    batchSizes,
+    firestoreRequestCount: () => fetcher.mock.calls.filter(([input]) => (
+      String(input).startsWith('https://firestore.googleapis.com/')
+    )).length,
+  };
+}
+
+describe('weekly planning trace batched append replay', () => {
+  it.each([
+    ['matching', true],
+    ['mismatching', false],
+    ['missing', false],
+    ['last-mismatching', false],
+    ['last-missing', false],
+  ] as const)('checks 100 %s entries with bounded reads', async (entryState, accepted) => {
+    const fixture = appendFixture({ entryState });
+    const before = structuredClone(fixture.stored);
+    const replay = fixture.client.commitTraceAppend(fixture.params);
+    if (accepted) await expect(replay).resolves.toBeUndefined();
+    else await expect(replay).rejects.toThrow('immutable trace document conflict: atomic append');
+
+    expect(fixture.stored).toEqual(before);
+    expect(fixture.batchSizes).toEqual([100, 1]);
+    expect(fixture.firestoreRequestCount()).toBe(3);
+    expect(fixture.fetcher).toHaveBeenCalledTimes(4); // Includes OAuth.
+    expect(fixture.fetcher.mock.calls.length).toBeLessThan(50);
+  });
+
+  it.each([
+    [99, false], [100, true], [130, true], [null, false],
+  ] as const)('preserves aggregate maximum semantics for stored count %s', async (storedCount, accepted) => {
+    const fixture = appendFixture({ storedCount });
+    const before = structuredClone(fixture.stored);
+    const replay = fixture.client.commitTraceAppend(fixture.params);
+    if (accepted) await expect(replay).resolves.toBeUndefined();
+    else await expect(replay).rejects.toThrow('immutable trace document conflict: atomic append');
+    expect(fixture.stored).toEqual(before);
+    expect(fixture.firestoreRequestCount()).toBe(3);
+  });
+
+  it('accepts replay after a lost response without rewriting entries or lowering the maximum', async () => {
+    const fixture = appendFixture({ loseFirstResponse: true, storedCount: 130 });
+    await expect(fixture.client.commitTraceAppend(fixture.params))
+      .rejects.toThrow('response lost after commit');
+    const committed = structuredClone(fixture.stored);
+    expect(committed.size).toBe(101);
+
+    await expect(fixture.client.commitTraceAppend({
+      ...fixture.params,
+      entries: fixture.params.entries.map((entry) => ({
+        ...entry, value: { ...entry.value, expireAt: '2027-01-15T00:00:00.000Z' },
+      })),
+    })).resolves.toBeUndefined();
+
+    expect(fixture.stored).toEqual(committed);
+    expect(fixture.batchSizes).toEqual([100, 1]);
+    expect(fixture.firestoreRequestCount()).toBe(4);
+    expect(fixture.fetcher).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not reinterpret a non-409 failure as an idempotent replay', async () => {
+    const fixture = appendFixture({ commitStatus: 412 });
+    await expect(fixture.client.commitTraceAppend(fixture.params))
+      .rejects.toThrow('Firestore atomic trace append failed: 412');
+    expect(fixture.batchSizes).toEqual([]);
+    expect(fixture.firestoreRequestCount()).toBe(1);
+  });
+});
