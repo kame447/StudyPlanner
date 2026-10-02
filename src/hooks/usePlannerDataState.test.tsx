@@ -1,6 +1,6 @@
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StudyMaterial } from '../types/domain';
+import type { Actual, ActualDraft, Plan, StudyMaterial, TimetableTerm } from '../types/domain';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 
 const repository = vi.hoisted(() => ({
@@ -15,6 +15,7 @@ const repository = vi.hoisted(() => ({
   getTimetableTerms: vi.fn(),
   getTimetablePeriods: vi.fn(),
   applyTimetableMutation: vi.fn(),
+  upsertActualWithMaterialProgress: vi.fn<(mutation: { actual: Actual; materials: readonly StudyMaterial[] }) => Promise<Actual>>(),
 }));
 
 vi.mock('../repositories', () => ({ plannerRepository: repository }));
@@ -66,6 +67,7 @@ function resetRepositoryMocks() {
   repository.getTimetableTerms.mockResolvedValue([]);
   repository.getTimetablePeriods.mockResolvedValue([]);
   repository.applyTimetableMutation.mockResolvedValue(undefined);
+  repository.upsertActualWithMaterialProgress.mockImplementation(async ({ actual }) => actual);
 }
 
 describe('usePlannerDataState planner-data read authority', () => {
@@ -272,6 +274,174 @@ describe('usePlannerDataState planner-data read authority', () => {
 
     expect(readState().plannerDataAvailability.status).toBe('idle');
     expect(readState().studyMaterials).toEqual([]);
+    renderer.unmount();
+  });
+});
+
+function legacyTerm(ownerId: string): TimetableTerm {
+  return {
+    id: `legacy-${ownerId}`, userId: ownerId, year: 2026, kind: 'fullYear',
+    label: '旧ラベル', isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+const studyPlan: Plan = {
+  id: 'plan', seriesId: 'plan', userId: 'owner-a', title: '数学', subject: '数学',
+  date: '2026-10-02', startTime: '09:00', endTime: '10:00', repeat: 'none',
+  repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'study', memo: '',
+  createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+};
+
+function progressDraft(mode: 'linked' | 'standalone'): ActualDraft {
+  return {
+    userId: 'owner-a', planId: mode === 'linked' ? studyPlan.id : null,
+    occurrenceDate: studyPlan.date, actualStartTime: '09:00', actualEndTime: '10:00',
+    title: '数学', subject: '数学', isAlignedToPlan: mode === 'linked', note: '',
+    materialProgressUpdates: [{ materialId: 'material-owner-a', deltaUnits: 5 }],
+  };
+}
+
+function saveProgressActual(mode: 'linked' | 'standalone', draft: ActualDraft, targetActualId?: string) {
+  return mode === 'linked'
+    ? readState().saveActual(studyPlan, draft, targetActualId)
+    : readState().saveStandaloneActual(draft, targetActualId);
+}
+
+describe('usePlannerDataState transform orchestration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    latestState = null;
+    resetRepositoryMocks();
+  });
+
+  it('keeps all original timetable collections when normalization persistence fails', async () => {
+    const term = legacyTerm('owner-a');
+    const template = {
+      id: 'template', userId: 'owner-a', title: '数学', subject: '数学', type: 'study',
+      weekday: 'mon', startTime: '09:00', endTime: '10:00', termId: term.id,
+      memo: '', active: true, createdAt: term.createdAt, updatedAt: term.updatedAt,
+    };
+    const period = {
+      id: 'period', userId: 'owner-a', termId: term.id, periodNumber: 1,
+      label: '1限', startTime: '09:00', endTime: '10:00',
+      createdAt: term.createdAt, updatedAt: term.updatedAt,
+    };
+    repository.getTimetableTerms.mockResolvedValue([term]);
+    repository.getScheduleTemplates.mockResolvedValue([template]);
+    repository.getTimetablePeriods.mockResolvedValue([period]);
+    repository.applyTimetableMutation.mockRejectedValueOnce(new Error('normalization unavailable'));
+    const renderer = create(<Harness userId="owner-a" />);
+
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+
+    expect(repository.applyTimetableMutation).toHaveBeenCalledWith(expect.objectContaining({
+      termUpserts: [expect.objectContaining({ id: '2026-full-year' })],
+      termDeletes: [term],
+      templateUpserts: [expect.objectContaining({ termId: '2026-full-year' })],
+      periodUpserts: [expect.objectContaining({ termId: '2026-full-year' })],
+    }));
+    expect(readState().timetableTerms).toEqual([term]);
+    expect(readState().scheduleTemplates).toEqual([template]);
+    expect(readState().timetablePeriods).toEqual([period]);
+    expect(readState().plannerDataAvailability.status).toBe('ready');
+    expect(showNotice).toHaveBeenCalledWith('時間割データを整合化できませんでした。再読み込みしてください。', 'error');
+    renderer.unmount();
+  });
+
+  it.each(['success', 'failure'] as const)('ignores an old owner after pending normalization ends with %s', async (outcome) => {
+    const pendingMutation = deferred<void>();
+    repository.getTimetableTerms
+      .mockResolvedValueOnce([legacyTerm('owner-a')])
+      .mockResolvedValueOnce([legacyTerm('owner-b')]);
+    repository.applyTimetableMutation.mockReturnValueOnce(pendingMutation.promise);
+    const renderer = create(<Harness userId="owner-a" />);
+    let oldLoad!: Promise<void>;
+
+    await act(async () => {
+      oldLoad = readState().loadPlannerData('owner-a');
+      await Promise.resolve();
+    });
+    expect(repository.applyTimetableMutation).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      renderer.update(<Harness userId="owner-b" />);
+      await readState().loadPlannerData('owner-b');
+    });
+    const newSnapshot = readState().timetableTerms;
+
+    await act(async () => {
+      if (outcome === 'success') pendingMutation.resolve();
+      else pendingMutation.reject(new Error('old owner normalization failed'));
+      await oldLoad;
+    });
+
+    expect(readState().timetableTerms).toBe(newSnapshot);
+    expect(newSnapshot[0]).toMatchObject({ id: '2026-full-year', userId: 'owner-b' });
+    expect(readState().plannerDataAvailability).toMatchObject({ status: 'ready', ownerId: 'owner-b' });
+    expect(showNotice).not.toHaveBeenCalled();
+    renderer.unmount();
+  });
+
+  it.each(['linked', 'standalone'] as const)('commits %s progress only after save and never reapplies it on edit', async (mode) => {
+    const material = {
+      ...studyMaterial('owner-a', '数学問題集'), paceEnabled: true,
+      progressUnit: 'problem' as const, currentUnit: 10, totalUnits: 100,
+    };
+    repository.getStudyMaterials.mockResolvedValue([material]);
+    const pendingSave = deferred<Actual>();
+    repository.upsertActualWithMaterialProgress.mockReturnValueOnce(pendingSave.promise);
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    let saving!: Promise<void>;
+    await act(async () => { saving = saveProgressActual(mode, progressDraft(mode)); });
+
+    expect(readState().actuals).toHaveLength(1);
+    expect(readState().studyMaterials).toEqual([material]);
+    const mutation = repository.upsertActualWithMaterialProgress.mock.calls[0][0];
+    expect(mutation.materials).toEqual([expect.objectContaining({ id: material.id, currentUnit: 15 })]);
+    const savedActual = { ...mutation.actual, id: 'persisted-actual' };
+    await act(async () => {
+      pendingSave.resolve(savedActual);
+      await saving;
+    });
+
+    expect(readState().actuals).toEqual([savedActual]);
+    expect(readState().studyMaterials).toEqual(mutation.materials);
+    await act(async () => {
+      await saveProgressActual(mode, { ...progressDraft(mode), note: '追記' }, savedActual.id);
+    });
+    expect(repository.upsertActualWithMaterialProgress.mock.calls[1][0].materials).toEqual([]);
+    expect(readState().studyMaterials[0].currentUnit).toBe(15);
+    expect(readState().actuals[0].note).toBe('追記');
+    renderer.unmount();
+  });
+
+  it.each(['linked', 'standalone'] as const)('rolls back failed %s creation and editing without changing material progress', async (mode) => {
+    const material = {
+      ...studyMaterial('owner-a', '数学問題集'), paceEnabled: true,
+      progressUnit: 'problem' as const, currentUnit: 10, totalUnits: 100,
+    };
+    repository.getStudyMaterials.mockResolvedValue([material]);
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    const failure = new Error('actual save failed');
+    repository.upsertActualWithMaterialProgress.mockRejectedValueOnce(failure);
+    await act(async () => {
+      await expect(saveProgressActual(mode, progressDraft(mode))).rejects.toBe(failure);
+    });
+    expect(readState().actuals).toEqual([]);
+    expect(readState().studyMaterials).toEqual([material]);
+
+    await act(async () => { await saveProgressActual(mode, progressDraft(mode)); });
+    const savedActual = readState().actuals[0];
+    const savedMaterials = readState().studyMaterials;
+    repository.upsertActualWithMaterialProgress.mockRejectedValueOnce(failure);
+    await act(async () => {
+      await expect(saveProgressActual(mode, { ...progressDraft(mode), note: 'failed edit' }, savedActual.id)).rejects.toBe(failure);
+    });
+    expect(readState().actuals).toEqual([savedActual]);
+    expect(readState().studyMaterials).toBe(savedMaterials);
+    expect(showNotice).toHaveBeenLastCalledWith('actual save failed', 'error');
     renderer.unmount();
   });
 });

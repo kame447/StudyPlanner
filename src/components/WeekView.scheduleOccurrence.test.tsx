@@ -264,6 +264,55 @@ describe('WeekView schedule occurrence projection', () => {
     expect(findTimedBlock(renderer, '境界予定').props.style.width).toBe('calc(100% - 4px)');
   });
 
+  it.each([
+    ['all-day', '00:00', '00:00', '2 / 3'],
+    ['overnight', '23:00', '01:00', '2 / 4'],
+    ['midnight-end', '23:00', '00:00', '2 / 3'],
+  ])('keeps %s events outside timed lanes across a month boundary', (id, startTime, endTime, gridColumn) => {
+    let renderer!: ReactTestRenderer;
+
+    act(() => {
+      renderer = create(
+        <WeekView
+          selectedDate="2026-08-31"
+          plans={[]}
+          actuals={[]}
+          monthEvents={[
+            monthEvent({
+              id,
+              title: '月跨ぎ予定',
+              date: '2026-08-31',
+              endDate: '2026-09-01',
+              startTime,
+              endTime,
+            }),
+            monthEvent({
+              id: 'timed',
+              title: '時間指定予定',
+              date: '2026-08-31',
+              startTime: '23:00',
+              endTime: '23:30',
+            }),
+          ]}
+          onOpenDay={vi.fn()}
+        />,
+      );
+    });
+
+    const spanningEvent = renderer.root.find(
+      (node) => node.props['data-week-spanning-event'] === 'true',
+    );
+    expect(spanningEvent.props.style.gridColumn).toBe(gridColumn);
+    expect(findTimedBlocks(renderer, '月跨ぎ予定')).toHaveLength(0);
+    expect(findTimedBlock(renderer, '時間指定予定').props.style).toEqual({
+      top: '95.83333333333334%',
+      height: 'max(2.083333333333333%, 14px)',
+      left: 'calc(0% + 2px)',
+      width: 'calc(100% - 4px)',
+      right: 'auto',
+    });
+  });
+
   it('uses the normal timed-card title typography and compact horizontal inset in the spanning lane', () => {
     let renderer!: ReactTestRenderer;
 

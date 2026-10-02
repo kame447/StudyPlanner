@@ -1,5 +1,5 @@
 import { createId } from '../../lib/id';
-import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../../lib/date';
+import { addDays, minutesFromTime, timeFromMinutes } from '../../lib/date';
 import { getRecurrenceWeekday } from '../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../lib/timetableImport';
 import {
@@ -165,16 +165,6 @@ function resolveDraftLabel(draft: PlanDraft): string {
     draft.materialName?.trim() ||
     draft.subject.trim() ||
     draft.title.trim() ||
-    '学習予定'
-  );
-}
-
-function resolveBlockLabel(block: WeeklyPlanDraftBlock): string {
-  return (
-    block.label.trim() ||
-    block.materialName?.trim() ||
-    block.subject.trim() ||
-    block.title.trim() ||
     '学習予定'
   );
 }
@@ -2173,62 +2163,5 @@ export function createFallbackWeeklyDraftBlock(params: {
     userEdited: false,
     createdAt: timestamp,
     updatedAt: timestamp,
-  };
-}
-
-export function createSampleWeeklyDraftBlocks(params: {
-  userId: string;
-  selectedDate: string;
-}): WeeklyPlanDraftBlock[] {
-  const weekStartDate = startOfWeek(params.selectedDate);
-  return [
-    {
-      ...createFallbackWeeklyDraftBlock({
-        userId: params.userId,
-        selectedDate: weekStartDate,
-        text: '計算理論の復習',
-      }),
-      startTime: '20:00',
-      endTime: '21:00',
-      subject: '計算理論',
-      label: '計算理論',
-    },
-    {
-      ...createFallbackWeeklyDraftBlock({
-        userId: params.userId,
-        selectedDate: addDays(weekStartDate, 2),
-        text: '英語課題',
-      }),
-      startTime: '19:00',
-      endTime: '20:00',
-      subject: '英語',
-      label: '英語',
-    },
-  ];
-}
-
-export function createPlanDraftFromWeeklyDraftBlock(
-  block: WeeklyPlanDraftBlock,
-  userId: string,
-): PlanDraft {
-  const label = resolveBlockLabel(block);
-
-  return {
-    userId,
-    title: block.title.trim() || label,
-    subject: block.subject.trim() || label,
-    date: block.date,
-    startTime: block.startTime,
-    endTime: block.endTime,
-    repeat: 'none',
-    repeatUntil: null,
-    excludedDates: [],
-    recurrenceRules: [],
-    type: block.type,
-    memo: block.memo?.trim() ?? '',
-    sourceType: 'manual',
-    sourceId: null,
-    materialId: block.materialId ?? null,
-    materialName: block.materialName?.trim() ?? '',
   };
 }
