@@ -22,12 +22,17 @@ import {
 } from '../lib/bookshelfMaterials';
 import {
   getDefaultMaterialDetailPreferences,
-  isRecordForMaterial,
   loadMaterialDetailPreferences,
   saveMaterialDetailPreferences,
   type MaterialDetailPreferences,
   type MaterialStructureItem,
 } from '../lib/bookshelfMaterialDetails';
+import {
+  filterBookshelfMaterials,
+  prepareBookshelfStructurePreferences,
+  selectFrequentBookshelfMaterials,
+  selectRecentBookshelfMaterials,
+} from '../lib/bookshelfViewModel';
 import { calculateMaterialPace } from '../lib/materialPace';
 import { createId } from '../lib/id';
 import { todayIsoDate } from '../lib/date';
@@ -212,22 +217,14 @@ export function BookshelfView({
     }
   }, [activeMaterials, selectedMaterialId]);
 
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ja');
   const filteredMaterials = useMemo(
     () =>
-      activeMaterials.filter((material) => {
-        if (activeSubjectId !== 'all' && material.subjectId !== activeSubjectId) {
-          return false;
-        }
-        if (!normalizedQuery) {
-          return true;
-        }
-        return [material.name, material.subjectName, ...(material.aliases ?? [])]
-          .join(' ')
-          .toLocaleLowerCase('ja')
-          .includes(normalizedQuery);
+      filterBookshelfMaterials({
+        materials: activeMaterials,
+        activeSubjectId,
+        searchQuery,
       }),
-    [activeMaterials, activeSubjectId, normalizedQuery],
+    [activeMaterials, activeSubjectId, searchQuery],
   );
   const filteredMaterialIds = useMemo(
     () => new Set(filteredMaterials.map((material) => material.id)),
@@ -235,30 +232,15 @@ export function BookshelfView({
   );
   const frequentMaterials = useMemo(
     () =>
-      filteredMaterials
-        .slice()
-        .sort((left, right) => {
-          const leftPreferences =
-            preferencesByMaterialId.get(left.id) ?? getDefaultMaterialDetailPreferences();
-          const rightPreferences =
-            preferencesByMaterialId.get(right.id) ?? getDefaultMaterialDetailPreferences();
-          if (leftPreferences.favorite !== rightPreferences.favorite) {
-            return leftPreferences.favorite ? -1 : 1;
-          }
-
-          const leftCount = actuals.filter((actual) => isRecordForMaterial(actual, left)).length;
-          const rightCount = actuals.filter((actual) => isRecordForMaterial(actual, right)).length;
-          return rightCount - leftCount || right.updatedAt.localeCompare(left.updatedAt);
-        })
-        .slice(0, 3),
+      selectFrequentBookshelfMaterials({
+        materials: filteredMaterials,
+        actuals,
+        preferencesByMaterialId,
+      }),
     [actuals, filteredMaterials, preferencesByMaterialId],
   );
   const recentMaterials = useMemo(
-    () =>
-      filteredMaterials
-        .slice()
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, 3),
+    () => selectRecentBookshelfMaterials(filteredMaterials),
     [filteredMaterials],
   );
 
@@ -365,16 +347,10 @@ export function BookshelfView({
       return;
     }
 
-    const cleanedItems = structureDraft.structureItems
-      .map((item) => ({ ...item, title: item.title.trim() }))
-      .filter((item) => item.title.length > 0);
-    persistPreferences(structureEditorMaterial.id, {
-      ...structureDraft,
-      structureVisible: structureDraft.structureEnabled
-        ? structureDraft.structureVisible
-        : false,
-      structureItems: cleanedItems,
-    });
+    persistPreferences(
+      structureEditorMaterial.id,
+      prepareBookshelfStructurePreferences(structureDraft),
+    );
     setStructureEditorMaterialId(null);
     setStructureDraft(null);
   }
