@@ -14,7 +14,7 @@ import type {
   WeeklyPlanningAction,
   WeeklyPlanningPendingApproval,
 } from '../types';
-import { createPlanDraftFromWeeklyDraftBlock } from '../weeklyPlanningTransforms';
+import { createPlanDraftFromWeeklyDraftBlock } from './weeklyPlanningDraftConversion';
 import type { WeeklyPlanningEstimateMetadataV1 } from '../personalization/weeklyPlanningEstimateCalibration';
 import {
   createWeeklyPlanningApplicationMessage,
