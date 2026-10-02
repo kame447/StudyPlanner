@@ -740,13 +740,17 @@ export class FirestoreServiceAccountClient {
     }
     await discardResponseBody(response);
 
-    const itemMatches = await Promise.all(params.items.map(async (item) => {
-      const existing = await this.getDocument(params.itemCollection, item.id);
+    const existingDocuments = await this.batchGetDocumentKeys([
+      ...params.items.map((item) => ({ collection: params.itemCollection, id: item.id })),
+      { collection: params.aggregateCollection, id: params.aggregateId },
+    ]);
+    const itemMatches = params.items.map((item, index) => {
+      const existing = existingDocuments[index];
       return Boolean(existing)
         && stableJson(comparableDocument(existing as Record<string, unknown>))
           === stableJson(comparableDocument(item.value));
-    }));
-    const aggregate = await this.getDocument(params.aggregateCollection, params.aggregateId);
+    });
+    const aggregate = existingDocuments[params.items.length];
     const storedCount = Number(aggregate?.[params.maximumFieldPath] ?? -1);
     if (itemMatches.every(Boolean) && storedCount >= params.maximum) return;
     throw new Error(params.conflictMessage ?? 'immutable document conflict: atomic append');
