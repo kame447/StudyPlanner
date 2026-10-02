@@ -14,6 +14,12 @@ import {
   type TimetableOcrResult,
 } from '../lib/timetableOcrImport';
 import { resolveTimetableAlternatingWeek } from '../lib/timetableCalendar';
+import {
+  findPeriodNumberForTemplate,
+  getPeriodTimeStatus,
+  hasValidPeriodTime,
+  templateVisibleInAlternatingWeek,
+} from '../lib/timetableViewModel';
 import { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';
 import type {
   RecurrenceWeekday,
@@ -93,37 +99,6 @@ const EMPTY_CELL_TAP_MOVE_THRESHOLD_PX = 10;
 
 function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
-}
-
-function getTimeKey(startTime: string | null, endTime: string | null): string | null {
-  return startTime && endTime ? `${startTime}-${endTime}` : null;
-}
-
-function toMinutes(time: string): number {
-  const [hour, minute] = time.split(':').map(Number);
-  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : 0;
-}
-
-function hasCompletePeriodTime(period: DisplayPeriod): period is DisplayPeriod & {
-  startTime: string;
-  endTime: string;
-} {
-  return Boolean(period.startTime && period.endTime);
-}
-
-function hasValidPeriodTime(period: DisplayPeriod): period is DisplayPeriod & {
-  startTime: string;
-  endTime: string;
-} {
-  return hasCompletePeriodTime(period) && toMinutes(period.endTime) > toMinutes(period.startTime);
-}
-
-function getPeriodTimeStatus(period: DisplayPeriod): 'valid' | 'partial' | 'invalid' {
-  if (!hasCompletePeriodTime(period)) {
-    return 'partial';
-  }
-
-  return hasValidPeriodTime(period) ? 'valid' : 'invalid';
 }
 
 function getTodayIsoDate(): string {
@@ -215,38 +190,6 @@ function comparePeriods(left: DisplayPeriod, right: DisplayPeriod): number {
   return left.periodNumber - right.periodNumber;
 }
 
-function findPeriodNumberForTemplate(
-  template: ScheduleTemplate,
-  periods: DisplayPeriod[],
-): number | null {
-  if (template.periodNumber && periods.some((period) => period.periodNumber === template.periodNumber)) {
-    return template.periodNumber;
-  }
-
-  const timeMatch = periods.find(
-    (period) => getTimeKey(period.startTime, period.endTime) === getTimeKey(template.startTime, template.endTime),
-  );
-
-  if (timeMatch) {
-    return timeMatch.periodNumber;
-  }
-
-  const validPeriods = periods.filter(hasValidPeriodTime);
-
-  if (validPeriods.length === 0) {
-    return null;
-  }
-
-  const templateStartMinutes = toMinutes(template.startTime);
-  return validPeriods
-    .slice()
-    .sort(
-      (left, right) =>
-        Math.abs(toMinutes(left.startTime) - templateStartMinutes) -
-        Math.abs(toMinutes(right.startTime) - templateStartMinutes),
-    )[0].periodNumber;
-}
-
 function makePeriodDraft(
   userId: string,
   termId: string,
@@ -260,19 +203,6 @@ function makePeriodDraft(
     startTime: period.startTime,
     endTime: period.endTime,
   };
-}
-
-function templateVisibleInAlternatingWeek(
-  template: ScheduleTemplate,
-  usesAlternatingWeeks: boolean,
-  week: TimetableAlternatingWeek,
-): boolean {
-  if (!usesAlternatingWeeks) {
-    return true;
-  }
-
-  const scope = template.alternatingWeek ?? 'both';
-  return scope === 'both' || scope === week;
 }
 
 function getTemplatePatternLabel(template: ScheduleTemplate): string {

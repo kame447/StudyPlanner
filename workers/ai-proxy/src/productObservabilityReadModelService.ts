@@ -1,4 +1,5 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
+import { listObservabilityDatesInclusive } from '../../../shared/productObservabilityDateRange';
 import {
   OBSERVABILITY_LATENCY_BUCKET_UPPER_BOUNDS_MS,
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
@@ -90,22 +91,6 @@ function isEnvironment(value: unknown): value is ObservabilityEnvironment {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
-}
-
-function listDatesInclusive(fromDate: string, toDate: string): string[] {
-  if (!isIsoDate(fromDate) || !isIsoDate(toDate) || fromDate > toDate) {
-    throw new Error('observability_date_range_invalid');
-  }
-  const start = new Date(`${fromDate}T00:00:00Z`);
-  const end = new Date(`${toDate}T00:00:00Z`);
-  const result: string[] = [];
-  for (let current = start.getTime(); current <= end.getTime(); current += 86_400_000) {
-    result.push(new Date(current).toISOString().slice(0, 10));
-    if (result.length > MAX_OVERVIEW_DAYS) {
-      throw new Error('observability_date_range_too_large');
-    }
-  }
-  return result;
 }
 
 function addDays(localDate: string, offset: number): string {
@@ -393,7 +378,7 @@ export class ProductObservabilityReadModelService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityDailyRollup[]> {
-    const dates = listDatesInclusive(params.fromDate, params.toDate);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const values = await this.firestore.batchGetDocuments(
       DAILY_ROLLUP_COLLECTION,
       dates.map((localDate) => dailyId(params.environment, localDate)),
@@ -415,7 +400,7 @@ export class ProductObservabilityReadModelService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
-    listDatesInclusive(params.fromDate, params.toDate);
+    listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const [daily, activeUsersValue, checkpoint, registeredUsers] = await Promise.all([
       this.getDailyRollups(params),
       this.firestore.getDocument(
@@ -491,7 +476,7 @@ export class ProductObservabilityReadModelService {
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
   }> {
-    const dates = listDatesInclusive(params.fromDate, params.toDate);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const keys: FirestoreTransactionDocumentKey[] = [
       ...dates.map((localDate) => ({
         collection: DAILY_ROLLUP_COLLECTION,

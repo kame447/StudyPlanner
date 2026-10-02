@@ -1,4 +1,3 @@
-import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { useCallback, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
@@ -10,20 +9,12 @@ import {
   isWeeklyPlanningTraceFeatureEnabled,
 } from '../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository';
 import { useWeeklyPlanningTracePolicy } from '../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy';
-import { getFirebaseAuth } from '../lib/firebaseClient';
+import { createAuthSessionService, type AuthSessionService } from '../services/authSession';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
-
-function isPasswordUserWaitingForVerification(user: {
-  emailVerified: boolean;
-  providerData: Array<{ providerId: string }>;
-}): boolean {
-  return !user.emailVerified
-    && user.providerData.some((provider) => provider.providerId === 'password');
-}
 
 function StartupSurface({
   children,
@@ -40,14 +31,15 @@ function StartupSurface({
 }
 
 function ConsentedStudyPlannerApp({
+  authSession,
   userId,
   onStartupReady,
 }: {
+  authSession: AuthSessionService;
   userId: string;
   onStartupReady: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
-  const auth = getFirebaseAuth();
 
   useEffect(() => {
     if (!personalization.loading && !personalization.profile?.weekStartsOn) {
@@ -66,7 +58,7 @@ function ConsentedStudyPlannerApp({
         onSave={personalization.setWeekStartsOn}
         onRetry={personalization.refresh}
         onSignOut={async () => {
-          if (auth) await firebaseSignOut(auth);
+          await authSession.signOut();
         }}
       />
     );
@@ -86,14 +78,15 @@ function ConsentedStudyPlannerApp({
 }
 
 function AuthenticatedStudyPlannerApp({
+  authSession,
   userId,
   onStartupReady,
 }: {
+  authSession: AuthSessionService;
   userId: string;
   onStartupReady: () => void;
 }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
-  const auth = getFirebaseAuth();
 
   useEffect(() => {
     if (
@@ -108,6 +101,7 @@ function AuthenticatedStudyPlannerApp({
   if (policy.status === 'accepted') {
     return (
       <ConsentedStudyPlannerApp
+        authSession={authSession}
         userId={userId}
         onStartupReady={onStartupReady}
       />
@@ -129,7 +123,7 @@ function AuthenticatedStudyPlannerApp({
       onAccept={policy.accept}
       onRetry={policy.refresh}
       onSignOut={async () => {
-        if (auth) await firebaseSignOut(auth);
+        await authSession.signOut();
       }}
     />
   );
@@ -143,36 +137,44 @@ function RootManagedUnauthenticatedApp() {
   );
 }
 
-export function StudyPlannerAppRoot() {
-  const auth = useMemo(() => getFirebaseAuth(), []);
+export function StudyPlannerAppRoot({
+  authSession: injectedAuthSession,
+}: { authSession?: AuthSessionService } = {}) {
+  const authSession = useMemo(
+    () => injectedAuthSession ?? createAuthSessionService(),
+    [injectedAuthSession],
+  );
   const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
   const currentPath = window.location.pathname;
   const isLegalPage = currentPath === '/terms'
     || currentPath === '/privacy'
     || currentPath === '/contact';
   const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null | undefined>(
-    auth?.currentUser && !isPasswordUserWaitingForVerification(auth.currentUser)
-      ? auth.currentUser.uid
-      : auth
-        ? undefined
-        : null,
+    () => {
+      const user = authSession.getCurrentUser();
+      return user && !user.requiresEmailVerification
+        ? user.id
+        : authSession.available
+          ? undefined
+          : null;
+    },
   );
   const [startupReadyUserId, setStartupReadyUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth) {
+    if (!authSession.available) {
       setAuthenticatedUserId(null);
       return undefined;
     }
 
-    return onAuthStateChanged(auth, (user) => {
-      if (!user || isPasswordUserWaitingForVerification(user)) {
+    return authSession.subscribe((user) => {
+      if (!user || user.requiresEmailVerification) {
         setAuthenticatedUserId(null);
         return;
       }
-      setAuthenticatedUserId(user.uid);
+      setAuthenticatedUserId(user.id);
     });
-  }, [auth]);
+  }, [authSession]);
 
   const markAuthenticatedStartupReady = useCallback(() => {
     if (typeof authenticatedUserId === 'string') {
@@ -180,7 +182,7 @@ export function StudyPlannerAppRoot() {
     }
   }, [authenticatedUserId]);
 
-  if (isLegalPage || !traceEnabled || !auth) {
+  if (isLegalPage || !traceEnabled || !authSession.available) {
     return <App />;
   }
 
@@ -195,6 +197,7 @@ export function StudyPlannerAppRoot() {
       ) : typeof authenticatedUserId === 'string' ? (
         <RootStartupReadyProvider onReady={markAuthenticatedStartupReady}>
           <AuthenticatedStudyPlannerApp
+            authSession={authSession}
             userId={authenticatedUserId}
             onStartupReady={markAuthenticatedStartupReady}
           />

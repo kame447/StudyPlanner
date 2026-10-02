@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { buildMonthGrid, buildMonthPanelProjection } from './monthViewProjection';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  buildMonthGrid,
+  buildMonthPanelProjection,
+  type MonthPanelProjection,
+} from './monthViewProjection';
 import type {
   Actual,
   MonthEvent,
@@ -39,6 +43,33 @@ const actual: Actual = {
   note: '',
   updatedAt: '2026-08-14T10:10:00.000Z',
 };
+
+function createStandaloneActual(overrides: Partial<Actual> = {}): Actual {
+  return {
+    ...actual,
+    id: 'standalone-1',
+    planId: null,
+    actualStartTime: '20:00',
+    actualEndTime: '20:35',
+    isAlignedToPlan: false,
+    ...overrides,
+  };
+}
+
+function expectCellMinutes(
+  projection: MonthPanelProjection,
+  expected: Record<string, [targetMinutes: number, actualMinutes: number]>,
+) {
+  expect(projection.cells).toHaveLength(42);
+  expect(projection.cells.map((cell) => cell.date)).toEqual(
+    expect.arrayContaining(Object.keys(expected)),
+  );
+  for (const cell of projection.cells) {
+    expect([cell.targetMinutes, cell.actualMinutes], cell.date).toEqual(
+      expected[cell.date] ?? [0, 0],
+    );
+  }
+}
 
 function createMonthEvent(id: string, startTime: string): MonthEvent {
   return {
@@ -133,6 +164,159 @@ describe('month view projection', () => {
     ]);
   });
 
+  it.each(['user-1', undefined])(
+    'counts standalone actuals in a month with no plans (userId: %s)',
+    (userId) => {
+      const projection = buildMonthPanelProjection({
+        monthDate: '2026-08-01',
+        userId,
+        plans: [],
+        actuals: [
+          createStandaloneActual(),
+          createStandaloneActual({
+            id: 'standalone-2',
+            actualStartTime: '21:00',
+            actualEndTime: '21:25',
+          }),
+          createStandaloneActual({
+            id: 'standalone-next-day',
+            occurrenceDate: '2026-08-15',
+            actualStartTime: '08:00',
+            actualEndTime: '08:20',
+          }),
+        ],
+        monthEvents: [],
+      });
+
+      expectCellMinutes(projection, {
+        '2026-08-14': [0, 60],
+        '2026-08-15': [0, 20],
+      });
+      expect(projection.cells.every((cell) => cell.monthEvents.length === 0)).toBe(true);
+    },
+  );
+
+  it('adds linked and standalone actual minutes on the same day without changing the target', () => {
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-08-01',
+      userId: 'user-1',
+      plans: [plan],
+      actuals: [actual, createStandaloneActual()],
+      monthEvents: [],
+    });
+
+    expectCellMinutes(projection, { '2026-08-14': [90, 95] });
+  });
+
+  it('includes actuals at both edges of the 42-cell grid and excludes dates outside it', () => {
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-09-01',
+      userId: 'user-1',
+      plans: [
+        { ...plan, date: '2026-08-31' },
+        {
+          ...plan,
+          id: 'trailing-plan',
+          seriesId: 'trailing-plan',
+          date: '2026-10-11',
+          endTime: '09:45',
+        },
+      ],
+      actuals: [
+        { ...actual, occurrenceDate: '2026-08-31' },
+        createStandaloneActual({ occurrenceDate: '2026-08-31' }),
+        {
+          ...actual,
+          id: 'trailing-linked',
+          planId: 'trailing-plan',
+          occurrenceDate: '2026-10-11',
+          actualEndTime: '09:30',
+        },
+        createStandaloneActual({
+          id: 'trailing-standalone',
+          occurrenceDate: '2026-10-11',
+          actualEndTime: '20:50',
+        }),
+        createStandaloneActual({
+          id: 'before-grid',
+          occurrenceDate: '2026-08-30',
+        }),
+        createStandaloneActual({
+          id: 'after-grid',
+          occurrenceDate: '2026-10-12',
+        }),
+      ],
+      monthEvents: [],
+    });
+
+    expect(projection.cells[0]).toMatchObject({
+      date: '2026-08-31',
+      inCurrentMonth: false,
+    });
+    expect(projection.cells[41]).toMatchObject({
+      date: '2026-10-11',
+      inCurrentMonth: false,
+    });
+    expectCellMinutes(projection, {
+      '2026-08-31': [90, 95],
+      '2026-10-11': [45, 70],
+    });
+    expect(projection.cells.some((cell) => cell.date === '2026-08-30')).toBe(false);
+    expect(projection.cells.some((cell) => cell.date === '2026-10-12')).toBe(false);
+  });
+
+  it('returns zero minutes and no events in every cell of an empty month', () => {
+    const projection = buildMonthPanelProjection({
+      monthDate: '2026-09-01',
+      plans: [],
+      actuals: [],
+      monthEvents: [],
+    });
+
+    expectCellMinutes(projection, {});
+    expect(projection.cells.every((cell) => cell.monthEvents.length === 0)).toBe(true);
+  });
+
+  it('keeps explicit calendar dates at local midnight under a fixed clock', () => {
+    // Use a local date constructor so the fixture also works in UTC and DST zones.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 8, 1, 0, 5));
+      const input = {
+        monthDate: '2026-09-01',
+        userId: 'user-1',
+        plans: [{ ...plan, date: '2026-09-01', startTime: '00:00', endTime: '00:45' }],
+        actuals: [
+          createStandaloneActual({
+            occurrenceDate: '2026-08-31',
+            actualStartTime: '23:40',
+            actualEndTime: '24:00',
+          }),
+          {
+            ...actual,
+            occurrenceDate: '2026-09-01',
+            actualStartTime: '00:00',
+            actualEndTime: '00:15',
+          },
+        ],
+        monthEvents: [],
+      };
+      const projection = buildMonthPanelProjection(input);
+
+      expect(projection.cells[0]?.date).toBe('2026-08-31');
+      expect(projection.cells[41]?.date).toBe('2026-10-11');
+      expectCellMinutes(projection, {
+        '2026-08-31': [0, 20],
+        '2026-09-01': [45, 15],
+      });
+
+      vi.setSystemTime(new Date(2027, 0, 1, 0, 5));
+      expect(buildMonthPanelProjection(input)).toEqual(projection);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows non-study Plan occurrences as calendar events without turning study plans into event pills', () => {
     const appointment: Plan = {
       ...plan,
@@ -221,4 +405,58 @@ describe('month view projection', () => {
       endTime: '10:00',
     });
   });
+
+  it.each([
+    {
+      label: 'single all-day',
+      startTime: '00:00',
+      endDate: '2026-08-14',
+      endTime: '24:00',
+      dates: ['2026-08-14'],
+    },
+    {
+      label: 'multi-day all-day',
+      startTime: '00:00',
+      endDate: '2026-08-16',
+      endTime: '00:00',
+      dates: ['2026-08-14', '2026-08-15'],
+    },
+    {
+      label: 'multi-day timed',
+      startTime: '18:00',
+      endDate: '2026-08-16',
+      endTime: '00:00',
+      dates: ['2026-08-14', '2026-08-15'],
+    },
+  ])(
+    'excludes the midnight end day of a $label event',
+    ({ startTime, endDate, endTime, dates }) => {
+      const projection = buildMonthPanelProjection({
+        monthDate: '2026-08-01',
+        userId: 'user-1',
+        plans: [plan],
+        actuals: [actual, createStandaloneActual()],
+        monthEvents: [{ ...createMonthEvent('midnight-event', startTime), endDate, endTime }],
+      });
+      const event = {
+        id: 'month-event:midnight-event:2026-08-14',
+        date: '2026-08-14',
+        endDate: dates[dates.length - 1],
+        startTime,
+        endTime: '24:00',
+      };
+
+      expect(
+        projection.cells
+          .filter((cell) => cell.monthEvents.length > 0)
+          .map((cell) => cell.date),
+      ).toEqual(dates);
+      for (const date of dates) {
+        expect(
+          projection.cells.find((cell) => cell.date === date)?.monthEvents,
+        ).toMatchObject([event]);
+      }
+      expectCellMinutes(projection, { '2026-08-14': [90, 95] });
+    },
+  );
 });

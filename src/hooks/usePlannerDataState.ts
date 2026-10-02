@@ -10,10 +10,7 @@ import {
 import {
   createTimetableTermId,
   createTimetableTermLabel,
-  mergeTimetablePeriodsByTermAndNumber,
   normalizeTimetableDate,
-  normalizeTimetableTermsByYearAndKind,
-  remapTimetableTermId,
   sortTimetableTerms,
 } from '../domain/timetableDataNormalization';
 import {
@@ -21,10 +18,13 @@ import {
   createInitialPlannerDataAvailability,
   type PlannerDataAvailability,
 } from '../domain/plannerDataReadAuthority';
+import {
+  normalizePlannerTimetableData,
+  resolveActualMaterialProgress,
+} from '../domain/plannerDataTransforms';
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
-import { applyMaterialProgressUpdates } from '../lib/materialPace';
 import { plannerRepository } from '../repositories';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
@@ -359,79 +359,21 @@ export function usePlannerDataState({
       return;
     }
 
-    const {
-      terms: resolvedTimetableTerms,
-      termIdMap,
-      obsoleteTermIds,
-    } = normalizeTimetableTermsByYearAndKind(nextUserId, nextTimetableTerms);
-    const remappedScheduleTemplates = nextScheduleTemplates.map((template) => {
-      const nextTermId = remapTimetableTermId(template.termId, termIdMap);
-
-      return nextTermId === (template.termId || 'default')
-        ? template
-        : {
-            ...template,
-            termId: nextTermId,
-            updatedAt: new Date().toISOString(),
-          };
-    });
-    const {
-      periods: resolvedTimetablePeriods,
-      obsoletePeriodIds,
-    } = mergeTimetablePeriodsByTermAndNumber(
-      nextTimetablePeriods.map((period) => {
-        const nextTermId = remapTimetableTermId(period.termId, termIdMap);
-
-        return nextTermId === period.termId
-          ? period
-          : {
-              ...period,
-              termId: nextTermId,
-              updatedAt: new Date().toISOString(),
-            };
-      }),
+    const normalizedTimetable = normalizePlannerTimetableData(
+      nextUserId,
+      {
+        scheduleTemplates: nextScheduleTemplates,
+        timetableTerms: nextTimetableTerms,
+        timetablePeriods: nextTimetablePeriods,
+      },
+      new Date().toISOString(),
     );
-
-    const termUpserts = resolvedTimetableTerms.filter((term) => {
-      const previousTerm = nextTimetableTerms.find((item) => item.id === term.id);
-      return !(
-        previousTerm &&
-        previousTerm.year === term.year &&
-        previousTerm.kind === term.kind &&
-        previousTerm.label === term.label &&
-        previousTerm.startDate === term.startDate &&
-        previousTerm.endDate === term.endDate &&
-        previousTerm.usesAlternatingWeeks === term.usesAlternatingWeeks &&
-        previousTerm.alternatingWeekAnchorDate === term.alternatingWeekAnchorDate &&
-        previousTerm.isActive === term.isActive
-      );
-    });
-    const templateUpserts = remappedScheduleTemplates.filter((template) => {
-      const previousTemplate = nextScheduleTemplates.find((item) => item.id === template.id);
-      return previousTemplate?.termId !== template.termId;
-    });
-    const periodUpserts = resolvedTimetablePeriods.filter((period) => {
-      const previousPeriod = nextTimetablePeriods.find((item) => item.id === period.id);
-      return previousPeriod?.termId !== period.termId;
-    });
-    const termDeletes = nextTimetableTerms.filter((term) => obsoleteTermIds.includes(term.id));
-    const periodDeletes = nextTimetablePeriods.filter((period) =>
-      obsoletePeriodIds.includes(period.id),
-    );
-    let committedScheduleTemplates = remappedScheduleTemplates;
-    let committedTimetableTerms = resolvedTimetableTerms;
-    let committedTimetablePeriods = resolvedTimetablePeriods;
+    let committedScheduleTemplates = normalizedTimetable.scheduleTemplates;
+    let committedTimetableTerms = normalizedTimetable.timetableTerms;
+    let committedTimetablePeriods = normalizedTimetable.timetablePeriods;
 
     try {
-      await plannerRepository.applyTimetableMutation({
-        userId: nextUserId,
-        termUpserts,
-        termDeletes,
-        templateUpserts,
-        templateDeletes: [],
-        periodUpserts,
-        periodDeletes,
-      });
+      await plannerRepository.applyTimetableMutation(normalizedTimetable.mutation);
     } catch (error) {
       if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
         return;
@@ -791,28 +733,6 @@ export function usePlannerDataState({
     }
   }
 
-  function resolveActualMaterialProgress(actual: Actual): {
-    nextMaterials: StudyMaterial[];
-    changedMaterials: StudyMaterial[];
-  } {
-    if (!actual.materialProgressUpdates?.length) {
-      return { nextMaterials: studyMaterials, changedMaterials: [] };
-    }
-    const nextMaterials = applyMaterialProgressUpdates(
-      studyMaterials,
-      actual.materialProgressUpdates,
-    );
-    const changedMaterials = nextMaterials.filter((nextMaterial) => {
-      const currentMaterial = studyMaterials.find(
-        (material) => material.id === nextMaterial.id,
-      );
-      return Boolean(
-        currentMaterial && currentMaterial.currentUnit !== nextMaterial.currentUnit,
-      );
-    });
-    return { nextMaterials, changedMaterials };
-  }
-
   async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
@@ -823,7 +743,7 @@ export function usePlannerDataState({
     const rollbackActual = existingActual;
     const progress = existingActual
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
-      : resolveActualMaterialProgress(nextActual);
+      : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
     setActuals((current) =>
       upsertActualByOccurrenceKey(
@@ -905,7 +825,7 @@ export function usePlannerDataState({
     const previousActuals = actuals;
     const progress = existingActual
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
-      : resolveActualMaterialProgress(nextActual);
+      : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
     try {
       setActuals((current) =>

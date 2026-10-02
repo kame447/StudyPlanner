@@ -298,16 +298,19 @@ async function loadAdminTraceEntries(
     (_, sequence) => sequence,
   ).filter((sequence) => !entriesBySequence.has(sequence));
 
-  const recoveredEntries = await Promise.all(
-    missingSequences.map(async (sequence) => normalizeAdminTraceEntry(
-      await firestore.getDocument(
-        TRACE_ENTRIES,
-        `${sessionId}-${String(sequence).padStart(8, '0')}`,
-      ),
+  const recoveredDocuments = missingSequences.length > 0
+    ? await firestore.batchGetDocuments(
+      TRACE_ENTRIES,
+      missingSequences.map((sequence) => `${sessionId}-${String(sequence).padStart(8, '0')}`),
+    )
+    : [];
+  const recoveredEntries = recoveredDocuments.map((document, index) => (
+    normalizeAdminTraceEntry(
+      document,
       sessionId,
-      sequence,
-    )),
-  );
+      missingSequences[index],
+    )
+  ));
   recoveredEntries.forEach((entry) => {
     if (entry) entriesBySequence.set(entry.sequence as number, entry);
   });
