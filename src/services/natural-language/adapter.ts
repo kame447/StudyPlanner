@@ -86,25 +86,6 @@ export function isNaturalLanguageCurrentPipelineOnlyDebugEnabled(): boolean {
   );
 }
 
-export function setStoredNaturalLanguageCurrentPipelineOnly(enabled: boolean): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    CURRENT_PIPELINE_ONLY_STORAGE_KEY,
-    enabled ? "true" : "false",
-  );
-}
-
-export function clearStoredNaturalLanguageCurrentPipelineOnly(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.removeItem(CURRENT_PIPELINE_ONLY_STORAGE_KEY);
-}
-
 function mapUnresolvedFields(
   fields: UnresolvedField[],
 ): SuggestionField[] {
