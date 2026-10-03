@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import {
   isUserUtteranceSourcedV5,
@@ -472,6 +473,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     }
   });
   recurrences.forEach((fact, index) => {
+    validateWeeklyPlanningRecurrenceValuesV5(fact, `graph.recurrences[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.recurrences[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,

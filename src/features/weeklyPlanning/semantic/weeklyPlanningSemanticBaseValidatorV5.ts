@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import { isCanonicalDateExpressionSyntax } from './weeklyPlanningCalendarResolver';
 import {
@@ -7,7 +8,6 @@ import {
   SEMANTIC_CONSTRAINT_LEVELS_V5,
   SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
   SEMANTIC_NAMED_TIME_PERIODS_V5,
-  SEMANTIC_RECURRENCE_KINDS_V5,
   SEMANTIC_STUDY_PURPOSES_V5,
   SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_TASK_DATE_RULE_KINDS_V5,
@@ -35,10 +35,6 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
-}
-
-function isFinitePositiveNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
 function isEnumValue<T extends readonly string[]>(
@@ -669,20 +665,7 @@ export function validateWeeklyPlanningSemanticValueV5(
             || !taskTargets.has(recurrence.targetLocalId)) {
             errors.push(`${recurrencePath}.targetLocalId`);
           }
-          if (!isEnumValue(recurrence.kind, SEMANTIC_RECURRENCE_KINDS_V5)) {
-            errors.push(`${recurrencePath}.kind`);
-          }
-          if (recurrence.count !== null && !isFinitePositiveNumber(recurrence.count)) {
-            errors.push(`${recurrencePath}.count`);
-          }
-          if (recurrence.kind === 'times_per_week'
-            && !isFinitePositiveNumber(recurrence.count)) {
-            errors.push(`${recurrencePath}.count:required`);
-          }
-          if (!Array.isArray(recurrence.days)
-            || recurrence.days.some((day) => !isNonEmptyString(day))) {
-            errors.push(`${recurrencePath}.days`);
-          }
+          validateWeeklyPlanningRecurrenceValuesV5(recurrence, recurrencePath, errors);
           validateSourceText(recurrence, recurrencePath, errors);
         });
       }
