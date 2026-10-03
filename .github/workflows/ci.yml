@@ -40,6 +40,8 @@ jobs:
           java-version: '21'
       - name: Install dependencies
         run: npm ci
+      - name: Audit dependencies at high severity threshold
+        run: npm audit --audit-level=high
       - name: Run fresh app and Worker TypeScript checks
         run: npm run typecheck:full
       - name: Run tests

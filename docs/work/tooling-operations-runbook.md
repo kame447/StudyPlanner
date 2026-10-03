@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-09-26
+Updated: 2026-10-03
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -135,6 +135,22 @@ Last verified: 2026-08-29, PR #240.
 
 ---
 
+## Test intelligence must preserve the application dependency baseline
+
+- Last verified: 2026-10-03
+- Symptom: coverage/mutation jobs pass manifest checks but run against different installed dependencies
+- Evidence: Test Intelligence run `36275383359` coverage used Vitest 3.2.4 although its commit locked 3.2.7; adding the provider changed 116 packages. The mutation install pinned TypeScript 5.6.3 while the lock specified 5.9.3
+- Cause: `--package-lock=false` ignores the existing lock during resolution, not only when writing. Manifest hashes alone do not describe the executed dependency graph
+- Coverage procedure: obtain the Vitest version from `package-lock.json`, install the matching provider with `--no-save` while retaining lockfile reading, then check both manifests and the previously installed locked package versions
+- Mutation procedure: `npm run test:mutation:weekly-planning` uses `scripts/ci/run-locked-mutation-tests.mjs`. Stryker is pinned; Vitest and TypeScript versions come from the application lock. All tools are explicitly installed into an empty temporary prefix, and the original application installation stays unchanged
+- Do not replace that prefix installation with bare `npm exec --package=...`: npm may omit a requested package already available in the application, leaving the isolated tool's peer dependency resolved to another version. This reproduced TypeScript 7.0.2 in the tool cache despite a requested/application version of 5.9.3, causing `ts.parseConfigFileTextToJson is not a function`
+- Guard: `scripts/ci/locked-test-toolchain.mjs` records installed lock entries after `npm ci`, rejects an inconsistent/incomplete baseline, and rejects disappearance/version drift after adding tools. Optional packages for other platforms may be absent. The guard does not claim to audit every byte of newly installed tools or prove supply-chain safety
+- Cleanup: the launcher removes only its own temporary tool directory, including on failure; project Stryker reports and failure evidence remain. Never delete reports to hide a failing run
+- Discovery: normal Vitest excludes the root `.stryker-tmp/**` directory. Otherwise a later local run can execute copied tests from a Stryker sandbox a second time. This does not exclude the real test sources inside a Stryker run whose working directory is the sandbox
+- Quality: line coverage is executed-code evidence, not proof that assertions detect faults. Read survivors/no-coverage cases, use deliberate fault injection and intermediate-state assertions, and distinguish source-string architecture checks, mock contracts, real browser behavior, real runtime integration, and paid model evaluation
+- Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
+- References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
+
 ## Maintenance rule for new tooling knowledge
 
 Add a new entry when at least one of these is true:
@@ -146,3 +162,24 @@ Add a new entry when at least one of these is true:
 - an external integration has a stable limitation that changes how agents should operate.
 
 Prefer updating an existing entry when the new evidence is the same failure class. Keep historical one-off noise in Issues/PRs/Actions rather than growing this file without bound.
+
+
+## Worker tooling security and remote-evaluation version pins
+
+- Updated: 2026-10-03; owning Issue #379
+- Wrangler 4.140.0 contains undici 7.29.0 twice: a Miniflare dependency and an embedded CLI bundle. Overriding only the installed Miniflare dependency can clear npm audit while leaving the vulnerable embedded copy
+- Pin Wrangler 4.143.1, the first published Wrangler release that updates both copies to undici 7.29.1: https://github.com/cloudflare/workers-sdk/releases/tag/wrangler@4.143.1
+- Keep the five remote-evaluation launcher pins and current README command aligned with the exact package.json version. Unexpected PATH executables must still be rejected; do not replace the guard with an unrestricted range
+- Verify clean installation, the installed transport and embedded CLI provenance, Worker type generation and strict checking, and a local deployment dry run. A dry run does not deploy
+- Local tooling checks and an import check for unstable_dev do not establish remote-provider evaluation quality. No paid/live Jev evaluation or holdout consumption is implied by this update. Earlier 4.140.0 execution records remain historical evidence, not current launch instructions
+- Do not lower the dependency audit threshold, omit dev dependencies, or disable certificate verification to hide a tooling vulnerability
+
+
+## Temporary Firestore Node transport security pin
+
+- Last verified: 2026-10-03; owner: [Issue #387](https://github.com/kame447/StudyPlanner/issues/387)
+- Firebase 12.12.0 / Firestore 4.14.0 declares grpc-js ~1.9.0, which resolves an affected release for [GHSA-m9gg-hp2v-232j](https://github.com/advisories/GHSA-m9gg-hp2v-232j). The advisory concerns specific gRPC server certificate-authorization use; no matching application authorization path was identified. This is not evidence of an intrusion or a universal reachability guarantee
+- The temporary npm override is limited to Firestore 4.14.0 and exact grpc-js 1.13.6, an official patched release. It is outside the upstream ~1.9.0 range, so the real Node Firestore SDK + Auth/Firestore emulator regression is a compatibility gate. Browser builds or mocked tests alone do not establish compatibility
+- The browser SDK uses WebChannel and the Worker uses REST; the Node emulator script exercises the gRPC client. Keep those verification boundaries distinct
+- Remove the bridge when a reviewed Firebase release supplies a patched transport itself. A future Firestore version must not silently inherit an old forced pin; the ordinary CI high-severity audit detects a vulnerable replacement
+- Keep audit thresholds and certificate/auth settings unchanged. The scheduled audit remains useful when new advisories appear without a source change; ordinary PR/main CI also audits dependency changes before merge
