@@ -29,6 +29,7 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import {
   getOrCreateWeeklyPlanningStableV5RuntimeSession,
+  getWeeklyPlanningStableV5RuntimeSession,
   hydrateWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
@@ -46,7 +47,7 @@ const WEEK_START = '2026-07-20';
 const SELECTED_DATE = '2026-07-23';
 const CONVERSATION_ID = 'conversation-1';
 
-function graph() {
+function graph(withEffort = false) {
   const document: WeeklyPlanningSemanticDocumentV5 = {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
@@ -84,6 +85,10 @@ function graph() {
     corrections: [],
     decisions: [],
   };
+  if (withEffort) document.tasks[0].effortEstimates = [{
+    localId: 'effort-1', targetLocalId: 'task-1', kind: 'total_duration', minutes: 30,
+    unitCode: null, precision: 'exact', sourceText: '所要時間30分',
+  }];
   const result = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     document,
@@ -155,8 +160,8 @@ function previewCandidate(factGraph: ReturnType<typeof graph>) {
   };
 }
 
-function persistStateWithGraph(state = restoredState()) {
-  const factGraph = graph();
+function persistStateWithGraph(state = restoredState(), withEffort = false) {
+  const factGraph = graph(withEffort);
   hydrateWeeklyPlanningStableV5RuntimeSession({
     ownerId: OWNER_ID,
     weekStartDate: WEEK_START,
@@ -279,6 +284,30 @@ describe('Stable V5 persisted runtime session', () => {
         authorizedUserId: OWNER_ID,
       },
     });
+  });
+
+  it.each([
+    ['workloads', 'amount', -30], ['workloads', 'amount', 'thirty'], ['workloads', 'amount', undefined],
+    ['workloads', 'quantityRole', 'already_saved'], ['effortEstimates', 'minutes', -30],
+    ['effortEstimates', 'minutes', undefined], ['effortEstimates', 'kind', 'elapsed'], ['effortEstimates', 'precision', 'certain'],
+  ])('does not hydrate corrupted %s %s = %s during application restore', (collection, field, value) => {
+    persistStateWithGraph(restoredState(), true);
+    const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER_ID, WEEK_START);
+    const persisted = JSON.parse(storageHarness.storage.getItem(key)!);
+    persisted.graph[String(collection)][0][String(field)] = value;
+    storageHarness.storage.setItem(key, JSON.stringify(persisted));
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    function Probe() {
+      useWeeklyPlanningApplication({
+        userId: OWNER_ID, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
+        selectedDate: SELECTED_DATE, plans: [], scheduleTemplates: [],
+        async saveWeeklyApprovedPlan() { throw new Error('Restore must not save a Plan'); },
+      });
+      return null;
+    }
+    act(() => { renderer = create(createElement(Probe)); });
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION_ID)).toBeNull();
+    expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER_ID, weekStartDate: WEEK_START })).toBeNull();
   });
 
   it('hydrates the same conversation and graph when the application is unmounted and mounted again', () => {

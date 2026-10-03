@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import { isCanonicalDateExpressionSyntax } from './weeklyPlanningCalendarResolver';
 import {
   SEMANTIC_AVAILABILITY_KINDS_V5,
@@ -6,13 +7,11 @@ import {
   SEMANTIC_CONSTRAINT_LEVELS_V5,
   SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
   SEMANTIC_NAMED_TIME_PERIODS_V5,
-  SEMANTIC_QUANTITY_ROLES_V5,
   SEMANTIC_RECURRENCE_KINDS_V5,
   SEMANTIC_STUDY_PURPOSES_V5,
   SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_TASK_DATE_RULE_KINDS_V5,
   SEMANTIC_TEMPORAL_CONSTRAINT_KINDS_V5,
-  SEMANTIC_WORKLOAD_UNIT_CODES_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type SemanticNamedTimePeriodV5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -147,18 +146,7 @@ function validateWorkload(
     'sourceText',
   ], path, errors);
   registerLocalId(value.localId, `${path}.localId`, allIds, errors);
-  if (!isEnumValue(value.quantityRole, SEMANTIC_QUANTITY_ROLES_V5)) {
-    errors.push(`${path}.quantityRole`);
-  }
-  if (!isFinitePositiveNumber(value.amount)) errors.push(`${path}.amount`);
-  if (!isEnumValue(value.unitCode, SEMANTIC_WORKLOAD_UNIT_CODES_V5)) {
-    errors.push(`${path}.unitCode`);
-  }
-  if (!isNonEmptyString(value.unitLabel)) errors.push(`${path}.unitLabel`);
-  if (!isNullableString(value.rangeStart)) errors.push(`${path}.rangeStart`);
-  if (!isNullableString(value.rangeEnd)) errors.push(`${path}.rangeEnd`);
-  if (typeof value.perOccurrence !== 'boolean') errors.push(`${path}.perOccurrence`);
-  if (!isNullableString(value.periodExpression)) errors.push(`${path}.periodExpression`);
+  validateWeeklyPlanningWorkloadValuesV5(value, path, errors);
   validateSourceText(value, path, errors);
 }
 
@@ -636,26 +624,7 @@ export function validateWeeklyPlanningSemanticValueV5(
             || !taskTargets.has(estimate.targetLocalId)) {
             errors.push(`${estimatePath}.targetLocalId`);
           }
-          if (!isEnumValue(
-            estimate.kind,
-            ['total_duration', 'duration_per_unit', 'session_duration'] as const,
-          )) {
-            errors.push(`${estimatePath}.kind`);
-          }
-          if (!isFinitePositiveNumber(estimate.minutes)) errors.push(`${estimatePath}.minutes`);
-          if (estimate.unitCode !== null
-            && !isEnumValue(estimate.unitCode, SEMANTIC_WORKLOAD_UNIT_CODES_V5)) {
-            errors.push(`${estimatePath}.unitCode`);
-          }
-          if (estimate.kind === 'duration_per_unit' && estimate.unitCode === null) {
-            errors.push(`${estimatePath}.unitCode:required`);
-          }
-          if (!isEnumValue(
-            estimate.precision,
-            ['exact', 'approximate', 'unspecified'] as const,
-          )) {
-            errors.push(`${estimatePath}.precision`);
-          }
+          validateWeeklyPlanningEffortValuesV5(estimate, estimatePath, errors);
           validateSourceText(estimate, estimatePath, errors);
         });
       }
