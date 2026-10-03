@@ -30,7 +30,7 @@
     "observe:weekly-ai:conversation:turn": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.observation.test.ts --reporter=verbose",
     "test:mutation:weekly-planning": "npx --yes --package=@stryker-mutator/core@9.6.1 --package=@stryker-mutator/vitest-runner@9.6.1 --package=@stryker-mutator/typescript-checker@9.6.1 stryker run stryker.config.mjs",
     "typecheck:app": "tsc --noEmit",
-    "types:worker": "wrangler types .wrangler/types/worker-runtime.d.ts --config workers/ai-proxy/wrangler.jsonc --include-env=false",
+    "types:worker": "node -e \"require('node:fs').mkdirSync('.wrangler/types', { recursive: true })\" && wrangler types .wrangler/types/worker-runtime.d.ts --config workers/ai-proxy/wrangler.jsonc --include-env=false",
     "typecheck:worker": "npm run types:worker && tsc --noEmit -p tsconfig.worker.json"
   },
   "dependencies": {
