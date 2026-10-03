@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
 import type { PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
 import { upsertByKey } from '../lib/collections';
@@ -201,7 +202,9 @@ export function usePlannerAppState(): PlannerAppState {
     userId: user?.id ?? null,
     showNotice,
   });
-  const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay] = useState<Plan[]>([]);
+  const { scope: approvalScope, invalidate: invalidateApprovalScope } = usePlannerMutationScope(user?.id ?? null);
+  const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay, clearWeeklyApprovedPlanOverlay] =
+    useScopedPlannerState<Plan[]>([], approvalScope);
   const plans = useMemo(
     () => sortByDateTime(
       weeklyApprovedPlanOverlay.reduce(
@@ -213,8 +216,8 @@ export function usePlannerAppState(): PlannerAppState {
   );
 
   useEffect(() => {
-    setWeeklyApprovedPlanOverlay([]);
-  }, [user?.id]);
+    clearWeeklyApprovedPlanOverlay([]);
+  }, [clearWeeklyApprovedPlanOverlay, user?.id]);
 
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
@@ -256,7 +259,8 @@ export function usePlannerAppState(): PlannerAppState {
 
   async function signOut() {
     await signOutSession();
-    setWeeklyApprovedPlanOverlay([]);
+    invalidateApprovalScope();
+    clearWeeklyApprovedPlanOverlay([]);
     resetPlannerData();
   }
 
@@ -280,6 +284,7 @@ export function usePlannerAppState(): PlannerAppState {
 
     try {
       const savedPlan = await weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft);
+      if (!approvalScope.isCurrent()) throw new PlannerMutationScopeExpiredError();
       setWeeklyApprovedPlanOverlay((current) =>
         sortByDateTime(
           upsertByKey(
@@ -347,8 +352,8 @@ export function usePlannerAppState(): PlannerAppState {
     closePlanEditor,
     savePlanDraft,
     movePlanOccurrence,
-    saveWeeklyApprovedPlan,
-    completeWeeklyApprovalOperation,
+    saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
+    completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

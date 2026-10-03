@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -235,18 +236,20 @@ export interface UsePlannerDataStateResult {
 
 export function usePlannerDataState({
   userId,
-  showNotice,
+  showNotice: showOwnerNotice,
 }: UsePlannerDataStateOptions): UsePlannerDataStateResult {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [actuals, setActuals] = useState<Actual[]>([]);
-  const [dayNotes, setDayNotes] = useState<DayNote[]>([]);
-  const [monthEvents, setMonthEvents] = useState<MonthEvent[]>([]);
-  const [todos, setTodos] = useState<TodoTask[]>([]);
-  const [studySubjects, setStudySubjects] = useState<StudySubject[]>([]);
-  const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
-  const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
-  const [timetableTerms, setTimetableTerms] = useState<TimetableTerm[]>([]);
-  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);
+  const { scope: mutationScope, invalidate: invalidateMutationScope } = usePlannerMutationScope(userId);
+  const showNotice = useMemo(() => mutationScope.bindNotice(showOwnerNotice), [mutationScope, showOwnerNotice]);
+  const [plans, setPlans, rawSetPlans] = useScopedPlannerState<Plan[]>([], mutationScope);
+  const [actuals, setActuals, rawSetActuals] = useScopedPlannerState<Actual[]>([], mutationScope);
+  const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
+  const [monthEvents, setMonthEvents, rawSetMonthEvents] = useScopedPlannerState<MonthEvent[]>([], mutationScope);
+  const [todos, setTodos, rawSetTodos] = useScopedPlannerState<TodoTask[]>([], mutationScope);
+  const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
+  const [studyMaterials, setStudyMaterials, rawSetStudyMaterials] = useScopedPlannerState<StudyMaterial[]>([], mutationScope);
+  const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
+  const [timetableTerms, setTimetableTerms, rawSetTimetableTerms] = useScopedPlannerState<TimetableTerm[]>([], mutationScope);
+  const [timetablePeriods, setTimetablePeriods, rawSetTimetablePeriods] = useScopedPlannerState<TimetablePeriod[]>([], mutationScope);
   const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
   if (!plannerDataReadAuthorityRef.current) {
     plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
@@ -255,25 +258,24 @@ export function usePlannerDataState({
   const [plannerDataAvailability, setPlannerDataAvailability] =
     useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());
   const clearPlannerDataCollections = useCallback(() => {
-    setPlans([]);
-    setActuals([]);
-    setDayNotes([]);
-    setMonthEvents([]);
-    setTodos([]);
-    setStudySubjects([]);
-    setStudyMaterials([]);
-    setScheduleTemplates([]);
-    setTimetableTerms([]);
-    setTimetablePeriods([]);
+    rawSetPlans([]);
+    rawSetActuals([]);
+    rawSetDayNotes([]);
+    rawSetMonthEvents([]);
+    rawSetTodos([]);
+    rawSetStudySubjects([]);
+    rawSetStudyMaterials([]);
+    rawSetScheduleTemplates([]);
+    rawSetTimetableTerms([]);
+    rawSetTimetablePeriods([]);
   }, []);
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
-  const [selectedDate, setSelectedDate] = useState(todayIsoDate());
-  const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
-  const [editorDraft, setEditorDraft] = useState<PlanDraft | null>(null);
-  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-  const [pendingRecurringPlanAction, setPendingRecurringPlanAction] =
-    useState<PendingRecurringPlanActionState | null>(null);
+  const [viewMode, setViewMode] = useScopedPlannerState<ViewMode>('month', mutationScope);
+  const [selectedDate, setSelectedDate] = useScopedPlannerState(todayIsoDate(), mutationScope);
+  const [monthDate, setMonthDate] = useScopedPlannerState(startOfMonth(todayIsoDate()), mutationScope);
+  const [editorDraft, setEditorDraft, rawSetEditorDraft] = useScopedPlannerState<PlanDraft | null>(null, mutationScope);
+  const [editingPlanId, setEditingPlanId, rawSetEditingPlanId] = useScopedPlannerState<string | null>(null, mutationScope);
+  const [editingPlan, setEditingPlan, rawSetEditingPlan] = useScopedPlannerState<Plan | null>(null, mutationScope);
+  const [pendingRecurringPlanAction, setPendingRecurringPlanAction, rawSetPendingRecurringPlanAction] = useScopedPlannerState<PendingRecurringPlanActionState | null>(null, mutationScope);
 
   function resolveStoredPlan(plan: Plan): Plan {
     return plans.find((item) => item.id === plan.id) ?? plan;
@@ -323,11 +325,12 @@ export function usePlannerDataState({
     const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());
     setPlannerDataAvailability(loadStart.availability);
     if (loadStart.ownerChanged) {
+      invalidateMutationScope();
       clearPlannerDataCollections();
-      setEditorDraft(null);
-      setEditingPlanId(null);
-      setEditingPlan(null);
-      setPendingRecurringPlanAction(null);
+      rawSetEditorDraft(null);
+      rawSetEditingPlanId(null);
+      rawSetEditingPlan(null);
+      rawSetPendingRecurringPlanAction(null);
     }
 
     try {
@@ -382,23 +385,23 @@ export function usePlannerDataState({
       committedScheduleTemplates = nextScheduleTemplates;
       committedTimetableTerms = nextTimetableTerms;
       committedTimetablePeriods = nextTimetablePeriods;
-      showNotice('時間割データを整合化できませんでした。再読み込みしてください。', 'error');
+      showOwnerNotice('時間割データを整合化できませんでした。再読み込みしてください。', 'error');
     }
 
       if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
         return;
       }
 
-      setPlans(sortByDateTime(nextPlans));
-      setActuals(nextActuals);
-      setDayNotes(nextDayNotes);
-      setMonthEvents(sortMonthEvents(nextMonthEvents));
-      setTodos(nextTodos);
-      setStudySubjects(sortStudySubjects(nextStudySubjects));
-      setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
-      setScheduleTemplates(committedScheduleTemplates);
-      setTimetableTerms(committedTimetableTerms);
-      setTimetablePeriods(committedTimetablePeriods);
+      rawSetPlans(sortByDateTime(nextPlans));
+      rawSetActuals(nextActuals);
+      rawSetDayNotes(nextDayNotes);
+      rawSetMonthEvents(sortMonthEvents(nextMonthEvents));
+      rawSetTodos(nextTodos);
+      rawSetStudySubjects(sortStudySubjects(nextStudySubjects));
+      rawSetStudyMaterials(sortStudyMaterials(nextStudyMaterials));
+      rawSetScheduleTemplates(committedScheduleTemplates);
+      rawSetTimetableTerms(committedTimetableTerms);
+      rawSetTimetablePeriods(committedTimetablePeriods);
       const readyAvailability = plannerDataReadAuthority.succeed(
         loadStart.token,
         new Date().toISOString(),
@@ -417,16 +420,17 @@ export function usePlannerDataState({
       setPlannerDataAvailability(failedAvailability);
       throw error;
     }
-  }, [clearPlannerDataCollections, plannerDataReadAuthority, showNotice]);
+  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, showOwnerNotice]);
 
   const resetPlannerData = useCallback(() => {
+    invalidateMutationScope();
     setPlannerDataAvailability(plannerDataReadAuthority.reset());
     clearPlannerDataCollections();
-    setEditorDraft(null);
-    setEditingPlanId(null);
-    setEditingPlan(null);
-    setPendingRecurringPlanAction(null);
-  }, [clearPlannerDataCollections, plannerDataReadAuthority]);
+    rawSetEditorDraft(null);
+    rawSetEditingPlanId(null);
+    rawSetEditingPlan(null);
+    rawSetPendingRecurringPlanAction(null);
+  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority]);
 
   function openCreatePlan() {
     if (!userId) {
@@ -525,6 +529,7 @@ export function usePlannerDataState({
         showNotice('繰り返し予定を削除しました。');
       }
     } catch (error) {
+      if (!mutationScope.isCurrent()) throw error;
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
         scope,
@@ -1729,32 +1734,32 @@ export function usePlannerDataState({
     openCreatePlan,
     openEditPlan,
     closePlanEditor,
-    savePlanDraft,
-    movePlanOccurrence,
-    deletePlan,
-    confirmRecurringPlanScope,
+    savePlanDraft: mutationScope.bindMutation(savePlanDraft),
+    movePlanOccurrence: mutationScope.bindMutation(movePlanOccurrence),
+    deletePlan: mutationScope.bindMutation(deletePlan),
+    confirmRecurringPlanScope: mutationScope.bindMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,
-    saveActual,
-    saveStandaloneActual,
-    linkStandaloneActualToPlan,
-    deleteActual,
-    saveDayNote,
-    saveMonthEvent,
-    deleteMonthEvent,
-    saveTodo,
-    scheduleTodoAsPlan,
-    deleteTodo,
-    saveStudySubject,
-    deleteStudySubject,
-    saveStudyMaterial,
-    deleteStudyMaterial,
-    saveScheduleTemplate,
-    deleteScheduleTemplate,
-    activateTimetableTerm,
-    deleteTimetableTerm,
-    clearTimetableTermData,
-    saveTimetablePeriod,
-    deleteTimetablePeriod,
+    saveActual: mutationScope.bindMutation(saveActual),
+    saveStandaloneActual: mutationScope.bindMutation(saveStandaloneActual),
+    linkStandaloneActualToPlan: mutationScope.bindMutation(linkStandaloneActualToPlan),
+    deleteActual: mutationScope.bindMutation(deleteActual),
+    saveDayNote: mutationScope.bindMutation(saveDayNote),
+    saveMonthEvent: mutationScope.bindMutation(saveMonthEvent),
+    deleteMonthEvent: mutationScope.bindMutation(deleteMonthEvent),
+    saveTodo: mutationScope.bindMutation(saveTodo),
+    scheduleTodoAsPlan: mutationScope.bindMutation(scheduleTodoAsPlan),
+    deleteTodo: mutationScope.bindMutation(deleteTodo),
+    saveStudySubject: mutationScope.bindMutation(saveStudySubject),
+    deleteStudySubject: mutationScope.bindMutation(deleteStudySubject),
+    saveStudyMaterial: mutationScope.bindMutation(saveStudyMaterial),
+    deleteStudyMaterial: mutationScope.bindMutation(deleteStudyMaterial),
+    saveScheduleTemplate: mutationScope.bindMutation(saveScheduleTemplate),
+    deleteScheduleTemplate: mutationScope.bindMutation(deleteScheduleTemplate),
+    activateTimetableTerm: mutationScope.bindMutation(activateTimetableTerm),
+    deleteTimetableTerm: mutationScope.bindMutation(deleteTimetableTerm),
+    clearTimetableTermData: mutationScope.bindMutation(clearTimetableTermData),
+    saveTimetablePeriod: mutationScope.bindMutation(saveTimetablePeriod),
+    deleteTimetablePeriod: mutationScope.bindMutation(deleteTimetablePeriod),
     selectDate,
     changeMonth,
     openWeek,
