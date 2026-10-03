@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fakeFirestore = vi.hoisted(() => {
   const sessions = new Map<string, Record<string, unknown>>();
@@ -93,6 +93,8 @@ beforeEach(() => {
   fakeFirestore.entries.clear();
 });
 
+afterEach(() => { vi.restoreAllMocks(); });
+
 function env() {
   const epoch = resolveWeeklyPlanningTraceEpoch(new Date());
   return {
@@ -128,6 +130,7 @@ function sessionMetadata(
 async function start(
   uid = 'user-1',
   sessionOverrides: Record<string, unknown> = {},
+  conversationCorrelationKey = 'conversation-09012345678-client',
 ) {
   return handleWeeklyPlanningTraceApi(
     new Request('https://example.test/weekly-planning-trace/session/start', {
@@ -135,7 +138,7 @@ async function start(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         idempotencyKey: 'weekly-trace-09012345678-client',
-        conversationCorrelationKey: 'conversation-09012345678-client',
+        conversationCorrelationKey,
         session: sessionMetadata(0, sessionOverrides),
       }),
     }),
@@ -177,6 +180,82 @@ function appendRequest(
 }
 
 describe('weekly planning trace server authority', () => {
+  it.each([false, true])('validates concurrent starts with matching conversation: %s', async (matching) => {
+    const prototype = fakeFirestore.FakeWeeklyPlanningTraceFirestoreClient.prototype;
+    const original = prototype.getDocument;
+    let reads = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(prototype, 'getDocument').mockImplementation(async function (collection, id) {
+      if (collection === 'weekly_planning_trace_sessions' && reads < 2) {
+        reads += 1;
+        if (reads === 2) release();
+        await bothRead;
+        return null;
+      }
+      return original.call(this, collection, id);
+    });
+    const results = await Promise.all([
+      start('user-1', {}, 'conversation-first'),
+      start('user-1', {}, matching ? 'conversation-first' : 'conversation-second'),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual(matching ? [200, 200] : [200, 409]);
+    const accepted = results.find((result) => result.status === 200)!;
+    const rejected = results.find((result) => result.status === 409)!;
+    if (!matching) expect(rejected.body.errorCode).toBe('trace_session_issuance_conflict');
+    else expect(results[1].body.sessionId).toBe(results[0].body.sessionId);
+    expect(fakeFirestore.sessions).toHaveLength(1);
+    expect(fakeFirestore.sessions.get(String(accepted.body.sessionId))?.logicalConversationId)
+      .toBe(accepted.body.logicalConversationId);
+  });
+
+  it.each([
+    ['conversation', { logicalConversationId: MALICIOUS_CONVERSATION_ID }],
+    ['server issuance', { serverIssued: false }],
+    ['missing server issuance', { serverIssued: undefined }],
+    ['layout', { storageLayoutVersion: 1 }],
+    ['missing layout', { storageLayoutVersion: undefined }],
+  ])('validates %s on an immutable-write conflict just as on a normal replay', async (_label, mutation) => {
+    const issued = await start();
+    const id = String(issued.body.sessionId);
+    const originalDocument = fakeFirestore.sessions.get(id)!;
+    fakeFirestore.sessions.set(id, { ...originalDocument, ...mutation });
+    const prototype = fakeFirestore.FakeWeeklyPlanningTraceFirestoreClient.prototype;
+    const original = prototype.getDocument;
+    let hideOnce = true;
+    vi.spyOn(prototype, 'getDocument').mockImplementation(async function (collection, documentId) {
+      if (collection === 'weekly_planning_trace_sessions' && hideOnce) {
+        hideOnce = false;
+        return null;
+      }
+      return original.call(this, collection, documentId);
+    });
+    const raced = await start();
+    const repeated = await start();
+    expect(raced.status).toBe(409);
+    expect(raced.body.errorCode).toBe('trace_session_issuance_conflict');
+    expect(repeated.status).toBe(409);
+    expect(repeated.body.errorCode).toBe('trace_session_issuance_conflict');
+    expect(fakeFirestore.sessions.get(id)).toEqual({ ...originalDocument, ...mutation });
+  });
+
+  it.each(['missing', 'foreign-owner'])('rejects a %s document after an immutable-write race', async (scenario) => {
+    const prototype = fakeFirestore.FakeWeeklyPlanningTraceFirestoreClient.prototype;
+    vi.spyOn(prototype, 'setImmutableDocument').mockImplementation(async (collection, id, value) => {
+      if (scenario === 'foreign-owner') {
+        fakeFirestore.sessions.set(id, { ...value, traceSubjectToken: 'unrelated-owner' });
+      }
+      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+    });
+    const result = await start();
+    expect(result.status).toBe(409);
+    expect(result.body.errorCode).toBe(scenario === 'missing'
+      ? 'trace_storage_conflict' : 'trace_session_ownership_conflict');
+    expect(result.body.sessionId).toBeUndefined();
+    expect(result.body.logicalConversationId).toBeUndefined();
+    expect(fakeFirestore.sessions.size).toBe(scenario === 'missing' ? 0 : 1);
+  });
+
   it('issues opaque canonical IDs and converges repeated starts without persisting raw keys', async () => {
     const first = await start();
     const second = await start();
