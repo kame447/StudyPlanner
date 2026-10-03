@@ -24,6 +24,10 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === '../lib/planningImageAttachment'
+      && normalizedImporter.endsWith(path.normalize('src/components/AiPlanningViewLegacy.tsx'))) {
+      return path.resolve(harnessDir, 'planningImageAttachment.stub.js');
+    }
     if (
       source === './weeklyPlanningTurnRuntimeGateway'
       && normalizedImporter.endsWith(turnApplicationSuffix)

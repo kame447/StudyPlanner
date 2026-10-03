@@ -38,11 +38,16 @@ interface AiPlanningViewProps {
 }
 
 export function AiPlanningView(props: AiPlanningViewProps) {
+  return <OwnerScopedAiPlanningView key={props.userId} {...props} />;
+}
+
+function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const { application, userId, plans } = props;
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const cancellationEpoch = useRef(0);
   const { isExiting: isPreviewClosing, requestExit: requestClosePreview } =
     useExitMotion(() => setIsPreviewOpen(false));
   const previewCandidates = state.previewCandidates ?? [];
@@ -233,7 +238,8 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     if (!state.pendingTurn) return;
     const cancelled = application.cancelTurn();
     if (cancelled) {
-      window.requestAnimationFrame(persistActiveChatSnapshot);
+      cancellationEpoch.current += 1;
+      persistActiveChatSnapshot();
     }
   }
 
@@ -243,7 +249,7 @@ export function AiPlanningView(props: AiPlanningViewProps) {
       className={`ai-planning-view-shell-v2 ${isPreviewOpen ? 'is-preview-open' : ''}`}
       onClickCapture={openPreviewFromLegacySurface}
     >
-      <AiPlanningViewLegacy {...props} />
+      <AiPlanningViewLegacy {...props} cancellationEpoch={cancellationEpoch} />
       {state.pendingTurn ? (
         <div className="ai-planning-pending-turn-actions">
           <button
