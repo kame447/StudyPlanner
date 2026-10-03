@@ -443,6 +443,10 @@ network 復旧後、durable queue を loss なく再開し、再送中に tab cl
 
 optimistic mutation が server に拒否された場合、UI と local replica を `synced` として残さない。rollback または rejected/conflict state へ遷移し、利用者が修復可能であること。
 
+Todoの同一画面内の楽観的表示は、確定済みsnapshotと未完了操作の純粋なprojectionで構成する（`useOptimisticPlannerState`）。保存・削除・予定化・連動予定削除の失敗時は、そのTodo操作だけをprojectionから除き、別操作の成功や未完了変更を維持する。完了済みの先頭操作は基底へ畳み込み、権威あるload/resetはprojection全体を置換する。置換前の遅延完了は再採用しない。UndoのUI反映も同じprojectionを通す。
+
+この仕組みはUI内のrollback境界に限る。永続queue、server transaction、同一entityへの書込順保証、multi-tab/device同期の代替ではない。Plan/Actual等の別collection全体のrollback改善は含めず、それらの保存・同期契約は既存ownerで扱う。
+
 ### SYNC-010: Planner entity local replica
 
 Plan、Actual、DayNote、MonthEvent、Todo、StudySubject、StudyMaterial、ScheduleTemplate、TimetableTerm、TimetablePeriod の repository contract は UI から変えず、local replica / sync implementation を repository 内へ隠蔽する。
