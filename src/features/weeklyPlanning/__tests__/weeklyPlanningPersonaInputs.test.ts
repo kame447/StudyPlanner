@@ -275,9 +275,10 @@ describe('P7/P4 P0 Quick set: replanning and invalid values', () => {
   it.todo(
     'P4/P5 P0-21 prevents double-submit from creating duplicate pending contexts',
   );
-  it.todo(
-    'P4/P7 P0-22 keeps an assumption on plans created from placeholder estimates',
-  );
+  // P0-22's legacy placeholder-estimate marker is not a Stable V5 requirement.
+  // The current provisional-allocation/factual-effort boundary is executed in
+  // application/weeklyPlanningProvisionalAllocationPersistence.integration.test.ts
+  // through real approval, saved-data projection and personalization (Issue #382).
   it.todo(
     'P5/P4 P0-23 keeps existing plans, timetable constraints, and buffer constraints during revision',
   );
