@@ -171,9 +171,14 @@ function decodeCursor(value: string | null): FirestoreOrderedCursor | null {
   if (!/^[A-Za-z0-9_-]{8,1024}$/.test(value)) throw new Error('observability_cursor_invalid');
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  let parsed: unknown;
+  try {
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes));
+  } catch {
+    throw new Error('observability_cursor_invalid');
+  }
   if (!parsed || typeof parsed !== 'object') throw new Error('observability_cursor_invalid');
   const record = parsed as Record<string, unknown>;
   if (typeof record.orderedValue !== 'string' || typeof record.documentName !== 'string') {
