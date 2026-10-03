@@ -250,28 +250,29 @@ for (const phase of ['preview', 'promoted']) {
   test(`AI planning ${phase} deletion survives a discarded animation frame`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await seedPreviewRemovalState(page, { phase });
-    const preview = await openPreview(page, 2, { mode: 'overview' });
+    const preview = await openPreview(page);
+    const first = await revealRemoveAction(page, preview, '金フレ A');
+    await first.removeAction.click();
+    await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
 
-    for (const title of ['金フレ A', '金フレ B']) {
-      const { removeAction } = await revealRemoveAction(page, preview, title, 'overview');
-      await removeAction.evaluate((button) => {
-        const requestFrame = window.requestAnimationFrame;
-        window.requestAnimationFrame = (callback) => {
-          const id = requestFrame.call(window, callback);
-          window.cancelAnimationFrame(id);
-          return id;
-        };
-        try {
-          button.click();
-        } finally {
-          window.requestAnimationFrame = requestFrame;
-        }
-      });
-      if (title === '金フレ A') {
-        await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
+    // Restore the remaining date using the same navigation as the original
+    // regression, then discard only the final deletion's scheduled frame.
+    const restoredPreview = await openPreview(page, 1);
+    const last = await revealRemoveAction(page, restoredPreview, '金フレ B');
+    await last.removeAction.evaluate((button) => {
+      const requestFrame = window.requestAnimationFrame;
+      window.requestAnimationFrame = (callback) => {
+        const id = requestFrame.call(window, callback);
+        window.cancelAnimationFrame(id);
+        return id;
+      };
+      try {
+        button.click();
+      } finally {
+        window.requestAnimationFrame = requestFrame;
       }
-    }
-    await expect(preview).toBeHidden();
+    });
+    await expect(restoredPreview).toBeHidden();
     await page.goto('/');
     await page.locator('.primary-bottom-nav button').first().click();
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
