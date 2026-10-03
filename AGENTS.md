@@ -487,6 +487,24 @@ Before finishing a task:
 
 For documentation-only changes, application build/test execution is optional when no code/config/runtime behavior changed; instead verify exact diff, canonical path integrity, current-reference searches, and relevant Markdown links.
 
+### Verification cadence
+
+Verification frequency is owned by this section. A commit or a small edit alone does not require another full run.
+
+1. **Implementation feedback:** run focused tests for the affected behavior after each meaningful change. Use `npm run typecheck` for development type feedback; it still checks app and Worker, using separate ignored, per-worktree TypeScript caches. Worker runtime types must still be regenerated. Focused/related tests are feedback, not proof of a full integration pass.
+2. **Integration checkpoint:** after combining independent changes or completing a meaningful implementation unit, validate the combined content. Broaden checks immediately when the change crosses shared types, dependencies, build/runner configuration, authentication/authorization, persistence/schema/migrations, common application infrastructure, or uncertain dependency boundaries. Do not wait for a timer. Usually this means `npm run verify` plus the relevant boundary tests.
+3. **Final verification:** before publishing a reviewable implementation or merging it, the final content must have a successful `npm run verify`: fresh non-incremental app/Worker typechecks, the full unit/integration suite, and production build. Required Firestore, browser/visual/security and other CI gates remain separate and must still pass when applicable. Never call `verify` a replacement for those gates.
+
+A single exact-content green full run can satisfy both the integration checkpoint and final local verification; do not repeat it solely because a commit was created or a report was written. Post-verification code, test, configuration, dependency, generated-input or environment changes invalidate the corresponding proof. Reconcile a changed merge base and verify the resulting integration content. Documentation-only exceptions above remain unchanged.
+
+Before reusing verification evidence, record the command/scope, exit status, exact content snapshot, and relevant tool/installed-dependency/environment identity in the owning Issue/checkpoint. Record HEAD and any dirty/untracked input differences; HEAD alone is insufficient for an uncommitted worktree. A lockfile hash alone does not establish which packages are actually installed. An unrecorded change or uncertain installation requires fresh verification. Never use only elapsed time, such as “green within 30 minutes,” as a skip rule.
+
+Test-only changes are not automatically local: shared fixtures, clocks, mocks, global setup, runner configuration and common helpers can alter unrelated tests. Import-graph selection also misses some source-reading architecture tests, dynamic imports and runtime boundaries. Use the actual blast radius; do not introduce an automatic “related tests passed, therefore skip final full tests” shortcut.
+
+For delegated work, implementation workers normally supply focused evidence and exact diffs; the integration owner verifies the combined content. Do not have multiple workers independently regenerate the same full-test/build proof for an identical integration snapshot. Distinct snapshots still need their own applicable evidence.
+
+Development caches are disposable compiler acceleration, not stored approval. Keep app/Worker files separate and scoped to the worktree. If cache behavior or inputs are uncertain, use `npm run typecheck:full`. The final `verify` command and CI deliberately use fresh checks regardless of cache state.
+
 ## Definition of done
 
 A task is done only if:
