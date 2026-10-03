@@ -162,3 +162,13 @@ Add a new entry when at least one of these is true:
 - an external integration has a stable limitation that changes how agents should operate.
 
 Prefer updating an existing entry when the new evidence is the same failure class. Keep historical one-off noise in Issues/PRs/Actions rather than growing this file without bound.
+
+
+## Temporary Firestore Node transport security pin
+
+- Last verified: 2026-10-03; owner: [Issue #387](https://github.com/kame447/StudyPlanner/issues/387)
+- Firebase 12.12.0 / Firestore 4.14.0 declares grpc-js ~1.9.0, which resolves an affected release for [GHSA-m9gg-hp2v-232j](https://github.com/advisories/GHSA-m9gg-hp2v-232j). The advisory concerns specific gRPC server certificate-authorization use; no matching application authorization path was identified. This is not evidence of an intrusion or a universal reachability guarantee
+- The temporary npm override is limited to Firestore 4.14.0 and exact grpc-js 1.13.6, an official patched release. It is outside the upstream ~1.9.0 range, so the real Node Firestore SDK + Auth/Firestore emulator regression is a compatibility gate. Browser builds or mocked tests alone do not establish compatibility
+- The browser SDK uses WebChannel and the Worker uses REST; the Node emulator script exercises the gRPC client. Keep those verification boundaries distinct
+- Remove the bridge when a reviewed Firebase release supplies a patched transport itself. A future Firestore version must not silently inherit an old forced pin; the ordinary CI high-severity audit detects a vulnerable replacement
+- Keep audit thresholds and certificate/auth settings unchanged. The scheduled audit remains useful when new advisories appear without a source change; ordinary PR/main CI also audits dependency changes before merge
