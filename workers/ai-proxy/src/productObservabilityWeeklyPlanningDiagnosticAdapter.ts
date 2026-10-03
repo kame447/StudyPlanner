@@ -8,6 +8,8 @@ import {
   type ObservabilityLogEntryPage,
   type ObservabilityLogEntryProjection,
   type ObservabilityLogSessionSummary,
+  type ObservabilityLogSessionPageEvidence,
+  type ObservabilityLogMetadataEvidence,
   type ObservabilityLogSeverity,
 } from '../../../shared/productObservabilityLogReadModel';
 import type {
@@ -46,6 +48,7 @@ export interface ProductObservabilityWeeklyPlanningDiagnosticEnv {
 export interface ObservabilityDiagnosticSessionPageInternal {
   sessions: ObservabilityLogSessionSummary[];
   nextCursor: FirestoreOrderedCursor | null;
+  pageEvidence: ObservabilityLogSessionPageEvidence;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,13 +85,32 @@ function severityForEntry(value: Record<string, unknown>): ObservabilityLogSever
   return 'info';
 }
 
-function sessionSummary(value: Record<string, unknown>): string {
+function metadataEvidence(value: Record<string, unknown>): ObservabilityLogMetadataEvidence {
+  const validCount = (count: unknown) => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0;
+  if (!validCount(value.entryCount) || !validCount(value.turnCount)
+    || !SESSION_STATUSES.has(text(value.status) ?? '')
+    || !Number.isFinite(Date.parse(text(value.startedAt) ?? ''))
+    || !Number.isFinite(Date.parse(text(value.lastActivityAt) ?? ''))) {
+    return 'unknown_or_invalid_metadata';
+  }
+  if (Number(value.entryCount) > 0) return 'indexed_activity';
+  if (Number(value.turnCount) > 0 || value.hasPreview === true || value.hasError === true
+    || value.hasApprovalFailure === true || value.hasFallback === true) {
+    return 'activity_without_indexed_entries';
+  }
+  return 'no_indexed_entries';
+}
+
+function sessionSummary(value: Record<string, unknown>, evidence: ObservabilityLogMetadataEvidence): string {
+  if (evidence === 'unknown_or_invalid_metadata') return 'Trace metadata unknown or invalid';
+  if (evidence === 'activity_without_indexed_entries') return 'Activity metadata without indexed entries';
+  if (evidence === 'no_indexed_entries') return 'No indexed entries; storage contents unverified';
   const signals: string[] = [];
   if (value.hasError === true) signals.push('error');
   if (value.hasFallback === true) signals.push('fallback');
   if (value.hasApprovalFailure === true) signals.push('approval failure');
   if (value.hasPreview === true) signals.push('preview reached');
-  return signals.length > 0 ? signals.join(' · ') : 'diagnostic trace available';
+  return signals.length > 0 ? signals.join(' · ') : 'Indexed trace entries; content not yet inspected';
 }
 
 function safeSession(document: Record<string, unknown>): Record<string, unknown> | null {
@@ -104,6 +126,7 @@ export function createObservabilityLogSessionSummary(
   const startedAt = text(safe.startedAt);
   const lastActivityAt = text(safe.lastActivityAt);
   if (!traceSessionId || !startedAt || !lastActivityAt) return null;
+  const evidence = metadataEvidence(safe);
   return {
     source: 'weekly_planning_trace',
     traceSessionId,
@@ -123,7 +146,26 @@ export function createObservabilityLogSessionSummary(
     hasError: safe.hasError === true,
     appVersion: text(safe.appVersion),
     traceSchemaVersion: typeof safe.schemaVersion === 'number' ? safe.schemaVersion : null,
-    summary: sessionSummary(safe),
+    summary: sessionSummary(safe, evidence),
+    metadataEvidence: evidence,
+  };
+}
+
+export function projectObservabilityLogSessionPage(
+  documents: Record<string, unknown>[],
+  status: string,
+): Pick<ObservabilityDiagnosticSessionPageInternal, 'sessions' | 'pageEvidence'> {
+  const mapped = documents.map(createObservabilityLogSessionSummary)
+    .filter((item): item is ObservabilityLogSessionSummary => Boolean(item));
+  const sessions = mapped.filter((item) => !status || item.status === status);
+  return {
+    sessions,
+    pageEvidence: {
+      rawDocumentCount: documents.length,
+      mappedSessionCount: mapped.length,
+      unreadableSessionCount: documents.length - mapped.length,
+      statusFilteredCount: mapped.length - sessions.length,
+    },
   };
 }
 
@@ -375,9 +417,8 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
       if (!validSessionId(exactSessionId)) throw new Error('observability_trace_session_invalid');
       await this.appendAccessAudit('list_sessions', exactSessionId);
       const document = await this.firestore.getDocument(TRACE_SESSIONS, exactSessionId);
-      const summary = document ? createObservabilityLogSessionSummary(document) : null;
       return {
-        sessions: summary && (!status || summary.status === status) ? [summary] : [],
+        ...projectObservabilityLogSessionPage(document ? [document] : [], status),
         nextCursor: null,
       };
     }
@@ -392,13 +433,9 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     });
     const hasMore = documents.length > limit;
     const pageDocuments = documents.slice(0, limit);
-    const sessions = pageDocuments
-      .map(createObservabilityLogSessionSummary)
-      .filter((item): item is ObservabilityLogSessionSummary => Boolean(item))
-      .filter((item) => !status || item.status === status);
     const last = pageDocuments[pageDocuments.length - 1];
     return {
-      sessions,
+      ...projectObservabilityLogSessionPage(pageDocuments, status),
       nextCursor: hasMore && last && typeof last.lastActivityAt === 'string'
         ? { orderedValue: last.lastActivityAt, documentName: last.documentName }
         : null,
@@ -430,13 +467,28 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
         params.limit ?? WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.defaultPageSize,
       )),
     );
+    const indexCountStatus = typeof target.entryCount !== 'number'
+      || !Number.isSafeInteger(target.entryCount) || target.entryCount < 0
+      ? 'invalid'
+      : target.entryCount > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxEntryCount
+        ? 'capped' : 'valid';
+    const entries = page.entries
+      .map((entry) => createObservabilityLogEntryProjection(entry, safeTarget.subjectAlias))
+      .filter((item): item is ObservabilityLogEntryProjection => Boolean(item));
     return {
-      entries: page.entries
-        .map((entry) => createObservabilityLogEntryProjection(entry, safeTarget.subjectAlias))
-        .filter((item): item is ObservabilityLogEntryProjection => Boolean(item)),
+      entries,
       totalEntryCount: page.totalEntryCount,
       nextAfterSequence: page.nextAfterSequence,
       responseBytes: page.responseBytes,
+      pageEvidence: {
+        indexCountStatus,
+        requestedStartSequence: page.requestedStartSequence,
+        requestedEndSequence: page.requestedEndSequence,
+        unavailableSequenceCount: page.missingSequenceCount,
+        unprojectableEntryCount: page.entries.length - entries.length,
+        byteLimited: page.entries.length < page.scannedEntries.length,
+        indexedRangeExhausted: indexCountStatus === 'valid' && page.nextAfterSequence === null,
+      },
     };
   }
 

@@ -4,6 +4,29 @@ export const OBSERVABILITY_DEBUG_BUNDLE_SCHEMA_VERSION = 1 as const;
 export type ObservabilityLogSeverity = 'debug' | 'info' | 'warn' | 'error';
 export type ObservabilityDiagnosticSource = 'weekly_planning_trace';
 
+export type ObservabilityLogMetadataEvidence =
+  | 'indexed_activity'
+  | 'no_indexed_entries'
+  | 'activity_without_indexed_entries'
+  | 'unknown_or_invalid_metadata';
+
+export interface ObservabilityLogSessionPageEvidence {
+  rawDocumentCount: number;
+  mappedSessionCount: number;
+  unreadableSessionCount: number;
+  statusFilteredCount: number;
+}
+
+export interface ObservabilityLogEntryPageEvidence {
+  indexCountStatus?: 'valid' | 'invalid' | 'capped';
+  requestedStartSequence: number;
+  requestedEndSequence: number;
+  unavailableSequenceCount: number;
+  unprojectableEntryCount: number;
+  byteLimited: boolean;
+  indexedRangeExhausted: boolean;
+}
+
 export interface ObservabilityLogSessionSummary {
   source: ObservabilityDiagnosticSource;
   traceSessionId: string;
@@ -24,11 +47,15 @@ export interface ObservabilityLogSessionSummary {
   appVersion: string | null;
   traceSchemaVersion: number | null;
   summary: string;
+  /** Metadata evidence only, never a census of the stored entry collection. */
+  metadataEvidence?: ObservabilityLogMetadataEvidence;
 }
 
 export interface ObservabilityLogSessionPage {
   sessions: ObservabilityLogSessionSummary[];
   nextCursor: string | null;
+  /** Counts for this fetched page before/after mapping and status filtering. */
+  pageEvidence?: ObservabilityLogSessionPageEvidence;
 }
 
 export interface ObservabilityLogEntryProjection {
@@ -51,6 +78,8 @@ export interface ObservabilityLogEntryPage {
   totalEntryCount: number;
   nextAfterSequence: number | null;
   responseBytes: number;
+  /** Optional while older Worker deployments are still serving this read model. */
+  pageEvidence?: ObservabilityLogEntryPageEvidence;
 }
 
 export interface ObservabilityDebugBundleSelection {

@@ -209,8 +209,9 @@ export async function getAdminObservabilityLogs(params: {
     ok: true;
     sessions: ObservabilityLogSessionPage['sessions'];
     nextCursor: string | null;
+    pageEvidence?: ObservabilityLogSessionPage['pageEvidence'];
   }>('/observability/admin/logs', query);
-  return { sessions: payload.sessions, nextCursor: payload.nextCursor };
+  return { sessions: payload.sessions, nextCursor: payload.nextCursor, pageEvidence: payload.pageEvidence };
 }
 
 export async function getAdminObservabilityLogEntries(params: {

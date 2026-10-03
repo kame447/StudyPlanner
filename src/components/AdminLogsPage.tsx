@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, Download, RefreshCw, Search } from 'lucide-reac
 import { useEffect, useMemo, useState } from 'react';
 import type {
   ObservabilityLogEntryPage,
+  ObservabilityLogSessionPageEvidence,
   ObservabilityLogSessionSummary,
 } from '../../shared/productObservabilityLogReadModel';
 import {
@@ -56,7 +57,24 @@ function sessionSignalLabel(session: ObservabilityLogSessionSummary): string {
   if (session.hasError) return 'errorあり';
   if (session.hasApprovalFailure) return 'approval failureあり';
   if (session.hasFallback) return 'fallbackあり';
-  return session.hasPreview ? 'preview到達' : 'traceあり';
+  return session.hasPreview ? 'preview到達' : 'イベント信号なし';
+}
+
+function metadataEvidenceLabel(session: ObservabilityLogSessionSummary): string {
+  switch (session.metadataEvidence) {
+    case 'indexed_activity': return '索引に記録あり（本文未確認）';
+    case 'no_indexed_entries': return '索引0件（保存先の空は未確認）';
+    case 'activity_without_indexed_entries': return '活動情報あり・索引0件';
+    case 'unknown_or_invalid_metadata': return 'メタデータ不明・不正';
+    default: return 'メタデータ検証情報なし';
+  }
+}
+
+type LoadedEntryPage = ObservabilityLogEntryPage & { observedReadIssue?: boolean };
+
+function hasEntryReadIssue(page: ObservabilityLogEntryPage): boolean {
+  return Boolean(page.pageEvidence
+    && (page.pageEvidence.unavailableSequenceCount > 0 || page.pageEvidence.unprojectableEntryCount > 0));
 }
 
 export function AdminLogsPage() {
@@ -67,7 +85,8 @@ export function AdminLogsPage() {
   const [appliedStatus, setAppliedStatus] = useState(initialFilters.status);
   const [sessions, setSessions] = useState<ObservabilityLogSessionSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [entriesBySession, setEntriesBySession] = useState<Record<string, ObservabilityLogEntryPage>>({});
+  const [entriesBySession, setEntriesBySession] = useState<Record<string, LoadedEntryPage>>({});
+  const [listEvidence, setListEvidence] = useState<Array<ObservabilityLogSessionPageEvidence | undefined>>([]);
   const [expandedSessionId, setExpandedSessionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -87,6 +106,7 @@ export function AdminLogsPage() {
       });
       setSessions((current) => options.append ? [...current, ...page.sessions] : page.sessions);
       setNextCursor(page.nextCursor);
+      setListEvidence((current) => options.append ? [...current, page.pageEvidence] : [page.pageEvidence]);
       if (!options.append) {
         setExpandedSessionId('');
         setEntriesBySession({});
@@ -132,12 +152,14 @@ export function AdminLogsPage() {
       });
       setEntriesBySession((current) => {
         const previous = current[sessionId];
-        if (!previous || afterSequence === undefined) return { ...current, [sessionId]: page };
+        const observedReadIssue = hasEntryReadIssue(page);
+        if (!previous || afterSequence === undefined) return { ...current, [sessionId]: { ...page, observedReadIssue } };
         return {
           ...current,
           [sessionId]: {
             ...page,
             entries: [...previous.entries, ...page.entries],
+            observedReadIssue: previous.observedReadIssue || observedReadIssue,
           },
         };
       });
@@ -215,14 +237,26 @@ export function AdminLogsPage() {
       <section className="admin-log-boundary-note" aria-label="診断データの扱い">
         <strong>診断データは高感度です。</strong>
         <span>一覧は要約のみ。本文・state diff・AI response等は展開後のRedacted detailで確認します。</span>
+        <span>件数は索引情報です。0件でも保存先全体が空とは断定できません。export履歴は管理していません。</span>
       </section>
 
       {error ? <section className="admin-state-card panel" role="alert"><strong>Logsを取得できませんでした</strong><p>{error}</p></section> : null}
       {loading ? <section className="admin-state-card panel" aria-live="polite"><strong>ログを読み込んでいます</strong></section> : null}
 
+      {!loading && !error && listEvidence.length > 0 ? (
+        <section className="admin-state-card panel" aria-label="一覧の取得状態">
+          {listEvidence.map((evidence, index) => evidence ? (
+            <p key={index}>取得ページ {index + 1}: 元データ {evidence.rawDocumentCount} 件、
+              状態による除外 {evidence.statusFilteredCount} 件、一覧化できない記録 {evidence.unreadableSessionCount} 件</p>
+          ) : <p key={index}>取得ページ {index + 1}: このWorkerは一覧の検証情報を返していません。</p>)}
+          {listEvidence.some((evidence) => evidence && evidence.unreadableSessionCount > 0)
+            ? <strong>一覧に表示できない記録があります。正常な0件とは区別してください。</strong> : null}
+        </section>
+      ) : null}
+
       {!loading && !error && sessions.length === 0 ? (
         <section className="admin-state-card panel">
-          <strong>該当する診断sessionはありません</strong>
+          <strong>この取得範囲に表示対象の診断sessionはありません</strong>
           <p>traceが未保存・保持期限切れ・filter対象外の場合があります。0件を「障害なし」とは解釈しません。</p>
         </section>
       ) : null}
@@ -244,8 +278,9 @@ export function AdminLogsPage() {
                   <code>{session.traceSessionId}</code>
                   <div className="admin-log-session-meta">
                     <span>actor {session.subjectAlias}</span>
-                    <span>{session.entryCount} entries</span>
-                    <span>{session.turnCount} turns</span>
+                    <span>{session.metadataEvidence === 'unknown_or_invalid_metadata' ? '—' : session.entryCount} entries</span>
+                    <span>{session.metadataEvidence === 'unknown_or_invalid_metadata' ? '—' : session.turnCount} turns</span>
+                    <span>{metadataEvidenceLabel(session)}</span>
                     <span>{sessionSignalLabel(session)}</span>
                   </div>
                 </div>
@@ -268,6 +303,27 @@ export function AdminLogsPage() {
                   </div>
 
                   {loadingEntries === session.traceSessionId && !page ? <p>詳細を読み込んでいます…</p> : null}
+                  {!page && loadingEntries !== session.traceSessionId ? <p>本文は未取得です。</p> : null}
+                  {page ? (
+                    <section aria-label="本文の取得状態">
+                      {page.pageEvidence ? <>
+                        <p>{page.pageEvidence.indexCountStatus !== 'valid'
+                          ? '索引件数の完全性は確認できていません。'
+                          : page.pageEvidence.requestedEndSequence < page.pageEvidence.requestedStartSequence
+                          ? '索引上の取得対象は0件です。'
+                          : `今回の取得番号: ${page.pageEvidence.requestedStartSequence}–${page.pageEvidence.requestedEndSequence}`}
+                          {' '}欠損または不正で読めない番号 {page.pageEvidence.unavailableSequenceCount} 件、
+                          表示形式に変換できない記録 {page.pageEvidence.unprojectableEntryCount} 件</p>
+                        <p>{page.pageEvidence.indexCountStatus === 'invalid' ? '索引件数が不明または不正です。'
+                          : page.pageEvidence.indexCountStatus === 'capped' ? '索引件数が読出し上限を超えています。全範囲を読み終えたとは判断できません。'
+                          : page.pageEvidence.indexCountStatus !== 'valid' ? '索引件数の検証情報がありません。'
+                          : page.pageEvidence.indexedRangeExhausted ? '索引範囲の末尾に到達しました。保存先全体の完全性の証明ではありません。' : '索引範囲の続きがあります。'}
+                          {page.pageEvidence.byteLimited ? ' 応答サイズ上限で区切っています。' : ''}</p>
+                      </> : <p>このWorkerは本文取得範囲の検証情報を返していません。</p>}
+                      {page.observedReadIssue ? <strong>取得済みの範囲に欠損または読めない記録があります。</strong> : null}
+                      {page.entries.length === 0 ? <p>表示できるentryは0件です。空のsessionと断定しないでください。</p> : null}
+                    </section>
+                  ) : null}
                   {page?.entries.map((entry) => (
                     <div className="admin-log-entry" key={entry.id}>
                       <div className="admin-log-entry-heading">

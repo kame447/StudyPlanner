@@ -303,6 +303,7 @@ export async function handleProductObservabilityAdminApi(
           ok: true,
           sessions: page.sessions,
           nextCursor: encodeCursor(page.nextCursor),
+          pageEvidence: page.pageEvidence,
         });
       }
       const sessionId = url.searchParams.get('session')?.trim() ?? '';

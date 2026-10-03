@@ -196,7 +196,7 @@ test.describe('Admin console rendered UI', () => {
 
   test('Logs empty state does not equate missing trace with no incidents', async ({ page }) => {
     await openSurface(page, { view: 'logs', theme: 'light', width: 390, height: 844, state: 'empty' });
-    await expect(page.getByText('該当する診断sessionはありません')).toBeVisible();
+    await expect(page.getByText('この取得範囲に表示対象の診断sessionはありません')).toBeVisible();
     await expect(page.getByText(/0件を「障害なし」とは解釈しません/)).toBeVisible();
     await screenshot(page, 'logs-empty-mobile-light');
   });
@@ -235,3 +235,17 @@ test.describe('Admin console rendered UI', () => {
     await screenshot(page, 'system-error-mobile-dark');
   });
 });
+
+for (const width of [390, 1280]) {
+  test(`Logs read evidence distinguishes unreadable and partial data at ${width}px`, async ({ page }) => {
+    await openSurface(page, { view: 'logs', theme: 'light', width, height: 900, state: 'unreadable' });
+    await expect(page.getByText('一覧に表示できない記録があります。正常な0件とは区別してください。')).toBeVisible();
+    await screenshot(page, `logs-unreadable-${width}`);
+    await openSurface(page, { view: 'logs', theme: 'light', width, height: 900, state: 'partial' });
+    await expect(page.getByText('索引に記録あり（本文未確認）')).toBeVisible();
+    await page.locator('.admin-log-session-toggle').first().click();
+    await expect(page.getByText('取得済みの範囲に欠損または読めない記録があります。')).toBeVisible();
+    await expect(page.getByText(/export履歴は管理していません/)).toBeVisible();
+    await screenshot(page, `logs-partial-${width}`);
+  });
+}

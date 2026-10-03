@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
+  WEEKLY_PLANNING_TRACE_STORAGE_LAYOUT_VERSION as TRACE_STORAGE_LAYOUT_VERSION,
 } from '../../../shared/weeklyPlanningTraceContract';
 import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
@@ -63,7 +64,6 @@ const TRACE_ACCESS_AUDIT = 'weekly_planning_trace_access_audit';
 const PROFILES = 'profiles';
 const ADMINS = 'admins';
 const ADMIN_LIST_LIMIT = 500;
-const TRACE_STORAGE_LAYOUT_VERSION = 2;
 
 function correlationId(request: Request): string {
   const supplied = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
