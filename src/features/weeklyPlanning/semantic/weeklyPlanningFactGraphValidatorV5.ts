@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import {
   isUserUtteranceSourcedV5,
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
@@ -425,6 +426,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
   });
   workloads.forEach((fact, index) => {
+    validateWeeklyPlanningWorkloadValuesV5(fact, `graph.workloads[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.workloads[${index}].taskId`, errors);
     validateOptionalReference(
       fact.componentId,
@@ -434,6 +436,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
   });
   effortEstimates.forEach((fact, index) => {
+    validateWeeklyPlanningEffortValuesV5(fact, `graph.effortEstimates[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.effortEstimates[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,
