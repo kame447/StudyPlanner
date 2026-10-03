@@ -282,7 +282,8 @@ describe('P7/P4 P0 Quick set: replanning and invalid values', () => {
   // P0-23 is covered by the real two-turn runtime/graph/compiler/preview regression in
   // application/weeklyPlanningRevisionConstraintContinuity.integration.test.ts.
   // It preserves existing Plan, timetable and explicit hard-unavailable constraints (Issue #382).
-  it.todo('P4/P6 P0-24 keeps drafts unsaved until explicit approval');
+  // P0-24 is covered through the real application/checkpoint/remount/approval
+  // boundary in weeklyPlanningProvisionalApprovalApplication.integration.test.tsx.
   it.todo(
     'P7 P1-36 creates a change proposal instead of directly mutating approved plans',
   );
