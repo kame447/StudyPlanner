@@ -255,17 +255,84 @@ async function adminGet(path: string): Promise<Response> {
 }
 
 beforeEach(() => {
+  // Match the dated fixtures and epoch-690 ring; wall-clock rollover is not under test here.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-25T00:00:00.000Z'));
   vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('traceWorker admin subrequest budget', () => {
+  it('rejects malformed UTF-8 rather than silently changing a cursor field', async () => {
+    const calls = installFetchMock();
+    const bytes = Buffer.concat([
+      Buffer.from('{"orderedValue":"'), Buffer.from([0xff]),
+      Buffer.from('","documentName":"synthetic-document"}'),
+    ]);
+    const response = await adminGet(`/observability/admin/logs?cursor=${bytes.toString('base64url')}`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'observability_cursor_invalid' });
+    expect(calls).toHaveLength(3);
+  });
+
+  it('keeps valid UTF-8 cursor ordering and bounded session reads', async () => {
+    const calls = installFetchMock();
+    const cursor = {
+      orderedValue: '2026-09-25T00:00:00.000Z',
+      documentName: 'projects/test-project/databases/(default)/documents/weekly_planning_trace_sessions/学習',
+    };
+    const encoded = Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+    const response = await adminGet(`/observability/admin/logs?cursor=${encoded}`);
+    expect(response.status).toBe(200);
+    const query = calls.find((call) => call.url.endsWith(':runQuery'));
+    expect(JSON.parse(String(query?.init?.body)).structuredQuery.startAt).toEqual({
+      values: [{ stringValue: cursor.orderedValue }, { referenceValue: cursor.documentName }], before: false,
+    });
+    expect(calls).toHaveLength(5);
+  });
+
+  it('does not misclassify a backend query failure as an invalid cursor', async () => {
+    installFetchMock();
+    const mockedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith(':runQuery')) throw new Error('synthetic backend failure');
+      return mockedFetch(input, init);
+    });
+    const response = await adminGet('/observability/admin/logs');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Observability read model is temporarily unavailable.' });
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/observability/admin/logs', 'eHh4eHh4'],
+    ['/observability/admin/logs', 'AAAAAAAAA'],
+    ['/observability/admin/logs', 'eyJmb28iOjF9'],
+    ['/observability/admin/users', 'eHh4eHh4'],
+    ['/observability/admin/users', 'AAAAAAAAA'],
+    ['/observability/admin/users', 'eyJmb28iOjF9'],
+    ['/observability/admin/users?actor=actor-aaaaaaaa', 'eHh4eHh4'],
+    ['/observability/admin/users?actor=actor-aaaaaaaa', 'AAAAAAAAA'],
+    ['/observability/admin/users?actor=actor-aaaaaaaa', 'eyJmb28iOjF9'],
+  ])('classifies a malformed cursor on %s as a client error: %s', async (path, cursor) => {
+    const calls = installFetchMock();
+    const response = await adminGet(`${path}${path.includes('?') ? '&' : '?'}cursor=${cursor}`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'observability_cursor_invalid' });
+    // Authentication stays mandatory; invalid input never starts a diagnostic audit/read.
+    expect(calls).toHaveLength(3);
+    expect(calls.some((call) => call.url.includes('trace_access_audit'))).toBe(false);
+    expect(calls.some((call) => call.url.endsWith(':runQuery'))).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['/observability/admin/overview?from=2026-06-25&to=2026-09-25', 9],
     ['/observability/admin/ai?from=2026-06-25&to=2026-09-25', 5],
