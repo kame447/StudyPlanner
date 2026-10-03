@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
+import { useOptimisticPlannerState } from './useOptimisticPlannerState';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -244,7 +245,8 @@ export function usePlannerDataState({
   const [actuals, setActuals, rawSetActuals] = useScopedPlannerState<Actual[]>([], mutationScope);
   const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
   const [monthEvents, setMonthEvents, rawSetMonthEvents] = useScopedPlannerState<MonthEvent[]>([], mutationScope);
-  const [todos, setTodos, rawSetTodos] = useScopedPlannerState<TodoTask[]>([], mutationScope);
+  const todoState = useOptimisticPlannerState<TodoTask[]>([], mutationScope);
+  const { value: todos, set: setTodos, replace: rawSetTodos } = todoState;
   const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
   const [studyMaterials, setStudyMaterials, rawSetStudyMaterials] = useScopedPlannerState<StudyMaterial[]>([], mutationScope);
   const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
@@ -693,7 +695,6 @@ export function usePlannerDataState({
     const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
     const previousPlans = plans;
     const previousActuals = actuals;
-    const previousTodos = todos;
     const nextLinkedTodo = linkedTodo
       ? {
           ...linkedTodo,
@@ -703,18 +704,18 @@ export function usePlannerDataState({
         }
       : null;
 
+    const todoOperation = todoState.begin(current => nextLinkedTodo
+      ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
     try {
       setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
       setActuals((current) => current.filter((actual) => actual.planId !== plan.id));
-      if (nextLinkedTodo) {
-        setTodos((current) => upsertByKey(current, nextLinkedTodo, (todo) => todo.id));
-      }
       closePlanEditor();
       await plannerRepository.deletePlanWithDependents({
         userId,
         plan,
         todo: nextLinkedTodo,
       });
+      todoState.commit(todoOperation);
       showDeleteUndoNotice(async () => {
         await plannerRepository.restorePlanWithDependents({
           plan,
@@ -732,7 +733,7 @@ export function usePlannerDataState({
     } catch (error) {
       setPlans(previousPlans);
       setActuals(previousActuals);
-      setTodos(previousTodos);
+      todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
       throw error;
     }
@@ -1085,14 +1086,14 @@ export function usePlannerDataState({
       createdAt: currentTodo?.createdAt ?? now,
       updatedAt: now,
     };
-    const previousTodos = todos;
 
+    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, todo => todo.id));
     try {
-      setTodos((current) => upsertByKey(current, nextTodo, (todo) => todo.id));
       await plannerRepository.upsertTodo(nextTodo);
+      todoState.commit(todoOperation);
       showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
     } catch (error) {
-      setTodos(previousTodos);
+      todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
       throw error;
     }
@@ -1115,21 +1116,21 @@ export function usePlannerDataState({
       updatedAt: new Date().toISOString(),
     };
     const previousPlans = plans;
-    const previousTodos = todos;
     const previousSelectedDate = selectedDate;
     const previousMonthDate = monthDate;
 
+    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
     try {
       setPlans((current) => sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)));
-      setTodos((current) => upsertByKey(current, nextTodo, (item) => item.id));
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
       await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
+      todoState.commit(todoOperation);
       showNotice('Todoを予定化しました。', 'success');
       return nextPlan;
     } catch (error) {
       setPlans(previousPlans);
-      setTodos(previousTodos);
+      todoState.reject(todoOperation);
       setSelectedDate(previousSelectedDate);
       setMonthDate(previousMonthDate);
       showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
@@ -1142,17 +1143,16 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const previousTodos = todos;
-
+    const todoOperation = todoState.begin(current => removeByKey(current, todo.id, item => item.id));
     try {
-      setTodos((current) => removeByKey(current, todo.id, (item) => item.id));
       await plannerRepository.deleteTodo(userId, todo.id);
+      todoState.commit(todoOperation);
       showDeleteUndoNotice(async () => {
         await plannerRepository.upsertTodo(todo);
         setTodos((current) => upsertByKey(current, todo, (item) => item.id));
       });
     } catch (error) {
-      setTodos(previousTodos);
+      todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
       throw error;
     }

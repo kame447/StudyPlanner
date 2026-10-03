@@ -1,6 +1,6 @@
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Actual, ActualDraft, Plan, StudyMaterial, TimetableTerm } from '../types/domain';
+import type { Actual, ActualDraft, Plan, StudyMaterial, TimetableTerm, TodoTask } from '../types/domain';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 
 const repository = vi.hoisted(() => ({
@@ -14,6 +14,11 @@ const repository = vi.hoisted(() => ({
   getScheduleTemplates: vi.fn(),
   getTimetableTerms: vi.fn(),
   getTimetablePeriods: vi.fn(),
+  upsertTodo: vi.fn(),
+  deleteTodo: vi.fn(),
+  scheduleTodoPlan: vi.fn(),
+  deletePlanWithDependents: vi.fn(),
+  restorePlanWithDependents: vi.fn(),
   applyTimetableMutation: vi.fn(),
   upsertActualWithMaterialProgress: vi.fn<(mutation: { actual: Actual; materials: readonly StudyMaterial[] }) => Promise<Actual>>(),
 }));
@@ -66,6 +71,11 @@ function resetRepositoryMocks() {
   repository.getScheduleTemplates.mockResolvedValue([]);
   repository.getTimetableTerms.mockResolvedValue([]);
   repository.getTimetablePeriods.mockResolvedValue([]);
+  repository.upsertTodo.mockResolvedValue(undefined);
+  repository.deleteTodo.mockResolvedValue(undefined);
+  repository.scheduleTodoPlan.mockResolvedValue(undefined);
+  repository.deletePlanWithDependents.mockResolvedValue(undefined);
+  repository.restorePlanWithDependents.mockResolvedValue(undefined);
   repository.applyTimetableMutation.mockResolvedValue(undefined);
   repository.upsertActualWithMaterialProgress.mockImplementation(async ({ actual }) => actual);
 }
@@ -497,4 +507,104 @@ describe('planner mutation owner isolation', () => {
       });
     }
   }
+});
+
+
+describe('usePlannerDataState overlapping Todo mutations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    latestState = null;
+    resetRepositoryMocks();
+  });
+
+  it.each(['save', 'delete'].flatMap(operation => ['update', 'create', 'delete'].map(newer => [operation, newer])))('does not roll back another Todo after older %s fails and newer %s succeeds', async (operation, newer) => {
+    const todo = (id: string): TodoTask => ({
+      id, userId: 'owner-a', title: id, subject: '', type: 'study',
+      estimatedMinutes: null, dueDate: null, memo: '', status: 'open',
+      scheduledPlanId: null, createdAt: '2026-10-03T00:00:00Z', updatedAt: '2026-10-03T00:00:00Z',
+    });
+    const first = todo('first');
+    const second = todo('second');
+    repository.getTodos.mockResolvedValue([first, second]);
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    const pending = deferred<void>();
+    if (operation === 'save') repository.upsertTodo.mockReturnValueOnce(pending.promise);
+    else repository.deleteTodo.mockReturnValueOnce(pending.promise);
+    let failed!: Promise<unknown>;
+    await act(async () => {
+      failed = (operation === 'save'
+        ? readState().saveTodo({ ...first, title: 'first pending' }, first.id)
+        : readState().deleteTodo(first)).catch((error: unknown) => error);
+    });
+    await act(async () => {
+      if (newer === 'delete') await readState().deleteTodo(second);
+      else await readState().saveTodo({ ...second, title: 'second saved' }, newer === 'update' ? second.id : undefined);
+    });
+    const expectedOthers = readState().todos.filter(item => item.id !== first.id);
+    const failure = new Error('first failed');
+    await act(async () => { pending.reject(failure); expect(await failed).toBe(failure); });
+    expect(readState().todos.find((item) => item.id === first.id)).toEqual(first);
+    expect(readState().todos.filter(item => item.id !== first.id)).toEqual(expectedOthers);
+    renderer.unmount();
+  });
+  it.each(['schedule', 'delete-linked-plan'] as const)('preserves another Todo when %s fails', async operation => {
+    const first: TodoTask = {
+      id: 'linked', userId: 'owner-a', title: 'linked', subject: '', type: 'study',
+      estimatedMinutes: null, dueDate: null, memo: '', status: 'open', scheduledPlanId: null,
+      createdAt: studyPlan.createdAt, updatedAt: studyPlan.updatedAt,
+    };
+    if (operation === 'delete-linked-plan') {
+      first.status = 'scheduled';
+      first.scheduledPlanId = studyPlan.id;
+    }
+    const second = { ...first, id: 'other', title: 'other', status: 'open' as const, scheduledPlanId: null };
+    const plan = { ...studyPlan, sourceType: 'todo' as const, sourceId: first.id };
+    repository.getPlans.mockResolvedValue([plan]);
+    repository.getTodos.mockResolvedValue([first, second]);
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    const pending = deferred<void>();
+    if (operation === 'schedule') repository.scheduleTodoPlan.mockReturnValueOnce(pending.promise);
+    else repository.deletePlanWithDependents.mockReturnValueOnce(pending.promise);
+    let failed!: Promise<unknown>;
+    await act(async () => {
+      failed = (operation === 'schedule'
+        ? readState().scheduleTodoAsPlan(first, studyPlan)
+        : readState().deletePlan(plan)).catch((error: unknown) => error);
+    });
+    await act(async () => { await readState().saveTodo({ ...second, title: 'saved' }, second.id); });
+    const failure = new Error('linked mutation rejected');
+    await act(async () => { pending.reject(failure); expect(await failed).toBe(failure); });
+    expect(readState().todos.find(item => item.id === first.id)).toEqual(first);
+    expect(readState().todos.find(item => item.id === second.id)?.title).toBe('saved');
+    renderer.unmount();
+  });
+
+  it('retains durable delete Undo when another pending Todo save fails', async () => {
+    const first: TodoTask = {
+      id: 'first', userId: 'owner-a', title: 'first', subject: '', type: 'study',
+      estimatedMinutes: null, dueDate: null, memo: '', status: 'open', scheduledPlanId: null,
+      createdAt: studyPlan.createdAt, updatedAt: studyPlan.updatedAt,
+    };
+    const second = { ...first, id: 'second', title: 'second' };
+    repository.getTodos.mockResolvedValue([first, second]);
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    const pending = deferred<void>();
+    repository.upsertTodo.mockReturnValueOnce(pending.promise);
+    let failed!: Promise<unknown>;
+    await act(async () => {
+      failed = readState().saveTodo({ ...first, title: 'pending' }, first.id).catch((error: unknown) => error);
+    });
+    await act(async () => { await readState().deleteTodo(second); });
+    const undo = showNotice.mock.calls.find(call => call[0] === '削除しました')?.[2]?.onAction;
+    expect(undo).toBeTypeOf('function');
+    await act(async () => { await undo(); });
+    expect(repository.upsertTodo).toHaveBeenLastCalledWith(second);
+    await act(async () => { pending.reject(new Error('save failed')); await failed; });
+    expect(readState().todos).toEqual([first, second]);
+    renderer.unmount();
+  });
+
 });
