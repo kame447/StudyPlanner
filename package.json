@@ -50,6 +50,11 @@
     "typescript": "^5.6.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.4",
-    "wrangler": "4.140.0"
+    "wrangler": "4.143.1"
+  },
+  "overrides": {
+    "@firebase/firestore@4.14.0": {
+      "@grpc/grpc-js": "1.13.6"
+    }
   }
 }
