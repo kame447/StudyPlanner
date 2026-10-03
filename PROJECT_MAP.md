@@ -130,7 +130,7 @@ External provider adapters may physically live under services or a feature-owned
 
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
-Current admin data access and AI request metrics also live under services today. Issue #213 will move service-wide observability behavior behind a product-observability application/repository boundary rather than making UI depend on current physical locations.
+`src/services/adminObservabilityService.ts` is the current typed browser query boundary for admin pages. It consumes authenticated Worker read models and restricted diagnostic projections. `src/services/adminDataService.ts` remains as legacy code, but current admin pages do not use it; do not restore its browser-side collection scans as the console read path.
 
 ### `src/lib/`
 
@@ -140,7 +140,7 @@ Small reusable deterministic helpers and cross-cutting utility logic. Domain-cha
 
 Legacy/general report helpers remain in `src/lib/reportAnalytics.ts`; new user-facing learning report behavior should not be reimplemented inside JSX.
 
-Current `src/lib/adminAnalytics.ts` is legacy/current admin aggregation evidence, not the future owner of service-wide telemetry semantics. Issue #213 defines the migration away from browser-side full-collection analytics.
+`src/lib/adminAnalytics.ts` remains a legacy helper used by `adminDataService.ts` and its own tests, not the current console aggregation authority. Product-observability metric semantics and bounded server-side read models own that responsibility.
 
 ### `src/types/`
 
@@ -152,9 +152,9 @@ Shared application/domain types. Prefer feature-local types when one feature own
 
 Canonical documentation root: `docs/domains/product-observability/`
 
-Current implementation is distributed across admin components, `src/services/adminDataService.ts`, `src/lib/adminAnalytics.ts`, AI client metrics, AI proxy, and weekly-planning trace adapters. Do not infer future ownership from those current physical locations.
+Current admin components consume `src/services/adminObservabilityService.ts`. Typed transport/read-model contracts live in `shared/productObservability*.ts`; telemetry producers live in `src/features/productObservability/` and the AI proxy; Worker `productObservability*` modules own ingestion, aggregation, bounded queries and restricted diagnostic adapters.
 
-Issue #213 establishes the target boundary:
+Implementation status and completion evidence are owned by the [product-observability roadmap](docs/domains/product-observability/roadmap/current.md), not duplicated as a migration queue here. The current responsibility boundary includes:
 
 - lightweight product activity telemetry
 - AI/API request metrics
