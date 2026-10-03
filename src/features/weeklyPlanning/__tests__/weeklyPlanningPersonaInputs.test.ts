@@ -279,9 +279,9 @@ describe('P7/P4 P0 Quick set: replanning and invalid values', () => {
   // The current provisional-allocation/factual-effort boundary is executed in
   // application/weeklyPlanningProvisionalAllocationPersistence.integration.test.ts
   // through real approval, saved-data projection and personalization (Issue #382).
-  it.todo(
-    'P5/P4 P0-23 keeps existing plans, timetable constraints, and buffer constraints during revision',
-  );
+  // P0-23 is covered by the real two-turn runtime/graph/compiler/preview regression in
+  // application/weeklyPlanningRevisionConstraintContinuity.integration.test.ts.
+  // It preserves existing Plan, timetable and explicit hard-unavailable constraints (Issue #382).
   it.todo('P4/P6 P0-24 keeps drafts unsaved until explicit approval');
   it.todo(
     'P7 P1-36 creates a change proposal instead of directly mutating approved plans',
