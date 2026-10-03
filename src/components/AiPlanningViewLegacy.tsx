@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -73,6 +74,7 @@ interface AiPlanningViewProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
+  cancellationEpoch?: { readonly current: number };
 }
 
 interface PendingPlanningImageAttachment {
@@ -187,6 +189,7 @@ export function AiPlanningView({
   userId,
   selectedDate,
   plans,
+  cancellationEpoch,
 }: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [text, setText] = useState('');
@@ -203,6 +206,9 @@ export function AiPlanningView({
   const [imageAttachment, setImageAttachment] =
     useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const cancellationGeneration = cancellationEpoch?.current ?? 0;
+  const submission = useRef({ active: false, ownerId: userId, index: chatIndex, token: null as symbol | null });
   const [isListening, setIsListening] = useState(false);
   const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
@@ -255,7 +261,7 @@ export function AiPlanningView({
     [allPreviewBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
-  const isComposerBusy = isBusy || isReadingAttachment;
+  const isComposerBusy = isBusy || isReadingAttachment || isSubmitting;
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
   const totalMinutes = useMemo(
     () =>
@@ -300,6 +306,21 @@ export function AiPlanningView({
       }),
     [plans, selectedDate, starterMaterials, starterTodos],
   );
+
+  // One operation owns OCR, planner submission, and final chat persistence.
+  // Revoke it synchronously on navigation/owner changes or unmount.
+  useLayoutEffect(() => {
+    submission.current = { active: true, ownerId: userId, index: chatIndex, token: null };
+    setIsSubmitting(false);
+    setIsReadingAttachment(false);
+    return () => { submission.current.active = false; submission.current.token = null; };
+  }, [userId, chatIndex, cancellationGeneration]);
+
+  function ownsSubmissionScope(): boolean {
+    return submission.current.active && submission.current.ownerId === userId
+      && submission.current.index === chatIndex
+      && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
+  }
 
   function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
     const chatId = baseIndex.activeChatId;
@@ -428,6 +449,7 @@ export function AiPlanningView({
   }
 
   function handleImageAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
     const file = event.target.files?.[0];
 
     if (!file) {
@@ -528,68 +550,84 @@ export function AiPlanningView({
   async function submitMessage() {
     const value = text.trim();
     const attachment = imageAttachment;
-    if ((!value && !attachment) || isComposerBusy || isListening) return;
-
-    setError('');
-    let supplementalContext: string | undefined;
-
-    if (attachment) {
-      setIsReadingAttachment(true);
-      try {
-        const extraction = await extractPlanningImageAttachment(attachment.file);
-        supplementalContext = extraction.text;
-      } catch (attachmentError) {
-        setError(
-          attachmentError instanceof Error
-            ? attachmentError.message
-            : '画像を読み取れませんでした。',
-        );
-        return;
-      } finally {
-        setIsReadingAttachment(false);
-      }
-    }
-
-    const starter = selectedStarterOption?.requestText === value
-      && starterPromptOptions.some((option) => option.requestText === value
-        && option.target?.kind === selectedStarterOption.target?.kind
-        && option.target?.id === selectedStarterOption.target?.id
-        && option.target?.label === selectedStarterOption.target?.label
-        && option.target?.targetDate === selectedStarterOption.target?.targetDate)
-      ? selectedStarterOption
-      : null;
-    const requestText = starter?.requestText ?? value;
-    const submittedText = attachment
-      ? buildAiPlanningImageTurn(requestText, attachment.file.name).userText
-      : requestText;
-
-    const shouldReleaseComposerFocus = shouldReleaseComposerFocusAfterSubmit();
-    setText('');
-    if (shouldReleaseComposerFocus) {
-      inputRef.current?.blur();
-    }
-
+    if ((!value && !attachment) || isComposerBusy || isListening
+      || !ownsSubmissionScope() || submission.current.token) return;
+    const token = Symbol('planning-submission');
+    submission.current.token = token;
+    setIsSubmitting(true);
+    const ownsRequest = () => ownsSubmissionScope() && submission.current.token === token;
     try {
-      const result = await application.submitTurn(
-        submittedText,
-        supplementalContext,
-        starter?.target ?? undefined,
-      );
-      if (!result.accepted) {
-        setText(value);
-        return;
+      setError('');
+      let supplementalContext: string | undefined;
+
+      if (attachment) {
+        setIsReadingAttachment(true);
+        try {
+          const extraction = await extractPlanningImageAttachment(attachment.file);
+          if (!ownsRequest()) return;
+          supplementalContext = extraction.text;
+        } catch (attachmentError) {
+          if (!ownsRequest()) return;
+          setError(
+            attachmentError instanceof Error
+              ? attachmentError.message
+              : '画像を読み取れませんでした。',
+          );
+          return;
+        } finally {
+          if (ownsRequest()) setIsReadingAttachment(false);
+        }
       }
-      clearImageAttachment();
-      setSelectedStarterOption(null);
-      persistActiveChat();
-    } catch (submitError) {
-      setText(value);
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : 'メッセージを送信できませんでした。',
-      );
-      persistActiveChat();
+
+      if (!ownsRequest()) return;
+      const starter = selectedStarterOption?.requestText === value
+        && starterPromptOptions.some((option) => option.requestText === value
+          && option.target?.kind === selectedStarterOption.target?.kind
+          && option.target?.id === selectedStarterOption.target?.id
+          && option.target?.label === selectedStarterOption.target?.label
+          && option.target?.targetDate === selectedStarterOption.target?.targetDate)
+        ? selectedStarterOption
+        : null;
+      const requestText = starter?.requestText ?? value;
+      const submittedText = attachment
+        ? buildAiPlanningImageTurn(requestText, attachment.file.name).userText
+        : requestText;
+
+      const shouldReleaseComposerFocus = shouldReleaseComposerFocusAfterSubmit();
+      setText('');
+      if (shouldReleaseComposerFocus) {
+        inputRef.current?.blur();
+      }
+
+      try {
+        const result = await application.submitTurn(
+          submittedText,
+          supplementalContext,
+          starter?.target ?? undefined,
+        );
+        if (!ownsRequest()) return;
+        if (!result.accepted) {
+          setText(value);
+          return;
+        }
+        clearImageAttachment();
+        setSelectedStarterOption(null);
+        persistActiveChat();
+      } catch (submitError) {
+        if (!ownsRequest()) return;
+        setText(value);
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : 'メッセージを送信できませんでした。',
+        );
+        persistActiveChat();
+      }
+    } finally {
+      if (ownsRequest()) {
+        submission.current.token = null;
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -612,7 +650,7 @@ export function AiPlanningView({
   }
 
   function switchChat(chatId: string) {
-    if (isBusy || isListening || chatId === chatIndex.activeChatId) {
+    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening || chatId === chatIndex.activeChatId) {
       setIsChatDrawerOpen(false);
       return;
     }
@@ -628,6 +666,7 @@ export function AiPlanningView({
       );
       return;
     }
+    submission.current.active = false;
     const nextIndex = setActiveAiPlanningChat(persistedIndex, chatId);
     saveAiPlanningChatIndex(userId, nextIndex);
     setChatIndex(nextIndex);
@@ -641,9 +680,10 @@ export function AiPlanningView({
   }
 
   function createChat() {
-    if (isBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
     const persistedIndex = persistActiveChat();
     const created = createAiPlanningChat(persistedIndex);
+    submission.current.active = false;
     application.startConversation();
     saveAiPlanningChatIndex(userId, created.index);
     setChatIndex(created.index);
@@ -658,7 +698,7 @@ export function AiPlanningView({
   }
 
   function removeChat(chatId: string) {
-    if (isBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
     const chat = chatIndex.chats.find((item) => item.id === chatId);
     if (!chat) return;
     if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
@@ -666,6 +706,7 @@ export function AiPlanningView({
     const persistedIndex = persistActiveChat();
     const wasActive = persistedIndex.activeChatId === chatId;
     const nextIndex = deleteAiPlanningChat(userId, persistedIndex, chatId);
+    submission.current.active = false;
 
     if (wasActive) {
       const target =
@@ -739,7 +780,7 @@ export function AiPlanningView({
         chats={visibleChats}
         activeChatId={chatIndex.activeChatId}
         query={chatQuery}
-        disabled={isBusy || isListening}
+        disabled={isComposerBusy || isListening}
         onQueryChange={setChatQuery}
         onCreate={createChat}
         onSelect={switchChat}
