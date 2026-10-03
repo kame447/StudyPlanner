@@ -249,3 +249,50 @@ for (const width of [390, 1280]) {
     await screenshot(page, `logs-partial-${width}`);
   });
 }
+
+async function settleLogRead(page, kind, index, ids, cursor = null, extra = null) {
+  await page.evaluate(async ({ kind, index, ids, cursor, extra }) => {
+    const fixture = window.__adminLogRace;
+    if (kind === 'list') fixture.resolveList(index, ids, cursor, extra ?? 'active');
+    else fixture.resolveEntries(index, ids, cursor, extra ?? 0);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }, { kind, index, ids, cursor, extra });
+}
+
+for (const width of [390, 1280]) {
+  test(`Logs keeps the newest filter when responses arrive out of order at ${width}px`, async ({ page }) => {
+    await openSurface(page, { view: 'logs', theme: 'light', width, height: 900, state: 'request-race' });
+    await expect.poll(() => page.evaluate(() => window.__adminLogRace.list.length)).toBe(1);
+    await page.getByRole('combobox').selectOption('failed');
+    await page.getByRole('button', { name: '適用', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__adminLogRace.list.length)).toBe(2);
+    await settleLogRead(page, 'list', 1, ['current-failed'], null, 'failed');
+    await settleLogRead(page, 'list', 0, ['obsolete-active'], 'obsolete-cursor');
+    await expect(page.locator('.admin-log-session-toggle')).toHaveCount(1);
+    await expect(page.locator('.admin-log-session-toggle')).toContainText('current-failed');
+    await expect(page.getByText('obsolete-active', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '次のsessionを読む' })).toHaveCount(0);
+    await screenshot(page, `logs-newest-filter-${width}`);
+  });
+
+  test(`Logs preserves per-session paging ownership across switching at ${width}px`, async ({ page }) => {
+    await openSurface(page, { view: 'logs', theme: 'light', width, height: 900, state: 'request-race' });
+    await expect.poll(() => page.evaluate(() => window.__adminLogRace.list.length)).toBe(1);
+    await settleLogRead(page, 'list', 0, ['session-A', 'session-B']);
+    const toggles = page.locator('.admin-log-session-toggle');
+    await toggles.nth(0).click(); await toggles.nth(0).click(); await toggles.nth(0).click();
+    await expect.poll(() => page.evaluate(() => window.__adminLogRace.entries.length)).toBe(1);
+    await settleLogRead(page, 'entries', 0, ['A-0'], 19, 1);
+    await page.getByRole('button', { name: '次のentryを読む' }).click();
+    await toggles.nth(1).click(); await toggles.nth(0).click();
+    await expect(page.getByRole('button', { name: '読込中...', exact: true })).toBeDisabled();
+    await expect.poll(() => page.evaluate(() => window.__adminLogRace.entries.length)).toBe(3);
+    await settleLogRead(page, 'entries', 1, ['A-0', 'A-20']);
+    await expect(page.locator('.admin-log-entry')).toHaveCount(2);
+    await expect(page.getByText('取得済みの範囲に欠損または読めない記録があります。')).toBeVisible();
+    await settleLogRead(page, 'entries', 2, ['B-0']);
+    await expect(page.locator('.admin-log-entry')).toHaveCount(2);
+    await expect(page.getByText('B-0', { exact: true })).toHaveCount(0);
+    await screenshot(page, `logs-session-request-owner-${width}`);
+  });
+}

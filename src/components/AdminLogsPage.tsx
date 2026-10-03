@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Download, RefreshCw, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   ObservabilityLogEntryPage,
   ObservabilityLogSessionPageEvidence,
@@ -77,12 +77,27 @@ function hasEntryReadIssue(page: ObservabilityLogEntryPage): boolean {
     && (page.pageEvidence.unavailableSequenceCount > 0 || page.pageEvidence.unprojectableEntryCount > 0));
 }
 
+function mergeById<T>(current: T[], incoming: T[], id: (item: T) => string): T[] {
+  const unique = new Map(current.map((item) => [id(item), item]));
+  incoming.forEach((item) => unique.set(id(item), item));
+  return [...unique.values()];
+}
+
 export function AdminLogsPage() {
   const initialFilters = useMemo(filtersFromUrl, []);
   const [sessionInput, setSessionInput] = useState(initialFilters.sessionId);
   const [statusInput, setStatusInput] = useState(initialFilters.status);
-  const [appliedSession, setAppliedSession] = useState(initialFilters.sessionId);
-  const [appliedStatus, setAppliedStatus] = useState(initialFilters.status);
+  const filters = useRef(initialFilters);
+  const cursor = useRef<string | null>(null);
+  const requests = useRef({
+    active: false,
+    generation: 0,
+    list: null as { token: symbol; query: string; append: boolean } | null,
+    entries: new Map<string, symbol>(),
+    completedListCursors: new Set<string>(),
+    completedEntryCursors: new Map<string, Set<string | number>>(),
+    bundles: new Map<string, symbol>(),
+  });
   const [sessions, setSessions] = useState<ObservabilityLogSessionSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [entriesBySession, setEntriesBySession] = useState<Record<string, LoadedEntryPage>>({});
@@ -90,87 +105,154 @@ export function AdminLogsPage() {
   const [expandedSessionId, setExpandedSessionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadingEntries, setLoadingEntries] = useState('');
-  const [exportingKey, setExportingKey] = useState('');
+  const [loadingEntries, setLoadingEntries] = useState<Record<string, boolean>>({});
+  const [exportingKeys, setExportingKeys] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
+  const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
+  const [bundleErrors, setBundleErrors] = useState<Record<string, string>>({});
 
-  async function loadSessions(options: { append?: boolean; cursor?: string | null } = {}): Promise<void> {
-    if (options.append) setLoadingMore(true); else setLoading(true);
+  const renderedGeneration = requests.current.generation;
+
+  function invalidateRequests(): void {
+    requests.current.generation += 1;
+    requests.current.list = null;
+    requests.current.entries.clear();
+    requests.current.completedListCursors.clear();
+    requests.current.completedEntryCursors.clear();
+    requests.current.bundles.clear();
+    cursor.current = null;
+  }
+
+  function ownsView(generation: number): boolean {
+    return requests.current.active && requests.current.generation === generation;
+  }
+
+  async function loadSessions(options: { append?: boolean } = {}): Promise<void> {
+    const owner = requests.current;
+    if (!owner.active) return;
+    const append = options.append === true;
+    const query = JSON.stringify(filters.current);
+    if (append && (owner.list || !cursor.current || owner.completedListCursors.has(cursor.current))) return;
+    if (!append && owner.list && !owner.list.append && owner.list.query === query) return;
+    const requestedCursor = append ? cursor.current : null;
+    if (!append) {
+      invalidateRequests();
+      setSessions([]);
+      setNextCursor(null);
+      setListEvidence([]);
+      setExpandedSessionId('');
+      setEntriesBySession({});
+      setLoadingEntries({});
+      setExportingKeys({});
+      setEntryErrors({});
+      setBundleErrors({});
+    }
+    const generation = owner.generation;
+    const token = Symbol('list');
+    owner.list = { token, query, append };
+    const ownsRequest = () => ownsView(generation) && owner.list?.token === token;
+    setLoading(!append);
+    setLoadingMore(append);
     setError('');
     try {
       const page = await getAdminObservabilityLogs({
-        cursor: options.cursor ?? null,
+        cursor: requestedCursor,
         limit: 25,
-        status: appliedStatus || null,
-        sessionId: appliedSession || null,
+        status: filters.current.status || null,
+        sessionId: filters.current.sessionId || null,
       });
-      setSessions((current) => options.append ? [...current, ...page.sessions] : page.sessions);
+      if (!ownsRequest()) return;
+      if (requestedCursor) owner.completedListCursors.add(requestedCursor);
+      cursor.current = page.nextCursor;
+      setSessions((current) => !ownsView(generation) ? current
+        : append ? mergeById(current, page.sessions, (item) => item.traceSessionId) : page.sessions);
       setNextCursor(page.nextCursor);
-      setListEvidence((current) => options.append ? [...current, page.pageEvidence] : [page.pageEvidence]);
-      if (!options.append) {
-        setExpandedSessionId('');
-        setEntriesBySession({});
-      }
+      setListEvidence((current) => !ownsView(generation) ? current
+        : append ? [...current, page.pageEvidence] : [page.pageEvidence]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'ログを取得できませんでした。');
+      if (ownsRequest()) setError(caught instanceof Error ? caught.message : 'ログを取得できませんでした。');
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (ownsRequest()) {
+        owner.list = null;
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }
 
+  useLayoutEffect(() => {
+    requests.current.active = true;
+    return () => {
+      // Revoke imperative download ownership during unmount, before passive cleanup.
+      requests.current.active = false;
+      invalidateRequests();
+    };
+  // Ownership uses stable refs and is independent of the current rendered query.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     void loadSessions();
-  // Filters are committed explicitly by the apply action.
+  // The query is owned by explicit apply/reload actions, not by a render closure.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedSession, appliedStatus]);
+  }, []);
 
   function applyFilters(): void {
-    const nextSession = sessionInput.trim();
-    const nextStatus = statusInput.trim();
-    updateFilterUrl(nextSession, nextStatus);
-    setAppliedSession(nextSession);
-    setAppliedStatus(nextStatus);
+    filters.current = { sessionId: sessionInput.trim(), status: statusInput.trim() };
+    updateFilterUrl(filters.current.sessionId, filters.current.status);
+    void loadSessions();
   }
 
   function clearFilters(): void {
     setSessionInput('');
     setStatusInput('');
+    filters.current = { sessionId: '', status: '' };
     updateFilterUrl('', '');
-    setAppliedSession('');
-    setAppliedStatus('');
+    void loadSessions();
   }
 
   async function loadEntries(sessionId: string, afterSequence?: number): Promise<void> {
-    setLoadingEntries(sessionId);
-    setError('');
+    const owner = requests.current;
+    const pageKey = afterSequence ?? 'initial';
+    if (!ownsView(renderedGeneration) || owner.entries.has(sessionId)
+      || owner.completedEntryCursors.get(sessionId)?.has(pageKey)) return;
+    const generation = owner.generation;
+    const token = Symbol('entries');
+    owner.entries.set(sessionId, token);
+    const ownsRequest = () => ownsView(generation) && owner.entries.get(sessionId) === token;
+    setLoadingEntries((current) => ({ ...current, [sessionId]: true }));
+    setEntryErrors((current) => ({ ...current, [sessionId]: '' }));
     try {
-      const page = await getAdminObservabilityLogEntries({
-        sessionId,
-        afterSequence,
-        limit: 20,
-      });
+      const page = await getAdminObservabilityLogEntries({ sessionId, afterSequence, limit: 20 });
+      if (!ownsRequest()) return;
+      const completed = owner.completedEntryCursors.get(sessionId) ?? new Set<string | number>();
+      completed.add(pageKey);
+      owner.completedEntryCursors.set(sessionId, completed);
       setEntriesBySession((current) => {
+        if (!ownsView(generation)) return current;
         const previous = current[sessionId];
         const observedReadIssue = hasEntryReadIssue(page);
         if (!previous || afterSequence === undefined) return { ...current, [sessionId]: { ...page, observedReadIssue } };
-        return {
-          ...current,
-          [sessionId]: {
-            ...page,
-            entries: [...previous.entries, ...page.entries],
-            observedReadIssue: previous.observedReadIssue || observedReadIssue,
-          },
-        };
+        return { ...current, [sessionId]: {
+          ...page,
+          entries: mergeById(previous.entries, page.entries, (item) => item.id),
+          observedReadIssue: previous.observedReadIssue || observedReadIssue,
+        } };
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '詳細ログを取得できませんでした。');
+      if (ownsRequest()) setEntryErrors((current) => ({ ...current,
+        [sessionId]: caught instanceof Error ? caught.message : '詳細ログを取得できませんでした。',
+      }));
     } finally {
-      setLoadingEntries((current) => current === sessionId ? '' : current);
+      if (ownsRequest()) {
+        owner.entries.delete(sessionId);
+        setLoadingEntries((current) => ({ ...current, [sessionId]: false }));
+      }
     }
   }
 
   function toggleSession(sessionId: string): void {
+    if (!ownsView(renderedGeneration)) return;
     if (expandedSessionId === sessionId) {
       setExpandedSessionId('');
       return;
@@ -179,18 +261,34 @@ export function AdminLogsPage() {
     if (!entriesBySession[sessionId]) void loadEntries(sessionId);
   }
 
+  function bundleKey(sessionId: string, requestId?: string | null): string {
+    return JSON.stringify([sessionId, requestId ?? null]);
+  }
+
   async function exportBundle(sessionId: string, requestId?: string | null): Promise<void> {
-    const key = `${sessionId}:${requestId ?? 'session'}`;
-    setExportingKey(key);
-    setError('');
+    const owner = requests.current;
+    const key = bundleKey(sessionId, requestId);
+    if (!ownsView(renderedGeneration) || owner.bundles.has(key)) return;
+    const generation = owner.generation;
+    const token = Symbol('bundle');
+    owner.bundles.set(key, token);
+    const ownsRequest = () => ownsView(generation) && owner.bundles.get(key) === token;
+    setExportingKeys((current) => ({ ...current, [key]: true }));
+    setBundleErrors((current) => ({ ...current, [sessionId]: '' }));
     try {
       const bundle = await getAdminObservabilityDebugBundle({ sessionId, requestId });
+      if (!ownsRequest()) return;
       const requestSuffix = requestId ? `-request-${requestId.slice(0, 24)}` : '';
       downloadJson(`studyplanner-debug-bundle-${sessionId}${requestSuffix}.json`, bundle);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Debug Bundleを生成できませんでした。');
+      if (ownsRequest()) setBundleErrors((current) => ({ ...current,
+        [sessionId]: caught instanceof Error ? caught.message : 'Debug Bundleを生成できませんでした。',
+      }));
     } finally {
-      setExportingKey((current) => current === key ? '' : current);
+      if (ownsRequest()) {
+        owner.bundles.delete(key);
+        setExportingKeys((current) => ({ ...current, [key]: false }));
+      }
     }
   }
 
@@ -289,21 +387,23 @@ export function AdminLogsPage() {
 
               {expanded ? (
                 <div className="admin-log-session-detail">
+                  {entryErrors[session.traceSessionId] ? <p role="alert">詳細ログを取得できませんでした: {entryErrors[session.traceSessionId]}</p> : null}
+                  {bundleErrors[session.traceSessionId] ? <p role="alert">Debug Bundleを生成できませんでした: {bundleErrors[session.traceSessionId]}</p> : null}
                   <div className="admin-log-detail-actions">
                     <button
                       className="ghost-button"
                       type="button"
-                      disabled={exportingKey === `${session.traceSessionId}:session`}
+                      disabled={exportingKeys[bundleKey(session.traceSessionId)]}
                       onClick={() => { void exportBundle(session.traceSessionId); }}
                     >
                       <Download aria-hidden="true" size={16} />
-                      {exportingKey === `${session.traceSessionId}:session` ? '生成中...' : 'Session Debug Bundle'}
+                      {exportingKeys[bundleKey(session.traceSessionId)] ? '生成中...' : 'Session Debug Bundle'}
                     </button>
                     <span>schema v1・bounded・redacted JSON</span>
                   </div>
 
-                  {loadingEntries === session.traceSessionId && !page ? <p>詳細を読み込んでいます…</p> : null}
-                  {!page && loadingEntries !== session.traceSessionId ? <p>本文は未取得です。</p> : null}
+                  {loadingEntries[session.traceSessionId] && !page ? <p>詳細を読み込んでいます…</p> : null}
+                  {!page && !loadingEntries[session.traceSessionId] ? <p>本文は未取得です。</p> : null}
                   {page ? (
                     <section aria-label="本文の取得状態">
                       {page.pageEvidence ? <>
@@ -341,7 +441,7 @@ export function AdminLogsPage() {
                           <button
                             className="ghost-button"
                             type="button"
-                            disabled={exportingKey === `${session.traceSessionId}:${entry.requestId}`}
+                            disabled={exportingKeys[bundleKey(session.traceSessionId, entry.requestId)]}
                             onClick={() => { void exportBundle(session.traceSessionId, entry.requestId); }}
                           >
                             Request Bundle
@@ -359,10 +459,10 @@ export function AdminLogsPage() {
                     <button
                       className="ghost-button admin-log-load-more"
                       type="button"
-                      disabled={loadingEntries === session.traceSessionId}
+                      disabled={loadingEntries[session.traceSessionId]}
                       onClick={() => { void loadEntries(session.traceSessionId, page.nextAfterSequence ?? undefined); }}
                     >
-                      {loadingEntries === session.traceSessionId ? '読込中...' : '次のentryを読む'}
+                      {loadingEntries[session.traceSessionId] ? '読込中...' : '次のentryを読む'}
                     </button>
                   ) : null}
                 </div>
@@ -376,8 +476,8 @@ export function AdminLogsPage() {
         <button
           className="ghost-button admin-log-load-more"
           type="button"
-          disabled={loadingMore}
-          onClick={() => { void loadSessions({ append: true, cursor: nextCursor }); }}
+          disabled={loading || loadingMore}
+          onClick={() => { void loadSessions({ append: true }); }}
         >
           {loadingMore ? '読込中...' : '次のsessionを読む'}
         </button>

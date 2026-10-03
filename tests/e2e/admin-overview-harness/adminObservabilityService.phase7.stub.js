@@ -68,7 +68,36 @@ const entries = [
   },
 ];
 
-export async function getAdminObservabilityLogs() {
+// Deterministic browser-only request ordering fixture; never included in the production service.
+const delayedReads = { list: [], entries: [] };
+function deferRead(kind, params) {
+  return new Promise((resolve) => { delayedReads[kind].push({ params, resolve }); });
+}
+if (harnessState === 'request-race') {
+  window.__adminLogRace = {
+    list: delayedReads.list,
+    entries: delayedReads.entries,
+    resolveList(index, ids, cursor = null, status = 'active') {
+      delayedReads.list[index].resolve({
+        sessions: ids.map((id) => ({ ...session, traceSessionId: id, status })),
+        nextCursor: cursor,
+        pageEvidence: { rawDocumentCount: ids.length, mappedSessionCount: ids.length, unreadableSessionCount: 0, statusFilteredCount: 0 },
+      });
+    },
+    resolveEntries(index, ids, cursor = null, missing = 0) {
+      const request = delayedReads.entries[index];
+      const start = (request.params.afterSequence ?? -1) + 1;
+      request.resolve({
+        entries: ids.map((id) => ({ ...entries[0], id, summary: id, traceSessionId: request.params.sessionId })),
+        totalEntryCount: 40, nextAfterSequence: cursor, responseBytes: 512,
+        pageEvidence: { indexCountStatus: 'valid', requestedStartSequence: start, requestedEndSequence: start + 19, unavailableSequenceCount: missing, unprojectableEntryCount: 0, byteLimited: false, indexedRangeExhausted: cursor === null },
+      });
+    },
+  };
+}
+
+export async function getAdminObservabilityLogs(params = {}) {
+  if (harnessState === 'request-race') return deferRead('list', params);
   if (harnessState === 'error') throw new Error('Harness restricted diagnostic read failed.');
   return {
     sessions: harnessState === 'empty' || harnessState === 'unreadable' ? [] : [session],
@@ -82,7 +111,8 @@ export async function getAdminObservabilityLogs() {
   };
 }
 
-export async function getAdminObservabilityLogEntries() {
+export async function getAdminObservabilityLogEntries(params = {}) {
+  if (harnessState === 'request-race') return deferRead('entries', params);
   if (harnessState === 'error') throw new Error('Harness restricted diagnostic entry read failed.');
   return {
     entries: harnessState === 'empty' ? [] : entries,
