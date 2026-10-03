@@ -193,6 +193,8 @@ npm run verify
 
 `npm run verify` は TypeScript の型チェック、Vitest、production build を順番に実行します。
 
+`npm run typecheck` はフロントエンドと AI proxy Worker の両方を検査します。個別には `npm run typecheck:app` / `npm run typecheck:worker` を利用できます。Worker 検査は、固定した Wrangler と `workers/ai-proxy/wrangler.jsonc` の compatibility date / flags から実行環境の型を毎回生成します。生成先 `.wrangler/types/worker-runtime.d.ts` は Git 管理外です。環境変数の型は含めず、ログイン・Secret の取得・デプロイは行いません。Worker の production graph は `tsconfig.worker.json` で検査し、Vitest 専用ファイルと任意の評価用エントリポイントは対象外です。
+
 Playwright を使った Browser Regression は `.github/workflows/browser-regression.yml` で実行します。主要なユーザー操作を同じ条件で繰り返し検証し、別の変更による UI 回帰を検出します。
 
 ## ドキュメント

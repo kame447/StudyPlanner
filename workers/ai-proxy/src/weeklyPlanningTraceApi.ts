@@ -413,7 +413,7 @@ async function handleSessionStart(
       return error(context, 409, 'trace session issuance conflict',
         'trace_session_issuance_conflict', 'conflict');
     }
-    return ok(context, canonicalIds);
+    return ok(context, { ...canonicalIds });
   }
   try {
     await firestore.setImmutableDocument(TRACE_SESSIONS, canonicalIds.sessionId, {
@@ -434,7 +434,7 @@ async function handleSessionStart(
     sessionId: canonicalIds.sessionId,
     logicalConversationId: canonicalIds.logicalConversationId,
   });
-  return ok(context, canonicalIds);
+  return ok(context, { ...canonicalIds });
 }
 
 function traceSessionConflict(
@@ -457,7 +457,7 @@ function mergeTraceSession(
   existing: Record<string, unknown>,
   next: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged = {
+  const merged: Record<string, unknown> = {
     ...existing,
     ...next,
     id: existing.id,

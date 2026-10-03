@@ -467,7 +467,7 @@ async function cacheCandidates(
       sourceProvider: 'ndl-search',
       cachedAt,
     };
-    await client.setDocument(CATALOG_COLLECTION, catalogDocumentId(candidate), value);
+    await client.setDocument(CATALOG_COLLECTION, catalogDocumentId(candidate), { ...value });
   });
   const results = await Promise.allSettled(writes);
   results.forEach((result) => {

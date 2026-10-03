@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run typecheck:app && npm run typecheck:worker",
     "typecheck:build": "tsc --noEmit -p tsconfig.build.json",
     "build": "vite build --config vite.config.mjs",
     "verify": "npm run typecheck && npm run test:run && npm run build",
@@ -28,7 +28,10 @@
     "test:nl:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/services/natural-language",
     "test:weekly-ai:conversation:foundation": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/components/AppSettingsDialog.runtimeMode.test.tsx src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueDateGrounding.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueCanonicalDateGrounding.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialoguePromptGrounding.test.ts src/features/weeklyPlanning/evals/weeklyPlanningPreviewCorrectionLifecycle.integration.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningCanonicalCorrectionApplicationV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningContextualAnswerGroundingV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningDuplicateWorkloadNormalizationV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningPlanningWindowCanonicalContractV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticAbstractionGuards.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5Authorization.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5ContextualGrounding.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5Coverage.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5TaskBoundary.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPipelineV5Correction.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPipelineV5ExplicitRepair.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswer.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswerGrounding.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswerUncertainty.test.ts src/features/weeklyPlanning/trace/weeklyPlanningCorrectionTracePersistence.integration.test.ts src/features/weeklyPlanning/weeklyPlanningTurnExecutor.dialogueContext.test.ts --reporter=verbose",
     "observe:weekly-ai:conversation:turn": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.observation.test.ts --reporter=verbose",
-    "test:mutation:weekly-planning": "npx --yes --package=@stryker-mutator/core@9.6.1 --package=@stryker-mutator/vitest-runner@9.6.1 --package=@stryker-mutator/typescript-checker@9.6.1 stryker run stryker.config.mjs"
+    "test:mutation:weekly-planning": "npx --yes --package=@stryker-mutator/core@9.6.1 --package=@stryker-mutator/vitest-runner@9.6.1 --package=@stryker-mutator/typescript-checker@9.6.1 stryker run stryker.config.mjs",
+    "typecheck:app": "tsc --noEmit",
+    "types:worker": "wrangler types .wrangler/types/worker-runtime.d.ts --config workers/ai-proxy/wrangler.jsonc --include-env=false",
+    "typecheck:worker": "npm run types:worker && tsc --noEmit -p tsconfig.worker.json"
   },
   "dependencies": {
     "firebase": "^12.12.0",
@@ -46,6 +49,7 @@
     "react-test-renderer": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^6.4.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "4.140.0"
   }
 }
