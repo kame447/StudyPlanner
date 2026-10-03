@@ -1,3 +1,4 @@
+import { formatObservabilityReportingDate } from '../../../shared/productObservabilityDateRange';
 import type {
   AiRequestMetricPayload,
   PlanningOutcomeMetricPayload,
@@ -44,14 +45,7 @@ function finiteNonNegative(value: unknown): number | null {
 export function observabilityReportingDate(occurredAt: string): string {
   const date = new Date(occurredAt);
   if (!Number.isFinite(date.getTime())) throw new Error('Observability occurredAt is invalid.');
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
+  return formatObservabilityReportingDate(date);
 }
 
 export function createEmptyLatencyHistogram(): ObservabilityLatencyHistogram {

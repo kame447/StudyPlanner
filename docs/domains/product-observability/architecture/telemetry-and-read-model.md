@@ -1,7 +1,7 @@
 # Product Observability Telemetry and Read Model Architecture
 
 Status: canonical architecture contract
-Updated: 2026-09-25
+Updated: 2026-10-03
 Owning Issues: #213, #308
 Parent requirement: `../spec/console-requirements.md`
 
@@ -380,6 +380,10 @@ rolling 7-day / 30-day distinct actorはdaily countの加算では算出しな�
 current implementationはactor-day markersまたはuser summaryを用いたexact projectionを第一候補とする。将来volumeが増えた場合はcardinality sketch等へ内部実装を変更してよいが、metric semanticsと誤差表示を変えずに導入しない。
 
 historical WAU / MAU trendは日次rollup生成時にrolling windowのdistinct actor数を保存する。
+
+### Reporting calendar ownership
+
+集計timezoneは `shared/productObservabilityReadModel.ts` の定数を正本とし、集計日変換・UTC暦日移動・日付列挙は `shared/productObservabilityDateRange.ts` が所有する。管理画面の既定期間、browser query fallback、Workerの集計窓はこの共通境界を利用し、実行端末のtimezoneやDSTから日付規則を再定義しない。入力妥当性、許容期間、各APIのエラー契約はそれぞれの入口が引き続き所有する。
 
 ### Registered users
 

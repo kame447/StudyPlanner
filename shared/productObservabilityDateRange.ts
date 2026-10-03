@@ -1,3 +1,26 @@
+import { PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE } from './productObservabilityReadModel';
+
+/** A reporting date is independent of the browser or Worker's local timezone. */
+export function formatObservabilityReportingDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+/** Shift date labels in UTC calendar days, never elapsed local/DST days.
+ * Callers retain ownership of input validation and their public error contract.
+ */
+export function shiftObservabilityDate(localDate: string, offset: number): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string'
     && /^\d{4}-\d{2}-\d{2}$/.test(value)

@@ -1,3 +1,4 @@
+import { formatObservabilityReportingDate, shiftObservabilityDate } from '../../shared/productObservabilityDateRange';
 import {
   Activity,
   AlertTriangle,
@@ -47,32 +48,6 @@ const activitySegments = [
   { key: 'todo_completed', label: 'Todo完了', className: 'is-purple' },
   { key: 'weekly_planning_opened', label: 'AI計画', className: 'is-gray' },
 ] as const;
-
-function tokyoDateParts(date: Date): { year: string; month: string; day: string } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return {
-    year: byType.year,
-    month: byType.month,
-    day: byType.day,
-  };
-}
-
-function todayInTokyo(): string {
-  const parts = tokyoDateParts(new Date());
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function shiftIsoDate(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('ja-JP').format(value);
@@ -311,9 +286,9 @@ function StatusRow({
 }
 
 export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
-  const defaultToDate = useMemo(() => todayInTokyo(), []);
+  const defaultToDate = useMemo(() => formatObservabilityReportingDate(new Date()), []);
   const dateRange = useAdminDateRange({
-    defaultFromDate: shiftIsoDate(defaultToDate, -6),
+    defaultFromDate: shiftObservabilityDate(defaultToDate, -6),
     defaultToDate: defaultToDate,
   });
   const [environment, setEnvironment] = useState<ObservabilityEnvironment>('production');

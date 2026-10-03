@@ -82,6 +82,12 @@ function planningPayload(
   };
 }
 
+describe('reporting date boundary compatibility', () => {
+  it('keeps the Worker invalid-timestamp error at the public boundary', () => {
+    expect(() => observabilityReportingDate('invalid')).toThrow('Observability occurredAt is invalid.');
+  });
+});
+
 describe('product observability read model projection', () => {
   it('uses Asia/Tokyo as the canonical reporting date', () => {
     expect(observabilityReportingDate('2026-08-27T15:30:00.000Z')).toBe('2026-08-28');

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { listObservabilityDatesInclusive } from './productObservabilityDateRange';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formatObservabilityReportingDate, listObservabilityDatesInclusive, shiftObservabilityDate } from './productObservabilityDateRange';
 
 describe('listObservabilityDatesInclusive', () => {
   it('includes a single day once', () => {
@@ -85,5 +85,39 @@ describe('listObservabilityDatesInclusive', () => {
 
   it('preserves an empty interval when a normalized start is after the end', () => {
     expect(listObservabilityDatesInclusive('2026-02-31', '2026-03-01', 93)).toEqual([]);
+  });
+});
+
+
+describe('observability reporting calendar', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(['UTC', 'America/Los_Angeles', 'Asia/Tokyo'])('uses the reporting timezone under host TZ=%s', (hostTimezone) => {
+    vi.stubEnv('TZ', hostTimezone);
+    expect(formatObservabilityReportingDate(new Date('2026-10-03T14:59:59.999Z'))).toBe('2026-10-03');
+    expect(formatObservabilityReportingDate(new Date('2026-10-03T15:00:00.000Z'))).toBe('2026-10-04');
+    expect(formatObservabilityReportingDate(new Date('2026-12-31T15:00:00.000Z'))).toBe('2027-01-01');
+    expect(shiftObservabilityDate('2026-03-08', 1)).toBe('2026-03-09');
+    expect(shiftObservabilityDate('2026-11-01', -1)).toBe('2026-10-31');
+  });
+
+  it.each([
+    ['2024-02-28', 1, '2024-02-29'],
+    ['2024-02-29', 1, '2024-03-01'],
+    ['2026-03-01', -1, '2026-02-28'],
+    ['2026-12-31', 1, '2027-01-01'],
+    ['2027-01-01', -1, '2026-12-31'],
+    ['2026-10-03', -6, '2026-09-27'],
+    ['2026-10-03', -29, '2026-09-04'],
+    ['2026-10-03', 0, '2026-10-03'],
+    // Preserve the existing arithmetic behavior; validation belongs to callers.
+    ['2026-02-30', 1, '2026-03-03'],
+  ])('shifts %s by %s calendar days to %s', (date, offset, expected) => {
+    expect(shiftObservabilityDate(date, offset)).toBe(expected);
+  });
+
+  it('retains native invalid-date failures for unchecked callers', () => {
+    expect(() => shiftObservabilityDate('invalid', 1)).toThrow(RangeError);
+    expect(() => formatObservabilityReportingDate(new Date('invalid'))).toThrow(RangeError);
   });
 });

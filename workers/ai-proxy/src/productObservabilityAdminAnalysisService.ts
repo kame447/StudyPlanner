@@ -1,3 +1,4 @@
+import { shiftObservabilityDate as addDays } from '../../../shared/productObservabilityDateRange';
 import {
   PLANNING_OUTCOME_TYPES,
   PRODUCT_ACTIVITY_ACTIONS,
@@ -250,11 +251,6 @@ function registeredAt(profile: Record<string, unknown>): string | null {
   return null;
 }
 
-function addDays(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
 
 function timelineItem(value: Record<string, unknown>): ObservabilityUserTimelineItem | null {
   const eventType = value.eventType;
