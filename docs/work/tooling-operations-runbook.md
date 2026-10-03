@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-09-26
+Updated: 2026-10-03
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -134,6 +134,22 @@ What not to do:
 Last verified: 2026-08-29, PR #240.
 
 ---
+
+## Test intelligence must preserve the application dependency baseline
+
+- Last verified: 2026-10-03
+- Symptom: coverage/mutation jobs pass manifest checks but run against different installed dependencies
+- Evidence: Test Intelligence run `36275383359` coverage used Vitest 3.2.4 although its commit locked 3.2.7; adding the provider changed 116 packages. The mutation install pinned TypeScript 5.6.3 while the lock specified 5.9.3
+- Cause: `--package-lock=false` ignores the existing lock during resolution, not only when writing. Manifest hashes alone do not describe the executed dependency graph
+- Coverage procedure: obtain the Vitest version from `package-lock.json`, install the matching provider with `--no-save` while retaining lockfile reading, then check both manifests and the previously installed locked package versions
+- Mutation procedure: `npm run test:mutation:weekly-planning` uses `scripts/ci/run-locked-mutation-tests.mjs`. Stryker is pinned; Vitest and TypeScript versions come from the application lock. All tools are explicitly installed into an empty temporary prefix, and the original application installation stays unchanged
+- Do not replace that prefix installation with bare `npm exec --package=...`: npm may omit a requested package already available in the application, leaving the isolated tool's peer dependency resolved to another version. This reproduced TypeScript 7.0.2 in the tool cache despite a requested/application version of 5.9.3, causing `ts.parseConfigFileTextToJson is not a function`
+- Guard: `scripts/ci/locked-test-toolchain.mjs` records installed lock entries after `npm ci`, rejects an inconsistent/incomplete baseline, and rejects disappearance/version drift after adding tools. Optional packages for other platforms may be absent. The guard does not claim to audit every byte of newly installed tools or prove supply-chain safety
+- Cleanup: the launcher removes only its own temporary tool directory, including on failure; project Stryker reports and failure evidence remain. Never delete reports to hide a failing run
+- Discovery: normal Vitest excludes the root `.stryker-tmp/**` directory. Otherwise a later local run can execute copied tests from a Stryker sandbox a second time. This does not exclude the real test sources inside a Stryker run whose working directory is the sandbox
+- Quality: line coverage is executed-code evidence, not proof that assertions detect faults. Read survivors/no-coverage cases, use deliberate fault injection and intermediate-state assertions, and distinguish source-string architecture checks, mock contracts, real browser behavior, real runtime integration, and paid model evaluation
+- Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
+- References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
 
 ## Maintenance rule for new tooling knowledge
 

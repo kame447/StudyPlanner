@@ -21,6 +21,10 @@ on:
     paths:
       - '.github/workflows/test-intelligence.yml'
       - 'stryker.config.mjs'
+      - 'scripts/ci/locked-test-toolchain.mjs'
+      - 'scripts/ci/locked-test-toolchain.test.mjs'
+      - 'scripts/ci/run-locked-mutation-tests.mjs'
+      - 'scripts/ci/run-locked-mutation-tests.test.mjs'
   schedule:
     - cron: '37 19 * * 6'
 
@@ -50,8 +54,15 @@ jobs:
       - name: Snapshot application manifests
         shell: bash
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Snapshot installed locked dependencies
+        run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
       - name: Install matching Vitest coverage provider without changing manifests
-        run: npm install --no-save --package-lock=false @vitest/coverage-v8@3.2.4
+        shell: bash
+        run: |
+          vitest_version="$(node -p "require('./package-lock.json').packages['node_modules/vitest'].version")"
+          npm install --no-save "@vitest/coverage-v8@$vitest_version"
+      - name: Verify installed locked dependencies did not change
+        run: node scripts/ci/locked-test-toolchain.mjs verify /tmp/studyplanner-toolchain.json
       - name: Verify coverage install did not mutate manifests
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
@@ -87,13 +98,17 @@ jobs:
       - name: Snapshot application manifests before mutation tools install
         shell: bash
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
-      - name: Install pinned mutation toolchain without changing manifests
-        run: npm install --no-save --package-lock=false @stryker-mutator/core@9.6.1 @stryker-mutator/vitest-runner@9.6.1 @stryker-mutator/typescript-checker@9.6.1 typescript@5.6.3
-      - name: Verify mutation toolchain install did not mutate manifests
+      - name: Snapshot installed locked dependencies
+        run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
+      - name: Run isolated pinned mutation toolchain
+        run: npm run test:mutation:weekly-planning -- "$MUTATION_CONFIG"
+      - name: Verify installed locked dependencies did not change
+        if: always()
+        run: node scripts/ci/locked-test-toolchain.mjs verify /tmp/studyplanner-toolchain.json
+      - name: Verify mutation tools did not mutate manifests
+        if: always()
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
-      - name: Run targeted weekly-planning mutation test
-        run: ./node_modules/.bin/stryker run "$MUTATION_CONFIG"
       - name: Upload mutation intelligence
         if: always()
         uses: actions/upload-artifact@v7
