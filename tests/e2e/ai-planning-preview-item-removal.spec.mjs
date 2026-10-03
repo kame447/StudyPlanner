@@ -250,10 +250,10 @@ for (const phase of ['preview', 'promoted']) {
   test(`AI planning ${phase} deletion survives a discarded animation frame`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await seedPreviewRemovalState(page, { phase });
-    const preview = await openPreview(page);
+    const preview = await openPreview(page, 2, { mode: 'overview' });
 
     for (const title of ['金フレ A', '金フレ B']) {
-      const { removeAction } = await revealRemoveAction(page, preview, title);
+      const { removeAction } = await revealRemoveAction(page, preview, title, 'overview');
       await removeAction.evaluate((button) => {
         const requestFrame = window.requestAnimationFrame;
         window.requestAnimationFrame = (callback) => {
