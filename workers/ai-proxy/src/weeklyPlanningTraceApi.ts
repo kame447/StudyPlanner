@@ -400,8 +400,9 @@ async function handleSessionStart(
     },
     entries: [],
   }, subject, canonicalIds, now);
-  const existing = await firestore.getDocument(TRACE_SESSIONS, canonicalIds.sessionId);
-  if (existing) {
+  async function validateIssuedSession(
+    existing: Record<string, unknown>,
+  ): Promise<WeeklyPlanningTraceApiResult | null> {
     const ownerTokens = await retainedSubjectTokens(session.uid, env);
     if (!isOwnedServerSession(existing, ownerTokens)) {
       return error(context, 409, 'trace session ownership conflict',
@@ -413,7 +414,12 @@ async function handleSessionStart(
       return error(context, 409, 'trace session issuance conflict',
         'trace_session_issuance_conflict', 'conflict');
     }
-    return ok(context, { ...canonicalIds });
+    return null;
+  }
+
+  const existing = await firestore.getDocument(TRACE_SESSIONS, canonicalIds.sessionId);
+  if (existing) {
+    return await validateIssuedSession(existing) ?? ok(context, { ...canonicalIds });
   }
   try {
     await firestore.setImmutableDocument(TRACE_SESSIONS, canonicalIds.sessionId, {
@@ -426,8 +432,9 @@ async function handleSessionStart(
     if (!(caught instanceof Error)
       || !caught.message.includes('immutable trace document conflict')) throw caught;
     const raced = await firestore.getDocument(TRACE_SESSIONS, canonicalIds.sessionId);
-    const ownerTokens = await retainedSubjectTokens(session.uid, env);
-    if (!raced || !isOwnedServerSession(raced, ownerTokens)) throw caught;
+    if (!raced) throw caught;
+    const conflict = await validateIssuedSession(raced);
+    if (conflict) return conflict;
   }
   console.info('[Weekly Planning Trace] session start', {
     correlationId: context.correlationId,

@@ -1,12 +1,20 @@
 # 週間計画 trace production recovery
 
-Status: active / production verification pending
+Status: active / source recovery fixes and production verification pending
 Updated: 2026-10-04
 Tracking: Issue #89
 
 ## Current boundary
 
-trace の source-side hardening と schema simplification は main へ統合済み。Issue #89 は source implementation の再設計ではなく、Worker / production 環境で same-conversation recovery 契約を確認しきるまで open を維持する。
+trace の source-side hardening と schema simplification は main へ統合済みだが、2026-10-04 の再監査で source の再試行境界にも未解決の不具合を確認した。Issue #89 は以下の source 修正と Worker / production 環境での same-conversation recovery 検証を完了するまで open を維持する。
+
+## Confirmed recovery gaps
+
+- **同時 start の競合検証:** 同じ利用者・idempotency key で異なる conversation key を同時に送ると、immutable write の敗者が保存された conversation と異なる handle を成功として返し得た。通常の既存文書読み込みと競合後の再読み込みを同じ検証に統合し、owner / logical conversation / serverIssued / storage layout の一致を要求する。正当な同一要求の並行再試行は同じ handle に収束させる
+- **epoch 境界の応答消失:** epoch 690 の start 保存後に応答が失われ、同一入力を epoch 691 で再試行すると、現行の epoch 依存 canonical ID により空 session が2つになることをオフラインの実 Worker handler で再現した。これは未修正。同一 epoch の再試行と、取得済み handle を使った境界後 append は対照条件として成功する。単純な検索後作成では並行実行の競合が残るため、原子的な収束方法を検証してから実装する
+- **本番の読み込み停止:** 2026-10-03 19:46:57 UTC の通常の認証済み Admin Logs 読み込みで、Worker が `missing HMAC epoch` を記録した。secret binding は存在するが必要 epoch の値の有効性は未確認。既存の保持対象鍵を失わない復旧を #45 と連携して進める。ログイン用パスワードとは別の設定であり、既存 ring を新しい鍵だけで上書きしない
+
+このオフライン再現が元の本番の重複を説明するかは未確認。上記の同時 start 検証修正だけで、epoch 境界の重複や本番の鍵不足が解消したと扱わない。Worker deployment の Git revision 対応も未確認であり、Pages/main の更新は Worker deploy の証拠ではない。
 
 ## Remaining work
 
