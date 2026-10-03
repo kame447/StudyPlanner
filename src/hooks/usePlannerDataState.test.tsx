@@ -445,3 +445,56 @@ describe('usePlannerDataState transform orchestration', () => {
     renderer.unmount();
   });
 });
+
+describe('planner mutation owner isolation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    latestState = null;
+    resetRepositoryMocks();
+  });
+
+  for (const mode of ['linked', 'standalone'] as const) {
+    for (const transition of ['switch', 'reset', 'roundtrip'] as const) {
+      it.each(['success', 'failure'] as const)(`${mode} ignores late %s UI effects after ${transition}`, async (outcome) => {
+        const materialA = {
+          ...studyMaterial('owner-a', 'A material'), paceEnabled: true,
+          progressUnit: 'problem' as const, currentUnit: 10, totalUnits: 100,
+        };
+        repository.getStudyMaterials.mockResolvedValue([materialA]);
+        const renderer = create(<Harness userId="owner-a" />);
+        await act(async () => { await readState().loadPlannerData('owner-a'); });
+        const pendingSave = deferred<Actual>();
+        repository.upsertActualWithMaterialProgress.mockReturnValueOnce(pendingSave.promise);
+        let settled!: Promise<unknown>;
+        await act(async () => {
+          settled = saveProgressActual(mode, progressDraft(mode)).catch(error => error);
+        });
+        const mutation = repository.upsertActualWithMaterialProgress.mock.calls[0][0];
+        const nextOwner = transition === 'switch' ? 'owner-b' : 'owner-a';
+        const newActual = { ...mutation.actual, id: 'current-owner-actual', userId: nextOwner };
+        const newMaterial = studyMaterial(nextOwner, 'Current material');
+        await act(async () => {
+          if (transition === 'roundtrip') renderer.update(<Harness userId="owner-b" />);
+          readState().resetPlannerData();
+        });
+        repository.getActuals.mockResolvedValue([newActual]);
+        repository.getStudyMaterials.mockResolvedValue([newMaterial]);
+        await act(async () => {
+          renderer.update(<Harness userId={nextOwner} />);
+          await readState().loadPlannerData(nextOwner);
+        });
+        showNotice.mockClear();
+        await act(async () => {
+          if (outcome === 'success') pendingSave.resolve(mutation.actual);
+          else pendingSave.reject(new Error('old owner save failed'));
+          await settled;
+        });
+        expect(readState().actuals).toEqual([newActual]);
+        expect(readState().studyMaterials).toEqual([newMaterial]);
+        expect(readState().plannerDataAvailability).toMatchObject({ status: 'ready', ownerId: nextOwner });
+        expect(showNotice).not.toHaveBeenCalled();
+        renderer.unmount();
+      });
+    }
+  }
+});

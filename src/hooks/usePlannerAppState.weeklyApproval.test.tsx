@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyPlanDraft, createPlanFromDraft } from '../domain/planner';
 import type { Plan } from '../types/domain';
 import { usePlannerAppState } from './usePlannerAppState';
+import { PlannerMutationScopeExpiredError } from './usePlannerMutationScope';
 
 const repositoryUpsertPlanMock = vi.hoisted(() => vi.fn());
 const approvalSavePlanMock = vi.hoisted(() => vi.fn());
@@ -16,7 +17,7 @@ const loadPlannerDataMock = vi.hoisted(() => vi.fn(async () => undefined));
 const editorSavePlanDraftMock = vi.hoisted(() => vi.fn(async () => undefined));
 const showNoticeMock = vi.hoisted(() => vi.fn());
 const bootstrapSessionMock = vi.hoisted(() => vi.fn(async () => undefined));
-const plannerFixture = vi.hoisted(() => ({ plans: [] as Plan[] }));
+const plannerFixture = vi.hoisted(() => ({ plans: [] as Plan[], userId: 'user-1' }));
 const stableNoop = vi.hoisted(() => vi.fn());
 const stableAsyncNoop = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -45,7 +46,7 @@ vi.mock('./useAuthSessionState', () => ({
   useAuthSessionState: () => ({
     booting: false,
     user: {
-      id: 'user-1',
+      id: plannerFixture.userId,
       email: 'user@example.com',
       username: 'User',
       avatar: '',
@@ -163,6 +164,7 @@ describe('usePlannerAppState weekly approval save', () => {
 
   beforeEach(async () => {
     plannerFixture.plans = [];
+    plannerFixture.userId = 'user-1';
     repositoryUpsertPlanMock.mockReset();
     approvalSavePlanMock.mockReset();
     approvalCompleteOperationMock.mockClear();
@@ -253,4 +255,33 @@ describe('usePlannerAppState weekly approval save', () => {
       renderer.unmount();
     });
   });
+  it.each(['success', 'failure'] as const)('does not project an old approval %s into another owner or reload that owner', async (outcome) => {
+    const pending = createDeferred<Plan>();
+    approvalSavePlanMock.mockReturnValueOnce(pending.promise);
+    const draft = {
+      ...createEmptyPlanDraft('user-1', '2026-07-20'), title: 'Old approval',
+      startTime: '18:00', endTime: '19:00',
+    };
+    let completion!: Promise<unknown>;
+    await act(async () => {
+      completion = ref.current!.saveWeeklyApprovedPlan(draft).catch(error => error);
+    });
+    const currentPlan = { ...createExistingPlan('current-owner-plan'), userId: 'user-2' };
+    plannerFixture.userId = 'user-2';
+    plannerFixture.plans = [currentPlan];
+    await act(async () => { renderer.update(<AppStateHarness ref={ref} />); });
+    loadPlannerDataMock.mockClear();
+    let result: unknown;
+    await act(async () => {
+      if (outcome === 'success') pending.resolve({ ...createPlanFromDraft(draft), id: 'old-persisted-plan' });
+      else pending.reject(new Error('old save failed'));
+      result = await completion;
+    });
+    expect(ref.current!.plans).toEqual([currentPlan]);
+    expect(loadPlannerDataMock).not.toHaveBeenCalled();
+    expect(result).toBeInstanceOf(PlannerMutationScopeExpiredError);
+    expect(approvalSavePlanMock).toHaveBeenCalledTimes(1);
+    await act(async () => { renderer.unmount(); });
+  });
+
 });
