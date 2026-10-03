@@ -344,6 +344,7 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
   conversationId: string;
   graph: WeeklyPlanningFactGraphV5;
   planningState: PlanningState;
+  includeEmpty?: boolean;
 }): WeeklyPlanningStableV5CheckpointPreparation {
   if (params.planningState.pendingTurn || params.planningState.pendingApproval) {
     return { status: 'invalid' };
@@ -355,7 +356,9 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
     return { status: 'invalid' };
   }
   const planningState = serializablePlanningState(params.planningState);
-  if (isEmptySession(planningState, params.graph)) return { status: 'empty' };
+  if (!params.includeEmpty && isEmptySession(planningState, params.graph)) {
+    return { status: 'empty' };
+  }
   if (!isPlanningState(
     planningState,
     params.ownerId,
