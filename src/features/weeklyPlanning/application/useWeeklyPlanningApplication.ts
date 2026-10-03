@@ -86,7 +86,7 @@ export interface WeeklyPlanningApplication {
   appendMessage: (message: WeeklyPlanningMessage) => void;
   resetSession: () => void;
   startConversation: () => void;
-  exportConversationSnapshot: () => WeeklyPlanningStableV5PersistedSession | null;
+  exportConversationSnapshot: (options?: { includeEmpty?: boolean }) => WeeklyPlanningStableV5PersistedSession | null;
   loadConversationSnapshot: (snapshot: WeeklyPlanningStableV5PersistedSession) => boolean;
   createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
   removePreviewCandidate: (candidateId: string) => void;
@@ -244,7 +244,9 @@ export function useWeeklyPlanningApplication({
     });
   }
 
-  function exportConversationSnapshot(): WeeklyPlanningStableV5PersistedSession | null {
+  function exportConversationSnapshot(
+    options: { includeEmpty?: boolean } = {},
+  ): WeeklyPlanningStableV5PersistedSession | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
     if (!session || current.pendingTurn || current.pendingApproval) return null;
@@ -256,6 +258,7 @@ export function useWeeklyPlanningApplication({
       conversationId: session.conversationId,
       graph: runtime.graph,
       planningState: current,
+      includeEmpty: options.includeEmpty,
     });
     if (preparation.status !== 'ready') return null;
     return {

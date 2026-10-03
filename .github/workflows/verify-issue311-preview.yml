@@ -1,0 +1,32 @@
+name: Verify Issue 311 preview persistence
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  preview-stress:
+    if: github.head_ref == 'fix/issue-311-preview-persistence'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+      - run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+      - run: npm run build
+      - name: Repeat original regression and discarded-frame cases without retries
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.config.mjs --grep 'removes the exact promoted draft block|deletion survives a discarded animation frame' --repeat-each=30 --retries=0
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: issue311-preview-stress-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
