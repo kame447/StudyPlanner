@@ -64,13 +64,14 @@ export function estimateLunaTextUsageCostRange(params: {
   promptTokens: number | null;
   completionTokens: number | null;
 }): LunaTextCostRangeEstimate {
-  const validPrompt = params.promptTokens !== null
-    && Number.isSafeInteger(params.promptTokens)
-    && params.promptTokens >= 0
-    && params.promptTokens <= GPT_5_6_LONG_CONTEXT_THRESHOLD;
-  const validCompletion = params.completionTokens !== null
-    && Number.isSafeInteger(params.completionTokens)
-    && params.completionTokens >= 0;
+  const { promptTokens, completionTokens } = params;
+  const validPrompt = promptTokens !== null
+    && Number.isSafeInteger(promptTokens)
+    && promptTokens >= 0
+    && promptTokens <= GPT_5_6_LONG_CONTEXT_THRESHOLD;
+  const validCompletion = completionTokens !== null
+    && Number.isSafeInteger(completionTokens)
+    && completionTokens >= 0;
   if (!validPrompt || !validCompletion) {
     return {
       pricingVersion: AI_PRICING_VERSION,
@@ -79,17 +80,17 @@ export function estimateLunaTextUsageCostRange(params: {
     };
   }
   const outputCost = costMicros(
-    params.completionTokens,
+    completionTokens,
     GPT_5_6_LUNA_TEXT.outputMicrosPerMillion,
   );
   return {
     pricingVersion: AI_PRICING_VERSION,
     minimumCostMicros: costMicros(
-      params.promptTokens,
+      promptTokens,
       GPT_5_6_LUNA_TEXT.cachedInputMicrosPerMillion ?? 0,
     ) + outputCost,
     maximumCostMicros: costMicros(
-      params.promptTokens,
+      promptTokens,
       Math.max(
         GPT_5_6_LUNA_TEXT.inputMicrosPerMillion,
         GPT_5_6_LUNA_TEXT.cacheWriteMicrosPerMillion ?? 0,

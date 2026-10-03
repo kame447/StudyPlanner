@@ -1,4 +1,3 @@
-import type { FocusedAuthorizationDecisionContext } from '../../../../shared/focusedAuthorizationDecision';
 import type {
   AuthorizationDecision,
   DecisionEvaluation,

@@ -23,3 +23,6 @@ test-results/
 .claude/skills/diagram-design/
 .claude/skills/studyplanner-diagram-explainer/
 skills-lock.json
+
+# Per-worktree development typecheck cache; never a final verification receipt
+.cache/typecheck/

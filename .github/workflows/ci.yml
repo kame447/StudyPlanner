@@ -42,8 +42,8 @@ jobs:
         run: npm ci
       - name: Audit dependencies at high severity threshold
         run: npm audit --audit-level=high
-      - name: Run TypeScript checks
-        run: npm run typecheck
+      - name: Run fresh app and Worker TypeScript checks
+        run: npm run typecheck:full
       - name: Run tests
         run: npm run test:run
       - name: Run Firestore rules regression

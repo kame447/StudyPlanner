@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["./.wrangler/types/worker-runtime.d.ts"]
+  },
+  "include": ["workers/ai-proxy/src/**/*.ts"],
+  "exclude": [
+    "workers/ai-proxy/src/**/*.test.ts",
+    "workers/ai-proxy/src/decision/evaluation/**",
+    "workers/ai-proxy/src/cloudflareWorkersVitestStub.ts"
+  ]
+}

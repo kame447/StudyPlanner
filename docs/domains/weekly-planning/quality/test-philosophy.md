@@ -1,7 +1,7 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-08-30
+Updated: 2026-10-03
 
 References:
 - [Human Grounding Policy](../policies/human-grounding.md)
@@ -178,10 +178,14 @@ runtime実装後は少なくとも次を確認する。
 
 ## Gate
 
+実行頻度と最終証拠の正本は [AGENTS.md の Verification cadence](../../../../AGENTS.md#verification-cadence)。以下は作業区切り・最終確認の検証順序であり、各編集や各commitで全件を繰り返す指示ではない。実装途中は変更したcontractのfocused regressionと必要な型検査を使い、統合ownerが最終内容のfull verificationを担当する。
+
+週間計画では、承認・保存・復元、shared Fact Graph/schema、provenance/認証、trace永続化、共有clock/mock/fixtureやruntime/runner設定の変更を局所テストだけで完了扱いにしない。既存のtrace persistence gate、実API/人手評価が必要な意味判断の境界、browser検査を維持する。
+
 ```text
 targeted regression
 → relevant property/metamorphic checks
-→ typecheck / full tests / build
+→ npm run verify (fresh app/Worker typechecks + full tests + build)
 → Browser Regression / E2E when relevant
 → Real API + human review when model behavior is relevant
 → exact diff / current HEAD review

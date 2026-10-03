@@ -164,7 +164,7 @@ npm run eval:jev:shadow
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash
-npm exec --yes --package=wrangler@4.140.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.143.1 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
@@ -191,7 +191,9 @@ IP アドレスは開発 PC の LAN IP に置き換えてください。
 npm run verify
 ```
 
-`npm run verify` は TypeScript の型チェック、Vitest、production build を順番に実行します。
+`npm run verify` は最終確認用で、キャッシュを使わない app/Worker 型チェック、Vitest 全件、production build を順番に実行します。実装途中は対象テストと `npm run typecheck` を使えます。開発用型チェックはworktree内の `.cache/typecheck/` にapp/Worker別の情報を保存し、変更のない部分を再利用します。キャッシュの有無にかかわらず確認したい場合は `npm run typecheck:full` を使ってください。頻度と最終証拠は [AGENTS.md](./AGENTS.md#verification-cadence) を正本とし、Firestore・browser等のCI検査は別に維持します。
+
+`npm run typecheck` はフロントエンドと AI proxy Worker の両方を検査します。個別には `npm run typecheck:app` / `npm run typecheck:worker` を利用できます。Worker 検査は、固定した Wrangler と `workers/ai-proxy/wrangler.jsonc` の compatibility date / flags から実行環境の型を毎回生成します。生成先 `.wrangler/types/worker-runtime.d.ts` は Git 管理外です。環境変数の型は含めず、ログイン・Secret の取得・デプロイは行いません。Worker の production graph は `tsconfig.worker.json` で検査し、Vitest 専用ファイルと任意の評価用エントリポイントは対象外です。
 
 Playwright を使った Browser Regression は `.github/workflows/browser-regression.yml` で実行します。主要なユーザー操作を同じ条件で繰り返し検証し、別の変更による UI 回帰を検出します。
 
