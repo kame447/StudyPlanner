@@ -1,6 +1,6 @@
 import type { PlanningState } from '../types';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import { parseWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
+import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
 
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
   'studyplanner-weekly-planning-stable-v5-session-v1' as const;
@@ -350,6 +350,9 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
     return { status: 'invalid' };
   }
   if (params.planningState.weekStartDate !== params.weekStartDate) {
+    return { status: 'invalid' };
+  }
+  if (!validateWeeklyPlanningFactGraphValueV5(params.graph).graph) {
     return { status: 'invalid' };
   }
   if (!graphBelongsToConversation(params.graph, params.conversationId)) {
