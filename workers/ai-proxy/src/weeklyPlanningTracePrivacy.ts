@@ -2,6 +2,7 @@ import {
   WEEKLY_PLANNING_TRACE_EVENT_TYPES,
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
 } from '../../../shared/weeklyPlanningTraceContract';
+import { redactWeeklyPlanningTraceEmails } from './weeklyPlanningTraceEmailRedaction';
 
 export const WEEKLY_PLANNING_TRACE_POLICY_VERSION = '2026-07-18-v1';
 export const WEEKLY_PLANNING_TRACE_RETENTION_DAYS = 180;
@@ -14,7 +15,6 @@ export const MAX_TRACE_DOCUMENT_BYTES =
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRACE_EPOCH_MS = WEEKLY_PLANNING_TRACE_EPOCH_DAYS * DAY_MS;
 const REDACTED = '[REDACTED]';
-const REDACTED_EMAIL = '[EMAIL]';
 const REDACTED_PHONE = '[PHONE]';
 const REDACTED_TOKEN = '[TOKEN]';
 const REDACTED_UUID = '[UUID]';
@@ -61,7 +61,6 @@ const FORBIDDEN_DIAGNOSTIC_KEYS = new Set([
   'debugschemaversion',
 ]);
 
-const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const PHONE_PATTERN = /(?:\+?81[-\s]?)?0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/g;
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 const TOKEN_PATTERN = /\b[A-Za-z0-9_-]{28,}\b/g;
@@ -206,9 +205,7 @@ function redactUrl(raw: string): string {
 }
 
 export function redactWeeklyPlanningTraceString(value: string): string {
-  return value
-    .replace(URL_PATTERN, redactUrl)
-    .replace(EMAIL_PATTERN, REDACTED_EMAIL)
+  return redactWeeklyPlanningTraceEmails(value.replace(URL_PATTERN, redactUrl))
     .replace(PHONE_PATTERN, REDACTED_PHONE)
     .replace(UUID_PATTERN, REDACTED_UUID)
     .replace(TOKEN_PATTERN, REDACTED_TOKEN);

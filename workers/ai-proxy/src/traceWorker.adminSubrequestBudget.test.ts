@@ -286,6 +286,19 @@ describe('traceWorker admin subrequest budget', () => {
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(calls).toHaveLength(expected);
     expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
+    if (path.startsWith('/observability/admin/logs?')) {
+      expect(body).toMatchObject({ pageEvidence: {
+        rawDocumentCount: 0, mappedSessionCount: 0,
+        unreadableSessionCount: 0, statusFilteredCount: 0,
+      } });
+    }
+    if (path.startsWith('/observability/admin/log-entries?')) {
+      expect(body).toMatchObject({ result: { pageEvidence: {
+        requestedStartSequence: 0, requestedEndSequence: 19,
+        unavailableSequenceCount: 20, unprojectableEntryCount: 0,
+        byteLimited: false, indexedRangeExhausted: false,
+      } } });
+    }
     if (path.includes('/user-identity')) {
       expect((body as { matches?: unknown[] }).matches).toHaveLength(5);
     }

@@ -120,7 +120,7 @@ System read modelにraw Firebase UID、ID token、Authorization header、trace�
 
 旧`/admin/weekly-planning-traces`互換routeを廃止し、Overviewとsidebarの利用導線を`/admin/logs`へ統一した。
 
-新Logsが使用しないfeature-specific trace archive endpointを削除した。一方、Logs adapterが再利用するbounded trace entry loaderとweekly-planning trace domain/storage ownershipは維持した。
+新Logsは旧feature-specific trace archive workflowを使用しない。旧browser routeは廃止済みだが、Workerの互換archive handlerは残っているため、endpoint削除済みとは扱わない。Logs adapterが再利用するbounded trace entry loaderとweekly-planning trace domain/storage ownershipは維持する。現行Debug Bundleにはexport完了履歴がなく、未展開と未exportを同一視しない（本番確認境界はIssue #89）。
 
 Overviewに残っていたPhase 5 / 6 / 8の「次フェーズ」disabled controlを廃止し、AI・Planning・Systemの実ページへ直接drill-downできるようにした。
 

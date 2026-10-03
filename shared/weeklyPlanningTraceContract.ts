@@ -42,6 +42,7 @@ export type WeeklyPlanningTraceEventTypeContract =
 export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-29-v4' as const;
 export const WEEKLY_PLANNING_TRACE_WORKER_REVISION =
   'weekly-planning-trace-20260729-005' as const;
+export const WEEKLY_PLANNING_TRACE_STORAGE_LAYOUT_VERSION = 2 as const;
 
 export const WEEKLY_PLANNING_TRACE_HEADERS = {
   contractVersion: 'X-StudyPlanner-Trace-Contract-Version',

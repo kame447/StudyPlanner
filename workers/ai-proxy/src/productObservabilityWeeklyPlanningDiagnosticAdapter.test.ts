@@ -3,6 +3,7 @@ import {
   createObservabilityDebugBundleFromTrace,
   createObservabilityLogEntryProjection,
   createObservabilityLogSessionSummary,
+  projectObservabilityLogSessionPage,
 } from './productObservabilityWeeklyPlanningDiagnosticAdapter';
 
 const sessionId = 'weekly-trace-123e4567-e89b-12d3-a456-426614174000';
@@ -63,6 +64,40 @@ function diagnosticEntry(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Phase 7 weekly-planning diagnostic adapter projections', () => {
+  it.each([
+    [{ entryCount: 0, turnCount: 0 }, 'no_indexed_entries'],
+    [{ entryCount: 0, turnCount: 3 }, 'activity_without_indexed_entries'],
+    [{ entryCount: 0, turnCount: 0, hasError: true }, 'activity_without_indexed_entries'],
+    [{ entryCount: 2, turnCount: 1 }, 'indexed_activity'],
+    [{ entryCount: undefined }, 'unknown_or_invalid_metadata'],
+    [{ entryCount: -1 }, 'unknown_or_invalid_metadata'],
+    [{ entryCount: '2' }, 'unknown_or_invalid_metadata'],
+    [{ turnCount: Number.NaN }, 'unknown_or_invalid_metadata'],
+    [{ startedAt: 'not-a-date' }, 'unknown_or_invalid_metadata'],
+    [{ status: 'unsupported-state' }, 'unknown_or_invalid_metadata'],
+  ])('does not normalize metadata evidence into an assertion of stored trace content: %j', (overrides, expected) => {
+    const mapped = createObservabilityLogSessionSummary(session({
+      hasPreview: false, hasFallback: false, hasError: false, hasApprovalFailure: false,
+      ...overrides,
+    }));
+    expect(mapped?.metadataEvidence).toBe(expected);
+    expect(mapped?.summary).not.toBe('diagnostic trace available');
+  });
+
+  it('separates unreadable documents from status filtering within the fetched page', () => {
+    const page = projectObservabilityLogSessionPage([
+      session({ status: 'active' }),
+      session({ id: 'other-session', status: 'completed' }),
+      session({ startedAt: null }),
+    ], 'active');
+    expect(page.sessions).toHaveLength(1);
+    expect(page.pageEvidence).toEqual({
+      rawDocumentCount: 3, mappedSessionCount: 2,
+      unreadableSessionCount: 1, statusFilteredCount: 1,
+    });
+    expect(JSON.stringify(page)).not.toContain(subjectToken);
+  });
+
   it('maps a trace session without exposing raw subject identity', () => {
     const mapped = createObservabilityLogSessionSummary(session());
     expect(mapped?.traceSessionId).toBe(sessionId);

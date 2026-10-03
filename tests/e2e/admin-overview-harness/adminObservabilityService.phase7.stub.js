@@ -14,6 +14,7 @@ const session = {
   endedAt: '2026-08-29T10:04:20.000Z',
   planningRangeStart: '2026-08-31',
   planningRangeEnd: '2026-09-06',
+  metadataEvidence: 'indexed_activity',
   entryCount: 24,
   turnCount: 3,
   hasPreview: true,
@@ -70,7 +71,13 @@ const entries = [
 export async function getAdminObservabilityLogs() {
   if (harnessState === 'error') throw new Error('Harness restricted diagnostic read failed.');
   return {
-    sessions: harnessState === 'empty' ? [] : [session],
+    sessions: harnessState === 'empty' || harnessState === 'unreadable' ? [] : [session],
+    pageEvidence: {
+      rawDocumentCount: harnessState === 'empty' ? 0 : 1,
+      mappedSessionCount: harnessState === 'empty' || harnessState === 'unreadable' ? 0 : 1,
+      unreadableSessionCount: harnessState === 'unreadable' ? 1 : 0,
+      statusFilteredCount: 0,
+    },
     nextCursor: null,
   };
 }
@@ -82,6 +89,14 @@ export async function getAdminObservabilityLogEntries() {
     totalEntryCount: harnessState === 'empty' ? 0 : entries.length,
     nextAfterSequence: null,
     responseBytes: harnessState === 'empty' ? 0 : 2048,
+    pageEvidence: {
+      indexCountStatus: 'valid', requestedStartSequence: 0,
+      requestedEndSequence: harnessState === 'empty' ? -1 : 2,
+      unavailableSequenceCount: harnessState === 'partial' ? 1 : 0,
+      unprojectableEntryCount: 0,
+      byteLimited: false,
+      indexedRangeExhausted: true,
+    },
   };
 }
 
