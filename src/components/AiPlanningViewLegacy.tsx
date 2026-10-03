@@ -303,7 +303,7 @@ export function AiPlanningView({
 
   function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
     const chatId = baseIndex.activeChatId;
-    const snapshot = application.exportConversationSnapshot();
+    const snapshot = application.exportConversationSnapshot({ includeEmpty: true });
     const messages = snapshot?.planningState.messages ?? state.messages;
     const now = snapshot?.savedAt ?? new Date().toISOString();
     let nextIndex = updateAiPlanningChatRecord(baseIndex, chatId, {

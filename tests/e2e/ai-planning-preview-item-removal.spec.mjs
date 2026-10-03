@@ -244,6 +244,41 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
 });
 
+// Navigation can discard animation-frame callbacks. A completed deletion must
+// already be reflected in the chat snapshot that wins during the next restore.
+for (const phase of ['preview', 'promoted']) {
+  test(`AI planning ${phase} deletion survives a discarded animation frame`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPreviewRemovalState(page, { phase });
+    const preview = await openPreview(page);
+    const first = await revealRemoveAction(page, preview, '金フレ A');
+    await first.removeAction.click();
+    await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
+
+    // Restore the remaining date using the same navigation as the original
+    // regression, then discard only the final deletion's scheduled frame.
+    const restoredPreview = await openPreview(page, 1);
+    const last = await revealRemoveAction(page, restoredPreview, '金フレ B');
+    await last.removeAction.evaluate((button) => {
+      const requestFrame = window.requestAnimationFrame;
+      window.requestAnimationFrame = (callback) => {
+        const id = requestFrame.call(window, callback);
+        window.cancelAnimationFrame(id);
+        return id;
+      };
+      try {
+        button.click();
+      } finally {
+        window.requestAnimationFrame = requestFrame;
+      }
+    });
+    await expect(restoredPreview).toBeHidden();
+    await page.goto('/');
+    await page.locator('.primary-bottom-nav button').first().click();
+    await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
+  });
+}
+
 test('AI planning day preview touch long press reveals action while still held', async ({ browser }) => {
   const context = await newFixedClockContext(browser, {
     viewport: { width: 390, height: 844 },

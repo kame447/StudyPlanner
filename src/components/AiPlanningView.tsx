@@ -119,7 +119,8 @@ export function AiPlanningView(props: AiPlanningViewProps) {
   }, [isPreviewOpen]);
 
   function persistActiveChatSnapshot() {
-    const snapshot = application.exportConversationSnapshot();
+    // An authoritative empty chat must replace the previous non-empty snapshot.
+    const snapshot = application.exportConversationSnapshot({ includeEmpty: true });
     if (!snapshot) return;
 
     const currentIndex = loadAiPlanningChatIndex(userId);
@@ -165,7 +166,10 @@ export function AiPlanningView(props: AiPlanningViewProps) {
     } else {
       application.removeDraftBlock(blockId);
     }
-    window.requestAnimationFrame(persistActiveChatSnapshot);
+    // The application dispatch updates its authoritative state ref synchronously.
+    // Persist before the deletion can close the dialog or navigation discards a
+    // queued frame; otherwise chat restoration can revive the removed block.
+    persistActiveChatSnapshot();
   }
 
   function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
