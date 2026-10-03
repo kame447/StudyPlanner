@@ -3,7 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
-import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import { createDeferred, createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { parseWeeklyPlanningPlanSourceId, WEEKLY_PLANNING_PLAN_SOURCE_TYPE } from '../planning/weeklyPlanningPlanProvenance';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import { createWeeklyDraftBlocksFromPreviewCandidates } from '../preview/weeklyPlanningPreviewBlocks';
@@ -16,6 +16,7 @@ import { useWeeklyPlanningApplication, type WeeklyPlanningApplication, type UseW
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from './weeklyPlanningApprovalMemoryRepository';
 import { getWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { getWeeklyPlanningStableV5SessionStorageKeyForTest } from './weeklyPlanningStableV5SessionStorage';
+import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionCodec';
 
 const { normalizeMock } = vi.hoisted(() => ({ normalizeMock: vi.fn() }));
@@ -111,6 +112,79 @@ afterEach(() => {
 });
 
 describe('provisional allocation through application and approval persistence', () => {
+  it('admits one real missing-effort question under same-tick and in-flight double submit', async () => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+    const database = createWeeklyPlanningApprovalMemoryState();
+    const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
+    const ref = createRef<WeeklyPlanningApplication>();
+    const props: UseWeeklyPlanningApplicationInput = {
+      userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
+      plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      saveWeeklyApprovedPlan: repository.saveApprovedPlan,
+      completeWeeklyApprovalOperation: repository.completeOperation,
+    };
+    const mount = async () => { await act(async () => { renderer = create(<Harness ref={ref} {...props} />); }); };
+    await mount();
+    const semantic = createDeferred<WeeklyPlanningSemanticNormalizerResultV5>();
+    const normalizationStarted = createDeferred<void>();
+    // Unexpected duplicate calls still receive a valid provider result, so
+    // admission regressions fail on behavior rather than an incomplete mock.
+    normalizeMock.mockResolvedValue(accepted(workloadDocument()));
+    normalizeMock.mockImplementationOnce(() => { normalizationStarted.resolve(); return semantic.promise; });
+    let first!: Promise<WeeklyPlanningTurnSubmissionResult>;
+    const userText = '8月17日から23日で数学の教材を30ページ進めたい';
+    await act(async () => {
+      // Use the same captured callback before React can publish a new render.
+      const submit = ref.current!.submitTurn;
+      first = submit(userText);
+      expect(await submit(userText)).toEqual({ accepted: false, draftCandidates: [] });
+      await normalizationStarted.promise;
+      expect(normalizeMock).toHaveBeenCalledTimes(1);
+    });
+    const pending = structuredClone(ref.current!.state.pendingTurn!);
+    expect(pending).toBeDefined();
+    expect(ref.current!.state.messages.map((message) => message.role)).toEqual(['user']);
+    expect(ref.current!.state.conversationRequestSequence).toBe(1);
+    await act(async () => {
+      expect(await ref.current!.submitTurn(userText)).toEqual({ accepted: false, draftCandidates: [] });
+    });
+    expect(ref.current!.state.pendingTurn).toEqual(pending);
+    expect(normalizeMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      semantic.resolve(accepted(workloadDocument()));
+      expect(await first).toEqual({ accepted: true, draftCandidates: [] });
+    });
+    expect(ref.current!.state.pendingTurn).toBeUndefined();
+    expect(ref.current!.state.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(ref.current!.state.conversationRequestSequence).toBe(1);
+    expect(ref.current!.state.intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
+    expect(ref.current!.state.intakeState?.questions).toHaveLength(1);
+    expect(ref.current!.state.previewCandidates).toEqual([]);
+    expect(ref.current!.pendingDraftBlocks).toEqual([]);
+    const graph = structuredClone(getWeeklyPlanningStableV5RuntimeSession(pending.conversationId)!.graph);
+    expect(graph.tasks).toHaveLength(1); expect(graph.workloads).toHaveLength(1);
+    expect(graph.effortEstimates).toEqual([]);
+    const raw = storage.values.get(getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER, WEEK_START));
+    expect(raw).toBeDefined();
+    const checkpoint = JSON.parse(raw!) as WeeklyPlanningStableV5PersistedSession;
+    expect(checkpoint.graph).toEqual(graph);
+    expect(checkpoint.planningState.messages).toEqual(ref.current!.state.messages);
+    expect(checkpoint.planningState.conversationRequestSequence).toBe(1);
+    const question = structuredClone(ref.current!.state.intakeState!.lastQuestionContext);
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+    await mount();
+    expect(ref.current!.state.messages).toEqual(checkpoint.planningState.messages);
+    expect(ref.current!.state.intakeState?.lastQuestionContext).toEqual(question);
+    expect(ref.current!.state.intakeState?.questions).toHaveLength(1);
+    expect(ref.current!.state.conversationRequestSequence).toBe(1);
+    expect(getWeeklyPlanningStableV5RuntimeSession(pending.conversationId)?.graph).toEqual(graph);
+    expect(normalizeMock).toHaveBeenCalledTimes(1);
+    expect(database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
+    expect(database.plans.size).toBe(0);
+  });
+
   it('keeps restored previews unsaved until explicit approval, then writes exactly one Plan', async () => {
     const storage = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
