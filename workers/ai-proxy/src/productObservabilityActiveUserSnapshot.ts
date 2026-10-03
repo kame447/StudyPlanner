@@ -1,3 +1,4 @@
+import { shiftObservabilityDate } from '../../../shared/productObservabilityDateRange';
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
@@ -123,8 +124,7 @@ function isIsoDate(value: unknown): value is string {
 function addDays(localDate: string, offset: number): string {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   if (!Number.isFinite(date.getTime())) throw new Error('observability_date_invalid');
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
+  return shiftObservabilityDate(localDate, offset);
 }
 
 function datesEndingAt(asOfDate: string, days: number): string[] {

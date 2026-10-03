@@ -1,3 +1,4 @@
+import { formatObservabilityReportingDate, shiftObservabilityDate } from '../../shared/productObservabilityDateRange';
 import type { ObservabilityEnvironment } from '../../shared/productObservabilityContract';
 import type {
   ObservabilityAdminIdentityMatch,
@@ -27,23 +28,6 @@ export interface AdminObservabilityUserPage {
 export interface AdminObservabilityUserInvestigation
   extends Omit<ObservabilityUserInvestigationReadModel, 'nextCursor'> {
   nextCursor: string | null;
-}
-
-function todayInTokyo(): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function shiftDate(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -294,10 +278,10 @@ export async function getAdminObservabilityUsers(params: {
     }
     trend = responseTrend;
   } else {
-    const toDate = todayInTokyo();
+    const toDate = formatObservabilityReportingDate(new Date());
     const overview = await getAdminObservabilityOverview({
       environment: params.environment,
-      fromDate: shiftDate(toDate, -29),
+      fromDate: shiftObservabilityDate(toDate, -29),
       toDate,
     });
     trend = {

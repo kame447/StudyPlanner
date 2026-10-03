@@ -1,5 +1,5 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
-import { listObservabilityDatesInclusive } from '../../../shared/productObservabilityDateRange';
+import { listObservabilityDatesInclusive, shiftObservabilityDate as addDays } from '../../../shared/productObservabilityDateRange';
 import {
   OBSERVABILITY_LATENCY_BUCKET_UPPER_BOUNDS_MS,
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
@@ -93,11 +93,6 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
-function addDays(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
 
 function reportingDateStartIso(localDate: string): string {
   const instant = new Date(`${localDate}T00:00:00+09:00`);

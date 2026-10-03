@@ -1,3 +1,4 @@
+import { formatObservabilityReportingDate, shiftObservabilityDate } from '../../shared/productObservabilityDateRange';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
@@ -23,23 +24,6 @@ const environmentLabels: Record<ObservabilityEnvironment, string> = {
   development: '開発環境',
   test: 'テスト',
 };
-
-function tokyoDate(date: Date): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function shiftDate(localDate: string, offset: number): string {
-  const date = new Date(`${localDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
 
 function initialEnvironment(): ObservabilityEnvironment {
   const value = new URLSearchParams(window.location.search).get('environment');
@@ -183,10 +167,10 @@ function DimensionTable({ title, description, rows }: {
 }
 
 export function AdminAiApiPage() {
-  const today = useMemo(() => tokyoDate(new Date()), []);
+  const today = useMemo(() => formatObservabilityReportingDate(new Date()), []);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const dateRange = useAdminDateRange({
-    defaultFromDate: shiftDate(today, -6),
+    defaultFromDate: shiftObservabilityDate(today, -6),
     defaultToDate: today,
     initialFromDate: params.get('from'),
     initialToDate: params.get('to'),
