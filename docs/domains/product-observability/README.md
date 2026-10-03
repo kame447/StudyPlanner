@@ -1,7 +1,7 @@
 # Product Observability
 
 Status: canonical domain entry point
-Updated: 2026-08-28
+Updated: 2026-10-03
 Owning Issue: #213
 
 このドメインは、StudyPlanner 全体の利用状況・AI/API 利用・機能品質・運用状態を、管理者が分析し、個別障害まで掘り下げるための観測責務を所有する。
@@ -69,12 +69,10 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 ## Current implementation status
 
-Phase 1 の canonical design、Phase 2 の lightweight telemetry foundation、Phase 3 の aggregation / bounded read model foundation は main へ統合済みである。Phase 3 では actor-day presence、pseudonymous user summary、daily service / AI / planning rollup、mergeable latency histogram、rollup checkpoint、authenticated admin read API、typed browser query service を実装した。
+管理consoleはOverview / Users / AI・API / Planning / Logs・Debug Bundle / Systemを実装している。初期Phaseの完了根拠・実行履歴は [canonical roadmap](roadmap/current.md)、追加要件の追跡先は [Issue #213](https://github.com/kame447/StudyPlanner/issues/213) とその関連Issueを参照する。入口文書に別のPhase待ち行列を持たせない。
 
-PR #220 の初回実装後に行った post-merge adversarial audit で、rolling active-user の normal read path、snapshot failure recovery、environment isolation、revision race、read-model validation、登録ユーザー read authority、profile registration timestamp、Firestore Rules verification を hardening し、PR #222 として main へ統合した。merged main `4d57ce510251005c636a707bd8ee4a058cf75a06` の七視点再監査と主要 CI / browser gate も完了している。
+UIは `src/services/adminObservabilityService.ts` のtyped query boundaryを通じて、Workerのbounded read model / restricted diagnostic projectionを読む。UI component自身で再集計せず、planner collectionのbrowser-side full scanを通常のadmin read pathへ戻さない。
 
-管理画面の新 UI はまだ未実装であり、現在の次 phase は Phase 4「Console shell and Overview」である。UI component 自身では再集計せず、Phase 3 の bounded admin query / typed read model を source of truth として Overview から実装する。
-
-現行 legacy admin user summary は複数 planner collection をブラウザ側で全件取得して集計するため、新 console の最終 read path としては使用しない。
+`src/services/adminDataService.ts` と `src/lib/adminAnalytics.ts` はlegacy実装としてtreeに残るが、現行admin画面の読取入口ではない。残存ファイルの存在を、新consoleの未実装や現行の集計authorityと混同しない。
 
 詳細な週間計画traceは引き続きrestricted diagnostic layerであり、長期analyticsの正本へ昇格させない。
