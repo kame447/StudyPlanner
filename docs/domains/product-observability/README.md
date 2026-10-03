@@ -73,6 +73,4 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 UIは `src/services/adminObservabilityService.ts` のtyped query boundaryを通じて、Workerのbounded read model / restricted diagnostic projectionを読む。UI component自身で再集計せず、planner collectionのbrowser-side full scanを通常のadmin read pathへ戻さない。
 
-`src/services/adminDataService.ts` と `src/lib/adminAnalytics.ts` はlegacy実装としてtreeに残るが、現行admin画面の読取入口ではない。残存ファイルの存在を、新consoleの未実装や現行の集計authorityと混同しない。
-
 詳細な週間計画traceは引き続きrestricted diagnostic layerであり、長期analyticsの正本へ昇格させない。

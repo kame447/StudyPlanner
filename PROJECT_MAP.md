@@ -130,7 +130,7 @@ External provider adapters may physically live under services or a feature-owned
 
 `src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
-`src/services/adminObservabilityService.ts` is the current typed browser query boundary for admin pages. It consumes authenticated Worker read models and restricted diagnostic projections. `src/services/adminDataService.ts` remains as legacy code, but current admin pages do not use it; do not restore its browser-side collection scans as the console read path.
+`src/services/adminObservabilityService.ts` is the current typed browser query boundary for admin pages. It consumes authenticated Worker read models and restricted diagnostic projections. Do not restore browser-side collection scans as the console read path.
 
 ### `src/lib/`
 
@@ -139,8 +139,6 @@ Small reusable deterministic helpers and cross-cutting utility logic. Domain-cha
 `src/lib/learningReport.ts` owns deterministic user-facing report aggregation/projection for the reporting domain. Its output must preserve the report invariant that selected-period actual total, trend-bucket total and breakdown total are the same filtered Actual set.
 
 Legacy/general report helpers remain in `src/lib/reportAnalytics.ts`; new user-facing learning report behavior should not be reimplemented inside JSX.
-
-`src/lib/adminAnalytics.ts` remains a legacy helper used by `adminDataService.ts` and its own tests, not the current console aggregation authority. Product-observability metric semantics and bounded server-side read models own that responsibility.
 
 ### `src/types/`
 
