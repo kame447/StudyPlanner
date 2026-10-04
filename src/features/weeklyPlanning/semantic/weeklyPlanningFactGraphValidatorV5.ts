@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5 } from './weeklyPlanningTemporalValueValidatorV5';
 import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import {
@@ -447,6 +448,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
   });
   temporalConstraints.forEach((fact, index) => {
+    validateWeeklyPlanningTemporalValuesV5(fact, `graph.temporalConstraints[${index}]`, errors);
     validateReference(
       fact.taskId,
       taskIds,
@@ -461,6 +463,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
   });
   taskDateRules.forEach((fact, index) => {
+    validateWeeklyPlanningDateRuleValuesV5(fact, `graph.taskDateRules[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.taskDateRules[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,

@@ -1,19 +1,18 @@
 import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
-import { isCanonicalDateExpressionSyntax } from './weeklyPlanningCalendarResolver';
+import { isWeeklyPlanningNamedTimePeriodV5 as isNamedTimePeriod, validateNullableClockV5 as validateNullableClock,
+  validateNullableDateExpressionV5 as validateNullableDateExpression, validateNullableNamedTimePeriodV5 as validateNullableNamedTimePeriod,
+  validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5, validateWeeklyPlanningDateRuleWireFieldsV5 } from './weeklyPlanningTemporalValueValidatorV5';
 import {
   SEMANTIC_AVAILABILITY_KINDS_V5,
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
   SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5,
   SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
-  SEMANTIC_NAMED_TIME_PERIODS_V5,
   SEMANTIC_STUDY_PURPOSES_V5,
   SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_TASK_DATE_RULE_KINDS_V5,
-  SEMANTIC_TEMPORAL_CONSTRAINT_KINDS_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  type SemanticNamedTimePeriodV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
@@ -22,8 +21,6 @@ export interface WeeklyPlanningSemanticValidationResultV5 {
   errors: string[];
 }
 
-const CLOCK_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
-const CUSTOM_NAMED_TIME_PERIOD_PATTERN = /^custom:.+$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -42,11 +39,6 @@ function isEnumValue<T extends readonly string[]>(
   values: T,
 ): value is T[number] {
   return typeof value === 'string' && (values as readonly string[]).includes(value);
-}
-
-function isNamedTimePeriod(value: unknown): value is SemanticNamedTimePeriodV5 {
-  return isEnumValue(value, SEMANTIC_NAMED_TIME_PERIODS_V5)
-    || (typeof value === 'string' && CUSTOM_NAMED_TIME_PERIOD_PATTERN.test(value));
 }
 
 function validateExactKeys(
@@ -70,38 +62,6 @@ function validateSourceText(
   errors: string[],
 ): void {
   if (!isNonEmptyString(value.sourceText)) errors.push(`${path}.sourceText`);
-}
-
-function validateNullableClock(value: unknown, path: string, errors: string[]): void {
-  if (!isNullableString(value)) {
-    errors.push(path);
-    return;
-  }
-  if (typeof value === 'string' && value.length > 0 && !CLOCK_TIME_PATTERN.test(value)) {
-    errors.push(`${path}:clock-format`);
-  }
-}
-
-function validateNullableDateExpression(
-  value: unknown,
-  path: string,
-  errors: string[],
-): void {
-  if (!isNullableString(value)) {
-    errors.push(path);
-    return;
-  }
-  if (typeof value === 'string' && !isCanonicalDateExpressionSyntax(value)) {
-    errors.push(`${path}:canonical-expression`);
-  }
-}
-
-function validateNullableNamedTimePeriod(
-  value: unknown,
-  path: string,
-  errors: string[],
-): void {
-  if (value !== null && !isNamedTimePeriod(value)) errors.push(path);
 }
 
 function registerLocalId(
@@ -277,76 +237,15 @@ function validateTemporalConstraint(
     'sourceText',
   ], path, errors);
   registerLocalId(constraint.localId, `${path}.localId`, allIds, errors);
-  if (!isEnumValue(constraint.kind, SEMANTIC_TEMPORAL_CONSTRAINT_KINDS_V5)) {
-    errors.push(`${path}.kind`);
-  }
-  if (!isEnumValue(constraint.constraintLevel, SEMANTIC_CONSTRAINT_LEVELS_V5)) {
-    errors.push(`${path}.constraintLevel`);
-  }
-  validateNullableDateExpression(constraint.dateExpression, `${path}.dateExpression`, errors);
-  validateNullableNamedTimePeriod(
-    constraint.namedTimePeriod,
-    `${path}.namedTimePeriod`,
-    errors,
-  );
-  validateNullableClock(constraint.startTime, `${path}.startTime`, errors);
-  validateNullableClock(constraint.endTime, `${path}.endTime`, errors);
-  if (!isEnumValue(constraint.precision, ['exact', 'approximate', 'unspecified'] as const)) {
-    errors.push(`${path}.precision`);
-  }
-  if (!isNonEmptyString(constraint.targetLocalId)
-    || !taskTargets.has(constraint.targetLocalId)) {
-    errors.push(`${path}.targetLocalId`);
-  }
-  if (constraint.namedTimePeriod !== null
-    && (constraint.startTime !== null || constraint.endTime !== null)) {
-    errors.push(`${path}.namedTimePeriod:cannot-combine-with-clock`);
-  }
-
-  const isDateRule = isEnumValue(constraint.kind, SEMANTIC_TASK_DATE_RULE_KINDS_V5);
-  if (isDateRule) {
-    if (!taskId || constraint.targetLocalId !== taskId) {
-      errors.push(`${path}.targetLocalId:must-target-containing-task`);
-    }
-    if (!isNonEmptyString(constraint.dateExpression)
-      || !isCanonicalDateExpressionSyntax(constraint.dateExpression)) {
-      errors.push(`${path}.dateExpression:canonical-expression-required`);
-    }
-    if (constraint.namedTimePeriod !== null) {
-      errors.push(`${path}.namedTimePeriod:must-be-null-for-date-rule`);
-    }
-    if (constraint.startTime !== null || constraint.endTime !== null) {
-      errors.push(`${path}:date-rule-cannot-have-clock`);
-    }
-    if (constraint.constraintLevel !== 'hard') {
-      errors.push(`${path}.constraintLevel:date-rule-must-be-hard`);
-    }
+  if (isEnumValue(constraint.kind, SEMANTIC_TASK_DATE_RULE_KINDS_V5)) {
+    validateWeeklyPlanningDateRuleValuesV5(constraint, path, errors);
+    validateWeeklyPlanningDateRuleWireFieldsV5(constraint, path, errors);
+    if (!taskId || constraint.targetLocalId !== taskId) errors.push(`${path}.targetLocalId:must-target-containing-task`);
   } else {
-    if (constraint.kind === 'earliest_start'
-      && !isNonEmptyString(constraint.dateExpression)
-      && !isNonEmptyString(constraint.startTime)) {
-      errors.push(`${path}:missing-start`);
-    }
-    if (constraint.kind === 'latest_end'
-      && !isNonEmptyString(constraint.dateExpression)
-      && !isNonEmptyString(constraint.endTime)) {
-      errors.push(`${path}:missing-end`);
-    }
-    if (constraint.kind === 'fixed_interval'
-      && (!isNonEmptyString(constraint.startTime) || !isNonEmptyString(constraint.endTime))) {
-      errors.push(`${path}:missing-interval`);
-    }
-    if (constraint.kind === 'deadline'
-      && !isNonEmptyString(constraint.dateExpression)
-      && !isNonEmptyString(constraint.endTime)) {
-      errors.push(`${path}:missing-deadline`);
-    }
-    if (constraint.kind === 'preferred_window' && constraint.constraintLevel === 'hard') {
-      errors.push(`${path}.constraintLevel:preferred-window-cannot-be-hard`);
-    }
-    if (constraint.kind === 'fixed_interval' && constraint.constraintLevel === 'soft') {
-      errors.push(`${path}.constraintLevel:soft-fixed-interval-use-preferred-window`);
-    }
+    validateWeeklyPlanningTemporalValuesV5(constraint, path, errors);
+  }
+  if (!isNonEmptyString(constraint.targetLocalId) || !taskTargets.has(constraint.targetLocalId)) {
+    errors.push(`${path}.targetLocalId`);
   }
   validateSourceText(constraint, path, errors);
 }
