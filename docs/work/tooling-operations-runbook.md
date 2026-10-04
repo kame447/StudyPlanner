@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-03
+Updated: 2026-10-05
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -196,3 +196,12 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - Do not reuse TypeScript's incremental compilation result as a final approval. `npm run verify` still performs fresh non-incremental app and Worker checks. Record the exact source tree, installed dependency identity, generated-input identity, command environment and exit result
 - Verification evidence: the combined #391/#392 candidate tree `8b35b05986bb2df4ea1f9cc4652fd1dcc6ba6db0` completed fresh verification with the banner setting: 3,678 passed, 45 skipped, 3 todo, and production build passed. Earlier interrupted attempts were not counted as successes. This is an environment-specific reliability workaround, not a production speedup measurement or a reason to reduce required verification
 - Cleanup: the example scopes the setting to one command; no repository/package/permission cleanup is required. Preserve failure and success logs. If setting it in a persistent shell/session instead, restore the previous value afterward
+
+
+## Deferred JavaScript module receives the Pages HTML fallback
+
+Verified on 2026-10-05 for Issue #443. A current entry/runtime can serve JavaScript correctly while a previous or absent hashed runtime path returns HTTP 200 `text/html` containing the SPA entry document. Safari may report `text/html is not a valid JavaScript MIME type`; the screenshot alone does not identify which URL failed. Compare the actual current entry/dependency paths and a known previous path, response content type and body before blaming the AI provider or changing deployment configuration.
+
+An open tab retains its original module graph even when HTML uses `must-revalidate`. A code-only retry can recover a transient load failure but cannot restore a deleted URL. Do not inject a newly discovered runtime into an old graph: the runtime can import the entry module and duplicate application roots/singletons. Do not use unconditional reload or automatic AI/OCR replay. The supported bounded, user-initiated recovery and its input/storage limits are owned by the [current weekly-planning contract](../domains/weekly-planning/architecture/current-contract-v5.md#ai-runtime-module-recovery). A page already running an older release still needs an explicit refresh; preserve its unsaved input first.
+
+Keep JavaScript load/link failures distinct from cached evaluation failures. References: [Vite load-error handling](https://v6.vite.dev/guide/build#load-error-handling), [Cloudflare Pages serving/SPA fallback](https://developers.cloudflare.com/pages/configuration/serving-pages/), [dynamic import caching](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import). Immutable deployment-pinned assets are a separate deployment design requiring access/CORS/CSP/retention validation, not an unverified quick fix.

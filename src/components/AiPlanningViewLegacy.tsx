@@ -1,3 +1,9 @@
+import { WeeklyPlanningRuntimeModuleError } from '../features/weeklyPlanning/application/weeklyPlanningRuntimeModule';
+import {
+  consumeAiPlanningModuleRecovery, readAiPlanningModuleRecovery, saveAiPlanningModuleRecovery,
+  sameAiPlanningModuleRecoveryBinding, type AiPlanningModuleRecoveryBinding,
+  type AiPlanningModuleRecoveryDraft,
+} from '../features/weeklyPlanning/chat/aiPlanningModuleRecovery';
 import {
   useEffect,
   useLayoutEffect,
@@ -186,6 +192,14 @@ export function AiPlanningView({
   const [selectedStarterOption, setSelectedStarterOption] =
     useState<AiPlanningStarterPromptOption | null>(null);
   const [error, setError] = useState('');
+  const [moduleLoadFailed, setModuleLoadFailed] = useState(false);
+  const [moduleRetryAttempted, setModuleRetryAttempted] = useState(false);
+  const [isRecoveringModule, setIsRecoveringModule] = useState(false);
+  const recoveryOperation = useRef<symbol | null>(null);
+  const moduleRetryUsed = useRef(false);
+  const recoveryMounted = useRef(false);
+  const restoredRecovery = useRef<{ token: string; binding: AiPlanningModuleRecoveryBinding;
+    draft: AiPlanningModuleRecoveryDraft } | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewPageIndex, setPreviewPageIndex] = useState(0);
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
@@ -200,6 +214,7 @@ export function AiPlanningView({
   const [isListening, setIsListening] = useState(false);
   const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
+  const [starterCatalogStatus, setStarterCatalogStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
@@ -248,7 +263,7 @@ export function AiPlanningView({
     [allPreviewBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
-  const isInteractionBusy = isBusy || isReadingAttachment || isSubmitting;
+  const isInteractionBusy = isBusy || isReadingAttachment || isSubmitting || isRecoveringModule;
   const isComposerBusy = isInteractionBusy || Boolean(state.approvalRecovery);
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
   const totalMinutes = useMemo(
@@ -284,16 +299,19 @@ export function AiPlanningView({
   const activeChat =
     chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId) ??
     chatIndex.chats[0];
-  const starterPromptOptions = useMemo(
+  const validatedStarterOptions = useMemo(
     () =>
       buildAiPlanningStarterPromptOptions({
         referenceDate: selectedDate,
         plans,
         todos: starterTodos,
         materials: starterMaterials,
+        limit: Number.MAX_SAFE_INTEGER,
       }),
     [plans, selectedDate, starterMaterials, starterTodos],
   );
+  const starterPromptOptions = validatedStarterOptions.slice(0, 3);
+  const waitingForStarterTarget = Boolean(selectedStarterOption?.target) && starterCatalogStatus !== 'ready';
 
   // One operation owns OCR, planner submission, and final chat persistence.
   // Revoke it synchronously on navigation/owner changes or unmount.
@@ -316,8 +334,97 @@ export function AiPlanningView({
 
   useEffect(() => { application.chat.initialize(); }, [application.chat, state.pendingTurn, state.pendingApproval]);
 
+  useLayoutEffect(() => {
+    recoveryMounted.current = true;
+    recoveryOperation.current = null;
+    restoredRecovery.current = null;
+    setIsRecoveringModule(false);
+    setModuleLoadFailed(false);
+    setModuleRetryAttempted(false);
+    moduleRetryUsed.current = false;
+    return () => { recoveryMounted.current = false; recoveryOperation.current = null; };
+  }, [userId, chatIndex.activeChatId, cancellationGeneration]);
+
+  const recoveryBinding = application.getModuleRecoveryBinding();
+  useEffect(() => {
+    const binding = application.getModuleRecoveryBinding();
+    if (!binding || !sameAiPlanningModuleRecoveryBinding(binding, recoveryBinding)
+      || !recoveryMounted.current || restoredRecovery.current
+      || text || imageAttachment || selectedStarterOption || recoveryOperation.current) return;
+    try {
+      const saved = readAiPlanningModuleRecovery(window.sessionStorage, binding);
+      if (!saved) return;
+      // Blob URLs are document-local. Restore the original bytes and make a fresh preview.
+      const attachment = saved.draft.attachment
+        ? { file: saved.draft.attachment, previewUrl: URL.createObjectURL(saved.draft.attachment) } : null;
+      restoredRecovery.current = { ...saved, binding };
+      setText(saved.draft.text);
+      setSelectedStarterOption(saved.draft.selectedStarter);
+      setImageAttachment(attachment);
+    } catch { setError('一時保存した入力を戻せませんでした。自動送信はしていません。'); }
+  }, [application.chat, recoveryBinding?.chatId, recoveryBinding?.conversationId,
+    recoveryBinding?.revision, text, imageAttachment, selectedStarterOption]);
+
+  useEffect(() => {
+    const restored = restoredRecovery.current;
+    if (!restored || !sameAiPlanningModuleRecoveryBinding(restored.binding, application.getModuleRecoveryBinding())
+      || text !== restored.draft.text || (imageAttachment?.file ?? null) !== restored.draft.attachment
+      || selectedStarterOption !== restored.draft.selectedStarter) return;
+    try { consumeAiPlanningModuleRecovery(window.sessionStorage, restored.binding, restored.token); }
+    catch { /* The live draft remains intact when storage access is revoked. */ }
+  }, [application, text, imageAttachment, selectedStarterOption]);
+
+  async function recoverPlanningModule(reload: boolean) {
+    if (!moduleLoadFailed || recoveryOperation.current || isComposerBusy || isListening
+      || (!reload && moduleRetryUsed.current)) return;
+    const binding = application.getModuleRecoveryBinding();
+    if (!binding) return;
+    const token = Symbol('module-recovery');
+    recoveryOperation.current = token;
+    setIsRecoveringModule(true);
+    let reloadCheckpoint: ReturnType<WeeklyPlanningApplication['checkpointForModuleReload']> = null;
+    const current = () => recoveryMounted.current && recoveryOperation.current === token
+      && sameAiPlanningModuleRecoveryBinding(binding, application.getModuleRecoveryBinding())
+      && (!reloadCheckpoint || reloadCheckpoint.isCurrent());
+    try {
+      if (!reload) {
+        moduleRetryUsed.current = true;
+        setModuleRetryAttempted(true);
+        const ready = await application.prepareTurn();
+        if (current() && ready) { setModuleLoadFailed(false); setError(''); }
+        return;
+      }
+      reloadCheckpoint = application.checkpointForModuleReload();
+      if (!reloadCheckpoint || !current()) {
+        if (current()) setError('会話を安全に保存できませんでした。この画面は更新していません。入力を控えてから再試行してください。');
+        return;
+      }
+      const saved = await saveAiPlanningModuleRecovery({
+        storage: window.sessionStorage, binding,
+        draft: { text, selectedStarter: selectedStarterOption, attachment: imageAttachment?.file ?? null },
+        isCurrent: current,
+      });
+      if (!current()) return;
+      if (!saved) {
+        setError('入力や画像を一時保存できないため、画面は更新していません。入力をコピーし、画像を付け直せるようにしてから手動で更新してください。');
+        return;
+      }
+      window.location.reload();
+    } catch (failure) {
+        if (current()) setError(failure instanceof WeeklyPlanningRuntimeModuleError
+        ? failure.message : '安全に画面を更新できませんでした。入力内容はこの画面に保持しています。');
+    } finally {
+      if (recoveryMounted.current && recoveryOperation.current === token) {
+        recoveryOperation.current = null;
+        setIsRecoveringModule(false);
+      }
+    }
+  }
+
+
   useEffect(() => {
     let cancelled = false;
+    setStarterCatalogStatus('loading');
 
     void Promise.all([
       plannerRepository.getTodos(userId),
@@ -327,11 +434,13 @@ export function AiPlanningView({
         if (cancelled) return;
         setStarterTodos(todos);
         setStarterMaterials(materials);
+        setStarterCatalogStatus('ready');
       },
       () => {
         if (cancelled) return;
         setStarterTodos([]);
         setStarterMaterials([]);
+        setStarterCatalogStatus('failed');
       },
     );
 
@@ -382,7 +491,7 @@ export function AiPlanningView({
   }
 
   function handleImageAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
-    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || recoveryOperation.current || isComposerBusy || isListening) return;
     const file = event.target.files?.[0];
 
     if (!file) {
@@ -484,13 +593,26 @@ export function AiPlanningView({
     const value = text.trim();
     const attachment = imageAttachment;
     if ((!value && !attachment) || isComposerBusy || isListening
-      || !ownsSubmissionScope() || submission.current.token) return;
+      || !ownsSubmissionScope() || submission.current.token || recoveryOperation.current || moduleLoadFailed || waitingForStarterTarget) return;
     const token = Symbol('planning-submission');
     submission.current.token = token;
     setIsSubmitting(true);
     const ownsRequest = () => ownsSubmissionScope() && submission.current.token === token;
     try {
       setError('');
+      const starter = selectedStarterOption?.requestText === value
+        ? validatedStarterOptions.find((option) => option.requestText === value
+          && option.target?.kind === selectedStarterOption.target?.kind
+          && option.target?.id === selectedStarterOption.target?.id
+          && option.target?.label === selectedStarterOption.target?.label
+          && option.target?.targetDate === selectedStarterOption.target?.targetDate) ?? null
+        : null;
+      if (selectedStarterOption?.target && !starter) {
+        setError('保存した入力例の参照先を確認できません。入力例を選び直すか、対象がわかる文章に修正してください。');
+        return;
+      }
+      const ready = await application.prepareTurn();
+      if (!ownsRequest() || !ready) return;
       let supplementalContext: string | undefined;
 
       if (attachment) {
@@ -513,14 +635,6 @@ export function AiPlanningView({
       }
 
       if (!ownsRequest()) return;
-      const starter = selectedStarterOption?.requestText === value
-        && starterPromptOptions.some((option) => option.requestText === value
-          && option.target?.kind === selectedStarterOption.target?.kind
-          && option.target?.id === selectedStarterOption.target?.id
-          && option.target?.label === selectedStarterOption.target?.label
-          && option.target?.targetDate === selectedStarterOption.target?.targetDate)
-        ? selectedStarterOption
-        : null;
       const requestText = starter?.requestText ?? value;
       const submittedText = attachment
         ? buildAiPlanningImageTurn(requestText, attachment.file.name).userText
@@ -540,7 +654,7 @@ export function AiPlanningView({
         );
         if (!ownsRequest()) return;
         if (!result.accepted) {
-          setText(value);
+          setText(text);
           return;
         }
         clearImageAttachment();
@@ -548,7 +662,10 @@ export function AiPlanningView({
         persistActiveChat();
       } catch (submitError) {
         if (!ownsRequest()) return;
-        setText(value);
+        setText(text);
+        if (submitError instanceof WeeklyPlanningRuntimeModuleError) {
+          setModuleLoadFailed(true); setModuleRetryAttempted(false); moduleRetryUsed.current = false;
+        }
         setError(
           submitError instanceof Error
             ? submitError.message
@@ -556,6 +673,14 @@ export function AiPlanningView({
         );
         persistActiveChat();
       }
+    } catch (preparationError) {
+      if (!ownsRequest()) return;
+      if (preparationError instanceof WeeklyPlanningRuntimeModuleError) {
+        setModuleLoadFailed(true);
+        setModuleRetryAttempted(false);
+        moduleRetryUsed.current = false;
+      }
+      setError(preparationError instanceof Error ? preparationError.message : '必要な機能を読み込めませんでした。');
     } finally {
       if (ownsRequest()) {
         submission.current.token = null;
@@ -578,12 +703,13 @@ export function AiPlanningView({
   }
 
   function useStarterPrompt(option: AiPlanningStarterPromptOption) {
+    if (recoveryOperation.current || isComposerBusy) return;
     setText(option.requestText);
     setSelectedStarterOption(option);
   }
 
   function switchChat(chatId: string) {
-    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening || chatId === chatIndex.activeChatId) {
+    if (!ownsSubmissionScope() || submission.current.token || recoveryOperation.current || isInteractionBusy || isListening || chatId === chatIndex.activeChatId) {
       setIsChatDrawerOpen(false);
       return;
     }
@@ -599,7 +725,7 @@ export function AiPlanningView({
   }
 
   function createChat() {
-    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || recoveryOperation.current || isInteractionBusy || isListening) return;
     if (application.chat.create().status !== 'saved') return;
     submission.current.active = false;
     setChatQuery('');
@@ -613,7 +739,7 @@ export function AiPlanningView({
   }
 
   function removeChat(chatId: string) {
-    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || recoveryOperation.current || isInteractionBusy || isListening) return;
     const chat = chatIndex.chats.find((item) => item.id === chatId);
     if (!chat) return;
     if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
@@ -820,10 +946,23 @@ export function AiPlanningView({
               保存の確認が途中です。計画プレビューから保存を再試行してください。確認が終わるまで、この会話の予定は変更できません。
             </p>
           ) : null}
-          {error ? (
-            <p className="ai-planning-error" role="alert">
-              {error}
+          {waitingForStarterTarget ? (
+            <p className="ai-planning-error" role="status">
+              {starterCatalogStatus === 'loading' ? '入力例の参照先を確認しています。'
+                : '入力例の参照先を読み込めませんでした。対象がわかる文章に編集してから送信してください。'}
             </p>
+          ) : null}
+          {error || moduleLoadFailed ? (
+            <div className="ai-planning-error" role="alert">
+              {error || '計画に必要な機能を読み込めませんでした。入力内容はこの画面に保持しています。'}
+              {moduleLoadFailed ? <div>
+                <button type="button" className="ghost-button" disabled={isComposerBusy || moduleRetryAttempted}
+                  onClick={() => void recoverPlanningModule(false)}>機能の読み込みを再試行</button>
+                <button type="button" className="ghost-button" disabled={isComposerBusy}
+                  onClick={() => void recoverPlanningModule(true)}>入力を一時保存して画面を更新</button>
+                <p>入力はこのタブに30分間だけ一時保存します。更新後に自動送信はしません。</p>
+              </div> : null}
+            </div>
           ) : null}
         </div>
 
@@ -849,8 +988,8 @@ export function AiPlanningView({
                   className="ai-planning-attachment-remove"
                   type="button"
                   aria-label="添付画像を削除"
-                  disabled={isReadingAttachment}
-                  onClick={clearImageAttachment}
+                  disabled={isReadingAttachment || isRecoveringModule}
+                  onClick={() => { if (!recoveryOperation.current) clearImageAttachment(); }}
                 >
                   <X size={13} aria-hidden="true" />
                 </button>
@@ -881,6 +1020,7 @@ export function AiPlanningView({
             ref={inputRef}
             value={text}
             onChange={(event) => {
+              if (recoveryOperation.current) return;
               setText(event.target.value);
               if (event.target.value !== selectedStarterOption?.requestText) {
                 setSelectedStarterOption(null);
@@ -919,7 +1059,7 @@ export function AiPlanningView({
             type="button"
             aria-label="送信"
             disabled={
-              (!text.trim() && !imageAttachment) || isComposerBusy || isListening
+              (!text.trim() && !imageAttachment) || isComposerBusy || isListening || moduleLoadFailed || waitingForStarterTarget
             }
             onClick={() => void submitMessage()}
           >

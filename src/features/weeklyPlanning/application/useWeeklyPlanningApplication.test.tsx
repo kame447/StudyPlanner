@@ -1,3 +1,8 @@
+// This fixture exercises completed code loading; module failures have a separate regression.
+vi.mock('./weeklyPlanningRuntimeModule', async () => ({
+  ...await vi.importActual('./weeklyPlanningRuntimeModule'),
+  loadWeeklyPlanningRuntimeModule: vi.fn(async () => ({})),
+}));
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import {
   createRef,
