@@ -44,6 +44,25 @@ export interface FocusedContextualDecisionContext {
   };
 }
 
+// The envelope owns question identity. Provider input adds it explicitly rather
+// than allowing an independently supplied duplicate in the browser state.
+export type FocusedContextualDecisionState = Readonly<{
+  questionCode: FocusedContextualQuestionCode;
+  currentUserText: string;
+  pendingQuestion: Readonly<FocusedContextualDecisionContext['state']['pendingQuestion']>;
+}>;
+
+export function focusedContextualDecisionState(
+  context: FocusedContextualDecisionContext,
+): FocusedContextualDecisionState | null {
+  if (!isFocusedContextualDecisionContext(context)) return null;
+  return Object.freeze({
+    questionCode: context.questionCode,
+    currentUserText: context.state.currentUserText,
+    pendingQuestion: Object.freeze({ ...context.state.pendingQuestion }),
+  });
+}
+
 export type FocusedDecisionContext =
   | FocusedAuthorizationDecisionContext
   | FocusedContextualDecisionContext

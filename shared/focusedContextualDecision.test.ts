@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  focusedContextualDecisionState,
   isFocusedContextualDecisionContext,
   isFocusedDecisionContext,
 } from './focusedContextualDecision';
@@ -26,6 +27,10 @@ describe('focused contextual decision context', () => {
     const value = contextualContext();
     expect(isFocusedContextualDecisionContext(value)).toBe(true);
     expect(isFocusedDecisionContext(value)).toBe(true);
+    expect(focusedContextualDecisionState(value)).toEqual({
+      questionCode: value.questionCode,
+      ...value.state,
+    });
   });
 
   it.each([
@@ -45,6 +50,22 @@ describe('focused contextual decision context', () => {
       },
     })],
     ['unsafe revision', () => ({ ...contextualContext(), inputRevision: Number.MAX_SAFE_INTEGER + 1 })],
+    ['unknown question code', () => ({ ...contextualContext(), questionCode: 'unknown_code' })],
+    ['malformed question code', () => ({ ...contextualContext(), questionCode: ['quantity_role_unresolved'] })],
+    ['duplicate conflicting code in state', () => ({
+      ...contextualContext(),
+      state: { ...contextualContext().state, questionCode: 'missing_effort_estimate' },
+    })],
+    ['duplicate conflicting code in pending question', () => ({
+      ...contextualContext(),
+      state: {
+        ...contextualContext().state,
+        pendingQuestion: {
+          ...contextualContext().state.pendingQuestion,
+          questionCode: 'missing_effort_estimate',
+        },
+      },
+    })],
     ['oversized text', () => ({
       ...contextualContext(),
       state: { ...contextualContext().state, currentUserText: 'あ'.repeat(2_667) },

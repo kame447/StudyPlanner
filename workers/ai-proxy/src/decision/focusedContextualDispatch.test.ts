@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FocusedContextualDecisionContext } from '../../../../shared/focusedContextualDecision';
+import type { FocusedContextualDecisionContext, FocusedContextualDecisionState } from '../../../../shared/focusedContextualDecision';
 import type { DecisionEvaluation, DecisionMetadata, DecisionProvider } from './decisionProvider';
 import {
   dispatchFocusedContextual,
@@ -71,7 +71,7 @@ function evaluated(
 
 function provider(
   result: DecisionEvaluation<ContextualDecision>,
-): DecisionProvider<FocusedContextualDecisionContext['state'], ContextualDecision> {
+): DecisionProvider<FocusedContextualDecisionState, ContextualDecision> {
   return { evaluate: vi.fn(async () => result) };
 }
 
@@ -91,6 +91,27 @@ afterEach(() => {
 });
 
 describe('focused contextual dispatch', () => {
+  it.each(['shadow', 'canary'] as const)(
+    'rejects an invalid direct dispatch context before provider exposure in %s',
+    async (mode) => {
+      const injected = provider(evaluated('remaining'));
+      const fallback = vi.fn(async () => new Response('baseline'));
+      const invalid = { ...context(), questionCode: 'unknown_code' };
+      const response = await dispatchFocusedContextual({
+        context: invalid as unknown as FocusedContextualDecisionContext,
+        env: { JEV_MODE: mode, JEV_CANARY_PERCENT: '100' },
+        firebaseUid: 'user-fixture',
+        signal: new AbortController().signal,
+        executionContext: { waitUntil: () => undefined },
+        fallback,
+        respond: structuredResponse,
+        provider: injected,
+      });
+      expect(response.status).toBe(400);
+      expect(injected.evaluate).not.toHaveBeenCalled();
+      expect(fallback).not.toHaveBeenCalled();
+    },
+  );
   it('keeps off mode byte-for-byte on the existing Luna fallback path', async () => {
     const fallback = vi.fn(async () => new Response('baseline-body', {
       status: 207,
@@ -137,6 +158,30 @@ describe('focused contextual dispatch', () => {
       }),
     });
     expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('uses the captured provider identity for the gate despite later envelope mutation', async () => {
+    const original = context('missing_effort_estimate');
+    const fallback = vi.fn(async () => new Response('existing-luna-body'));
+    const injected: DecisionProvider<FocusedContextualDecisionState, ContextualDecision> = {
+      async evaluate(state) {
+        expect(state.questionCode).toBe('missing_effort_estimate');
+        expect(Object.isFrozen(state)).toBe(true);
+        expect(Object.isFrozen(state.pendingQuestion)).toBe(true);
+        original.questionCode = 'quantity_role_unresolved';
+        return evaluated('remaining');
+      },
+    };
+    const response = await dispatchFocusedContextual({
+      context: original, env: canaryEnv, firebaseUid: 'user-fixture',
+      signal: new AbortController().signal, fallback,
+      respond: structuredResponse, provider: injected,
+    });
+    expect(await response.text()).toBe('existing-luna-body');
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      questionCode: 'missing_effort_estimate', reason: 'cross_question_choice',
+    }));
   });
 
   it('rechecks the active revision before accepting and uses Luna when stale', async () => {
