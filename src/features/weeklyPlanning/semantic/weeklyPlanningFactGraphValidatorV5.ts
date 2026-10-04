@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningCorrectionReplacementV5, validateWeeklyPlanningUncertaintyValuesV5, validateWeeklyPlanningCorrectionValuesV5, validateWeeklyPlanningDecisionValuesV5, validateWeeklyPlanningCanonicalReferenceKindV5 } from './weeklyPlanningIntentValueValidatorV5';
 import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
 import { validateWeeklyPlanningAvailabilityBaseValuesV5, validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
@@ -514,6 +515,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     if (fact.resolutionStatus !== 'unresolved') errors.push(`${path}.resolutionStatus`);
   });
   uncertainties.forEach((fact, index) => {
+    validateWeeklyPlanningUncertaintyValuesV5(fact, `graph.uncertainties[${index}]`, errors);
     if (fact.targetFactId !== null) {
       validateReference(
         fact.targetFactId,
@@ -535,6 +537,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `${path}.target`,
       errors,
     );
+    validateWeeklyPlanningCanonicalReferenceKindV5(fact.target.kind, `${path}.target.kind`, errors);
     if (fact.target.factId !== null) {
       validateReference(fact.target.factId, targetIds, `${path}.target.factId`, errors);
     }
@@ -551,8 +554,11 @@ export function validateWeeklyPlanningFactGraphValueV5(
     }
   };
   correctionIntents.forEach((fact, index) => {
+    validateWeeklyPlanningCorrectionValuesV5(fact, `graph.correctionIntents[${index}]`, errors);
     validateIntentReference(fact, `graph.correctionIntents[${index}]`);
-    if (fact.replacementFactId !== null) {
+    if (validateWeeklyPlanningCorrectionReplacementV5(
+      fact.operation, fact.replacementFactId, `graph.correctionIntents[${index}].replacementFactId`, errors,
+    )) {
       validateReference(
         fact.replacementFactId,
         targetIds,
@@ -562,6 +568,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     }
   });
   decisionIntents.forEach((fact, index) => {
+    validateWeeklyPlanningDecisionValuesV5(fact, `graph.decisionIntents[${index}]`, errors);
     validateIntentReference(fact, `graph.decisionIntents[${index}]`);
   });
 
