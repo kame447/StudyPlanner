@@ -17,9 +17,14 @@ export function usePlannerDataState(options) {
     control.refresh = () => result.loadPlannerData(options.userId);
     control.snapshot = () => ({ ownerId: options.userId,
       ready: result.isPlannerDataSnapshotCurrent(), availability: result.plannerDataAvailability,
-      recovery: result.plannerDataRecovery, actuals: result.actuals, materials: result.studyMaterials,
+      recovery: result.plannerDataRecovery, plans: result.plans, actuals: result.actuals, materials: result.studyMaterials,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
+    control.deletePlan = planId => {
+      const plan = result.plans.find(item => item.id === planId);
+      if (!plan) throw new Error(`Missing real Plan ${planId}`);
+      return result.deletePlan(plan);
+    };
     control.startMonthEvent = ({ date, title }) => {
       if (control.saving) throw new Error('A fixture save is already pending');
       control.saving = true;

@@ -116,6 +116,8 @@ client-first executionの正仕様は `spec/client-first-execution-requirements.
 
 local planner read projectionの鮮度、再確認、consumer leaseの補助architectureは `architecture/planner-read-projection-recovery.md` が所有する。週間計画側はこのleaseをturn admissionへ接続し、client-runtimeのread/retry契約を重複定義しない。
 
+local fallbackのcommand/compensation直列化は `architecture/local-planner-storage-access.md` が所有する。同一module instance・同一Storage objectの境界であり、Firestore/offline同期/複数タブの正仕様を置換しない。
+
 ### Reporting
 
 入口: `docs/domains/reporting/README.md`

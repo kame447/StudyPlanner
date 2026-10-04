@@ -446,3 +446,108 @@ test('MonthEvent recovery retains mobile AI input and blocks admission until rea
   await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年8月');
   await expect(monthPill(page)).toBeVisible();
 });
+
+// The 12 recovery cases above remain unchanged. This one owns the distinct
+// durable-loss schedule: failed compound Undo, synchronous Month admission,
+// compensation, then the queued Month write. No full read is held inside the
+// repository queue, and neither UI state nor repository results are fabricated.
+test('failed Plan Undo preserves a queued MonthEvent through rollback and real reload desktop-light', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'desktop' && item.theme === 'light'));
+  const seeded = await page.evaluate(async date => {
+    const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+    const seeded = await window.__plannerRecoveryRepository.seedPlanUndo({ userId, date });
+    await window.__plannerRecoveryHook.refresh();
+    return seeded;
+  }, E2E_TODAY);
+  await expect.poll(async () => {
+    const state = await hookSnapshot(page);
+    return { plans: state.plans.map(item => item.id), actuals: state.actuals.map(item => item.id), ready: state.ready };
+  }).toEqual({ plans: [seeded.plan.id], actuals: [seeded.actual.id], ready: true });
+  await navigate(page, '予定');
+  await page.evaluate(planId => window.__plannerRecoveryHook.deletePlan(planId), seeded.plan.id);
+  await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toBeVisible();
+  await expect.poll(async () => (await hookSnapshot(page)).plans).toEqual([]);
+  expect((await durable(page)).actuals).toEqual([]);
+  expect(await durableMonthEvents(page)).toEqual([]);
+  const before = await repoSnapshot(page);
+  const storageBefore = await durableWrites(page);
+
+  await page.evaluate(({ planId, date, title }) => {
+    window.__plannerRecoveryRepository.armPlanRestoreFault(planId, () => {
+      // This public Month callback admits its real save synchronously; it does
+      // not await its predecessor from the synchronous Storage.setItem frame.
+      window.__plannerRecoveryHook.startMonthEvent({ date, title });
+    });
+  }, { planId: seeded.plan.id, date: E2E_TODAY, title: MONTH_EVENT_TITLE });
+  try {
+    // Exercise the actual App notice action and the hook's captured Undo, not a
+    // test-created restoration or a direct repository restore call.
+    await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call =>
+      call.method === 'restorePlanWithDependents' && call.phase === 'rejected'))
+      .toEqual([{ method: 'restorePlanWithDependents', phase: 'rejected',
+        error: 'Error: Synthetic Plan Undo Actual write failure' }]);
+    await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+    expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+    const saved = await durableMonthEvents(page);
+    expect(saved).toEqual([expect.objectContaining({ title: MONTH_EVENT_TITLE, date: E2E_TODAY })]);
+    const savedId = saved[0].id;
+    const trace = await page.evaluate(() => window.__plannerRecoveryRepository.planRestoreFaultSnapshot());
+    expect({ entered: trace.entered, failed: trace.failed }).toEqual({ entered: true, failed: true });
+    expect(trace.events.map(({ phase, key, rows }) => ({ phase, ...(key ? { key, ids: rows.map(row => row.id) } : {}) })))
+      .toEqual([
+        { phase: 'written', key: 'studyplanner.scheduleEvents.v1', ids: [`plan:${seeded.plan.id}`] },
+        { phase: 'enqueue-month' },
+        { phase: 'failed-write', key: 'studyplanner.actuals', ids: [seeded.actual.id] },
+        { phase: 'written', key: 'studyplanner.scheduleEvents.v1', ids: [] },
+        { phase: 'written', key: 'studyplanner.actuals', ids: [] },
+        { phase: 'written', key: 'studyplanner.scheduleEvents.v1', ids: [`month-event:${savedId}`] },
+      ]);
+    // Independently compare the harness's native successful-write observer.
+    // The failed Actual attempt must be absent, and Month saves exactly once.
+    expect((await durableWrites(page)).slice(storageBefore.length)).toEqual(trace.events
+      .filter(event => event.phase === 'written').map(({ key, rows }) => ({ key, value: JSON.stringify(rows) })));
+    expect(writeMethods(await repoSnapshot(page)).slice(writeMethods(before).length))
+      .toEqual(['restorePlanWithDependents', 'upsertMonthEvent']);
+    await expect.poll(async () => {
+      const state = await hookSnapshot(page);
+      return { plans: state.plans, actuals: state.actuals, monthEvents: state.monthEvents, ready: state.ready };
+    }).toEqual({ plans: [], actuals: [], monthEvents: saved, ready: true });
+    await expect(monthPill(page)).toBeVisible();
+    const storedBeforeReload = await page.evaluate(() => ({
+      scheduleEvents: localStorage.getItem('studyplanner.scheduleEvents.v1'),
+      actuals: localStorage.getItem('studyplanner.actuals'),
+    }));
+    expect(await runtimeCalls(page)).toEqual([]);
+    await testInfo.attach('physical Undo rollback then Month save order', {
+      body: JSON.stringify(trace, null, 2), contentType: 'application/json',
+    });
+    await page.evaluate(() => {
+      window.__plannerRecoveryRepository.releasePlanRestoreFault();
+      window.__plannerRecoveryRepository.preserveNextReload();
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
+    await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+    expect(await page.evaluate(() => sessionStorage.getItem('studyplanner.e2e.preserve-next-reload'))).toBeNull();
+    expect(await page.evaluate(() => ({
+      scheduleEvents: localStorage.getItem('studyplanner.scheduleEvents.v1'),
+      actuals: localStorage.getItem('studyplanner.actuals'),
+    }))).toEqual(storedBeforeReload);
+    expect(await durableMonthEvents(page)).toEqual(saved);
+    expect((await hookSnapshot(page)).plans).toEqual([]);
+    expect((await hookSnapshot(page)).actuals).toEqual([]);
+    expect((await hookSnapshot(page)).monthEvents).toEqual(saved);
+    expect(writeMethods(await repoSnapshot(page)).filter(method =>
+      ['restorePlanWithDependents', 'upsertMonthEvent', 'upsertPlan', 'upsertActual'].includes(method))).toEqual([]);
+    expect(await durableWrites(page)).toEqual([]);
+    await navigate(page, '予定');
+    await expect(monthPill(page)).toBeVisible();
+    expect(await runtimeCalls(page)).toEqual([]);
+    const path = testInfo.outputPath('queued-month-survives-failed-plan-undo-reload.png');
+    await page.screenshot({ path, fullPage: true });
+    await testInfo.attach('MonthEvent still visible after real reload', { path, contentType: 'image/png' });
+  } finally {
+    await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanRestoreFault());
+  }
+});

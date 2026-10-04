@@ -11,16 +11,22 @@ const subject = { id: 'math', userId: user.id, name: '数学', color: '#2f6fc2',
 const material = { id: 'material-before-refresh', userId: user.id, name: '更新前の教材', subjectId: subject.id,
   subjectName: subject.name, color: subject.color, status: 'active', paceEnabled: true,
   progressUnit: 'problem', currentUnit: 10, totalUnits: 100, createdAt: now, updatedAt: now };
-localStorage.clear();
-localStorage.setItem('studyplanner.users', JSON.stringify([user]));
-localStorage.setItem('studyplanner.session', user.id);
-for (const key of ['plans', 'actuals', 'dayNotes', 'monthEvents', 'todos.v1', 'scheduleTemplates.v1', 'timetableTerms.v1', 'timetablePeriods.v1']) {
-  localStorage.setItem(`studyplanner.${key}`, '[]');
+// Fresh cases retain the original clean seed. One explicit test-only request
+// lets a real reload read its preceding durable save instead of reseeding it.
+const preserveNextReload = sessionStorage.getItem('studyplanner.e2e.preserve-next-reload') === 'true';
+sessionStorage.removeItem('studyplanner.e2e.preserve-next-reload');
+if (!preserveNextReload) {
+  localStorage.clear();
+  localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+  localStorage.setItem('studyplanner.session', user.id);
+  for (const key of ['plans', 'actuals', 'dayNotes', 'monthEvents', 'todos.v1', 'scheduleTemplates.v1', 'timetableTerms.v1', 'timetablePeriods.v1']) {
+    localStorage.setItem(`studyplanner.${key}`, '[]');
+  }
+  localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
+  localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
+  localStorage.setItem('study-planner-theme-mode', new URLSearchParams(location.search).get('theme') ?? 'light');
+  localStorage.setItem('study-planner-theme-palette', 'ocean');
 }
-localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
-localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
-localStorage.setItem('study-planner-theme-mode', new URLSearchParams(location.search).get('theme') ?? 'light');
-localStorage.setItem('study-planner-theme-palette', 'ocean');
 window.__realWeeklyEvents = [];
 // Observe durable writes even from another production repository consumer.
 // Chat checkpoints are not Plan writes and intentionally remain out of scope.
