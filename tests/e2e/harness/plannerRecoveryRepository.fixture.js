@@ -1,20 +1,19 @@
 // Test-only external persistence controls. All writes still use the production
 // local repository and its ScheduleEvent authority; no hook state is fabricated.
+import { installPlanRestoreStorageFault } from './planRestoreStorageFault.fixture.js';
 import { scheduleEventToMonthEvent } from '../../../src/domain/scheduleEvent';
-import { createRepositories } from '../../../src/repositories/createRepositories';
-import { createLocalAuthStorageGateway, createLocalPlannerStorageGateway } from '../../../src/repositories/localStorageGateway';
-import { createLocalScheduleEventAuthority } from '../../../src/repositories/localScheduleEventAuthority';
-import { createScheduleEventBackedPlannerRepository } from '../../../src/repositories/scheduleEventAuthorityRepository';
+import { createAuthRepository } from '../../../src/repositories/authRepository';
+import { createLocalAuthStorageGateway } from '../../../src/repositories/localStorageGateway';
+import { createLocalPlannerRepository } from '../../../src/repositories/createLocalPlannerRepository';
 
-const gateway = createLocalPlannerStorageGateway();
-const local = createRepositories({ authStorageGateway: createLocalAuthStorageGateway(), plannerStorageGateway: gateway });
-const real = createScheduleEventBackedPlannerRepository(local.plannerRepository, createLocalScheduleEventAuthority(gateway));
-export const authRepository = local.authRepository;
+const real = createLocalPlannerRepository();
+export const authRepository = createAuthRepository(createLocalAuthStorageGateway());
 const calls = [];
 let holdActualAcknowledgment = false;
 let heldAcknowledgment = null;
 let holdMonthWrite = false;
 let heldMonthWrite = null;
+let planRestoreFault = null;
 let holdProjectionReads = false;
 const heldReads = [];
 const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0 };
@@ -38,7 +37,13 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
       throw new Error(`Synthetic ${method} read failure`);
     }
   }
-  const result = await original(...args);
+  let result;
+  try {
+    result = await original(...args);
+  } catch (error) {
+    calls.push({ method, phase: 'rejected', error: String(error) });
+    throw error;
+  }
   calls.push({ method, phase: 'durable-result' });
   if (method === 'upsertActualWithMaterialProgress' && holdActualAcknowledgment) {
     holdActualAcknowledgment = false;
@@ -52,6 +57,35 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  async seedPlanUndo({ userId, date }) {
+    const now = new Date().toISOString();
+    const plan = { id: 'rollback-undo-plan', seriesId: 'rollback-undo-plan', userId,
+      title: '復元に失敗する学習予定', subject: '数学', date, startTime: '09:00', endTime: '09:30',
+      repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'study',
+      memo: '', createdAt: now, updatedAt: now };
+    const actual = { id: 'rollback-undo-actual', userId, planId: plan.id, occurrenceDate: date,
+      actualStartTime: '09:00', actualEndTime: '09:30', title: plan.title, subject: plan.subject,
+      note: 'Undo must restore this linked record or reject', updatedAt: now };
+    // Setup uses the same production facade as the App. The hook subsequently
+    // reads these rows and captures its real linked-record Undo closure.
+    await plannerRepository.upsertPlan(plan);
+    await plannerRepository.upsertActual(actual);
+    return { plan, actual };
+  },
+  armPlanRestoreFault(planId, onPlanRestore) {
+    if (planRestoreFault) throw new Error('A Plan restore fault is already installed');
+    planRestoreFault = installPlanRestoreStorageFault({ storage: localStorage,
+      storagePrototype: Storage.prototype, planId, onPlanRestore });
+  },
+  planRestoreFaultSnapshot() { return planRestoreFault?.snapshot() ?? null; },
+  releasePlanRestoreFault() {
+    planRestoreFault?.dispose();
+    planRestoreFault = null;
+  },
+  preserveNextReload() {
+    // Consumed once by the test harness entry, never production App code.
+    sessionStorage.setItem('studyplanner.e2e.preserve-next-reload', 'true');
+  },
   holdNextActualAcknowledgment() { holdActualAcknowledgment = true; },
   releaseActualAcknowledgment() {
     const release = heldAcknowledgment;
