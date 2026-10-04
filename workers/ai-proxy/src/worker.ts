@@ -50,6 +50,8 @@ import {
 } from './decision/userContextRoutingDispatch';
 import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
+import { isCandidateChoiceDecisionContext } from '../../../shared/candidateChoiceDecision';
+import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
 
 export { AiQuotaDurableObject };
 
@@ -653,6 +655,13 @@ async function handleChatRequest(
   }
 
   const focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  const candidateChoice = isRecord(payload.decisionContext) && payload.decisionContext.purpose === 'candidate_choice';
+  if (candidateChoice && (!isCandidateChoiceDecisionContext(payload.decisionContext)
+    || payload.purpose !== 'weekly_planning_semantic_normalizer'
+    || payload.messages?.length !== 1 || payload.messages[0].role !== 'user'
+    || payload.messages[0].content !== payload.decisionContext.request.wholeUtterance)) {
+    return jsonResponse(request, env, 400, { error: 'Invalid candidate Choice context.' });
+  }
   if (focusedContext.kind === 'invalid') {
     return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
   }
@@ -673,6 +682,11 @@ async function handleChatRequest(
 
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
+
+  if (candidateChoice && isCandidateChoiceDecisionContext(payload.decisionContext)) {
+    const result = await evaluateCandidateChoice({ context: payload.decisionContext, env, signal: request.signal, recorder: semanticRecorder });
+    return jsonResponse(request, env, 200, { ...result });
+  }
 
   if (focusedContext.kind === 'focused_authorization') {
     const context = focusedContext.context;

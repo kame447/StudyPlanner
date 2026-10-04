@@ -165,6 +165,21 @@ function compactMessages(
   });
 }
 
+/** Bounded semantic menu evidence. Raw utterance is already in messages; never copy transport/local authority fields. */
+function candidateChoiceRequestProjection(value: unknown): unknown {
+  const request = record(value);
+  const context = record(request.context);
+  const clean = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(clean);
+    if (!isRecord(v)) return v;
+    return Object.fromEntries(Object.entries(v).filter(([key]) => !['semanticCensus', 'token', 'secret', 'auth', 'authorization', 'ownerId', 'sourceAccess', 'permission', 'permissions', 'wholeUtterance'].includes(key)).map(([key, item]) => [key, clean(item)]));
+  };
+  const data = clean({ requestId: request.requestId, selectionEpoch: request.selectionEpoch, candidateSetHash: request.candidateSetHash,
+    context: { question: context.question, target: context.target, scope: context.scope }, menu: request.menu });
+  const original = JSON.stringify(data);
+  return { json: headTailUtf8(original, 12_000), originalBytes: utf8ByteLength(original), truncated: utf8ByteLength(original) > 12_000, checksum: fnv1a32(original) };
+}
+
 function externalSourceProjection(value: unknown): unknown[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 10).map((sourceValue) => {
@@ -449,6 +464,7 @@ function projectStageData(stage: string, value: unknown): unknown {
           purpose: stringValue(request.purpose),
           responseFormat: compactUnknown(request.responseFormat),
           maxCompletionTokens: numberValue(request.maxCompletionTokens),
+          ...(request.candidateChoiceRequest === undefined ? {} : { candidateChoiceRequest: candidateChoiceRequestProjection(request.candidateChoiceRequest) }),
         },
       };
     }

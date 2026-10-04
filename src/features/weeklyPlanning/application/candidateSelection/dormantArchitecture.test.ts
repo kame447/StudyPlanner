@@ -8,6 +8,8 @@ const foundation = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(foundation, '../../../../..');
 const isTest = (path: string) => /\.(test|spec|testUtils)\.[cm]?[jt]sx?$/.test(path);
 const withinFoundation = (path: string) => path.startsWith(`${foundation}/`);
+// Explicit dormant numeric consumers; all other incoming boundaries remain prohibited.
+const permittedConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingChoiceV5.ts', 'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingCommitV5.ts']);
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -24,12 +26,23 @@ function dependencies(file: string) {
 }
 
 describe('candidate selection stays a dormant application foundation', () => {
-  it('has zero incoming runtime/UI/provider/scheduler/save/lifecycle/trace dependencies', () => {
+  it('rejects every unlisted incoming runtime/UI/provider/scheduler/save/lifecycle/trace dependency', () => {
     const incoming: string[] = [];
     for (const file of ['src', 'shared', 'workers'].flatMap((root) => files(join(repository, root)))) {
       if (isTest(file) || withinFoundation(file)) continue;
       for (const dependency of dependencies(file)) {
-        if (dependency.resolved && withinFoundation(dependency.resolved)) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+        if (dependency.resolved && withinFoundation(dependency.resolved) && !permittedConsumers.has(relative(repository, file))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+      }
+    }
+    expect(incoming).toEqual([]);
+  });
+
+  it('keeps both numeric PoC modules disconnected from every other production caller', () => {
+    const incoming: string[] = [];
+    for (const file of ['src', 'shared', 'workers'].flatMap(root => files(join(repository, root)))) {
+      if (isTest(file) || permittedConsumers.has(relative(repository, file))) continue;
+      for (const dependency of dependencies(file)) {
+        if (dependency.resolved && permittedConsumers.has(relative(repository, dependency.resolved))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
       }
     }
     expect(incoming).toEqual([]);

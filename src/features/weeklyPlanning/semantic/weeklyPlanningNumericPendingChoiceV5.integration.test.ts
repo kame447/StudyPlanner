@@ -1,0 +1,41 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+import { applyWeeklyPlanningStableV5ContextualAnswer } from './weeklyPlanningStableV5ContextualAnswer';
+import { numericFixture, normalizedChoice } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
+import { readWeeklyPlanningPendingQuestionV5 } from './weeklyPlanningPendingQuestionV5';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { tryNumericPendingChoiceRouteV5 } from './weeklyPlanningNumericPendingChoiceV5';
+import { WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
+describe('narrow D5 selected leaf through production normalization and graph binding', () => {
+  it.each(['total_duration', 'duration_per_unit'] as const)('preserves complete %s tuple and prevents same-turn replay', async measurement => {
+    const h = numericFixture(measurement); const luna = { createChatCompletion: vi.fn(async () => { throw new Error('Luna must not dispatch'); }) };
+    const result = await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(luna, h.input), h.port);
+    expect(result?.status).toBe('staged'); expect(luna.createChatCompletion).not.toHaveBeenCalled();
+    expect(result?.selection.manifest.candidateSetHash).toMatch(/^sha256:/);
+    const pending = readWeeklyPlanningPendingQuestionV5(h.input.publicStateSummary)!;
+    const params = { graph: h.graph, document: result!.document, pendingQuestion: pending, conversationId: 'conversation-numeric', turnId: 'turn-numeric', expectedRevision: 2, userText: h.input.userText };
+    const applied = applyWeeklyPlanningStableV5ContextualAnswer(params);
+    expect(applied?.status).toBe('applied');
+    expect(applied?.graph.effortEstimates).toHaveLength(1);
+    expect(applied?.graph.effortEstimates[0]).toMatchObject({ targetFactId: 'workload-1', kind: measurement, minutes: 30, precision: 'exact', unitCode: measurement === 'duration_per_unit' ? 'problem' : null });
+    const replay = applyWeeklyPlanningStableV5ContextualAnswer({ ...params, graph: applied!.graph });
+    expect(replay?.graph.effortEstimates ?? applied!.graph.effortEstimates).toHaveLength(1);
+    expect(replay?.status).not.toBe('applied');
+    const stale = applyWeeklyPlanningStableV5ContextualAnswer({ ...params, graph: { ...h.graph, revision: 3 } });
+    expect(stale?.status).not.toBe('applied');
+  });
+  it('default hook is absent and unsupported whole reply reaches unchanged existing Luna path', async () => {
+    const h = numericFixture(); h.input.userText = '30分くらい、別の課題は15分';
+    const lunaReply = JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'total_duration', minutes: 30, precision: 'approximate', quantityRole: null });
+    const luna = { createChatCompletion: vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async () => lunaReply) };
+    h.port.choose = async (r, before) => { before(); return normalizedChoice(r, 'none'); };
+    expect(await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(luna, h.input), h.port)).toBeNull();
+    await createWeeklyPlanningSemanticNormalizerV5(luna).normalize(h.input);
+    expect(luna.createChatCompletion).toHaveBeenCalledOnce();
+    const messages = luna.createChatCompletion.mock.calls[0][0].messages;
+    expect(JSON.parse(messages[messages.length - 1].content).currentUserText).toBe(h.input.userText);
+    const choose = vi.fn(h.port.choose); h.port.choose = choose;
+    await createWeeklyPlanningSemanticNormalizerV5(luna).normalize(h.input);
+    expect(choose).not.toHaveBeenCalled();
+  });
+});
