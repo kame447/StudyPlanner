@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
-import type { PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
+import type { PlannerDataAvailability, PlannerDataRecovery } from '../domain/plannerDataReadAuthority';
 import { upsertByKey } from '../lib/collections';
 import { minutesBetween, sortByDateTime } from '../lib/date';
 import {
@@ -53,6 +53,9 @@ interface PlannerAppState {
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
   plannerDataAvailability: PlannerDataAvailability;
+  plannerDataRecovery: PlannerDataRecovery | null;
+  retryPlannerData: () => Promise<void>;
+  isPlannerDataSnapshotCurrent: () => boolean;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -152,6 +155,9 @@ export function usePlannerAppState(): PlannerAppState {
     timetableTerms,
     timetablePeriods,
     plannerDataAvailability,
+    plannerDataRecovery,
+    retryPlannerData,
+    isPlannerDataSnapshotCurrent,
     viewMode,
     selectedDate,
     monthDate,
@@ -330,6 +336,9 @@ export function usePlannerAppState(): PlannerAppState {
     timetableTerms,
     timetablePeriods,
     plannerDataAvailability,
+    plannerDataRecovery,
+    retryPlannerData,
+    isPlannerDataSnapshotCurrent,
     viewMode,
     selectedDate,
     monthDate,

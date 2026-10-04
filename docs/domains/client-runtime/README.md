@@ -1,13 +1,17 @@
 # Client Runtime
 
 Status: canonical domain index
-Updated: 2026-08-22
+Updated: 2026-10-05
 
 This domain owns client-first execution, local/runtime capability boundaries, synchronization authority and the conditions under which work may move from server-mediated execution toward the client.
 
 Canonical requirements:
 
 - [Client-first execution requirements](spec/client-first-execution-requirements.md)
+
+Supporting architecture:
+
+- [Planner read projection recovery](architecture/planner-read-projection-recovery.md) owns local read freshness, retry and consumer leases; it does not redefine the parent requirements or their rollout status
 
 Execution tracking:
 

@@ -63,6 +63,7 @@ async function renderHarness(
   const ref = createRef<WeeklyPlanningApplication>();
   let props: UseWeeklyPlanningApplicationInput = {
     userId: 'user-1',
+    isPlannerDataSnapshotCurrent: () => true,
     selectedDate: '2026-08-11',
     plans: [],
     scheduleTemplates: [],

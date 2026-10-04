@@ -390,8 +390,18 @@ export function AiPlanningView({
       if (!reload) {
         moduleRetryUsed.current = true;
         setModuleRetryAttempted(true);
-        const ready = await application.prepareTurn();
-        if (current() && ready) { setModuleLoadFailed(false); setError(''); }
+        const preparation = await application.prepareTurn();
+        if (current()) {
+          if (preparation.ready) { setModuleLoadFailed(false); setError(''); }
+          else {
+            // Readiness revocation did not consume a module-load failure retry.
+            moduleRetryUsed.current = false;
+            setModuleRetryAttempted(false);
+            setError(preparation.reason === 'planner-data-changed'
+              ? '学習データが更新されました。確認が終わったら「機能の読み込みを再試行」を押してから、もう一度送信してください。入力内容と画像は保持しています。'
+              : '送信前の状態が変わりました。現在の状態を確認し、「機能の読み込みを再試行」を押してから、もう一度送信してください。入力内容と画像は保持しています。');
+          }
+        }
         return;
       }
       reloadCheckpoint = application.checkpointForModuleReload();
@@ -589,10 +599,16 @@ export function AiPlanningView({
     }
   }
 
+  function preparationRejectionMessage(reason: 'planner-data-changed' | 'request-changed'): string {
+    return reason === 'planner-data-changed'
+      ? '学習データが更新されました。入力内容を確認して、もう一度送信してください。'
+      : '送信前の状態が変わりました。入力内容を確認して、もう一度送信してください。';
+  }
+
   async function submitMessage() {
     const value = text.trim();
     const attachment = imageAttachment;
-    if ((!value && !attachment) || isComposerBusy || isListening
+    if ((!value && !attachment) || isComposerBusy || isListening || !application.plannerDataReady
       || !ownsSubmissionScope() || submission.current.token || recoveryOperation.current || moduleLoadFailed || waitingForStarterTarget) return;
     const token = Symbol('planning-submission');
     submission.current.token = token;
@@ -611,8 +627,12 @@ export function AiPlanningView({
         setError('保存した入力例の参照先を確認できません。入力例を選び直すか、対象がわかる文章に修正してください。');
         return;
       }
-      const ready = await application.prepareTurn();
-      if (!ownsRequest() || !ready) return;
+      const preparation = await application.prepareTurn();
+      if (!ownsRequest()) return;
+      if (!preparation.ready) {
+        setError(preparationRejectionMessage(preparation.reason));
+        return;
+      }
       let supplementalContext: string | undefined;
 
       if (attachment) {
@@ -655,6 +675,7 @@ export function AiPlanningView({
         if (!ownsRequest()) return;
         if (!result.accepted) {
           setText(text);
+          setError(preparationRejectionMessage(result.rejectionReason ?? 'request-changed'));
           return;
         }
         clearImageAttachment();
@@ -946,6 +967,11 @@ export function AiPlanningView({
               保存の確認が途中です。計画プレビューから保存を再試行してください。確認が終わるまで、この会話の予定は変更できません。
             </p>
           ) : null}
+          {!application.plannerDataReady ? (
+            <p className="ai-planning-error" role="status">
+              学習データを確認しています。入力内容と画像は保持しています。確認後にもう一度送信してください。
+            </p>
+          ) : null}
           {waitingForStarterTarget ? (
             <p className="ai-planning-error" role="status">
               {starterCatalogStatus === 'loading' ? '入力例の参照先を確認しています。'
@@ -1059,7 +1085,7 @@ export function AiPlanningView({
             type="button"
             aria-label="送信"
             disabled={
-              (!text.trim() && !imageAttachment) || isComposerBusy || isListening || moduleLoadFailed || waitingForStarterTarget
+              (!text.trim() && !imageAttachment) || isComposerBusy || isListening || !application.plannerDataReady || moduleLoadFailed || waitingForStarterTarget
             }
             onClick={() => void submitMessage()}
           >

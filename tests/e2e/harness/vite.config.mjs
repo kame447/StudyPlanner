@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -17,6 +18,8 @@ function stripViteQuery(id) {
   return id.split('?', 1)[0];
 }
 
+// Keep weeklyPlanningRuntimeModule and its dynamic runtime import unaliased.
+// Preflight must load production code; only execution results and OCR are stubbed.
 const runtimeGatewayStubPlugin = {
   name: 'studyplanner-weekly-runtime-gateway-stub',
   enforce: 'pre',
@@ -24,6 +27,15 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './usePlannerDataState'
+      && normalizedImporter.endsWith(path.normalize('src/hooks/usePlannerAppState.ts'))) {
+      return path.resolve(harnessDir, 'usePlannerDataState.control.jsx');
+    }
+    if (source === '../repositories'
+      && ['src/hooks/usePlannerDataState.ts', 'src/hooks/useAuthSessionState.ts']
+        .some(suffix => normalizedImporter.endsWith(path.normalize(suffix)))) {
+      return path.resolve(harnessDir, 'plannerRecoveryRepository.fixture.js');
+    }
     if (source === '../lib/planningImageAttachment'
       && normalizedImporter.endsWith(path.normalize('src/components/AiPlanningViewLegacy.tsx'))) {
       return path.resolve(harnessDir, 'planningImageAttachment.stub.js');
@@ -43,13 +55,19 @@ export default defineConfig({
   plugins: [runtimeGatewayStubPlugin, react()],
   define: {
     'import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED': JSON.stringify('false'),
+    // This synthetic harness must not inherit live Firebase/AI credentials.
+    'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(''),
+    'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(''),
+    'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
+    'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
+    'import.meta.env.VITE_APP_ACCESS_KEY': JSON.stringify(''),
   },
   server: {
     host: '127.0.0.1',
     port: 4174,
     strictPort: true,
     fs: {
-      allow: [repositoryRoot],
+      allow: [...new Set([repositoryRoot, path.dirname(fs.realpathSync(path.join(repositoryRoot, 'src')))])],
     },
   },
 });

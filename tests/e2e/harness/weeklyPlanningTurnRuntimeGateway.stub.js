@@ -69,6 +69,10 @@ export const weeklyPlanningTurnRuntimeGateway = {
       userText: params.userText,
       requestId: params.pending.requestId,
       baseRevision: params.pending.baseRevision,
+      actualIds: (params.actuals ?? []).map(actual => actual.id),
+      materialIds: (params.studyMaterials ?? []).map(material => material.id),
+      actualNotes: (params.actuals ?? []).map(actual => actual.note),
+      materialCurrentUnits: (params.studyMaterials ?? []).map(material => material.currentUnit),
     });
 
     if (shouldGate()) {

@@ -120,7 +120,7 @@ describe('provisional allocation through application and approval persistence', 
     const ref = createRef<WeeklyPlanningApplication>();
     const props: UseWeeklyPlanningApplicationInput = {
       userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
-      plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
       saveWeeklyApprovedPlan: repository.saveApprovedPlan,
       completeWeeklyApprovalOperation: repository.completeOperation,
     };
@@ -200,7 +200,7 @@ describe('provisional allocation through application and approval persistence', 
     const ref = createRef<WeeklyPlanningApplication>();
     const props: UseWeeklyPlanningApplicationInput = {
       userId: OWNER, selectedDate: WEEK_START, plans: [unrelated], scheduleTemplates: [],
-      plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
       saveWeeklyApprovedPlan: repository.saveApprovedPlan,
       completeWeeklyApprovalOperation: repository.completeOperation,
     };

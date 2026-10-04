@@ -258,12 +258,23 @@ it.each(kinds)('does not replace an accepted same-owner refresh after old %s rej
   const pending = await begin(gateFor(kind, A), () => mutate(kind, A));
   await repository.upsertMonthEvent({ ...B, title: 'newer accepted title', memo: 'newer accepted memo' });
   await act(async () => { await state.loadPlannerData(OWNER); });
-  expect(state.plannerDataAvailability.status).toBe('ready');
+  // The accepted MonthEvent snapshot is preserved, while #437 conservatively
+  // waits for every hook writer before certifying the Actual/material slice.
+  expect(state.plannerDataAvailability.status).toBe('stale');
+  expect(state.plannerDataRecovery).toMatchObject({ reason: 'actual-material', phase: 'waiting' });
   await expectStoredProjection('accepted refresh');
   const accepted = ordered(state.monthEvents);
+  const fullTimestamp = state.plannerDataAvailability.lastSuccessfulAt;
+  const actualReads = vi.spyOn(boundary.repository, 'getActuals');
+  const materialReads = vi.spyOn(boundary.repository, 'getStudyMaterials');
+  const monthReads = vi.spyOn(boundary.repository, 'getMonthEvents');
   await finish(pending, false);
   expect(ordered(state.monthEvents)).toEqual(accepted);
   await expectStoredProjection('old failure cannot replace accepted data');
+  expect(actualReads).toHaveBeenCalledTimes(1);
+  expect(materialReads).toHaveBeenCalledTimes(1);
+  expect(monthReads).not.toHaveBeenCalled();
+  expect(state.plannerDataAvailability).toMatchObject({ status: 'ready', lastSuccessfulAt: fullTimestamp });
 });
 
 it('blocks old save/delete results and notices across owner, reset and unmount', async () => {

@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-09-10
+Updated: 2026-10-05
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -49,7 +49,8 @@ Client-first/runtime work:
 
 1. `docs/domains/client-runtime/README.md`
 2. `docs/domains/client-runtime/spec/client-first-execution-requirements.md`
-3. Issue #164
+3. `docs/domains/client-runtime/architecture/planner-read-projection-recovery.md` (local read freshness / recovery / consumer lease)
+4. Issue #164
 
 Reporting work:
 

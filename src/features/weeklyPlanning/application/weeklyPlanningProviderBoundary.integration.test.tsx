@@ -91,7 +91,7 @@ async function mount() {
   const database = createWeeklyPlanningApprovalMemoryState(); const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
   const ref = createRef<WeeklyPlanningApplication>();
   await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={[]} scheduleTemplates={[]}
-    plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)} saveWeeklyApprovedPlan={repository.saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); });
+    isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)} saveWeeklyApprovedPlan={repository.saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); });
   const submit = async (userText = USER_TEXT) => { let result!: WeeklyPlanningTurnSubmissionResult; await act(async () => { result = await ref.current!.submitTurn(userText); }); return result; };
   const unsaved = () => { expect(database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 }); expect(database.plans.size).toBe(0); expect(database.operations.size).toBe(0); expect(database.items.size).toBe(0); };
   return { ref, database, submit, unsaved };

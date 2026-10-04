@@ -1,0 +1,42 @@
+.planner-data-recovery-notice {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.planner-data-recovery-notice p {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.planner-data-recovery-notice button {
+  min-height: 40px;
+  max-width: 100%;
+  white-space: normal;
+}
+
+/* Keep the banner in main, with the remaining row available to Home or AI.
+ * Specificity must beat the later chrome rule that gives AI a single row. */
+.app-shell.home-app-shell:has(> .primary-app-header) > .home-main.planner-data-recovery-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+/* The home dashboard has fixed-height cards; retain access on short screens. */
+.home-main.planner-data-recovery-main > .home-dashboard-default {
+  overflow-y: auto;
+}
