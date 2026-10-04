@@ -21,6 +21,7 @@ Current durable records:
 - `20260928-issue305-question-presentation-binding.md` — Issue #305 第三段階（提示済み質問と、それを提示した assistant message・revision を結ぶ binding 基盤。C9 / C5 の前提条件 (a)）
 - `20260928-issue305-jev-first-proposal-reject.md` — Issue #305 C9（提示済み proposal への純粋な reject を Jev 第一経路にする案）。sealed holdout で事前登録 gate を満たさず no-go（直接受理 1/16、pure reject の p50 が悪化）。runtime は撤去済みで、型付きの evidence だけを残す
 - `20261004-issue305-jev-hierarchical-input-interpretation.md` — Issue #305 第四段階（application が持つ候補集合による入力意味解釈の再設計。Jevbox `7e456212` を参照実装とする比較、field ごとの分類、採用ゲート、Phase 0 census、focused contextual の questionCode 欠落、Phase B の unit 0〜5 の受入条件。現時点の採用は 0 件）
+- `20261004-issue305-candidate-manifest-primitives.md` — Issue #305 Phase B の Unit 2（application が持つ候補 manifest と階層 transaction の共通 primitive。本番に配線しない dormant な基盤で、merge しても採用ではない。atomic な commit と selection ledger は消費者（Unit 3〜5）の契約）
 - 置換単位4（user context の保存先 owner の判定）の記録は user-context domain の [`../../user-context/work/20260927-issue305-jev-first-user-context-routing.md`](../../user-context/work/20260927-issue305-jev-first-user-context-routing.md) にある。単位1〜5 の結果の一覧は `20260926-issue333-japanese-semantic-evaluation.md` の「置換の結果」にある。
 
 Issue-only active scopes such as #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
