@@ -249,6 +249,56 @@ test.describe('multi-day month events', () => {
     await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
   });
 
+  test('keeps new and edited event input after save failure and allows retry', async ({ page }) => {
+    const dates = currentMonthDays();
+    await seedRangeTestState(page);
+    await page.addInitScript(() => {
+      const setItem = Storage.prototype.setItem;
+      window.__monthEventSaveFailures = 0;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'studyplanner.scheduleEvents.v1' && window.__monthEventSaveFailures > 0) {
+          window.__monthEventSaveFailures -= 1;
+          throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+        }
+        return setItem.call(this, key, value);
+      };
+    });
+    await openSchedule(page);
+    const grid = page.getByRole('grid', { name: '月間カレンダー' });
+    await cellForDay(grid, page, dates.startDay).focus();
+    await page.keyboard.press('Enter');
+    const editorOverlay = page.locator('.month-event-modal-overlay');
+    const editor = editorOverlay.locator('.month-event-modal');
+    const title = '失敗しても残す予定';
+    await editor.getByLabel('タイトル').fill(title);
+    await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor.getByRole('alert')).toContainText('もう一度保存');
+    await expect(editor.getByLabel('タイトル')).toHaveValue(title);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await expect.poll(() => readCanonicalMonthEventRange(page, title)).toBeNull();
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editorOverlay).toHaveCount(0);
+    await expect.poll(() => readCanonicalMonthEventRange(page, title))
+      .toEqual({ date: dates.startDate, endDate: dates.startDate });
+
+    await cellForDay(grid, page, dates.startDay).click();
+    await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+    const editedTitle = '編集も残す予定';
+    await editor.getByLabel('タイトル').fill(editedTitle);
+    await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor.getByRole('alert')).toContainText('もう一度保存');
+    await expect(editor.getByLabel('タイトル')).toHaveValue(editedTitle);
+    await expect.poll(() => readCanonicalMonthEventRange(page, title))
+      .toEqual({ date: dates.startDate, endDate: dates.startDate });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editorOverlay).toHaveCount(0);
+    await expect.poll(() => readCanonicalMonthEventRange(page, editedTitle))
+      .toEqual({ date: dates.startDate, endDate: dates.startDate });
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]').length)).toBe(1);
+  });
+
   test('repeated multi-day occurrences stay continuous instead of falling back to daily pills', async ({ page }, testInfo) => {
     const dates = currentMonthDays();
     const now = new Date().toISOString();

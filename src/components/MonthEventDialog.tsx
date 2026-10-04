@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   createEmptyMonthEventChecklistItem,
   createEmptyMonthEventDraft,
@@ -139,7 +139,12 @@ function createRangeAwareDraftFromEvent(event: MonthEvent): MonthEventDraft {
   };
 }
 
-export function MonthEventDialog({
+export function MonthEventDialog(props: MonthEventDialogProps) {
+  if (!props.openDate) return null;
+  return <MonthEventEditor key={JSON.stringify([props.userId, props.openDate, props.initialEventId ?? null])} {...props} openDate={props.openDate} />;
+}
+
+function MonthEventEditor({
   openDate,
   userId,
   monthEvents,
@@ -147,18 +152,22 @@ export function MonthEventDialog({
   onSave,
   onDelete,
   onClose,
-}: MonthEventDialogProps) {
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+}: MonthEventDialogProps & { openDate: string }) {
+  const initialEvent = initialEventId ? monthEvents.find(event => event.id === initialEventId) : undefined;
+  const [waitingForInitialEvent, setWaitingForInitialEvent] = useState(Boolean(initialEventId && !initialEvent));
+  const pendingMutation = useRef<object | null>(null);
+  useLayoutEffect(() => () => { pendingMutation.current = null; }, []);
+  const [editingEventId, setEditingEventId] = useState<string | null>(initialEvent?.id ?? null);
   const [draft, setDraft] = useState<MonthEventDraft>(
-    createRangeAwareEmptyDraft(userId, openDate ?? ''),
+    () => initialEvent ? createRangeAwareDraftFromEvent(initialEvent) : createRangeAwareEmptyDraft(userId, openDate),
   );
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
   const [expandedAddons, setExpandedAddons] = useState<Set<MonthEventAddonKey>>(
-    () => getInitialExpandedAddons(createRangeAwareEmptyDraft(userId, openDate ?? '')),
+    () => getInitialExpandedAddons(draft),
   );
-  const [isAllDay, setIsAllDay] = useState(false);
+  const [isAllDay, setIsAllDay] = useState(() => isAllDayTimeRange(draft));
   const [isSavingMonthEvent, setIsSavingMonthEvent] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end' | null>(
     null,
@@ -179,33 +188,41 @@ export function MonthEventDialog({
       ? monthEvents.find((monthEvent) => monthEvent.id === editingEventId)
       : undefined) ?? null;
 
+  // A late initial target may initialize once; later list updates must not replace typed input.
   useEffect(() => {
-    if (!openDate) {
-      return;
-    }
-
-    const initialEvent =
-      initialEventId
-        ? monthEvents.find((monthEvent) => monthEvent.id === initialEventId) ?? null
-        : null;
-
-    const nextDraft = initialEvent
-      ? createRangeAwareDraftFromEvent(initialEvent)
-      : createRangeAwareEmptyDraft(userId, openDate);
-
-    setEditingEventId(initialEvent?.id ?? null);
+    if (!waitingForInitialEvent) return;
+    const event = monthEvents.find(candidate => candidate.id === initialEventId);
+    if (!event) return;
+    const nextDraft = createRangeAwareDraftFromEvent(event);
+    setEditingEventId(event.id);
     setDraft(nextDraft);
-    setStatus('');
-    setError('');
-    setShowDeleteScopePrompt(false);
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
     setIsAllDay(isAllDayTimeRange(nextDraft));
-    setIsSavingMonthEvent(false);
-    setDatePickerTarget(null);
-  }, [initialEventId, monthEvents, openDate, userId]);
+    setWaitingForInitialEvent(false);
+  }, [initialEventId, monthEvents, waitingForInitialEvent]);
 
-  if (!openDate) {
-    return null;
+  function requestClose() {
+    if (!pendingMutation.current) onClose();
+  }
+
+  async function runMutation(action: () => Promise<void>, failureMessage: string) {
+    if (pendingMutation.current || waitingForInitialEvent) return;
+    const attempt = {};
+    pendingMutation.current = attempt;
+    setIsSavingMonthEvent(true);
+    setError('');
+    try {
+      await action();
+    } catch {
+      if (pendingMutation.current === attempt) {
+        pendingMutation.current = null;
+        setIsSavingMonthEvent(false);
+        setError(failureMessage);
+      }
+      return;
+    }
+    // Keep the operation locked during exit motion; unmount revokes late completions.
+    if (pendingMutation.current === attempt) onClose();
   }
 
   const activeDate = openDate;
@@ -230,10 +247,12 @@ export function MonthEventDialog({
   }
 
   function handleNewEvent() {
+    if (pendingMutation.current || waitingForInitialEvent) return;
     resetEditor();
   }
 
   function handleSelectEvent(monthEvent: MonthEvent) {
+    if (pendingMutation.current || waitingForInitialEvent) return;
     const nextDraft = createRangeAwareDraftFromEvent(monthEvent);
 
     setEditingEventId(monthEvent.id);
@@ -263,6 +282,7 @@ export function MonthEventDialog({
   }
 
   function updateStartTime(nextStartTime: string) {
+    if (pendingMutation.current) return;
     setDraft((current) => {
       const currentEndDate = current.endDate ?? current.date;
 
@@ -290,6 +310,7 @@ export function MonthEventDialog({
   }
 
   function updateEndTime(nextEndTime: string) {
+    if (pendingMutation.current) return;
     setDraft((current) => ({
       ...current,
       endTime: nextEndTime,
@@ -297,7 +318,7 @@ export function MonthEventDialog({
   }
 
   function updateEventDate(target: 'start' | 'end' | null, nextDate: string) {
-    if (!target) {
+    if (!target || pendingMutation.current) {
       return;
     }
 
@@ -342,6 +363,7 @@ export function MonthEventDialog({
   }
 
   async function handleSave() {
+    if (pendingMutation.current || waitingForInitialEvent) return;
     const nextDraft = sanitizeMonthEventDraft(draft);
     const validationError = validateMonthEventDraft(nextDraft);
 
@@ -352,13 +374,12 @@ export function MonthEventDialog({
 
     setError('');
     setShowDeleteScopePrompt(false);
-    setIsSavingMonthEvent(true);
-    void onSave(nextDraft, editingEventId ?? undefined).catch(() => undefined);
-    onClose();
+    await runMutation(() => onSave(nextDraft, editingEventId ?? undefined),
+      '保存できませんでした。入力内容は残っています。もう一度保存してください。');
   }
 
   async function handleDelete() {
-    if (!editingEvent) {
+    if (!editingEvent || pendingMutation.current) {
       return;
     }
 
@@ -374,13 +395,11 @@ export function MonthEventDialog({
       return;
     }
 
-    setIsSavingMonthEvent(true);
-    void onDelete(editingEvent).catch(() => undefined);
-    onClose();
+    await runMutation(() => onDelete(editingEvent), '削除できませんでした。もう一度試してください。');
   }
 
   async function handleDeleteScope(scope: MonthEventDeleteScope) {
-    if (!editingEvent) {
+    if (!editingEvent || pendingMutation.current) {
       return;
     }
 
@@ -390,20 +409,16 @@ export function MonthEventDialog({
       scope,
     );
 
-    setIsSavingMonthEvent(true);
-    if (mutation.type === 'delete') {
-      void onDelete(mutation.monthEvent).catch(() => undefined);
-    } else {
-      void onSave(mutation.draft, mutation.targetMonthEventId).catch(() => undefined);
-    }
-    onClose();
+    await runMutation(() => mutation.type === 'delete'
+      ? onDelete(mutation.monthEvent)
+      : onSave(mutation.draft, mutation.targetMonthEventId), '削除できませんでした。もう一度試してください。');
   }
 
   return (
-    <div className="overlay modal-overlay month-event-modal-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay month-event-modal-overlay" onClick={requestClose}>
       <div className="modal-card month-event-modal" onClick={(event) => event.stopPropagation()}>
         <div className="month-event-editor-header">
-          <button className="ghost-button" onClick={onClose} type="button">
+          <button className="ghost-button" onClick={requestClose} disabled={isSavingMonthEvent} type="button">
             閉じる
           </button>
           <div className="month-event-date-heading" aria-label={formatDateLabel(activeDate)}>
@@ -411,7 +426,7 @@ export function MonthEventDialog({
           </div>
           <button
             className="primary-button month-event-save-button"
-            disabled={isSavingMonthEvent}
+            disabled={isSavingMonthEvent || waitingForInitialEvent}
             onClick={() => void handleSave()}
             type="button"
           >
@@ -419,7 +434,7 @@ export function MonthEventDialog({
           </button>
         </div>
 
-        <div className="month-event-editor-body">
+        <fieldset className="month-event-editor-body" aria-label="予定の入力内容" disabled={isSavingMonthEvent || waitingForInitialEvent}>
           <section className="month-event-core-section month-event-title-card">
             <label className="field month-event-title-field">
               <input
@@ -462,7 +477,7 @@ export function MonthEventDialog({
                 <TimeWheelPicker
                   value={draft.startTime}
                   role="start"
-                  disabled={isAllDay}
+                  disabled={isAllDay || isSavingMonthEvent || waitingForInitialEvent}
                   inputClassName="month-event-time-input"
                   onChange={updateStartTime}
                 />
@@ -480,7 +495,7 @@ export function MonthEventDialog({
                 <TimeWheelPicker
                   value={draft.endTime}
                   role="end"
-                  disabled={isAllDay}
+                  disabled={isAllDay || isSavingMonthEvent || waitingForInitialEvent}
                   inputClassName="month-event-time-input"
                   minMinutes={
                     isSameDayRange
@@ -760,9 +775,10 @@ export function MonthEventDialog({
             ) : null}
           </section>
 
-          {error ? <p className="inline-error">{error}</p> : null}
+          {waitingForInitialEvent ? <p className="inline-error" role="alert">この予定を読み込めません。予定の読み込みを待つか、一度閉じてください。</p> : null}
+          {error ? <p className="inline-error" role="alert">{error}</p> : null}
           {status ? <p className="inline-note">{status}</p> : null}
-        </div>
+        </fieldset>
 
         {editingEvent ? (
           <div className="row-actions month-event-editor-actions">

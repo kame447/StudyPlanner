@@ -23,6 +23,9 @@
 }
 
 .month-event-editor-body {
+  min-width: 0;
+  margin: 0;
+  border: 0;
   position: relative;
   z-index: 1;
   min-height: 0;
