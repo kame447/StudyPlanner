@@ -15,6 +15,9 @@ import { setWeeklyPlanningTraceRepositoryForTests } from '../trace/weeklyPlannin
 import { createWeeklyDraftBlocksFromPreviewCandidates } from '../preview/weeklyPlanningPreviewBlocks';
 import { parseWeeklyPlanningPlanSourceId, WEEKLY_PLANNING_PLAN_SOURCE_TYPE } from '../planning/weeklyPlanningPlanProvenance';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticTypesV5';
+import * as aiConfig from '../../../lib/aiConfig';
+import * as firebaseClient from '../../../lib/firebaseClient';
+import type { FocusedAuthorizationDecisionContext } from '../../../../shared/focusedAuthorizationDecision';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutionTypes';
 
 // These configuration values are captured while production modules initialize.
@@ -148,4 +151,86 @@ it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted previe
   mode = 'valid'; semanticCount = 0; responseDocument = { ...semantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] };
   expect((await submit('ありがとう')).accepted).toBe(true);
   expect((await spy.mock.results[2].value).failure).toBeUndefined(); unsaved();
+});
+
+it('consumes real Worker Jev-to-Luna fallback through focused authorization before explicit save', async () => {
+  const proxyUrl = 'https://proxy.fixture.test/chat/completions';
+  vi.spyOn(aiConfig, 'usesCloudflareOpenAiProxy').mockReturnValue(true);
+  vi.spyOn(aiConfig, 'getCloudflareAiProxyUrl').mockReturnValue(proxyUrl);
+  vi.spyOn(firebaseClient, 'getFirebaseAuth').mockReturnValue({
+    currentUser: { getIdToken: async () => 'fixture-session' },
+  } as ReturnType<typeof firebaseClient.getFirebaseAuth>);
+  const completionFixture = fetch;
+  const proxyRequests: Array<RequestBody & { decisionContext?: FocusedAuthorizationDecisionContext }> = [];
+  const fallbackOrder: string[] = [];
+  const jevRequests: Array<{ state: FocusedAuthorizationDecisionContext['state'] }> = [];
+  const env = {
+    OPENAI_API_KEY: 'fixture-luna-key', OPENROUTER_API_KEY: 'fixture-jev-key',
+    OPENAI_BASE_URL: 'https://provider.fixture.test/v1', FIREBASE_WEB_API_KEY: 'fixture-project',
+    JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+    AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 1 }) }) },
+  };
+  // The app (DOM/ES2020) and Worker (Cloudflare/ES2022) are typechecked separately.
+  // Load the real Worker at this HTTP seam without merging their ambient type environments.
+  const { default: worker } = await vi.importActual<{
+    default: { fetch(request: Request, bindings: typeof env): Promise<Response> };
+  }>('../../../../workers/ai-proxy/src/worker');
+  vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const endpoint = String(url);
+    if (endpoint === proxyUrl) {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer fixture-session');
+      proxyRequests.push(JSON.parse(String(init?.body)));
+      return worker.fetch(new Request(endpoint, init), env);
+    }
+    if (endpoint.startsWith('https://identitytoolkit.googleapis.com/')) {
+      return Response.json({ users: [{ localId: OWNER, emailVerified: true }] });
+    }
+    if (endpoint.endsWith('/api/alpha/decisions')) {
+      fallbackOrder.push('jev');
+      jevRequests.push(JSON.parse(String(init?.body)));
+      return Response.json({ error: 'fixture temporarily unavailable' }, { status: 503 });
+    }
+    const body = JSON.parse(String(init?.body)) as RequestBody;
+    if (body.response_format?.json_schema?.name === 'weekly_planning_focused_authorization_v5') fallbackOrder.push('luna');
+    return completionFixture(url, init);
+  }));
+  responseDocument = { ...semantic(), planningIntent: 'discuss' };
+  const spy = gateway(); const { ref, database, submit, unsaved } = await mount();
+  await submit();
+  expect(ref.current!.state.intakeState?.status).toBe('needs_scope');
+  expect(ref.current!.state.previewCandidates).toEqual([]); unsaved();
+  const acceptedGraph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  expect(acceptedGraph.tasks).toHaveLength(1);
+  calls = []; proxyRequests.length = 0; semanticCount = 0;
+  expect((await submit('その条件で作成してください')).accepted).toBe(true);
+  expect((await spy.mock.results[1].value).failure).toBeUndefined();
+  expect(fallbackOrder).toEqual(['jev', 'luna']);
+  expect(jevRequests).toHaveLength(1);
+  expect(jevRequests[0].state.currentUserText).toBe('その条件で作成してください');
+  const focusedRequests = proxyRequests.filter(request => request.decisionContext?.purpose === 'focused_authorization');
+  expect(focusedRequests).toHaveLength(1);
+  expect(focusedRequests[0].decisionContext).toMatchObject({
+    requestId: spy.mock.calls[1][0].pending.requestId, inputRevision: acceptedGraph.revision,
+    previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
+    state: { currentUserText: 'その条件で作成してください' },
+  });
+  expect(semanticCount).toBe(0);
+  const candidates = ref.current!.state.previewCandidates!;
+  expect(candidates.length).toBeGreaterThan(0); unsaved();
+  const approvedGraph = ref.current!.exportConversationSnapshot()!.graph;
+  for (const key of ['tasks', 'workloads', 'effortEstimates'] as const) expect(approvedGraph[key]).toEqual(acceptedGraph[key]);
+  expect(candidates.map(candidate => candidate.title)).toEqual(['数学 20問']);
+  // The existing allocation policy adds 10% safety and rounds 40 minutes up to a 5-minute slot.
+  expect(candidates.reduce((minutes, candidate) => minutes + candidate.durationMinutes, 0)).toBe(45);
+  const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+  await act(async () => { ref.current!.createDraftBlocks(blocks); }); unsaved();
+  expect(ref.current!.approvalAvailability.kind).toBe('eligible');
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(database.metrics.planWrites).toBe(candidates.length);
+  expect(database.plans.size).toBe(candidates.length);
+  for (const plan of database.plans.values()) {
+    expect(candidates).toContainEqual(expect.objectContaining({ title: plan.title, date: plan.date, startTime: plan.startTime, endTime: plan.endTime }));
+  }
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(database.metrics.planWrites).toBe(candidates.length);
 });
