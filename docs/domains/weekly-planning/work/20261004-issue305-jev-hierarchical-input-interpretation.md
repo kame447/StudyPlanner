@@ -15,7 +15,9 @@ Reference implementation: Jevbox `7e4562124c49d0e6a527609e872b7627e00ef604`（`s
   3. semantic latency（実測 p50 / p95）
   4. semantic cost（実 usage）
   5. semantic correctness（全命題・対象・scope の保存）
-- Jev で扱う field の数は KPI にしない。field 単位・head 単位で Jev を足しても、同じ turn に Luna が残れば KPI 上の効果は 0 である。
+- Jev で扱う field の数は KPI にしない。
+- 五つの KPI は別々に測る。同じ turn に Luna が残れば、その turn は semantic-Luna-free rate には寄与しない。それでも、実行された Luna 呼出しが減れば（例：2回 → 1回）dispatch / turn は改善する。Luna が残ることは「全 KPI の効果が 0」と同じではない。
+- 逆に、field 単位・head 単位で Jev を足しても、実行される Luna 呼出しが同じなら dispatch の削減は 0 で、Jev の分だけ latency と cost が増える。
 
 ## 採用規則
 
@@ -32,7 +34,10 @@ unit とは、次の五つを一つにまとめた turn 型の transaction で�
 採用ゲート（すべて AND。閾値は結果を見る前に owner が事前登録する）：
 
 1. **頻度**：Phase 0 census で、eligible な turn が実際にある。
-2. **削減の実測**：事前登録した全 turn の分母（weekly-planning と user-context は別）で、semantic Luna dispatch の実数/turn が同じ turn の Luna baseline より減る。initial / focused / audit / repair / retry / fallback / shadow / race の**すべての呼出しを数える**。shadow や race の Luna、initial の後に動く repair は「削減」に数えない（呼出しとしては必ず集計する）。
+2. **削減の実測**：事前登録した全 turn の分母（weekly-planning と user-context は別）で、semantic Luna dispatch の実数 / turn が、同じ turn の Luna baseline より減る。
+   - initial / focused / audit / repair / retry / fallback / shadow / race の、**実行されたすべての呼出しを数え**、同じ turn どうしで合計の差を取る（paired）。repair の呼出しが実測で減ったなら、それも削減として数える。
+   - Luna を1回でも実行した turn（shadow・race を含む）は、free な turn とは数えない。
+   - 下の三つの率と dispatch / turn を分けて報告する。
 3. **安全**：accepted 群の joint correctness と joint false acceptance（veto の偽陰性を含む）が、事前登録の上限以内で、同じ turn の Luna baseline に対して非劣性である。候補漏れを注入しても重大な scope の欠落が起きない。none・低信頼・stale・revision の不一致は、必ず全文 Luna か reject になる。
 4. **校正**：閾値は別の calibration set で決め、未消費の封印 holdout で一度だけ判定する。confidence を accuracy の代わりにしない。
 5. **label**：出所（synthetic / `opus-5.5-limited-judge` / human）・独立性・不確実性の区間を示す。synthetic や model judge を gold と呼ばない。区間が判定に足りなければ未証明として hold にする。
@@ -42,14 +47,14 @@ unit とは、次の五つを一つにまとめた turn 型の transaction で�
 
 - field 単位・head 単位の Jev 化、hierarchy や menu 幅という表現の選択
 - 下記の基盤（questionCode の修正、計測、候補 manifest の primitive）。これらを merge しても、採用ゲートの通過にはならない。基盤の merge は「既存の挙動を壊さない」ことの確認であり、「semantic Luna を減らした」ことの証明ではない。
-- 同じ turn に semantic Luna が残る部分的な Jev 化
+- 実行される Luna 呼出しを1回も減らさない Jev 化（Jev を同じ Luna 呼出しの前に足すだけのもの）
 
 **現時点の採用は 0 件**である。既存の D1 / D2 / #339 は実装済み・off・未証明で、有効化にも同じゲートを課す。過去に「採用（off）」とした単位（focused authorization、focused contextual、temporal scope repair、user-context routing）の扱いは下の「前回の判定」を参照。
 
 ## 結論
 
 1. Jevbox 型の階層で消えるのは、「一つの menu に入る候補数の上限」という機械的な blocker だけである。既存の no-go / hold を解除する証拠はなく、hierarchy が flat より優れるという実測も、semantic Luna 削減の新しい実績もない。
-2. 移す価値があるのは階層そのものより、application が所有する候補集合、none、menu 内の確率 gate、provider 前後での権限の再確認というパターンである。candidateSetHash・候補の追加検出・source revision・selection epoch・commit 時の比較は StudyPlanner 側の**新規設計**で、Jevbox にはない。
+2. 移す価値があるのは階層そのものより、application が所有する候補集合、none、menu 内の確率 gate、provider の前後と commit 時の再照合というパターンである。Jevbox の filing には source と folder の snapshot を commit の transaction 内で再照合する仕組みがある（下記）。一方、候補集合全体の hash・候補の追加検出・StudyPlanner の selection epoch は Jevbox になく、StudyPlanner 側の**新規設計**である。
 3. 最優先は新しい tree ではない。順に、(i) turn 単位の semantic dispatch の計測と census、(ii) focused contextual の questionCode 欠落の修正と新しい独立評価、(iii) 頻度と契約が成立した候補だけの対称比較、である。
 
 ## Jevbox から学ぶこと / 移さないこと
@@ -58,11 +63,14 @@ Jevbox `7e456212` は参照実装であり、StudyPlanner の正本ではない�
 
 **学ぶこと**
 
-- **application が持つ tree**：Jev は tree を生成しない。候補は application が所有する実在の entity である。
+- **application が持つ tree**：Jev は tree を生成しない。葉は application が所有する実在の entity（document・section・folder）である。ただし中間の routing group は、application が機械的に作る仮想の group で、実在の entity ではない。filing の root では、生成 model が新しい folder を提案する（これは移さない。下記）。
 - **none**：候補外への逃げ道を menu ごとに持つ。StudyPlanner では none は「全文を既存 Luna へ」を意味する。
-- **確率 gate**：filing は同じ menu 内の top と margin で gate する（`server/organization.ts:133–152`）。曖昧なら近い実在の parent に留まる。StudyPlanner では「留まる」を「部分 commit せず全文を Luna へ」と読み替える。
-- **bounded menu**：retrieval は menu 64（`server/jev.ts:5–22` の `menuSize`）、filing は子 16（`filingMenuSize`）＋ here / none。group 化は連続した slice で、`size=max(m, ceil(n/m))`（`server/retrieval.ts:158–208`）。
-- **freshness**：各展開の前後で読み取り権限を再確認する（`server/retrieval.ts` の `canRead`）。ただし Jevbox には候補集合の hash や content revision の固定はない。
+- **確率 gate**：filing は、同じ menu 内で top の確率 ≥ 0.65 かつ top − 次点 ≥ 0.2 のときだけ選ぶ（`server/organization.ts:133–152`）。confidence という field ではなく、Choice の確率分布から計算する。root 以外で曖昧なら、実在の parent に留まる。root で曖昧なら、留まる先がないので新しい branch の提案へ進む。StudyPlanner では「留まる」を「部分 commit せず全文を Luna へ」と読み替え、root の例外は移さない。
+- **bounded menu**：retrieval は子 64＋none（`server/jev.ts:5–22` の `menuSize`）。filing は子 16（`filingMenuSize`）に、該当する場合の here / none / 提案した folder の選択肢が加わる。子が menu 幅を超えると、連続した slice の仮想 group を再帰的に作る（`size=max(m, ceil(n/m))`、`server/retrieval.ts:158–208`）。
+- **freshness**：retrieval と filing で範囲が違う。
+  - retrieval は、routing の前と provider の応答の後に読み取り権限を再確認する（`server/retrieval.ts` の `canRead`）。内容の revision は照合しない。
+  - filing は、document の状態・parent・名前・解析結果と attempt の同一性（`server/organization.ts:318–346`）、folder の parent・名前・説明と書き込み権限（`:402–430`）を照合する。照合は各 decision の前（`:435–437`）、planning の後と commit の transaction 内（`:549–552`）で行い、移動先の権限も確認する（`:559` 以降）。
+  - どちらにも、候補集合全体の hash、候補の追加の検出、応答ごとの content hash の保証はない。
 
 **移さないこと**
 
@@ -71,13 +79,22 @@ Jevbox `7e456212` は参照実装であり、StudyPlanner の正本ではない�
 - 0.65 / 0.2 の閾値。StudyPlanner の日本語 corpus で、node の種類・候補数・深さごとに校正するまで使わない。
 - single child で Choice を呼ばずに p=1 とする扱い、route score（幾何平均）を正解確率として扱うこと、group label（子の説明の切り詰め連結）を evidence として扱うこと。qualifier が label から落ちる menu は不適格とする。
 
+**Jevbox の比較実験とその限界**（`docs/section-sampling-2026-10-02.md`）
+
+- 固定した 240 問（answerable 212）の pilot で、section の outline だけを渡す腕と、選んだ原文の抜粋を加える腕を比べた。
+  - review 後の根拠の到達：186/212（87.7%）→ 193/212（91.0%）。
+  - provider への request：1,801 → 1,589（−11.8%。主に evidence scoring の呼出しが減った）。
+  - request body の文字数：+38.7%。文字数は payload の目安で、token や金額の測定ではない。
+- 両腕は同じ hierarchy・beam・予算を使っている。比較したのは routing に渡す内容（抜粋か outline か）で、**flat と hierarchy の比較でも、意味抽出の比較でもない**。
+- 各腕1回の実行、model 補助の label、変化した label だけの review、共有された document という限界がある。StudyPlanner の速度・費用・正確さについては、ここから何も言えない。
+
 **menu 幅**：provider の Choice の上限 255 と、menu 幅の方針は別物である。commit 対象 16・discovery 64＋none は校正前の試験パラメータで、architecture の上限でも精度の保証でもない。flat 101 を制約違反として比較から外さない。幅 × 深さ × latency × payload × joint risk で決める。
 
 ## field ごとの分類
 
 V5 semantic schema（18 object、124 field、145 path：closed 39 / bounded 9 / open 76 / cross-field 21）を棚卸しした。
 
-語：**既存0-Luna** = 実装済みの境界（off・未証明）。**研究** = 契約と census が成立した場合に対称比較で検証する候補。**field-only** = field 単体は closed でも、同じ turn に open な意味が残るので KPI 上は 0。**Luna 維持** = semantic owner は Luna。
+語：**既存0-Luna** = 実装済みの境界（off・未証明）。**研究** = 契約と census が成立した場合に対称比較で検証する候補。**field-only** = field 単体は closed でも、同じ turn に open な意味が残り、Luna 呼出しを減らさないので、それだけでは dispatch の削減にならない。**Luna 維持** = semantic owner は Luna。
 
 | field | 性質 | 判定 | 主な blocker |
 | --- | --- | --- | --- |
@@ -161,7 +178,7 @@ veto head（condition_change / independent_meaning 等）は「誤っても Luna
 | registered material の「残り全部」 | 原理的に可能 | 研究（D6、契約依存） | 12件の切り落とし、名前抽出の回避 | adapter、current intent、stale |
 | material → chapter → section | Luna | 維持 | なし | domain の正本がない |
 | temporal side contribution | no-go | 維持 | なし | 初回 Luna が残る |
-| temporal scope repair | 採用（off） | 採用規則のもとでは未採用扱い（0回には寄与しない。repair 段の削減も全 turn の実測で証明されていない） | なし | initial の後に動く |
+| temporal scope repair | 採用（off） | 採用規則のもとでは未採用扱い（初回 Luna の後に動くので free な turn は作らない。repair 段の呼出しの削減は、全 turn の paired 実測でまだ証明されていない。便益が 0 だという判定ではない） | なし | initial の後に動く |
 
 C7 は今回の証拠範囲に現れなかったため判定していない。
 
@@ -191,7 +208,7 @@ C7 は今回の証拠範囲に現れなかったため判定していない。
 
 **列**
 
-- 出所（actual / fixture / synthetic）、baseline の model と mode、相関 ID
+- 出所（actual / fixture / synthetic）、baseline の model と mode、相関 ID。actual・fixture・synthetic は別の母集団として集計し、synthetic に例があることを本番の頻度とみなさない。実測の証拠がなければ hold か owner の判断とし、新しい収集の承認はこの記録からは生じない
 - questionCode、input / graph / source revision、binding の状態
 - 対象数・独立命題数、open な値の種類（新 title・label、自由な数値、日付の関係、custom）
 - C5 の参照形式（ordinal / deictic / content-addressed / new-value）
@@ -214,7 +231,7 @@ user text を保存しない typed telemetry を優先する。real-user の tel
 | --- | --- | --- |
 | 0 | focused contextual の questionCode を Jev に見える typed 契約へ入れる（または question 別の catalog を application が選ぶ）。envelope と state の不一致は fail closed。wire レベルの request body テスト、questionCode だけが違う minimal pair、新しい封印 corpus での paired 評価。D1 の直接受理・誤り・latency・cost を測り直す | 基盤の修正＋既存 D1 の再評価。修正の merge は採用ではない |
 | 1 | Phase 0 census と turn 単位の semantic dispatch 計測 | 基盤。採用ではない |
-| 2 | 候補 manifest と階層 transaction の共通 primitive（安定した候補 ID と順序、none、candidateSetHash、source / input revision、selection epoch、commit 直前の freshness 再検証、部分 commit の禁止、校正方針の明示。0.65 / 0.2 を production の値として固定しない） | 基盤。採用ではない |
+| 2 | 候補 manifest と階層 transaction の共通 primitive（安定した候補 ID と順序、none、candidateSetHash、source / input revision、selection epoch、部分 commit の禁止、校正方針の明示。0.65 / 0.2 を production の値として固定しない）。source の状態・権限・候補集合の一致を、provider に候補を見せる前、選択の後、commit の直前の3点で確認する | 基盤。採用ではない |
 | 3 | C5-tuple の PoC（manifest に完全 tuple を固定できる scope に限る） | 採用ゲートの対象。lifecycle・supersession・scope が一意に閉じなければ hold として報告し、実装を押し込まない |
 | 4 | D5 の PoC（target・measurement・scope が machine state で確定している場合に限る） | 採用ゲートの対象。flat / 未解釈 span / hierarchy / Luna の対称比較 |
 | 5 | Phase 0 の頻度と契約の閉包で D5′ か D6 を選ぶ | 採用ゲートの対象。どちらも安全に閉じなければ、枠を埋めるためだけに実装しない |
