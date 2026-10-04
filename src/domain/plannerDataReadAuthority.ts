@@ -57,7 +57,16 @@ export interface PlannerDataLoadStart {
   ownerChanged: boolean;
 }
 
+export type PlannerRepairTarget = 'actual-material' | 'month-events';
+
+// Fixed repair groups, in stable order; tickets never borrow a caller's mutable array.
+function repairTargets(...groups: readonly (readonly PlannerRepairTarget[])[]): readonly PlannerRepairTarget[] {
+  return Object.freeze((['actual-material', 'month-events'] as const).filter(target =>
+    groups.some(group => group.includes(target))));
+}
+
 export interface PlannerDataReconciliationTicket extends PlannerDataProjectionLease {
+  readonly targets: readonly PlannerRepairTarget[];
   readonly generation: number;
   readonly requestId: number;
   readonly attemptId: number;
@@ -65,7 +74,8 @@ export interface PlannerDataReconciliationTicket extends PlannerDataProjectionLe
 
 export interface PlannerDataRecovery {
   ownerId: string;
-  reason: 'full-read' | 'actual-material' | 'full-read-and-actual-material';
+  reason: 'full-read' | 'actual-material' | 'full-read-and-actual-material'
+    | 'month-events' | 'projections' | 'full-read-and-projections';
   phase: 'waiting' | 'refreshing' | 'failed';
   canRetry: boolean;
 }
@@ -76,8 +86,9 @@ export interface PlannerDataReadSnapshot {
   projectionLease: PlannerDataProjectionLease | null;
 }
 
-type ActualMaterialConcern = {
+type ProjectionConcern = {
   requestId: number;
+  targets: readonly PlannerRepairTarget[];
   phase: 'pending' | 'reading' | 'failed';
   attemptId?: number;
 };
@@ -90,7 +101,7 @@ export function isPlannerDataReadyForOwner(availability: PlannerDataAvailability
   return availability.status === 'ready' && availability.ownerId === ownerId;
 }
 
-/** Full-load health and the one independently repairable projection concern. */
+/** Full-load health and one repair batch spanning the two supported projection groups. */
 export class PlannerDataReadAuthority {
   private ownerId: string | null = null;
   private epoch = 0;
@@ -99,7 +110,7 @@ export class PlannerDataReadAuthority {
   private attemptId = 0;
   private acceptedRevision = 0;
   private full: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
-  private concern: ActualMaterialConcern | null = null;
+  private concern: ProjectionConcern | null = null;
   private observedAt: string | null = null;
   private lastSuccessfulAt: string | null = null;
 
@@ -141,9 +152,15 @@ export class PlannerDataReadAuthority {
     let recovery: PlannerDataRecovery | null = null;
     if (this.ownerId !== null && (this.full !== 'ready' || this.concern !== null)) {
       const fullProblem = this.full === 'loading' || this.full === 'failed';
+      const hasMonthEvents = this.concern?.targets.includes('month-events');
+      const projectionReason = hasMonthEvents
+        ? this.concern!.targets.includes('actual-material') ? 'projections' : 'month-events'
+        : 'actual-material';
       recovery = {
         ownerId: this.ownerId,
-        reason: fullProblem ? (this.concern ? 'full-read-and-actual-material' : 'full-read') : 'actual-material',
+        reason: fullProblem
+          ? this.concern ? hasMonthEvents ? 'full-read-and-projections' : 'full-read-and-actual-material' : 'full-read'
+          : projectionReason,
         phase: this.full === 'loading' ? 'refreshing' : this.full === 'failed' || this.concern?.phase === 'failed'
           ? 'failed' : this.concern?.phase === 'reading' ? 'refreshing' : 'waiting',
         canRetry: this.full === 'failed' || (this.full !== 'loading' && this.concern?.phase === 'failed'),
@@ -164,7 +181,7 @@ export class PlannerDataReadAuthority {
     this.generation += 1;
     this.full = 'loading';
     this.observedAt = observedAt;
-    if (this.concern?.phase === 'reading') this.concern = { requestId: this.concern.requestId, phase: 'pending' };
+    if (this.concern?.phase === 'reading') this.concern = { ...this.concern, phase: 'pending', attemptId: undefined };
     return {
       token: { ownerId, epoch: this.epoch, generation: this.generation, requestRevision: this.requestRevision },
       availability: this.read(), ownerChanged,
@@ -175,16 +192,27 @@ export class PlannerDataReadAuthority {
     return this.isOwnerCurrent(token) && token.generation === this.generation && this.full === 'loading';
   }
 
-  succeed(token: PlannerDataLoadToken, observedAt: string, projectionStable = true): PlannerDataAvailability | null {
+  succeed(
+    token: PlannerDataLoadToken,
+    observedAt: string,
+    projectionStable = true,
+    successfulTargets: readonly PlannerRepairTarget[] = [],
+  ): PlannerDataAvailability | null {
     if (!this.isCurrent(token)) return null;
-    const needsReconciliation = !projectionStable || token.requestRevision !== this.requestRevision;
+    // A full snapshot covers older requests, but cannot discharge requests or
+    // successful completions observed while its collection reads were in flight.
+    const targets = repairTargets(
+      projectionStable ? [] : ['actual-material'],
+      successfulTargets,
+      token.requestRevision !== this.requestRevision ? this.concern?.targets ?? [] : [],
+    );
     this.full = 'ready';
     this.lastSuccessfulAt = observedAt;
     this.observedAt = observedAt;
     this.acceptedRevision += 1;
     this.concern = null;
     // Retire all prior tickets, and atomically express new overlap evidence.
-    if (needsReconciliation) this.requireActualMaterialReconciliation(token, observedAt);
+    if (targets.length) this.requireReconciliation(token, observedAt, targets);
     return this.read();
   }
 
@@ -196,8 +224,13 @@ export class PlannerDataReadAuthority {
   }
 
   requireActualMaterialReconciliation(scope: PlannerDataOwnerScope, observedAt: string): boolean {
-    if (!this.isOwnerCurrent(scope)) return false;
-    this.concern = { requestId: ++this.requestRevision, phase: 'pending' };
+    return this.requireReconciliation(scope, observedAt, ['actual-material']);
+  }
+
+  requireReconciliation(scope: PlannerDataOwnerScope, observedAt: string, requested: readonly PlannerRepairTarget[]): boolean {
+    if (!this.isOwnerCurrent(scope) || !requested.length) return false;
+    const targets = repairTargets(this.concern?.targets ?? [], requested);
+    this.concern = { requestId: ++this.requestRevision, targets, phase: 'pending' };
     this.observedAt = observedAt;
     return true;
   }
@@ -206,7 +239,7 @@ export class PlannerDataReadAuthority {
     if (!this.isOwnerCurrent(scope) || this.full === 'loading' || this.concern?.phase !== 'pending') return null;
     this.concern = { ...this.concern, phase: 'reading', attemptId: ++this.attemptId };
     this.observedAt = observedAt;
-    return { ...scope, generation: this.generation, requestId: this.concern.requestId,
+    return { ...scope, targets: this.concern.targets, generation: this.generation, requestId: this.concern.requestId,
       attemptId: this.attemptId, acceptedRevision: this.acceptedRevision };
   }
 
@@ -234,7 +267,7 @@ export class PlannerDataReadAuthority {
 
   private finishAttempt(ticket: PlannerDataReconciliationTicket, observedAt: string, phase: 'pending' | 'failed'): boolean {
     if (!this.isCurrentReconciliation(ticket)) return false;
-    this.concern = { requestId: ticket.requestId, phase };
+    this.concern = { requestId: ticket.requestId, targets: ticket.targets, phase };
     this.observedAt = observedAt;
     return true;
   }
@@ -247,7 +280,7 @@ export class PlannerDataReadAuthority {
 
   retryReconciliation(scope: PlannerDataOwnerScope, observedAt: string): boolean {
     if (!this.isOwnerCurrent(scope) || this.full === 'loading' || this.concern?.phase !== 'failed') return false;
-    this.concern = { requestId: this.concern.requestId, phase: 'pending' };
+    this.concern = { requestId: this.concern.requestId, targets: this.concern.targets, phase: 'pending' };
     this.observedAt = observedAt;
     return true;
   }

@@ -20,6 +20,7 @@ import {
   PlannerDataReadAuthority,
   type PlannerDataAvailability,
   type PlannerDataRecovery,
+  type PlannerRepairTarget,
 } from '../domain/plannerDataReadAuthority';
 import {
   normalizePlannerTimetableData,
@@ -269,7 +270,11 @@ export function usePlannerDataState({
   const publishReadSnapshot = useCallback(() => {
     setPlannerDataReadSnapshot(plannerDataReadAuthority.readSnapshot());
   }, [plannerDataReadAuthority]);
-  const reconciliationRef = useRef<PlannerMutationReconciliation<[Actual[], StudyMaterial[]]> | null>(null);
+  type RepairSnapshot = {
+    actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[] };
+    monthEvents?: MonthEvent[];
+  };
+  const reconciliationRef = useRef<PlannerMutationReconciliation<RepairSnapshot> | null>(null);
   if (!reconciliationRef.current) reconciliationRef.current = new PlannerMutationReconciliation(plannerDataReadAuthority);
   const reconciliation = reconciliationRef.current;
   const mounted = useRef(false);
@@ -278,18 +283,29 @@ export function usePlannerDataState({
   useLayoutEffect(() => {
     reconciliation.configure({
       isCurrent: ownerId => mounted.current && userId === ownerId && mutationScope.isCurrent(),
-      read: async ownerId => {
-        const [nextActuals, nextMaterials] = await Promise.all([
-          plannerRepository.getActuals(ownerId),
-          plannerRepository.getStudyMaterials(ownerId),
+      read: async (ownerId, targets) => {
+        const [actualMaterial, nextMonthEvents] = await Promise.all([
+          targets.includes('actual-material') ? Promise.all([
+            plannerRepository.getActuals(ownerId),
+            plannerRepository.getStudyMaterials(ownerId),
+          ]) : undefined,
+          targets.includes('month-events') ? plannerRepository.getMonthEvents(ownerId) : undefined,
         ]);
-        // Prepare the entire replacement before either setter. Persisted legacy
-        // rows can fail sorting; that is a retryable read/preparation failure.
-        return [nextActuals, sortStudyMaterials(nextMaterials)];
+        // Prepare every requested group before publishing any. A failure keeps
+        // the whole batch retryable, without certifying or replacing one slice.
+        return {
+          actualMaterial: actualMaterial ? {
+            actuals: actualMaterial[0], materials: sortStudyMaterials(actualMaterial[1]),
+          } : undefined,
+          monthEvents: nextMonthEvents ? sortMonthEvents(nextMonthEvents) : undefined,
+        };
       },
-      publish: ([nextActuals, nextMaterials]) => {
-        rawSetActuals(nextActuals);
-        rawSetStudyMaterials(nextMaterials);
+      publish: snapshot => {
+        if (snapshot.actualMaterial) {
+          rawSetActuals(snapshot.actualMaterial.actuals);
+          rawSetStudyMaterials(snapshot.actualMaterial.materials);
+        }
+        if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
       },
       changed: publishReadSnapshot,
     });
@@ -313,11 +329,18 @@ export function usePlannerDataState({
     reconciliation.activateOwner(userId);
     reconciliation.pump();
   }, [userId, mutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation]);
-  function trackMutation<Args extends unknown[], Result>(operation: (...args: Args) => Promise<Result>) {
+  function trackMutation<Args extends unknown[], Result>(
+    operation: (...args: Args) => Promise<Result>,
+    targets: readonly PlannerRepairTarget[] = [],
+  ) {
     return mutationScope.bindMutation(async (...args: Args) => {
-      const ticket = reconciliation.beginMutation();
-      try { return await operation(...args); }
-      finally { reconciliation.settleMutation(ticket); }
+      const ticket = reconciliation.beginMutation(targets);
+      let outcome: 'success' | 'failure' = 'failure';
+      try {
+        const result = await operation(...args);
+        outcome = 'success';
+        return result;
+      } finally { reconciliation.settleMutation(ticket, outcome); }
     });
   }
   const projectionLease = plannerDataReadSnapshot.projectionLease;
@@ -479,6 +502,7 @@ export function usePlannerDataState({
         loadStart.token,
         new Date().toISOString(),
         reconciliation.isQuiescentSince(fullReadActivity),
+        reconciliation.successfulTargetsSince(fullReadActivity),
       );
       if (readyAvailability) publishReadSnapshot();
     } catch (error) {
@@ -738,14 +762,14 @@ export function usePlannerDataState({
     }
   }
 
-  function showDeleteUndoNotice(onUndo: () => Promise<void>) {
+  function showDeleteUndoNotice(onUndo: () => Promise<void>, targets: readonly PlannerRepairTarget[] = []) {
     showNotice('削除しました', 'info', {
       actionLabel: '元に戻す',
       durationMs: 8000,
       placement: 'bottom',
       onAction: async () => {
         try {
-          await trackMutation(onUndo)();
+          await trackMutation(onUndo, targets)();
           showNotice('元に戻しました。', 'success');
         } catch (error) {
           showNotice(resolveErrorMessage(error, '復元できませんでした。'), 'error');
@@ -1115,13 +1139,17 @@ export function usePlannerDataState({
       await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
       monthEventState.commit(monthEventOperation);
       showDeleteUndoNotice(async () => {
+        const undoProjection = plannerDataReadAuthority.captureProjectionLease();
         await plannerRepository.upsertMonthEvent(monthEvent);
-        setMonthEvents((current) =>
-          sortMonthEvents(
-            upsertByKey(current, monthEvent, (item) => item.id),
-          ),
-        );
-      });
+        // A newer accepted read may contain a newer stored version. The tracked
+        // successful settlement repairs that projection without replaying this row.
+        if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
+          && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
+          setMonthEvents((current) =>
+            sortMonthEvents(upsertByKey(current, monthEvent, (item) => item.id)),
+          );
+        }
+      }, ['month-events']);
     } catch (error) {
       monthEventState.reject(monthEventOperation);
       showNotice(
@@ -1819,8 +1847,8 @@ export function usePlannerDataState({
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
     saveDayNote: trackMutation(saveDayNote),
-    saveMonthEvent: trackMutation(saveMonthEvent),
-    deleteMonthEvent: trackMutation(deleteMonthEvent),
+    saveMonthEvent: trackMutation(saveMonthEvent, ['month-events']),
+    deleteMonthEvent: trackMutation(deleteMonthEvent, ['month-events']),
     saveTodo: trackMutation(saveTodo),
     scheduleTodoAsPlan: trackMutation(scheduleTodoAsPlan),
     deleteTodo: trackMutation(deleteTodo),

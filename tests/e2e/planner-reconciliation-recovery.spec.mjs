@@ -1,4 +1,4 @@
-import { expect, test } from './support/fixed-clock.mjs';
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 const HARNESS_URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
 // Gate the actual Vite-served production module, never a replacement loader.
@@ -308,3 +308,141 @@ for (const recoveredBeforeModule of [false, true]) {
     }
   });
 }
+
+const MONTH_EVENT_TITLE = '再読み込み後も残る月の主要予定';
+const monthSelection = snapshot => ({ monthDate: snapshot.monthDate, selectedDate: snapshot.selectedDate });
+const durableMonthEvents = page => page.evaluate(() => window.__plannerRecoveryRepository.readDurableMonthEvents());
+const monthPill = page => page.getByRole('grid', { name: '月間カレンダー', exact: true })
+  .locator('.month-major-event-pill').filter({ hasText: MONTH_EVENT_TITLE });
+
+async function failMonthReconciliationAfterHeldSave(page, whileHeld = async () => {}) {
+  const before = await repoSnapshot(page);
+  const storageBefore = await durableWrites(page);
+  const collectionsBefore = await durable(page);
+  await page.evaluate(({ date, title }) => {
+    window.__plannerRecoveryRepository.holdNextMonthWrite();
+    window.__plannerRecoveryHook.startMonthEvent({ date, title });
+  }, { date: E2E_TODAY, title: MONTH_EVENT_TITLE });
+  await expect.poll(async () => (await repoSnapshot(page)).pendingMonthWrites).toBe(1);
+  await expect.poll(async () => (await hookSnapshot(page)).monthEvents.map(event => event.title)).toEqual([MONTH_EVENT_TITLE]);
+  expect(await durableMonthEvents(page)).toEqual([]);
+  expect(await durableWrites(page)).toEqual(storageBefore);
+  expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length)).toEqual(['upsertMonthEvent']);
+  await whileHeld();
+  const selection = monthSelection(await hookSnapshot(page));
+  await page.evaluate(() => window.__plannerRecoveryHook.refresh());
+  await expect.poll(async () => {
+    const snapshot = await hookSnapshot(page);
+    return { monthEvents: snapshot.monthEvents, ready: snapshot.ready, phase: snapshot.recovery?.phase };
+  }).toEqual({ monthEvents: [], ready: false, phase: 'waiting' });
+  const accepted = await hookSnapshot(page);
+  expect(accepted.availability.status).toBe('stale');
+  expect(monthSelection(accepted)).toEqual(selection);
+  expect(await durableMonthEvents(page)).toEqual([]);
+  await expect(recovery(page)).toBeVisible();
+  const beforeTarget = calledMethods(await repoSnapshot(page));
+  // The full read has accepted its old calendar. Fail only the detached target
+  // read after the held real write is finally allowed to persist and return.
+  await page.evaluate(() => window.__plannerRecoveryRepository.failNextMonthRead());
+  expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseMonthWrite())).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+  await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  await expect(retry(page)).toBeEnabled();
+  await expect(recovery(page)).toContainText('学習データの最新表示を確認できませんでした。');
+  // Any writer overlapping a full read conservatively retains Actual/material.
+  // This real-App route therefore owes the combined union, not Month-only I/O.
+  expect(calledMethods(await repoSnapshot(page)).slice(beforeTarget.length).sort())
+    .toEqual(['getActuals', 'getMonthEvents', 'getStudyMaterials']);
+  const saved = await durableMonthEvents(page);
+  expect(saved).toEqual([expect.objectContaining({ title: MONTH_EVENT_TITLE, date: E2E_TODAY })]);
+  const failed = await hookSnapshot(page);
+  expect(failed.monthEvents).toEqual([]);
+  expect(failed.ready).toBe(false);
+  expect(monthSelection(failed)).toEqual(selection);
+  expect(await durable(page)).toEqual(collectionsBefore);
+  expect(calledMethods(await repoSnapshot(page)).filter(method => method === 'upsertMonthEvent')).toHaveLength(1);
+  return { saved, selection, collectionsBefore, fullTimestamp: accepted.availability.lastSuccessfulAt,
+    writes: writeMethods(await repoSnapshot(page)), storageWrites: await durableWrites(page),
+    callsAfterFailure: calledMethods(await repoSnapshot(page)), lifetime: { mounts: failed.mounts, unmounts: failed.unmounts } };
+}
+
+async function repairMonthWithoutReplay(page, expected, whileRetryHeld = async () => {}) {
+  expect(calledMethods(await repoSnapshot(page))).toEqual(expected.callsAfterFailure);
+  await page.evaluate(() => window.__plannerRecoveryRepository.holdTargetReads());
+  await retry(page).evaluate(button => { button.click(); button.click(); });
+  await expect.poll(async () => (await repoSnapshot(page)).pendingReads.length).toBe(3);
+  expect((await repoSnapshot(page)).pendingReads.sort()).toEqual(['getActuals', 'getMonthEvents', 'getStudyMaterials']);
+  expect((await hookSnapshot(page)).ready).toBe(false);
+  expect((await hookSnapshot(page)).monthEvents).toEqual([]);
+  expect(writeMethods(await repoSnapshot(page))).toEqual(expected.writes);
+  expect(await durableWrites(page)).toEqual(expected.storageWrites);
+  await whileRetryHeld();
+  expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads())).toBe(3);
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  await expect(recovery(page)).toHaveCount(0);
+  const repaired = await hookSnapshot(page);
+  expect(repaired.monthEvents).toEqual(expected.saved);
+  expect(monthSelection(repaired)).toEqual(expected.selection);
+  expect({ mounts: repaired.mounts, unmounts: repaired.unmounts }).toEqual(expected.lifetime);
+  expect(repaired.availability.lastSuccessfulAt).toBe(expected.fullTimestamp);
+  // Exact getter counts exclude full-load/normalization work and verify that the
+  // duplicate activation coalesced into one read-only retry, with no save replay.
+  expect(calledMethods(await repoSnapshot(page)).slice(expected.callsAfterFailure.length).sort())
+    .toEqual(['getActuals', 'getMonthEvents', 'getStudyMaterials']);
+  expect(writeMethods(await repoSnapshot(page))).toEqual(expected.writes);
+  expect(await durableWrites(page)).toEqual(expected.storageWrites);
+  expect(await durableMonthEvents(page)).toEqual(expected.saved);
+  expect(await durable(page)).toEqual(expected.collectionsBefore);
+  expect(await runtimeCalls(page)).toEqual([]);
+}
+
+test('MonthEvent recovery repairs the calendar without undoing newer month navigation desktop-light', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'desktop' && item.theme === 'light'));
+  await navigate(page, '予定');
+  await expect(page.getByRole('tab', { name: '月', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年8月');
+  const expected = await failMonthReconciliationAfterHeldSave(page, async () => {
+    await expect(monthPill(page)).toBeVisible();
+    await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+    await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年9月');
+  });
+  expect(expected.selection).toEqual({ monthDate: '2026-09-01', selectedDate: '2026-09-01' });
+  await page.clock.fastForward(4000);
+  await inspectGeometry(page, testInfo, 'desktop-light-month-recovery');
+  await repairMonthWithoutReplay(page, expected);
+  await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年9月');
+  // Only this explicit user navigation returns to the saved event's month.
+  await page.getByRole('button', { name: '前の期間へ', exact: true }).click();
+  await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年8月');
+  await expect(monthPill(page)).toBeVisible();
+  const path = testInfo.outputPath('desktop-light-month-calendar-repaired.png');
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach('saved MonthEvent visible after read-only repair', { path, contentType: 'image/png' });
+});
+
+test('MonthEvent recovery retains mobile AI input and blocks admission until read-only repair mobile-dark', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  await navigate(page, 'AI計画');
+  await composer(page).fill(TEXT);
+  await page.locator('.ai-planning-attachment-input').setInputFiles(image);
+  const expected = await failMonthReconciliationAfterHeldSave(page);
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(attachment(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+  await inspectGeometry(page, testInfo, 'mobile-dark-month-recovery-input', true);
+  await repairMonthWithoutReplay(page, expected, async () => {
+    await expect(composer(page)).toHaveValue(TEXT);
+    await expect(attachment(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+  });
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(attachment(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+  await expect(page.locator('.ai-planning-message-row.user')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__realWeeklyImageRead.pending())).toBe(0);
+  expect(await runtimeCalls(page)).toEqual([]);
+  await navigate(page, '予定');
+  await expect(page.locator('.schedule-period-picker-trigger')).toHaveText('2026年8月');
+  await expect(monthPill(page)).toBeVisible();
+});

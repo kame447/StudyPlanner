@@ -1,15 +1,16 @@
-import { PlannerDataReadAuthority, type PlannerDataOwnerScope, type PlannerDataReconciliationTicket } from './plannerDataReadAuthority';
+import { PlannerDataReadAuthority, type PlannerDataOwnerScope, type PlannerDataReconciliationTicket, type PlannerDataProjectionLease, type PlannerRepairTarget } from './plannerDataReadAuthority';
 
 export interface PlannerMutationActivity {
   readonly epoch: number;
   readonly started: number;
   readonly settled: number;
   readonly pending: number;
+  readonly successful: Readonly<Record<PlannerRepairTarget, number>>;
 }
 export interface PlannerMutationTicket { readonly epoch: number; readonly id: symbol }
 interface Configuration<T> {
   isCurrent: (ownerId: string) => boolean;
-  read: (ownerId: string) => Promise<T>;
+  read: (ownerId: string, targets: readonly PlannerRepairTarget[]) => Promise<T>;
   publish: (snapshot: T) => void;
   changed: () => void;
 }
@@ -20,7 +21,11 @@ export class PlannerMutationReconciliation<T> {
   private epoch = 0;
   private started = 0;
   private settled = 0;
-  private pending = new Set<symbol>();
+  private successful = { 'actual-material': 0, 'month-events': 0 };
+  private pending = new Map<symbol, {
+    targets: readonly PlannerRepairTarget[];
+    lease: PlannerDataProjectionLease | null;
+  }>();
   private running: { id: symbol; ticket: PlannerDataReconciliationTicket } | null = null;
   private configuration: Configuration<T> | null = null;
 
@@ -37,25 +42,51 @@ export class PlannerMutationReconciliation<T> {
     this.epoch += 1;
     this.started = 0;
     this.settled = 0;
+    this.successful = { 'actual-material': 0, 'month-events': 0 };
     this.pending.clear();
     this.running = null;
   }
 
-  beginMutation(): PlannerMutationTicket {
+  beginMutation(targets: readonly PlannerRepairTarget[] = []): PlannerMutationTicket {
     const id = Symbol('planner mutation');
     this.started += 1;
-    this.pending.add(id);
+    this.pending.set(id, { targets: [...new Set(targets)], lease: this.authority.captureProjectionLease() });
     return { epoch: this.epoch, id };
   }
 
-  settleMutation(ticket: PlannerMutationTicket): void {
-    if (ticket.epoch !== this.epoch || !this.pending.delete(ticket.id)) return;
+  settleMutation(ticket: PlannerMutationTicket, outcome: 'success' | 'failure' = 'failure'): void {
+    if (ticket.epoch !== this.epoch) return;
+    const mutation = this.pending.get(ticket.id);
+    if (!mutation) return;
+    // Successful-completion observations are local counters, not durable commit
+    // revisions. Record them and request repairs before releasing this writer.
+    let changed = false;
+    if (outcome === 'success' && mutation.lease && this.authority.isOwnerCurrent(mutation.lease)) {
+      for (const target of mutation.targets) this.successful[target] += 1;
+      if (this.authority.hasAcceptedProjectionChanged(mutation.lease) && mutation.targets.length
+        && this.configuration?.isCurrent(mutation.lease.ownerId)) {
+        changed = this.authority.requireReconciliation(mutation.lease, this.now(), mutation.targets);
+      }
+    }
+    this.pending.delete(ticket.id);
     this.settled += 1;
+    // Only notify after bookkeeping is complete: an observer may synchronously
+    // repeat settlement or reset/activate a new owner epoch.
+    if (changed) {
+      try { this.configuration?.changed(); } catch { /* The pump still owns recovery. */ }
+    }
     this.pump();
   }
 
   captureActivity(): PlannerMutationActivity {
-    return { epoch: this.epoch, started: this.started, settled: this.settled, pending: this.pending.size };
+    return { epoch: this.epoch, started: this.started, settled: this.settled, pending: this.pending.size,
+      successful: { ...this.successful } };
+  }
+
+  successfulTargetsSince(activity: PlannerMutationActivity): readonly PlannerRepairTarget[] {
+    if (activity.epoch !== this.epoch) return [];
+    return (['actual-material', 'month-events'] as const).filter(target =>
+      activity.successful[target] !== this.successful[target]);
   }
 
   isQuiescentSince(activity: PlannerMutationActivity): boolean {
@@ -63,9 +94,9 @@ export class PlannerMutationReconciliation<T> {
       && activity.settled === this.settled && activity.pending === 0 && this.pending.size === 0;
   }
 
-  request(scope: PlannerDataOwnerScope): void {
+  request(scope: PlannerDataOwnerScope, targets: readonly PlannerRepairTarget[] = ['actual-material']): void {
     if (!this.configuration?.isCurrent(scope.ownerId)) return;
-    if (this.authority.requireActualMaterialReconciliation(scope, this.now())) {
+    if (this.authority.requireReconciliation(scope, this.now(), targets)) {
       try { this.configuration.changed(); } catch { /* The pump still owns recovery. */ }
     }
     this.pump();
@@ -81,7 +112,7 @@ export class PlannerMutationReconciliation<T> {
       || !configuration.isCurrent(scope.ownerId) || this.running || this.pending.size > 0) return;
     const ticket = this.authority.beginReconciliation(scope, this.now());
     if (!ticket) return;
-    const id = Symbol('actual/material read');
+    const id = Symbol('planner projection read');
     this.running = { id, ticket };
     const activity = this.captureActivity();
     const current = () => this.running?.id === id && this.configuration?.isCurrent(scope.ownerId)
@@ -108,14 +139,14 @@ export class PlannerMutationReconciliation<T> {
       if (!current()) return;
       let snapshot: T;
       try {
-        snapshot = await configuration.read(scope.ownerId);
+        snapshot = await configuration.read(scope.ownerId, ticket.targets);
       } catch {
         if (!current() || discardUnstable()) return;
         failCurrentAttempt();
         return;
       }
       if (!current() || discardUnstable()) return;
-      // No await between final validation, both replacements, and authority publication.
+      // No await between final validation, requested replacements, and authority publication.
       try {
         this.configuration!.publish(snapshot);
       } catch {
