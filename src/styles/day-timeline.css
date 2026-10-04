@@ -645,7 +645,8 @@
 }
 
 
-.standalone-actual-editor-card fieldset {
+.standalone-actual-editor-card fieldset,
+.actual-editor-card {
   min-width: 0;
   margin: 0;
   border: 0;

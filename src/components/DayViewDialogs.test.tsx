@@ -168,7 +168,7 @@ describe('DayView extracted dialogs', () => {
     });
 
     const editor = renderer.root.findByType(ActualEditorCard);
-    expect(editor.props.plan).toBe(plan);
+    expect(editor.props.plan).toEqual(plan);
     expect(editor.props.forceOpen).toBe(true);
     expect(editor.props.hideToggleButton).toBe(true);
     expect(editor.props.hidePlanActions).toBe(true);

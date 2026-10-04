@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
@@ -27,6 +27,8 @@ interface ActualEditorCardProps {
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
   onClose?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+  isClosing?: boolean;
   forceOpen?: boolean;
   hideToggleButton?: boolean;
   hidePlanActions?: boolean;
@@ -42,6 +44,8 @@ export function ActualEditorCard({
   onSaveActual,
   onDeleteActual,
   onClose,
+  onPendingChange,
+  isClosing = false,
   forceOpen = false,
   hideToggleButton = false,
   hidePlanActions = false,
@@ -57,6 +61,43 @@ export function ActualEditorCard({
     setIsOpen(forceOpen || !actual);
     setSelectedCandidatePlanId(null);
   }, [actual?.id, forceOpen, plan]);
+
+  const [isPending, setIsPending] = useState(false);
+  const pendingMutation = useRef<object | null>(null);
+  const pendingObserver = useRef(onPendingChange);
+  useLayoutEffect(() => { pendingObserver.current = onPendingChange; }, [onPendingChange]);
+  useLayoutEffect(() => () => {
+    pendingMutation.current = null;
+    pendingObserver.current?.(false);
+  }, []);
+
+  async function runMutation(action: () => Promise<void>, failureMessage: string, close = true) {
+    if (pendingMutation.current || isClosing) return;
+    const attempt = {};
+    pendingMutation.current = attempt;
+    setIsPending(true);
+    pendingObserver.current?.(true);
+    setError('');
+    try {
+      await action();
+    } catch {
+      if (pendingMutation.current === attempt) {
+        pendingMutation.current = null;
+        setIsPending(false);
+        pendingObserver.current?.(false);
+        setError(failureMessage);
+      }
+      return;
+    }
+    if (pendingMutation.current !== attempt) return;
+    setIsOpen(false);
+    if (close && onClose) onClose();
+    else {
+      pendingMutation.current = null;
+      setIsPending(false);
+      pendingObserver.current?.(false);
+    }
+  }
 
   const planMinutes = minutesBetween(plan.startTime, plan.endTime);
   const actualMinutes = actual
@@ -84,6 +125,7 @@ export function ActualEditorCard({
   );
 
   function setAlignedToPlan(nextAligned: boolean) {
+    if (pendingMutation.current || isClosing) return;
     setDraft((current) => ({
       ...current,
       isAlignedToPlan: nextAligned,
@@ -96,6 +138,7 @@ export function ActualEditorCard({
   }
 
   function applyMeasuredRange(startTime: string, endTime: string) {
+    if (pendingMutation.current || isClosing) return;
     setDraft((current) => ({
       ...current,
       actualStartTime: startTime,
@@ -105,6 +148,7 @@ export function ActualEditorCard({
   }
 
   async function handleSave() {
+    if (pendingMutation.current || isClosing) return;
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
@@ -134,54 +178,25 @@ export function ActualEditorCard({
       }
     }
 
-    setError('');
-    try {
-      const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
-      const nextDraft: ActualDraft = isActualDateChanged
-        ? {
-            ...draft,
-            planId: selectedCandidate?.plan.id ?? null,
-            isAlignedToPlan: false,
-            weeklyPlanningObservationResult: undefined,
-          }
-        : draft;
-
-      setIsOpen(false);
-      await onSaveActual(nextPlan, nextDraft, actual?.id);
-    } catch {
-      setIsOpen(true);
-      setError('記録の保存に失敗しました。');
-    }
+    const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+    const nextDraft: ActualDraft = isActualDateChanged
+      ? { ...draft, planId: selectedCandidate?.plan.id ?? null, isAlignedToPlan: false,
+          weeklyPlanningObservationResult: undefined }
+      : draft;
+    await runMutation(() => onSaveActual(nextPlan, nextDraft, actual?.id), '記録の保存に失敗しました。入力を残しています。もう一度保存してください。');
   }
 
   async function handleDeletePlan() {
-    try {
-      await onDeletePlan(plan);
-      setIsOpen(false);
-      if (!isScopedRecurringPlan) {
-        onClose?.();
-      }
-    } catch {
-      setError('予定の削除に失敗しました。');
-    }
+    await runMutation(() => onDeletePlan(plan), '予定の削除に失敗しました。', !isScopedRecurringPlan);
   }
 
   async function handleDeleteActual() {
-    if (!actual) {
-      return;
-    }
-
-    try {
-      await onDeleteActual(actual);
-      setIsOpen(false);
-      onClose?.();
-    } catch {
-      setError('記録の削除に失敗しました。');
-    }
+    if (!actual) return;
+    await runMutation(() => onDeleteActual(actual), '記録の削除に失敗しました。もう一度試してください。');
   }
 
   return (
-    <article className="plan-detail-card actual-editor-card">
+    <fieldset className="plan-detail-card actual-editor-card" disabled={isPending || isClosing}>
       <div className="plan-detail-head actual-editor-head">
         <div>
           <div className="label-row">
@@ -213,6 +228,7 @@ export function ActualEditorCard({
           {isOpen ? (
             <button
               className="primary-button"
+              disabled={isPending || isClosing}
               onClick={() => void handleSave()}
               type="button"
             >
@@ -247,7 +263,7 @@ export function ActualEditorCard({
           {hideToggleButton ? null : (
             <button
               className="mini-button"
-              onClick={() => setIsOpen((current) => !current)}
+              onClick={() => { if (!pendingMutation.current) setIsOpen((current) => !current); }}
               type="button"
             >
               {isOpen ? '入力を閉じる' : actual ? '記録修正' : '記録入力'}
@@ -492,7 +508,7 @@ export function ActualEditorCard({
             <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
           </details>
 
-          {error ? <p className="inline-error">{error}</p> : null}
+          {error ? <p className="inline-error" role="alert">{error}</p> : null}
 
           {actual ? (
             <div className="row-actions actual-editor-actions">
@@ -511,6 +527,6 @@ export function ActualEditorCard({
           ) : null}
         </div>
       ) : null}
-    </article>
+    </fieldset>
   );
 }
