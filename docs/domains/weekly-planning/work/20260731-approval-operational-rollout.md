@@ -2,7 +2,7 @@
 
 Status: active / source implemented, production operation pending
 Priority: P1 operations
-Updated: 2026-08-22
+Updated: 2026-10-04
 Tracking: Issue #51
 
 ## Implemented foundation
@@ -16,9 +16,14 @@ Tracking: Issue #51
 - restored draft approval lifecycle
 - local owner-bound ledger と save side-effect isolation
 
+## Recorded deployment evidence
+
+Firestore Rulesの初回deployment/read-backはPR #236 / #239で完了済み。詳細な証拠は[Issue #51のdeployment checkpoint](https://github.com/kame447/StudyPlanner/issues/51#issuecomment-5456632634)と[成功したworkflow](https://github.com/kame447/StudyPlanner/actions/runs/33202203050)を参照する。merge commitは`b434acb716dd384c1335a1e81aba76d9834ae9a4`で、当時の本番read-backはrepositoryのRulesと一致した。
+
+これは記録済みrevisionの証拠であり、現在の本番全設定・TTL・実端末concurrencyの再検証を意味しない。以降のRules変更は既存WIF deployment workflowと各revisionのread-backで追跡し、初回deploymentを未実装として再開しない。
+
 ## Remaining production work
 
-- Firestore Rules deploy revision の記録
 - operation / item TTL
 - Emulator rules / transaction concurrency test
 - 2 tab / 2 device simultaneous approval

@@ -1,7 +1,7 @@
 # User Context Current Roadmap
 
 Status: canonical current execution order
-Updated: 2026-09-27
+Updated: 2026-10-04
 Owner Issue: #294
 
 全体の責務は [architecture](../architecture/memory-and-conversation.md)、継続する規則は [policy](../policies/memory-lifecycle-and-surfacing.md)、品質条件は [quality](../quality/regression-scenarios.md) を正とする。実装インターフェースは [supporting service design](../architecture/context-service-contract.md)、変更箇所と受入条件は [実装work](../work/20260912-context-harness-delivery.md) を参照する。
@@ -12,7 +12,7 @@ Phase 0のcanonical documentation導入はPR #302で完了している。2026-09
 
 残っているのは現行foundationのcharacterizationとbaseline実測、および後続runtime実装である。2026-09-12〜13のsupporting設計・work・管理情報の整備は、この実測や実装を完了にしない。現在のbranch/PR/HEADと検証結果はIssue #294とそのactive PRの最新checkpointを参照する。
 
-週間計画のproduction queueでは [weekly-planning roadmap](../../weekly-planning/roadmap/current.md) の#152 / Draft PR #174を先に扱う。#294の監査・docs整備は先行できるが、新しいmemory情報を本番入力へ出す経路は対応するsecurity/provenanceの検証を消費する。別のsecurity branchを作らない。
+週間計画との実行順序は [weekly-planning roadmap](../../weekly-planning/roadmap/current.md) を参照する。#152のsecurity baselineは完了済みで、closed/unmergedのPR #174を待機中の前提に戻さない。#294で新しいmemory情報を本番入力へ出す各release unitは、既存security/provenance契約と対応する回帰検証を消費する。#152の完了は未実装のmemory経路の検証完了を意味しない。
 
 ## Execution discipline
 
