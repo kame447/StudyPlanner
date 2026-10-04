@@ -133,6 +133,7 @@ export default function App() {
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
+    getActualActionBlockReason,
     saveActual,
     saveStandaloneActual,
     linkStandaloneActualToPlan,
@@ -512,6 +513,7 @@ export default function App() {
                 onDeletePlan={deletePlan}
                 onDeleteMonthEvent={deleteMonthEvent}
                 onSavePlan={savePlanDraft}
+                getActualActionBlockReason={getActualActionBlockReason}
                 onSaveActual={saveActual}
                 onSaveStandaloneActual={saveStandaloneActual}
                 onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
@@ -616,7 +618,7 @@ export default function App() {
           action={pendingRecurringPlanAction.kind}
           plan={pendingRecurringPlanAction.plan}
           onSelect={(scope) => {
-            void confirmRecurringPlanScope(scope);
+            void confirmRecurringPlanScope(scope).catch(() => undefined);
           }}
           onClose={cancelRecurringPlanScope}
         />

@@ -650,3 +650,160 @@ test('Plan Undo repairs all linked projections after an older full refresh; retr
     await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
   }
 });
+
+// The 14 existing cases above are unchanged. This is a real-App UI regression
+// with a test-only remote-latency stand-in before Actual dispatch. It does not
+// claim a native-local query window or a live Firebase/browser backend test.
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+test(`Quick Entry pending linked save blocks Day record open and Plan delete, then permits durable edit/delete ${viewport}-${theme}`, async ({ page }, testInfo) => {
+  const options = cases.find(item => item.label === viewport && item.theme === theme);
+  if (!options) throw new Error(`Missing Actual guard viewport/theme case: ${viewport}/${theme}`);
+  await boot(page, options);
+  const seeded = await page.evaluate(async date => {
+    const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+    const seeded = await window.__plannerRecoveryRepository.seedPlanUndo({ userId, date, withActual: false });
+    await window.__plannerRecoveryHook.refresh();
+    return seeded;
+  }, E2E_TODAY);
+  await expect.poll(async () => {
+    const state = await hookSnapshot(page);
+    return { plans: state.plans.map(plan => plan.id), actuals: state.actuals, ready: state.ready };
+  }).toEqual({ plans: [seeded.plan.id], actuals: [], ready: true });
+  await navigate(page, '予定');
+  await page.getByRole('tab', { name: '日', exact: true }).click();
+  await page.getByRole('button', { name: 'クイック追加メニューを開く', exact: true }).click();
+  await page.getByRole('menuitem', { name: '学習を追加', exact: true }).click();
+  const quickEntry = page.getByRole('dialog', { name: '予定・記録の追加', exact: true });
+  await quickEntry.getByRole('tab', { name: '記録', exact: true }).click();
+  await quickEntry.getByRole('textbox', { name: 'タイトル', exact: true }).fill(seeded.plan.title);
+  await quickEntry.getByLabel('開始時刻', { exact: true }).fill('09:00');
+  await quickEntry.getByRole('button', { name: '30分', exact: true }).click();
+  await quickEntry.getByRole('textbox', { name: 'メモ', exact: true }).fill('Quick Entry pending save');
+  const candidate = quickEntry.locator('.standalone-link-candidate').filter({ hasText: seeded.plan.title });
+  const before = await repoSnapshot(page);
+  const storageBefore = await durableWrites(page);
+  const durableBefore = await durable(page);
+  const scheduleBefore = await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
+  await page.evaluate(() => window.__plannerRecoveryRepository.holdNextActualDispatch());
+  try {
+    // Save, Close, open, and delete all use visible production UI, not the hook
+    // driver. The only control after setup is the external persistence hold.
+    await candidate.getByRole('button', { name: 'この予定に紐づけて保存', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingActualDispatches).toBe(1);
+    await expect.poll(async () => (await hookSnapshot(page)).actuals.length).toBe(1);
+    const optimistic = (await hookSnapshot(page)).actuals[0];
+    expect(optimistic).toMatchObject({ planId: seeded.plan.id, occurrenceDate: E2E_TODAY, note: 'Quick Entry pending save' });
+    expect(await durable(page)).toEqual(durableBefore);
+    expect(await durableWrites(page)).toEqual(storageBefore);
+    expect((await repoSnapshot(page)).calls.slice(before.calls.length)).toEqual([
+      { method: 'upsertActualWithMaterialProgress', phase: 'called' },
+    ]);
+    await quickEntry.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(quickEntry).toHaveCount(0);
+    const actualBlock = page.locator('.timeline-actual-block').filter({ hasText: seeded.plan.title });
+    await actualBlock.click();
+    const actions = page.getByRole('dialog', { name: `${seeded.plan.title}の操作`, exact: true });
+    const openRecord = actions.getByRole('button', { name: '記録を編集 実際の内容を保存', exact: true });
+    await expect(openRecord).toBeDisabled();
+    await expect(actions.getByRole('alert')).toContainText('保存・更新中');
+    await expect(page.locator('.actual-editor-card')).toHaveCount(0);
+    const heldCalls = (await repoSnapshot(page)).calls;
+    await actions.getByRole('button', { name: '削除 この予定を削除', exact: true }).click();
+    // One busy-open explanation plus the independently rejected delete result.
+    await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(2);
+    await expect(actions).toBeVisible();
+    await expect(actions.getByRole('button', { name: '削除 この予定を削除', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
+    expect((await repoSnapshot(page)).calls).toEqual(heldCalls);
+    expect(await durableWrites(page)).toEqual(storageBefore);
+    expect(await durable(page)).toEqual(durableBefore);
+    expect((await hookSnapshot(page)).plans.map(plan => plan.id)).toEqual([seeded.plan.id]);
+    expect((await hookSnapshot(page)).actuals.map(actual => actual.id)).toEqual([optimistic.id]);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toEqual(scheduleBefore);
+
+    const busyExplanation = actions.getByRole('alert').filter({ hasText: '保存・更新中' }).last();
+    await busyExplanation.scrollIntoViewIfNeeded();
+    await expect(busyExplanation).toBeVisible();
+    const geometry = await busyExplanation.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return { viewport: { width: innerWidth, height: innerHeight },
+        scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
+        explanation: { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height } };
+    });
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+    expect(geometry.explanation.width).toBeGreaterThan(0);
+    expect(geometry.explanation.height).toBeGreaterThan(0);
+    expect(geometry.explanation.x).toBeGreaterThanOrEqual(-1);
+    expect(geometry.explanation.y).toBeGreaterThanOrEqual(-1);
+    expect(geometry.explanation.right).toBeLessThanOrEqual(geometry.viewport.width + 1);
+    expect(geometry.explanation.bottom).toBeLessThanOrEqual(geometry.viewport.height + 1);
+    const blockedScreenshot = testInfo.outputPath(`actual-pending-${viewport}-${theme}.png`);
+    await page.screenshot({ path: blockedScreenshot });
+    await testInfo.attach(`Actual busy explanation ${viewport}-${theme}`, { path: blockedScreenshot, contentType: 'image/png' });
+    await testInfo.attach(`Actual busy geometry ${viewport}-${theme}`, { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
+
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseActualDispatch())).toBe(true);
+    await expect(openRecord).toBeEnabled();
+    await expect.poll(async () => (await durable(page)).actuals).toEqual([
+      expect.objectContaining({ id: optimistic.id, planId: seeded.plan.id, note: 'Quick Entry pending save' }),
+    ]);
+    await openRecord.click();
+    const editor = page.locator('.actual-editor-card');
+    await expect(editor).toBeVisible();
+    await editor.getByRole('textbox', { name: 'ズレの理由・メモ', exact: true }).fill('Edited after pending save settled');
+    await editor.getByRole('button', { name: '記録保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(async () => (await durable(page)).actuals).toEqual([
+      expect.objectContaining({ id: optimistic.id, planId: seeded.plan.id, note: 'Edited after pending save settled' }),
+    ]);
+    await actualBlock.click();
+    await openRecord.click();
+    const confirmation = page.waitForEvent('dialog').then(async dialog => {
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toBe('この記録を削除しますか？');
+      await dialog.accept();
+    });
+    await Promise.all([confirmation, editor.getByRole('button', { name: '記録削除', exact: true }).click()]);
+    await expect(editor).toHaveCount(0);
+    await expect.poll(async () => (await durable(page)).actuals).toEqual([]);
+    await expect.poll(async () => (await hookSnapshot(page)).actuals).toEqual([]);
+    await expect(actualBlock).toHaveCount(0);
+    expect(writeMethods(await repoSnapshot(page)).slice(writeMethods(before).length)).toEqual([
+      'upsertActualWithMaterialProgress', 'upsertActualWithMaterialProgress', 'deleteActual',
+    ]);
+    const trace = (await repoSnapshot(page)).calls.slice(before.calls.length);
+    await testInfo.attach('pending Actual dispatch then allowed edit-delete', {
+      body: JSON.stringify(trace, null, 2), contentType: 'application/json',
+    });
+    expect((await durable(page)).materials).toEqual(durableBefore.materials);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toEqual(scheduleBefore);
+    expect(await runtimeCalls(page)).toEqual([]);
+    const storedBeforeReload = await page.evaluate(() => ({
+      actuals: localStorage.getItem('studyplanner.actuals'),
+      scheduleEvents: localStorage.getItem('studyplanner.scheduleEvents.v1'),
+    }));
+    await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+    await page.reload();
+    await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
+    await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+    expect(await page.evaluate(() => sessionStorage.getItem('studyplanner.e2e.preserve-next-reload'))).toBeNull();
+    expect(await page.evaluate(() => ({
+      actuals: localStorage.getItem('studyplanner.actuals'),
+      scheduleEvents: localStorage.getItem('studyplanner.scheduleEvents.v1'),
+    }))).toEqual(storedBeforeReload);
+    expect((await durable(page)).actuals).toEqual([]);
+    expect((await hookSnapshot(page)).actuals).toEqual([]);
+    expect((await hookSnapshot(page)).plans.map(plan => plan.id)).toEqual([seeded.plan.id]);
+    expect(writeMethods(await repoSnapshot(page)).filter(method =>
+      ['upsertActualWithMaterialProgress', 'deleteActual', 'deletePlanWithDependents'].includes(method))).toEqual([]);
+    expect(await durableWrites(page)).toEqual([]);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    await expect(page.locator('.timeline-actual-block')).toHaveCount(0);
+    await expect(page.locator('.timeline-plan-block').filter({ hasText: seeded.plan.title })).toBeVisible();
+    expect(await runtimeCalls(page)).toEqual([]);
+  } finally {
+    await page.evaluate(() => window.__plannerRecoveryRepository.releaseActualDispatch());
+  }
+});
+}

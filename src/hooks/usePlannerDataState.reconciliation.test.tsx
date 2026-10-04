@@ -20,6 +20,8 @@ const actual = (id: string, planId: string | null): Actual => ({ id, userId: 'ow
   actualStartTime: '09:00', actualEndTime: '10:00', title: id, subject: '数学', note: '元の記録', updatedAt: STAMP });
 const A = plan('a'); const B = plan('b');
 const AA = actual('actual-a', A.id); const AB = actual('actual-b', B.id); const STANDALONE = actual('standalone', null);
+// Admission now excludes same-record overlap; retain controller concurrency coverage on a disjoint record.
+const INDEPENDENT = actual('independent-standalone', null);
 const TODO: TodoTask = { id: 'todo-b', userId: 'owner', title: 'todo-b', subject: '数学', type: 'study', estimatedMinutes: null,
   dueDate: null, memo: '', status: 'open', scheduledPlanId: null, createdAt: STAMP, updatedAt: STAMP };
 const showNotice = vi.fn<ShowNotice>();
@@ -38,7 +40,7 @@ function collection<T>(initial: T[]) {
 }
 async function mount(includeLinkedRecord = true) {
   harnessOwner = 'owner';
-  const plans = collection([A, B]); const actuals = collection([AA, ...(includeLinkedRecord ? [AB] : []), STANDALONE]); const todos = collection([TODO]);
+  const plans = collection([A, B]); const actuals = collection([AA, ...(includeLinkedRecord ? [AB] : []), STANDALONE, INDEPENDENT]); const todos = collection([TODO]);
   const dayNotes = collection<DayNote>([]); const monthEvents = collection<MonthEvent>([]);
   const subjects = collection<StudySubject>([]); const materials = collection<StudyMaterial>([]);
   const templates = collection<ScheduleTemplate>([]); const terms = collection<TimetableTerm>([]); const periods = collection<TimetablePeriod>([]);
@@ -175,17 +177,17 @@ it('audit canonical ID acknowledgment after newer authoritative refresh', async 
   await expectPersistedProjection('late provisional-ID operation cannot overwrite current canonical ID content');
 });
 
-it.each([false,true])('audit late acknowledgment preserves newer post-refresh operation success=%s',async success=>{
+it.each([false,true])('audit late acknowledgment preserves disjoint newer post-refresh operation success=%s',async success=>{
   const storage=await mount();const {persisted,response}=holdFirstResponse('upsertActualWithMaterialProgress');
   let oldDone!:Promise<void>;await act(async()=>{oldDone=state.saveStandaloneActual(draftFor(),STANDALONE.id);});
   await persisted.promise;
-  await storage.actuals.write((await storage.actuals.read()).map(row=>row.id===STANDALONE.id?{...row,note:'REFRESHED'}:row));
+  await storage.actuals.write((await storage.actuals.read()).map(row=>[STANDALONE.id, INDEPENDENT.id].includes(row.id)?{...row,note:'REFRESHED'}:row));
   await act(async()=>{await state.loadPlannerData('owner');});
   const gate=deferred();hold('upsertActualWithMaterialProgress',gate);let newDone!:Promise<unknown>;
-  await act(async()=>{newDone=state.saveStandaloneActual(draftFor(null,'NEW PENDING'),STANDALONE.id).catch(e=>e);});
-  expect(state.actuals.find(row=>row.id===STANDALONE.id)?.note).toBe('NEW PENDING');
+  await act(async()=>{newDone=state.saveStandaloneActual(draftFor(null,'NEW PENDING'),INDEPENDENT.id).catch(e=>e);});
+  expect(state.actuals.find(row=>row.id===INDEPENDENT.id)?.note).toBe('NEW PENDING');
   await act(async()=>{response.resolve();await oldDone;});
-  expect(state.actuals.find(row=>row.id===STANDALONE.id)?.note).toBe('NEW PENDING');
+  expect(state.actuals.find(row=>row.id===INDEPENDENT.id)?.note).toBe('NEW PENDING');
   await act(async()=>{if(success)gate.resolve();else gate.reject(new Error('new failed'));await newDone;});
   await expectPersistedProjection('late pre-refresh result cannot erase a newer optimistic operation or its refreshed rollback base');
 });
@@ -223,7 +225,7 @@ it('audit before-write refresh material then persistence succeeds',async()=>{
   await expectPersistedProjection('the new Actual and material committed after refresh');
 });
 
-it('audit reload race newer write settles before reconciliation read returns',async()=>{
+it('audit reload race disjoint newer write settles before reconciliation read returns',async()=>{
   const storage=await mount();const {persisted,response}=holdFirstResponse('upsertActualWithMaterialProgress');
   let oldDone!:Promise<void>;await act(async()=>{oldDone=state.saveStandaloneActual(draftFor(),STANDALONE.id);});await persisted.promise;
   await storage.actuals.write((await storage.actuals.read()).map(row=>row.id===STANDALONE.id?{...row,note:'REFRESHED'}:row));
@@ -231,8 +233,8 @@ it('audit reload race newer write settles before reconciliation read returns',as
   const original=boundary.repository.getActuals;const readEntered=deferred(),readResponse=deferred();let first=true;
   boundary.repository.getActuals=async(owner)=>{const snapshot=await original(owner);if(first){first=false;readEntered.resolve();await readResponse.promise;}return snapshot;};
   await act(async()=>{response.resolve();});await readEntered.promise;
-  await act(async()=>{await state.saveStandaloneActual(draftFor(null,'NEWER PERSISTED WRITE'),STANDALONE.id);});
-  expect(state.actuals.find(row=>row.id===STANDALONE.id)?.note).toBe('NEWER PERSISTED WRITE');
+  await act(async()=>{await state.saveStandaloneActual(draftFor(null,'NEWER PERSISTED WRITE'),INDEPENDENT.id);});
+  expect(state.actuals.find(row=>row.id===INDEPENDENT.id)?.note).toBe('NEWER PERSISTED WRITE');
   await act(async()=>{readResponse.resolve();await oldDone;});
   await expectPersistedProjection('a reconciliation read started before a newer write must not overwrite it');
 });
@@ -250,13 +252,13 @@ it('audit reload obsolete failure cannot mark newer accepted load stale',async()
   expect(state.plannerDataAvailability.status).toBe('ready');await expectPersistedProjection('obsolete failure must be silent');expect(showNotice).not.toHaveBeenCalled();
 });
 
-async function staleActualAcknowledgment(includeLinkedRecord = true) {
+async function staleActualAcknowledgment(includeLinkedRecord = true, targetId = STANDALONE.id) {
   const storage = await mount(includeLinkedRecord);
   const { persisted, response } = holdFirstResponse('upsertActualWithMaterialProgress');
   let done!: Promise<void>;
-  await act(async () => { done = state.saveStandaloneActual(draftFor(), STANDALONE.id); });
+  await act(async () => { done = state.saveStandaloneActual(draftFor(), targetId); });
   await persisted.promise;
-  await storage.actuals.write((await storage.actuals.read()).map(row => row.id === STANDALONE.id ? { ...row, note: 'REFRESHED' } : row));
+  await storage.actuals.write((await storage.actuals.read()).map(row => row.id === targetId ? { ...row, note: 'REFRESHED' } : row));
   await act(async () => { await state.loadPlannerData('owner'); });
   return { storage, response, done };
 }
@@ -276,15 +278,15 @@ function holdNextActualRead(failure = false) {
   return { entered, response, reads: () => reads };
 }
 
-it.each([false, true])('controller drops read with a newer failed mutation while old read failure=%s', async failure => {
+it.each([false, true])('controller drops read with a disjoint newer failed mutation while old read failure=%s', async failure => {
   const old = await staleActualAcknowledgment();
   const read = holdNextActualRead(failure);
   await act(async () => { old.response.resolve(); await old.done; });
   await read.entered.promise;
   const gate = deferred(); hold('upsertActualWithMaterialProgress', gate);
   let newer!: Promise<unknown>;
-  await act(async () => { newer = state.saveStandaloneActual(draftFor(null, 'PENDING'), STANDALONE.id).catch(e => e); });
-  expect(state.actuals.find(row => row.id === STANDALONE.id)?.note).toBe('PENDING');
+  await act(async () => { newer = state.saveStandaloneActual(draftFor(null, 'PENDING'), INDEPENDENT.id).catch(e => e); });
+  expect(state.actuals.find(row => row.id === INDEPENDENT.id)?.note).toBe('PENDING');
   await act(async () => { gate.reject(new Error('write failed')); await newer; });
   showNotice.mockClear();
   await act(async () => { read.response.resolve(); });
@@ -364,17 +366,17 @@ it('controller targeted read does not call or mutate timetable normalization', a
   expect(getActuals).toHaveBeenCalledTimes(1); expect(getMaterials).toHaveBeenCalledTimes(1);
 });
 
-it.each([false, true])('controller read is dropped while the newer operation remains pending success=%s', async success => {
+it.each([false, true])('controller read is dropped while the disjoint newer operation remains pending success=%s', async success => {
   const old = await staleActualAcknowledgment();
   const read = holdNextActualRead();
   await act(async () => { old.response.resolve(); await old.done; });
   await read.entered.promise;
   const gate = deferred(); hold('upsertActualWithMaterialProgress', gate);
   let newer!: Promise<unknown>;
-  await act(async () => { newer = state.saveStandaloneActual(draftFor(null, 'PENDING'), STANDALONE.id).catch(e => e); });
+  await act(async () => { newer = state.saveStandaloneActual(draftFor(null, 'PENDING'), INDEPENDENT.id).catch(e => e); });
   await act(async () => { read.response.resolve(); });
   expect(read.reads()).toBe(1);
-  expect(state.actuals.find(row => row.id === STANDALONE.id)?.note).toBe('PENDING');
+  expect(state.actuals.find(row => row.id === INDEPENDENT.id)?.note).toBe('PENDING');
   await act(async () => { if (success) gate.resolve(); else gate.reject(new Error('not saved')); await newer; });
   expect(read.reads()).toBe(2);
   await expectPersistedProjection('active operations must prevent publication and retry until settled');
@@ -456,13 +458,13 @@ async function failedTargetRead() {
   return { ...old, read, getActuals, fullStamp };
 }
 
-it('stable target failure remains latched across a successful ordinary save until one explicit duplicate-safe retry', async () => {
+it('stable target failure remains latched across a successful disjoint ordinary save until one explicit duplicate-safe retry', async () => {
   const failed = await failedTargetRead();
   const plans = vi.spyOn(boundary.repository, 'getPlans');
   const todos = vi.spyOn(boundary.repository, 'getTodos');
   const timetable = vi.spyOn(boundary.repository, 'applyTimetableMutation');
   failed.read.mockImplementation(failed.getActuals);
-  await act(async () => { await state.saveStandaloneActual(draftFor(null, 'NEXT SAVE'), STANDALONE.id); });
+  await act(async () => { await state.saveStandaloneActual(draftFor(null, 'NEXT SAVE'), INDEPENDENT.id); });
   expect(failed.read).toHaveBeenCalledTimes(1);
   expect(state.plannerDataAvailability.status).toBe('stale');
   expect(state.plannerDataRecovery?.canRetry).toBe(true);
@@ -571,7 +573,7 @@ it.each(['reset', 'owner change', 'A-B-A', 'unmount'] as const)('retained full r
 it.each(operations.flatMap(operation => [false, true].map(success => ({ operation, success }))))(
   'keeps reconciliation pending for the entire $operation mutation, success=$success',
   async ({ operation, success }) => {
-    const old = await staleActualAcknowledgment(operation !== 'link');
+    const old = await staleActualAcknowledgment(operation !== 'link', INDEPENDENT.id);
     const gate = deferred();
     hold(methodFor(operation), gate);
     const write = vi.spyOn(boundary.repository, methodFor(operation));

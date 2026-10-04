@@ -118,6 +118,8 @@ local planner read projectionの鮮度、再確認、consumer leaseの補助arch
 
 local fallbackのcommand/compensation直列化は `architecture/local-planner-storage-access.md` が所有する。同一module instance・同一Storage objectの境界であり、Firestore/offline同期/複数タブの正仕様を置換しない。
 
+Actualの画面横断pending admissionと古いtarget拒否は `architecture/actual-action-admission.md` が所有する。read health、storage queue、material progress競合とは責務と保証範囲を区別する。
+
 ### Reporting
 
 入口: `docs/domains/reporting/README.md`

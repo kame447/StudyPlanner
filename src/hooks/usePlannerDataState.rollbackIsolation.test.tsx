@@ -162,30 +162,35 @@ it('retains a completed delete Undo while an unrelated plan save fails', async (
   expect(state.actuals.some(row => row.id === AA.id)).toBe(true);
 });
 
-it('isolates a linked save from the optimistic link it was opened from', async () => {
-  for (const linkSuccess of [false, true]) for (const saveSuccess of [false, true]) for (const linkFirst of [false, true]) {
+it('rejects a linked save opened from a pending optimistic link, then allows an explicit retry after settlement', async () => {
+  for (const linkSuccess of [false, true]) for (const saveSuccess of [false, true]) {
     await mount(false);
     const linkGate = deferred(); const saveGate = deferred();
     hold('upsertActual', linkGate); hold('upsertActualWithMaterialProgress', saveGate);
-    let linkDone!: Promise<unknown>; let saveDone!: Promise<unknown>;
+    let linkDone!: Promise<unknown>;
     await act(async () => { linkDone = state.linkStandaloneActualToPlan(STANDALONE, B).catch(error => error); });
     const linked = state.actuals.find(record => record.id === STANDALONE.id)!;
     expect(linked.planId).toBe(B.id);
     const draft: ActualDraft = { userId: 'owner', planId: B.id, occurrenceDate: DATE, actualStartTime: '12:00', actualEndTime: '13:00',
       title: '紐づけ後の編集', subject: '数学', isAlignedToPlan: false, note: '新しい入力', materialProgressUpdates: [] };
-    await act(async () => { saveDone = state.saveActual(B, draft, linked.id).catch(error => error); });
-    expect(linkGate.entered).toBe(true); expect(saveGate.entered).toBe(true);
-    const settle = async (isLink: boolean) => {
-      const gate = isLink ? linkGate : saveGate; const success = isLink ? linkSuccess : saveSuccess;
-      const failure = new Error(isLink ? 'link failed' : 'save failed');
-      await act(async () => {
-        if (success) gate.resolve(); else gate.reject(failure);
-        const result = await (isLink ? linkDone : saveDone);
-        if (success) expect(result).toBeUndefined(); else expect(result).toBe(failure);
-      });
-    };
-    await settle(linkFirst); await settle(!linkFirst);
-    await expectPersistedProjection(JSON.stringify({ linkSuccess, saveSuccess, linkFirst }));
+    await act(async () => { await expect(state.saveActual(B, draft, linked.id)).rejects.toThrow(/開き直し/); });
+    expect(linkGate.entered).toBe(true); expect(saveGate.entered).toBe(false);
+    await act(async () => {
+      if (linkSuccess) linkGate.resolve(); else linkGate.reject(new Error('link failed'));
+      const result = await linkDone;
+      if (linkSuccess) expect(result).toBeUndefined(); else expect(result).toBeInstanceOf(Error);
+    });
+    await expectPersistedProjection(JSON.stringify({ linkSuccess, stage: 'link settled' }));
+    expect(state.getActualActionBlockReason(state.actuals.find(record => record.id === STANDALONE.id)!)).toBeNull();
+    let saveDone!: Promise<unknown>;
+    await act(async () => { saveDone = state.saveActual(B, draft, STANDALONE.id).catch(error => error); });
+    expect(saveGate.entered).toBe(true);
+    await act(async () => {
+      if (saveSuccess) saveGate.resolve(); else saveGate.reject(new Error('save failed'));
+      const result = await saveDone;
+      if (saveSuccess) expect(result).toBeUndefined(); else expect(result).toBeInstanceOf(Error);
+    });
+    await expectPersistedProjection(JSON.stringify({ linkSuccess, saveSuccess }));
     unmount();
   }
 });

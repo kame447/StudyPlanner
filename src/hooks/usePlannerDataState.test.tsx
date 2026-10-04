@@ -371,6 +371,8 @@ describe('usePlannerDataState transform orchestration', () => {
     vi.clearAllMocks();
     latestState = null;
     resetRepositoryMocks();
+    // Linked commands require the target to exist in the committed owner snapshot.
+    repository.getPlans.mockImplementation(async (ownerId: string) => ownerId === studyPlan.userId ? [studyPlan] : []);
   });
 
   it('keeps all original timetable collections when normalization persistence fails', async () => {
@@ -509,6 +511,8 @@ describe('planner mutation owner isolation', () => {
     vi.clearAllMocks();
     latestState = null;
     resetRepositoryMocks();
+    // Linked commands require the target to exist in the committed owner snapshot.
+    repository.getPlans.mockImplementation(async (ownerId: string) => ownerId === studyPlan.userId ? [studyPlan] : []);
   });
 
   for (const mode of ['linked', 'standalone'] as const) {

@@ -11,6 +11,8 @@ Canonical requirements:
 
 Supporting architecture:
 
+- [Actual action admission](architecture/actual-action-admission.md) owns cross-surface busy/stale-target rejection and committed record reservations
+
 - [Local planner storage access](architecture/local-planner-storage-access.md) owns the bounded local-fallback command/compensation queue and its explicit concurrency limits
 
 - [Planner read projection recovery](architecture/planner-read-projection-recovery.md) owns local read freshness, retry and consumer leases; it does not redefine the parent requirements or their rollout status

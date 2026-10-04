@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
@@ -80,12 +81,12 @@ export function ActualEditorCard({
     setError('');
     try {
       await action();
-    } catch {
+    } catch (error) {
       if (pendingMutation.current === attempt) {
         pendingMutation.current = null;
         setIsPending(false);
         pendingObserver.current?.(false);
-        setError(failureMessage);
+        setError(error instanceof ActualMutationAdmissionError ? error.message : failureMessage);
       }
       return;
     }

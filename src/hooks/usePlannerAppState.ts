@@ -1,3 +1,4 @@
+import type { ActualActionTarget } from './useActualMutationAdmission';
 import { useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
@@ -87,6 +88,7 @@ interface PlannerAppState {
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
+  getActualActionBlockReason: (target: ActualActionTarget) => string | null;
   saveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
@@ -177,6 +179,7 @@ export function usePlannerAppState(): PlannerAppState {
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
+    getActualActionBlockReason,
     saveActual,
     saveStandaloneActual,
     linkStandaloneActualToPlan,
@@ -366,6 +369,7 @@ export function usePlannerAppState(): PlannerAppState {
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
+    getActualActionBlockReason,
     saveActual,
     saveStandaloneActual,
     linkStandaloneActualToPlan,
