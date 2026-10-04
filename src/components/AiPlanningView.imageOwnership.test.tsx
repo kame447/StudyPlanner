@@ -8,8 +8,8 @@ import { useWeeklyPlanningApplication, type WeeklyPlanningApplication } from '..
 import { createDeferred, createMemoryStorageHarness } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../features/weeklyPlanning/testUtils/plannerDataAvailabilityTest';
 import { createInitialPlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
-import { loadAiPlanningChatIndex } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
-import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
+import { loadAiPlanningChatIndex, saveAiPlanningChatIndex, saveAiPlanningChatSnapshot, updateAiPlanningChatRecord } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+import { getWeeklyPlanningStableV5RuntimeSession, hydrateWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
 import { setWeeklyPlanningTraceRepositoryForTests } from '../features/weeklyPlanning/trace/weeklyPlanningTraceRepository';
 import { resetWeeklyPlanningStableV5DebugTraceForTest } from '../features/weeklyPlanning/trace/weeklyPlanningStableV5DebugTrace';
 import { clearWeeklyPlanningSessionRuntime } from '../features/weeklyPlanning/planning/weeklyPlanningSessionRuntime';
@@ -24,13 +24,13 @@ vi.mock('../features/weeklyPlanning/weeklyPlanningTurnExecutor', async () => ({
   executeWeeklyPlanningTurn: mocks.execute,
 }));
 let app: WeeklyPlanningApplication;
-function Harness({ owner = 'user-1', completion }: { owner?: string; completion?: Promise<void> }) {
+function Harness({ owner = 'user-1', completion, visible = true }: { owner?: string; completion?: Promise<void>; visible?: boolean }) {
   app = useWeeklyPlanningApplication({ userId: owner, selectedDate: '2026-07-14', plans: [], scheduleTemplates: [],
     plannerDataAvailability: createReadyPlannerDataAvailability(owner), saveWeeklyApprovedPlan: vi.fn() });
   const application = completion ? { ...app, submitTurn: async (...args: Parameters<WeeklyPlanningApplication['submitTurn']>) => {
     const result = await app.submitTurn(...args); await completion; return result;
   } } : app;
-  return <AiPlanningView application={application} userId={owner} selectedDate="2026-07-14" plans={[]} />;
+  return visible ? <AiPlanningView application={application} userId={owner} selectedDate="2026-07-14" plans={[]} /> : null;
 }
 let renderer: ReactTestRenderer | undefined;
 let storage: ReturnType<typeof createMemoryStorageHarness>;
@@ -101,15 +101,19 @@ it('locks same-tick and rendered create/select/delete/submit while OCR owns the 
 it.each([false, true])('ignores OCR completion after unmount (reject=%s)', async (reject) => {
   const pending = createDeferred<{ text: string }>(); mocks.ocr.mockReturnValue(pending.promise);
   await mount(); await attach(); await act(async () => { send().props.onClick(); });
-  act(() => renderer!.unmount()); renderer = undefined;
-  const before = new Map(storage.values); await settle(pending, reject);
+  const oldChat = app.chat;
+  const before = new Map(storage.values);
+  // Commit unmount before act's passive-effect flush; layout cleanup must already revoke commands.
+  renderer!.unmount(); renderer = undefined;
+  expect(oldChat.create()).toEqual({ status: 'blocked', reason: 'owner-changed' });
+  await settle(pending, reject);
   expect(mocks.execute).not.toHaveBeenCalled(); expect(storage.values).toEqual(before);
 });
 
 it.each([false, true])('keeps both owners isolated when old OCR settles (reject=%s)', async (reject) => {
   const old = createDeferred<{ text: string }>(); const current = createDeferred<{ text: string }>();
   mocks.ocr.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
-  await mount(); await attach(); await act(async () => { send().props.onClick(); });
+  await mount(); const oldChat = app.chat; await attach(); await act(async () => { send().props.onClick(); });
   await act(async () => { renderer!.update(<Harness owner="user-2" />); });
   expect(sidebar().props.disabled).toBe(false);
   const oldIndex = index('user-1'); const newIndex = index('user-2');
@@ -120,6 +124,10 @@ it.each([false, true])('keeps both owners isolated when old OCR settles (reject=
   await settle(current); expect(mocks.execute).toHaveBeenCalledTimes(1);
   expect(index('user-1')).toEqual(oldIndex); expect(index('user-2').activeChatId).toBe(newIndex.activeChatId);
   expect(sidebar().props.disabled).toBe(false);
+  await act(async () => { renderer!.update(<Harness owner="user-1" />); });
+  const beforeStaleCallback = new Map(storage.values);
+  expect(oldChat.create()).toEqual({ status: 'blocked', reason: 'owner-changed' });
+  expect(storage.values).toEqual(beforeStaleCallback);
 });
 
 it('releases a failed extraction for retry without discarding its attachment', async () => {
@@ -215,4 +223,121 @@ it('freezes input and image extraction during approval recovery while allowing s
   await act(async () => { sidebar().props.onSelect(previous); });
   expect(app.state.approvalRecovery?.operation.approvalOperationId).toBe(operation.approvalOperationId);
   expect(app.state.draftBlocks).toHaveLength(1);
+});
+
+it('keeps unsaved empty state and active chat across failed navigation and view remount, then retries', async () => {
+  await mount();
+  const first = sidebar().props.activeChatId;
+  await act(async () => { app.createDraftBlocks([
+    createWeeklyPlanningTestDraftBlock({ id: 'unsaved-a' }),
+    createWeeklyPlanningTestDraftBlock({ id: 'unsaved-b' }),
+  ]); });
+  await act(async () => { sidebar().props.onCreate(); });
+  await act(async () => { sidebar().props.onSelect(first); });
+  expect(app.state.draftBlocks).toHaveLength(2);
+  const write = vi.spyOn(storage.storage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+  await act(async () => { app.clearDraftBlocks(); });
+  await act(async () => { sidebar().props.onCreate(); });
+  expect(sidebar().props.activeChatId).toBe(first);
+  expect(app.state.draftBlocks).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ 'aria-label': 'チャットの保存を再試行' })).toHaveLength(1);
+  await act(async () => { renderer!.update(<Harness visible={false} />); });
+  await act(async () => { renderer!.update(<Harness visible />); });
+  expect(sidebar().props.activeChatId).toBe(first);
+  expect(app.state.draftBlocks).toHaveLength(0);
+  write.mockRestore();
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': 'チャットの保存を再試行' }).props.onClick(); });
+  await act(async () => { sidebar().props.onCreate(); });
+  expect(sidebar().props.activeChatId).not.toBe(first);
+  await act(async () => { sidebar().props.onSelect(first); });
+  expect(app.state.draftBlocks).toHaveLength(0);
+});
+
+it('retains the first chat identity when its initial index write fails and later retries', async () => {
+  const write = vi.spyOn(storage.storage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+  await mount();
+  const first = sidebar().props.activeChatId;
+  await act(async () => { renderer!.update(<Harness visible={false} />); });
+  await act(async () => { renderer!.update(<Harness visible />); });
+  expect(sidebar().props.activeChatId).toBe(first);
+  write.mockRestore();
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': 'チャットの保存を再試行' }).props.onClick(); });
+  expect(sidebar().props.activeChatId).toBe(first);
+  expect(index().activeChatId).toBe(first);
+});
+
+it('rejects a target runtime owned by another user before changing the index or current conversation', async () => {
+  await mount();
+  const first = sidebar().props.activeChatId;
+  const firstSnapshot = app.exportConversationSnapshot({ includeEmpty: true })!;
+  await act(async () => { sidebar().props.onCreate(); });
+  const current = app.exportConversationSnapshot({ includeEmpty: true })!;
+  const selected = sidebar().props.activeChatId;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  hydrateWeeklyPlanningStableV5RuntimeSession({ ...current, updatedAt: Date.now() });
+  hydrateWeeklyPlanningStableV5RuntimeSession({ ...firstSnapshot, ownerId: 'user-2', updatedAt: Date.now() });
+  const before = new Map(storage.values);
+  const stateBefore = app.state;
+  await act(async () => { sidebar().props.onSelect(first); });
+  expect(app.chat.result).toEqual({ status: 'blocked', reason: 'target-unavailable' });
+  expect(sidebar().props.activeChatId).toBe(selected);
+  expect(app.state).toBe(stateBefore); expect(storage.values).toEqual(before);
+  expect(app.loadConversationSnapshot(firstSnapshot)).toBe(false);
+  expect(getWeeklyPlanningStableV5RuntimeSession(firstSnapshot.conversationId)?.ownerId).toBe('user-2');
+});
+
+it('initializes the next owner after an old pending turn releases the startup guard', async () => {
+  await mount();
+  const snapshot = app.exportConversationSnapshot({ includeEmpty: true })!;
+  const secondIndex = loadAiPlanningChatIndex('user-2');
+  const secondSnapshot = { ...snapshot, ownerId: 'user-2', conversationId: 'second-owner-conversation',
+    planningState: { ...snapshot.planningState, messages: [{ id: 'second-owner-message', role: 'user' as const,
+      content: 'Saved second-owner conversation', createdAt: snapshot.savedAt }] } };
+  expect(saveAiPlanningChatSnapshot('user-2', secondIndex.activeChatId, secondSnapshot)).toBe(true);
+  expect(saveAiPlanningChatIndex('user-2', updateAiPlanningChatRecord(secondIndex, secondIndex.activeChatId, { weekStartDate: snapshot.weekStartDate }))).toBe(true);
+  const execute = createDeferred<Awaited<ReturnType<typeof import('../features/weeklyPlanning/weeklyPlanningTurnExecutor').executeWeeklyPlanningTurn>>>();
+  mocks.execute.mockReturnValueOnce(execute.promise);
+  let pending: ReturnType<WeeklyPlanningApplication['submitTurn']>;
+  await act(async () => { pending = app.submitTurn('hold old owner'); });
+  expect(app.state.pendingTurn).toBeDefined();
+  await act(async () => { renderer!.update(<Harness owner="user-2" />); });
+  expect(app.state.pendingTurn).toBeUndefined();
+  expect(app.state.messages.map(message => message.content)).toContain('Saved second-owner conversation');
+  expect(sidebar().props.activeChatId).toBe(secondIndex.activeChatId);
+  await act(async () => { execute.resolve({ state: createInitialPlanningIntakeState(), message: 'old completion', draftCandidates: [] }); await pending!; });
+  expect(app.state.messages.map(message => message.content)).toContain('Saved second-owner conversation');
+  expect(app.state.messages.map(message => message.content)).not.toContain('old completion');
+});
+
+it('freezes an unreadable initial conversation and retries loading without overwriting it', async () => {
+  await mount();
+  await act(async () => { app.appendMessage({ id: 'valuable-message', role: 'user', content: 'Keep this saved conversation', createdAt: new Date().toISOString() }); app.chat.checkpoint(); });
+  const savedId = sidebar().props.activeChatId;
+  act(() => renderer!.unmount()); renderer = undefined;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  const before = new Map(storage.values);
+  const read = storage.storage.getItem.bind(storage.storage);
+  const unavailable = vi.spyOn(storage.storage, 'getItem').mockImplementation((key) => {
+    if (key.includes('.chat.v1.')) throw new Error('snapshot read unavailable');
+    return read(key);
+  });
+  await mount();
+  expect(app.chat.requiresInitialization).toBe(true);
+  expect(send().props.disabled).toBe(true);
+  const current = app.state;
+  await act(async () => {
+    expect(await app.submitTurn('must not replace saved conversation')).toEqual({ accepted: false, draftCandidates: [] });
+    app.clearDraftBlocks(); app.appendMessage({ id: 'blocked', role: 'user', content: 'blocked', createdAt: new Date().toISOString() });
+    expect(app.chat.create().status).toBe('blocked');
+  });
+  expect(app.state).toBe(current);
+  vi.mocked(window.confirm).mockReturnValueOnce(false);
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': '読み込めないチャットを残して新規作成' }).props.onClick(); });
+  expect(app.state).toBe(current); expect(app.chat.requiresInitialization).toBe(true);
+  for (const [key, value] of before) if (key.includes('.chat.v1.') || key.includes('.chats.v1.')) expect(storage.values.get(key)).toBe(value);
+  unavailable.mockRestore();
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': 'チャットの保存を再試行' }).props.onClick(); });
+  expect(app.chat.requiresInitialization).toBe(false);
+  expect(sidebar().props.activeChatId).toBe(savedId);
+  expect(app.state.messages.map(message => message.content)).toContain('Keep this saved conversation');
 });

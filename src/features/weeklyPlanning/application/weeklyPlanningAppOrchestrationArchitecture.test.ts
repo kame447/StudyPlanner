@@ -43,7 +43,15 @@ describe('weekly planning application boundary', () => {
     expect(aiPlanningView).toContain('application.approveDraftBlocks');
     expect(aiPlanningView).toContain('application.removePreviewCandidate');
     expect(aiPlanningLegacy).toContain('application.submitTurn');
-    expect(aiPlanningLegacy).toContain('application.loadConversationSnapshot');
+    expect(aiPlanningLegacy).toContain('application.chat.select');
+    expect(aiPlanningLegacy).toContain('application.chat.create');
+    expect(aiPlanningLegacy).toContain('application.chat.remove');
+    for (const view of [aiPlanningView, aiPlanningLegacy]) {
+      expect(view).toContain('application.chat.checkpoint');
+      expect(view).not.toContain('saveAiPlanningChatSnapshot');
+      expect(view).not.toContain('saveAiPlanningChatIndex');
+      expect(view).not.toContain('application.loadConversationSnapshot');
+    }
   });
 
   it('keeps the hook as a composition root and delegates turn orchestration', () => {
@@ -56,6 +64,7 @@ describe('weekly planning application boundary', () => {
     expect(application).not.toContain('submitWeeklyPlanningControlledTurn');
     expect(turnApplication).toContain('submitWeeklyPlanningControlledTurn');
     expect(application).toContain('synchronizeWeeklyPlanningApplicationSession');
+    expect(application).toContain('createAiPlanningChatSession');
     expect(sessionLifecycle).toContain('resetWeeklyPlanningControlledSession');
     expect(application).toContain('approveWeeklyPlanningDraftBlocks');
     expect(approval).toContain('executeInterruptibleWeeklyDraftApproval');

@@ -23,20 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
-import {
-  createAiPlanningChat,
-  deleteAiPlanningChat,
-  deriveAiPlanningChatTitle,
-  hasStoredAiPlanningChatIndex,
-  loadAiPlanningChatIndex,
-  loadAiPlanningChatSnapshot,
-  saveAiPlanningChatIndex,
-  saveAiPlanningChatSnapshot,
-  searchAiPlanningChats,
-  setActiveAiPlanningChat,
-  updateAiPlanningChatRecord,
-  type AiPlanningChatIndex,
-} from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+import { searchAiPlanningChats } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
@@ -200,9 +187,7 @@ export function AiPlanningView({
   const [previewPageIndex, setPreviewPageIndex] = useState(0);
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
   const [chatQuery, setChatQuery] = useState('');
-  const [chatIndex, setChatIndex] = useState<AiPlanningChatIndex>(() =>
-    loadAiPlanningChatIndex(userId),
-  );
+  const chatIndex = application.chat.index;
   const [imageAttachment, setImageAttachment] =
     useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
@@ -215,7 +200,6 @@ export function AiPlanningView({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
-  const didInitializeChatsRef = useRef(false);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef('');
   const speechFinalTextRef = useRef('');
@@ -260,7 +244,7 @@ export function AiPlanningView({
     () => allPreviewBlocks.map((block) => `${block.id}:${block.date}`).join('|'),
     [allPreviewBlocks],
   );
-  const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
+  const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
   const isInteractionBusy = isBusy || isReadingAttachment || isSubmitting;
   const isComposerBusy = isInteractionBusy || Boolean(state.approvalRecovery);
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
@@ -323,66 +307,11 @@ export function AiPlanningView({
       && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
   }
 
-  function persistActiveChat(baseIndex = chatIndex): AiPlanningChatIndex {
-    const chatId = baseIndex.activeChatId;
-    const snapshot = application.exportConversationSnapshot({ includeEmpty: true });
-    const messages = snapshot?.planningState.messages ?? state.messages;
-    const now = snapshot?.savedAt ?? new Date().toISOString();
-    let nextIndex = updateAiPlanningChatRecord(baseIndex, chatId, {
-      title: deriveAiPlanningChatTitle(messages),
-      updatedAt: now,
-      weekStartDate:
-        snapshot?.weekStartDate ??
-        baseIndex.chats.find((chat) => chat.id === chatId)?.weekStartDate ??
-        null,
-    });
-
-    if (snapshot) {
-      saveAiPlanningChatSnapshot(userId, chatId, snapshot);
-      nextIndex = updateAiPlanningChatRecord(nextIndex, chatId, {
-        weekStartDate: snapshot.weekStartDate,
-      });
-    }
-
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
-    return nextIndex;
+  function persistActiveChat() {
+    return application.chat.checkpoint();
   }
 
-  useEffect(() => {
-    if (didInitializeChatsRef.current) return;
-    didInitializeChatsRef.current = true;
-    const hadStoredChatIndex = hasStoredAiPlanningChatIndex(userId);
-    const loadedIndex = loadAiPlanningChatIndex(userId);
-    const loadedActive =
-      loadedIndex.chats.find((chat) => chat.id === loadedIndex.activeChatId) ??
-      loadedIndex.chats[0];
-    const snapshot = loadedActive
-      ? loadAiPlanningChatSnapshot(userId, loadedActive)
-      : null;
-
-    if (snapshot) {
-      application.loadConversationSnapshot(snapshot);
-      setChatIndex(loadedIndex);
-      return;
-    }
-
-    const currentSnapshot = application.exportConversationSnapshot();
-    if (!hadStoredChatIndex && loadedActive && currentSnapshot) {
-      saveAiPlanningChatSnapshot(userId, loadedActive.id, currentSnapshot);
-      const migratedIndex = updateAiPlanningChatRecord(loadedIndex, loadedActive.id, {
-        title: deriveAiPlanningChatTitle(currentSnapshot.planningState.messages),
-        updatedAt: currentSnapshot.savedAt,
-        weekStartDate: currentSnapshot.weekStartDate,
-      });
-      saveAiPlanningChatIndex(userId, migratedIndex);
-      setChatIndex(migratedIndex);
-      return;
-    }
-
-    saveAiPlanningChatIndex(userId, loadedIndex);
-    setChatIndex(loadedIndex);
-  }, [application, userId]);
+  useEffect(() => { application.chat.initialize(); }, [application.chat, state.pendingTurn, state.pendingApproval]);
 
   useEffect(() => {
     let cancelled = false;
@@ -655,22 +584,8 @@ export function AiPlanningView({
       setIsChatDrawerOpen(false);
       return;
     }
-    const persistedIndex = persistActiveChat();
-    const target = persistedIndex.chats.find((chat) => chat.id === chatId);
-    if (!target) return;
-    const snapshot = loadAiPlanningChatSnapshot(userId, target);
-    const loaded = snapshot ? application.loadConversationSnapshot(snapshot) : true;
-    if (!snapshot) application.startConversation();
-    if (!loaded) {
-      setError(
-        'このチャットを開けませんでした。処理中の操作を完了してから再試行してください。',
-      );
-      return;
-    }
+    if (application.chat.select(chatId).status !== 'saved') return;
     submission.current.active = false;
-    const nextIndex = setActiveAiPlanningChat(persistedIndex, chatId);
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
     setText('');
     setSelectedStarterOption(null);
     clearImageAttachment();
@@ -682,12 +597,8 @@ export function AiPlanningView({
 
   function createChat() {
     if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening) return;
-    const persistedIndex = persistActiveChat();
-    const created = createAiPlanningChat(persistedIndex);
+    if (application.chat.create().status !== 'saved') return;
     submission.current.active = false;
-    application.startConversation();
-    saveAiPlanningChatIndex(userId, created.index);
-    setChatIndex(created.index);
     setChatQuery('');
     setText('');
     setSelectedStarterOption(null);
@@ -704,18 +615,10 @@ export function AiPlanningView({
     if (!chat) return;
     if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
 
-    const persistedIndex = persistActiveChat();
-    const wasActive = persistedIndex.activeChatId === chatId;
-    const nextIndex = deleteAiPlanningChat(userId, persistedIndex, chatId);
+    const wasActive = chatIndex.activeChatId === chatId;
+    if (application.chat.remove(chatId).status !== 'saved') return;
     submission.current.active = false;
-
     if (wasActive) {
-      const target =
-        nextIndex.chats.find((item) => item.id === nextIndex.activeChatId) ??
-        nextIndex.chats[0];
-      const snapshot = target ? loadAiPlanningChatSnapshot(userId, target) : null;
-      if (snapshot) application.loadConversationSnapshot(snapshot);
-      else application.startConversation();
       setText('');
       setSelectedStarterOption(null);
       clearImageAttachment();
@@ -724,8 +627,6 @@ export function AiPlanningView({
       setPreviewPageIndex(0);
     }
 
-    saveAiPlanningChatIndex(userId, nextIndex);
-    setChatIndex(nextIndex);
   }
 
   function promotePreview() {
@@ -745,7 +646,7 @@ export function AiPlanningView({
       application.clearDraftBlocks();
     }
     application.createDraftBlocks(blocks);
-    window.requestAnimationFrame(() => persistActiveChat());
+    persistActiveChat();
   }
 
   async function saveDrafts() {

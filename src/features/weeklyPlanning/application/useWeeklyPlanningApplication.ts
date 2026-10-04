@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createAiPlanningChatSession, type AiPlanningChatSession } from '../chat/aiPlanningChatSession';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import type {
   Actual,
@@ -46,6 +47,7 @@ import {
 } from './weeklyPlanningSessionLifecycle';
 import {
   getWeeklyPlanningStableV5RuntimeSession,
+  bindWeeklyPlanningStableV5RuntimeSessionScope,
   hydrateWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
 import {
@@ -73,6 +75,7 @@ export interface UseWeeklyPlanningApplicationInput {
 }
 
 export interface WeeklyPlanningApplication {
+  chat: AiPlanningChatSession;
   state: PlanningState;
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
   approvalAvailability: WeeklyPlanningApprovalAvailability;
@@ -124,6 +127,11 @@ export function useWeeklyPlanningApplication({
     weekStartsOn,
   );
   const controllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
+  const applicationActiveRef = useRef(true);
+  useLayoutEffect(() => {
+    applicationActiveRef.current = true;
+    return () => { applicationActiveRef.current = false; };
+  }, []);
   const [approvalLedger, setApprovalLedger] = useState<ApprovalLedgerState>(() => ({
     ownerId,
     operations: loadWeeklyPlanningApprovalOperations(ownerId),
@@ -193,7 +201,7 @@ export function useWeeklyPlanningApplication({
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
   ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
-    if (!userId || !session || getPlanningState().approvalRecovery) return { accepted: false, draftCandidates: [] };
+    if (!userId || !session || getPlanningState().approvalRecovery || chat.requiresInitialization) return { accepted: false, draftCandidates: [] };
     return submitWeeklyPlanningApplicationTurn({
       session,
       userId,
@@ -218,6 +226,7 @@ export function useWeeklyPlanningApplication({
   }
 
   function resetSession(): void {
+    if (chat.requiresInitialization) return;
     const session = controllerSessionRef.current;
     if (!session) return;
     resetWeeklyPlanningApplicationSession({
@@ -229,21 +238,29 @@ export function useWeeklyPlanningApplication({
   }
 
   function clearConversation(): boolean {
+    if (chat.requiresInitialization) return false;
     return clearWeeklyPlanningControlledConversation({
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
     });
   }
 
-  function startConversation(): void {
+  function prepareNewConversation(): (() => void) | null {
     const session = controllerSessionRef.current;
-    if (!session || getPlanningState().pendingTurn || getPlanningState().pendingApproval) return;
-    const weekStartDate = getPlanningState().weekStartDate;
-    resetWeeklyPlanningControllerSession(session, ownerId, weekStartDate);
-    dispatchAndPersist({
-      type: 'load_state',
-      state: createInitialPlanningState(weekStartDate),
-    });
+    const current = getPlanningState();
+    if (!session || current.pendingTurn || current.pendingApproval) return null;
+    const next = createWeeklyPlanningControllerSession(ownerId, current.weekStartDate);
+    if (getWeeklyPlanningStableV5RuntimeSession(next.conversationId)) return null;
+    return () => {
+      resetWeeklyPlanningControllerSession(session, ownerId, current.weekStartDate, next.conversationId);
+      bindWeeklyPlanningStableV5RuntimeSessionScope({ ownerId, weekStartDate: current.weekStartDate, conversationId: next.conversationId });
+      dispatchAndPersist({ type: 'load_state', state: createInitialPlanningState(current.weekStartDate) });
+    };
+  }
+
+  function startConversation(): void {
+    if (chat.requiresInitialization) return;
+    prepareNewConversation()?.();
   }
 
   function exportConversationSnapshot(
@@ -274,62 +291,97 @@ export function useWeeklyPlanningApplication({
     };
   }
 
-  function loadConversationSnapshot(value: unknown): boolean {
+  function prepareConversationSnapshot(value: unknown): (() => void) | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (!session || current.pendingTurn || current.pendingApproval) return false;
+    if (!session || current.pendingTurn || current.pendingApproval) return null;
     const snapshot = validateWeeklyPlanningStableV5SessionSnapshot(value, ownerId);
-    if (!snapshot) return false;
-
-    hydrateWeeklyPlanningStableV5RuntimeSession({
-      ownerId,
-      weekStartDate: snapshot.weekStartDate,
-      conversationId: snapshot.conversationId,
-      graph: snapshot.graph,
-      updatedAt: Date.parse(snapshot.savedAt),
-    });
-    resetWeeklyPlanningControllerSession(
-      session,
-      ownerId,
-      snapshot.weekStartDate,
-      snapshot.conversationId,
-    );
-    session.requestSequence = Math.max(
-      snapshot.planningState.conversationRequestSequence ?? 0,
-      inferWeeklyPlanningControllerRequestSequence(
-        snapshot.planningState.messages,
+    if (!snapshot) return null;
+    const existing = getWeeklyPlanningStableV5RuntimeSession(snapshot.conversationId);
+    if (existing && existing.ownerId !== ownerId) return null;
+    return () => {
+      hydrateWeeklyPlanningStableV5RuntimeSession({
+        ownerId,
+        weekStartDate: snapshot.weekStartDate,
+        conversationId: snapshot.conversationId,
+        graph: snapshot.graph,
+        updatedAt: Date.parse(snapshot.savedAt),
+      });
+      resetWeeklyPlanningControllerSession(
+        session,
+        ownerId,
+        snapshot.weekStartDate,
         snapshot.conversationId,
-      ),
-    );
-    dispatchAndPersist({
-      type: 'load_state',
-      state: structuredClone(snapshot.planningState),
-    });
+      );
+      session.requestSequence = Math.max(
+        snapshot.planningState.conversationRequestSequence ?? 0,
+        inferWeeklyPlanningControllerRequestSequence(
+          snapshot.planningState.messages,
+          snapshot.conversationId,
+        ),
+      );
+      dispatchAndPersist({
+        type: 'load_state',
+        state: structuredClone(snapshot.planningState),
+      });
+    };
+  }
+
+  function loadConversationSnapshot(value: unknown): boolean {
+    if (chat.requiresInitialization) return false;
+    const commit = prepareConversationSnapshot(value);
+    if (!commit) return false;
+    commit();
     return true;
   }
 
+  const [chatRevision, setChatRevision] = useState(0);
+  const chatPortsRef = useRef({ ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState });
+  chatPortsRef.current = { ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState };
+  const chatRef = useRef<{ ownerId: string; generation: symbol; session: AiPlanningChatSession } | null>(null);
+  if (!chatRef.current || chatRef.current.ownerId !== ownerId) {
+    const generation = Symbol('chat-owner-session');
+    chatRef.current = { ownerId, generation, session: createAiPlanningChatSession(ownerId, {
+      isCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId && chatRef.current?.generation === generation,
+      isBusy: () => Boolean(chatPortsRef.current.getPlanningState().pendingTurn || chatPortsRef.current.getPlanningState().pendingApproval),
+      exportSnapshot: (includeEmpty) => chatPortsRef.current.exportConversationSnapshot({ includeEmpty }),
+      prepareImport: (snapshot) => chatPortsRef.current.prepareConversationSnapshot(snapshot),
+      prepareNew: () => chatPortsRef.current.prepareNewConversation(),
+      changed: () => setChatRevision((revision) => revision + 1),
+    }) };
+  }
+  const chat = chatRef.current.session;
+  useEffect(() => {
+    if (!chat.dirty || typeof window === 'undefined' || !window.addEventListener) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [chat, chatRevision]);
+
   return {
+    chat,
     state: planningState,
     pendingDraftBlocks,
     approvalAvailability,
-    canEditDraftBlocks,
+    canEditDraftBlocks: canEditDraftBlocks && !chat.requiresInitialization,
     submitTurn,
     cancelTurn: () => cancelWeeklyPlanningControlledTurn({
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
     }),
     clearConversation,
-    appendMessage: (message) => dispatchAndPersist({ type: 'append_message', message }),
+    appendMessage: (message) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'append_message', message }); },
     resetSession,
     startConversation,
     exportConversationSnapshot,
     loadConversationSnapshot,
-    createDraftBlocks: (blocks) => dispatchAndPersist({ type: 'add_draft_blocks', blocks }),
-    removePreviewCandidate: (candidateId) =>
-      dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }),
-    removeDraftBlock: (blockId) => dispatchAndPersist({ type: 'remove_draft_block', blockId }),
-    clearDraftBlocks: () => dispatchAndPersist({ type: 'clear_draft_blocks' }),
-    approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({
+    createDraftBlocks: (blocks) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'add_draft_blocks', blocks }); },
+    removePreviewCandidate: (candidateId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }); },
+    removeDraftBlock: (blockId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_draft_block', blockId }); },
+    clearDraftBlocks: () => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'clear_draft_blocks' }); },
+    approveDraftBlocks: () => chat.requiresInitialization
+      ? Promise.reject(new Error('チャットの読み込みを再試行してください。'))
+      : approveWeeklyPlanningDraftBlocks({
       userId,
       featureSessionId: controllerSessionRef.current?.conversationId,
       plans,
