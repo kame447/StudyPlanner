@@ -1,5 +1,6 @@
 // Test-only external persistence controls. All writes still use the production
 // local repository and its ScheduleEvent authority; no hook state is fabricated.
+import { scheduleEventToMonthEvent } from '../../../src/domain/scheduleEvent';
 import { createRepositories } from '../../../src/repositories/createRepositories';
 import { createLocalAuthStorageGateway, createLocalPlannerStorageGateway } from '../../../src/repositories/localStorageGateway';
 import { createLocalScheduleEventAuthority } from '../../../src/repositories/localScheduleEventAuthority';
@@ -12,15 +13,23 @@ export const authRepository = local.authRepository;
 const calls = [];
 let holdActualAcknowledgment = false;
 let heldAcknowledgment = null;
+let holdMonthWrite = false;
+let heldMonthWrite = null;
 let holdProjectionReads = false;
 const heldReads = [];
-const failures = { getActuals: 0, getStudyMaterials: 0 };
+const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0 };
 const targetMethods = new Set(Object.keys(failures));
 const snapshot = () => structuredClone({ calls, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
-  pendingReads: heldReads.map(item => item.method) });
+  pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
 
 export const plannerRepository = Object.fromEntries(Object.entries(real).map(([method, original]) => [method, async (...args) => {
   calls.push({ method, phase: 'called' });
+  if (method === 'upsertMonthEvent' && holdMonthWrite) {
+    holdMonthWrite = false;
+    // Gate BEFORE calling the real repository: the accepted full read must
+    // observe the old durable calendar, not an already-persisted optimistic row.
+    await new Promise(resolve => { heldMonthWrite = resolve; });
+  }
   if (targetMethods.has(method)) {
     if (holdProjectionReads) await new Promise(resolve => heldReads.push({ method, resolve }));
     if (failures[method] > 0) {
@@ -51,6 +60,19 @@ window.__plannerRecoveryRepository = {
     release();
     return true;
   },
+  holdNextMonthWrite() { holdMonthWrite = true; },
+  releaseMonthWrite() {
+    const release = heldMonthWrite;
+    if (!release) return false;
+    heldMonthWrite = null;
+    release();
+    return true;
+  },
+  readDurableMonthEvents() {
+    return JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+      .map(scheduleEventToMonthEvent).filter(event => event !== null);
+  },
+  failNextMonthRead() { failures.getMonthEvents += 1; },
   failNextActualRead() { failures.getActuals += 1; },
   holdTargetReads() { holdProjectionReads = true; },
   releaseTargetReads() {

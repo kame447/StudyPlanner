@@ -14,7 +14,8 @@ export function PlannerDataRecoveryNotice({
 }: PlannerDataRecoveryNoticeProps) {
   if (!ownerId || recovery?.ownerId !== ownerId) return null;
 
-  const subject = recovery.reason === 'actual-material' ? '実績・教材' : '学習データ';
+  const subject = recovery.reason === 'actual-material' ? '実績・教材'
+    : recovery.reason === 'month-events' ? '月の主要予定' : '学習データ';
   const message = recovery.phase === 'failed'
     ? `${subject}の最新表示を確認できませんでした。`
     : recovery.phase === 'refreshing'
