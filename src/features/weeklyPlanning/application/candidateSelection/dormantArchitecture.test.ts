@@ -8,8 +8,19 @@ const foundation = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(foundation, '../../../../..');
 const isTest = (path: string) => /\.(test|spec|testUtils)\.[cm]?[jt]sx?$/.test(path);
 const withinFoundation = (path: string) => path.startsWith(`${foundation}/`);
-// Explicit dormant numeric consumers; all other incoming boundaries remain prohibited.
-const permittedConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingChoiceV5.ts', 'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingCommitV5.ts']);
+// Explicit dormant numeric consumers; they must stay disconnected from every other production caller.
+const numericConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingChoiceV5.ts', 'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingCommitV5.ts']);
+// Every incoming file requires an intentional, individual review: the C5 consumer files plus the numeric PoC files.
+const allowedConsumers = new Set([
+  'src/features/weeklyPlanning/application/c5LocalSelection/contracts.ts',
+  'src/features/weeklyPlanning/application/c5LocalSelection/basis.ts',
+  'src/features/weeklyPlanning/application/c5LocalSelection/selection.ts',
+  ...numericConsumers,
+]);
+const testOnlyHelpers = new Set([
+  resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/controller.testUtils.ts'),
+  resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/evaluationHarness.testUtils.ts'),
+]);
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -25,13 +36,13 @@ function dependencies(file: string) {
   }));
 }
 
-describe('candidate selection stays a dormant application foundation', () => {
-  it('rejects every unlisted incoming runtime/UI/provider/scheduler/save/lifecycle/trace dependency', () => {
+describe('candidate selection keeps the pure foundation and explicit consumer boundary', () => {
+  it('allows only the individually reviewed consumer files to import the foundation', () => {
     const incoming: string[] = [];
     for (const file of ['src', 'shared', 'workers'].flatMap((root) => files(join(repository, root)))) {
       if (isTest(file) || withinFoundation(file)) continue;
       for (const dependency of dependencies(file)) {
-        if (dependency.resolved && withinFoundation(dependency.resolved) && !permittedConsumers.has(relative(repository, file))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+        if (dependency.resolved && withinFoundation(dependency.resolved) && !allowedConsumers.has(relative(repository, file))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
       }
     }
     expect(incoming).toEqual([]);
@@ -40,9 +51,9 @@ describe('candidate selection stays a dormant application foundation', () => {
   it('keeps both numeric PoC modules disconnected from every other production caller', () => {
     const incoming: string[] = [];
     for (const file of ['src', 'shared', 'workers'].flatMap(root => files(join(repository, root)))) {
-      if (isTest(file) || permittedConsumers.has(relative(repository, file))) continue;
+      if (isTest(file) || numericConsumers.has(relative(repository, file))) continue;
       for (const dependency of dependencies(file)) {
-        if (dependency.resolved && permittedConsumers.has(relative(repository, dependency.resolved))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+        if (dependency.resolved && numericConsumers.has(relative(repository, dependency.resolved))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
       }
     }
     expect(incoming).toEqual([]);
@@ -62,5 +73,16 @@ describe('candidate selection stays a dormant application foundation', () => {
         expect(source, relative(repository, file)).not.toContain(forbidden);
       }
     }
+  });
+
+  it('keeps C5 controller fixtures and paired-evaluation helpers out of all production imports', () => {
+    const incoming: string[] = [];
+    for (const file of ['src', 'shared', 'workers'].flatMap((root) => files(join(repository, root)))) {
+      if (isTest(file)) continue;
+      for (const dependency of dependencies(file)) {
+        if (dependency.resolved && testOnlyHelpers.has(dependency.resolved)) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+      }
+    }
+    expect(incoming).toEqual([]);
   });
 });
