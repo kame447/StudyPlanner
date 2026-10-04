@@ -17,7 +17,7 @@ Reference implementation: Jevbox `7e4562124c49d0e6a527609e872b7627e00ef604`（`s
   5. semantic correctness（全命題・対象・scope の保存）
 - Jev で扱う field の数は KPI にしない。
 - 五つの KPI は別々に測る。同じ turn に Luna が残れば、その turn は semantic-Luna-free rate には寄与しない。それでも、実行された Luna 呼出しが減れば（例：2回 → 1回）dispatch / turn は改善する。Luna が残ることは「全 KPI の効果が 0」と同じではない。
-- 逆に、field 単位・head 単位で Jev を足しても、実行される Luna 呼出しが同じなら dispatch の削減は 0 で、Jev の分だけ latency と cost が増える。
+- 逆に、field 単位・head 単位で Jev を足しても、実行される Luna 呼出しが同じなら dispatch の削減は 0 である。Luna を直列に同じだけ呼ぶ構成なら、Jev の分だけ latency と cost が増えやすい。ただし token 量や並行性によって変わるので、latency と cost は常に実測で判断する。
 
 ## 採用規則
 
@@ -177,7 +177,7 @@ veto head（condition_change / independent_meaning 等）は「誤っても Luna
 | 字面 parser の候補 | offline 限定 | 「未解釈 span 候補」として研究で再評価。authority の禁止は維持 | 値の再生成・全列挙が不要 | 候補漏れを検出できない |
 | registered material の「残り全部」 | 原理的に可能 | 研究（D6、契約依存） | 12件の切り落とし、名前抽出の回避 | adapter、current intent、stale |
 | material → chapter → section | Luna | 維持 | なし | domain の正本がない |
-| temporal side contribution | no-go | 維持 | なし | 初回 Luna が残る |
+| temporal side contribution | no-go | 維持 | なし | 実測で不採用（holdout で generic の Luna 呼出しが 57 対 53 に増え、回収が 15/16 対 16/16 に下がり、p50 / p95 も悪化した。#333 記録「置換の結果」の単位7） |
 | temporal scope repair | 採用（off） | 採用規則のもとでは未採用扱い（初回 Luna の後に動くので free な turn は作らない。repair 段の呼出しの削減は、全 turn の paired 実測でまだ証明されていない。便益が 0 だという判定ではない） | なし | initial の後に動く |
 
 C7 は今回の証拠範囲に現れなかったため判定していない。
