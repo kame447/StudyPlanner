@@ -1,8 +1,41 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+}
+
+function callsTo(sourceFile: ts.SourceFile, name: string): ts.CallExpression[] {
+  const calls: ts.CallExpression[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name) {
+      calls.push(node);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return calls;
+}
+
+function inputReferences(call: ts.CallExpression): Record<string, string> {
+  const input = call.arguments[0];
+  if (!input || !ts.isObjectLiteralExpression(input)) return {};
+  const references: Record<string, string> = {};
+  for (const property of input.properties) {
+    if (ts.isShorthandPropertyAssignment(property)) {
+      references[property.name.text] = property.name.text;
+    } else if (ts.isPropertyAssignment(property)
+      && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+      references[property.name.text] = ts.isIdentifier(property.initializer)
+        ? property.initializer.text : '<non-reference>';
+    } else {
+      // Spreads/computed keys can override an earlier reference. Do not silently
+      // treat a source shape this local wiring check cannot resolve as safe.
+      return {};
+    }
+  }
+  return references;
 }
 
 describe('weekly planning scheduler date-expression ownership', () => {
@@ -40,14 +73,33 @@ describe('weekly planning scheduler date-expression ownership', () => {
   });
 
   it('creates one active-graph snapshot and reuses it for baseline and calibration compilation', () => {
-    const planningEvaluation = source('../application/weeklyPlanningStableV5PlanningEvaluation.ts');
-
-    expect(planningEvaluation).toContain(
-      'const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5',
+    const planningEvaluation = ts.createSourceFile(
+      'weeklyPlanningStableV5PlanningEvaluation.ts',
+      source('../application/weeklyPlanningStableV5PlanningEvaluation.ts'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
     );
-    expect(planningEvaluation).toContain('graph: activeGraph');
-    expect(planningEvaluation).toContain('resolvedDateExpressions,\n    resolvedTemporalConstraints,');
-    expect(planningEvaluation).toContain('resolvedDateExpressions,\n        resolvedTemporalConstraints,');
+    const resolutions = callsTo(planningEvaluation, 'resolveWeeklyPlanningDateExpressionsV5');
+    expect(resolutions).toHaveLength(1);
+    expect(inputReferences(resolutions[0])).toMatchObject({ graph: 'activeGraph' });
+    const declaration = resolutions[0].parent;
+    expect(ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
+      ? declaration.name.text : null).toBe('resolvedDateExpressions');
+
+    for (const [callee, expectedGraphs] of [
+      ['compileGenericSchedulerInput', ['activeGraph', 'provisionalSchedulerGraph']],
+      ['compileWeeklyPlanningMemoryCalibrationSchedulerInputV5', ['activeGraph']],
+    ] as const) {
+      const inputs = callsTo(planningEvaluation, callee).map(inputReferences);
+      expect(inputs.map((input) => input.graph), callee).toEqual(expectedGraphs);
+      for (const input of inputs) {
+        expect(input, callee).toMatchObject({
+          resolvedDateExpressions: 'resolvedDateExpressions',
+          resolvedTemporalConstraints: 'resolvedTemporalConstraints',
+        });
+      }
+    }
   });
 
   it('keeps planning-window horizon grounding as an explicit separate responsibility', () => {
