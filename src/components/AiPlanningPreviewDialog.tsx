@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { useTimelineDragController } from '../hooks/useTimelineDragController';
@@ -23,6 +23,7 @@ interface AiPlanningPreviewDialogProps {
   blocks: WeeklyPlanDraftBlock[];
   plans: Plan[];
   error: string;
+  checkpointNotice?: ReactNode;
   hasLocalPreview: boolean;
   isBusy: boolean;
   isSaving: boolean;
@@ -107,6 +108,7 @@ export function AiPlanningPreviewDialog({
   blocks,
   plans,
   error,
+  checkpointNotice,
   hasLocalPreview,
   isBusy,
   isSaving,
@@ -869,6 +871,7 @@ export function AiPlanningPreviewDialog({
           {error ? <p className="ai-planning-preview-error" role="alert">{error}</p> : null}
 
           <footer className="ai-planning-preview-actions">
+            {checkpointNotice}
             <button className="ai-planning-secondary-action" type="button" onClick={onAdjust}>
               さらに調整
             </button>

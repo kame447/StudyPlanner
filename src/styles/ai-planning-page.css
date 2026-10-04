@@ -64,13 +64,17 @@
   border-radius: clamp(12px, 1.6vw, 18px);
 }
 
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-heading > div,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-message-row,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-message-body,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card-head > div,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-summary {
+.app-shell.home-app-shell .ai-planning-view.home-dashboard :is(
+  .ai-planning-heading,
+  .ai-planning-message-row,
+  .ai-planning-message-body,
+  .ai-planning-plan-card-head,
+  .ai-planning-plan-summary
+),
+.app-shell.home-app-shell .ai-planning-view.home-dashboard :is(
+  .ai-planning-heading,
+  .ai-planning-plan-card-head
+) > div {
   box-sizing: border-box;
   max-width: 100%;
   min-width: 0;
@@ -131,9 +135,11 @@
   min-width: 0;
 }
 
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer-side,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-mic-button,
-.app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-send-button {
+.app-shell.home-app-shell .ai-planning-view.home-dashboard :is(
+  .ai-planning-composer-side,
+  .ai-planning-mic-button,
+  .ai-planning-send-button
+) {
   box-sizing: border-box;
   flex-shrink: 0;
 }

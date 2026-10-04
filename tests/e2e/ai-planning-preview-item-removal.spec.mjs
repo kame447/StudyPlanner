@@ -244,6 +244,40 @@ test('AI planning preview removes the exact promoted draft block', async ({ page
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
 });
 
+test('AI planning storage failure exposes an operable retry and preserves the empty chat', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedPreviewRemovalState(page, { phase: 'promoted' });
+  for (const [title, count] of [['金フレ A', 2], ['金フレ B', 1]]) {
+    const preview = await openPreview(page, count);
+    const { removeAction } = await revealRemoveAction(page, preview, title);
+    await page.evaluate(() => {
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (this === localStorage && key.startsWith('studyplanner.aiPlanning.chat.v1.')) {
+          throw new DOMException('Simulated full storage', 'QuotaExceededError');
+        }
+        return setItem.call(this, key, value);
+      };
+      window.restoreChatStorage = () => { Storage.prototype.setItem = setItem; };
+    });
+    await removeAction.click();
+    if (count === 1) await expect(preview).toBeHidden();
+    else await expect(preview.locator('.ai-planning-preview-total')).toContainText('全1件');
+    // While the modal remains open, recovery must be inside its accessible subtree.
+    const surface = count === 1 ? page : preview;
+    const retry = surface.getByRole('button', { name: 'チャットの保存を再試行' });
+    await expect(retry).toBeInViewport();
+    await expect(surface.getByRole('alert')).toContainText('今の内容は保持しています');
+    await page.evaluate(() => window.restoreChatStorage());
+    // Normal click checks hit testing, unlike a DOM-only visibility assertion.
+    await retry.click();
+    await expect(retry).toHaveCount(0);
+  }
+  await page.reload();
+  await page.locator('.primary-bottom-nav button').first().click();
+  await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
+});
+
 // Navigation can discard animation-frame callbacks. A completed deletion must
 // already be reflected in the chat snapshot that wins during the next restore.
 for (const phase of ['preview', 'promoted']) {

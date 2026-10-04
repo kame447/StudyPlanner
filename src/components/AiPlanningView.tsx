@@ -6,14 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
-import {
-  createAiPlanningChat,
-  deriveAiPlanningChatTitle,
-  loadAiPlanningChatIndex,
-  saveAiPlanningChatIndex,
-  saveAiPlanningChatSnapshot,
-  updateAiPlanningChatRecord,
-} from '../features/weeklyPlanning/chat/aiPlanningChatStore';
+
 import { applyEditedPreviewPositions } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewEdits';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
@@ -29,6 +22,7 @@ import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
 import './AiPlanningPreviewBottomSheet.css';
+import './AiPlanningCheckpointNotice.css';
 
 interface AiPlanningViewProps {
   application: WeeklyPlanningApplication;
@@ -66,10 +60,11 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       ),
     [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
   );
-  const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
+  const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
+  const showingPreview = isPreviewOpen && allPreviewBlocks.length > 0;
 
   useLayoutEffect(() => {
-    if (!isPreviewOpen) return;
+    if (!showingPreview) return;
     const conversation = shellRef.current?.querySelector<HTMLElement>(
       '.ai-planning-conversation',
     );
@@ -121,35 +116,10 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       body.style.width = previousBodyWidth;
       window.scrollTo(lockedWindowScrollX, lockedWindowScrollY);
     };
-  }, [isPreviewOpen]);
+  }, [showingPreview]);
 
   function persistActiveChatSnapshot() {
-    // An authoritative empty chat must replace the previous non-empty snapshot.
-    const snapshot = application.exportConversationSnapshot({ includeEmpty: true });
-    if (!snapshot) return;
-
-    const currentIndex = loadAiPlanningChatIndex(userId);
-    const activeChatId = currentIndex.activeChatId;
-    const activeChat = currentIndex.chats.find((chat) => chat.id === activeChatId);
-    if (!activeChat) {
-      const created = createAiPlanningChat(currentIndex);
-      saveAiPlanningChatSnapshot(userId, created.chat.id, snapshot);
-      const nextCreatedIndex = updateAiPlanningChatRecord(created.index, created.chat.id, {
-        title: deriveAiPlanningChatTitle(snapshot.planningState.messages),
-        updatedAt: snapshot.savedAt,
-        weekStartDate: snapshot.weekStartDate,
-      });
-      saveAiPlanningChatIndex(userId, nextCreatedIndex);
-      return;
-    }
-
-    saveAiPlanningChatSnapshot(userId, activeChatId, snapshot);
-    const nextIndex = updateAiPlanningChatRecord(currentIndex, activeChatId, {
-      title: deriveAiPlanningChatTitle(snapshot.planningState.messages),
-      updatedAt: snapshot.savedAt,
-      weekStartDate: snapshot.weekStartDate,
-    });
-    saveAiPlanningChatIndex(userId, nextIndex);
+    return application.chat.checkpoint();
   }
 
   function openPreviewFromLegacySurface(event: ReactMouseEvent<HTMLDivElement>) {
@@ -198,7 +168,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       application.clearDraftBlocks();
     }
     application.createDraftBlocks(blocks);
-    window.requestAnimationFrame(persistActiveChatSnapshot);
+    persistActiveChatSnapshot();
   }
 
   async function saveDrafts(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
@@ -243,13 +213,41 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     }
   }
 
+  const checkpointNotice = application.chat.result?.status === 'blocked' ? (
+    <div className="ai-planning-error ai-planning-checkpoint-notice" role="alert">
+      {application.chat.requiresInitialization
+        ? '保存済みチャットを読み込めません。保存データは変更していません。再試行してください。'
+        : application.chat.result.reason === 'target-unavailable'
+          ? 'このチャットの保存データを開けません。今の会話は変更していません。'
+          : 'チャットの保存を完了できませんでした。今の内容は保持しています。画面を閉じずに再試行してください。'}
+      {application.chat.dirty || application.chat.requiresInitialization ? (
+        <button type="button" aria-label="チャットの保存を再試行" onClick={() => application.chat.retry()}>
+          {application.chat.requiresInitialization ? '読み込みを再試行' : '保存を再試行'}
+        </button>
+      ) : null}
+      {application.chat.canStartWithoutRestoring ? (
+        <button type="button" aria-label="読み込めないチャットを残して新規作成" onClick={() => {
+          if (window.confirm('今表示している未保存内容は引き継がれません。読み込めなかった保存済みチャットは残して、新しいチャットを開始しますか？')) {
+            application.chat.startWithoutRestoring();
+          }
+        }}>
+          保存済みチャットを残して新しく開始
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <div
       ref={shellRef}
-      className={`ai-planning-view-shell-v2 ${isPreviewOpen ? 'is-preview-open' : ''}`}
+      className={`ai-planning-view-shell-v2 ${showingPreview ? 'is-preview-open' : ''}`}
       onClickCapture={openPreviewFromLegacySurface}
     >
-      <AiPlanningViewLegacy {...props} cancellationEpoch={cancellationEpoch} />
+      <AiPlanningViewLegacy
+        {...props}
+        cancellationEpoch={cancellationEpoch}
+        checkpointNotice={showingPreview ? null : checkpointNotice}
+      />
       {state.pendingTurn ? (
         <div className="ai-planning-pending-turn-actions">
           <button
@@ -261,7 +259,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
           </button>
         </div>
       ) : null}
-      {isPreviewOpen && allPreviewBlocks.length > 0 ? (
+      {showingPreview ? (
         <div
           className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}
         >
@@ -269,6 +267,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
             blocks={allPreviewBlocks}
             plans={plans}
             error={previewError}
+            checkpointNotice={checkpointNotice}
             hasLocalPreview={hasLocalPreview}
             isBusy={isBusy}
             isSaving={Boolean(state.pendingApproval)}

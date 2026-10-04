@@ -10,17 +10,17 @@ const TITLE_MAX_LENGTH = 32;
 const SEARCH_TEXT_MAX_LENGTH = 12_000;
 
 export interface AiPlanningChatRecord {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  weekStartDate: string | null;
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly weekStartDate: string | null;
 }
 
 export interface AiPlanningChatIndex {
-  version: typeof CHAT_INDEX_VERSION;
-  activeChatId: string;
-  chats: AiPlanningChatRecord[];
+  readonly version: typeof CHAT_INDEX_VERSION;
+  readonly activeChatId: string;
+  readonly chats: readonly AiPlanningChatRecord[];
 }
 
 function createId(): string {
@@ -87,28 +87,35 @@ function deriveSearchText(messages: readonly WeeklyPlanningMessage[]): string {
     : text;
 }
 
+function parseChatIndex(raw: string, requireComplete: boolean): AiPlanningChatIndex | null {
+  const parsed = JSON.parse(raw) as Partial<AiPlanningChatIndex>;
+  if (!parsed || parsed.version !== CHAT_INDEX_VERSION || typeof parsed.activeChatId !== 'string' || !Array.isArray(parsed.chats)) return null;
+  const chats = parsed.chats.filter(isChatRecord);
+  if (chats.length === 0 || (requireComplete && (chats.length !== parsed.chats.length
+    || new Set(chats.map(chat => chat.id)).size !== chats.length))) return null;
+  const activeChatId = chats.some(chat => chat.id === parsed.activeChatId) ? parsed.activeChatId : chats[0].id;
+  return { version: CHAT_INDEX_VERSION, activeChatId, chats };
+}
+
+export function readAiPlanningChatIndex(userId: string):
+  | { status: 'missing' | 'ready'; index: AiPlanningChatIndex }
+  | { status: 'unavailable' } {
+  if (typeof window === 'undefined') return { status: 'unavailable' };
+  try {
+    const raw = window.localStorage.getItem(indexKey(userId));
+    if (raw === null) return { status: 'missing', index: createBlankIndex() };
+    const index = parseChatIndex(raw, true);
+    return index ? { status: 'ready', index } : { status: 'unavailable' };
+  } catch { return { status: 'unavailable' }; }
+}
+
+// Compatibility reader; mutating callers use the typed read so failure cannot become an empty replacement.
 export function loadAiPlanningChatIndex(userId: string): AiPlanningChatIndex {
   if (typeof window === 'undefined') return createBlankIndex();
   try {
     const raw = window.localStorage.getItem(indexKey(userId));
-    if (!raw) return createBlankIndex();
-    const parsed = JSON.parse(raw) as Partial<AiPlanningChatIndex>;
-    if (
-      parsed.version !== CHAT_INDEX_VERSION
-      || typeof parsed.activeChatId !== 'string'
-      || !Array.isArray(parsed.chats)
-    ) {
-      return createBlankIndex();
-    }
-    const chats = parsed.chats.filter(isChatRecord);
-    if (chats.length === 0) return createBlankIndex();
-    const activeChatId = chats.some((chat) => chat.id === parsed.activeChatId)
-      ? parsed.activeChatId
-      : chats[0].id;
-    return { version: CHAT_INDEX_VERSION, activeChatId, chats };
-  } catch {
-    return createBlankIndex();
-  }
+    return raw ? parseChatIndex(raw, false) ?? createBlankIndex() : createBlankIndex();
+  } catch { return createBlankIndex(); }
 }
 
 export function hasStoredAiPlanningChatIndex(userId: string): boolean {
@@ -120,8 +127,8 @@ export function hasStoredAiPlanningChatIndex(userId: string): boolean {
   }
 }
 
-export function saveAiPlanningChatIndex(userId: string, index: AiPlanningChatIndex): void {
-  if (typeof window === 'undefined') return;
+export function saveAiPlanningChatIndex(userId: string, index: AiPlanningChatIndex): boolean {
+  if (typeof window === 'undefined') return false;
   const chats = [...index.chats]
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const activeChatId = chats.some((chat) => chat.id === index.activeChatId)
@@ -133,8 +140,9 @@ export function saveAiPlanningChatIndex(userId: string, index: AiPlanningChatInd
       activeChatId,
       chats,
     } satisfies AiPlanningChatIndex));
+    return true;
   } catch {
-    // Chat navigation remains usable in memory when browser storage is unavailable.
+    return false;
   }
 }
 
@@ -172,11 +180,17 @@ export function updateAiPlanningChatRecord(
   };
 }
 
-export function deleteAiPlanningChat(
-  userId: string,
-  index: AiPlanningChatIndex,
-  chatId: string,
-): AiPlanningChatIndex {
+export function removeAiPlanningChatFromIndex(index: AiPlanningChatIndex, chatId: string): AiPlanningChatIndex {
+  const remaining = index.chats.filter((chat) => chat.id !== chatId);
+  if (remaining.length === 0) return createBlankIndex();
+  return {
+    ...index,
+    activeChatId: index.activeChatId === chatId ? remaining[0].id : index.activeChatId,
+    chats: remaining,
+  };
+}
+
+export function removeAiPlanningChatSnapshot(userId: string, chatId: string): void {
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.removeItem(snapshotKey(userId, chatId));
@@ -185,13 +199,11 @@ export function deleteAiPlanningChat(
       // Best effort cleanup.
     }
   }
-  const remaining = index.chats.filter((chat) => chat.id !== chatId);
-  if (remaining.length === 0) return createBlankIndex();
-  return {
-    ...index,
-    activeChatId: index.activeChatId === chatId ? remaining[0].id : index.activeChatId,
-    chats: remaining,
-  };
+}
+
+export function deleteAiPlanningChat(userId: string, index: AiPlanningChatIndex, chatId: string): AiPlanningChatIndex {
+  removeAiPlanningChatSnapshot(userId, chatId);
+  return removeAiPlanningChatFromIndex(index, chatId);
 }
 
 export function saveAiPlanningChatSnapshot(

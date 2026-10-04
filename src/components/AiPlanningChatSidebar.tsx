@@ -1,5 +1,5 @@
 import { MessageCircle, Plus, RotateCcw, Search, Trash2, TriangleAlert, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AiPlanningChatRecord } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
 import './AiPlanningChatSidebar.css';
 
@@ -9,6 +9,7 @@ interface AiPlanningChatSidebarProps {
   activeChatId: string;
   query: string;
   disabled?: boolean;
+  checkpointNotice?: ReactNode;
   onQueryChange: (query: string) => void;
   onCreate: () => void;
   onSelect: (chatId: string) => void;
@@ -33,6 +34,7 @@ export function AiPlanningChatSidebar({
   activeChatId,
   query,
   disabled = false,
+  checkpointNotice,
   onQueryChange,
   onCreate,
   onSelect,
@@ -61,15 +63,18 @@ export function AiPlanningChatSidebar({
         aria-label="AI計画のチャット"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="ai-chat-drawer-header">
-          <div>
-            <MessageCircle aria-hidden="true" size={21} />
-            <strong>AI計画</strong>
-          </div>
-          <button type="button" onClick={closeDrawer} aria-label="チャット一覧を閉じる">
-            <X aria-hidden="true" size={20} />
-          </button>
-        </header>
+        <div>
+          <header className="ai-chat-drawer-header">
+            <div>
+              <MessageCircle aria-hidden="true" size={21} />
+              <strong>AI計画</strong>
+            </div>
+            <button type="button" onClick={closeDrawer} aria-label="チャット一覧を閉じる">
+              <X aria-hidden="true" size={20} />
+            </button>
+          </header>
+          {!isResetConfirmOpen ? checkpointNotice : null}
+        </div>
 
         <button
           className="ai-chat-new-button"
