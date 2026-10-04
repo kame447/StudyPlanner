@@ -57,11 +57,11 @@ export interface PlannerDataLoadStart {
   ownerChanged: boolean;
 }
 
-export type PlannerRepairTarget = 'actual-material' | 'month-events';
+export type PlannerRepairTarget = 'actual-material' | 'month-events' | 'plans-todos';
 
 // Fixed repair groups, in stable order; tickets never borrow a caller's mutable array.
 function repairTargets(...groups: readonly (readonly PlannerRepairTarget[])[]): readonly PlannerRepairTarget[] {
-  return Object.freeze((['actual-material', 'month-events'] as const).filter(target =>
+  return Object.freeze((['actual-material', 'month-events', 'plans-todos'] as const).filter(target =>
     groups.some(group => group.includes(target))));
 }
 
@@ -75,7 +75,7 @@ export interface PlannerDataReconciliationTicket extends PlannerDataProjectionLe
 export interface PlannerDataRecovery {
   ownerId: string;
   reason: 'full-read' | 'actual-material' | 'full-read-and-actual-material'
-    | 'month-events' | 'projections' | 'full-read-and-projections';
+    | 'month-events' | 'plans-todos' | 'projections' | 'full-read-and-projections';
   phase: 'waiting' | 'refreshing' | 'failed';
   canRetry: boolean;
 }
@@ -101,7 +101,7 @@ export function isPlannerDataReadyForOwner(availability: PlannerDataAvailability
   return availability.status === 'ready' && availability.ownerId === ownerId;
 }
 
-/** Full-load health and one repair batch spanning the two supported projection groups. */
+/** Full-load health and one repair batch spanning disjoint projection groups. */
 export class PlannerDataReadAuthority {
   private ownerId: string | null = null;
   private epoch = 0;
@@ -152,14 +152,12 @@ export class PlannerDataReadAuthority {
     let recovery: PlannerDataRecovery | null = null;
     if (this.ownerId !== null && (this.full !== 'ready' || this.concern !== null)) {
       const fullProblem = this.full === 'loading' || this.full === 'failed';
-      const hasMonthEvents = this.concern?.targets.includes('month-events');
-      const projectionReason = hasMonthEvents
-        ? this.concern!.targets.includes('actual-material') ? 'projections' : 'month-events'
-        : 'actual-material';
+      const projectionReason = this.concern && this.concern.targets.length > 1
+        ? 'projections' : this.concern?.targets[0] ?? 'actual-material';
       recovery = {
         ownerId: this.ownerId,
         reason: fullProblem
-          ? this.concern ? hasMonthEvents ? 'full-read-and-projections' : 'full-read-and-actual-material' : 'full-read'
+          ? this.concern ? projectionReason === 'actual-material' ? 'full-read-and-actual-material' : 'full-read-and-projections' : 'full-read'
           : projectionReason,
         phase: this.full === 'loading' ? 'refreshing' : this.full === 'failed' || this.concern?.phase === 'failed'
           ? 'failed' : this.concern?.phase === 'reading' ? 'refreshing' : 'waiting',
@@ -196,14 +194,14 @@ export class PlannerDataReadAuthority {
     token: PlannerDataLoadToken,
     observedAt: string,
     projectionStable = true,
-    successfulTargets: readonly PlannerRepairTarget[] = [],
+    overlappingTargets: readonly PlannerRepairTarget[] = [],
   ): PlannerDataAvailability | null {
     if (!this.isCurrent(token)) return null;
     // A full snapshot covers older requests, but cannot discharge requests or
-    // successful completions observed while its collection reads were in flight.
+    // declared effects observed while its collection reads were in flight.
     const targets = repairTargets(
       projectionStable ? [] : ['actual-material'],
-      successfulTargets,
+      overlappingTargets,
       token.requestRevision !== this.requestRevision ? this.concern?.targets ?? [] : [],
     );
     this.full = 'ready';

@@ -16,7 +16,7 @@ let heldMonthWrite = null;
 let planRestoreFault = null;
 let holdProjectionReads = false;
 const heldReads = [];
-const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0 };
+const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
 const targetMethods = new Set(Object.keys(failures));
 const snapshot = () => structuredClone({ calls, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
   pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
@@ -57,20 +57,26 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
-  async seedPlanUndo({ userId, date }) {
+  async seedPlanUndo({ userId, date, withTodo = false }) {
     const now = new Date().toISOString();
     const plan = { id: 'rollback-undo-plan', seriesId: 'rollback-undo-plan', userId,
       title: '復元に失敗する学習予定', subject: '数学', date, startTime: '09:00', endTime: '09:30',
       repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'study',
-      memo: '', createdAt: now, updatedAt: now };
+      memo: '', createdAt: now, updatedAt: now,
+      ...(withTodo ? { sourceType: 'todo', sourceId: 'rollback-undo-todo' } : {}) };
     const actual = { id: 'rollback-undo-actual', userId, planId: plan.id, occurrenceDate: date,
       actualStartTime: '09:00', actualEndTime: '09:30', title: plan.title, subject: plan.subject,
-      note: 'Undo must restore this linked record or reject', updatedAt: now };
+      note: 'Undo must restore this linked record or reject', updatedAt: now,
+      ...(withTodo ? { materialProgressUpdates: [{ materialId: 'material-before-refresh', deltaUnits: 5 }] } : {}) };
+    const todo = withTodo ? { id: plan.sourceId, userId, title: plan.title, subject: plan.subject,
+      type: 'study', estimatedMinutes: 30, dueDate: null, dueTime: null, pinned: false, memo: '', status: 'scheduled',
+      scheduledPlanId: plan.id, createdAt: now, updatedAt: now } : null;
     // Setup uses the same production facade as the App. The hook subsequently
     // reads these rows and captures its real linked-record Undo closure.
     await plannerRepository.upsertPlan(plan);
     await plannerRepository.upsertActual(actual);
-    return { plan, actual };
+    if (todo) await plannerRepository.upsertTodo(todo);
+    return { plan, actual, ...(todo ? { todo } : {}) };
   },
   armPlanRestoreFault(planId, onPlanRestore) {
     if (planRestoreFault) throw new Error('A Plan restore fault is already installed');
@@ -108,6 +114,7 @@ window.__plannerRecoveryRepository = {
   },
   failNextMonthRead() { failures.getMonthEvents += 1; },
   failNextActualRead() { failures.getActuals += 1; },
+  failNextTodoRead() { failures.getTodos += 1; },
   holdTargetReads() { holdProjectionReads = true; },
   releaseTargetReads() {
     holdProjectionReads = false;

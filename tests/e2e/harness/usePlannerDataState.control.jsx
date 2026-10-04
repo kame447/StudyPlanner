@@ -18,6 +18,7 @@ export function usePlannerDataState(options) {
     control.snapshot = () => ({ ownerId: options.userId,
       ready: result.isPlannerDataSnapshotCurrent(), availability: result.plannerDataAvailability,
       recovery: result.plannerDataRecovery, plans: result.plans, actuals: result.actuals, materials: result.studyMaterials,
+      todos: result.todos,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
     control.deletePlan = planId => {

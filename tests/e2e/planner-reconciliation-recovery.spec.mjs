@@ -553,3 +553,100 @@ test('failed Plan Undo preserves a queued MonthEvent through rollback and real r
     await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanRestoreFault());
   }
 });
+
+// The 13 existing cases stay unchanged. Full refresh admits its ten queued
+// getters before the actual Undo click in this same browser task. No read or
+// restore gate creates the race; only the later targeted Todo read is failed.
+test('Plan Undo repairs all linked projections after an older full refresh; retry is read-only mobile-dark', async ({ page }) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  const seeded = await page.evaluate(async date => {
+    const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+    const seeded = await window.__plannerRecoveryRepository.seedPlanUndo({ userId, date, withTodo: true });
+    await window.__plannerRecoveryHook.refresh();
+    return seeded;
+  }, E2E_TODAY);
+  await expect.poll(async () => {
+    const state = await hookSnapshot(page);
+    return { plans: state.plans.map(item => item.id), actuals: state.actuals.map(item => item.id),
+      todos: state.todos.map(item => item.id), ready: state.ready };
+  }).toEqual({ plans: [seeded.plan.id], actuals: [seeded.actual.id], todos: [seeded.todo.id], ready: true });
+  const restored = await hookSnapshot(page);
+  const readStorage = () => page.evaluate(() => Object.fromEntries([
+    'plans', 'scheduleEvents.v1', 'actuals', 'todos.v1', 'studyMaterials.v1', 'monthEvents',
+    'dayNotes', 'studySubjects.v1', 'scheduleTemplates.v1', 'timetableTerms.v1', 'timetablePeriods.v1',
+  ].map(key => [key, localStorage.getItem(`studyplanner.${key}`)])));
+  const restoredStorage = await readStorage();
+  await navigate(page, 'AI計画');
+  await composer(page).fill(TEXT);
+  await page.locator('.ai-planning-attachment-input').setInputFiles(image);
+  await page.evaluate(planId => window.__plannerRecoveryHook.deletePlan(planId), seeded.plan.id);
+  const undo = page.getByRole('button', { name: '元に戻す', exact: true });
+  await expect(undo).toBeVisible();
+  await expect.poll(async () => {
+    const state = await hookSnapshot(page);
+    return { plans: state.plans, actuals: state.actuals,
+      todo: { status: state.todos[0]?.status, scheduledPlanId: state.todos[0]?.scheduledPlanId } };
+  }).toEqual({ plans: [], actuals: [], todo: { status: 'open', scheduledPlanId: null } });
+  const deleted = await hookSnapshot(page);
+  const before = await repoSnapshot(page);
+  const admitted = await undo.evaluate(button => {
+    const repository = window.__plannerRecoveryRepository;
+    const offset = repository.snapshot().calls.length;
+    const refreshing = window.__plannerRecoveryHook.refresh();
+    const admitted = repository.snapshot().calls.slice(offset).filter(call => call.phase === 'called').map(call => call.method);
+    // Each full getter has already passed the fixture's failure check and
+    // entered the real local queue. This fault therefore belongs to repair.
+    repository.failNextTodoRead();
+    button.click();
+    return refreshing.then(() => admitted);
+  });
+  expect(admitted).toEqual(['getPlans', 'getActuals', 'getDayNotes', 'getMonthEvents', 'getTodos',
+    'getStudySubjects', 'getStudyMaterials', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods']);
+  await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  await expect(retry(page)).toBeVisible();
+  const failed = await hookSnapshot(page);
+  // One failed member must retain the whole concern: successful Plan/Actual
+  // target reads cannot publish a partial repair or certify AI admission.
+  expect({ plans: failed.plans, actuals: failed.actuals, todos: failed.todos, ready: failed.ready })
+    .toEqual({ plans: deleted.plans, actuals: deleted.actuals, todos: deleted.todos, ready: false });
+  expect(await readStorage()).toEqual(restoredStorage);
+  const afterFailure = await repoSnapshot(page);
+  const failedCalls = afterFailure.calls.slice(before.calls.length);
+  expect(failedCalls.filter(call => call.phase === 'failed')).toEqual([{ method: 'getTodos', phase: 'failed' }]);
+  expect(failedCalls.filter(call => call.method === 'restorePlanWithDependents' && call.phase === 'returned')).toHaveLength(1);
+  expect(calledMethods(afterFailure).slice(calledMethods(before).length, calledMethods(before).length + 11))
+    .toEqual([...admitted, 'restorePlanWithDependents']);
+  expect(writeMethods(afterFailure).slice(writeMethods(before).length))
+    .toEqual(['restorePlanWithDependents', 'applyTimetableMutation']);
+  const writes = writeMethods(afterFailure);
+  const storageWrites = await durableWrites(page);
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(attachment(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+
+  await page.evaluate(() => window.__plannerRecoveryRepository.holdTargetReads());
+  try {
+    await retry(page).click();
+    const repairMethods = ['getActuals', 'getPlans', 'getStudyMaterials', 'getTodos'];
+    await expect.poll(async () => (await repoSnapshot(page)).pendingReads.sort()).toEqual(repairMethods);
+    expect((await hookSnapshot(page)).ready).toBe(false);
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads())).toBe(4);
+    await expect.poll(async () => {
+      const state = await hookSnapshot(page);
+      return { plans: state.plans, actuals: state.actuals, todos: state.todos, materials: state.materials, ready: state.ready };
+    }).toEqual({ plans: restored.plans, actuals: restored.actuals, todos: restored.todos, materials: restored.materials, ready: true });
+    await expect(recovery(page)).toHaveCount(0);
+    expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(afterFailure).length).sort()).toEqual(repairMethods);
+    expect(writeMethods(await repoSnapshot(page))).toEqual(writes);
+    expect(await durableWrites(page)).toEqual(storageWrites);
+    expect(await readStorage()).toEqual(restoredStorage);
+    await expect(composer(page)).toHaveValue(TEXT);
+    await expect(attachment(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+    expect(await page.evaluate(() => window.__realWeeklyImageRead.pending())).toBe(0);
+    expect(await runtimeCalls(page)).toEqual([]);
+  } finally {
+    await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
+  }
+});

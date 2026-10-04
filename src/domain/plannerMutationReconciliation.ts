@@ -6,7 +6,11 @@ export interface PlannerMutationActivity {
   readonly settled: number;
   readonly pending: number;
   readonly successful: Readonly<Record<PlannerRepairTarget, number>>;
+  readonly planRestorePending: number;
+  readonly planRestoreSettled: number;
 }
+const PLAN_RESTORE_TARGETS: readonly PlannerRepairTarget[] = Object.freeze(['actual-material', 'plans-todos']);
+
 export interface PlannerMutationTicket { readonly epoch: number; readonly id: symbol }
 interface Configuration<T> {
   isCurrent: (ownerId: string) => boolean;
@@ -21,10 +25,12 @@ export class PlannerMutationReconciliation<T> {
   private epoch = 0;
   private started = 0;
   private settled = 0;
-  private successful = { 'actual-material': 0, 'month-events': 0 };
+  private successful = { 'actual-material': 0, 'month-events': 0, 'plans-todos': 0 };
+  private planRestoreSettled = 0;
   private pending = new Map<symbol, {
     targets: readonly PlannerRepairTarget[];
     lease: PlannerDataProjectionLease | null;
+    planRestore?: true;
   }>();
   private running: { id: symbol; ticket: PlannerDataReconciliationTicket } | null = null;
   private configuration: Configuration<T> | null = null;
@@ -42,7 +48,8 @@ export class PlannerMutationReconciliation<T> {
     this.epoch += 1;
     this.started = 0;
     this.settled = 0;
-    this.successful = { 'actual-material': 0, 'month-events': 0 };
+    this.successful = { 'actual-material': 0, 'month-events': 0, 'plans-todos': 0 };
+    this.planRestoreSettled = 0;
     this.pending.clear();
     this.running = null;
   }
@@ -54,18 +61,35 @@ export class PlannerMutationReconciliation<T> {
     return { epoch: this.epoch, id };
   }
 
+  /** Arm only immediately before dispatch, after caller-owned admission checks.
+   * Repository rejection is untyped: either outcome may change the read projection.
+   */
+  beginPlanRestore(): PlannerMutationTicket {
+    const ticket = this.beginMutation();
+    this.pending.get(ticket.id)!.planRestore = true;
+    return ticket;
+  }
+
   settleMutation(ticket: PlannerMutationTicket, outcome: 'success' | 'failure' = 'failure'): void {
     if (ticket.epoch !== this.epoch) return;
     const mutation = this.pending.get(ticket.id);
     if (!mutation) return;
-    // Successful-completion observations are local counters, not durable commit
-    // revisions. Record them and request repairs before releasing this writer.
+    // These are local activity observations, never durable commit revisions.
+    // Ordinary tags retain success-only semantics; dispatched Plan Undo also
+    // retains failure settlement (including rejection after failed compensation).
     let changed = false;
-    if (outcome === 'success' && mutation.lease && this.authority.isOwnerCurrent(mutation.lease)) {
-      for (const target of mutation.targets) this.successful[target] += 1;
-      if (this.authority.hasAcceptedProjectionChanged(mutation.lease) && mutation.targets.length
-        && this.configuration?.isCurrent(mutation.lease.ownerId)) {
-        changed = this.authority.requireReconciliation(mutation.lease, this.now(), mutation.targets);
+    if (mutation.lease && this.authority.isOwnerCurrent(mutation.lease)) {
+      if (outcome === 'success') {
+        for (const target of mutation.targets) this.successful[target] += 1;
+      }
+      if (mutation.planRestore) this.planRestoreSettled += 1;
+      const targets = mutation.planRestore ? PLAN_RESTORE_TARGETS : outcome === 'success' ? mutation.targets : [];
+      // A dispatched restore rejection has no trusted no-effect receipt. Repair
+      // even without a crossing read: failed compensation can leave partial state.
+      const needsRepair = (mutation.planRestore && outcome === 'failure')
+        || this.authority.hasAcceptedProjectionChanged(mutation.lease);
+      if (needsRepair && targets.length && this.configuration?.isCurrent(mutation.lease.ownerId)) {
+        changed = this.authority.requireReconciliation(mutation.lease, this.now(), targets);
       }
     }
     this.pending.delete(ticket.id);
@@ -80,13 +104,26 @@ export class PlannerMutationReconciliation<T> {
 
   captureActivity(): PlannerMutationActivity {
     return { epoch: this.epoch, started: this.started, settled: this.settled, pending: this.pending.size,
-      successful: { ...this.successful } };
+      successful: { ...this.successful },
+      planRestorePending: this.pendingPlanRestores(), planRestoreSettled: this.planRestoreSettled };
   }
 
   successfulTargetsSince(activity: PlannerMutationActivity): readonly PlannerRepairTarget[] {
     if (activity.epoch !== this.epoch) return [];
-    return (['actual-material', 'month-events'] as const).filter(target =>
+    return (['actual-material', 'month-events', 'plans-todos'] as const).filter(target =>
       activity.successful[target] !== this.successful[target]);
+  }
+
+  planRestoreTargetsSince(activity: PlannerMutationActivity): readonly PlannerRepairTarget[] {
+    if (activity.epoch !== this.epoch) return [];
+    // Cover restores already active at full-read entry, still active at acceptance,
+    // and those that start and settle entirely inside the read, even on failure.
+    return activity.planRestorePending > 0 || this.pendingPlanRestores() > 0
+      || activity.planRestoreSettled !== this.planRestoreSettled ? PLAN_RESTORE_TARGETS : [];
+  }
+
+  private pendingPlanRestores(): number {
+    return [...this.pending.values()].filter(mutation => mutation.planRestore).length;
   }
 
   isQuiescentSince(activity: PlannerMutationActivity): boolean {

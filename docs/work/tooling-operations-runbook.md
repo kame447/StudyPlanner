@@ -205,3 +205,12 @@ Verified on 2026-10-05 for Issue #443. A current entry/runtime can serve JavaScr
 An open tab retains its original module graph even when HTML uses `must-revalidate`. A code-only retry can recover a transient load failure but cannot restore a deleted URL. Do not inject a newly discovered runtime into an old graph: the runtime can import the entry module and duplicate application roots/singletons. Do not use unconditional reload or automatic AI/OCR replay. The supported bounded, user-initiated recovery and its input/storage limits are owned by the [current weekly-planning contract](../domains/weekly-planning/architecture/current-contract-v5.md#ai-runtime-module-recovery). A page already running an older release still needs an explicit refresh; preserve its unsaved input first.
 
 Keep JavaScript load/link failures distinct from cached evaluation failures. References: [Vite load-error handling](https://v6.vite.dev/guide/build#load-error-handling), [Cloudflare Pages serving/SPA fallback](https://developers.cloudflare.com/pages/configuration/serving-pages/), [dynamic import caching](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import). Immutable deployment-pinned assets are a separate deployment design requiring access/CORS/CSP/retention validation, not an unverified quick fix.
+
+
+## Negated GitHub closing references and stale completion metadata
+
+- Verified on 2026-10-05: Issue #437 was automatically closed at PR #454 merge despite prose saying it was outside scope. The body contained a negated closing-keyword reference. GitHub issue-closing syntax must not be treated as natural-language negation-aware
+- Put the intentional closing reference on its own line. Use `Related unfinished work: #437` for excluded work; do not put a closing keyword immediately before an excluded issue number, even with “not”
+- After merge, re-read related Issue states rather than infer them from prose. Reopen accidentally closed unfinished work and record the correction; verify other related Issues too. #437 was reopened and #164 remained open
+- Update completion metadata by replacing obsolete current-status/checkpoint text, not merely prefixing “complete” above an unchanged “not adopted/pending” statement. Preserve failed-run history explicitly as history, with final head/tree and successful post-main evidence separated
+- No workflow, permission, branch or history rewrite is required. Use ordinary Issue/PR metadata actions only. Reference: https://github.com/kame447/StudyPlanner/issues/437#issuecomment-5985007509
