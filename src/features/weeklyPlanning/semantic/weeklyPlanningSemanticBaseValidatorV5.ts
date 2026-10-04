@@ -1,16 +1,10 @@
+import { validateWeeklyPlanningAvailabilityBaseValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
+import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
 import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
-import { isWeeklyPlanningNamedTimePeriodV5 as isNamedTimePeriod, validateNullableClockV5 as validateNullableClock,
-  validateNullableDateExpressionV5 as validateNullableDateExpression, validateNullableNamedTimePeriodV5 as validateNullableNamedTimePeriod,
-  validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5, validateWeeklyPlanningDateRuleWireFieldsV5 } from './weeklyPlanningTemporalValueValidatorV5';
+import { validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5, validateWeeklyPlanningDateRuleWireFieldsV5 } from './weeklyPlanningTemporalValueValidatorV5';
 import {
-  SEMANTIC_AVAILABILITY_KINDS_V5,
-  SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
-  SEMANTIC_COMPONENT_ROLES_V5,
-  SEMANTIC_CONSTRAINT_LEVELS_V5,
   SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
-  SEMANTIC_STUDY_PURPOSES_V5,
-  SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_TASK_DATE_RULE_KINDS_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -143,10 +137,7 @@ function validateComponents(
     } else if (localId) {
       parentById.set(localId, component.parentLocalId);
     }
-    if (!isEnumValue(component.role, SEMANTIC_COMPONENT_ROLES_V5)) {
-      errors.push(`${componentPath}.role`);
-    }
-    if (!isNonEmptyString(component.label)) errors.push(`${componentPath}.label`);
+    validateWeeklyPlanningComponentValuesV5(component, componentPath, errors);
     if (!Array.isArray(component.workloads)) {
       errors.push(`${componentPath}.workloads`);
     } else {
@@ -278,54 +269,7 @@ function validateAvailabilityDeclarations(
       'sourceText',
     ], path, errors);
     registerLocalId(declaration.localId, `${path}.localId`, allIds, errors);
-    if (!isEnumValue(declaration.kind, SEMANTIC_AVAILABILITY_KINDS_V5)) {
-      errors.push(`${path}.kind`);
-    }
-    validateNullableDateExpression(declaration.dateExpression, `${path}.dateExpression`, errors);
-    validateNullableNamedTimePeriod(
-      declaration.namedTimePeriod,
-      `${path}.namedTimePeriod`,
-      errors,
-    );
-    validateNullableClock(declaration.startTime, `${path}.startTime`, errors);
-    validateNullableClock(declaration.endTime, `${path}.endTime`, errors);
-    if (declaration.namedTimePeriod !== null
-      && (declaration.startTime !== null || declaration.endTime !== null)) {
-      errors.push(`${path}.namedTimePeriod:cannot-combine-with-clock`);
-    }
-    if (declaration.recurrenceKind !== null
-      && !isEnumValue(
-        declaration.recurrenceKind,
-        SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
-      )) {
-      errors.push(`${path}.recurrenceKind`);
-    }
-    if (!Array.isArray(declaration.days)
-      || declaration.days.some((day) => !isNonEmptyString(day))) {
-      errors.push(`${path}.days`);
-    }
-    if (declaration.recurrenceKind === null
-      && Array.isArray(declaration.days)
-      && declaration.days.length > 0) {
-      errors.push(`${path}.days:requires-recurrence`);
-    }
-    if (!isEnumValue(declaration.constraintLevel, SEMANTIC_CONSTRAINT_LEVELS_V5)) {
-      errors.push(`${path}.constraintLevel`);
-    }
-    if ((declaration.kind === 'preferred' || declaration.kind === 'avoided')
-      && declaration.constraintLevel === 'hard') {
-      errors.push(`${path}.constraintLevel:preference-cannot-be-hard`);
-    }
-    if (declaration.kind === 'unavailable' && declaration.constraintLevel === 'soft') {
-      errors.push(`${path}.constraintLevel:soft-unavailable-use-avoided`);
-    }
-    const hasScope = isNonEmptyString(declaration.dateExpression)
-      || isNamedTimePeriod(declaration.namedTimePeriod)
-      || isNonEmptyString(declaration.startTime)
-      || isNonEmptyString(declaration.endTime)
-      || declaration.recurrenceKind !== null
-      || (Array.isArray(declaration.days) && declaration.days.length > 0);
-    if (!hasScope) errors.push(`${path}:missing-time-scope`);
+    validateWeeklyPlanningAvailabilityBaseValuesV5(declaration, path, errors);
     validateSourceText(declaration, path, errors);
   });
 }
@@ -409,22 +353,7 @@ export function validateWeeklyPlanningSemanticValueV5(
         allIds,
         errors,
       );
-      if (!isEnumValue(
-        window.kind,
-        ['absolute', 'relative_day', 'relative_week', 'named_period'] as const,
-      )) {
-        errors.push('document.planningWindow.kind');
-      }
-      if (!isNonEmptyString(window.value)) errors.push('document.planningWindow.value');
-      if (!isNullableString(window.start)) errors.push('document.planningWindow.start');
-      if (!isNullableString(window.end)) errors.push('document.planningWindow.end');
-      if (window.kind === 'absolute'
-        && (!isNonEmptyString(window.start) || !isNonEmptyString(window.end))) {
-        errors.push('document.planningWindow:absolute-range');
-      }
-      if (window.kind !== 'absolute' && (window.start !== null || window.end !== null)) {
-        errors.push('document.planningWindow:relative-must-remain-symbolic');
-      }
+      validateWeeklyPlanningPlanningWindowValuesV5(window, 'document.planningWindow', errors);
       validateSourceText(window, 'document.planningWindow', errors);
     }
   }
@@ -452,10 +381,7 @@ export function validateWeeklyPlanningSemanticValueV5(
       ], path, errors);
       const taskId = registerLocalId(task.localId, `${path}.localId`, allIds, errors);
       if (taskId) taskIds.add(taskId);
-      if (!isEnumValue(task.category, SEMANTIC_TASK_CATEGORIES_V5)) {
-        errors.push(`${path}.category`);
-      }
-      if (!isNonEmptyString(task.title)) errors.push(`${path}.title`);
+      validateWeeklyPlanningTaskValuesV5(task, path, errors);
       validateSourceText(task, path, errors);
 
       let componentIds = new Set<string>();
@@ -470,12 +396,7 @@ export function validateWeeklyPlanningSemanticValueV5(
           `${path}.study`,
           errors,
         );
-        if (!isEnumValue(task.study.purpose, SEMANTIC_STUDY_PURPOSES_V5)) {
-          errors.push(`${path}.study.purpose`);
-        }
-        if (!isNullableString(task.study.contextLabel)) {
-          errors.push(`${path}.study.contextLabel`);
-        }
+        validateWeeklyPlanningStudyContextValuesV5(task.study, `${path}.study`, errors);
         componentIds = validateComponents(
           task.study.components,
           `${path}.study.components`,

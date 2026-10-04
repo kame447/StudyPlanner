@@ -1,3 +1,5 @@
+import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
+import { validateWeeklyPlanningAvailabilityBaseValuesV5, validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import { validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5 } from './weeklyPlanningTemporalValueValidatorV5';
 import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
@@ -415,10 +417,24 @@ export function validateWeeklyPlanningFactGraphValueV5(
   const taskOrComponentIds = new Set([...taskIds, ...componentIds]);
   const effortTargetIds = new Set([...taskIds, ...componentIds, ...workloadIds]);
 
+  tasks.forEach((fact, index) => validateWeeklyPlanningTaskValuesV5(fact, `graph.tasks[${index}]`, errors));
+  planningWindows.forEach((fact, index) => validateWeeklyPlanningPlanningWindowValuesV5(fact, `graph.planningWindows[${index}]`, errors));
+  availabilityDeclarations.forEach((fact, index) => {
+    const path = `graph.availabilityDeclarations[${index}]`;
+    if (fact.kind === 'no_additional_constraint') {
+      validateWeeklyPlanningAvailabilityAbsenceValuesV5(fact, path, errors);
+    } else {
+      validateWeeklyPlanningAvailabilityBaseValuesV5(fact, path, errors);
+    }
+    validateWeeklyPlanningAvailabilityCapacityValuesV5(fact, path, errors);
+    if (fact.resolutionStatus !== 'unresolved') errors.push(`${path}.resolutionStatus`);
+  });
   studyContexts.forEach((fact, index) => {
+    validateWeeklyPlanningStudyContextValuesV5(fact, `graph.studyContexts[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.studyContexts[${index}].taskId`, errors);
   });
   components.forEach((fact, index) => {
+    validateWeeklyPlanningComponentValuesV5(fact, `graph.components[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.components[${index}].taskId`, errors);
     validateOptionalReference(
       fact.parentComponentId,

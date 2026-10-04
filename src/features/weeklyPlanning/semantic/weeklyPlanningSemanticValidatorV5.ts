@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
 } from '../../userPlanningContext/userPlanningContextTypes';
@@ -270,34 +271,7 @@ function validateAvailabilityCapacityDeclarations(value: Record<string, unknown>
   value.availabilityDeclarations.forEach((declaration, index) => {
     if (!isRecord(declaration)) return;
     const path = `document.availabilityDeclarations[${index}]`;
-    const capacityMinutes = declaration.capacityMinutes;
-    if (declaration.kind === 'capacity') {
-      if (
-        typeof capacityMinutes !== 'number'
-        || !Number.isFinite(capacityMinutes)
-        || capacityMinutes <= 0
-        || capacityMinutes > 24 * 60
-      ) {
-        errors.push(`${path}.capacityMinutes:expected-positive-minutes-within-day`);
-      }
-      if (declaration.namedTimePeriod !== null
-        || declaration.startTime !== null
-        || declaration.endTime !== null) {
-        errors.push(`${path}:capacity-cannot-have-clock-window`);
-      }
-      if (declaration.constraintLevel !== 'hard') {
-        errors.push(`${path}.constraintLevel:capacity-must-be-hard`);
-      }
-      const hasDateScope = (
-        typeof declaration.dateExpression === 'string'
-        && declaration.dateExpression.trim().length > 0
-      ) || declaration.recurrenceKind !== null;
-      if (!hasDateScope) errors.push(`${path}:capacity-requires-date-scope`);
-      return;
-    }
-    if (capacityMinutes !== undefined && capacityMinutes !== null) {
-      errors.push(`${path}.capacityMinutes:must-be-null-unless-capacity`);
-    }
+    validateWeeklyPlanningAvailabilityCapacityValuesV5(declaration, path, errors);
   });
   return errors;
 }
@@ -334,32 +308,7 @@ function validateNoAdditionalConstraintDeclarations(
     } else {
       seen.add(declaration.localId);
     }
-    if (!(declaration.dateExpression === null || typeof declaration.dateExpression === 'string')) {
-      errors.push(`${path}.dateExpression:expected-string-or-null`);
-    } else if (
-      typeof declaration.dateExpression === 'string'
-      && !isCanonicalDateExpressionSyntax(declaration.dateExpression)
-    ) {
-      errors.push(`${path}.dateExpression:unsupported-expression`);
-    }
-    if (declaration.namedTimePeriod !== null) {
-      errors.push(`${path}.namedTimePeriod:absence-has-no-positive-window`);
-    }
-    if (declaration.startTime !== null || declaration.endTime !== null) {
-      errors.push(`${path}:absence-has-no-positive-clock-window`);
-    }
-    if (declaration.recurrenceKind !== null) {
-      errors.push(`${path}.recurrenceKind:absence-has-no-positive-recurrence`);
-    }
-    if (!Array.isArray(declaration.days) || declaration.days.length > 0) {
-      errors.push(`${path}.days:absence-has-no-positive-days`);
-    }
-    if (declaration.capacityMinutes !== undefined && declaration.capacityMinutes !== null) {
-      errors.push(`${path}.capacityMinutes:absence-has-no-capacity`);
-    }
-    if (declaration.constraintLevel !== 'hard') {
-      errors.push(`${path}.constraintLevel:absence-is-factual`);
-    }
+    validateWeeklyPlanningAvailabilityAbsenceValuesV5(declaration, path, errors);
     if (typeof declaration.sourceText !== 'string' || !declaration.sourceText.trim()) {
       errors.push(`${path}.sourceText:expected-non-empty-string`);
     }
