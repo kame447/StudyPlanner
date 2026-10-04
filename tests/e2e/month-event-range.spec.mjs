@@ -249,6 +249,56 @@ test.describe('multi-day month events', () => {
     await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
   });
 
+  for (const action of ['edit', 'single-delete', 'future-delete']) {
+    test(`keeps October visible after ${action} of a May-anchored recurring event`, async ({ page }, testInfo) => {
+      const title = '5月開始の繰り返し予定';
+      const now = new Date().toISOString();
+      await seedRangeTestState(page, [{
+        id: 'recurring-navigation-event', userId: 'month-range-user', date: '2026-05-15', endDate: '2026-05-15',
+        title, startTime: '09:00', endTime: '10:00', repeat: 'monthly', repeatUntil: null,
+        excludedDates: [], url: '', memo: '', checklist: [], locationTags: [], createdAt: now, updatedAt: now,
+      }]);
+      await openSchedule(page);
+      // The shared browser clock starts in August. Navigate through the real toolbar.
+      await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+      await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+      const heading = page.locator('.schedule-period-picker-trigger');
+      await expect(heading).toContainText('2026年10月');
+      const grid = page.getByRole('grid', { name: '月間カレンダー' });
+      await cellForDay(grid, page, 15).click();
+      await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+      const overlay = page.locator('.month-event-modal-overlay');
+      const editor = overlay.locator('.month-event-modal');
+      await expect(editor.getByRole('button', { name: '開始日', exact: true })).toContainText('2026年5月15日');
+      if (action === 'edit') {
+        await editor.getByLabel('タイトル', { exact: true }).fill('10月で編集した繰り返し予定');
+        await editor.getByRole('button', { name: '保存', exact: true }).click();
+      } else {
+        await editor.getByRole('button', { name: '削除', exact: true }).click();
+        await editor.getByRole('button', {
+          name: action === 'single-delete' ? 'この予定だけ削除' : 'これ以降も全部削除', exact: true,
+        }).click();
+      }
+      await expect(overlay).toHaveCount(0);
+      await expect(heading).toContainText('2026年10月');
+      const selected = grid.locator('[role="gridcell"][aria-selected="true"]');
+      await expect(selected).toHaveCount(1);
+      await expect(selected.locator('.month-date-number')).toHaveText('15');
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+        .find(item => item.provenance?.legacy?.kind === 'month-event'));
+      expect(stored).toMatchObject({ date: '2026-05-15', endDate: '2026-05-15' });
+      if (action === 'edit') {
+        expect(stored.title).toBe('10月で編集した繰り返し予定');
+        await expect(selected).toContainText('10月で編集した繰り返し予定');
+        await page.screenshot({ path: testInfo.outputPath('recurring-event-october-preserved.png') });
+      } else if (action === 'single-delete') {
+        expect(stored.recurrence.excludedDates).toContain('2026-10-15');
+      } else {
+        expect(stored.recurrence.repeatUntil).toBe('2026-09-15');
+      }
+    });
+  }
+
   test('keeps new and edited event input after save failure and allows retry', async ({ page }) => {
     const dates = currentMonthDays();
     await seedRangeTestState(page);
