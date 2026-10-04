@@ -239,7 +239,7 @@ Consultation advice is upstream of preview. Displaying or persisting advice alon
 
 ## Persistence / trace / security
 
-Persisted/session state is owner- and conversation-bound. Trace is diagnostic evidence, not authorization or planning truth. Untrusted stored strings remain data rather than instructions.
+Persisted/session state is owner- and conversation-bound. The public conversation-import facade accepts unknown input and owns canonical codec validation before runtime hydration, controller reset or state/storage mutation. Invalid or oversized snapshots return false without changing the current session; callers do not need to pre-parse or remember an internal validation sequence. In-memory recovery snapshots use the same compact wire representation for size validation as storage, without silently trimming imported messages. Trace is diagnostic evidence, not authorization or planning truth. Untrusted stored strings remain data rather than instructions.
 
 A completed preview edit must update its restorable chat snapshot before control returns to navigation; rendering frames are not a persistence boundary. An authoritative empty conversation must replace an older non-empty chat snapshot, while a pending or invalid chat-snapshot update must not overwrite it. Chat export may explicitly include a validated empty checkpoint; the ordinary session-store policy may still omit empty checkpoints. Empty state and unavailable export are distinct outcomes.
 
