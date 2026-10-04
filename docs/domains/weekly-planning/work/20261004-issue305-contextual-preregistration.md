@@ -5,7 +5,7 @@ Updated: 2026-10-05
 Authority: owner の DECISION 2（新しい独立評価。gate は BronzeMaxwell と CopperHopper が実行前に合意する）。[Phase B の採用規則](20261004-issue305-jev-hierarchical-input-interpretation.md#採用規則)
 Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-issue305-jev-first-focused-contextual.md#phase-b-unit-0--2026-10-04-作業-checkpoint)
 
-この文書は、runtime の事前登録の正本（`preregistration-draft.md`、§0〜§19d）を、§19d の時点の内容で一本化したものである。追補の途中の規則（旧い分母、「失効した turn を 8 dispatch で補完する」規則、Clopper–Pearson の一般の iid の主張、旧い 100 cases / 50 groups の名簿、撤回された §19 の「予約の上限 USD 10」、cost の判定の2つの方法の切替え）は、ここでは置き換え済みである。holdout の結果を見る前に固定し、結果を見て変えない。
+この文書は、runtime の事前登録の正本（`preregistration-draft.md`、§0〜§19e）を、§19e の時点の内容で一本化したものである。追補の途中の規則（旧い分母、「失効した turn を 8 dispatch で補完する」規則、Clopper–Pearson の一般の iid の主張、旧い 100 cases / 50 groups の名簿、撤回された §19 の「予約の上限 USD 10」、cost の判定の2つの方法の切替え、「実 cost だけ」の cost の判定、turn の後だけの停止の判定、「cost が欠けたら予約を保持」、「isolated な `*-eval` Worker」の名前の規則）は、ここでは置き換え済みである。holdout の結果を見る前に固定し、結果を見て変えない。
 
 ## 1. 名簿と母集団
 
@@ -83,24 +83,35 @@ Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-i
 - **予約**（§19a）：Worker の中で、provider への物理的な送信（focused、generic、audit、repair、retry、fallback を含む）の直前に、call ごとに計算して積み上げる。UTF-8 の byte 数は byte 単位の BPE の token 数を上回るので、入力 token の上限になる。
   - Luna（`gpt-5.6-luna`）：（request の byte 数 ＋ 512）× USD 0.25 / M ＋ その call の max_completion_tokens × USD 1.20 / M ＋ USD 0.0001。入力 60,000 token・出力 8,000 token を超える request は送信しない。単価は `workers/ai-proxy/src/aiUsagePricing.ts` の `GPT_5_6_LUNA_TEXT` の最高値（cache write）。
   - Jev（`typesafe/jev-1.13` に pin。外部監査が OpenRouter の一次のページで確認した単価）：（request の byte 数 ＋ 512）× USD 0.042 / M ＋ USD 0.0001。Jev の endpoint は出力の上限を送らず、出力の単価は 0 である。
-  - Luna の request には、両方の arm で `service_tier: "default"` を明示する（省略は project の設定に従う `auto` であり、standard の料金の証明にならない）。送信前の境界では `default` だけを許可する。応答で返った tier が `default` でない・欠けている場合は、standard と推定せず、その turn のそれ以降の送信（repair や fallback）を止め、上界・下界を無効（unknown / HOLD）にし、料金契約の違反として run を中止する。予算の解放にも同じ証拠を要求する。isolated な eval Worker の経路だけの設定で、production の request は変えない。
+  - Luna の request には、両方の arm で `service_tier: "default"` を明示する（省略は project の設定に従う `auto` であり、standard の料金の証明にならない）。送信前の境界では `default` だけを許可する。応答で返った tier が `default` でない・欠けている場合は、standard と推定せず、その turn のそれ以降の送信（repair や fallback）を止め、上界・下界を無効（unknown / HOLD）にし、料金契約の違反として run を中止する。予算の解放にも同じ証拠を要求する。評価の Worker の経路（§4.3）だけの設定で、production の request は変えない。
   - request の model が pin と違えば送信しない。harness は turn ごとに、残りの hard な予算（USD 5 − 精算済み − 未精算の予約）を Worker に渡し、Worker は予約の合計がそれを超える送信を拒否する。
 - **障害の停止の latch**：harness は run 全体の試行数・障害数・連続数を Worker に渡し、Worker と ledger の両方が、**物理的な結果ごとに**停止規則を判定する。最初に超えた時点で latch し、その turn の以降の送信を拒否する。後の成功で率が薄まっても、停止は消えない。最後の arm の精算で検出した停止も、run の終わりで必ず結果に残す。
-- **精算**：turn の後、Jev は provider が報告した cost（なければ報告された入力 token × USD 0.042 / M の上界）、Luna は報告された usage × 上の Luna の上界の単価で、その call の予約を置き換える。**下界で予算を解放しない。** usage や cost が欠けた call は、予約の全額を保持する。精算の額がその call の予約を超えるか、served model・service tier が料金契約と違えば、hard cap を証明できないので、run を中止する。
+- **応答ごとの予約の照合**：Worker は、両方の provider の各応答で、報告された金額と usage からの上界（両方の token がそろうときだけ）を、その call の予約と比べる。どちらかが予約を超えたら、料金契約の違反として停止を latch し、同じ turn の以降の送信を拒否する。usage が欠けて上界を計算できない call は、予約を保持する（違反の判定は報告された金額だけで行う）。ledger も、報告された金額が予約を超えれば、usage の有無にかかわらず違反とする。
+- **精算**（予約の保持の規則はこの3つだけ）：
+  - **usage が完全な場合**（入力と出力の token の両方がある）は、報告された cost が無くても、検証済みの料金契約の上界（`costUpperBoundUsd`）で精算して、予約を縮小してよい（Luna はふつう金額を返さないので、これが通常の経路になる）。Jev が同じ call の金額を報告していれば、その金額で精算する。**下界で予算を解放しない。**
+  - **usage が欠けたか、不完全な場合**は、報告された cost の有無にかかわらず、予約の全額を保持する。
+  - 報告された cost や上界が、その call の予約を超えたら、または served model・service tier が料金契約と違えば、料金契約の違反として即時に停止する（上の応答ごとの照合）。
 - **turn の開始**：Luna の最大の予約（60,000 × USD 0.25 / M ＋ 8,000 × USD 1.20 / M ＋ USD 0.0001 ＝ USD 0.0247）× 8 回（USD 0.1976）と 8 試行が、残りの予算・試行数に収まるときだけ開始する（turn の途中で上限に当たらない）。
 - 説明できない経路の送信：Worker の turn の間、記録の付いた2つの送信口以外からの fetch は拒否し、数えて報告する。1件でもあれば、その turn は不完全として中止する。この差し替えが Worker の runtime で効くことは、segment の readiness で、case を実行する前に確かめる。segment の deploy や readiness が失敗したら、provider に触れる前に run を中止し、記録する（自動の再試行はしない）。
-- **障害による停止**：どちらの provider でも、HTTP 5xx・429・408、network の失敗、timeout をインフラの障害とする。分母は invalid_response を含む全ての実際の試行で、invalid_response は分子に入れない。累積の試行が 20 回以上になった後は、累積の障害率が 20% を超えた時点で停止する。20 回未満では、インフラの障害が連続5回で停止する。HTTP 401・403 など、設定や権限のエラー（4xx のうち 408・429 以外）と、served model の不一致は即時に中止する。判定は各 turn の後に行う。
-- **token の失効**：eval token の失効（30分）は変えない。run を、新しい token を持つ isolated な `*-eval` Worker の segment に分割する。pair を開始する前に、2つの arm を終えるだけの残り時間（2 × (300 + 60) 秒 = 720 秒）を確認し、各 arm の前にも残りの arm 数で確認する。それでも pair が segment をまたいだら、その区間差を記録する。segment をまたいでも、総額・試行数・経過時間・消費・凍結した runtime は引き継ぎ、リセットしない。
+- **障害による停止**：どちらの provider でも、HTTP 5xx・429・408、network の失敗、timeout をインフラの障害とする。分母は invalid_response を含む全ての実際の試行で、invalid_response は分子に入れない。累積の試行が 20 回以上になった後は、累積の障害率が 20% を超えた時点で停止する。20 回未満では、インフラの障害が連続5回で停止する。HTTP 401・403 など、設定や権限のエラー（4xx のうち 408・429 以外）と、served model の不一致は即時に中止する。判定は、上の「障害の停止の latch」のとおり、物理的な試行ごとに行う。
+- **token の失効**：eval token の失効（30分）は変えない。run を、新しい token を持つ remote preview の session（§4.3）の segment に分割する。pair を開始する前に、2つの arm を終えるだけの残り時間（2 × (300 + 60) 秒 = 720 秒）を確認し、各 arm の前にも残りの arm 数で確認する。それでも pair が segment をまたいだら、その区間差を記録する。segment をまたいでも、総額・試行数・経過時間・消費・凍結した runtime は引き継ぎ、リセットしない。
 - **不完全な turn**（失効、応答の喪失、検証できない記録）：実際に観測できた dispatch だけを下限として記録し、総数と usage は unknown とする。8 回と予約額の上限は、運用上の上限と予算の確保として**別の field** に入れ、Δdispatch・平均 cost・latency の実測には代入しない。run を中止する。
-- **消費の記録の時点**：deploy → readiness（case を評価しない。readiness の間の provider への送信が0であることを、Worker の中で fetch を差し替えて機械的に確かめる。外の token が拒否されることも確かめる）→ token の残り・凍結した hash・予算を再検証 → canonical な ledger と排他の marker の durable な更新 → 最初の turn。更新に失敗したら、provider への送信はしない。deploy の時刻と upload の来歴（isolated な preview Worker、case データの hash）は、消費とは別に記録する。case の本文を log に出さない。最初の turn を開始した後の不確実な障害は、消費済み・HOLD とし、自動では再実行しない。
+- **消費の記録の時点**：deploy → readiness（case を評価しない。readiness の間の provider への送信が0であることを、Worker の中で fetch を差し替えて機械的に確かめる。外の token が拒否されることも確かめる）→ token の残り・凍結した hash・予算を再検証 → canonical な ledger と排他の marker の durable な更新（各 file を書いて fsync してから閉じ、marker の作成の後と ledger の rename の後に、それを含む directory も fsync する。marker は再起動の後の二度目の試行を拒否する guard）→ 最初の turn。書込み・sync・rename のどれかに失敗したら、provider への送信はしない。deploy の時刻と upload の来歴（remote preview の session、case データの hash）は、消費とは別に記録する。case の本文を log に出さない。最初の turn を開始した後の不確実な障害は、消費済み・HOLD とし、自動では再実行しない。
 - 支出の ledger（append-only、各書込みを flush）は run ごとに1つで、作り直さない。
 - **runtime の code と case のデータの分離**：Worker の runtime の code は、case のデータ・token の digest・失効の時刻を含まず、別に生成する data module から読む。code の bytes の hash は、smoke・holdout の全 segment・dry-run で同一になる。holdout の承認書は、smoke で確かめた code の hash（`workerCodeSha256`）を固定し、違えば実行しない。
 
 ### 4.2 smoke（development の calibration。採用の証拠ではない）
 
-- 目的：remote の isolated preview Worker で、同じ runtime の code が動くこと、fetch の差し替え、readiness の送信0と外の token の拒否、Luna の `service_tier: "default"` の明示と応答の tier、served の ID、予約・精算・停止、segment の token の交代を確かめる。B / C のデータは含めない。canonical な holdout の ledger には触れない。label は付けず、判定は計算しない（status は `smoke_not_evidence`）。
+- 目的：§4.3 の remote preview（`studyplanner-ai-proxy`）で、同じ runtime の code が動くこと、fetch の差し替え、readiness の送信0と外の token の拒否、Luna の `service_tier: "default"` の明示と応答の tier、served の ID、予約・精算・停止、segment の token の交代を確かめる。B / C のデータは含めない。canonical な holdout の ledger には触れない。label は付けず、判定は計算しない（status は `smoke_not_evidence`）。
 - **開始前に固定する hard cap（提案）**：development の calibration から、question code ごとに ID の code point 順で最初の1件、計 2 cases × 2 arms ＝ 4 turn。物理的な provider の呼出し 32 回（1 turn 最大 8 回）、hard な USD 0.25（Luna の最大予約 × 8 ＝ USD 0.1976 が各 turn の前に収まること）、1,200 秒、1 pair ごとに token の segment を交代（2 segment）。承認書はこれをそのまま restate する。
 - smoke で何かを直したら、hash を再凍結し、再監査を受ける。smoke の結果だけでは harness 全体の PASS にはならない。実行（real API）は、cap の合意と親の承認の後に行う。
+
+### 4.3 実行の経路（§19e。「isolated な `*-eval` Worker」の名前の規則を置き換える）
+
+- 許可する経路は、既存の認証済みの remote 評価の経路だけ：legacy な `unstable_dev`（`local: false`）の remote preview を、**正確な名前 `studyplanner-ai-proxy`** で使う。承認書に mode と正確な名前を記録し、harness はそれと照合する。ほかの名前・mode（`wrangler preview` の branch の配備、version の URL を含む）や prefix による許可は拒否する。
+- 生成する一時的な config は `name`・`main`・`compatibility_date` だけ。production の wrangler の config を読み込まず、route・trigger・migration・binding を持たない。deploy・version の promotion・traffic の routing をしない。生成する code は承認した2つの provider の endpoint だけを使い、Secret の値を表示・export しない（Cloudflare の中で既存の credential を再利用するだけ）。
+- run（smoke と holdout）の前後に、production の deployment・現在の deployment の状態・version を、読み取りだけの Wrangler の command（`deployments list`、`deployments status`、`versions list`、`--name studyplanner-ai-proxy --json`）で取り、digest を記録して照合する。前の snapshot が取れなければ run を始めない。差分か取得の失敗があれば、run の終端の妥当性の gate が FAIL（HOLD）になる。zone の route は、読み取りだけの Wrangler の command では観測できないので、その限界を記録する。
+- readiness で、preview の中の provider の credential が使えないと分かったら、その具体的な失敗を報告する。Secret の copy・export や、別の経路への切替えはしない。
 
 ### 4.1 時間の見積もり（推定。実測ではない）
 
@@ -124,7 +135,7 @@ Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-i
 | D1 の dispatch 削減 | 点推定 ≥ 0.3 semantic Luna dispatch / turn、層別 cluster bootstrap の片側95%下限 > 0 |
 | 全 turn の dispatch | 点推定 ≥ 0、下限 ≥ 0 |
 | latency p50 / p95 の許容 | min(150 ms, 10%) / min(500 ms, 10%)。dispatch の判定を満たした場合だけ。上限は 19,000 / 20,000 番目 |
-| cost の許容 | min(0.0005 USD, 5%)。実 cost だけ。NA なら HOLD |
+| cost の許容 | min(0.0005 USD, Luna-only の下界の平均の 5%)。§3.4 の上界・下界による判定。usage の欠落や料金の条件の違いは HOLD |
 | 名簿 | 130 cases / 65 groups（B 60 / 30、C 70 / 35）、除外なし |
 | 予算と中止 | hard な USD 5（精算済み ＋ 未精算の予約、§19a の call ごとの予約と精算）、2,080 試行、8 試行 / turn、5,400 秒、障害率の停止（§4）、自動の再実行なし |
 | 単価の契約 | Luna 入力 0.25・出力 1.20 USD / M、Jev（`typesafe/jev-1.13`）入力 0.042・出力 0 USD / M、各 call ＋ USD 0.0001、最大 60,000 / 8,000 token、framing 512 |
@@ -132,7 +143,7 @@ Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-i
 | census（採用の条件） | 窓・分子・分母・coverage・actor の下限は runtime の事前登録 §13・§16・§16a。complete な turn 200 以上、coverage 90% 以上、既知の actor 10 以上、片側95%下限 1% 以上 |
 | 承認の記録 | 実行前に承認書（下）で restate する。approvedBy は BronzeMaxwell と CopperHopper |
 
-承認書（JSON）は、`approved`、`approvedBy`（BronzeMaxwell と CopperHopper）、`authority`（`owner DECISION 2 delegation`）、`approvedAt`、`environment=isolated_synthetic_evaluation`、`worker`（`*-eval`）、catalog / gate の version、runtime / policy の hash、B と C の set と rubric の hash、上の上限（`limits`）と判定の規則（`decisionRules`）をそのまま、料金契約（`pricing`：version、Luna と Jev のそれぞれの endpoint・model・service tier・料金・上界と下界の単価・余裕・最大 token・一次の料金ページの URL と確認日、出典）、canonical な ledger と支出の ledger の場所、事前登録の hash、smoke で確かめた runtime の code の hash（`workerCodeSha256`）を持つ。harness は値を承認書から読まず、固定した値と照合し、違えば実行しない。
+承認書（JSON）は、`approved`、`approvedBy`（BronzeMaxwell と CopperHopper）、`authority`（`owner DECISION 2 delegation`）、`approvedAt`、`environment=isolated_synthetic_evaluation`、`worker`（`studyplanner-ai-proxy`）と `executionPath`（mode `legacy_unstable_dev_remote_preview` と正確な Worker の名前、§4.3）、catalog / gate の version、runtime / policy の hash、B と C の set と rubric の hash、上の上限（`limits`）と判定の規則（`decisionRules`）をそのまま、料金契約（`pricing`：version、Luna と Jev のそれぞれの endpoint・model・service tier・料金・上界と下界の単価・余裕・最大 token・一次の料金ページの URL と確認日、出典）、canonical な ledger と支出の ledger の場所、事前登録の hash、smoke で確かめた runtime の code の hash（`workerCodeSha256`）を持つ。harness は値を承認書から読まず、固定した値と照合し、違えば実行しない。
 
 ## 7. census（評価とは別の採用の条件）
 
@@ -146,9 +157,9 @@ node scripts/jev-contextual-unit0-eval.mjs --set-b <B set.json> --set-c <C set.j
 # mock の dry-run（network なし、証拠ではない）
 node scripts/jev-contextual-unit0-eval.mjs --dry-run --scenario <name> --output-dir <dir>
 # smoke（cap の合意と親の承認の後。証拠ではない）
-node scripts/jev-contextual-unit0-eval.mjs --smoke-approved --approval <smoke-approval.json> --worker <name>-eval --output-dir <dir>
+node scripts/jev-contextual-unit0-eval.mjs --smoke-approved --approval <smoke-approval.json> --worker studyplanner-ai-proxy --output-dir <dir>
 # 承認後の1回だけの実行
-node scripts/jev-contextual-unit0-eval.mjs --run-approved --approval <approval.json> --worker <name>-eval \
+node scripts/jev-contextual-unit0-eval.mjs --run-approved --approval <approval.json> --worker studyplanner-ai-proxy \
   --set-b <B> --set-c <C> --output-dir <dir>
 # blind な review の packet と key（key は reviewer に渡さない）
 node scripts/jev-contextual-unit0-eval.mjs --blind-packet --results <results.json> --set-b <B> --set-c <C> --output-dir <dir>

@@ -306,6 +306,8 @@ export class ConsumptionLedger {
       // provable: keep the reservation and stop the run.
       if (settled.fields.tariffConforms === false) this.state.pricingViolations += 1;
       if (settled.amountUsd !== null && settled.amountUsd > reservations[index] + 1e-12) this.state.pricingViolations += 1;
+      // A reported amount above the reservation is a violation whether or not usage is complete.
+      if (nonnegative(dispatch.costUsd) && dispatch.costUsd > reservations[index] + 1e-12) this.state.pricingViolations += 1;
       if (settled.fields.providerReportedCostUsd !== null) this.state.providerReportedUsd += settled.fields.providerReportedCostUsd;
       if (settled.amountUsd === null) {
         this.state.openReservationUsd += reservations[index]; // missing usage keeps the reservation
@@ -318,6 +320,8 @@ export class ConsumptionLedger {
         httpStatus: dispatch.httpStatus, servedModel: dispatch.servedModel, serviceTier: dispatch.serviceTier,
         reservedUsd: reservations[index], settlementUsd: settled.amountUsd, settlementBasis: settled.basis, ...settled.fields };
     });
+    // Any stop the Worker latched inside the turn also stops the run.
+    if (record.preSend.stopLatched && this.state.latchedStop === null) this.state.latchedStop = record.preSend.stopLatched;
     this.state.settledTurns += 1;
     return this.append({ type: 'turn_settled', ...turn, dispatches: settlement, infrastructureFailures: infra,
       refusedSends: record.preSend.refusedSends, workerStopLatched: record.preSend.stopLatched ?? null,

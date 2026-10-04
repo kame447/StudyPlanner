@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { validateArm } from './jev-contextual-paired-artifact.mjs';
 import { runtimeFingerprint, sha256, validateCorpus } from './jev-contextual-paired-eval.mjs';
@@ -80,8 +81,7 @@ export function validateApprovalR2(approval, { roster, runtimeSha256, policySha2
   assert.equal(approval.authority, 'owner DECISION 2 delegation');
   assert.ok(Number.isFinite(Date.parse(approval.approvedAt)));
   assert.equal(approval.environment, 'isolated_synthetic_evaluation');
-  assert.equal(approval.worker, worker);
-  assert.match(worker, /^[a-zA-Z0-9-]+-eval$/);
+  validateExecutionPath(approval, worker); // §19e replaces the former "*-eval" name rule
   assert.equal(approval.catalogVersion, 'focused-contextual-answer-2026-10-04-v3');
   assert.equal(approval.gateVersion, 'contextual-conservative-v2-calibrated');
   assert.equal(approval.runtimeSha256, runtimeSha256, 'Runtime changed after preregistration.');
@@ -103,7 +103,26 @@ export function validateApprovalR2(approval, { roster, runtimeSha256, policySha2
 
 // The parent's canonical single-consumption ledger. The attempt is recorded
 // exclusively before any provider exposure; hash or state mismatch refuses.
-export async function recordConsumptionAttempt({ ledgerPath, roster, rubricSha256, runId, spendLedgerPath }) {
+// Durable persistence for the canonical consumption guards: each file is
+// written and fsynced before close, and the containing directory is fsynced
+// after the create and after the rename, so the marker and the replaced
+// ledger survive an interruption once this resolves. Any failure rejects,
+// which forbids the first provider exposure. (Mock tests inject failures to
+// check the order; they do not simulate power loss.)
+export const DURABLE_PERSISTENCE = Object.freeze({
+  async writeFileDurable(path, data, flag) {
+    const handle = await open(path, flag);
+    try { await handle.writeFile(data); await handle.sync(); } finally { await handle.close(); }
+  },
+  async syncDirectory(directory) {
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  },
+  rename,
+});
+
+export async function recordConsumptionAttempt({ ledgerPath, roster, rubricSha256, runId, spendLedgerPath,
+  persistence = DURABLE_PERSISTENCE }) {
   const before = await readFile(ledgerPath);
   const ledger = JSON.parse(before.toString('utf8'));
   for (const stratum of STRATA) {
@@ -119,7 +138,10 @@ export async function recordConsumptionAttempt({ ledgerPath, roster, rubricSha25
   }
   const marker = join(dirname(ledgerPath), `consumption-${sha256Text(roster.corpusSha256.B + roster.corpusSha256.C)}.json`);
   const startedAt = new Date().toISOString();
-  await writeFile(marker, JSON.stringify({ runId, startedAt, corpusSha256: roster.corpusSha256, spendLedgerPath }), { flag: 'wx' });
+  const directory = dirname(ledgerPath);
+  // The exclusive marker is the restart guard: a second attempt fails here.
+  await persistence.writeFileDurable(marker, JSON.stringify({ runId, startedAt, corpusSha256: roster.corpusSha256, spendLedgerPath }), 'wx');
+  await persistence.syncDirectory(directory);
   for (const stratum of STRATA) {
     const entry = ledger.holdouts.find((item) => item.id === 'holdout-' + stratum);
     entry.status = 'consumed_on_attempt';
@@ -129,9 +151,10 @@ export async function recordConsumptionAttempt({ ledgerPath, roster, rubricSha25
   const current = await readFile(ledgerPath);
   assert.ok(current.equals(before), 'Canonical ledger changed concurrently; refusing.');
   const temporary = ledgerPath + '.' + runId + '.tmp';
-  await writeFile(temporary, JSON.stringify(ledger, null, 2) + '\n', { flag: 'wx' });
-  await rename(temporary, ledgerPath);
-  return { marker, startedAt };
+  await persistence.writeFileDurable(temporary, JSON.stringify(ledger, null, 2) + '\n', 'wx');
+  await persistence.rename(temporary, ledgerPath);
+  await persistence.syncDirectory(directory);
+  return { marker, startedAt, durable: true };
 }
 
 // Serial AB/BA execution over the preregistered order. All caps are checked
@@ -296,6 +319,8 @@ export function runTerminalValidity({ artifact, spendLedgerBytes, roster }) {
   if (artifact.status !== 'awaiting_blind_review') failures.push('run_status_' + artifact.status);
   if (artifact.stopReason !== null) failures.push('stop_' + artifact.stopReason);
   if (!roster.dryRun && artifact.holdoutConsumed !== true) failures.push('consumption_not_recorded');
+  if (!roster.dryRun && artifact.productionIsolation?.unchanged !== true) failures.push('production_snapshot_changed_or_unknown');
+  if (!roster.dryRun && JSON.stringify(artifact.executionPath) !== JSON.stringify(EXECUTION_PATH)) failures.push('execution_path_not_approved');
   if (!Buffer.isBuffer(spendLedgerBytes)) failures.push('spend_ledger_missing');
   else {
     let lines = [];
@@ -389,11 +414,56 @@ export async function loadBundleInProcess(bundle, { digest, expiresAt }) {
   return { module, codeSha256, directory };
 }
 
-// Real transport: each segment is a fresh isolated *-eval Worker with its own
+// §19e execution path: only the reviewed legacy `unstable_dev` remote preview
+// (local: false) under the exact credential-owner name. Temporary config is
+// minimal (no production config import, routes, triggers, migrations or
+// bindings); nothing is deployed, promoted or routed, and no Secret value is
+// read. `wrangler preview` branch deployments and version URLs are not used.
+export const EXECUTION_PATH = Object.freeze({ mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy' });
+export function validateExecutionPath(approval, worker) {
+  assert.deepEqual(approval.executionPath, { ...EXECUTION_PATH }, 'Execution mode and exact Worker name must be the approved path.');
+  assert.equal(worker, EXECUTION_PATH.workerName, 'Only the approved remote-preview Worker name is allowed.');
+  assert.equal(approval.worker, worker);
+}
+export const segmentWranglerConfig = (workerName) => ({ name: workerName, main: SEGMENT_CODE_FILE, compatibility_date: '2026-04-10' });
+export const unstableDevOptions = (config) => ({ config, local: false, ip: '127.0.0.1', port: 0, inspect: false, logLevel: 'none',
+  experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false, showInteractiveDevSession: false, enableIpc: false } });
+
+// Read-only production snapshot (deployments, current deployment status and
+// versions) taken before and after a run to show deployment and traffic did
+// not change. Only digests are kept. Zone routes have no read-only Wrangler
+// command and are recorded as not observable here.
+export const SNAPSHOT_COMMANDS = Object.freeze([['deployments', 'list'], ['deployments', 'status'], ['versions', 'list']]);
+export function wranglerReadOnlyExec(args) {
+  const binary = join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+  const result = spawnSync(process.execPath, [binary, ...args], { cwd: tmpdir(), encoding: 'utf8', timeout: 60_000,
+    env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+  if (result.status !== 0) throw new Error('Read-only production snapshot command failed: wrangler ' + args.slice(0, 2).join(' '));
+  return result.stdout;
+}
+export async function productionSnapshot({ exec = wranglerReadOnlyExec, workerName = EXECUTION_PATH.workerName } = {}) {
+  const entries = [];
+  for (const command of SNAPSHOT_COMMANDS) {
+    const output = await exec([...command, '--name', workerName, '--json']);
+    assert.equal(typeof output, 'string');
+    entries.push({ command: 'wrangler ' + command.join(' ') + ' --name ' + workerName + ' --json', sha256: sha256Text(output) });
+  }
+  return { takenAt: new Date().toISOString(), entries, digest: sha256Text(entries.map((entry) => entry.sha256).join('')),
+    routes: 'not observable with read-only Wrangler commands' };
+}
+async function snapshotAfter(before, exec) {
+  try {
+    const after = await productionSnapshot({ exec });
+    return { before, after, unchanged: after.digest === before.digest };
+  } catch { return { before, after: null, unchanged: false }; }
+}
+
+// Real transport: each segment is a fresh remote preview session with its own
 // random token and the unchanged 30-minute expiry baked into the bundle.
 export function createWorkerTransport({ bundle, workerName, loadWrangler }) {
   return {
     async startSegment({ id, expiresAt }) {
+      assert.equal(workerName, EXECUTION_PATH.workerName, 'Only the approved remote-preview Worker name is allowed.');
       const { unstable_dev } = await loadWrangler();
       const directory = await mkdtemp(join(tmpdir(), 'jev-unit0-r2-'));
       const token = randomBytes(32).toString('hex');
@@ -402,10 +472,8 @@ export function createWorkerTransport({ bundle, workerName, loadWrangler }) {
         const deployedAt = new Date().toISOString();
         const { entry, codeSha256 } = await writeSegmentFiles(bundle, directory, { digest: sha256(token), expiresAt });
         const config = join(directory, 'wrangler.json');
-        await writeFile(config, JSON.stringify({ name: workerName, main: SEGMENT_CODE_FILE, compatibility_date: '2026-04-10' }));
-        worker = await unstable_dev(entry, { config, local: false, ip: '127.0.0.1', port: 0, inspect: false, logLevel: 'none',
-          experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false,
-            showInteractiveDevSession: false, enableIpc: false } });
+        await writeFile(config, JSON.stringify(segmentWranglerConfig(workerName)));
+        worker = await unstable_dev(entry, unstableDevOptions(config));
         const headers = { Authorization: 'Bearer ' + token };
         const ready = await worker.fetch('/ready', { headers, signal: AbortSignal.timeout(45_000) });
         assert.equal(ready.status, 200);
@@ -416,10 +484,10 @@ export function createWorkerTransport({ bundle, workerName, loadWrangler }) {
           signal: AbortSignal.timeout(45_000) });
         assert.equal(wrong.status, 404, 'Segment accepted a foreign token.');
         // Upload provenance is recorded apart from consumption: case data now
-        // exists only in this isolated preview Worker; no provider was reached.
+        // exists only in this remote preview session; no provider was reached.
         return { id, expiresAt, bundleSha256: codeSha256,
           readiness: { fetchGuard: true, foreignTokenRefused: true, providerAttemptsDuringReadiness: 0 },
-          upload: { deployedAt, location: 'isolated Cloudflare preview Worker ' + workerName, casesSha256: bundle.casesSha256 },
+          upload: { deployedAt, location: 'Cloudflare legacy remote preview session of ' + workerName, casesSha256: bundle.casesSha256 },
           async runCase({ caseId, arm, timeoutMs, budgetRemainingUsd, runState }) {
             const response = await worker.fetch('/case', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
               body: JSON.stringify({ caseId, arm, budgetRemainingUsd, runState }), signal: AbortSignal.timeout(timeoutMs) });
@@ -449,10 +517,11 @@ async function readSet(path) {
 
 // The holdout run. Order: validate everything and bundle → create the spend
 // ledger → deploy the first segment and pass readiness (no case is run and no
-// provider is reached; case text exists only in our isolated preview Worker)
+// provider is reached; case text exists only in the remote preview session)
 // → record the single consumption in the canonical ledger → first turn. From
 // then on any failure leaves the holdout consumed; nothing is re-run.
-export async function realRun({ approvalPath, worker, setB, setC, outputDir, transportFactory = null, clock = Date }) {
+export async function realRun({ approvalPath, worker, setB, setC, outputDir, transportFactory = null, clock = Date,
+  persistence = DURABLE_PERSISTENCE, snapshotExec = wranglerReadOnlyExec }) {
   const roster = buildRoster({ B: await readSet(setB), C: await readSet(setC) });
   const runtimeSha256 = await runtimeFingerprint();
   const policySha256 = sha256(await readFile(join(ROOT, 'workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')));
@@ -466,6 +535,8 @@ export async function realRun({ approvalPath, worker, setB, setC, outputDir, tra
     dispatchesPerTurn: limits.dispatchesPerTurn });
   // The Worker code must be the one exercised by the approved development smoke.
   assert.equal(bundle.templateSha256, approval.workerCodeSha256, 'Worker code differs from the smoke-tested bundle.');
+  // Read-only production snapshot first; if it cannot be taken, nothing starts.
+  const productionBefore = await productionSnapshot({ exec: snapshotExec });
   const runId = 'unit0-r2-' + new Date().toISOString().replace(/[:.]/g, '-');
   await mkdir(resolve(outputDir), { recursive: true });
   const spendLedgerPath = join(resolve(approval.spendLedgerDirectory), runId + '.spend.jsonl');
@@ -483,9 +554,11 @@ export async function realRun({ approvalPath, worker, setB, setC, outputDir, tra
     return { runtimeSha256, policySha256, corpusSha256: roster.corpusSha256, workerBundleSha256: bundle.templateSha256 };
   };
   const beforeFirstProviderTurn = () => recordConsumptionAttempt({ ledgerPath: approval.canonicalLedgerPath, roster,
-    rubricSha256: approval.rubricSha256, runId, spendLedgerPath });
+    rubricSha256: approval.rubricSha256, runId, spendLedgerPath, persistence });
   const result = await runSerialEvaluation({ roster, order, transport, ledger, limits, clock, verifyFrozenInputs, beforeFirstProviderTurn });
-  const artifact = { schemaVersion: R2_ARTIFACT_SCHEMA, dryRun: false, runId, corpusSha256: roster.corpusSha256,
+  const productionIsolation = await snapshotAfter(productionBefore, snapshotExec);
+  const artifact = { schemaVersion: R2_ARTIFACT_SCHEMA, dryRun: false, runId, executionPath: { ...EXECUTION_PATH }, productionIsolation,
+    corpusSha256: roster.corpusSha256,
     rubricSha256: approval.rubricSha256, pricingVersion: PREREGISTERED_PRICING.version, runtimeSha256, policySha256,
     workerBundleSha256: bundle.templateSha256, attemptedAt: new Date().toISOString(),
     expectedTurns: roster.cases.length * 2, spendLedgerPath, ...result };
@@ -494,7 +567,7 @@ export async function realRun({ approvalPath, worker, setB, setC, outputDir, tra
 }
 
 // Development smoke (never evidence): the 12 development calibration cases,
-// both arms, through the very same Worker code on a remote isolated preview
+// both arms, through the very same Worker code on the approved remote preview
 // Worker, to check that the bundle runs, the fetch guard works, Luna reports
 // its service tier, reservations settle and segment tokens rotate and refuse
 // foreign tokens. It never touches the canonical holdout ledger and computes
@@ -525,8 +598,7 @@ export function validateSmokeApproval(approval, { runtimeSha256, policySha256, w
   assert.equal(approval.purpose, 'harness smoke; not evidence');
   assert.ok(Number.isFinite(Date.parse(approval.approvedAt)));
   assert.equal(approval.environment, 'isolated_synthetic_smoke');
-  assert.equal(approval.worker, worker);
-  assert.match(worker, /^[a-zA-Z0-9-]+-eval$/);
+  validateExecutionPath(approval, worker); // §19e replaces the former "*-eval" name rule
   assert.equal(approval.runtimeSha256, runtimeSha256, 'Runtime changed after the smoke approval.');
   assert.equal(approval.policySha256, policySha256, 'Catalog/gate changed after the smoke approval.');
   assert.equal(corpusSha256, DEVELOPMENT_CORPUS_SHA256, 'Smoke runs only on the frozen development corpus.');
@@ -541,7 +613,7 @@ export function validateSmokeApproval(approval, { runtimeSha256, policySha256, w
   return approval;
 }
 
-export async function smokeRun({ approvalPath, worker, outputDir, transportFactory = null, clock = Date }) {
+export async function smokeRun({ approvalPath, worker, outputDir, transportFactory = null, clock = Date, snapshotExec = wranglerReadOnlyExec }) {
   const corpusBytes = await readFile(join(ROOT, 'scripts/jev-contextual-development-corpus.json'));
   const corpus = JSON.parse(corpusBytes.toString('utf8'));
   const corpusSha256 = sha256(corpusBytes);
@@ -554,6 +626,7 @@ export async function smokeRun({ approvalPath, worker, outputDir, transportFacto
   const roster = { cases: cases.map((item) => ({ ...item, stratum: 'development_calibration' })) };
   const limits = validateLimits({ ...approval.limits }, { dryRun: true });
   const bundle = await buildWorkerBundle({ cases, preSend: preSendFor(approval.pricing), dispatchesPerTurn: limits.dispatchesPerTurn });
+  const productionBefore = await productionSnapshot({ exec: snapshotExec });
   const runId = 'unit0-r2-smoke-' + new Date().toISOString().replace(/[:.]/g, '-');
   await mkdir(resolve(outputDir), { recursive: true });
   const ledger = await ConsumptionLedger.create(join(resolve(approval.spendLedgerDirectory), runId + '.spend.jsonl'),
@@ -567,13 +640,16 @@ export async function smokeRun({ approvalPath, worker, outputDir, transportFacto
       assert.equal(await runtimeFingerprint(), runtimeSha256);
       return { runtimeSha256, workerBundleSha256: bundle.templateSha256 };
     } });
+  const productionIsolation = await snapshotAfter(productionBefore, snapshotExec);
   const dispatches = result.pairs.flatMap((pair) => ARMS.flatMap((arm) => pair[arm]?.dispatches ?? []));
   const count = (values) => Object.fromEntries([...new Set(values)].map((value) => [String(value), values.filter((item) => item === value).length]));
   const segmentLines = ledger.entries.filter((entry) => entry.type === 'segment_started');
   const artifact = { schemaVersion: SMOKE_SCHEMA, status: 'smoke_not_evidence', evidence: 'none', runId, corpusSha256,
     runtimeSha256, policySha256, pricingVersion: PREREGISTERED_PRICING.version, workerCodeSha256: bundle.templateSha256,
     casesSha256: bundle.casesSha256, runStatus: result.status, stopReason: result.stopReason,
+    executionPath: { ...EXECUTION_PATH },
     checks: {
+      productionIsolation,
       sameWorkerCode: 'workerCodeSha256 excludes case data, token and expiry; the holdout approval must pin this value',
       segments: segmentLines.length,
       segmentCodeSha256: segmentLines.map((entry) => entry.bundleSha256),

@@ -1,8 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { BOOTSTRAP_SEED, CENSUS_BOOTSTRAP_SEED, EXECUTION_ORDER_SEED, bootstrapReplicates, createXoshiro128StarStar,
   executionOrder, seedWords } from './jev-contextual-unit0-random.mjs';
 import { ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, classifyAttempt, reservePerCallUsd,
@@ -10,7 +10,8 @@ import { ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, classif
 import { DECISION_RULES, evaluateUnit0, nearestRank } from './jev-contextual-unit0-decision.mjs';
 import { DRY_RUN_LABEL_SOURCE, R2_LABEL_SOURCE, REVIEW_SCHEMA, canonicalJson, createBlindPacket, importBlindReview,
   sha256Text, validateLabelProvenance } from './jev-contextual-unit0-review.mjs';
-import { DEVELOPMENT_CORPUS_SHA256, IN_PROCESS_DIRECTORY, ROSTER_SPEC, runSerialEvaluation, SMOKE_LIMITS, buildRoster, buildWorkerBundle, loadBundleInProcess, preSendFor, realRun,
+import { DEVELOPMENT_CORPUS_SHA256, DURABLE_PERSISTENCE, EXECUTION_PATH, IN_PROCESS_DIRECTORY, ROSTER_SPEC, createWorkerTransport,
+  productionSnapshot, runSerialEvaluation, runTerminalValidity, segmentWranglerConfig, unstableDevOptions, SMOKE_LIMITS, buildRoster, buildWorkerBundle, loadBundleInProcess, preSendFor, realRun,
   recordConsumptionAttempt, smokeCases, smokeRun, validateApprovalR2, workerCases, writeSegmentFiles } from './jev-contextual-unit0-eval.mjs';
 import { DRY_RUN_PRICING, buildMockSets, createInProcessTransport, runDryRun } from './jev-contextual-unit0-dry-run.mjs';
 import { runtimeFingerprint, sha256 } from './jev-contextual-paired-eval.mjs';
@@ -31,6 +32,8 @@ const REFERENCE = {
   replicate1C: [26, 8, 32, 17, 1, 12, 31, 4, 22, 26, 13, 1, 11, 5, 16, 28, 23, 21, 29, 2, 0, 16, 32, 19, 31, 9, 4, 14, 27, 29, 15, 17, 21, 25, 33],
   zeroHarmUpper65: 0.045042258123013545,
 };
+// Read-only production snapshot stand-in: identical output before and after.
+const fixedSnapshot = async (args) => JSON.stringify({ fixture: args.slice(0, 2) });
 const freshRunState = () => ({ attempts: 0, infrastructureFailures: 0, consecutiveInfrastructureFailures: 0 });
 const caseName = (n) => 'case-' + String(n).padStart(3, '0');
 
@@ -460,17 +463,19 @@ describe('roster, approval and canonical consumption ledger', () => {
   it('requires the B/C agreement under DECISION 2 delegation with every frozen value restated', () => {
     const roster = buildRoster(sets, { dryRun: true });
     const approval = { approved: true, approvedBy: ['CopperHopper', 'BronzeMaxwell'], authority: 'owner DECISION 2 delegation',
-      approvedAt: '2026-10-05T00:00:00Z', environment: 'isolated_synthetic_evaluation', worker: 'unit0-r2-eval',
+      approvedAt: '2026-10-05T00:00:00Z', environment: 'isolated_synthetic_evaluation', worker: 'studyplanner-ai-proxy', executionPath: { mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy' },
       catalogVersion: 'focused-contextual-answer-2026-10-04-v3', gateVersion: 'contextual-conservative-v2-calibrated',
       runtimeSha256: 'a'.repeat(64), policySha256: 'b'.repeat(64), corpusSha256: roster.corpusSha256,
       rubricSha256: { B: 'c'.repeat(64), C: 'd'.repeat(64) }, limits: { ...PREREGISTERED_LIMITS }, decisionRules: { ...DECISION_RULES },
       pricing: structuredClone(DRY_RUN_PRICING), canonicalLedgerPath: 'ledger.json', spendLedgerDirectory: '.', workerCodeSha256: 'f'.repeat(64),
       preregistration: { sha256: 'e'.repeat(64) } };
-    const binding = { roster, runtimeSha256: 'a'.repeat(64), policySha256: 'b'.repeat(64), worker: 'unit0-r2-eval' };
+    const binding = { roster, runtimeSha256: 'a'.repeat(64), policySha256: 'b'.repeat(64), worker: 'studyplanner-ai-proxy' };
     expect(() => validateApprovalR2(approval, binding)).not.toThrow();
     for (const mutate of [(a) => { a.approvedBy = ['BronzeMaxwell']; }, (a) => { a.limits.totalBudgetUsd = 10; },
       (a) => { a.decisionRules.nonInferiorityMargin = 0.1; }, (a) => { a.runtimeSha256 = 'f'.repeat(64); },
-      (a) => { a.worker = 'ai-proxy'; }, (a) => { a.pricing.jev.inputUsdPerMillionTokens = 0.01; },
+      (a) => { a.worker = 'ai-proxy'; }, (a) => { a.worker = 'studyplanner-ai-proxy-eval'; },
+      (a) => { a.executionPath = { mode: 'wrangler_preview_branch', workerName: 'studyplanner-ai-proxy' }; },
+      (a) => { a.executionPath = { mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy-eval' }; }, (a) => { a.pricing.jev.inputUsdPerMillionTokens = 0.01; },
       (a) => { a.pricing.luna.maxInputTokensPerCall = 50_000; }, (a) => { a.pricing.luna.serviceTier = 'priority'; },
       (a) => { a.pricing.luna.sources = []; }, (a) => { a.pricing.version = 'other'; }, (a) => { delete a.workerCodeSha256; }]) {
       const changed = structuredClone(approval);
@@ -881,7 +886,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
       status: 'sealed_unconsumed', consumptionAttempts: [],
       sha256: { [stratum === 'B' ? 'holdout.json' : 'set.json']: base.corpusSha256[stratum], 'rubric.json': 'f'.repeat(64) } })) }));
     const approval = { approved: true, approvedBy: ['BronzeMaxwell', 'CopperHopper'], authority: 'owner DECISION 2 delegation',
-      approvedAt: '2026-10-05T00:00:00Z', environment: 'isolated_synthetic_evaluation', worker: 'unit0-r2-eval',
+      approvedAt: '2026-10-05T00:00:00Z', environment: 'isolated_synthetic_evaluation', worker: 'studyplanner-ai-proxy', executionPath: { mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy' },
       catalogVersion: 'focused-contextual-answer-2026-10-04-v3', gateVersion: 'contextual-conservative-v2-calibrated',
       runtimeSha256: base.runtimeSha256, policySha256: base.policySha256, corpusSha256: base.corpusSha256,
       rubricSha256: { B: 'f'.repeat(64), C: 'f'.repeat(64) }, limits: { ...PREREGISTERED_LIMITS }, decisionRules: { ...DECISION_RULES },
@@ -898,7 +903,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     const before = await readFile(ledgerPath);
     const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
     const clock = clockFor();
-    const artifact = await realRun({ approvalPath, worker: 'unit0-r2-eval', setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
+    const artifact = await realRun({ approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
       transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: { failSegmentStart: true }, clock, counters }) });
     expect(artifact).toMatchObject({ status: 'incomplete_HOLD', stopReason: 'segment_start_failed', holdoutConsumed: false });
     expect((await readFile(ledgerPath)).equals(before)).toBe(true);
@@ -910,7 +915,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
     const clock = clockFor();
     let consumedAtFirstTurn = null;
-    const artifact = await realRun({ approvalPath, worker: 'unit0-r2-eval', setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
+    const artifact = await realRun({ approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
       transportFactory: (bundle) => {
         const inner = createInProcessTransport({ bundle, scenario: {}, clock, counters });
         return { async startSegment(spec) {
@@ -943,11 +948,85 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     await writeFile(ledgerPath, JSON.stringify(ledger));
     const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
     const clock = clockFor();
-    const artifact = await realRun({ approvalPath, worker: 'unit0-r2-eval', setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
+    const artifact = await realRun({ approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, setB: base.files.B, setC: base.files.C, outputDir: dir, clock,
       transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) });
     expect(artifact).toMatchObject({ stopReason: 'consumption_record_failed', holdoutConsumed: false });
     expect(counters.jev + counters.luna).toBe(0);
   }, 120_000);
+
+  it('uses only the approved remote-preview path with a minimal generated config and read-only snapshots', async () => {
+    expect(EXECUTION_PATH).toEqual({ mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy' });
+    expect(segmentWranglerConfig('studyplanner-ai-proxy')).toEqual({ name: 'studyplanner-ai-proxy', main: 'unit0-runtime.js',
+      compatibility_date: '2026-04-10' }); // no routes, triggers, migrations, bindings, vars or env
+    expect(unstableDevOptions('/c.json')).toMatchObject({ config: '/c.json', local: false });
+    const source = await readFile(join(process.cwd(), 'scripts/jev-contextual-unit0-eval.mjs'), 'utf8');
+    expect(source).not.toMatch(/wrangler\.jsonc|workers\/ai-proxy\/wrangler/); // never imports the production config
+    expect(source).not.toMatch(/['"](deploy|publish|rollback|triggers|secret)['"]/); // no write-side Wrangler command
+    let deployed = false;
+    const other = createWorkerTransport({ bundle: { code: '', segmentData: () => '' }, workerName: 'studyplanner-ai-proxy-eval',
+      loadWrangler: async () => ({ unstable_dev: async () => { deployed = true; } }) });
+    await expect(other.startSegment({ id: 0, expiresAt: Date.now() + 1_800_000 })).rejects.toThrow('approved remote-preview');
+    expect(deployed).toBe(false);
+    const commands = [];
+    await productionSnapshot({ exec: async (args) => { commands.push(args.join(' ')); return '[]'; } });
+    expect(commands).toEqual(['deployments list --name studyplanner-ai-proxy --json', 'deployments status --name studyplanner-ai-proxy --json',
+      'versions list --name studyplanner-ai-proxy --json']);
+    // A snapshot that cannot be taken stops everything before deploy or consumption.
+    const blocked = await prepare('snapshot-fails');
+    const before = await readFile(blocked.ledgerPath);
+    const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
+    const clock = clockFor();
+    await expect(realRun({ approvalPath: blocked.approvalPath, worker: 'studyplanner-ai-proxy', setB: base.files.B, setC: base.files.C,
+      outputDir: blocked.dir, clock, snapshotExec: async () => { throw new Error('no read access'); },
+      transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) })).rejects.toThrow('no read access');
+    expect(counters).toMatchObject({ jev: 0, luna: 0, segments: 0 });
+    expect((await readFile(blocked.ledgerPath)).equals(before)).toBe(true);
+    // A production change between the snapshots fails the run-terminal gate.
+    const changed = await prepare('snapshot-changes');
+    let call = 0;
+    const artifact = await realRun({ approvalPath: changed.approvalPath, worker: 'studyplanner-ai-proxy', setB: base.files.B, setC: base.files.C,
+      outputDir: changed.dir, clock, snapshotExec: async (args) => JSON.stringify({ args, version: call++ < 3 ? 1 : 2 }),
+      transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) });
+    expect(artifact.productionIsolation).toMatchObject({ unchanged: false });
+    const verdict = runTerminalValidity({ artifact, spendLedgerBytes: await readFile(artifact.spendLedgerPath), roster: buildRoster(
+      { B: { corpus: sets.B.corpus, sha256: base.corpusSha256.B }, C: { corpus: sets.C.corpus, sha256: base.corpusSha256.C } }) });
+    expect(verdict).toMatchObject({ status: 'FAIL', failures: ['production_snapshot_changed_or_unknown'] });
+  }, 180_000);
+
+  it('persists the canonical guards durably in order, and a persistence failure forbids every provider send', async () => {
+    const calls = [];
+    const recording = { async writeFileDurable(path, data, flag) { calls.push(['write+fsync', basename(path).split('.')[0], flag]);
+      await DURABLE_PERSISTENCE.writeFileDurable(path, data, flag); },
+    async syncDirectory(directory) { calls.push(['fsync-dir']); await DURABLE_PERSISTENCE.syncDirectory(directory); },
+    async rename(from, to) { calls.push(['rename']); await DURABLE_PERSISTENCE.rename(from, to); } };
+    const ordered = await prepare('durable-order');
+    const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
+    const clock = clockFor();
+    let callsAtFirstSend = null;
+    const artifact = await realRun({ approvalPath: ordered.approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, setB: base.files.B, setC: base.files.C,
+      outputDir: ordered.dir, clock, persistence: recording,
+      transportFactory: (bundle) => {
+        const inner = createInProcessTransport({ bundle, scenario: {}, clock, counters });
+        return { async startSegment(spec) { const segment = await inner.startSegment(spec);
+          return { ...segment, async runCase(args) { callsAtFirstSend ??= calls.length; return segment.runCase(args); } }; } };
+      } });
+    expect(artifact.holdoutConsumed).toBe(true);
+    expect(calls.map((call) => call[0])).toEqual(['write+fsync', 'fsync-dir', 'write+fsync', 'rename', 'fsync-dir']);
+    expect(calls[0]).toEqual(['write+fsync', 'consumption-' + sha256Text(base.corpusSha256.B + base.corpusSha256.C), 'wx']);
+    expect(callsAtFirstSend).toBe(5); // every guard was synced before the first provider-exposing turn
+    for (const failing of ['writeFileDurable', 'syncDirectory', 'rename']) {
+      const failed = await prepare('durable-fail-' + failing);
+      const before = await readFile(failed.ledgerPath);
+      const injected = { ...recording, [failing]: async () => { throw new Error('injected persistence failure'); } };
+      const sends = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
+      const result = await realRun({ approvalPath: failed.approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, setB: base.files.B, setC: base.files.C,
+        outputDir: failed.dir, clock, persistence: injected,
+        transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters: sends }) });
+      expect(result).toMatchObject({ stopReason: 'consumption_record_failed', holdoutConsumed: false });
+      expect(sends.jev + sends.luna).toBe(0);
+      expect((await readFile(failed.ledgerPath)).equals(before)).toBe(true); // the canonical ledger was never replaced
+    }
+  }, 180_000);
 
   it('runs the capped smoke on two development cases with the same runtime code and no gate or holdout ledger', async () => {
     const dir = join(directory, 'smoke');
@@ -955,12 +1034,12 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     const approvalPath = join(dir, 'smoke-approval.json');
     await writeFile(approvalPath, JSON.stringify({ approved: true, approvedBy: ['BronzeMaxwell', 'CopperHopper'],
       authority: 'owner DECISION 2 delegation', purpose: 'harness smoke; not evidence', approvedAt: '2026-10-05T00:00:00Z',
-      environment: 'isolated_synthetic_smoke', worker: 'unit0-r2-smoke-eval', runtimeSha256: base.runtimeSha256,
+      environment: 'isolated_synthetic_smoke', worker: 'studyplanner-ai-proxy', executionPath: { mode: 'legacy_unstable_dev_remote_preview', workerName: 'studyplanner-ai-proxy' }, runtimeSha256: base.runtimeSha256,
       policySha256: base.policySha256, corpusSha256: DEVELOPMENT_CORPUS_SHA256, split: 'calibration', pricing: base.pricing,
       limits: { ...SMOKE_LIMITS }, spendLedgerDirectory: dir }));
     const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
     const clock = clockFor();
-    const smoke = await smokeRun({ approvalPath, worker: 'unit0-r2-smoke-eval', outputDir: dir, clock,
+    const smoke = await smokeRun({ approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, outputDir: dir, clock,
       transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) });
     expect(smoke).toMatchObject({ status: 'smoke_not_evidence', evidence: 'none', runStatus: 'awaiting_blind_review',
       workerCodeSha256: base.workerCodeSha256, checks: { segments: 2, unaccountedFetchesRefused: 0,
@@ -975,7 +1054,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     const tampered = JSON.parse(await readFile(approvalPath, 'utf8'));
     tampered.limits.totalBudgetUsd = 1;
     await writeFile(approvalPath, JSON.stringify(tampered));
-    await expect(smokeRun({ approvalPath, worker: 'unit0-r2-smoke-eval', outputDir: dir, clock,
+    await expect(smokeRun({ approvalPath, worker: 'studyplanner-ai-proxy', snapshotExec: fixedSnapshot, outputDir: dir, clock,
       transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) })).rejects.toThrow('Smoke caps');
   }, 120_000);
 });
@@ -1042,4 +1121,85 @@ describe('stops detected at the final boundary and stopped artifacts (no provide
     expect(decision.gates.runTerminal.failures).toEqual(expect.arrayContaining(['run_status_incomplete_HOLD', 'stop_provider_failure_rate_exceeded',
       'spend_ledger_stop_differs']));
   }, 120_000);
+});
+
+describe('a charge above its reservation stops further sends in the same turn (Worker boundary)', () => {
+  let module;
+  let roster;
+  const env = { OPENROUTER_API_KEY: 'offline', OPENAI_API_KEY: 'offline' };
+  const sent = [];
+  beforeAll(async () => {
+    roster = buildRoster(await buildMockSets(), { dryRun: true });
+    const bundle = await buildWorkerBundle({ cases: workerCases(roster), preSend: preSendFor(DRY_RUN_PRICING), dispatchesPerTurn: 8 });
+    ({ module } = await loadBundleInProcess(bundle, { digest: sha256Text('t'), expiresAt: Date.now() + 60_000 }));
+  }, 120_000);
+  const jev = (choice, cost) => Response.json({ model: 'typesafe/jev-1.13', answers: { contextual_answer: { type: 'choice', choice,
+    confidence: 0.999, probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback'].map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
+  condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } }, usage: { input_tokens: 10, output_tokens: 3, cost } });
+  const luna = (promptTokens) => Response.json({ model: 'gpt-5.6-luna', service_tier: 'default', choices: [{ message: { content: '{}' } }],
+    usage: { prompt_tokens: promptTokens, completion_tokens: 4 } });
+  const install = (jevCost, lunaPromptTokens) => {
+    sent.length = 0;
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      sent.push(String(url));
+      return String(url).includes('/decisions') ? jev('fallback', jevCost) : luna(lunaPromptTokens);
+    }));
+  };
+  const run = (item, arm) => module.runTurn(item, env, new AbortController().signal, arm, { budgetRemainingUsd: 0.25, runState: freshRunState() });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('Jev reports more than its reservation, then would fall back to Luna: no Luna send follows', async () => {
+    const item = roster.cases.find((entry) => entry.questionCode === 'quantity_role_unresolved');
+    install(0.00001, 20);
+    const control = await run(item, 'jevFirst');
+    expect(control.dispatches.filter((dispatch) => dispatch.provider === 'luna').length).toBeGreaterThan(0); // the fallback normally sends
+    install(0.25, 20);
+    const record = await run(item, 'jevFirst');
+    expect(record.preSend.stopLatched).toBe('pricing_contract_violated');
+    expect(record.dispatches.map((dispatch) => dispatch.provider)).toEqual(['jev']);
+    expect(sent.filter((url) => url.includes('chat/completions'))).toHaveLength(0);
+    expect(record.preSend.refusedSends).toBeGreaterThan(0);
+  });
+
+  it('a Luna usage bound above its reservation stops the following Luna sends', async () => {
+    const effort = roster.cases.find((entry) => entry.questionCode === 'missing_effort_estimate');
+    install(0.00001, 20);
+    const control = await run(effort, 'lunaOnly');
+    expect(control.dispatches.length).toBeGreaterThan(1); // retries/repair normally follow
+    install(0.00001, 10_000_000);
+    const record = await run(effort, 'lunaOnly');
+    expect(record.preSend.stopLatched).toBe('pricing_contract_violated');
+    expect(record.dispatches).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('a reported overcharge with missing usage also stops further sends, and the run stops after the turn', async () => {
+    const item = roster.cases.find((entry) => entry.questionCode === 'quantity_role_unresolved');
+    sent.length = 0;
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      sent.push(String(url));
+      if (!String(url).includes('/decisions')) return luna(20);
+      const response = await jev('fallback', 0.25).json();
+      delete response.usage.input_tokens; delete response.usage.output_tokens;
+      return Response.json(response);
+    }));
+    const record = await run(item, 'jevFirst');
+    expect(record.preSend.stopLatched).toBe('pricing_contract_violated');
+    expect(sent.filter((url) => url.includes('chat/completions'))).toHaveLength(0);
+    const ledger = new ConsumptionLedger(null, { limits: PREREGISTERED_LIMITS, pricing: { ...PREREGISTERED_PRICING, source: 'test' } });
+    await ledger.settle({}, record);
+    expect(ledger.admission({ elapsedMs: 0 })).toEqual({ admit: false, reason: 'pricing_contract_violated' });
+    expect(ledger.totals().openReservationUsd).toBeCloseTo(record.preSend.reservations[0], 12); // missing usage keeps the reservation
+  });
+
+  it('the ledger counts a reported amount above the reservation as a violation even without usage', async () => {
+    const ledger = new ConsumptionLedger(null, { limits: PREREGISTERED_LIMITS, pricing: { ...PREREGISTERED_PRICING, source: 'test' } });
+    await ledger.settle({}, { dispatches: [{ provider: 'jev', phase: 'focused', status: 'evaluated', outcome: 'response', httpStatus: null,
+      servedModel: 'typesafe/jev-1.13', serviceTier: null, inputTokens: null, outputTokens: null, costUsd: 0.25 }],
+    preSend: { reservedUsd: 0.0003, reservations: [0.0003], refusedSends: 0 }, elapsedMs: 1 });
+    expect(ledger.totals()).toMatchObject({ openReservationUsd: 0.0003, settlementUsd: 0 });
+    expect(ledger.admission({ elapsedMs: 0 })).toEqual({ admit: false, reason: 'pricing_contract_violated' });
+  });
 });

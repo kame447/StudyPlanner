@@ -75,8 +75,25 @@ export async function runTurn(item, env, signal, arm, options = {}) {
   }
   let stopLatched = PRE_SEND && options.runState === undefined ? 'run_state_missing' : null;
   const latch = (reason) => { if (stopLatched === null) stopLatched = reason; };
+  // Per response: an amount the provider reported, or the usage upper bound
+  // under the frozen rates, above this call's reservation means the hard cap
+  // is no longer provable, so the run stop is latched before any further send.
+  // Missing usage cannot be bounded and simply keeps the reservation (ledger).
+  const checkChargeWithinReservation = (dispatch) => {
+    const reserve = preSend.reservations[dispatches.indexOf(dispatch)];
+    const rates = PRE_SEND[dispatch.provider];
+    const reported = typeof dispatch.costUsd === 'number' && Number.isFinite(dispatch.costUsd) ? dispatch.costUsd : null;
+    const complete = Number.isSafeInteger(dispatch.inputTokens) && dispatch.inputTokens >= 0
+      && Number.isSafeInteger(dispatch.outputTokens) && dispatch.outputTokens >= 0;
+    const bound = complete ? dispatch.inputTokens * rates.inputUsdPerMillionTokens / 1e6
+      + dispatch.outputTokens * rates.outputUsdPerMillionTokens / 1e6 : null;
+    if (!(reserve > 0) || reported !== null && reported > reserve + 1e-12 || bound !== null && bound > reserve + 1e-12) {
+      latch('pricing_contract_violated');
+    }
+  };
   const recordAttempt = (dispatch) => {
     if (!preSend) return;
+    checkChargeWithinReservation(dispatch);
     const status = dispatch.httpStatus;
     const kind = dispatch.outcome === 'response' ? 'ok' : dispatch.outcome === 'invalid_response' ? 'invalid'
       : dispatch.outcome === 'network_failure' || dispatch.outcome === 'timeout' ? 'infra'
