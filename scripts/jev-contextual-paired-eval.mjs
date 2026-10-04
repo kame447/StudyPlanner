@@ -112,7 +112,9 @@ export async function runtimeFingerprint() {
   };
   for (const path of ['shared', 'src', 'workers/ai-proxy/src']) await walk(path);
   files.push('scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-paired-artifact.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
-    'scripts/jev-contextual-cloud-eval.mjs', 'scripts/jev-contextual-corpus.mjs', 'package.json', 'package-lock.json');
+    'scripts/jev-contextual-cloud-eval.mjs', 'scripts/jev-contextual-corpus.mjs',
+    'scripts/jev-contextual-unit0-eval.mjs', 'scripts/jev-contextual-unit0-budget.mjs', 'scripts/jev-contextual-unit0-random.mjs',
+    'scripts/jev-contextual-unit0-decision.mjs', 'scripts/jev-contextual-unit0-review.mjs', 'package.json', 'package-lock.json');
   const hash = createHash('sha256');
   for (const file of files.sort()) { hash.update(file + '\0'); hash.update(await readFile(join(ROOT, file))); }
   return hash.digest('hex');

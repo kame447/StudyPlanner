@@ -5,7 +5,10 @@ export const PAIRED_ARTIFACT_SCHEMA = 'jev-contextual-paired-v1';
 const ARMS = ['jevFirst', 'lunaOnly'];
 const CATALOG = 'focused-contextual-answer-2026-10-04-v3';
 const GATE = 'contextual-conservative-v2-calibrated';
+// r2 independent labels are joined by jev-contextual-unit0-review.mjs with
+// required reviewer/model/viewed-scope provenance, never through this v1 path.
 const LABEL_SOURCES = ['synthetic_unreviewed', 'opus-5.5-limited-judge', 'human_review'];
+const ATTEMPT_OUTCOMES = ['response', 'invalid_response', 'http_failure', 'network_failure', 'timeout', 'model_mismatch'];
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nonnegative = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const integer = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -53,8 +56,17 @@ function semanticResult(result) {
   // The full document remains review evidence; joint correctness needs provenance.
 }
 
-function validateDispatch(dispatch, complete) {
-  fields(dispatch, ['provider', 'phase', 'status', 'inputTokens', 'outputTokens', 'costUsd']);
+function validateDispatch(dispatch, complete, preSend) {
+  fields(dispatch, ['provider', 'phase', 'status', 'inputTokens', 'outputTokens', 'costUsd',
+    ...(preSend ? ['outcome', 'httpStatus', 'servedModel', 'serviceTier'] : [])]);
+  if (preSend) {
+    assert.ok(complete ? ATTEMPT_OUTCOMES.includes(dispatch.outcome)
+      : dispatch.outcome === null || ATTEMPT_OUTCOMES.includes(dispatch.outcome), 'Unknown attempt outcome.');
+    assert.equal(dispatch.outcome === 'http_failure', Number.isSafeInteger(dispatch.httpStatus)
+      && dispatch.httpStatus >= 100 && dispatch.httpStatus <= 599, 'HTTP status must accompany only an HTTP failure.');
+    if (dispatch.outcome !== 'http_failure') assert.equal(dispatch.httpStatus, null);
+    assert.ok(nullable(dispatch.servedModel, text) && nullable(dispatch.serviceTier, text), 'Invalid served tariff condition.');
+  }
   assert.ok(['jev', 'luna'].includes(dispatch.provider), 'Unknown dispatch provider.');
   assert.ok(text(dispatch.phase));
   assert.equal(typeof dispatch.status, 'string');
@@ -69,11 +81,35 @@ function validateDispatch(dispatch, complete) {
     && nullable(dispatch.costUsd, nonnegative), 'Invalid dispatch usage.');
 }
 
-function validateArm(record, item, arm) {
+function validatePreSend(preSend, record) {
+  fields(preSend, ['reserveUsdPerCall', 'budgetRemainingUsd', 'reservedUsd', 'reservations', 'refusedSends', 'maxInputTokenBound',
+    'maxRequestedOutputTokens', 'unaccountedFetchesRefused', 'stopLatched', 'runStateAfter']);
+  assert.ok(nullable(preSend.stopLatched, text), 'Invalid latched stop.');
+  fields(preSend.runStateAfter, ['attempts', 'infrastructureFailures', 'consecutiveInfrastructureFailures']);
+  assert.ok(Object.values(preSend.runStateAfter).every(integer), 'Invalid run state.');
+  assert.ok(nonnegative(preSend.budgetRemainingUsd) && preSend.reservedUsd <= preSend.budgetRemainingUsd + 1e-9,
+    'Reservations exceed the hard budget passed to the Worker.');
+  assert.ok(Array.isArray(preSend.reservations) && preSend.reservations.length === record.dispatches.length
+    && preSend.reservations.every((value) => nonnegative(value) && value > 0 && value <= preSend.reserveUsdPerCall + 1e-12),
+  'Every actual attempt needs one bounded reservation.');
+  assert.ok(integer(preSend.unaccountedFetchesRefused));
+  if (record.observationComplete) assert.equal(preSend.unaccountedFetchesRefused, 0, 'An unaccounted provider path was attempted.');
+  assert.ok(nonnegative(preSend.reserveUsdPerCall) && preSend.reserveUsdPerCall > 0);
+  assert.ok(Math.abs(preSend.reservedUsd - preSend.reservations.reduce((sum, value) => sum + value, 0)) < 1e-9,
+    'Reservation total must equal the per-attempt reservations.');
+  assert.ok(integer(preSend.refusedSends));
+  assert.ok(nullable(preSend.maxInputTokenBound, integer) && nullable(preSend.maxRequestedOutputTokens, integer));
+  assert.equal(preSend.maxInputTokenBound === null, record.dispatches.length === 0);
+  if (!record.dispatches.some((dispatch) => dispatch.provider === 'luna')) assert.equal(preSend.maxRequestedOutputTokens, null);
+}
+
+// preSend=true is the Unit 0 r2 record: attempt outcomes and pre-send
+// reservations are part of the measurement, not optional diagnostics.
+export function validateArm(record, item, arm, { preSend = false } = {}) {
   fields(record, ['caseId', 'group', 'arm', 'questionCode', 'catalogVersion', 'gateVersion',
     'observationComplete', 'dispatches', 'lunaDispatches', 'elapsedMs', 'inputTokens', 'outputTokens',
     'actualCostUsd', 'directRoleAccepted', 'selectedRole', 'jointCorrect', 'semanticResult', 'labelSource',
-    'providerStatus'], ['jointLabel']);
+    'providerStatus', ...(preSend ? ['preSend'] : [])], ['jointLabel']);
   assert.equal(record.caseId, item.id);
   assert.equal(record.group, item.group);
   assert.equal(record.arm, arm);
@@ -83,7 +119,8 @@ function validateArm(record, item, arm) {
   assert.equal(record.labelSource, item.labelSource);
   assert.equal(typeof record.observationComplete, 'boolean');
   assert.ok(Array.isArray(record.dispatches));
-  for (const dispatch of record.dispatches) validateDispatch(dispatch, record.observationComplete);
+  for (const dispatch of record.dispatches) validateDispatch(dispatch, record.observationComplete, preSend);
+  if (preSend) validatePreSend(record.preSend, record);
   assert.ok(integer(record.lunaDispatches));
   assert.equal(record.lunaDispatches, record.dispatches.filter((dispatch) => dispatch.provider === 'luna').length,
     'Luna count differs from validated dispatches.');
