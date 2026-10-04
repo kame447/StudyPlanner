@@ -1,6 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-const URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
+const HARNESS_URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
 // Gate the actual Vite-served production module, never a replacement loader.
 const RUNTIME_MODULE_SOURCE = /\/weeklyPlanningStableV5InstrumentedRuntimeExecutor\.ts(?:\?.*)?$/;
 const cases = [
@@ -34,7 +34,7 @@ async function boot(page, options) {
     const url = new URL(route.request().url());
     return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ? route.continue() : route.abort();
   });
-  await page.goto(`${URL}?theme=${options.theme}`);
+  await page.goto(`${HARNESS_URL}?theme=${options.theme}`);
   await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
