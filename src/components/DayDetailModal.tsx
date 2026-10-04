@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, NotebookPen, Pencil, Trash2, X } from 'lucide-react';
 import { useExitMotion } from '../hooks/useExitMotion';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
@@ -178,10 +178,28 @@ export function DayDetailModal({
     return null;
   }
 
+  return <StandaloneActualDetail key={JSON.stringify([standaloneActual.userId, standaloneActual.id])}
+    standaloneActual={standaloneActual} plans={plans} actuals={actuals}
+    onSaveStandaloneActual={onSaveStandaloneActual} onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
+    onDeleteActual={onDeleteActual} onClose={onClose} />;
+}
+
+type StandaloneActualDetailProps = Pick<DayDetailModalProps,
+  'plans' | 'actuals' | 'onSaveStandaloneActual' | 'onLinkStandaloneActualToPlan' | 'onDeleteActual' | 'onClose'>
+  & { standaloneActual: Actual };
+
+function StandaloneActualDetail({ standaloneActual, plans, actuals, onSaveStandaloneActual,
+  onLinkStandaloneActualToPlan, onDeleteActual, onClose }: StandaloneActualDetailProps) {
+  const [isPending, setIsPending] = useState(false);
+  const pending = useRef(false);
+  const observePending = useCallback((value: boolean) => { pending.current = value; setIsPending(value); }, []);
+  const { isExiting, requestExit } = useExitMotion(onClose);
+  const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
+  const requestClose = () => { if (!pending.current) requestExit(); };
   return (
     <div
       className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
-      onClick={() => requestExit()}
+      onClick={requestClose}
     >
       <div
         className="modal-card daily-detail-modal schedule-record-sheet"
@@ -197,7 +215,7 @@ export function DayDetailModal({
               {standaloneActual.title || '記録'}
             </p>
           </div>
-          <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
+          <button className="schedule-action-close" onClick={requestClose} disabled={isPending} type="button" aria-label="閉じる">
             <X aria-hidden="true" size={21} />
           </button>
         </div>
@@ -212,6 +230,7 @@ export function DayDetailModal({
             onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
             onDeleteActual={onDeleteActual}
             onClose={() => requestExit()}
+            onPendingChange={observePending}
           />
         </div>
       </div>

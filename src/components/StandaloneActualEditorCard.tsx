@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import { inferSubjectFromTitle } from '../lib/subjectInference';
@@ -21,6 +21,7 @@ interface StandaloneActualEditorCardProps {
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
   onClose: () => void;
+  onPendingChange?: (pending: boolean) => void;
 }
 
 const DURATION_OPTIONS: Array<{ value: DurationOptionValue; label: string }> = [
@@ -37,15 +38,28 @@ function isPresetDuration(value: number | null): boolean {
   return DURATION_OPTIONS.some((option) => option.value === value);
 }
 
-export function StandaloneActualEditorCard({
-  actual,
+export function StandaloneActualEditorCard(props: StandaloneActualEditorCardProps) {
+  return <StandaloneActualEditor key={JSON.stringify([props.actual.userId, props.actual.id])} {...props} />;
+}
+
+function StandaloneActualEditor({
+  actual: initialActual,
   plans,
   actuals,
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
   onDeleteActual,
   onClose,
+  onPendingChange,
 }: StandaloneActualEditorCardProps) {
+  const [actual] = useState(initialActual);
+  const pendingMutation = useRef<object | null>(null);
+  const pendingObserver = useRef(onPendingChange);
+  useLayoutEffect(() => { pendingObserver.current = onPendingChange; }, [onPendingChange]);
+  useLayoutEffect(() => () => {
+    pendingMutation.current = null;
+    pendingObserver.current?.(false);
+  }, []);
   const initialDuration = getStandaloneActualDurationMinutes(actual);
   const [title, setTitle] = useState(actual.title?.trim() || '');
   const [subject, setSubject] = useState(actual.subject.trim());
@@ -76,24 +90,29 @@ export function StandaloneActualEditorCard({
   const candidatePlans = expandPlansForDate(plans, occurrenceDate);
   const linkCandidates = buildActualPlanLinkCandidates(candidateActual, candidatePlans, actuals);
 
-  useEffect(() => {
-    const nextDuration = getStandaloneActualDurationMinutes(actual);
-    const nextIsCustomDuration =
-      nextDuration !== null && !isPresetDuration(nextDuration);
-
-    setTitle(actual.title?.trim() || '');
-    setSubject(actual.subject.trim());
-    setSubjectWasEdited(false);
-    setOccurrenceDate(actual.occurrenceDate);
-    setStartTime(actual.actualStartTime);
-    setDurationMinutes(nextDuration);
-    setIsCustomDuration(nextIsCustomDuration);
-    setCustomDurationInput(nextIsCustomDuration && nextDuration !== null ? String(nextDuration) : '');
-    setNote(actual.note);
+  async function runMutation(action: () => Promise<void>, failureMessage: string) {
+    if (pendingMutation.current) return;
+    const attempt = {};
+    pendingMutation.current = attempt;
+    setIsSubmitting(true);
+    pendingObserver.current?.(true);
     setError('');
-  }, [actual]);
+    try {
+      await action();
+    } catch {
+      if (pendingMutation.current === attempt) {
+        pendingMutation.current = null;
+        setIsSubmitting(false);
+        pendingObserver.current?.(false);
+        setError(failureMessage);
+      }
+      return;
+    }
+    if (pendingMutation.current === attempt) onClose();
+  }
 
   function applyDurationOption(value: DurationOptionValue) {
+    if (pendingMutation.current) return;
     if (value === 'custom') {
       setIsCustomDuration(true);
 
@@ -110,6 +129,7 @@ export function StandaloneActualEditorCard({
   }
 
   function updateCustomDuration(value: string) {
+    if (pendingMutation.current) return;
     setCustomDurationInput(value);
 
     const nextMinutes = Number(value);
@@ -119,6 +139,7 @@ export function StandaloneActualEditorCard({
   }
 
   function updateTitle(nextTitle: string) {
+    if (pendingMutation.current) return;
     setTitle(nextTitle);
 
     if (!subjectWasEdited && !subject.trim()) {
@@ -131,11 +152,13 @@ export function StandaloneActualEditorCard({
   }
 
   function updateSubject(nextSubject: string) {
+    if (pendingMutation.current) return;
     setSubjectWasEdited(true);
     setSubject(nextSubject);
   }
 
   async function handleSave() {
+    if (pendingMutation.current) return;
     if (!title.trim()) {
       setError('タイトルを入力してください。');
       return;
@@ -150,9 +173,7 @@ export function StandaloneActualEditorCard({
       return;
     }
 
-    setError('');
-    setIsSubmitting(true);
-    void onSaveStandaloneActual(
+    await runMutation(() => onSaveStandaloneActual(
       createStandaloneActualDraft(actual, {
         occurrenceDate,
         startTime,
@@ -162,17 +183,16 @@ export function StandaloneActualEditorCard({
         note,
       }),
       actual.id,
-    ).catch(() => undefined);
-    onClose();
+    ), '保存できませんでした。入力内容は残っています。もう一度保存してください。');
   }
 
   async function handleDelete() {
-    setIsSubmitting(true);
-    void onDeleteActual(actual).catch(() => undefined);
-    onClose();
+    if (pendingMutation.current) return;
+    await runMutation(() => onDeleteActual(actual), '削除できませんでした。もう一度試してください。');
   }
 
   async function handleLink(plan: Plan) {
+    if (pendingMutation.current) return;
     if (!title.trim()) {
       setError('タイトルを入力してください。');
       return;
@@ -187,10 +207,8 @@ export function StandaloneActualEditorCard({
       return;
     }
 
-    setError('');
-    setIsSubmitting(true);
-    void onLinkStandaloneActualToPlan(candidateActual, plan).catch(() => undefined);
-    onClose();
+    await runMutation(() => onLinkStandaloneActualToPlan(candidateActual, plan),
+      '予定に紐づけできませんでした。入力内容は残っています。もう一度試してください。');
   }
 
   return (
@@ -219,7 +237,7 @@ export function StandaloneActualEditorCard({
         </div>
       </div>
 
-      <div className="actual-form actual-form-compact">
+      <fieldset className="actual-form actual-form-compact" aria-label="学習記録の入力内容" disabled={isSubmitting}>
         <section className="actual-editor-section">
           <div className="actual-editor-section-title">
             <strong>内容</strong>
@@ -254,7 +272,7 @@ export function StandaloneActualEditorCard({
               <input
                 type="date"
                 value={occurrenceDate}
-                onChange={(event) => setOccurrenceDate(event.target.value)}
+                onChange={(event) => { if (!pendingMutation.current) setOccurrenceDate(event.target.value); }}
               />
             </label>
             <label className="field">
@@ -262,7 +280,8 @@ export function StandaloneActualEditorCard({
               <TimeWheelPicker
                 value={startTime}
                 role="start"
-                onChange={setStartTime}
+                disabled={isSubmitting}
+                onChange={(value) => { if (!pendingMutation.current) setStartTime(value); }}
               />
             </label>
             <label className="field">
@@ -313,7 +332,7 @@ export function StandaloneActualEditorCard({
             <span>メモ</span>
             <textarea
               value={note}
-              onChange={(event) => setNote(event.target.value)}
+              onChange={(event) => { if (!pendingMutation.current) setNote(event.target.value); }}
               rows={2}
               placeholder="メモを追加"
             />
@@ -373,14 +392,14 @@ export function StandaloneActualEditorCard({
           )}
         </section>
 
-        {error ? <p className="inline-error">{error}</p> : null}
+        {error ? <p className="inline-error" role="alert">{error}</p> : null}
 
         <div className="row-actions actual-editor-actions">
           <button
             className="ghost-button danger"
             disabled={isSubmitting}
             onClick={() => {
-              if (window.confirm('この記録を削除しますか？')) {
+              if (!pendingMutation.current && window.confirm('この記録を削除しますか？')) {
                 void handleDelete();
               }
             }}
@@ -389,7 +408,7 @@ export function StandaloneActualEditorCard({
             記録を削除
           </button>
         </div>
-      </div>
+      </fieldset>
     </article>
   );
 }

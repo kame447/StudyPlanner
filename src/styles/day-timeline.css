@@ -644,3 +644,11 @@
   z-index: var(--z-modal-overlay);
 }
 
+
+.standalone-actual-editor-card fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding-inline: 0;
+  padding-top: 0;
+}
