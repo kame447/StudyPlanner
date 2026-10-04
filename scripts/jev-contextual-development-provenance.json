@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "corpusPath": "scripts/jev-contextual-development-corpus.json",
+  "corpusSha256": "75e2cbbfc962b7c93647bf0c1197860bc94e1e70de9e62f99412ad722cfa22ba",
+  "frozenAt": "2026-10-04T14:25:25.464Z",
+  "generator": {
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "xhigh",
+    "agent": "PolarWatt",
+    "authority": "canonical launch role"
+  },
+  "viewedBy": [
+    "PolarWatt"
+  ],
+  "consumption": "offline_contract_validation_only; no real/provider evaluation",
+  "independence": "implementation author; not independent holdout",
+  "status": "development_only_frozen",
+  "holdout": {
+    "status": "not_created",
+    "author": null,
+    "viewedBy": [],
+    "frozenAt": null,
+    "corpusSha256": null,
+    "consumption": "unavailable"
+  },
+  "supersededOfflineFreeze": {
+    "corpusSha256": "b07473e48f7cbab36c6691db60a784c15c4a36d834b7850c971848ef13961e60",
+    "frozenAt": "2026-10-04T14:14:14.236Z",
+    "reason": "Make synthetic workload unit explicit; no provider evaluation had occurred."
+  }
+}

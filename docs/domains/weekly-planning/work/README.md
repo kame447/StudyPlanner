@@ -15,6 +15,7 @@ Current durable records:
 - `20260926-issue333-japanese-semantic-evaluation.md` — Issue #333（#305 canary 前の日本語品質 gate、Luna 責務の棚卸し）
 - `20260927-issue305-jev-first-focused-authorization.md` — Issue #305 置換単位1（focused authorization の Jev 第一経路のテスト環境での実動、Luna fallback、tuning だけでの校正、holdout、#335 回帰）
 - `20260927-issue305-jev-first-focused-contextual.md` — Issue #305 置換単位2（focused contextual answer の quantity role と独立した意味の判定を Jev 第一経路へ移し、effort と provisional は Luna に残す。前方互換の decisionContext 規則を含む）
+- `20261004-issue305-contextual-preregistration.md` / `20261004-issue305-contextual-holdout-author-spec.md` — Issue #305 Phase B の Unit 0（focused contextual の questionCode 修正の後の、新しい paired 評価の事前登録と、独立した holdout 作者向けの仕様）。**HOLD**：評価は未実行で、holdout は未作成、owner の閾値と実行の承認を待っている
 - `20260927-issue305-jev-first-temporal-scope-repair.md` — Issue #305 置換単位3（temporal scope repair の Jev 第一経路。既存の Luna repair の token 上限 60→320 の修正を含む）
 - `20260927-issue305-jev-first-temporal-side-contribution.md` — Issue #305 置換単位5（temporal side contribution の Jev 第一経路は不採用とした。既存の Luna の token 上限 320→640 と `namedTimePeriod` schema の修正を含む）
 - `20260927-issue305-jev-phase2-luna-inventory.md` — Issue #305 第二段階（単位1〜5の後の Luna 呼出し経路の再棚卸し。採用なし。C3 no-op 確認 gate は no-go。当時は C9 proposal reject を前提条件付きの次候補としたが、第三段階で no-go とした。同じ文書の末尾に、第三段階の再棚卸しを追記してある）

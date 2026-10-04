@@ -321,3 +321,50 @@ independent-meaning gate の配管回帰として区別した。
 - holdout は予備的・消費済みの合成30件で、うち12件は tuning 閲覧後に同じ作成者が
   追加した。false-accept 上限9.50%を超える強い主張や正式受入れには使わない。
 - cache 内訳がないため Luna cost は範囲。paired latency は end-to-end 実測ではなく推定。
+
+## Phase B Unit 0 — 2026-10-04 作業 checkpoint
+
+- Owner: PolarWatt（統合: BronzeMaxwell、外部監査: CopperHopper）。Issue #305 を継続。
+- Branch: `fix/issue305-focused-contextual-question-code`。Base / current HEAD: `5668fbfb7337b0f34bbae0ce9016765f12b60439`。既存 PR #338 は merge 済みで、子は新しい PR を作らない。
+- Scope: provider-visible な質問 identity、wire / rejection regression、tuning / calibration corpus、paired harness、事前登録の準備。metrics 基盤・renderer・本番設定は対象外。
+- Next: 修正基盤と評価 HOLD を分けて親へ提出する。親の exact diff review・commit / push・CI・外部監査を待つ。
+- Exit: (a) 修正の基盤は focused tests / #335 / typecheck / verify と exact diff を確認して親へ提出する。(b) fresh 評価は準備のみ HOLD。owner の閾値登録・実行承認と、tuning を見ていない別作者の holdout 作成が必要。PolarWatt は holdout を作らず、有料・real API を実行しない。
+- Git metadata は sandbox で編集不可。branch 改名・commit・push は親が行い、子は未 commit の diff を残す。
+
+### 質問 identity の責務と採った設計
+
+質問の種類を決める application envelope を唯一の入力 authority にし、Worker がそれを検証してから provider 用 state を作る。`FocusedContextualDecisionState` / `focusedContextualDecisionState` は questionCode、user text、bounded pending fields だけをコピーして freeze する。shadow と canary はこの同じ state を送り、gate も capture した identity を使う。canonical ID、owner、requestId、revision は provider に増やさない。browser 契約・off の Luna body・fallback・応答の相関は不変。
+
+state / pending に questionCode を重複追加した入力は、値の一致にかかわらず strict validator が provider 前に拒否する。未知・malformed envelope code も拒否する。direct dispatch の non-off path にも validator を置いた。off の ingress validation は実 Worker handler のテストで確認する。catalog は `focused-contextual-answer-2026-10-04-v3` に更新し `state.questionCode` を参照する。gate の閾値・version は従来のままで、修正後の意味精度や採用を主張しない。
+
+| 候補 | 支持証拠 / 反証条件 | 影響と判断 |
+| --- | --- | --- |
+| Browser state に questionCode を重複して入れる | provider の欠落は直せる。旧 client の wire contract と一致しない場合は互換性の問題になる | mismatch validation と旧 client 対応を増やす。採らない |
+| 検証済み envelope から Worker が typed projection を一度作る | 同じ bounded state が二つの code で有効であることを再現。実 Worker の wire pair で context の差を確認。dispatch が projection を省く、gate が別 identity を使うなら反証 | 最小の送信変更。freeze で await 後も identity を固定。採用した基盤修正 |
+| 質問別に固定 catalog を選ぶ | catalog の条件に質問 identity を埋められる。provider の choice set と gate / adapter がずれたら反証 | version / choice / evaluation adapter の同期箇所が増える。代替として成立するが今回採らない |
+| Envelope 全体を provider に送る | questionCode は届くが、requestId / revision も届く | semantic 判断に不要な相関情報まで送信する。privacy 範囲を増やすため採らない |
+
+「この解釈が誤りとなる条件」は、wire にコードが無いこと、gate / provider が違うコードを使うこと、質問コード以外にも意味解釈上の context が欠けていること。最初の二つは deterministic test で閉じた。最後の意味上の十分性は fresh な独立評価が必要であり、基盤のテストだけで証明しない。
+
+### trace 除外契約
+
+新しい Jev provider projection / catalog は client の diagnostic trace に保存しない。envelope と current text の重複保存を避け、既存の focused Luna prompt / structured response・requestBytes・typed route を診断に残す。provider の catalog version / gate version / input revision / requestBytes は既存の text-free decision metric/log が保持する。metrics 基盤は変更していない。
+
+`focusedContextualTrace.test.ts` は actual Worker → 実 normalizer → trace runtime を接続し、初回 append 失敗後の persistent outbox、memory reset 後の retry、client byte bound、Worker preparation / server byte bound を通して、役割回答と代替 diagnostic が残り、provider-only の追加 projection が保存されないことを確認する。既存 prompt 内の pendingQuestion は元から diagnostic に入るので、それまで消す契約にはしない。trace schema field は増やしていない。既存の大容量 truncation gate も回帰で確認する。
+
+### fresh 評価の準備（HOLD）
+
+詳細は [事前登録準備](20261004-issue305-contextual-preregistration.md)。実装者の tuning / calibration は24 cases / 22 groups、label は synthetic_unreviewed、gold ではない。凍結 hash / 時刻 / 作者 / 閲覧者 / 未評価状態は来歴 JSON に残す。holdout は未作成で、独立作者へ [文面を含まない仕様](20261004-issue305-contextual-holdout-author-spec.md) だけを渡す。
+
+paired harness は実 semantic normalizer の turn 全体を Jev-first / Luna-only で比較し、実 fetch 境界の dispatch、elapsed latency、実 usage / reported cost を計測する準備ができた。role だけでなく全 tuple / scope の review label を別 artifact で join する。未 review、欠測 usage、欠落 case / arm は NA。監査で指摘された「部分集合だけの jointCorrectness=1」は complete gate と欠測件数の出力を追加して修正した。旧 runner の欠測 token を0で合算する箇所も除去し、消費済み corpus は diagnostic only と明示した。
+
+実 API 評価は未実行。owner の採用閾値・予算・統計手法・実行承認が未登録であり、基盤 merge と評価 / 採用を分ける。本番設定は off / 0 のまま。renderer、scheduler、save、approval、lifecycle は変更していない。
+
+残る ingress の限界: raw JSON の重複 key は既存の `JSON.parse` の後勝ちに従う。validation・gate・provider は同じ parse 済み object の identity を使うので食い違わない。ingress で厳格に拒否するのは別の判断（親判断 ORRERY #2292）。Unit 0 の duplicate rejection は envelope と state / pending の複数 field の整合を対象とする。
+
+### Unit 0 verification checkpoint
+
+- `npm run typecheck`: exit 0（Wrangler 4.143.1 runtime types を再生成。初回の log path の sandbox error は生成/型検査を失敗させなかった。最終 verify は writable な log path を使う）。
+- focused wire / contract / harness: 68 tests green の後、trace outbox regression 1 test と欠落分母3 tests を追加してそれぞれ green。
+- #335 の影響範囲: 38 files / 443 tests、exit 0。contextual role/fallback/identity、OpenRouter redirect / bounded response、Worker authorization containment、client correlation / stale response、contextual retry / ID binding、current-turn / external / supplemental / stored provenance、numeric / Unicode、approval / renderer / memory の authority 境界、trace persistence を含む。semantic 品質や実 provider の注入耐性の証明ではない。
+- 最終 `WRANGLER_LOG_PATH=/private/tmp/polarwatt-wrangler-logs WRANGLER_SEND_METRICS=false npm run verify`: exit 0（fresh app/Worker typechecks、full unit/integration、production build）。実行後は記録文書だけを更新し、code / test / config / corpus は変更していない。snapshot hash / dirty manifest / toolchain は `/Users/Shogo/.agentstack/runtime/jev-impl-reports/unit0-questioncode.md` に記録する。HEAD は base のままで、Git publication・CI・最終統合 review は親が担当する。
