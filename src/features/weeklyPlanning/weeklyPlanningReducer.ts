@@ -150,6 +150,11 @@ export function weeklyPlanningReducer(
     return state;
   }
 
+  if (state.approvalRecovery && ![
+    'load_state', 'begin_approval', 'complete_approval', 'fail_approval',
+    'reset_session', 'clear_conversation', 'set_last_assistant_message',
+  ].includes(action.type)) return state;
+
   switch (action.type) {
     case 'load_state':
       return action.state;
@@ -239,6 +244,7 @@ export function weeklyPlanningReducer(
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),
         draftBlocks: nextBlocks,
+        approvalRecovery: action.approvalRecovery,
         mode: nextBlocks.length > 0 ? 'awaiting_approval' : 'idle',
         pendingApproval: undefined,
       });
@@ -248,6 +254,7 @@ export function weeklyPlanningReducer(
       if (!samePendingApproval(state.pendingApproval, action.pending)) return state;
       return withMutation(state, {
         ...state,
+        approvalRecovery: action.approvalRecovery ?? state.approvalRecovery,
         pendingApproval: undefined,
       });
 
@@ -350,6 +357,7 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         conversationRequestSequence: 0,
+        approvalRecovery: undefined,
         mode: 'idle',
         draftBlocks: [],
         previewCandidates: [],

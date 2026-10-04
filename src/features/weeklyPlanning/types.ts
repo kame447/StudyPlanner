@@ -7,6 +7,7 @@ import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyP
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PreviewAssumptionDependency,
+  WeeklyDraftApprovalOperation,
   WeeklyPreviewMetadata,
 } from './planning/weeklyPlanningApprovalTypes';
 
@@ -91,6 +92,13 @@ export interface WeeklyPlanningPendingApproval {
   startedAt: string;
 }
 
+export interface WeeklyPlanningApprovalRecovery {
+  version: 1;
+  weekStartDate: string;
+  operation: WeeklyDraftApprovalOperation;
+  blocks: WeeklyPlanDraftBlock[];
+}
+
 export interface PlanningState {
   weekStartDate: string;
   revision: number;
@@ -102,6 +110,7 @@ export interface PlanningState {
   intakeState?: PlanningIntakeState;
   pendingTurn?: WeeklyPlanningPendingTurn;
   pendingApproval?: WeeklyPlanningPendingApproval;
+  approvalRecovery?: WeeklyPlanningApprovalRecovery;
   lastAssistantMessage?: string;
   updatedAt: string;
 }
@@ -145,6 +154,7 @@ export type WeeklyPlanningAction =
       type: 'complete_approval';
       pending: WeeklyPlanningPendingApproval;
       completedBlockIds: string[];
+      approvalRecovery?: WeeklyPlanningApprovalRecovery;
       assistantMessage: WeeklyPlanningMessage;
     }
-  | { type: 'fail_approval'; pending: WeeklyPlanningPendingApproval };
+  | { type: 'fail_approval'; pending: WeeklyPlanningPendingApproval; approvalRecovery?: WeeklyPlanningApprovalRecovery };

@@ -183,7 +183,8 @@ export function useWeeklyPlanningApplication({
     blocks: pendingDraftBlocks,
     userId: ownerId,
   });
-  const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval;
+  const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval
+    && !planningState.approvalRecovery;
 
   async function submitTurn(
     userText: string,
@@ -191,7 +192,7 @@ export function useWeeklyPlanningApplication({
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
   ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
-    if (!userId || !session) return { accepted: false, draftCandidates: [] };
+    if (!userId || !session || getPlanningState().approvalRecovery) return { accepted: false, draftCandidates: [] };
     return submitWeeklyPlanningApplicationTurn({
       session,
       userId,

@@ -261,7 +261,8 @@ export function AiPlanningView({
     [allPreviewBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval);
-  const isComposerBusy = isBusy || isReadingAttachment || isSubmitting;
+  const isInteractionBusy = isBusy || isReadingAttachment || isSubmitting;
+  const isComposerBusy = isInteractionBusy || Boolean(state.approvalRecovery);
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;
   const totalMinutes = useMemo(
     () =>
@@ -650,7 +651,7 @@ export function AiPlanningView({
   }
 
   function switchChat(chatId: string) {
-    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening || chatId === chatIndex.activeChatId) {
+    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening || chatId === chatIndex.activeChatId) {
       setIsChatDrawerOpen(false);
       return;
     }
@@ -680,7 +681,7 @@ export function AiPlanningView({
   }
 
   function createChat() {
-    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening) return;
     const persistedIndex = persistActiveChat();
     const created = createAiPlanningChat(persistedIndex);
     submission.current.active = false;
@@ -698,7 +699,7 @@ export function AiPlanningView({
   }
 
   function removeChat(chatId: string) {
-    if (!ownsSubmissionScope() || submission.current.token || isComposerBusy || isListening) return;
+    if (!ownsSubmissionScope() || submission.current.token || isInteractionBusy || isListening) return;
     const chat = chatIndex.chats.find((item) => item.id === chatId);
     if (!chat) return;
     if (!window.confirm(`「${chat.title}」を削除しますか？`)) return;
@@ -780,7 +781,7 @@ export function AiPlanningView({
         chats={visibleChats}
         activeChatId={chatIndex.activeChatId}
         query={chatQuery}
-        disabled={isComposerBusy || isListening}
+        disabled={isInteractionBusy || isListening}
         onQueryChange={setChatQuery}
         onCreate={createChat}
         onSelect={switchChat}
@@ -909,6 +910,11 @@ export function AiPlanningView({
             </div>
           ) : null}
 
+          {state.approvalRecovery ? (
+            <p className="ai-planning-error" role="status">
+              保存の確認が途中です。計画プレビューから保存を再試行してください。確認が終わるまで、この会話の予定は変更できません。
+            </p>
+          ) : null}
           {error ? (
             <p className="ai-planning-error" role="alert">
               {error}
@@ -1190,7 +1196,7 @@ export function AiPlanningView({
                 type="button"
                 onClick={closePreviewForAdjustment}
               >
-                さらに調整
+                {state.approvalRecovery ? '会話に戻る' : 'さらに調整'}
               </button>
               {hasLocalPreview ? (
                 <button
@@ -1207,7 +1213,7 @@ export function AiPlanningView({
                   disabled={isBusy || approvalAvailability.kind !== 'eligible'}
                   onClick={() => void saveDrafts()}
                 >
-                  {state.pendingApproval ? '保存中...' : 'この内容で保存'}
+                  {state.pendingApproval ? '保存中...' : state.approvalRecovery ? '保存を再試行' : 'この内容で保存'}
                 </button>
               )}
             </footer>

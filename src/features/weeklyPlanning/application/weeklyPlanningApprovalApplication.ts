@@ -1,3 +1,4 @@
+import { isWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import {
   createWeeklyDraftApprovalOperation,
@@ -11,6 +12,7 @@ import {
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import type {
   PlanningState,
+  WeeklyPlanningApprovalRecovery,
   WeeklyPlanningAction,
   WeeklyPlanningPendingApproval,
 } from '../types';
@@ -134,13 +136,20 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
     });
   }
 
+  let latestRecovery: WeeklyPlanningApprovalRecovery | undefined;
   try {
+    const recovery = snapshot.approvalRecovery;
+    if (recovery && !isWeeklyPlanningApprovalRecovery(recovery, blocks, snapshot.weekStartDate,
+      (value) => Boolean(value && typeof value === 'object' && 'id' in value))) {
+      throw new Error('保存途中の仮予定が変更されています。元の状態を復元してください。');
+    }
+    const originalBlocks = recovery?.blocks ?? blocks;
     const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
-      blocks,
+      blocks: originalBlocks,
       userId: authenticatedUserId,
     });
     const guard = validateWeeklyPreviewApproval({
-      blocks,
+      blocks: originalBlocks,
       currentStateRevision: snapshot.intakeState?.sourceTurns.length ?? 0,
       userId: authenticatedUserId,
       proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
@@ -151,7 +160,13 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
       throw new Error(approvalErrorMessage(guard.attempt.kind, reason));
     }
 
-    const existingOperation = approvalOperations.find((operation) =>
+    if (recovery && (recovery.operation.userId !== authenticatedUserId
+      || recovery.operation.previewId !== guard.metadata.previewId
+      || recovery.operation.previewStateRevision !== guard.metadata.stateRevision
+      || recovery.operation.conversationId !== guard.metadata.conversationId)) {
+      throw new Error('保存途中の仮予定と現在の条件が一致しません。');
+    }
+    const existingOperation = recovery?.operation ?? approvalOperations.find((operation) =>
       operation.userId === authenticatedUserId
       && operation.previewId === guard.metadata.previewId
       && operation.previewStateRevision === guard.metadata.stateRevision,
@@ -207,6 +222,8 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
         now: () => new Date().toISOString(),
       },
     });
+    latestRecovery = { version: 1, weekStartDate: snapshot.weekStartDate,
+      operation: result, blocks: structuredClone(originalBlocks) };
     onOperationCompleted(result);
     if (result.status === 'completed' && completeWeeklyApprovalOperation) {
       await completeWeeklyApprovalOperation(result);
@@ -225,6 +242,7 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
       type: 'complete_approval',
       pending,
       completedBlockIds,
+      approvalRecovery: failed ? latestRecovery : undefined,
       assistantMessage: createWeeklyPlanningApplicationMessage('assistant', message),
     });
     if (failed) {
@@ -249,7 +267,7 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
   } catch (error) {
     const current = getState();
     if (ownsPendingApproval(current, pending)) {
-      const failedState = dispatch({ type: 'fail_approval', pending });
+      const failedState = dispatch({ type: 'fail_approval', pending, approvalRecovery: latestRecovery });
       if (planningSessionId) {
         services.recordApprovalFailure({
           featureSessionId: planningSessionId,

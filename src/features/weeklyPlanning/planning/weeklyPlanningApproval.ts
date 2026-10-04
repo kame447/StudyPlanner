@@ -221,7 +221,7 @@ function deterministicOperationId(params: {
 export function createWeeklyDraftApprovalOperation(params: {
   userId: string;
   metadata: WeeklyPreviewMetadata;
-  blocks: readonly WeeklyPlanDraftBlock[];
+  blocks: readonly Pick<WeeklyPlanDraftBlock, 'id'>[];
   now: string;
 }): WeeklyDraftApprovalOperation {
   const sourceBlockIds = Array.from(new Set(params.blocks.map((block) => block.id)));
@@ -380,33 +380,37 @@ export function serializeWeeklyApprovalLedger(
   return JSON.stringify(envelope);
 }
 
-function isApprovalItem(value: unknown): value is WeeklyDraftApprovalItem {
+function isApprovalItem(value: unknown, maxIdentifierLength = 300): value is WeeklyDraftApprovalItem {
   if (!isPlainObject(value)
-    || !nonemptyBoundedString(value.sourceDraftBlockId, 300)
+    || !nonemptyBoundedString(value.sourceDraftBlockId, maxIdentifierLength)
     || !ITEM_STATUSES.has(value.status as WeeklyDraftApprovalItemStatus)
     || !Number.isInteger(value.attemptCount)
     || Number(value.attemptCount) < 0
     || !nonemptyBoundedString(value.updatedAt, 100)) {
     return false;
   }
-  if (value.savedPlanId !== undefined && !nonemptyBoundedString(value.savedPlanId, 300)) return false;
+  if (value.savedPlanId !== undefined && !nonemptyBoundedString(value.savedPlanId, maxIdentifierLength)) return false;
   if (value.lastErrorCode !== undefined && !nonemptyBoundedString(value.lastErrorCode, 300)) return false;
   return true;
 }
 
-function isApprovalOperation(value: unknown): value is WeeklyDraftApprovalOperation {
+export function isWeeklyDraftApprovalOperation(
+  value: unknown,
+  maxItems = WEEKLY_APPROVAL_LEDGER_MAX_ITEMS,
+  maxIdentifierLength = 300,
+): value is WeeklyDraftApprovalOperation {
   if (!isPlainObject(value)
-    || !nonemptyBoundedString(value.approvalOperationId, 300)
-    || !nonemptyBoundedString(value.userId, 300)
-    || !nonemptyBoundedString(value.previewId, 300)
+    || !nonemptyBoundedString(value.approvalOperationId, maxIdentifierLength)
+    || !nonemptyBoundedString(value.userId, maxIdentifierLength)
+    || !nonemptyBoundedString(value.previewId, maxIdentifierLength)
     || !Number.isInteger(value.previewStateRevision)
     || Number(value.previewStateRevision) < 0
     || !nonemptyBoundedString(value.startedAt, 100)
     || !OPERATION_STATUSES.has(value.status as WeeklyDraftApprovalOperationStatus)
     || !Array.isArray(value.items)
     || value.items.length === 0
-    || value.items.length > WEEKLY_APPROVAL_LEDGER_MAX_ITEMS
-    || !value.items.every(isApprovalItem)) {
+    || value.items.length > maxItems
+    || !value.items.every((item) => isApprovalItem(item, maxIdentifierLength))) {
     return false;
   }
   if (value.completedAt !== undefined && !nonemptyBoundedString(value.completedAt, 100)) return false;
@@ -422,7 +426,7 @@ export function parseWeeklyApprovalLedger(value: string): WeeklyApprovalLedgerEn
       || parsed.version !== WEEKLY_APPROVAL_LEDGER_VERSION
       || !Array.isArray(parsed.operations)
       || parsed.operations.length > WEEKLY_APPROVAL_LEDGER_MAX_ITEMS
-      || !parsed.operations.every(isApprovalOperation)) {
+      || !parsed.operations.every((operation) => isWeeklyDraftApprovalOperation(operation))) {
       return null;
     }
     return {

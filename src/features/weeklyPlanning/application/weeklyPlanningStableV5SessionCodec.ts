@@ -1,3 +1,4 @@
+import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalRecovery, isWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
 import type { PlanningState } from '../types';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -149,6 +150,7 @@ function isPlanningState(
     'conversationRequestSequence',
     'mode',
     'draftBlocks',
+    'approvalRecovery',
     'previewCandidates',
     'messages',
     'intakeState',
@@ -172,6 +174,11 @@ function isPlanningState(
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.length <= MAX_DRAFT_BLOCKS
     && value.draftBlocks.every((block) => isDraftBlock(block, ownerId, conversationId))
+    && (value.approvalRecovery === undefined || (isWeeklyPlanningApprovalRecovery(
+      value.approvalRecovery, value.draftBlocks as PlanningState['draftBlocks'], weekStartDate,
+      (block) => isDraftBlock(block, ownerId, conversationId))
+      && value.approvalRecovery.blocks.length <= MAX_DRAFT_BLOCKS
+      && value.approvalRecovery.operation.items.length <= MAX_DRAFT_BLOCKS))
     && Array.isArray(value.previewCandidates)
     && value.previewCandidates.length <= MAX_PREVIEW_CANDIDATES
     && value.previewCandidates.every((candidate) => isPreviewCandidate(candidate, graphRevision))
@@ -265,7 +272,7 @@ function serializeEnvelopeWithinBudget(
   envelope: WeeklyPlanningStableV5PersistedSession,
 ): string | null {
   try {
-    const raw = JSON.stringify(envelope);
+    const raw = JSON.stringify({ ...envelope, planningState: compactWeeklyPlanningApprovalRecovery(envelope.planningState) });
     return new TextEncoder().encode(raw).byteLength <= MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES
       ? raw
       : null;
@@ -302,6 +309,7 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       || !isRecord(value.graph)) {
       return null;
     }
+    value.planningState = expandWeeklyPlanningApprovalRecovery(value.planningState);
     const parsedGraph = parseWeeklyPlanningFactGraphV5(JSON.stringify(value.graph));
     if (!parsedGraph.graph
       || !graphBelongsToConversation(parsedGraph.graph, value.conversationId)
