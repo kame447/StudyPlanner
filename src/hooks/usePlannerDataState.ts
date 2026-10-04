@@ -241,8 +241,10 @@ export function usePlannerDataState({
 }: UsePlannerDataStateOptions): UsePlannerDataStateResult {
   const { scope: mutationScope, invalidate: invalidateMutationScope } = usePlannerMutationScope(userId);
   const showNotice = useMemo(() => mutationScope.bindNotice(showOwnerNotice), [mutationScope, showOwnerNotice]);
-  const [plans, setPlans, rawSetPlans] = useScopedPlannerState<Plan[]>([], mutationScope);
-  const [actuals, setActuals, rawSetActuals] = useScopedPlannerState<Actual[]>([], mutationScope);
+  const planState = useOptimisticPlannerState<Plan[]>([], mutationScope);
+  const { value: plans, set: setPlans, replace: rawSetPlans } = planState;
+  const actualState = useOptimisticPlannerState<Actual[]>([], mutationScope);
+  const { value: actuals, set: setActuals, replace: rawSetActuals } = actualState;
   const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
   const [monthEvents, setMonthEvents, rawSetMonthEvents] = useScopedPlannerState<MonthEvent[]>([], mutationScope);
   const todoState = useOptimisticPlannerState<TodoTask[]>([], mutationScope);
@@ -593,16 +595,14 @@ export function usePlannerDataState({
     }
 
     const nextPlan = createPlanFromDraft(draft, sourcePlan);
-    const previousPlans = plans;
+    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
 
     try {
-      setPlans((current) =>
-        sortByDateTime(upsertByKey(current, nextPlan, (item) => item.id)),
-      );
       await plannerRepository.upsertPlan(nextPlan);
+      planState.commit(planOperation);
       showNotice('予定を移動しました。', 'success');
     } catch (error) {
-      setPlans(previousPlans);
+      planState.reject(planOperation);
       showNotice(
         resolveErrorMessage(error, '予定を移動できませんでした。'),
         'error',
@@ -632,24 +632,22 @@ export function usePlannerDataState({
 
     const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
     const nextPlan = createPlanFromDraft(draft, currentPlan);
-    const previousPlans = plans;
+    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
     const previousSelectedDate = selectedDate;
     const previousMonthDate = monthDate;
 
     try {
-      setPlans((current) =>
-        sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
-      );
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
       closePlanEditor();
       await plannerRepository.upsertPlan(nextPlan);
+      planState.commit(planOperation);
       showNotice(
         currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
         'success',
       );
     } catch (error) {
-      setPlans(previousPlans);
+      planState.reject(planOperation);
       setSelectedDate(previousSelectedDate);
       setMonthDate(previousMonthDate);
       showNotice(
@@ -693,8 +691,6 @@ export function usePlannerDataState({
           ) ?? null
         : null;
     const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
-    const previousPlans = plans;
-    const previousActuals = actuals;
     const nextLinkedTodo = linkedTodo
       ? {
           ...linkedTodo,
@@ -704,17 +700,19 @@ export function usePlannerDataState({
         }
       : null;
 
+    const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
+    const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
     const todoOperation = todoState.begin(current => nextLinkedTodo
       ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
     try {
-      setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
-      setActuals((current) => current.filter((actual) => actual.planId !== plan.id));
       closePlanEditor();
       await plannerRepository.deletePlanWithDependents({
         userId,
         plan,
         todo: nextLinkedTodo,
       });
+      planState.commit(planOperation);
+      actualState.commit(actualOperation);
       todoState.commit(todoOperation);
       showDeleteUndoNotice(async () => {
         await plannerRepository.restorePlanWithDependents({
@@ -731,8 +729,8 @@ export function usePlannerDataState({
         }
       });
     } catch (error) {
-      setPlans(previousPlans);
-      setActuals(previousActuals);
+      planState.reject(planOperation);
+      actualState.reject(actualOperation);
       todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
       throw error;
@@ -746,12 +744,11 @@ export function usePlannerDataState({
       ? actuals.find((actual) => actual.id === targetActualId)
       : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
     const nextActual = createActualFromDraft(userId, draft, existingActual);
-    const rollbackActual = existingActual;
     const progress = existingActual
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
       : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
-    setActuals((current) =>
+    const actualOperation = actualState.begin((current) =>
       upsertActualByOccurrenceKey(
         targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
         nextActual,
@@ -770,6 +767,7 @@ export function usePlannerDataState({
           targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
         ),
       );
+      actualState.commit(actualOperation);
       if (progress.changedMaterials.length > 0) {
         setStudyMaterials((current) =>
           sortStudyMaterials(
@@ -783,17 +781,7 @@ export function usePlannerDataState({
       }
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
-      setActuals((current) => {
-        const rolledBackActuals = current.filter(
-          (actual) =>
-            actual.id !== nextActual.id &&
-            (!targetActualId || actual.id !== targetActualId) &&
-            getActualOccurrenceKey(actual) !== occurrenceKey,
-        );
-        return rollbackActual
-          ? upsertActualByOccurrenceKey(rolledBackActuals, rollbackActual)
-          : rolledBackActuals;
-      });
+      actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
     }
@@ -828,19 +816,19 @@ export function usePlannerDataState({
       },
       existingActual,
     );
-    const previousActuals = actuals;
     const progress = existingActual
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
       : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
+    const actualOperation = actualState.begin((current) =>
+      upsertByKey(
+        targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
+        nextActual,
+        (item) => getActualOccurrenceKey(item),
+      ),
+    );
+
     try {
-      setActuals((current) =>
-        upsertByKey(
-          targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
-          nextActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
       const savedActual = await plannerRepository.upsertActualWithMaterialProgress({
         actual: nextActual,
         materials: progress.changedMaterials,
@@ -852,6 +840,7 @@ export function usePlannerDataState({
           (item) => getActualOccurrenceKey(item),
         ),
       );
+      actualState.commit(actualOperation);
       if (progress.changedMaterials.length > 0) {
         setStudyMaterials((current) =>
           sortStudyMaterials(
@@ -865,7 +854,7 @@ export function usePlannerDataState({
       }
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
-      setActuals(previousActuals);
+      actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
     }
@@ -903,16 +892,16 @@ export function usePlannerDataState({
       note: actual.note.trim(),
       updatedAt: new Date().toISOString(),
     };
-    const previousActuals = actuals;
+
+    const actualOperation = actualState.begin((current) =>
+      upsertByKey(
+        current.filter((item) => item.id !== actual.id),
+        nextActual,
+        (item) => getActualOccurrenceKey(item),
+      ),
+    );
 
     try {
-      setActuals((current) =>
-        upsertByKey(
-          current.filter((item) => item.id !== actual.id),
-          nextActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
       const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
         upsertByKey(
@@ -921,9 +910,10 @@ export function usePlannerDataState({
           (item) => getActualOccurrenceKey(item),
         ),
       );
+      actualState.commit(actualOperation);
       showNotice('予定に紐づけました。', 'success');
     } catch (error) {
-      setActuals(previousActuals);
+      actualState.reject(actualOperation);
       showNotice(
         resolveErrorMessage(error, '予定に紐づけできませんでした。'),
         'error',
@@ -937,14 +927,14 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const previousActuals = actuals;
+    const actualOperation = actualState.begin((current) => removeByKey(current, actual.id, (item) => item.id));
 
     try {
-      setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
       await plannerRepository.deleteActual(userId, actual.id);
+      actualState.commit(actualOperation);
       showNotice('記録を削除しました。');
     } catch (error) {
-      setActuals(previousActuals);
+      actualState.reject(actualOperation);
       showNotice(
         resolveErrorMessage(error, '記録を削除できませんでした。'),
         'error',
@@ -1113,21 +1103,21 @@ export function usePlannerDataState({
       dueTime: dueDate ? todo.dueTime ?? null : null,
       updatedAt: new Date().toISOString(),
     };
-    const previousPlans = plans;
+    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
     const previousSelectedDate = selectedDate;
     const previousMonthDate = monthDate;
 
     const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
     try {
-      setPlans((current) => sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)));
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
       await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
+      planState.commit(planOperation);
       todoState.commit(todoOperation);
       showNotice('Todoを予定化しました。', 'success');
       return nextPlan;
     } catch (error) {
-      setPlans(previousPlans);
+      planState.reject(planOperation);
       todoState.reject(todoOperation);
       setSelectedDate(previousSelectedDate);
       setMonthDate(previousMonthDate);
