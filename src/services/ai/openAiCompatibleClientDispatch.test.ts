@@ -12,6 +12,19 @@ const input = { purpose: 'weekly_planning_semantic_normalizer' as const, message
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); resetOpenAiCompatibleClientRequestBudgetForTest(); });
 
 describe('direct versus proxy dispatch evidence', () => {
+  it.each([true, false])('census join metadata travels only to our proxy: proxy=%s', async (proxy) => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(proxy);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.test');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'private-token' } } as never);
+    const transport = vi.fn(async () => Response.json(proxy ? { content: 'result' } : { choices: [{ message: { content: 'result' } }] }));
+    vi.stubGlobal('fetch', transport);
+    const semanticCensus = { version: 1 as const, domain: 'weekly-planning' as const, turnId: crypto.randomUUID(), requestId: crypto.randomUUID(), stage: 'repair' as const };
+    await createOpenAiCompatibleClient(config).createChatCompletion({ ...input, semanticCensus, semanticCensusStage: 'repair' });
+    const body = JSON.parse((transport.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    if (proxy) expect(body.semanticCensus).toEqual(semanticCensus);
+    else expect(body).not.toHaveProperty('semanticCensus');
+    expect(body).not.toHaveProperty('semanticCensusStage');
+  });
   it.each(['initial', 'repair', 'audit', 'retry'] as const)('captures an actual direct %s dispatch without adding fields to the provider body', async (stage) => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
     const transport = vi.fn(async () => Response.json({ choices: [{ message: { content: 'private-provider-output' } }], usage: { prompt_tokens: 8, completion_tokens: 2 } })); vi.stubGlobal('fetch', transport);

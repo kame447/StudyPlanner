@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
+import type { SemanticDispatchStage } from '../../../../shared/semanticDispatchLedger';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
 import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
@@ -18,6 +19,12 @@ export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 type GenericSemanticAttempt = 'initial' | 'repair' | 'dense_completeness_retry';
+const CENSUS_ATTEMPT_STAGES: Readonly<Record<string, SemanticDispatchStage>> = {
+  initial: 'initial', repair: 'repair', dense_completeness_retry: 'retry',
+  completeness_retry: 'retry', completeness_retry_final: 'retry', dense_completeness_audit: 'audit',
+  focused_task_temporal_side_contribution: 'focused', focused_user_context_date_repair: 'repair',
+  focused_planning_window_repair: 'repair', focused_temporal_scope_repair: 'repair',
+};
 
 export function semanticNormalizerByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -101,7 +108,8 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
       data: { attempt, requestBytes: bytes, request },
     });
     try {
-      const response = await this.client.createChatCompletion(request);
+      const response = await this.client.createChatCompletion(this.client.semanticCensusEnabled
+        ? { ...request, semanticCensusStage: CENSUS_ATTEMPT_STAGES[attempt] } : request);
       this.responseLengths.push(response.length);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: this.input.traceRequestId,

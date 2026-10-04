@@ -105,11 +105,17 @@ export function parseCensusArtifact(value: unknown): CensusRow[] {
 
 /** Structural research upper bound only. Neither language correctness nor runtime adoption. */
 export function structuralEligibility(row: CensusRow, unit: 'C5' | 'D5' | 'D5-prime' | 'D6'): Eligibility {
+  return structuralCensusEligibility(row.turn.population.domain, row.questionCode, row.label, unit);
+}
+export function structuralCensusEligibility(
+  domain: 'weekly-planning' | 'user-context', questionCode: string | null,
+  label: Pick<CensusLabel, 'scopeClosed' | 'c5Reference' | 'manifestComplete' | 'candidateCount' | 'materialAdapter' | 'explicitCurrentIntent' | 'selectedMaterialCount' | 'tupleComplete' | 'valueTuple' | 'overnight' | 'endAt24' | 'exceptions'> | null,
+  unit: 'C5' | 'D5' | 'D5-prime' | 'D6',
+): Eligibility {
   const codes = unit === 'C5' ? c5Codes : unit === 'D5' ? d5Codes : unit === 'D5-prime' ? d5PrimeCodes : ['selected_material_remaining'];
-  if (row.turn.population.domain !== 'weekly-planning') return 'ineligible';
-  if (row.questionCode === null) return 'unknown';
-  if (!codes.includes(row.questionCode)) return 'ineligible';
-  const label = row.label;
+  if (domain !== 'weekly-planning') return 'ineligible';
+  if (questionCode === null) return 'unknown';
+  if (!codes.includes(questionCode)) return 'ineligible';
   if (!label) return 'unknown';
   const required: Array<boolean | null> = [label.scopeClosed];
   if (unit === 'C5') {

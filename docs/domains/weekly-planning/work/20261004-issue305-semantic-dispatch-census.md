@@ -1,5 +1,74 @@
 # Issue #305 Unit 1 — semantic dispatch と Phase 0 census
 
+## Round 2 A — active checkpoint (2026-10-05)
+
+Owner: CoolArchimedes / integration: BronzeMaxwell. Branch: `feat/issue305-semantic-census-activation`.
+Base/HEAD: `8e62377e0c59d8b5ac820358781a8c3584433a9a`; changes stay uncommitted for parent integration. Existing Issue #305 is reused; no new Issue/PR and no GitHub writes.
+
+DECISION 1 authorizes privacy-scoped actual census. ORRERY2349/2360/2362 additionally approve random turn/request join metadata, the existing `observability_events` sink, 90-day retention/admin access, client observer and smallest normalizer-boundary hook. Source activation remains off and deploy belongs to the parent after merge.
+
+Compared: (1) proxy request alone as turn (rejected: client repair/background calls falsify completeness); (2) full trace reuse (rejected: retains forbidden content and expands access); (3) random-ID start/request/closure records with strict typed projections (chosen). Missing closure, missing physical request, conflicting ingestion and late/unjoined work remain unknown; structural machine metadata does not establish semantic purity/correctness. Falsifier: any bypassed semantic call, content in the sink/provider census envelope, request counted twice, or false free outcome.
+
+Current: implementation complete and submitted for parent integration/external review, source activation off. Final verification: `npm run verify` exit 0 on the uncommitted content (660 files passed; 4,461 tests passed, 45 skipped, 1 todo; app/Worker non-incremental typechecks and production build passed). Definition of done for A is met: typed census ready for explicit configuration, no deploy/provider evaluation, final checks green, exact diff/state in the runtime report. Next: parent combined-content A/D/E test and CopperHopper audit, then parent-only commit/push/deploy. Actual production frequency remains unknown until approved activation and collection.
+
+### Round 2 implementation and privacy boundary
+
+Production observation now reuses the Unit 1 physical-send recorder, then passes its snapshot through the Unit 1 completeness reducer **before** removing laboratory/dispatch IDs. Unknown family/boundary, wrong turn join, duplicate/missing manifest and reversed timing remain unknown. A strict closed receiver rejects extra fields and contradictory counts/usage; each census payload is at most 8,192 bytes, with at most 64 proxy requests per closure and 16 physical sends per request. Overflow remains unknown with observed lower bounds, never exact zero.
+
+- `shared/semanticTurnCensus.ts` owns the production allowlist: closed questionCode/route/family/stage/outcome, nullable counts/tokens/provider-reported cost, machine binding/freshness, counts/categories and SHA-256 candidate metadata only when already deterministically available. No raw text, generated text, free-form labels, provider secrets, application IDs or laboratory population IDs are retained.
+- `shared/semanticDispatchRecorder.ts` adds opt-in best-effort capture: observer ID/callback/response-clone failure never blocks or repeats the original provider send. Existing evaluation behavior stays strict.
+- The Worker default-export wrapper lazily creates a recorder at the existing authenticated parsed-body boundary and joins existing `waitUntil` tasks. It writes after settlement without awaiting persistence on the user response. No additional provider, request body read or authentication call is introduced for provider observation. Existing generic token/provider/storage paths are reused.
+- The client records random-ID start/request/closure events through one invocation-local scope. The actual weekly-planning hook is the existing normalizer factory in `weeklyPlanningStableV5SemanticTurn.ts`, wrapped by `weeklyPlanningSemanticCensus.ts`; the pipeline, controller, reducer and normalizer body are untouched. User-context uses its interpreter boundary. Stage metadata is inserted **after** existing trace capture in normalizerRun/focusedPreRoutes.
+- `semanticCensusObserver.observe(stage, dispatch)` registers each physical proxy request in the same manifest/pending set. The wrapped Luna client exposes this port so the independently owned Choice transport can use it for each node and fallback. A required factory callback from the existing application owner preserves independently owned normalizer options (the observer does not import/select the concrete normalizer); the parent must pass the observed client's observer into Choice when combining A/D/E. No adoption route is enabled here. Any future route that bypasses this boundary requires a scope around that route before collecting complete-turn evidence.
+
+Start/request/closure records are needed because different Worker invocations and client/Worker loss cannot be joined durably in memory alone. ORRERY2420 explicitly approves storing random turn/request IDs for that purpose: every ID uses a new `crypto.randomUUID()`, independent of user/owner/conversation/trace/request identity. IDs occur only in census events, not provider payloads, weekly trace or aggregate reports. They expire with the census event and are not a new account identity. Tests exercise the actual provider wire and the existing diagnostic builder/Worker preparation to fix that exclusion.
+
+### Existing sink, retention and access
+
+Read-only `gh issue view 213` and `187` plus current #213 code/rules were checked. Census uses `observability_events`, the existing `ProductObservabilityStore` immutable ingestion/HMAC identity directory, Firebase authentication, existing service-account token provider and `/observability/events` endpoint. Client ingestion accepts only typed start/closure events; provider observations are Worker-only. Existing actor identity is reused solely for the preregistered account-cluster bootstrap; raw UID is absent from event documents and aggregate output.
+
+Census events use the existing **90-day event retention** measured from server `observedAt`, `expireAt` and `ProductObservabilityRetentionService` deletion. This selects the existing #213 event contract rather than the broader weekly trace retention. Rules deny direct browser access to observability collections; existing backend/admin access remains the applicable read/export boundary. No new export endpoint, external sink, broader retention or provider exposure is added. Product activity rollups skip census events while advancing the existing ingestion cursor, including census-only pages. Persistence and actual expiration deletion are covered together in a regression.
+
+### Switches and manual activation
+
+Repository defaults are `SEMANTIC_CENSUS_MODE=off` in Worker configuration and an unset/off `VITE_SEMANTIC_CENSUS_MODE` in the client. Both sides require exact `typed` enablement; the client also requires the existing Cloudflare proxy configuration. Source `JEV_MODE=off` and `JEV_CANARY_PERCENT=0` stay unchanged. A merge alone does not activate the census or deploy the Worker.
+
+After parent integration/external review, the operator builds the existing web app with `VITE_SEMANTIC_CENSUS_MODE=typed` and performs the **manual** Worker deployment using the existing `npm run deploy:worker` command with an explicit census variable override (`-- --var SEMANTIC_CENSUS_MODE:typed`). Existing #213 credentials/configuration must already be present; none are introduced or copied here. Record the actual activation/deployment timestamp for the fixed window. Disabling uses the existing source-off deployment and a client build with the census gate unset/off. This task performs no deploy, actual-user collection or paid/live-provider evaluation.
+
+### Actual-format aggregation and preregistration
+
+The existing offline command now accepts a version-2 normalized, operator-exported #213 artifact in addition to the Unit 1 version-1/inventory input:
+
+```sh
+node scripts/semantic-dispatch-census.mjs --input /private/tmp/actual-census-export.json --output /private/tmp/actual-census-report.json
+```
+
+Version-2 input is `{version:2, source:"observability_events", environment:"production", activationAt:<actual deployment ISO timestamp>, phase:"initial"|"extended", documents:[{eventType:"semantic_turn_census", environment:"production", actorSubjectId:<existing opaque actor>, payload:<strict census event>}]}`. Export provenance is operator-supplied and cannot be authenticated by this offline tool. The tool performs no network calls and refuses synthetic/fixture environment declarations, gate overrides and output overwrites. Test exports are explicitly mocks and never evidence of actual frequency.
+
+The implementation follows preregistration §§13/14/16/16a: next JST midnight strictly after activation, 14 full days; evaluate once when the window has closed. The initial decision exposes only the complete-turn count if below 200 and requests one 14-day extension; no eligibility-frequency result is returned then. Extended analysis refuses an extension if the initial complete count already met 200. The primary denominator contains all observed started weekly semantic turns, including unknown observations; unknown turns are conservatively not eligible. D1's numerator is complete turns whose start-time machine pending is fresh `quantity_role_unresolved`. Complete-only and conservative upper rates are reported separately.
+
+The actor-cluster bootstrap uses exactly 20,000 replicates, SHA-256 UTF-8 seed `unit0-census-2026-10-05`, first 16 bytes as big-endian unsigned xoshiro128** state, code-point actor order, turn-weighted resampled ratios and the one-based 1,000th sample as the lower bound. Unknown actors form one cluster and do not count among the ten required known actors. Gates also require 200 complete turns, 90% coverage and 1% lower bound. This is descriptive evidence for an observed cohort, not a random-sample population guarantee. PRNG and first cluster draws have an independently calculated known-answer test.
+
+Unjoined requests are deduplicated as request observations within the window and are **never** invented semantic turns or guessed into a turn by actor/time. Any weekly unjoined provider observation or unframed export causes HOLD with no frequency/free evaluation; observed unjoined send lower bounds remain explicit. A user-context gap only invalidates that population's complete-turn/free evidence. Missing/conflicting start, closure, request manifest or provider observation remains unknown. Entirely lost telemetry cannot be measured by this observed coverage and remains a limitation.
+
+C5/D5/D5-prime/D6 use the existing Unit 1 structural predicate with uncollected semantic/tuple/current-intent dimensions left NA. Machine questionCode does not prove a pure user answer, candidate binding or semantic correctness. Current production metadata supplies question/represented-target count and graph freshness; propositions/candidate menu/binding stay unknown when not available at this boundary. No lexical inference or history promotion fills those fields.
+
+### Measurement endpoints and integration obligations
+
+`semanticResolution=success` means only **normalizer accepted** (user-context: typed parse returned). It is reported separately from HTTP/provider outcome and is never a correctness label. Label-confirmed correct-and-free remains NA. Client latency measures normalizer/interpreter plus joined client calls, excludes census persistence/renderer, and stops before formal binding/canonicalization/commit/save. Provider latency covers the actual send through response-body observation; Worker request latency stops at its main response. Late Worker provider/body observation makes whole-turn latency NA (execution order is retained even if millisecond timestamps are equal); invalid timing stays NA instead of clamping to zero. Nested durations are not added together. No latency/cost/quality non-regression or Jev adoption is claimed.
+
+Parent integration must verify the independent Choice nodes plus fallback use the same scope, preserve D/E factory options, and include any newly adopted route before the normalizer. A's own scope/port/factory regression covers this contract; E's transport regression and the parent combined-content test complete the cross-worktree proof. The source-off baseline remains the live route here.
+
+### Round 2 verification checkpoint
+
+Development focused tests and app/Worker typecheck are green. The external WIP four-case projection counterexample was fixed by reusing Unit 1 validation before projection, with six explicit unknown regressions plus strict receiver checks. Additional tests cover privacy sentinels, fresh crypto IDs, proxy/provider/trace exclusion, nullable usage/timing, population separation, best-effort failure, per-node observer join, byte limits, authenticated ingress, immutable persistence/90-day deletion, census-only rollup cursor and fixed-window offline aggregation. Final corrected-content `WRANGLER_HIDE_BANNER=true WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=.wrangler/logs npm run verify`: exit 0, 660 files passed, 4,461 tests passed, 45 skipped, 1 todo, app/Worker non-incremental typechecks and production build passed. Existing live/observational skips are not provider-evaluation evidence; no lint script is configured and UI is unchanged. An earlier verify failed on the new off-path config lookup and concrete-normalizer dependency; both were corrected in production code without changing existing tests. Focused source-off/runtime/isolation tests (25) and typecheck then passed, followed by the full green run.
+
+Final code/test/config snapshot: `/private/tmp/coolarchimedes-verified-content.json`, SHA-256 `7e7e3a7a321acd1de3f6111b2d7625b88c0d81039829cf3768c50e920c0a4a11`; all 29 changed code/test/config file hashes were rechecked after verify and match. Final log: `/private/tmp/coolarchimedes-verify-final.log`; standalone strict offline-script TypeScript check: exit 0 (`/private/tmp/coolarchimedes-script-typecheck-final.log`). Final report/exact diff: `/Users/Shogo/.agentstack/runtime/jev-impl-reports/r2/census-activation.md` and `.diff`. This verification checkpoint update is documentation-only.
+
+Environment: Node 22.23.0, npm 10.9.8, TypeScript 5.9.3, Vitest 3.2.7, Vite 6.4.3, Wrangler 4.143.1, React 18.3.1, Firebase 12.12.0. Lockfile SHA-256 `b2ba189b1ed63a4f8616fe4922022cb05c05f6e1f8e8c9d76c6661aa6ba147bd`; regenerated Worker runtime types SHA-256 `bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e`. No dependency/config/provider environment changed after the green run.
+
+The Unit 1 history below describes the earlier evaluation-only foundation, not the current Round 2 authorization.
+
 Status: submitted for integration / foundation only, rollout off
 Owner: DewyLavoisier（integration: BronzeMaxwell）
 Branch: `feat/issue305-semantic-dispatch-census`
