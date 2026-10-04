@@ -979,7 +979,10 @@ export function usePlannerDataState({
     );
     const nextMonthEvent = createMonthEventFromDraft(draft, currentMonthEvent);
     const selectionOperation = selectionState.begin(() => selectionAt(
-      currentMonthEvent && isSameMonth(selectedDate, nextMonthEvent.date)
+      currentMonthEvent && (
+        currentMonthEvent.date === nextMonthEvent.date
+        || isSameMonth(selectedDate, nextMonthEvent.date)
+      )
         ? selectedDate : nextMonthEvent.date,
     ));
 
