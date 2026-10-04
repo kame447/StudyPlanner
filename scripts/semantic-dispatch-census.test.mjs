@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSemanticCensus, parseCensusArtifact, structuralEligibility } from './semantic-dispatch-census-core.ts';
 import { legacyArtifactRows, unknownCensusLabel } from './semantic-dispatch-census-inventory.ts';
+import { projectSemanticCensusMetadata } from '../shared/semanticTurnCensus.ts';
 import { runSemanticCensus } from './semantic-dispatch-census.mjs';
 
 function row(overrides = {}) {
@@ -66,6 +67,26 @@ describe('Phase 0 structural census, never lexical semantics', () => {
     const report = buildSemanticCensus(parseCensusArtifact({ version: 1, rows: [input] }));
     expect(report.populations[0].rates.correctSemanticResolutionAndFreeRate).toBeNull();
     expect(report.populations[0].questions[0]).toMatchObject({ propositions: { NA: 1 }, openValueKinds: { NA: 1 } });
+  });
+  it('uses the version-2 actual-format CLI without network, ID disclosure, provenance promotion or gate overrides', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'semantic-actual-format-test-'));
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Offline tool attempted network.'); }));
+    try {
+      const input = join(directory, 'input.json'); const output = join(directory, 'output.json');
+      const turnId = crypto.randomUUID(); const actorSubjectId = `actor-${crypto.randomUUID()}`;
+      const base = { version: 1, domain: 'weekly-planning', turnId, occurredAt: '2026-08-02T00:00:00.000Z', metadata: projectSemanticCensusMetadata({ questionCode: 'quantity_role_unresolved', freshness: 'matched' }) };
+      // Mock export only: this checks the transport format, not actual user frequency.
+      await writeFile(input, JSON.stringify({ version: 2, source: 'observability_events', environment: 'production', activationAt: '2026-08-01T01:00:00.000Z', phase: 'extended',
+        privateText: 'private-census-sentinel', documents: [ { eventType: 'semantic_turn_census', environment: 'production', actorSubjectId, payload: { ...base, kind: 'start' } },
+          { eventType: 'semantic_turn_census', environment: 'production', actorSubjectId, payload: { ...base, kind: 'closure', integrity: 'complete', semanticResolution: 'success', latencyMs: 1, requestIds: [] } } ] }));
+      const report = await runSemanticCensus(['--input', input, '--output', output]);
+      expect(report.status).toBe('HOLD'); expect(report.populations[0].allTurns).toBe(1);
+      const serialized = await readFile(output, 'utf8');
+      for (const secret of [turnId, actorSubjectId, 'private-census-sentinel']) expect(serialized).not.toContain(secret);
+      expect(fetch).not.toHaveBeenCalled();
+      await expect(runSemanticCensus(['--input', input, '--seed', 'changed'])).rejects.toThrow('preregistration');
+      await expect(runSemanticCensus(['--input', input, '--output', output])).rejects.toThrow();
+    } finally { await rm(directory, { recursive: true }); }
   });
   it('executes the offline CLI with the shared reducer and persists only the sanitized aggregate', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'semantic-census-test-'));

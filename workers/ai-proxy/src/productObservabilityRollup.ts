@@ -414,7 +414,8 @@ export class ProductObservabilityRollupEngine {
       const settledEvents = eligibleDocuments(orderedEvents, settleCutoff);
       const transaction = await this.firestore.beginTransaction();
       try {
-        const eventRows = settledEvents.map((document) => ({
+        // Census is a separate population, never an activity/API/planning rollup event.
+        const eventRows = settledEvents.filter((document) => document.eventType !== 'semantic_turn_census').map((document) => ({
           document,
           event: storedEventFromOrderedDocument(document),
         }));
@@ -623,12 +624,12 @@ export class ProductObservabilityRollupEngine {
 
         const changedSources = [...changedActorSources.values()].sort((left, right) =>
           dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
-        const last = eventRows[eventRows.length - 1];
+        const last = settledEvents[settledEvents.length - 1];
         const checkpoint: ObservabilityRollupCheckpoint = {
           ...transactionalCheckpoint,
           cursor: {
-            observedAt: last.event.observedAt,
-            documentName: last.document.documentName,
+            observedAt: last.observedAt as string,
+            documentName: last.documentName,
           },
           processedEventCount: transactionalCheckpoint.processedEventCount + eventRows.length,
           activeUserDirtySources: mergeDirtySources(

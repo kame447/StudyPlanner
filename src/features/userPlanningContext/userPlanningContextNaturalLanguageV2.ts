@@ -1,4 +1,5 @@
 import { getAiConfig, getAiConfigValidationMessage } from '../../lib/aiConfig';
+import { createSemanticTurnCensusScope, productionSemanticCensusOptions } from '../productObservability/semanticTurnCensus';
 import {
   createOpenAiCompatibleClient,
   type OpenAiCompatibleClient,
@@ -60,26 +61,32 @@ export async function interpretUserPlanningContextNaturalLanguageV2(params: {
       state: { currentUserText: text },
     };
 
-  const raw = await (params.client ?? defaultClient()).createChatCompletion({
-    ...(decisionContext ? { decisionContext } : {}),
-    purpose: 'user_context_interpreter',
-    temperature: 0,
-    maxCompletionTokens: 700,
-    responseFormat: USER_PLANNING_CONTEXT_RESPONSE_FORMAT_V2,
-    messages: createUserPlanningContextNaturalLanguageMessagesV2({
-      text,
-      existingRecord: params.existingRecord,
-    }),
-  });
-
-  let parsed: unknown;
+  const scope = createSemanticTurnCensusScope({ client: params.client ?? defaultClient(), domain: 'user-context', ...productionSemanticCensusOptions() });
+  let resolution: 'success' | 'failure' = 'failure';
   try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new Error('AIが覚える内容を整理できませんでした。');
-  }
-  if (isUserContextRoutingDecisionResponse(parsed)) {
-    throw new Error(userPlanningContextExternalOwnerMessageV2(parsed.targetDomain));
-  }
-  return parseUserPlanningContextNaturalLanguageResultV2(parsed);
+    const raw = await scope.client.createChatCompletion({
+      ...(decisionContext ? { decisionContext } : {}),
+      purpose: 'user_context_interpreter',
+      temperature: 0,
+      maxCompletionTokens: 700,
+      responseFormat: USER_PLANNING_CONTEXT_RESPONSE_FORMAT_V2,
+      messages: createUserPlanningContextNaturalLanguageMessagesV2({
+        text,
+        existingRecord: params.existingRecord,
+      }),
+    });
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      throw new Error('AIが覚える内容を整理できませんでした。');
+    }
+    if (isUserContextRoutingDecisionResponse(parsed)) {
+      throw new Error(userPlanningContextExternalOwnerMessageV2(parsed.targetDomain));
+    }
+    const result = parseUserPlanningContextNaturalLanguageResultV2(parsed);
+    resolution = 'success';
+    return result;
+  } finally { scope.finish(resolution); }
 }
