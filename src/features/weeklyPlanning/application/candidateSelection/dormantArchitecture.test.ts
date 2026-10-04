@@ -8,6 +8,16 @@ const foundation = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(foundation, '../../../../..');
 const isTest = (path: string) => /\.(test|spec|testUtils)\.[cm]?[jt]sx?$/.test(path);
 const withinFoundation = (path: string) => path.startsWith(`${foundation}/`);
+// First consumer is explicitly opt-in. New incoming files require an intentional review.
+const allowedConsumers = new Set([
+  'src/features/weeklyPlanning/application/c5LocalSelection/contracts.ts',
+  'src/features/weeklyPlanning/application/c5LocalSelection/basis.ts',
+  'src/features/weeklyPlanning/application/c5LocalSelection/selection.ts',
+]);
+const testOnlyHelpers = new Set([
+  resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/controller.testUtils.ts'),
+  resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/evaluationHarness.testUtils.ts'),
+]);
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -23,13 +33,13 @@ function dependencies(file: string) {
   }));
 }
 
-describe('candidate selection stays a dormant application foundation', () => {
-  it('has zero incoming runtime/UI/provider/scheduler/save/lifecycle/trace dependencies', () => {
+describe('candidate selection keeps the pure foundation and explicit consumer boundary', () => {
+  it('allows only the individually reviewed consumer files to import the foundation', () => {
     const incoming: string[] = [];
     for (const file of ['src', 'shared', 'workers'].flatMap((root) => files(join(repository, root)))) {
       if (isTest(file) || withinFoundation(file)) continue;
       for (const dependency of dependencies(file)) {
-        if (dependency.resolved && withinFoundation(dependency.resolved)) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+        if (dependency.resolved && withinFoundation(dependency.resolved) && !allowedConsumers.has(relative(repository, file))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
       }
     }
     expect(incoming).toEqual([]);
@@ -49,5 +59,16 @@ describe('candidate selection stays a dormant application foundation', () => {
         expect(source, relative(repository, file)).not.toContain(forbidden);
       }
     }
+  });
+
+  it('keeps C5 controller fixtures and paired-evaluation helpers out of all production imports', () => {
+    const incoming: string[] = [];
+    for (const file of ['src', 'shared', 'workers'].flatMap((root) => files(join(repository, root)))) {
+      if (isTest(file)) continue;
+      for (const dependency of dependencies(file)) {
+        if (dependency.resolved && testOnlyHelpers.has(dependency.resolved)) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+      }
+    }
+    expect(incoming).toEqual([]);
   });
 });

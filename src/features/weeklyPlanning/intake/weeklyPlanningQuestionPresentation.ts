@@ -126,8 +126,8 @@ export function decodeWeeklyPlanningQuestionPresentation(
 export function withoutWeeklyPlanningQuestionPresentation(
   context: WeeklyPlanningQuestionContext | undefined,
 ): WeeklyPlanningQuestionContext | undefined {
-  if (!context || context.presentation === undefined) return context;
-  const { presentation: _presentation, ...unbound } = context;
+  if (!context || (context.presentation === undefined && context.c5 === undefined)) return context;
+  const { presentation: _presentation, c5: _c5, ...unbound } = context;
   return unbound;
 }
 

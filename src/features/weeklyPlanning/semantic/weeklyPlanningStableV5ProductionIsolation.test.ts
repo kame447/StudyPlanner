@@ -19,6 +19,20 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'weeklyPlanningTurnExecutionTypes.ts',
   'weeklyPlanningOwnedStorage.ts',
   'application/useWeeklyPlanningApplication.ts',
+  // C5: derive frozen effort scope from the existing graph/question-slot contract.
+  'application/c5LocalSelection/basis.ts',
+  // C5: acknowledge one existing V5 session envelope, retaining consumption on quota/recovery.
+  'application/c5LocalSelection/checkpoint.ts',
+  // C5: typed application continuation/plan boundary, with no default provider.
+  'application/c5LocalSelection/contracts.ts',
+  // C5: actual runtime finalize/rollback receipt and existing bounded debug diagnostic.
+  'application/c5LocalSelection/controlledCommit.ts',
+  // C5: typed pure graph replacement and final synchronous Unit 2/domain revalidation.
+  'application/c5LocalSelection/selection.ts',
+  // Test-only: actual controller/runtime/storage fixtures; production imports prohibited by dormantArchitecture.test.
+  'application/c5LocalSelection/controller.testUtils.ts',
+  // Test-only: isolated paired graph packets; production imports prohibited by dormantArchitecture.test.
+  'application/c5LocalSelection/evaluationHarness.testUtils.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',

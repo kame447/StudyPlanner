@@ -7,6 +7,7 @@ import type {
   WeeklyPlanningPendingApproval,
   WeeklyPlanningPendingTurn,
 } from './types';
+import { validateC5ReducerCommit } from './application/c5LocalSelection/selection';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -190,6 +191,7 @@ export function weeklyPlanningReducer(
 
     case 'commit_turn': {
       if (!canCommitTurn(state, action.pending)) return state;
+      if (action.c5Commit && !validateC5ReducerCommit(action.c5Commit, state, action.intakeState)) return state;
       const draftCandidates = action.preservePreviewCandidates
         ? state.previewCandidates ?? []
         : action.draftCandidates ?? [];
