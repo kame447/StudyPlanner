@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ProductObservabilityStore } from './productObservabilityStore';
+import { ProductObservabilityRetentionService } from './productObservabilityRetention';
+import type { FirestoreBulkDocumentWrite } from './firestoreServiceAccountClient';
 import { JEV_MODEL } from './decision/decisionPolicy';
+import { projectSemanticCensusMetadata } from '../../../shared/semanticTurnCensus';
 
 class MemoryFirestore {
   readonly documents = new Map<string, Record<string, unknown>>();
@@ -121,6 +124,37 @@ function createStore(firestore: MemoryFirestore) {
 }
 
 describe('ProductObservabilityStore', () => {
+  it('persists census using existing pseudonymous identity, immutable ingestion and 90-day deletion contract', async () => {
+    const firestore = new MemoryFirestore(); const store = createStore(firestore);
+    const event = { version: 1, kind: 'start', domain: 'weekly-planning', turnId: crypto.randomUUID(), occurredAt: '2026-08-28T00:00:00.000Z', metadata: projectSemanticCensusMetadata(null) };
+    await store.storeSemanticCensus('private-user-sentinel', event);
+    await store.storeSemanticCensus('private-user-sentinel', event);
+    const events = [...firestore.documents.entries()].filter(([path]) => path.startsWith('observability_events/'));
+    expect(events).toHaveLength(1); const stored = events[0][1];
+    expect(stored).toMatchObject({ eventType: 'semantic_turn_census', environment: 'test', payload: event, correlation: {} });
+    expect(Date.parse(stored.expireAt as string) - Date.parse(stored.observedAt as string)).toBe(90 * 86400_000);
+    expect(stored.actorSubjectId).toMatch(/^actor-/);
+    expect(JSON.stringify(firestore.documents)).not.toContain('private-user-sentinel');
+    expect(JSON.stringify([...firestore.documents.values()])).not.toContain('private-user-sentinel');
+    await expect(store.storeSemanticCensus('private-user-sentinel', { ...event, rawText: 'private-utterance' })).rejects.toThrow('invalid');
+    expect(events[0][1].payload).not.toHaveProperty('rawText');
+    const retentionPort = {
+      async queryDocumentsAfter({ collection, limit }: { collection: string; orderByField: string; limit?: number }) {
+        return [...firestore.documents.entries()].filter(([path, value]) => path.startsWith(`${collection}/`) && typeof value.expireAt === 'string')
+          .map(([path, value]) => ({ ...value, id: path.slice(collection.length + 1) }))
+          .sort((a, b) => String(a.expireAt).localeCompare(String(b.expireAt))).slice(0, limit);
+      },
+      async commitWrites(writes: readonly FirestoreBulkDocumentWrite[]) {
+        for (const write of writes) if (write.delete) firestore.documents.delete(`${write.collection}/${write.id}`);
+      },
+    };
+    const env = { FIREBASE_PROJECT_ID: 'test', FIREBASE_SERVICE_ACCOUNT_EMAIL: 'unused', FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused' };
+    const expires = Date.parse(stored.expireAt as string);
+    expect(await new ProductObservabilityRetentionService(env, retentionPort, () => new Date(expires - 1)).runBatch()).toMatchObject({ deleted: 0 });
+    expect(await new ProductObservabilityRetentionService(env, retentionPort, () => new Date(expires)).runBatch()).toMatchObject({ deleted: 1 });
+    expect([...firestore.documents.keys()].some((path) => path.startsWith('observability_events/'))).toBe(false);
+
+  });
   it('persists Jev outcome and provider cost without converting missing usage to zero', async () => {
     const firestore = new MemoryFirestore();
     const store = createStore(firestore);

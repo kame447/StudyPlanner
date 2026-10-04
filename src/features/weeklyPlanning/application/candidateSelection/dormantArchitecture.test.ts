@@ -8,11 +8,14 @@ const foundation = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(foundation, '../../../../..');
 const isTest = (path: string) => /\.(test|spec|testUtils)\.[cm]?[jt]sx?$/.test(path);
 const withinFoundation = (path: string) => path.startsWith(`${foundation}/`);
-// First consumer is explicitly opt-in. New incoming files require an intentional review.
+// Explicit dormant numeric consumers; they must stay disconnected from every other production caller.
+const numericConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingChoiceV5.ts', 'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingCommitV5.ts']);
+// Every incoming file requires an intentional, individual review: the C5 consumer files plus the numeric PoC files.
 const allowedConsumers = new Set([
   'src/features/weeklyPlanning/application/c5LocalSelection/contracts.ts',
   'src/features/weeklyPlanning/application/c5LocalSelection/basis.ts',
   'src/features/weeklyPlanning/application/c5LocalSelection/selection.ts',
+  ...numericConsumers,
 ]);
 const testOnlyHelpers = new Set([
   resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/controller.testUtils.ts'),
@@ -40,6 +43,17 @@ describe('candidate selection keeps the pure foundation and explicit consumer bo
       if (isTest(file) || withinFoundation(file)) continue;
       for (const dependency of dependencies(file)) {
         if (dependency.resolved && withinFoundation(dependency.resolved) && !allowedConsumers.has(relative(repository, file))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
+      }
+    }
+    expect(incoming).toEqual([]);
+  });
+
+  it('keeps both numeric PoC modules disconnected from every other production caller', () => {
+    const incoming: string[] = [];
+    for (const file of ['src', 'shared', 'workers'].flatMap(root => files(join(repository, root)))) {
+      if (isTest(file) || numericConsumers.has(relative(repository, file))) continue;
+      for (const dependency of dependencies(file)) {
+        if (dependency.resolved && numericConsumers.has(relative(repository, dependency.resolved))) incoming.push(`${relative(repository, file)} -> ${dependency.specifier}`);
       }
     }
     expect(incoming).toEqual([]);

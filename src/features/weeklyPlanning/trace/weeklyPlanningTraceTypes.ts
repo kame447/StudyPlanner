@@ -94,6 +94,8 @@ export interface WeeklyPlanningTraceStateSnapshotEntry extends WeeklyPlanningTra
 }
 
 export interface WeeklyPlanningTraceAiRequest {
+  /** Bounded complete-menu evidence, with explicit truncation metadata. No local authority or census. */
+  candidateChoiceRequest?: unknown;
   attempt: string;
   messages: Array<{ role: string; content: string }>;
   purpose: string | null;

@@ -1,3 +1,8 @@
+// This fixture exercises completed code loading; module failures have a separate regression.
+vi.mock('../features/weeklyPlanning/application/weeklyPlanningRuntimeModule', async () => ({
+  ...await vi.importActual('../features/weeklyPlanning/application/weeklyPlanningRuntimeModule'),
+  loadWeeklyPlanningRuntimeModule: vi.fn(async () => ({})),
+}));
 import { createWeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApproval';
 import { createWeeklyPlanningTestDraftBlock } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';

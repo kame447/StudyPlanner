@@ -1,3 +1,7 @@
+import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
+import { isPlannerDataReadyForOwner } from '../../../domain/plannerDataReadAuthority';
+import { loadAiPlanningChatSnapshot, readAiPlanningChatIndex } from '../chat/aiPlanningChatStore';
+import { sameAiPlanningModuleRecoveryBinding, type AiPlanningModuleRecoveryBinding } from '../chat/aiPlanningModuleRecovery';
 import { createAiPlanningChatSession, type AiPlanningChatSession } from '../chat/aiPlanningChatSession';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
@@ -80,6 +84,9 @@ export interface WeeklyPlanningApplication {
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
   approvalAvailability: WeeklyPlanningApprovalAvailability;
   canEditDraftBlocks: boolean;
+  prepareTurn: () => Promise<boolean>;
+  getModuleRecoveryBinding: () => AiPlanningModuleRecoveryBinding | null;
+  checkpointForModuleReload: () => { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null;
   submitTurn: (
     userText: string,
     supplementalContext?: string,
@@ -121,6 +128,19 @@ export function useWeeklyPlanningApplication({
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
   const { weekStartsOn } = useWeeklyPlanningPersonalization();
+  // Only committed renders publish request authority. A suspended/abandoned render must
+  // neither revoke the visible request nor grant authority to a newer uncommitted one.
+  const requestInput = useMemo(() => ({ userId, selectedDate, plans, monthEvents, actuals,
+    studyMaterials, scheduleTemplates, timetableTermId, timetableTerm, timetableTerms,
+    plannerDataAvailability, weekStartsOn }), [userId, selectedDate, plans, monthEvents, actuals,
+    studyMaterials, scheduleTemplates, timetableTermId, timetableTerm, timetableTerms,
+    plannerDataAvailability, weekStartsOn]);
+  const committedRequestInput = useRef<typeof requestInput | null>(null);
+  useLayoutEffect(() => {
+    committedRequestInput.current = requestInput;
+    return () => { if (committedRequestInput.current === requestInput) committedRequestInput.current = null; };
+  }, [requestInput]);
+
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
@@ -195,13 +215,67 @@ export function useWeeklyPlanningApplication({
   const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval
     && !planningState.approvalRecovery;
 
+  function getModuleRecoveryBinding(): AiPlanningModuleRecoveryBinding | null {
+    const session = controllerSessionRef.current;
+    const current = getPlanningState();
+    if (!userId || !applicationActiveRef.current || chatRef.current?.session !== chat
+      || session?.ownerId !== ownerId || chat.requiresInitialization
+      || current.pendingTurn || current.pendingApproval || current.approvalRecovery) return null;
+    return { ownerId, chatId: chat.index.activeChatId, conversationId: session.conversationId,
+      weekStartDate: current.weekStartDate, revision: current.revision };
+  }
+
+  async function prepareTurn(): Promise<boolean> {
+    const binding = getModuleRecoveryBinding();
+    if (!binding || !userId || committedRequestInput.current !== requestInput
+      || !isPlannerDataReadyForOwner(plannerDataAvailability, userId)) return false;
+    const stateAtStart = getPlanningState();
+    const indexAtStart = chat.index;
+    await loadWeeklyPlanningRuntimeModule();
+    return stateAtStart === getPlanningState() && indexAtStart === chat.index
+      && committedRequestInput.current === requestInput
+      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding());
+  }
+
+  function checkpointForModuleReload(): { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null {
+    const binding = getModuleRecoveryBinding();
+    const expected = exportConversationSnapshot({ includeEmpty: true });
+    if (!binding || !expected || chat.checkpoint().status !== 'saved'
+      || !sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding())) return null;
+    // Re-read both canonical stores before and after attachment serialization. Another tab
+    // may select a different chat or replace its snapshot while this tab awaits file bytes.
+    const persistedMatches = () => {
+      const storedIndex = readAiPlanningChatIndex(ownerId);
+      if (storedIndex.status !== 'ready' || storedIndex.index.activeChatId !== binding.chatId) return false;
+      const active = storedIndex.index.chats.find(record => record.id === binding.chatId);
+      const saved = active ? loadAiPlanningChatSnapshot(ownerId, active) : null;
+      return Boolean(saved && saved.conversationId === binding.conversationId
+        && saved.weekStartDate === binding.weekStartDate && saved.planningState.revision === binding.revision
+        && JSON.stringify(saved.graph) === JSON.stringify(expected.graph)
+        && JSON.stringify(saved.planningState) === JSON.stringify(expected.planningState));
+    };
+    if (!persistedMatches()) return null;
+    const savedState = getPlanningState();
+    const savedIndex = chat.index;
+    return { binding, isCurrent: () => savedState === getPlanningState() && savedIndex === chat.index
+      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding()) && persistedMatches() };
+  }
+
   async function submitTurn(
     userText: string,
     supplementalContext?: string,
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
   ): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
-    if (!userId || !session || getPlanningState().approvalRecovery || chat.requiresInitialization) return { accepted: false, draftCandidates: [] };
+    const stateAtStart = getPlanningState();
+    const indexAtStart = chat.index;
+    const bindingAtStart = getModuleRecoveryBinding();
+    if (!userId || !session || stateAtStart.approvalRecovery || chat.requiresInitialization
+      || !(await prepareTurn()) || committedRequestInput.current !== requestInput
+      || stateAtStart !== getPlanningState() || indexAtStart !== chat.index
+      || !sameAiPlanningModuleRecoveryBinding(bindingAtStart, getModuleRecoveryBinding())) {
+      return { accepted: false, draftCandidates: [] };
+    }
     return submitWeeklyPlanningApplicationTurn({
       session,
       userId,
@@ -364,6 +438,9 @@ export function useWeeklyPlanningApplication({
     pendingDraftBlocks,
     approvalAvailability,
     canEditDraftBlocks: canEditDraftBlocks && !chat.requiresInitialization,
+    prepareTurn,
+    getModuleRecoveryBinding,
+    checkpointForModuleReload,
     submitTurn,
     cancelTurn: () => cancelWeeklyPlanningControlledTurn({
       getState: getPlanningState,
