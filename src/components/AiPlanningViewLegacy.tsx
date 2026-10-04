@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import {
   BookOpen,
@@ -62,6 +63,7 @@ interface AiPlanningViewProps {
   selectedDate: string;
   plans: Plan[];
   cancellationEpoch?: { readonly current: number };
+  checkpointNotice?: ReactNode;
 }
 
 interface PendingPlanningImageAttachment {
@@ -177,6 +179,7 @@ export function AiPlanningView({
   selectedDate,
   plans,
   cancellationEpoch,
+  checkpointNotice,
 }: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [text, setText] = useState('');
@@ -679,6 +682,7 @@ export function AiPlanningView({
     <section className="ai-planning-view home-dashboard" aria-label="AI計画">
       <AiPlanningChatSidebar
         open={isChatDrawerOpen}
+        checkpointNotice={checkpointNotice}
         chats={visibleChats}
         activeChatId={chatIndex.activeChatId}
         query={chatQuery}
@@ -824,6 +828,7 @@ export function AiPlanningView({
         </div>
 
         <div className="ai-planning-composer">
+          {!isChatDrawerOpen ? checkpointNotice : null}
           <input
             ref={attachmentInputRef}
             className="ai-planning-attachment-input"
