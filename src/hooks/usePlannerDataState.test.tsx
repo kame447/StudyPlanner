@@ -1,6 +1,8 @@
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actual, ActualDraft, Plan, StudyMaterial, TimetableTerm, TodoTask } from '../types/domain';
+import { createEmptyMonthEventDraft } from '../domain/planner';
+import { startOfMonth } from '../lib/date';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 
 const repository = vi.hoisted(() => ({
@@ -8,6 +10,7 @@ const repository = vi.hoisted(() => ({
   getActuals: vi.fn(),
   getDayNotes: vi.fn(),
   getMonthEvents: vi.fn(),
+  upsertMonthEvent: vi.fn(),
   getTodos: vi.fn(),
   getStudySubjects: vi.fn(),
   getStudyMaterials: vi.fn(),
@@ -65,6 +68,7 @@ function resetRepositoryMocks() {
   repository.getActuals.mockResolvedValue([]);
   repository.getDayNotes.mockResolvedValue([]);
   repository.getMonthEvents.mockResolvedValue([]);
+  repository.upsertMonthEvent.mockResolvedValue(undefined);
   repository.getTodos.mockResolvedValue([]);
   repository.getStudySubjects.mockResolvedValue([]);
   repository.getStudyMaterials.mockResolvedValue([]);
@@ -85,6 +89,50 @@ describe('usePlannerDataState planner-data read authority', () => {
     vi.clearAllMocks();
     latestState = null;
     resetRepositoryMocks();
+  });
+
+  it.each([
+    { name: 'next year', selected: '2026-12-15', original: '2026-12-15', target: '2027-01-15', expected: '2027-01-15' },
+    { name: 'previous year', selected: '2027-01-15', original: '2027-01-15', target: '2026-12-15', expected: '2026-12-15' },
+    { name: 'same month keeps selection', selected: '2026-12-15', original: '2026-12-15', target: '2026-12-20', expected: '2026-12-15' },
+    { name: 'selection already in destination month', selected: '2027-01-07', original: '2026-12-15', target: '2027-01-15', expected: '2027-01-07' },
+    { name: 'new event selects its date', selected: '2026-12-15', original: null, target: '2027-01-15', expected: '2027-01-15' },
+  ])('keeps calendar selection coherent after saving: $name', async ({ selected, original, target, expected }) => {
+    const renderer = create(<Harness userId="owner-a" />);
+    try {
+      const draft = { ...createEmptyMonthEventDraft('owner-a', original ?? target), title: '移動する予定' };
+      if (original) await act(async () => { await readState().saveMonthEvent(draft); });
+      const existing = readState().monthEvents[0];
+      await act(async () => { readState().selectDate(selected); });
+      await act(async () => {
+        await readState().saveMonthEvent({ ...draft, date: target, endDate: target }, existing?.id);
+      });
+      expect(readState().monthEvents).toEqual([expect.objectContaining({ date: target, endDate: target })]);
+      expect(readState().selectedDate).toBe(expected);
+      expect(readState().monthDate).toBe(startOfMonth(expected));
+      for (const mode of ['day', 'week', 'month'] as const) {
+        await act(async () => { readState().setViewMode(mode); });
+        expect(readState().selectedDate).toBe(expected);
+        expect(readState().monthDate).toBe(startOfMonth(expected));
+      }
+    } finally { renderer.unmount(); }
+  });
+
+  it('restores the event and both calendar dates when a cross-month save fails', async () => {
+    const renderer = create(<Harness userId="owner-a" />);
+    try {
+      const draft = { ...createEmptyMonthEventDraft('owner-a', '2026-12-15'), title: '移動する予定' };
+      await act(async () => { await readState().saveMonthEvent(draft); });
+      const before = structuredClone(readState().monthEvents);
+      const failure = new Error('month event save failed');
+      repository.upsertMonthEvent.mockRejectedValueOnce(failure);
+      await act(async () => {
+        await expect(readState().saveMonthEvent({ ...draft, date: '2027-01-15', endDate: '2027-01-15' }, before[0].id)).rejects.toBe(failure);
+      });
+      expect(readState().monthEvents).toEqual(before);
+      expect(readState().selectedDate).toBe('2026-12-15');
+      expect(readState().monthDate).toBe('2026-12-01');
+    } finally { renderer.unmount(); }
   });
 
   it('marks a successful empty load ready instead of unavailable', async () => {
