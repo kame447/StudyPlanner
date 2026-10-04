@@ -1,7 +1,7 @@
 # Issue #305 第二段階 — Luna 責務の再棚卸しと次の置換単位の判断
 
-Status: 判断記録（runtime 変更なし）/ 第三段階（binding 基盤 #348、C9 の no-go）を追記
-Updated: 2026-09-28
+Status: 判断記録（runtime 変更なし）/ 第三段階（binding 基盤 #348、C9 の no-go）と第四段階の位置づけを追記
+Updated: 2026-10-04
 Tracking: Issue #305（品質証拠 #333、安全性回帰 #335、memory rerank は #294 で別 purpose）
 
 ## 結論
@@ -147,3 +147,11 @@ C8：label、value、displayText の生成が残るので、Luna の呼出しは
 この cycle の実コードと実測の範囲では、安全性・速度・費用の優先順位を満たし、Jev に追加で置換できる候補は残っていない。前提基盤を足すことで開く候補も、C9 の実測によって、同じ構造では採算が合わないことが示された。
 - 本番の canary の条件（ユーザーの承認、新しく封印した holdout、#187 の provider / privacy 条件、単位1 の p95）は変わっていない。
 - `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` のまま、deploy もしていない。
+
+## 第四段階の追記 — 2026-10-04（flat / field 単位の置換の後の位置づけ）
+
+上の第二段階・第三段階の結論は変更しない。
+
+- **flat / field 単位の置換では、安全な追加候補はなかった。** field を個別に Jev へ移す案（C1 / C1′ / C8 など）と、generic の前段で自由な返答を分類する案（C3 / C9）は、それぞれの判定のまま維持する。
+- **application が持つ候補集合による階層 transaction は、新しい仮説である。** Jevbox `7e456212` を参照実装として比較した結果、階層で消えるのは「一つの menu に入る候補数の上限」という機械的な blocker だけで、上の no-go / hold を解除する証拠ではない。C5 の既存 tuple 選択、typed pending への数値・時刻の回答（D5 / D5′）、単一教材の完全操作（D6）は、契約と頻度が成立した場合に限り検証する研究候補である。採用は、semantic Luna を安全に減らすことを実測で証明した unit に限る。
+- 設計判断・採用ゲート・Phase B の受入条件は [`20261004-issue305-jev-hierarchical-input-interpretation.md`](20261004-issue305-jev-hierarchical-input-interpretation.md) が owner である。この記録では重複させない。

@@ -71,6 +71,11 @@ rubric v1 は実装側の草案である。gold 作成前に product owner が�
 - holdout の結果を見たあとの変更は、その holdout を消費したものとして扱う。以後の acceptance には、新しい sealed group を用意する。
 - pipeline、rubric、gold 規則を固定してから holdout を開く。agent、model、prompt、schema version を記録する。
 
+### 消費済み holdout と label の扱い（2026-10-04 追記）
+
+- #305 の置換単位1〜5（focused authorization、focused contextual、temporal scope repair、user-context routing、temporal side contribution）と C9 の holdout は消費済みである。#305 第四段階（[`20261004-issue305-jev-hierarchical-input-interpretation.md`](20261004-issue305-jev-hierarchical-input-interpretation.md)）以降の新方式について、これらを独立証拠に再利用しない。回帰の診断には使ってよい。
+- synthetic label、Gemini の判定、`opus-5.5-limited-judge`、Jev と Luna の一致は gold ではない。新しい評価では、label の出所・独立性・不確実性の区間を記録する。
+
 ## Luna 責務の棚卸し（比較対象の候補）
 
 Jev への段階置換に向けて、Luna（`gpt-5.6-luna`）が現在担う意味解釈・判断を一覧にする。棚卸しは `cc0a53c7` 時点のコードを読み取ったものである。Jev への適合度と順序は評価前の提案であり、採否と順序は #305 が、置換単位ごとの安全性回帰は #335 が決める。「全面的に置換できる」ことは、どの行についても実証していない。
