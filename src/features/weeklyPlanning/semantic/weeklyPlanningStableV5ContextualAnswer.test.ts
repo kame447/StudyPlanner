@@ -1,4 +1,7 @@
 import fc from 'fast-check';
+import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { validateWeeklyPlanningSemanticValueV5 } from './weeklyPlanningSemanticValidatorV5';
+import { shouldAttemptWeeklyPlanningContextualAnswerV5 } from './weeklyPlanningContextualAnswerRoutingV5';
 import { describe, expect, it } from 'vitest';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
@@ -11,6 +14,7 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   applyWeeklyPlanningStableV5ContextualAnswer,
+  evaluateWeeklyPlanningStableV5ContextualAnswer,
 } from './weeklyPlanningStableV5ContextualAnswer';
 
 const factSource = {
@@ -174,6 +178,12 @@ describe('Stable V5 contextual answers', () => {
       userText: 'any wording is observational only',
     });
 
+    expect(result?.graph.revision).toBe(2);
+    const effort = result?.graph.effortEstimates[0];
+    expect(effort?.createdRevision).toBe(2);
+    expect(result?.graph.factLifecycles.find(entry => entry.factId === effort?.id)?.createdRevision).toBe(2);
+    expect(result?.diff).toMatchObject({ fromRevision: 1, toRevision: 2 });
+
     expect(result?.graph.effortEstimates).toEqual([
       expect.objectContaining({
         taskId: 'task-1',
@@ -313,5 +323,56 @@ describe('Stable V5 contextual answers', () => {
       ],
       localToFactId: {},
     });
+  });
+});
+
+describe('contextual effort identity and unit preservation', () => {
+  function validAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
+    const document = answerDocument({ minutes });
+    document.tasks[0].study = { purpose: 'homework', contextLabel: null, components: [] };
+    expect(validateWeeklyPlanningSemanticValueV5(document).errors).toEqual([]);
+    return document;
+  }
+
+  it('retains independent workload answers across sequential turns and graph round trips', () => {
+    let current = graph({ quantityRole: 'target', workloadCount: 2 });
+    const originalWorkloads = structuredClone(current.workloads);
+    for (const [index, minutes] of [30, 45].entries()) {
+      const result = applyWeeklyPlanningStableV5ContextualAnswer({
+        graph: current, document: validAnswer(minutes),
+        pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate', targetFactId: `workload-${index + 1}`, graphRevision: current.revision }),
+        conversationId: 'conversation-1', turnId: `turn-${index + 2}`,
+        expectedRevision: current.revision, userText: 'AI-owned answer',
+      });
+      expect(result?.status).toBe('applied');
+      if (!result) throw new Error('Missing contextual answer result');
+      const restored = parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph));
+      expect(restored.errors).toEqual([]);
+      if (!restored.graph) throw new Error('Graph did not round trip');
+      current = restored.graph;
+      expect(current.effortEstimates).toHaveLength(index + 1);
+    }
+    expect(current.effortEstimates.map(({ targetFactId, minutes }) => ({ targetFactId, minutes })))
+      .toEqual([{ targetFactId: 'workload-1', minutes: 30 }, { targetFactId: 'workload-2', minutes: 45 }]);
+    expect(new Set(current.effortEstimates.map(({ id }) => id)).size).toBe(2);
+    expect(current.workloads).toEqual(originalWorkloads);
+  });
+
+  it('does not reinterpret minutes per word as minutes per page for a pending workload', () => {
+    const initial = graph({ quantityRole: 'target' });
+    const before = structuredClone(initial);
+    const document = validAnswer(8);
+    Object.assign(document.tasks[0].effortEstimates[0], { kind: 'duration_per_unit', unitCode: 'word' });
+    expect(validateWeeklyPlanningSemanticValueV5(document).errors).toEqual([]);
+    const question = pendingQuestion({ code: 'missing_effort_estimate' });
+    expect(shouldAttemptWeeklyPlanningContextualAnswerV5({ document, pendingQuestion: question })).toBe(true);
+    const input = { graph: initial, document, pendingQuestion: question,
+      conversationId: 'conversation-1', turnId: 'turn-2', expectedRevision: initial.revision, userText: 'AI-owned answer' };
+    expect(evaluateWeeklyPlanningStableV5ContextualAnswer(input)).toMatchObject({ status: 'incompatible', result: null });
+    const result = applyWeeklyPlanningStableV5ContextualAnswer(input);
+    // The wrapper may record the incompatible turn, but must not create effort.
+    expect(result?.graph.effortEstimates).toEqual(initial.effortEstimates);
+    expect(result?.diff?.added).toEqual([]);
+    expect(initial).toEqual(before);
   });
 });
