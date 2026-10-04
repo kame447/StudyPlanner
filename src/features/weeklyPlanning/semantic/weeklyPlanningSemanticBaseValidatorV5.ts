@@ -1,3 +1,4 @@
+import { findCyclicComponentAncestryV5 } from './weeklyPlanningComponentHierarchyV5';
 import { validateWeeklyPlanningCorrectionReplacementV5, validateWeeklyPlanningUncertaintyValuesV5, validateWeeklyPlanningCorrectionValuesV5, validateWeeklyPlanningDecisionValuesV5, validateWeeklyPlanningReferenceKindV5 } from './weeklyPlanningIntentValueValidatorV5';
 import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningAvailabilityBaseValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
@@ -159,17 +160,9 @@ function validateComponents(
       errors.push(`${path}.parent-ref:${componentId}:${parentId}`);
     }
   }
+  const cyclicAncestry = findCyclicComponentAncestryV5(parentById);
   for (const componentId of componentIds) {
-    const visited = new Set<string>();
-    let current: string | null | undefined = componentId;
-    while (current) {
-      if (visited.has(current)) {
-        errors.push(`${path}.parent-cycle:${componentId}`);
-        break;
-      }
-      visited.add(current);
-      current = parentById.get(current);
-    }
+    if (cyclicAncestry.has(componentId)) errors.push(`${path}.parent-cycle:${componentId}`);
   }
 
   return componentIds;

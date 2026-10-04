@@ -1,3 +1,4 @@
+import { findCyclicComponentAncestryV5 } from './weeklyPlanningComponentHierarchyV5';
 import { validateWeeklyPlanningCorrectionReplacementV5, validateWeeklyPlanningUncertaintyValuesV5, validateWeeklyPlanningCorrectionValuesV5, validateWeeklyPlanningDecisionValuesV5, validateWeeklyPlanningCanonicalReferenceKindV5 } from './weeklyPlanningIntentValueValidatorV5';
 import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
@@ -435,6 +436,14 @@ export function validateWeeklyPlanningFactGraphValueV5(
     validateWeeklyPlanningStudyContextValuesV5(fact, `graph.studyContexts[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.studyContexts[${index}].taskId`, errors);
   });
+  const componentById = new Map(components.filter(fact => isNonEmptyString(fact.id)).map(fact => [fact.id as string, fact]));
+  const parentById = new Map<string, string | null>();
+  for (const [id, fact] of componentById) {
+    if (fact.parentComponentId === null || typeof fact.parentComponentId === 'string') {
+      parentById.set(id, fact.parentComponentId);
+    }
+  }
+  const cyclicAncestry = findCyclicComponentAncestryV5(parentById);
   components.forEach((fact, index) => {
     validateWeeklyPlanningComponentValuesV5(fact, `graph.components[${index}]`, errors);
     validateReference(fact.taskId, taskIds, `graph.components[${index}].taskId`, errors);
@@ -444,6 +453,13 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `graph.components[${index}].parentComponentId`,
       errors,
     );
+    const parent = typeof fact.parentComponentId === 'string' ? componentById.get(fact.parentComponentId) : undefined;
+    if (parent && parent.taskId !== fact.taskId) {
+      errors.push(`graph.components[${index}].parentComponentId:task-mismatch`);
+    }
+    if (typeof fact.id === 'string' && cyclicAncestry.has(fact.id)) {
+      errors.push(`graph.components[${index}].parentComponentId:cycle`);
+    }
   });
   workloads.forEach((fact, index) => {
     validateWeeklyPlanningWorkloadValuesV5(fact, `graph.workloads[${index}]`, errors);
