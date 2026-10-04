@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningCorrectionReplacementV5, validateWeeklyPlanningUncertaintyValuesV5, validateWeeklyPlanningCorrectionValuesV5, validateWeeklyPlanningDecisionValuesV5, validateWeeklyPlanningReferenceKindV5 } from './weeklyPlanningIntentValueValidatorV5';
 import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningAvailabilityBaseValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
@@ -184,19 +185,7 @@ function validateSemanticReference(
     return null;
   }
   validateExactKeys(value, ['kind', 'publicId', 'localId', 'mention'], path, errors);
-  if (!isEnumValue(value.kind, [
-    'planning_window',
-    'task',
-    'component',
-    'workload',
-    'effort_estimate',
-    'temporal_constraint',
-    'recurrence',
-    'relation',
-    'proposal',
-  ] as const)) {
-    errors.push(`${path}.kind`);
-  }
+  validateWeeklyPlanningReferenceKindV5(value.kind, `${path}.kind`, errors);
   if (!isNullableString(value.publicId)) errors.push(`${path}.publicId`);
   if (!isNullableString(value.localId)) errors.push(`${path}.localId`);
   if (!isNullableString(value.mention)) errors.push(`${path}.mention`);
@@ -539,8 +528,7 @@ export function validateWeeklyPlanningSemanticValueV5(
           && !allIds.has(uncertainty.targetLocalId))) {
         errors.push(`${path}.targetLocalId`);
       }
-      if (!isNonEmptyString(uncertainty.field)) errors.push(`${path}.field`);
-      if (!isNonEmptyString(uncertainty.reason)) errors.push(`${path}.reason`);
+      validateWeeklyPlanningUncertaintyValuesV5(uncertainty, path, errors);
       validateSourceText(uncertainty, path, errors);
     });
   }
@@ -567,17 +555,10 @@ export function validateWeeklyPlanningSemanticValueV5(
         path: `${path}.target.localId`,
         localId: validateSemanticReference(correction.target, `${path}.target`, errors),
       });
-      if (!isEnumValue(correction.operation, ['remove', 'replace', 'modify'] as const)) {
-        errors.push(`${path}.operation`);
-      }
-      if (!isNullableString(correction.replacementLocalId)) {
-        errors.push(`${path}.replacementLocalId`);
-      } else if (correction.operation === 'remove' && correction.replacementLocalId !== null) {
-        errors.push(`${path}.replacementLocalId:forbidden`);
-      } else if (correction.operation !== 'remove'
-        && !isNonEmptyString(correction.replacementLocalId)) {
-        errors.push(`${path}.replacementLocalId:required`);
-      } else if (typeof correction.replacementLocalId === 'string') {
+      validateWeeklyPlanningCorrectionValuesV5(correction, path, errors);
+      if (validateWeeklyPlanningCorrectionReplacementV5(
+        correction.operation, correction.replacementLocalId, `${path}.replacementLocalId`, errors,
+      )) {
         deferredReferenceChecks.push({
           path: `${path}.replacementLocalId`,
           localId: correction.replacementLocalId,
@@ -607,9 +588,7 @@ export function validateWeeklyPlanningSemanticValueV5(
         path: `${path}.target.localId`,
         localId: validateSemanticReference(decision.target, `${path}.target`, errors),
       });
-      if (!isEnumValue(decision.decision, ['accept', 'reject', 'modify'] as const)) {
-        errors.push(`${path}.decision`);
-      }
+      validateWeeklyPlanningDecisionValuesV5(decision, path, errors);
       validateSourceText(decision, path, errors);
     });
   }
