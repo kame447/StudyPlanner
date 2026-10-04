@@ -207,7 +207,7 @@ function validateLifecycleEntries(params: {
       || entry.createdRevision > params.revision) {
       params.errors.push(`${path}.createdRevision`);
     }
-    if (!['active', 'superseded', 'removed'].includes(String(entry.status))) {
+    if (typeof entry.status !== 'string' || !['active', 'superseded', 'removed'].includes(entry.status)) {
       params.errors.push(`${path}.status`);
       return;
     }
@@ -437,6 +437,23 @@ export function validateWeeklyPlanningFactGraphValueV5(
     validateReference(fact.taskId, taskIds, `graph.studyContexts[${index}].taskId`, errors);
   });
   const componentById = new Map(components.filter(fact => isNonEmptyString(fact.id)).map(fact => [fact.id as string, fact]));
+  const taskOwnerByTargetId = new Map<string, unknown>();
+  for (const task of tasks) if (isNonEmptyString(task.id)) taskOwnerByTargetId.set(task.id, task.id);
+  for (const facts of [components, workloads]) {
+    for (const fact of facts) if (isNonEmptyString(fact.id)) taskOwnerByTargetId.set(fact.id, fact.taskId);
+  }
+  const terminalFactIds = new Set<string>();
+  if (Array.isArray(value.factLifecycles)) {
+    for (const entry of value.factLifecycles) {
+      if (isRecord(entry) && typeof entry.factId === 'string'
+        && (entry.status === 'removed' || entry.status === 'superseded')) terminalFactIds.add(entry.factId);
+    }
+  }
+  function validateTaskScope(targetId: unknown, taskId: unknown, path: string): void {
+    if (typeof targetId === 'string' && taskOwnerByTargetId.has(targetId) && taskOwnerByTargetId.get(targetId) !== taskId) {
+      errors.push(`${path}:task-mismatch`);
+    }
+  }
   const parentById = new Map<string, string | null>();
   for (const [id, fact] of componentById) {
     if (fact.parentComponentId === null || typeof fact.parentComponentId === 'string') {
@@ -470,6 +487,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `graph.workloads[${index}].componentId`,
       errors,
     );
+    validateTaskScope(fact.componentId, fact.taskId, `graph.workloads[${index}].componentId`);
   });
   effortEstimates.forEach((fact, index) => {
     validateWeeklyPlanningEffortValuesV5(fact, `graph.effortEstimates[${index}]`, errors);
@@ -480,6 +498,11 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `graph.effortEstimates[${index}].targetFactId`,
       errors,
     );
+    // Terminal estimates preserve correction provenance when their workload is
+    // rebased. Only explicit terminal lifecycle entries receive that exception.
+    if (typeof fact.id !== 'string' || !terminalFactIds.has(fact.id)) {
+      validateTaskScope(fact.targetFactId, fact.taskId, `graph.effortEstimates[${index}].targetFactId`);
+    }
   });
   temporalConstraints.forEach((fact, index) => {
     validateWeeklyPlanningTemporalValuesV5(fact, `graph.temporalConstraints[${index}]`, errors);
@@ -495,6 +518,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `graph.temporalConstraints[${index}].targetFactId`,
       errors,
     );
+    validateTaskScope(fact.targetFactId, fact.taskId, `graph.temporalConstraints[${index}].targetFactId`);
   });
   taskDateRules.forEach((fact, index) => {
     validateWeeklyPlanningDateRuleValuesV5(fact, `graph.taskDateRules[${index}]`, errors);
@@ -518,6 +542,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
       `graph.recurrences[${index}].targetFactId`,
       errors,
     );
+    validateTaskScope(fact.targetFactId, fact.taskId, `graph.recurrences[${index}].targetFactId`);
   });
   relations.forEach((fact, index) => {
     validateWeeklyPlanningRelationValuesV5(fact, `graph.relations[${index}]`, errors);
