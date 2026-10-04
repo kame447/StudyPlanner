@@ -10,7 +10,26 @@
     "authority": "canonical launch role"
   },
   "viewedBy": [
-    "PolarWatt"
+    "PolarWatt",
+    "CopperHopper"
+  ],
+  "viewerDetails": [
+    {
+      "agent": "CopperHopper",
+      "model": "gpt-6-astra",
+      "role": "external audit",
+      "purpose": "Read the development corpus to generate the reproduction fixture and audit the evaluation harness.",
+      "independentHoldoutAuthorEligible": false,
+      "recordedFrom": "ORRERY Mail 2307, BronzeMaxwell"
+    }
+  ],
+  "artifactHandling": [
+    {
+      "agent": "BronzeMaxwell",
+      "activity": "Created and saved a diff file during review; did not display its contents or read case wording.",
+      "caseTextRead": false,
+      "recordedFrom": "ORRERY Mail 2307, BronzeMaxwell"
+    }
   ],
   "consumption": "offline_contract_validation_only; no real/provider evaluation",
   "independence": "implementation author; not independent holdout",

@@ -368,3 +368,21 @@ paired harness は実 semantic normalizer の turn 全体を Jev-first / Luna-on
 - focused wire / contract / harness: 68 tests green の後、trace outbox regression 1 test と欠落分母3 tests を追加してそれぞれ green。
 - #335 の影響範囲: 38 files / 443 tests、exit 0。contextual role/fallback/identity、OpenRouter redirect / bounded response、Worker authorization containment、client correlation / stale response、contextual retry / ID binding、current-turn / external / supplemental / stored provenance、numeric / Unicode、approval / renderer / memory の authority 境界、trace persistence を含む。semantic 品質や実 provider の注入耐性の証明ではない。
 - 最終 `WRANGLER_LOG_PATH=/private/tmp/polarwatt-wrangler-logs WRANGLER_SEND_METRICS=false npm run verify`: exit 0（fresh app/Worker typechecks、full unit/integration、production build）。実行後は記録文書だけを更新し、code / test / config / corpus は変更していない。snapshot hash / dirty manifest / toolchain は `/Users/Shogo/.agentstack/runtime/jev-impl-reports/unit0-questioncode.md` に記録する。HEAD は base のままで、Git publication・CI・最終統合 review は親が担当する。
+
+### Unit 0 audit repair — PR #430 / `56105689`
+
+親が提出を `24012e47`（question identity 修正）と `56105689`（評価準備）に分けて push した後、外部監査が評価 artifact の公開 importer を BLOCK した。未知 provider を非 Luna として数え、全 dispatch が未知でも Luna 0 / free rate 1 を出す欠陥である。修正の基盤そのものへの指摘ではない。現在の作業は同じ branch / PR の監査修正であり、新しい評価は引き続き未実行・HOLD。
+
+候補は、provider enum だけの検証、壊れた arm を unknown へ変換、artifact 全体の厳密な取り込み検証の三つ。enum だけでは欠けた hash・食い違う identity / totals が残る。unknown 変換は部分的な壊れ方を隠してしまう。実際の producer の framing と対応する strict validator を選び、不正 artifact は summary を出す前に拒否する。反証条件は、producer の正当な記録を拒否すること、未知 dispatch が rate に入ること、missing usage / pair / arm の分母が縮むこと。実 producer と mock fetch で作った artifact を CLI に渡して確認する。
+
+`jev-contextual-paired-artifact.mjs` は framing、corpus / runtime / policy hash、case / group / arm / question / catalog / gate の identity、boolean completeness、provider / status / usage、semantic result の framing、review 来歴を検証する。Luna 回数と usage total は検証済み dispatch と照合し、欠測は null のままにする。semantic document の意味正解を importer が判定するわけではない。joint label と独立性の証拠は引き続き owner / reviewer の責務である。
+
+新 producer は `jev-contextual-paired-v1` を付ける。旧 producer の version key だけが無い完全な framing も `legacy_unversioned_v0` と明示して扱う。過去の runtime / policy hash は現在の checkout と一致しなくてもよいが、64文字の hash と来歴が必要で、現在の fingerprint から補完しない。cached summary は信用せず、検証済み records から再計算する。登録 case / arm が欠けた artifact は `incomplete_HOLD` のまま、全分母と NA を保持する。
+
+この差分も未 commit のまま親に渡す。最終 focused / typecheck / verify と exact HEAD / content hash は audit repair の報告書へ記録する。PR の更新、外部監査、CI、merge は親が継続する。
+
+修正後の verification: exact HEAD `561056895a88b12c4094dfcf274d75924bab8ffa` + 未 commit の5 files。focused 5 files / 110 tests、`npm run typecheck`、最終 `WRANGLER_LOG_PATH=/private/tmp/polarwatt-wrangler-logs WRANGLER_SEND_METRICS=false npm run verify` がすべて exit 0（641 files / 4195 tests pass、45 skipped / 1 todo、fresh app/Worker typechecks・production build pass）。監査の元 artifact は CLI exit 1 / stdout 0 bytes。既定の offline runner は HOLD / providerCalls 0。verify 後はこの Markdown の記録だけを更新した。差分 hash / 5 files の inventory / ログの pointer は `/Users/Shogo/.agentstack/runtime/jev-impl-reports/unit0-ingestion-repair.md` に記録する。
+
+その後の親依頼 ORRERY #2307 により、CopperHopper（gpt-6-astra、再現 fixture の生成と harness 外部監査）の corpus 閲覧を来歴に追加した。BronzeMaxwell が review 中に diff を作成・保存した範囲は、文面の未読と区別して記録した。独立作者の仕様は PolarWatt / CopperHopper / corpus を見た全 agent を除外する。runner も既知の二名を拒否し、それ以外の tuningExposure=false の真実性は owner が確認する。provenance JSON は corpus hash の入力に含まれず、凍結 corpus 自体の hash は変えていない。追加変更後の最終検証は別途実施する。
+
+追加変更後の最終 verification: 同じ HEAD + 未 commit の7 files。focused 5 files / 111 tests、fresh app/Worker typechecks を含む `npm run verify` が exit 0（641 files / 4196 tests pass、45 skipped / 1 todo、production build pass）。verify 後はこの記録文書だけを追記した。corpus SHA-256 は `75e2cbbfc962b7c93647bf0c1197860bc94e1e70de9e62f99412ad722cfa22ba` のままであり、runner の hash 入力は corpus JSON の bytes だけである。親が commit / push / 外部監査 / CI を継続し、fresh 評価は未実行・HOLD のまま。

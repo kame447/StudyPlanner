@@ -1,10 +1,13 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
-import { applyJointLabels, REQUIRED_OWNER_THRESHOLDS, validateApproval, validateCorpus } from './jev-contextual-paired-eval.mjs';
+import { applyJointLabels, REQUIRED_OWNER_THRESHOLDS, sha256, validateApproval, validateCorpus } from './jev-contextual-paired-eval.mjs';
+import { PAIRED_ARTIFACT_SCHEMA } from './jev-contextual-paired-artifact.mjs';
 import { observedTotal, clopperPearsonUpper95, summarizePairs } from './jev-contextual-eval-metrics.mjs';
 import { summarize, summarizeLunaBaseline } from './jev-contextual-cloud-eval.mjs';
 
@@ -16,6 +19,181 @@ beforeAll(async () => {
     digest: 'offline-only', expiresAt: 0 }), resolveDir: root, loader: 'ts' },
   bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
   ({ runTurn } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64')));
+});
+
+describe('paired artifact summarize CLI (offline)', () => {
+  let directory;
+  let artifact;
+  let sequence = 0;
+  beforeAll(async () => {
+    directory = await mkdtemp(join(tmpdir(), 'polarwatt-contextual-import-'));
+    installProvider();
+    const pairs = [];
+    // Use actual producer outputs with mocked fetch, rather than inventing a
+    // second expected arm schema that could drift from the evaluation runtime.
+    for (const [index, item] of validateCorpus(corpus, 'tuning').entries()) {
+      pairs.push({ caseId: item.id, group: item.group, labelSource: item.labelSource,
+        order: index % 2 ? ['lunaOnly', 'jevFirst'] : ['jevFirst', 'lunaOnly'],
+        jevFirst: await runTurn(item, env, new AbortController().signal, 'jevFirst'),
+        lunaOnly: await runTurn(item, env, new AbortController().signal, 'lunaOnly') });
+    }
+    artifact = { schemaVersion: PAIRED_ARTIFACT_SCHEMA, corpusVersion: corpus.version,
+      corpusHash: sha256(await readFile(resolve(root, 'scripts/jev-contextual-development-corpus.json'))),
+      runtimeSha256: 'a'.repeat(64), policySha256: 'b'.repeat(64), split: 'tuning',
+      attemptedAt: '2026-10-04T00:00:00.000Z', status: 'awaiting_joint_review',
+      expectedTurns: pairs.length, summary: { untrusted: 'cached summary must never supply measurements' }, pairs };
+    vi.restoreAllMocks(); vi.unstubAllGlobals();
+  });
+  afterAll(async () => { await rm(directory, { recursive: true, force: true }); });
+
+  async function summarizeArtifact(value, labels) {
+    const path = join(directory, 'artifact-' + sequence++ + '.json');
+    await writeFile(path, JSON.stringify(value));
+    const args = [resolve(root, 'scripts/jev-contextual-paired-eval.mjs'), '--summarize', '--results', path];
+    if (labels) {
+      const reviewPath = path + '.review';
+      await writeFile(reviewPath, JSON.stringify(labels));
+      args.push('--labels', reviewPath);
+    }
+    return spawnSync(process.execPath, args, { encoding: 'utf8', cwd: root, timeout: 10000 });
+  }
+
+  it('accepts actual producer records with explicit historical hashes and preserves NA usage', async () => {
+    const result = await summarizeArtifact(artifact);
+    expect(result.status, result.stderr).toBe(0);
+    const summary = JSON.parse(result.stdout);
+    expect(summary).toMatchObject({ status: 'HOLD', denominator: 12,
+      artifact: { schemaVersion: PAIRED_ARTIFACT_SCHEMA, runtimeSha256: 'a'.repeat(64), policySha256: 'b'.repeat(64) } });
+    expect(summary.lunaOnly.lunaDispatches).toBe(artifact.pairs.reduce((sum, pair) => sum + pair.lunaOnly.lunaDispatches, 0));
+    expect(summary.lunaOnly.usage.actualCostUsd).toBeNull();
+    expect(summary.jevFirst.jointCorrectness).toBeNull();
+  });
+
+  it('recognizes fully framed legacy artifacts without substituting current provenance', async () => {
+    const legacy = structuredClone(artifact);
+    delete legacy.schemaVersion;
+    const result = await summarizeArtifact(legacy);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).artifact).toMatchObject({ schemaVersion: 'legacy_unversioned_v0',
+      runtimeSha256: legacy.runtimeSha256, policySha256: legacy.policySha256 });
+  });
+
+  it.each([
+    ['unknown provider', (a) => { a.pairs[0].jevFirst.dispatches[0].provider = 'unrecognized'; }],
+    ['missing provider', (a) => { delete a.pairs[0].jevFirst.dispatches[0].provider; }],
+    ['missing dispatch usage', (a) => { delete a.pairs[0].jevFirst.dispatches[0].inputTokens; }],
+    ['unknown dispatch field', (a) => { a.pairs[0].jevFirst.dispatches[0].synthetic = true; }],
+    ['unknown dispatch status', (a) => { a.pairs[0].jevFirst.dispatches[0].status = 'fake'; }],
+    ['coerced HTTP status', (a) => { a.pairs[0].lunaOnly.dispatches[0].status = ['http_500']; }],
+    ['unfinished complete dispatch', (a) => { a.pairs[0].jevFirst.dispatches[0].status = 'dispatched'; }],
+    ['missing phase', (a) => { delete a.pairs[0].jevFirst.dispatches[0].phase; }],
+    ['invalid dispatches framing', (a) => { a.pairs[0].jevFirst.dispatches = {}; }],
+    ['invalid pairs framing', (a) => { a.pairs = {}; }],
+    ['unknown schema version', (a) => { a.schemaVersion = 'unknown-v2'; }],
+    ['missing corpus version', (a) => { delete a.corpusVersion; }],
+    ['invalid runtime hash', (a) => { a.runtimeSha256 = 'fixture-audit-invalid-provider'; }],
+    ['missing runtime hash', (a) => { delete a.runtimeSha256; }],
+    ['invalid policy hash', (a) => { a.policySha256 = 'bad'; }],
+    ['missing policy hash', (a) => { delete a.policySha256; }],
+    ['wrong corpus hash', (a) => { a.corpusHash = 'c'.repeat(64); }],
+    ['missing timestamp', (a) => { delete a.attemptedAt; }],
+    ['wrong registered denominator', (a) => { a.expectedTurns -= 1; }],
+    ['unknown framing field', (a) => { a.synthetic = true; }],
+    ['unknown arm field', (a) => { a.pairs[0].jevFirst.synthetic = true; }],
+    ['wrong case identity', (a) => { a.pairs[0].jevFirst.caseId = a.pairs[1].caseId; }],
+    ['wrong group identity', (a) => { a.pairs[0].jevFirst.group = a.pairs[1].group; }],
+    ['wrong arm identity', (a) => { a.pairs[0].jevFirst.arm = 'lunaOnly'; }],
+    ['wrong question identity', (a) => { a.pairs[0].jevFirst.questionCode = 'missing_effort_estimate'; }],
+    ['wrong catalog version', (a) => { a.pairs[0].jevFirst.catalogVersion = 'unknown'; }],
+    ['wrong gate version', (a) => { a.pairs[0].jevFirst.gateVersion = 'unknown'; }],
+    ['duplicate pair', (a) => { a.pairs[1] = a.pairs[0]; }],
+    ['invalid pair order', (a) => { a.pairs[0].order = ['jevFirst', 'jevFirst']; }],
+    ['missing completeness', (a) => { delete a.pairs[0].jevFirst.observationComplete; }],
+    ['nonboolean completeness', (a) => { a.pairs[0].jevFirst.observationComplete = 'true'; }],
+    ['false complete status', (a) => { a.pairs.pop(); }],
+    ['wrong Luna count', (a) => { a.pairs[0].lunaOnly.lunaDispatches = 0; }],
+    ['unknown usage claimed as zero', (a) => { a.pairs[0].lunaOnly.actualCostUsd = 0; }],
+    ['fractional tokens', (a) => { a.pairs[0].jevFirst.dispatches[0].inputTokens = 0.5; }],
+    ['negative elapsed time', (a) => { a.pairs[0].jevFirst.elapsedMs = -1; }],
+    ['missing semantic result', (a) => { delete a.pairs[0].jevFirst.semanticResult; }],
+    ['unknown semantic status', (a) => { a.pairs[0].jevFirst.semanticResult.status = 'synthetic'; }],
+    ['accepted without document', (a) => { a.pairs[0].jevFirst.semanticResult.document = null; }],
+    ['wrong semantic schema', (a) => { a.pairs[0].jevFirst.semanticResult.document.schemaVersion = 'v4'; }],
+    ['unproven joint correctness', (a) => { a.pairs[0].jevFirst.jointCorrect = true; }],
+    ['inconsistent direct acceptance', (a) => { a.pairs[0].jevFirst.directRoleAccepted = false; }],
+    ['Jev in Luna-only', (a) => { a.pairs[0].lunaOnly.dispatches[0] = a.pairs[0].jevFirst.dispatches[0]; a.pairs[0].lunaOnly.lunaDispatches = 0;
+      a.pairs[0].lunaOnly.inputTokens = 10; a.pairs[0].lunaOnly.outputTokens = 3; a.pairs[0].lunaOnly.actualCostUsd = 0.00001; }],
+  ])('refuses %s before emitting measurement numbers', async (_name, mutate) => {
+    const changed = structuredClone(artifact);
+    mutate(changed);
+    const result = await summarizeArtifact(changed);
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Paired evaluation refused or incomplete');
+  });
+
+  it.each(['missing pair', 'missing arm', 'incomplete observation'])('preserves the full denominator and NA for %s through CLI', async (failure) => {
+    const partial = structuredClone(artifact);
+    partial.status = 'incomplete_HOLD';
+    if (failure === 'missing pair') partial.pairs.pop();
+    if (failure === 'missing arm') delete partial.pairs.at(-1).jevFirst;
+    if (failure === 'incomplete observation') partial.pairs.at(-1).jevFirst.observationComplete = false;
+    const result = await summarizeArtifact(partial);
+    expect(result.status, result.stderr).toBe(0);
+    const summary = JSON.parse(result.stdout);
+    expect(summary.denominator).toBe(12);
+    expect(summary.jevFirst).toMatchObject({ observationComplete: false, unobservedTurns: 1,
+      jointCorrectness: null, rawDispatchFreeRate: null, lunaDispatchesPerTurn: null, usage: { inputTokens: null, actualCostUsd: null } });
+    expect(summary.pairedLunaDispatchDifferencePerTurn).toBeNull();
+  });
+
+  it('refuses malformed joint review without dropping its intended labels', async () => {
+    const result = await summarizeArtifact(artifact, { corpusHash: artifact.corpusHash,
+      runtimeSha256: artifact.runtimeSha256 });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+  });
+
+  it('counts failed dispatches and preserves missing usage through CLI', async () => {
+    const failed = structuredClone(artifact);
+    const record = failed.pairs[0].lunaOnly;
+    for (const dispatch of record.dispatches) Object.assign(dispatch,
+      { status: 'failed_after_dispatch', inputTokens: null, outputTokens: null, costUsd: null });
+    Object.assign(record, { inputTokens: null, outputTokens: null, actualCostUsd: null,
+      semanticResult: { status: 'provider_failure', document: null, contextualDirective: null, validationErrors: [] } });
+    const result = await summarizeArtifact(failed);
+    expect(result.status, result.stderr).toBe(0);
+    const summary = JSON.parse(result.stdout);
+    expect(summary.lunaOnly.lunaDispatches).toBe(artifact.pairs.reduce((sum, pair) => sum + pair.lunaOnly.lunaDispatches, 0));
+    expect(summary.lunaOnly).toMatchObject({ rawDispatchFreeRate: 0, usage: { inputTokens: null, outputTokens: null, actualCostUsd: null } });
+  });
+
+  it('allows a genuinely observed pre-dispatch failure to have zero calls without claiming correctness', async () => {
+    const noCalls = structuredClone(artifact);
+    noCalls.pairs[0].lunaOnly = await runTurn(corpus.cases[0], {}, new AbortController().signal, 'lunaOnly');
+    expect(noCalls.pairs[0].lunaOnly).toMatchObject({ dispatches: [], lunaDispatches: 0,
+      inputTokens: 0, outputTokens: 0, actualCostUsd: 0, semanticResult: { status: 'provider_failure' } });
+    const result = await summarizeArtifact(noCalls);
+    expect(result.status, result.stderr).toBe(0);
+    const summary = JSON.parse(result.stdout);
+    expect(summary.lunaOnly.rawDispatchFreeRate).toBe(1 / 12);
+    expect(summary.lunaOnly.correctResolutionAndFreeRate).toBeNull();
+    expect(summary.lunaOnly.jointCorrectness).toBeNull();
+  });
+
+  it('joins explicit whole-turn review provenance against the historical runtime', async () => {
+    const labels = artifact.pairs.flatMap((pair) => ['jevFirst', 'lunaOnly'].map((arm) => ({
+      caseId: pair.caseId, arm, correct: true, source: 'synthetic_unreviewed', independent: false,
+      reviewer: 'offline-fixture-reviewer', rationale: 'Offline fixture label, not independent evidence.' })));
+    const result = await summarizeArtifact(artifact, { corpusHash: artifact.corpusHash,
+      runtimeSha256: artifact.runtimeSha256, labels });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ status: 'HOLD',
+      jevFirst: { jointCorrectness: 1 }, lunaOnly: { jointCorrectness: 1 } });
+    const wrong = await summarizeArtifact(artifact, { corpusHash: artifact.corpusHash, runtimeSha256: 'c'.repeat(64), labels });
+    expect(wrong.status).toBe(1);
+    expect(wrong.stdout).toBe('');
+  });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -93,6 +271,16 @@ describe('paired contextual evaluation preparation (offline)', () => {
     approval.thresholds = Object.fromEntries(REQUIRED_OWNER_THRESHOLDS.map((key) => [key, 1]));
     expect(() => validateApproval(approval, binding)).not.toThrow();
     expect(() => validateApproval(approval, { ...binding, corpusHash: 'changed' })).toThrow();
+  });
+
+  it('refuses known exposed holdout authors even if the input claims no tuning exposure', () => {
+    const holdout = { ...corpus, status: 'sealed_unconsumed',
+      cases: corpus.cases.map((item) => ({ ...item, split: 'holdout' })),
+      provenance: { ...corpus.provenance, tuningExposure: false, derivedFromConsumedHoldout: false } };
+    for (const agent of ['PolarWatt', 'CopperHopper']) {
+      holdout.provenance.generator = { ...corpus.provenance.generator, agent };
+      expect(() => validateCorpus(holdout, 'holdout')).toThrow('Known development corpus viewers');
+    }
   });
 
   it('keeps missing usage NA in legacy diagnostics and paired summaries', () => {

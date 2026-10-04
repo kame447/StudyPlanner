@@ -6,6 +6,8 @@ Owner: BronzeMaxwell が作者の独立性と実行許可を確認する
 
 この文書だけを作者へ渡す。実装者が作った tuning / calibration の文面、旧評価の文面・誤答、gate 調整結果を作者へ渡さない。作者はそれらを閲覧していないことを記録する。既存の置換単位1〜5と C9 の消費済み holdout の変形・翻訳・言い換えを使わない。作者が独立性を保てないと分かった場合は、作成を止めて owner へ戻す。
 
+独立作者の候補から PolarWatt、CopperHopper、development corpus を閲覧した agent すべてを除外する。PolarWatt は実装と development corpus の作者、CopperHopper は外部監査で corpus を読んだためである。diff を保存したことと case の文面を読んだことは区別して来歴に記録し、owner が作者の独立性を確認する。
+
 ## 母集団と group
 
 対象は synthetic な weekly-planning の contextual semantic turn。real-user の文や履歴を使わない。頻度の本番証拠にはしない。renderer、最終文、保存、scheduler は評価対象外。

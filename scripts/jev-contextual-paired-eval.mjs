@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWrangler } from './jev-contextual-cloud-eval.mjs';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { summarizePairs } from './jev-contextual-eval-metrics.mjs';
+import { PAIRED_ARTIFACT_SCHEMA, validatePairedArtifact } from './jev-contextual-paired-artifact.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const REQUIRED_OWNER_THRESHOLDS = [
@@ -43,7 +44,8 @@ export function validateCorpus(corpus, split) {
     assert.equal(corpus.status, 'sealed_unconsumed');
     assert.equal(corpus.provenance.tuningExposure, false);
     assert.equal(corpus.provenance.derivedFromConsumedHoldout, false);
-    assert.notEqual(corpus.provenance.generator.agent, 'PolarWatt');
+    assert.ok(!['PolarWatt', 'CopperHopper'].includes(corpus.provenance.generator.agent),
+      'Known development corpus viewers cannot author independent holdout.');
     assert.ok(corpus.cases.every((item) => item.split === 'holdout'), 'Holdout must be a separate artifact.');
   }
   const selected = corpus.cases.filter((item) => item.split === split);
@@ -109,7 +111,7 @@ export async function runtimeFingerprint() {
     }
   };
   for (const path of ['shared', 'src', 'workers/ai-proxy/src']) await walk(path);
-  files.push('scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
+  files.push('scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-paired-artifact.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
     'scripts/jev-contextual-cloud-eval.mjs', 'scripts/jev-contextual-corpus.mjs', 'package.json', 'package-lock.json');
   const hash = createHash('sha256');
   for (const file of files.sort()) { hash.update(file + '\0'); hash.update(await readFile(join(ROOT, file))); }
@@ -125,38 +127,27 @@ async function main() {
   const corpus = JSON.parse(bytes.toString());
   const cases = validateCorpus(corpus, split);
   const corpusHash = sha256(bytes);
-  const fingerprint = await runtimeFingerprint();
-  const policyHash = sha256(await readFile(join(ROOT, 'workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')));
   if (args.includes('--summarize')) {
     assert.ok(args.includes('--results'));
     const artifact = JSON.parse(await readFile(resolve(option('--results')), 'utf8'));
-    assert.equal(artifact.corpusHash, corpusHash);
-    assert.equal(artifact.split, split);
-    const ids = new Set();
-    for (const pair of artifact.pairs) {
-      const item = cases.find((item) => item.id === pair.caseId);
-      assert.ok(item && !ids.has(pair.caseId) && item.group === pair.group, 'Unregistered or duplicate pair.');
-      ids.add(pair.caseId);
-      for (const arm of ['jevFirst', 'lunaOnly']) {
-        if (!pair[arm]) continue;
-        assert.equal(pair[arm].caseId, item.id);
-        assert.equal(pair[arm].arm, arm);
-        assert.equal(pair[arm].questionCode, item.questionCode);
-        assert.equal(pair[arm].catalogVersion, 'focused-contextual-answer-2026-10-04-v3');
-        assert.equal(pair[arm].gateVersion, 'contextual-conservative-v2-calibrated');
-        assert.equal(pair[arm].lunaDispatches, pair[arm].dispatches.filter((dispatch) => dispatch.provider === 'luna').length);
-      }
-    }
+    const pairs = validatePairedArtifact(artifact, { corpus, corpusHash, split, cases });
     let labels;
     if (args.includes('--labels')) {
       const review = JSON.parse(await readFile(resolve(option('--labels')), 'utf8'));
       assert.equal(review.corpusHash, corpusHash);
       assert.equal(review.runtimeSha256, artifact.runtimeSha256);
+      assert.ok(Array.isArray(review.labels), 'Joint review requires a labels array.');
       labels = review.labels;
     }
-    console.info(JSON.stringify(summarizePairs(applyJointLabels(artifact.pairs, labels), { cases }), null, 2));
+    console.info(JSON.stringify({ ...summarizePairs(applyJointLabels(pairs, labels), { cases }),
+      artifact: { schemaVersion: artifact.schemaVersion ?? 'legacy_unversioned_v0',
+        corpusVersion: artifact.corpusVersion, corpusHash: artifact.corpusHash,
+        runtimeSha256: artifact.runtimeSha256, policySha256: artifact.policySha256,
+        split: artifact.split, attemptedAt: artifact.attemptedAt, status: artifact.status } }, null, 2));
     return;
   }
+  const fingerprint = await runtimeFingerprint();
+  const policyHash = sha256(await readFile(join(ROOT, 'workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')));
   if (!args.includes('--run-approved')) {
     console.info(JSON.stringify({ status: 'HOLD', action: 'offline_validation_only', corpusVersion: corpus.version,
       corpusSha256: corpusHash, split, cases: cases.length, groups: new Set(cases.map((item) => item.group)).size,
@@ -216,7 +207,7 @@ async function main() {
     }
   } finally {
     try {
-      await writeFile(output, JSON.stringify({ corpusVersion: corpus.version, corpusHash,
+      await writeFile(output, JSON.stringify({ schemaVersion: PAIRED_ARTIFACT_SCHEMA, corpusVersion: corpus.version, corpusHash,
         runtimeSha256: fingerprint, policySha256: policyHash, split, attemptedAt: new Date().toISOString(),
         status: pairs.length === cases.length && pairs.every((pair) => pair.jevFirst && pair.lunaOnly)
           ? 'awaiting_joint_review' : 'incomplete_HOLD',
