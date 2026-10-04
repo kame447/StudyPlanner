@@ -476,7 +476,9 @@ test('failed Plan Undo preserves a queued MonthEvent through rollback and real r
     window.__plannerRecoveryRepository.armPlanRestoreFault(planId, () => {
       // This public Month callback admits its real save synchronously; it does
       // not await its predecessor from the synchronous Storage.setItem frame.
-      window.__plannerRecoveryHook.startMonthEvent({ date, title });
+      // Match MonthEventDialog's range-aware single-day draft so the full
+      // optimistic/canonical equality below compares the same public shape.
+      window.__plannerRecoveryHook.startMonthEvent({ date, endDate: date, title });
     });
   }, { planId: seeded.plan.id, date: E2E_TODAY, title: MONTH_EVENT_TITLE });
   try {

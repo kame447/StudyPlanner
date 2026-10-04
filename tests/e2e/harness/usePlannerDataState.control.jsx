@@ -25,14 +25,15 @@ export function usePlannerDataState(options) {
       if (!plan) throw new Error(`Missing real Plan ${planId}`);
       return result.deletePlan(plan);
     };
-    control.startMonthEvent = ({ date, title }) => {
+    control.startMonthEvent = ({ date, title, endDate }) => {
       if (control.saving) throw new Error('A fixture save is already pending');
       control.saving = true;
       control.saveError = null;
       control.saveComplete = false;
       // Invoke the same public callback used by MonthView, without mounting a
       // second hook or replacing its state while another App surface is open.
-      void result.saveMonthEvent({ ...createEmptyMonthEventDraft(options.userId, date), title })
+      void result.saveMonthEvent({ ...createEmptyMonthEventDraft(options.userId, date), title,
+        ...(endDate === undefined ? {} : { endDate }) })
         .then(() => { control.saveComplete = true; })
         .catch(error => { control.saveError = String(error); })
         .finally(() => { control.saving = false; });
