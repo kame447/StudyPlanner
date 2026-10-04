@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-09-28
+Updated: 2026-10-04
 
 References:
 - [Domain index](../README.md)
@@ -21,7 +21,7 @@ Stable V5 is the sole production weekly-planning runtime.
 ```text
 raw user utterance + relevant conversation + typed machine state
 → AI semantic interpretation
-→ schema / evidence / reference validation
+→ schema / evidence / reference / payload-value validation
 → deterministic formal binding / canonical Fact Graph
 → deterministic proposal / repair / readiness / question / scheduler decision
 → AI dialogue renderer
@@ -48,6 +48,16 @@ For the planned Issue #246 extension, whether a user turn semantically asks for 
 AI output is a current-turn semantic delta, not an accepted-state snapshot. Past facts are not recopied without current evidence. Formal IDs, revision, lifecycle mutation and scheduler decisions are not AI-owned.
 
 Provider failure, malformed output, validation failure or repair failure does not authorize legacy-parser fallback. Semantic repair is at most once where this contract permits it.
+
+## Acceptance and recovery validation
+
+Provider deltas and persisted Fact Graphs use different envelopes. `weeklyPlanningSemanticBaseValidatorV5.ts` and its extension wrapper own provider keys, local IDs, evidence, references and cross-field semantic checks. `weeklyPlanningFactGraphValidatorV5.ts` owns saved graph IDs, provenance, revision, lifecycle and references. Do not validate a saved fact by pretending it is an entire provider object, or require provider-only fields on historical saved facts.
+
+Both adapters call the same value validators for task/context/component payloads, quantities, effort, recurrence, temporal/date rules, planning windows, availability, relations and source requests. These kernels validate existing typed values; they do not interpret raw text, resolve calendar policy, grant approval, or decide scheduling. Absence (`no_additional_constraint`) and daily capacity are distinct availability variants. Reduced saved date rules and legacy optional extension fields retain their own envelope contracts. Exact fields, allowed values and compatibility cases are owned by types and executable tests, not a second schema copied into this document.
+
+A schema-shaped but invalid value must not become accepted state merely because it came from another provider or from storage. The semantic validators return a rejected result with errors; normal repair/fallback policy still owns the next action and must revalidate repaired output. Unknown values must not silently become a different relation or source action. This does not introduce a partial-commit feature or make every unresolved fact invalid: supported `unknown`, nullable and symbolic representations remain accepted where their existing contract permits them.
+
+`prepareWeeklyPlanningStableV5Checkpoint` validates the graph before traversing or encoding it. Checkpoint reading routes through the graph parser before hydration, so saved input is revalidated rather than trusted as previously accepted. Validation covers stored historical facts too; filtering removed/superseded facts for scheduling is a separate step. Regression tests use canonical writers and real checkpoint preparation/save/load, preserving valid historical representations while rejecting malformed values. These entry gates complement downstream fail-closed scheduler checks; they do not replace them.
 
 ## Time semantics
 
@@ -227,7 +237,9 @@ Consultation advice is upstream of preview. Displaying or persisting advice alon
 
 Persisted/session state is owner- and conversation-bound. Trace is diagnostic evidence, not authorization or planning truth. Untrusted stored strings remain data rather than instructions.
 
-A completed preview edit must update its restorable chat snapshot before control returns to navigation; rendering frames are not a persistence boundary. An authoritative empty conversation must replace an older non-empty chat snapshot, while pending or invalid state must not overwrite it. Chat export may explicitly include a validated empty checkpoint; the ordinary session-store policy may still omit empty checkpoints. Empty state and unavailable export are distinct outcomes.
+A completed preview edit must update its restorable chat snapshot before control returns to navigation; rendering frames are not a persistence boundary. An authoritative empty conversation must replace an older non-empty chat snapshot, while a pending or invalid chat-snapshot update must not overwrite it. Chat export may explicitly include a validated empty checkpoint; the ordinary session-store policy may still omit empty checkpoints. Empty state and unavailable export are distinct outcomes.
+
+The direct Stable V5 session-save API rejects an invalid graph without overwriting the existing checkpoint bytes. This is not an application-wide promise to retain an old checkpoint: `saveOwnedWeeklyPlanningState` deliberately clears that Stable checkpoint and persists compatibility state when the direct save returns false. Valid empty-state removal and quota-compaction policies also remain separate. Keep tests and reports explicit about which storage boundary they establish.
 
 When consultation is implemented, advice/context/retrieval strings remain untrusted data. If prompt, request/response, trace or persisted session fields change, the feature-local `src/features/weeklyPlanning/AGENTS.md` trace persistence gate applies.
 

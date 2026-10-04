@@ -1,11 +1,13 @@
 # weeklyPlanning semantic schema v5
 
 Status: supporting semantic schema reference
-Updated: 2026-08-23
+Updated: 2026-10-04
 
 Parent contract: [current-contract-v5.md](current-contract-v5.md)
 Canonical semantic ownership: [weekly-planning-semantic-ownership-boundary-v5.md](weekly-planning-semantic-ownership-boundary-v5.md)
 Dialogue architecture: [weekly-planning-dialogue-architecture-v5.md](weekly-planning-dialogue-architecture-v5.md)
+
+Acceptance and recovery responsibilities: [current contract](current-contract-v5.md#acceptance-and-recovery-validation). Provider and saved-graph envelopes differ; shared payload-value rules and checkpoint gates are described there. Types and tests remain the exact field/value authority.
 
 ## Data flow
 

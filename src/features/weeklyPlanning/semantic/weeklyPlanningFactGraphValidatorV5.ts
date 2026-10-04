@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
 import { validateWeeklyPlanningAvailabilityBaseValuesV5, validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import { validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5 } from './weeklyPlanningTemporalValueValidatorV5';
@@ -376,7 +377,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     allFactIds,
     errors,
   );
-  validateFactArray(
+  const constraintSourceRequests = validateFactArray(
     value.constraintSourceRequests,
     'graph.constraintSourceRequests',
     revision,
@@ -502,9 +503,15 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
   });
   relations.forEach((fact, index) => {
+    validateWeeklyPlanningRelationValuesV5(fact, `graph.relations[${index}]`, errors);
     validateReference(fact.fromTaskId, taskIds, `graph.relations[${index}].fromTaskId`, errors);
     validateReference(fact.toTaskId, taskIds, `graph.relations[${index}].toTaskId`, errors);
     if (fact.fromTaskId === fact.toTaskId) errors.push(`graph.relations[${index}]:self-relation`);
+  });
+  constraintSourceRequests.forEach((fact, index) => {
+    const path = `graph.constraintSourceRequests[${index}]`;
+    validateWeeklyPlanningSourceRequestValuesV5(fact, path, errors);
+    if (fact.resolutionStatus !== 'unresolved') errors.push(`${path}.resolutionStatus`);
   });
   uncertainties.forEach((fact, index) => {
     if (fact.targetFactId !== null) {
