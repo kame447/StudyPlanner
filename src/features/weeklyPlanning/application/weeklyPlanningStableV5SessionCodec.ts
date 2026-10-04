@@ -341,6 +341,17 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
   }
 }
 
+/** Validate external in-memory snapshots through the same compact wire contract as storage. */
+export function validateWeeklyPlanningStableV5SessionSnapshot(
+  value: unknown,
+  ownerId: string,
+): WeeklyPlanningStableV5PersistedSession | null {
+  if (!isRecord(value) || !isDate(value.weekStartDate) || !isRecord(value.planningState)
+    || !validateWeeklyPlanningFactGraphValueV5(value.graph).graph) return null;
+  const raw = serializeEnvelopeWithinBudget(value as unknown as WeeklyPlanningStableV5PersistedSession);
+  return raw ? parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId, weekStartDate: value.weekStartDate }) : null;
+}
+
 export type WeeklyPlanningStableV5CheckpointPreparation =
   | { status: 'invalid' }
   | { status: 'empty' }

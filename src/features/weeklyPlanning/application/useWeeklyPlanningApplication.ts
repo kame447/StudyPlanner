@@ -50,6 +50,7 @@ import {
 } from './weeklyPlanningStableV5RuntimeSession';
 import {
   prepareWeeklyPlanningStableV5Checkpoint,
+  validateWeeklyPlanningStableV5SessionSnapshot,
   WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
   type WeeklyPlanningStableV5PersistedSession,
 } from './weeklyPlanningStableV5SessionCodec';
@@ -87,7 +88,7 @@ export interface WeeklyPlanningApplication {
   resetSession: () => void;
   startConversation: () => void;
   exportConversationSnapshot: (options?: { includeEmpty?: boolean }) => WeeklyPlanningStableV5PersistedSession | null;
-  loadConversationSnapshot: (snapshot: WeeklyPlanningStableV5PersistedSession) => boolean;
+  loadConversationSnapshot: (snapshot: unknown) => boolean;
   createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
   removePreviewCandidate: (candidateId: string) => void;
   removeDraftBlock: (blockId: string) => void;
@@ -273,19 +274,12 @@ export function useWeeklyPlanningApplication({
     };
   }
 
-  function loadConversationSnapshot(snapshot: WeeklyPlanningStableV5PersistedSession): boolean {
+  function loadConversationSnapshot(value: unknown): boolean {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (
-      !session
-      || current.pendingTurn
-      || current.pendingApproval
-      || snapshot.ownerId !== ownerId
-      || snapshot.planningState.pendingTurn
-      || snapshot.planningState.pendingApproval
-    ) {
-      return false;
-    }
+    if (!session || current.pendingTurn || current.pendingApproval) return false;
+    const snapshot = validateWeeklyPlanningStableV5SessionSnapshot(value, ownerId);
+    if (!snapshot) return false;
 
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId,
