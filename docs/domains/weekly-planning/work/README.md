@@ -1,7 +1,7 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-09-28
+Updated: 2026-10-04
 
 This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
 
@@ -26,7 +26,7 @@ Issue-only active scopes such as #128 and [#335](https://github.com/kame447/Stud
 
 Issue #52 was completed by PR #283 and is no longer an active scope. Its implementation history remains in the closed Issue/PR and repository history rather than in this active-work index.
 
-Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 remains active, but PR #174 is closed and its integration branch is frozen evidence, not the merge path. The replacement PR chain and current verification gates are tracked in the roadmap and Issue #152. Re-fetch that checkpoint and the exact target HEAD before reusing any result; do not merge or remove the retained evidence branch as ordinary cleanup.
+Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 is completed/closed; PR #174 is closed without merge and is historical evidence, not an active implementation or merge prerequisite. The merged replacement chain and retained security baseline are recorded in the roadmap and Issue #152. New release units must consume the applicable security contracts and current verification gates (including #335 where relevant), rather than restart #174. Re-fetch the owning checkpoint and exact target HEAD before reusing results; do not merge or remove retained evidence branches as ordinary cleanup.
 
 Issue #305 retains the Jev integration design and rollout decision. Its initial default-off implementation was merged through PR #332; that completed branch must not be reused for the next evaluation. Issue #333 owns Japanese semantic evaluation, including the same-case Jev/Luna comparison, Gemini first-pass review, the limited Opus judge and tuning/holdout separation (human blind review is no longer required by owner decision on 2026-09-27). Jev-first replacement units keep their durable technical record in this directory (one record per unit); branch, PR and orchestration checkpoints stay in #305. Keep provider/privacy, security and shared telemetry with #187, #152 and #213. The runtime remains off by default, and neither merging PR #332 nor passing mock tests establishes Japanese quality or production activation.
 
