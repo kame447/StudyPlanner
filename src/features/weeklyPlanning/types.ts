@@ -142,6 +142,7 @@ export type WeeklyPlanningAction =
       assistantMessage: WeeklyPlanningMessage;
       draftCandidates?: WeeklyDraftCandidate[];
       preservePreviewCandidates?: boolean;
+      c5Commit?: import('./application/c5LocalSelection/contracts').C5ReducerCommit;
     }
   | {
       type: 'fail_turn';

@@ -344,6 +344,8 @@ export interface WeeklyPlanningQuestionContext {
   estimateForWorkloadFactId?: string;
   questionBasis?: 'completed_workload_total';
   presentation?: WeeklyPlanningQuestionPresentation;
+  /** Immutable question-time payload. Missing on old sessions; never re-enumerate on answer. */
+  c5?: import('../application/c5LocalSelection/contracts').C5QuestionSnapshot;
 }
 
 /**
@@ -400,6 +402,7 @@ export interface PlanningIntakeState {
   uncertainties: PlanningIntakeUncertainty[];
   questions: string[];
   lastQuestionContext?: WeeklyPlanningQuestionContext;
+  c5SelectionLedger?: import('../application/c5LocalSelection/contracts').C5SelectionLedger;
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
   draftGenerationIntent?: PlanningDraftGenerationIntent;

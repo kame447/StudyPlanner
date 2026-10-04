@@ -276,6 +276,7 @@ function aiRequests(
       ),
       maxCompletionTokens: numberValue(request.maxCompletionTokens),
       requestBytes: numberValue(item.requestBytes),
+      ...(request.candidateChoiceRequest === undefined ? {} : { candidateChoiceRequest: boundedUnknown(request.candidateChoiceRequest, 14_000, tracker, `aiInterpreter.input.requests[${index}].candidateChoiceRequest`) }),
     };
   });
 }
@@ -853,6 +854,7 @@ function compact(
           })),
           responseFormat: boundedUnknown(request.responseFormat, 500, tracker,
             `aiInterpreter.input.requests[${index}].responseFormat`),
+          ...(request.candidateChoiceRequest === undefined ? {} : { candidateChoiceRequest: boundedUnknown(request.candidateChoiceRequest, 1_000, tracker, `aiInterpreter.input.requests[${index}].candidateChoiceRequest`) }),
         })),
       },
       rawResponses: limitedArray(

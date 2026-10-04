@@ -1,4 +1,5 @@
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { createWorkerSemanticCensus, type SemanticCensusEnv } from './semanticTurnCensus';
 import { observedDecisionProviders, observeSemanticBackgroundWork } from './semanticDispatchWorkerObservation';
 import aiProxyWorker, { AiQuotaDurableObject } from './index';
 import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
@@ -49,6 +50,8 @@ import {
 } from './decision/userContextRoutingDispatch';
 import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
+import { isCandidateChoiceDecisionContext } from '../../../shared/candidateChoiceDecision';
+import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
 
 export { AiQuotaDurableObject };
 
@@ -652,6 +655,13 @@ async function handleChatRequest(
   }
 
   const focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  const candidateChoice = isRecord(payload.decisionContext) && payload.decisionContext.purpose === 'candidate_choice';
+  if (candidateChoice && (!isCandidateChoiceDecisionContext(payload.decisionContext)
+    || payload.purpose !== 'weekly_planning_semantic_normalizer'
+    || payload.messages?.length !== 1 || payload.messages[0].role !== 'user'
+    || payload.messages[0].content !== payload.decisionContext.request.wholeUtterance)) {
+    return jsonResponse(request, env, 400, { error: 'Invalid candidate Choice context.' });
+  }
   if (focusedContext.kind === 'invalid') {
     return jsonResponse(request, env, 400, { error: 'Invalid focused decision context.' });
   }
@@ -672,6 +682,11 @@ async function handleChatRequest(
 
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
+
+  if (candidateChoice && isCandidateChoiceDecisionContext(payload.decisionContext)) {
+    const result = await evaluateCandidateChoice({ context: payload.decisionContext, env, signal: request.signal, recorder: semanticRecorder });
+    return jsonResponse(request, env, 200, { ...result });
+  }
 
   if (focusedContext.kind === 'focused_authorization') {
     const context = focusedContext.context;
@@ -1158,14 +1173,21 @@ export default {
     executionContext?: ExecutionContext, observationContext?: AiProxyObservationContext,
     dispatchRecorder?: SemanticRequestRecorder,
   ): Promise<Response> {
-    if (!dispatchRecorder) return worker.fetch(request, env, tokenProvider, executionContext, observationContext);
-    if (!['/', '/chat/completions'].includes(new URL(request.url).pathname)) dispatchRecorder.markUnknown();
+    const context = observationContext ?? { identity: { kind: 'resolve_from_request' as const } };
+    const census = !dispatchRecorder && ['/', '/chat/completions'].includes(new URL(request.url).pathname)
+      ? createWorkerSemanticCensus(env as SemanticCensusEnv, context, tokenProvider) : undefined;
+    const recorder = dispatchRecorder ?? census?.recorder;
+    if (!recorder) return worker.fetch(request, env, tokenProvider, executionContext, observationContext);
+    if (!['/', '/chat/completions'].includes(new URL(request.url).pathname)) recorder.markUnknown();
+    let httpStatus = 500;
     try {
-      return await worker.fetch(request, env, tokenProvider,
-        observeSemanticBackgroundWork(executionContext, dispatchRecorder), observationContext, dispatchRecorder);
+      const response = await worker.fetch(request, env, tokenProvider,
+        observeSemanticBackgroundWork(executionContext, recorder), context, recorder);
+      httpStatus = response.status;
+      return response;
     } finally {
-      dispatchRecorder.finishMain();
-      const settled = dispatchRecorder.settle();
+      recorder.finishMain();
+      const settled = recorder.settle().then(() => census?.persist(httpStatus)).catch(() => undefined);
       if (executionContext) executionContext.waitUntil(settled);
       else void settled;
     }

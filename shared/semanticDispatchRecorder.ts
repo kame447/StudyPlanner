@@ -9,7 +9,7 @@ const nullableNumber = (value: unknown): number | null => typeof value === 'numb
 const nullableTokens = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 const record = (value: unknown): Record<string, unknown> | null => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 
-/** No singleton, storage, console output, network sink, configuration flag or user text. */
+/** No singleton, storage, console output, network sink or user text. */
 export function createSemanticRequestRecorder(params: {
   population: SemanticPopulation;
   turnId: string;
@@ -18,6 +18,8 @@ export function createSemanticRequestRecorder(params: {
   boundary: SemanticRequestObservation['boundary'];
   now?: () => number;
   createId?: () => string;
+  /** Production observation must never prevent or repeat the underlying send. */
+  bestEffort?: boolean;
 }) {
   if (![params.population.corpusId, params.turnId, params.requestId].every(isOpaqueSemanticId)
     || !SEMANTIC_DISPATCH_STAGES.includes(params.stage)
@@ -35,6 +37,7 @@ export function createSemanticRequestRecorder(params: {
     integrity: params.boundary === 'unobserved_proxy' ? 'unknown' : 'complete', dispatchIds: null, dispatches: [],
   };
   const pending = new Set<Promise<unknown>>();
+  let postMainWork = false; // Execution order remains evidence when Date.now() has equal millisecond values.
   const refinedOutcomes = new Map<string, SemanticDispatch['outcome']>();
   const markUnknown = () => { observation.integrity = 'unknown'; };
   function track<T>(work: Promise<T>): Promise<T> {
@@ -72,19 +75,37 @@ export function createSemanticRequestRecorder(params: {
       // A pre-dispatch timeout/cancellation is a known zero. Fetch has not been invoked.
       if (signal?.aborted) throw signal.reason ?? new Error('Provider request cancelled before dispatch.');
       if (observation.boundary === 'unobserved_proxy') markUnknown();
-      const dispatchId = createId();
-      if (!isOpaqueSemanticId(dispatchId) || observation.dispatches.some((item) => item.dispatchId === dispatchId)) throw new Error('Invalid semantic dispatch identity.');
+      let dispatchId: string;
+      try {
+        dispatchId = createId();
+        if (!isOpaqueSemanticId(dispatchId) || observation.dispatches.some((item) => item.dispatchId === dispatchId)) throw new Error('Invalid semantic dispatch identity.');
+      } catch (error) {
+        if (!params.bestEffort) throw error;
+        markUnknown();
+        return transport(input, init);
+      }
       if (observation.settledAtMs !== null) markUnknown();
+      if (observation.mainCompletedAtMs !== null) postMainWork = true;
       const dispatch: SemanticDispatch = {
         dispatchId, requestId: params.requestId, turnId: params.turnId,
         provider, family, stage, startedAtMs: now(), completedAtMs: null, outcome: 'unknown', usage: emptySemanticUsage(),
       };
       observation.dispatches.push(dispatch);
-      onDispatch?.(dispatchId);
+      try { onDispatch?.(dispatchId); }
+      catch (error) { if (!params.bestEffort) throw error; markUnknown(); }
       try {
         // This exact call is the dispatch boundary. One invocation, including failure, counts once.
         const response = await transport(input, init);
-        const completion = readUsage(response.clone(), signal).then((root) => {
+        if (observation.mainCompletedAtMs !== null) postMainWork = true;
+        let usageResponse: Response;
+        try { usageResponse = response.clone(); }
+        catch (error) {
+          if (!params.bestEffort) throw error;
+          markUnknown(); dispatch.completedAtMs = now();
+          return response;
+        }
+        const completion = readUsage(usageResponse, signal).then((root) => {
+          if (observation.mainCompletedAtMs !== null) postMainWork = true;
           const usage = record(root?.usage);
           dispatch.usage = {
             inputTokens: nullableTokens(provider === 'openrouter' ? usage?.input_tokens : usage?.prompt_tokens),
@@ -100,6 +121,7 @@ export function createSemanticRequestRecorder(params: {
         track(completion);
         return response;
       } catch (error) {
+        if (observation.mainCompletedAtMs !== null) postMainWork = true;
         dispatch.outcome = signal?.aborted
           ? signal.reason instanceof Error && signal.reason.name === 'TimeoutError' ? 'timeout' : 'cancelled'
           : 'network_error';
@@ -110,6 +132,7 @@ export function createSemanticRequestRecorder(params: {
   }
   return {
     markUnknown, track, providerFetch,
+    hasPostMainWork: () => postMainWork,
     refineOutcome(ids: string[], outcome: 'timeout' | 'cancelled') {
       for (const id of ids) {
         const dispatch = observation.dispatches.find((item) => item.dispatchId === id);

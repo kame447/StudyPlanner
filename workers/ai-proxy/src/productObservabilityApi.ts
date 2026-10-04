@@ -7,10 +7,13 @@ import {
   type FirestoreTokenProvider,
 } from './firestoreServiceAccountClient';
 import { ProductObservabilityStore, type ProductObservabilityEnv } from './productObservabilityStore';
+import { parseSemanticCensusEvent } from '../../../shared/semanticTurnCensus';
+import { semanticCensusEnabled } from './semanticTurnCensus';
 
 export const PRODUCT_OBSERVABILITY_EVENTS_PATH = '/observability/events';
 
 export interface ProductObservabilityApiEnv extends ProductObservabilityEnv {
+  SEMANTIC_CENSUS_MODE?: string;
   FIREBASE_WEB_API_KEY: string;
   ALLOWED_ORIGIN?: string;
 }
@@ -157,8 +160,10 @@ export async function handleProductObservabilityApi(
     return jsonResponse(request, env, 400, { error: 'Telemetry payload was not valid JSON.' });
   }
 
+  const census = parseSemanticCensusEvent(payload);
+  const clientCensus = census && census.kind !== 'request' && semanticCensusEnabled(env) ? census : null;
   const validated = validateProductObservabilityTelemetryDraft(payload);
-  if (!validated.ok) return jsonResponse(request, env, 400, { error: validated.error });
+  if (!clientCensus && !validated.ok) return jsonResponse(request, env, 400, { error: validated.error });
 
   try {
     const invocationTokenProvider = tokenProvider ?? new FirestoreServiceAccountTokenProvider(env);
@@ -166,9 +171,11 @@ export async function handleProductObservabilityApi(
       env,
       new FirestoreServiceAccountClient(env, invocationTokenProvider),
     );
-    if (validated.value.eventType === 'planning_outcome') {
+    if (clientCensus) {
+      await store.storeSemanticCensus(uid, clientCensus);
+    } else if (validated.ok && validated.value.eventType === 'planning_outcome') {
       await store.storePlanningOutcome(uid, validated.value);
-    } else {
+    } else if (validated.ok) {
       await store.storeProductActivity(uid, validated.value);
     }
     return jsonResponse(request, env, 202, { accepted: true });

@@ -94,4 +94,6 @@ export interface WeeklyPlanningTurnExecutionResult {
 export interface WeeklyPlanningTurnSubmissionResult {
   accepted: boolean;
   draftCandidates: WeeklyDraftCandidate[];
+  /** The local selection may already have committed; recover before any retry or fallback. */
+  recoveryRequired?: true;
 }

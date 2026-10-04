@@ -1,4 +1,6 @@
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { parseSemanticCensusJoin, type SemanticCensusJoin, type SemanticCensusRequestObserver } from '../../../shared/semanticTurnCensus';
+import type { SemanticDispatchStage } from '../../../shared/semanticDispatchLedger';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
@@ -288,7 +290,13 @@ async function runFetchWithTimeout<T>(
 }
 
 export interface OpenAiCompatibleClient {
+  /** Invocation-local capability, present only on a census-wrapped client. */
+  semanticCensusEnabled?: boolean;
+  semanticCensusObserver?: SemanticCensusRequestObserver;
   createChatCompletion(input: {
+    /** Telemetry only; injected after semantic trace capture and sent only to our proxy. */
+    semanticCensus?: SemanticCensusJoin;
+    semanticCensusStage?: SemanticDispatchStage;
     decisionContext?: FocusedDecisionContext;
     messages: ChatMessage[];
     temperature?: number;
@@ -304,6 +312,7 @@ export function createOpenAiCompatibleClient(
   const requestTimeoutMs = resolvedTimeoutMs(config.requestTimeoutMs);
   const client: OpenAiCompatibleClient = {
     async createChatCompletion({
+      semanticCensus,
       decisionContext,
       messages,
       temperature = 0.2,
@@ -329,6 +338,7 @@ export function createOpenAiCompatibleClient(
         const idToken = await firebaseAuth.currentUser.getIdToken();
 
         const proxyBody = {
+          ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
           ...(decisionContext ? { decisionContext } : {}),
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,

@@ -4,6 +4,22 @@ import { createSemanticRequestRecorder } from './semanticDispatchRecorder';
 const params = () => ({ population: { source: 'fixture', domain: 'weekly-planning', arm: 'baseline', corpusId: crypto.randomUUID() } as const, turnId: crypto.randomUUID(), requestId: crypto.randomUUID(), stage: 'initial' as const, boundary: 'worker' as const });
 
 describe('invocation-local provider evidence', () => {
+  it('best-effort instrumentation failure sends exactly once and preserves response', async () => {
+    const recorder = createSemanticRequestRecorder({ ...params(), bestEffort: true, createId: () => { throw new Error('private-observer-failure'); } });
+    const transport = vi.fn(async () => Response.json({ content: 'unchanged' }));
+    expect(await (await recorder.providerFetch('openai', 'luna', 'initial', transport)('https://provider.test')).json()).toEqual({ content: 'unchanged' });
+    expect(transport).toHaveBeenCalledTimes(1);
+    recorder.finishMain(); await recorder.settle(); expect(recorder.snapshot().integrity).toBe('unknown');
+  });
+  it('best-effort clone failure never retries the provider or replaces its response', async () => {
+    const recorder = createSemanticRequestRecorder({ ...params(), bestEffort: true });
+    const response = Response.json({ content: 'unchanged' });
+    vi.spyOn(response, 'clone').mockImplementation(() => { throw new Error('private-clone-failure'); });
+    const transport = vi.fn(async () => response);
+    expect(await recorder.providerFetch('openai', 'luna', 'initial', transport)('https://provider.test')).toBe(response);
+    expect(transport).toHaveBeenCalledTimes(1);
+    recorder.finishMain(); await recorder.settle(); expect(recorder.snapshot().integrity).toBe('unknown');
+  });
   it('observes actual fetch including failed sends, and keeps missing usage unknown', async () => {
     const recorder = createSemanticRequestRecorder(params());
     const transport = vi.fn(async () => { throw new Error('private-user-provider-error'); });
@@ -60,4 +76,16 @@ describe('invocation-local provider evidence', () => {
     recorder.refineOutcome(ids, 'timeout'); recorder.finishMain(); await recorder.settle();
     expect(recorder.snapshot().dispatches).toMatchObject([{ outcome: 'timeout' }]);
   });
+});
+
+// Millisecond timestamps alone do not establish execution order.
+it('retains post-main send completion even when the clock does not advance', async () => {
+  const capture = createSemanticRequestRecorder({ population: { source: 'fixture', domain: 'weekly-planning', arm: 'baseline', corpusId: crypto.randomUUID() }, turnId: crypto.randomUUID(), requestId: crypto.randomUUID(), stage: 'shadow', boundary: 'worker', now: () => 100 });
+  let release!: (response: Response) => void;
+  const transport = async () => new Promise<Response>((resolve) => { release = resolve; });
+  const work = capture.providerFetch('openrouter', 'jev', 'shadow', transport)('https://provider.test');
+  capture.finishMain(); release(Response.json({ usage: { input_tokens: 1, output_tokens: 1 } }));
+  await work; await capture.settle();
+  expect(capture.hasPostMainWork()).toBe(true);
+  expect(capture.snapshot().dispatches[0].completedAtMs).toBe(capture.snapshot().mainCompletedAtMs);
 });

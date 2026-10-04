@@ -14,6 +14,10 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
+import type { C5LocalSelectionOptions, C5SelectedTurn } from './application/c5LocalSelection/contracts';
+import { selectC5Turn } from './application/c5LocalSelection/selection';
+import { captureC5Question, decodeC5Ledger } from './application/c5LocalSelection/basis';
+import { commitC5ControlledTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -79,6 +83,8 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     assistantMessage: WeeklyPlanningMessage;
   }): void | Promise<void>;
   now?: () => string;
+  /** Dormant PoC: explicit consumer/provider injection only; no production default. */
+  c5LocalSelection?: C5LocalSelectionOptions;
 }
 
 class WeeklyPlanningControlledSemanticFailure extends Error {
@@ -223,6 +229,9 @@ export async function submitWeeklyPlanningControlledTurn(
   const supplementalContext = params.supplementalContext?.trim() ?? '';
   const executionText = buildWeeklyPlanningExecutionText(userText, supplementalContext);
   const snapshot = params.getState();
+  if (hasC5Recovery(params.ownerId, params.session.conversationId)) {
+    return { accepted: false, draftCandidates: [], recoveryRequired: true };
+  }
   if (!userText
     || userText.length > MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH
     || supplementalContext.length > MAX_WEEKLY_PLANNING_SUPPLEMENTAL_CONTEXT_LENGTH
@@ -268,8 +277,16 @@ export async function submitWeeklyPlanningControlledTurn(
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
+  let c5Selected: C5SelectedTurn | null = null;
   try {
-    const executionResult = await params.execute({
+    c5Selected = params.c5LocalSelection && !supplementalContext && !params.selectedStarterTarget
+      ? await selectC5Turn({ ownerId: params.ownerId, snapshot, pending, userText,
+          options: params.c5LocalSelection, getState: params.getState,
+          getGraph: () => readC5RuntimeGraph(params.ownerId, pending.conversationId) })
+      : null;
+    const executionResult = c5Selected && params.c5LocalSelection
+      ? await params.c5LocalSelection.continueSelectedTurn({ snapshot, pending, userText, graph: structuredClone(c5Selected.graph) })
+      : await params.execute({
       snapshot,
       pending,
       userText,
@@ -286,6 +303,19 @@ export async function submitWeeklyPlanningControlledTurn(
       userText,
       result: executionResult,
     };
+    if (c5Selected && params.c5LocalSelection) {
+      const assistantMessage = createTurnMessage(envelope, 'assistant', executionResult.message, now());
+      const outcome = commitC5ControlledTurn({ ownerId: params.ownerId, snapshot, begun, pending,
+        userText, selected: c5Selected, options: params.c5LocalSelection, result: executionResult,
+        assistantMessage, getState: params.getState, dispatch: params.dispatch });
+      if (outcome.accepted) {
+        await runBestEffort(() => params.onCommittedTurn?.({ ...context, committed: params.getState(), assistantMessage }));
+      } else if (!outcome.recoveryRequired) {
+        await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'commit_rejected' }));
+        params.dispatch({ type: 'cancel_turn', pending });
+      }
+      return outcome;
+    }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
@@ -308,15 +338,27 @@ export async function submitWeeklyPlanningControlledTurn(
     const committed = params.dispatch({
       type: 'commit_turn',
       pending,
-      intakeState: bindWeeklyPlanningQuestionPresentation({
-        state: executionResult.state,
-        content: executionResult.questionPresentationContent,
-        turnId: envelope.turnId,
-        assistantMessageId: assistantMessage.id,
-        // canCommitTurn accepts only begin_turn (+1) followed by this commit (+1).
-        planningStateRevision: pending.baseRevision + 2,
-        graphRevision: executionResult.stableV5Graph?.revision,
-      }),
+      intakeState: (() => {
+        // The existing application ledger survives every ordinary turn/question replacement.
+        // An execution result (including AI output) cannot introduce or erase consumption.
+        const ledger = decodeC5Ledger(snapshot.intakeState?.c5SelectionLedger, params.ownerId, pending.conversationId);
+        const resultState = ledger || executionResult.state.c5SelectionLedger !== undefined
+          ? (() => { const { c5SelectionLedger: _resultLedger, ...withoutLedger } = executionResult.state; return withoutLedger; })()
+          : executionResult.state;
+        const bound = bindWeeklyPlanningQuestionPresentation({
+          state: ledger ? { ...resultState, c5SelectionLedger: ledger } : resultState,
+          content: executionResult.questionPresentationContent,
+          turnId: envelope.turnId,
+          assistantMessageId: assistantMessage.id,
+          // canCommitTurn accepts only begin_turn (+1) followed by this commit (+1).
+          planningStateRevision: pending.baseRevision + 2,
+          graphRevision: executionResult.stableV5Graph?.revision,
+        });
+        return params.c5LocalSelection && executionResult.stableV5Graph
+          ? captureC5Question({ state: bound, graph: executionResult.stableV5Graph,
+              ownerId: params.ownerId, conversationId: pending.conversationId })
+          : bound;
+      })(),
       assistantMessage,
       draftCandidates: executionResult.draftCandidates,
       preservePreviewCandidates: executionResult.preserveExistingPreview,
@@ -347,6 +389,9 @@ export async function submitWeeklyPlanningControlledTurn(
       draftCandidates: executionResult.draftCandidates,
     };
   } catch (error) {
+    if (hasC5Recovery(params.ownerId, pending.conversationId)) {
+      return { accepted: false, draftCandidates: [], recoveryRequired: true };
+    }
     if (preparedCommit) {
       preparedCommit.rollback();
       preparedCommit = undefined;
@@ -394,6 +439,8 @@ export function cancelWeeklyPlanningControlledTurn(params: {
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }): boolean {
+  const ledger = params.getState().intakeState?.c5SelectionLedger;
+  if (ledger && hasC5Recovery(ledger.ownerId, ledger.conversationId)) return false;
   const pending = params.getState().pendingTurn;
   if (!pending) return false;
   const next = params.dispatch({ type: 'cancel_turn', pending });
@@ -405,6 +452,8 @@ export function clearWeeklyPlanningControlledConversation(params: {
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }): boolean {
   const current = params.getState();
+  const ledger = current.intakeState?.c5SelectionLedger;
+  if (ledger && hasC5Recovery(ledger.ownerId, ledger.conversationId)) return false;
   if (current.pendingTurn || current.pendingApproval) return false;
   const next = params.dispatch({ type: 'clear_conversation' });
   return next !== current;
@@ -418,6 +467,7 @@ export function resetWeeklyPlanningControlledSession(params: {
   conversationId?: string;
 }): PlanningState {
   const current = params.getState();
+  if (hasC5Recovery(params.ownerId, params.session.conversationId)) return current;
   resetWeeklyPlanningControllerSession(
     params.session,
     params.ownerId,

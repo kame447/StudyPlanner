@@ -2,9 +2,11 @@ import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalReco
 import type { PlanningState } from '../types';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
+import { validC5SessionRecords } from './c5LocalSelection/basis';
 
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
   'studyplanner-weekly-planning-stable-v5-session-v1' as const;
+export const WEEKLY_PLANNING_C5_SESSION_CAPABILITY = 'c5-local-selection-v1' as const;
 
 export const MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES = 2 * 1024 * 1024;
 const MAX_MESSAGES = 200;
@@ -14,6 +16,8 @@ const MAX_PREVIEW_CANDIDATES = 500;
 
 export interface WeeklyPlanningStableV5PersistedSession {
   version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
+  /** Older strict readers reject this extension instead of silently dropping consumption. */
+  requiredCapabilities?: readonly [typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY];
   ownerId: string;
   weekStartDate: string;
   conversationId: string;
@@ -259,6 +263,8 @@ function createPersistedEnvelope(params: {
 }): WeeklyPlanningStableV5PersistedSession {
   return {
     version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+    ...(params.planningState.intakeState?.c5SelectionLedger
+      ? { requiredCapabilities: [WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
     ownerId: params.ownerId,
     weekStartDate: params.weekStartDate,
     conversationId: params.conversationId,
@@ -300,8 +306,11 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
         'graph',
         'planningState',
         'savedAt',
+        'requiredCapabilities',
       ])
       || value.version !== WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION
+      || (value.requiredCapabilities !== undefined && (!Array.isArray(value.requiredCapabilities)
+        || value.requiredCapabilities.length !== 1 || value.requiredCapabilities[0] !== WEEKLY_PLANNING_C5_SESSION_CAPABILITY))
       || value.ownerId !== params.ownerId
       || value.weekStartDate !== params.weekStartDate
       || !isNonEmptyString(value.conversationId)
@@ -310,6 +319,16 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       return null;
     }
     value.planningState = expandWeeklyPlanningApprovalRecovery(value.planningState);
+    // V1 never grants selection authority, even if extension-shaped data was injected.
+    if (value.requiredCapabilities === undefined && isRecord(value.planningState)
+      && isRecord(value.planningState.intakeState)) {
+      const { c5SelectionLedger: _ledger, ...intake } = value.planningState.intakeState;
+      if (isRecord(intake.lastQuestionContext)) {
+        const { c5: _snapshot, ...question } = intake.lastQuestionContext;
+        intake.lastQuestionContext = question;
+      }
+      value.planningState = { ...value.planningState, intakeState: intake };
+    }
     const parsedGraph = parseWeeklyPlanningFactGraphV5(JSON.stringify(value.graph));
     if (!parsedGraph.graph
       || !graphBelongsToConversation(parsedGraph.graph, value.conversationId)
@@ -322,8 +341,10 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       )) {
       return null;
     }
+    if (!validC5SessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)) return null;
     return {
-      version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+      version: value.version,
+      ...(value.requiredCapabilities !== undefined ? { requiredCapabilities: [WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
       ownerId: params.ownerId,
       weekStartDate: params.weekStartDate,
       conversationId: value.conversationId,
@@ -377,6 +398,7 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
   if (!graphBelongsToConversation(params.graph, params.conversationId)) {
     return { status: 'invalid' };
   }
+  if (!validC5SessionRecords(params.planningState.intakeState, params.ownerId, params.conversationId)) return { status: 'invalid' };
   const planningState = serializablePlanningState(params.planningState);
   if (!params.includeEmpty && isEmptySession(planningState, params.graph)) {
     return { status: 'empty' };
