@@ -1,10 +1,10 @@
+import { validateWeeklyPlanningRelationValuesV5, validateWeeklyPlanningSourceRequestValuesV5 } from './weeklyPlanningControlValueValidatorV5';
 import { validateWeeklyPlanningAvailabilityBaseValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import { validateWeeklyPlanningTaskValuesV5, validateWeeklyPlanningComponentValuesV5, validateWeeklyPlanningStudyContextValuesV5, validateWeeklyPlanningPlanningWindowValuesV5 } from './weeklyPlanningFactPayloadValueValidatorV5';
 import { validateWeeklyPlanningRecurrenceValuesV5 } from './weeklyPlanningRecurrenceValueValidatorV5';
 import { validateWeeklyPlanningEffortValuesV5, validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import { validateWeeklyPlanningTemporalValuesV5, validateWeeklyPlanningDateRuleValuesV5, validateWeeklyPlanningDateRuleWireFieldsV5 } from './weeklyPlanningTemporalValueValidatorV5';
 import {
-  SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
   SEMANTIC_TASK_DATE_RULE_KINDS_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -296,13 +296,7 @@ function validateConstraintSourceRequests(
       errors,
     );
     registerLocalId(request.localId, `${path}.localId`, allIds, errors);
-    if (!isEnumValue(request.kind, SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5)) {
-      errors.push(`${path}.kind`);
-    }
-    if (request.selector !== 'active') errors.push(`${path}.selector`);
-    if (request.requestedAction !== 'use' && request.requestedAction !== 'stop_using') {
-      errors.push(`${path}.requestedAction`);
-    }
+    validateWeeklyPlanningSourceRequestValuesV5(request, path, errors);
     validateSourceText(request, path, errors);
   });
 }
@@ -508,12 +502,7 @@ export function validateWeeklyPlanningSemanticValueV5(
         errors,
       );
       registerLocalId(relation.localId, `${path}.localId`, allIds, errors);
-      if (!isEnumValue(
-        relation.kind,
-        ['before', 'after', 'depends_on', 'priority_over', 'sequence'] as const,
-      )) {
-        errors.push(`${path}.kind`);
-      }
+      validateWeeklyPlanningRelationValuesV5(relation, path, errors);
       if (!isNonEmptyString(relation.fromLocalId) || !taskIds.has(relation.fromLocalId)) {
         errors.push(`${path}.fromLocalId`);
       }
