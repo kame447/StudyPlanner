@@ -42,7 +42,6 @@
 }
 
 .quick-entry-modal:has(.weekly-planning-confirmation-screen) {
-  padding: 8px;
   border-radius: 16px;
 }
 
@@ -54,20 +53,6 @@
 .quick-entry-modal:has(.weekly-draft-preview) .quick-entry-ai-panel,
 .quick-entry-modal:has(.weekly-draft-preview) .section-stack {
   min-height: 0;
-}
-
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-modal-body {
-  gap: 0;
-  padding: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-ai-panel {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 
 .quick-entry-header {
@@ -353,7 +338,6 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
-  width: 100%;
   min-height: 0;
 }
 
@@ -380,7 +364,6 @@
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
-  width: 100%;
   min-height: 0;
 }
 
@@ -472,7 +455,6 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  overflow: visible;
   border: 0;
   border-radius: 0;
   background: var(--surface);
@@ -538,7 +520,6 @@
 }
 
 .weekly-draft-preview-grid {
-  width: 100%;
   min-width: 0;
 }
 
@@ -1465,34 +1446,6 @@
   min-height: 56px;
 }
 
-/* Weekly planning day detail: remove extra blank space after 24:00 */
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-detail {
-  display: block;
-  min-height: 0;
-  height: auto;
-  padding-bottom: 0;
-}
-
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll--day {
-  display: block;
-  min-height: 0;
-  height: auto;
-  max-height: none;
-  overflow: visible;
-}
-
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-grid {
-  align-items: start;
-  min-height: 0;
-  height: auto;
-}
-
-/* The timetable itself should end at the calculated 24:00 line, not stretch to fill the viewport */
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-time-axis,
-.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-column {
-  min-height: 0;
-}
-
 /* Prevent empty flex/grid expansion below the day grid */
 .quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-grid,
 .quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-body {
@@ -1502,12 +1455,14 @@
 
 /* Weekly planning preview: keep overview/day timeline heights independent */
 .quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-detail {
+  display: block;
   min-height: 0;
   height: auto;
   padding-bottom: 0;
 }
 
 .quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll--day {
+  display: block;
   min-height: 0;
   height: auto;
   max-height: none;

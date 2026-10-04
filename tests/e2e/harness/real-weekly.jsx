@@ -63,6 +63,10 @@ async function saveApprovedPlan(draft) {
 }
 
 const REAL_WEEKLY_USER_ID = 'browser-real-weekly-user';
+const REAL_WEEKLY_PLANS = [];
+const REAL_WEEKLY_ACTUALS = [];
+const REAL_WEEKLY_SCHEDULE_TEMPLATES = [];
+const isRealWeeklyPlannerDataSnapshotCurrent = () => true;
 const REAL_WEEKLY_PLANNER_DATA_AVAILABILITY = {
   status: 'ready',
   ownerId: REAL_WEEKLY_USER_ID,
@@ -75,10 +79,13 @@ function RealWeeklyApplicationHarness() {
   const application = useWeeklyPlanningApplication({
     userId: REAL_WEEKLY_USER_ID,
     selectedDate: '2026-08-13',
-    plans: [],
-    actuals: [],
-    scheduleTemplates: [],
+    plans: REAL_WEEKLY_PLANS,
+    actuals: REAL_WEEKLY_ACTUALS,
+    scheduleTemplates: REAL_WEEKLY_SCHEDULE_TEMPLATES,
     plannerDataAvailability: REAL_WEEKLY_PLANNER_DATA_AVAILABILITY,
+    // This isolated weekly fixture owns immutable empty planner inputs. The
+    // full-App recovery fixture separately exercises real projection leases.
+    isPlannerDataSnapshotCurrent: isRealWeeklyPlannerDataSnapshotCurrent,
     saveWeeklyApprovedPlan: saveApprovedPlan,
   });
   const { state } = application;

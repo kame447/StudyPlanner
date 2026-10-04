@@ -299,7 +299,7 @@ describe('Stable V5 persisted runtime session', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     function Probe() {
       useWeeklyPlanningApplication({
-        userId: OWNER_ID, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
+        userId: OWNER_ID, isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
         selectedDate: SELECTED_DATE, plans: [], scheduleTemplates: [],
         async saveWeeklyApprovedPlan() { throw new Error('Restore must not save a Plan'); },
       });
@@ -318,7 +318,7 @@ describe('Stable V5 persisted runtime session', () => {
     function Probe() {
       observed.current = useWeeklyPlanningApplication({
         userId: OWNER_ID,
-        plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
+        isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER_ID),
         selectedDate: SELECTED_DATE,
         plans: [],
         scheduleTemplates: [],

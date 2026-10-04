@@ -15,7 +15,7 @@ import { createMemoryStorageHarness } from '../testUtils/weeklyPlanningApplicati
 let app: WeeklyPlanningApplication;
 let renderer: ReactTestRenderer;
 function Harness() {
-  app = useWeeklyPlanningApplication({ userId: 'audit-owner', selectedDate: '2026-10-04', plans: [], scheduleTemplates: [], plannerDataAvailability: createReadyPlannerDataAvailability('audit-owner'), saveWeeklyApprovedPlan: vi.fn() });
+  app = useWeeklyPlanningApplication({ userId: 'audit-owner', selectedDate: '2026-10-04', plans: [], scheduleTemplates: [], isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability('audit-owner'), saveWeeklyApprovedPlan: vi.fn() });
   return null;
 }
 afterEach(() => { act(() => renderer?.unmount()); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); vi.unstubAllGlobals(); });

@@ -74,8 +74,17 @@ export interface UseWeeklyPlanningApplicationInput {
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
   plannerDataAvailability: PlannerDataAvailability;
+  isPlannerDataSnapshotCurrent: () => boolean;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
+}
+
+export type WeeklyPlanningTurnPreparationResult =
+  | { ready: true }
+  | { ready: false; reason: 'planner-data-changed' | 'request-changed' };
+
+export interface WeeklyPlanningApplicationSubmissionResult extends WeeklyPlanningTurnSubmissionResult {
+  rejectionReason?: 'planner-data-changed';
 }
 
 export interface WeeklyPlanningApplication {
@@ -84,14 +93,15 @@ export interface WeeklyPlanningApplication {
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
   approvalAvailability: WeeklyPlanningApprovalAvailability;
   canEditDraftBlocks: boolean;
-  prepareTurn: () => Promise<boolean>;
+  plannerDataReady: boolean;
+  prepareTurn: () => Promise<WeeklyPlanningTurnPreparationResult>;
   getModuleRecoveryBinding: () => AiPlanningModuleRecoveryBinding | null;
   checkpointForModuleReload: () => { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null;
   submitTurn: (
     userText: string,
     supplementalContext?: string,
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
-  ) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  ) => Promise<WeeklyPlanningApplicationSubmissionResult>;
   cancelTurn: () => boolean;
   clearConversation: () => boolean;
   appendMessage: (message: WeeklyPlanningMessage) => void;
@@ -106,6 +116,12 @@ export interface WeeklyPlanningApplication {
   approveDraftBlocks: () => Promise<void>;
 }
 
+// Omitted optional inputs have the same identity across committed renders.
+const EMPTY_MONTH_EVENTS: MonthEvent[] = [];
+const EMPTY_ACTUALS: Actual[] = [];
+const EMPTY_STUDY_MATERIALS: StudyMaterial[] = [];
+const EMPTY_TIMETABLE_TERMS: TimetableTerm[] = [];
+
 interface ApprovalLedgerState {
   ownerId: string;
   operations: WeeklyDraftApprovalOperation[];
@@ -115,14 +131,15 @@ export function useWeeklyPlanningApplication({
   userId,
   selectedDate,
   plans,
-  monthEvents = [],
-  actuals = [],
-  studyMaterials = [],
+  monthEvents = EMPTY_MONTH_EVENTS,
+  actuals = EMPTY_ACTUALS,
+  studyMaterials = EMPTY_STUDY_MATERIALS,
   scheduleTemplates,
   timetableTermId,
   timetableTerm,
-  timetableTerms = [],
+  timetableTerms = EMPTY_TIMETABLE_TERMS,
   plannerDataAvailability,
+  isPlannerDataSnapshotCurrent,
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
@@ -132,9 +149,9 @@ export function useWeeklyPlanningApplication({
   // neither revoke the visible request nor grant authority to a newer uncommitted one.
   const requestInput = useMemo(() => ({ userId, selectedDate, plans, monthEvents, actuals,
     studyMaterials, scheduleTemplates, timetableTermId, timetableTerm, timetableTerms,
-    plannerDataAvailability, weekStartsOn }), [userId, selectedDate, plans, monthEvents, actuals,
+    plannerDataAvailability, isPlannerDataSnapshotCurrent, weekStartsOn }), [userId, selectedDate, plans, monthEvents, actuals,
     studyMaterials, scheduleTemplates, timetableTermId, timetableTerm, timetableTerms,
-    plannerDataAvailability, weekStartsOn]);
+    plannerDataAvailability, isPlannerDataSnapshotCurrent, weekStartsOn]);
   const committedRequestInput = useRef<typeof requestInput | null>(null);
   useLayoutEffect(() => {
     committedRequestInput.current = requestInput;
@@ -225,16 +242,28 @@ export function useWeeklyPlanningApplication({
       weekStartDate: current.weekStartDate, revision: current.revision };
   }
 
-  async function prepareTurn(): Promise<boolean> {
+  // The callback owns the lease captured with these request arrays. A newer ready
+  // projection cannot make a retained preflight or OCR callback current again.
+  function isBoundPlannerDataCurrent(): boolean {
+    return Boolean(userId && isPlannerDataReadyForOwner(plannerDataAvailability, userId)
+      && isPlannerDataSnapshotCurrent());
+  }
+  const plannerDataReady = isBoundPlannerDataCurrent();
+
+  async function prepareTurn(): Promise<WeeklyPlanningTurnPreparationResult> {
+    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
     const binding = getModuleRecoveryBinding();
-    if (!binding || !userId || committedRequestInput.current !== requestInput
-      || !isPlannerDataReadyForOwner(plannerDataAvailability, userId)) return false;
+    if (!binding || committedRequestInput.current !== requestInput) {
+      return { ready: false, reason: 'request-changed' };
+    }
     const stateAtStart = getPlanningState();
     const indexAtStart = chat.index;
     await loadWeeklyPlanningRuntimeModule();
+    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
     return stateAtStart === getPlanningState() && indexAtStart === chat.index
       && committedRequestInput.current === requestInput
-      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding());
+      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding())
+      ? { ready: true } : { ready: false, reason: 'request-changed' };
   }
 
   function checkpointForModuleReload(): { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null {
@@ -265,13 +294,21 @@ export function useWeeklyPlanningApplication({
     userText: string,
     supplementalContext?: string,
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
-  ): Promise<WeeklyPlanningTurnSubmissionResult> {
+  ): Promise<WeeklyPlanningApplicationSubmissionResult> {
     const session = controllerSessionRef.current;
     const stateAtStart = getPlanningState();
     const indexAtStart = chat.index;
     const bindingAtStart = getModuleRecoveryBinding();
-    if (!userId || !session || stateAtStart.approvalRecovery || chat.requiresInitialization
-      || !(await prepareTurn()) || committedRequestInput.current !== requestInput
+    if (!userId || !session || stateAtStart.approvalRecovery || chat.requiresInitialization) {
+      return { accepted: false, draftCandidates: [] };
+    }
+    const preparation = await prepareTurn();
+    // Recheck the same bound lease at admission, including the continuation after
+    // preflight resolves. Do not substitute the latest render's readiness here.
+    if (!isBoundPlannerDataCurrent() || (!preparation.ready && preparation.reason === 'planner-data-changed')) {
+      return { accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed' };
+    }
+    if (!preparation.ready || committedRequestInput.current !== requestInput
       || stateAtStart !== getPlanningState() || indexAtStart !== chat.index
       || !sameAiPlanningModuleRecoveryBinding(bindingAtStart, getModuleRecoveryBinding())) {
       return { accepted: false, draftCandidates: [] };
@@ -437,6 +474,7 @@ export function useWeeklyPlanningApplication({
     state: planningState,
     pendingDraftBlocks,
     approvalAvailability,
+    plannerDataReady,
     canEditDraftBlocks: canEditDraftBlocks && !chat.requiresInitialization,
     prepareTurn,
     getModuleRecoveryBinding,

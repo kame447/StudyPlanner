@@ -12,6 +12,7 @@ These browser tests are intentionally conservative about what they declare to be
 - The lightweight QuickEntryModal harness exercises the real component but not the complete weekly-planning application lifecycle. A green harness test must not be treated as proof that `useWeeklyPlanningApplication` persistence, revision, idempotency, or stale-result handling is correct.
 - Major lifecycle guarantees should be covered through the real application boundary when a test-only browser seam is available; until then, keep the harness assertion limited to component behavior.
 - In the real weekly-application harness, the AI/runtime result and external persistence boundaries may be stubbed, but the deterministic application/controller/reducer/storage/approval lifecycle under test must remain production code.
+- The full-App planner reconciliation harness observes the production planner hook unchanged and gates external repository acknowledgement/read and OCR boundaries. Runtime execution results may be stubbed, but runtime-module preflight must load the actual production module; a test-only production switch or replacement authority is not acceptable. Keep built-module MIME/reload coverage separate and intact.
 - Red tests are allowed when they express an independently supported product contract. Red tests are not evidence that production is wrong when the contract itself is ambiguous.
 
 ## Supported cross-midnight and duration behavior

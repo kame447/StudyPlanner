@@ -33,7 +33,7 @@ function Harness() {
     selectedDate: '2026-07-14',
     plans: [],
     scheduleTemplates: [],
-    plannerDataAvailability: createReadyPlannerDataAvailability(USER_ID),
+    isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(USER_ID),
     saveWeeklyApprovedPlan: vi.fn(),
   });
   return <AiPlanningView application={application} userId={USER_ID} selectedDate="2026-07-14" plans={[]} />;

@@ -10,6 +10,7 @@ import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
 import { PrimaryAppHeader } from './components/PrimaryAppHeader';
 import {
   PrimaryBottomNav,
@@ -103,6 +104,9 @@ export default function App() {
     timetableTerms,
     timetablePeriods,
     plannerDataAvailability,
+    isPlannerDataSnapshotCurrent,
+    plannerDataRecovery,
+    retryPlannerData,
     viewMode,
     selectedDate,
     monthDate,
@@ -171,10 +175,12 @@ export default function App() {
     timetableTerm: activeTimetableTerm,
     timetableTerms,
     plannerDataAvailability,
+    isPlannerDataSnapshotCurrent,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });
   const currentPath = window.location.pathname;
+  const hasPlannerDataRecovery = Boolean(user && plannerDataRecovery?.ownerId === user.id);
   const isHomeSurface = primarySurface === 'home';
   const isAiPlanningSurface = primarySurface === 'ai-planning';
   const isWorkspaceSurface = primarySurface === 'workspace';
@@ -382,14 +388,15 @@ export default function App() {
       ) : null}
 
       <main
-        className={
-          isWorkspaceSurface
-            ? isScheduleSurface
-              ? 'section-stack schedule-main'
-              : 'section-stack'
-            : 'home-main'
-        }
+        className={`${isWorkspaceSurface
+          ? isScheduleSurface ? 'section-stack schedule-main' : 'section-stack'
+          : 'home-main'}${hasPlannerDataRecovery ? ' planner-data-recovery-main' : ''}`}
       >
+        <PlannerDataRecoveryNotice
+          ownerId={user.id}
+          recovery={plannerDataRecovery}
+          onRetry={retryPlannerData}
+        />
         {isHomeSurface ? (
           <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
             <HomeScheduleView

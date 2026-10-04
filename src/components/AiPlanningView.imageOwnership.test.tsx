@@ -18,6 +18,8 @@ import { getWeeklyPlanningStableV5RuntimeSession, hydrateWeeklyPlanningStableV5R
 import { setWeeklyPlanningTraceRepositoryForTests } from '../features/weeklyPlanning/trace/weeklyPlanningTraceRepository';
 import { resetWeeklyPlanningStableV5DebugTraceForTest } from '../features/weeklyPlanning/trace/weeklyPlanningStableV5DebugTrace';
 import { clearWeeklyPlanningSessionRuntime } from '../features/weeklyPlanning/planning/weeklyPlanningSessionRuntime';
+import type { Actual, StudyMaterial } from '../types/domain';
+import { PlannerDataReadAuthority, type PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
 import type { WeeklyPlanningTurnExecutionInput } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
 const mocks = vi.hoisted(() => ({ ocr: vi.fn(), execute: vi.fn() }));
 vi.mock('../lib/planningImageAttachment', () => ({ extractPlanningImageAttachment: mocks.ocr }));
@@ -29,9 +31,15 @@ vi.mock('../features/weeklyPlanning/weeklyPlanningTurnExecutor', async () => ({
   executeWeeklyPlanningTurn: mocks.execute,
 }));
 let app: WeeklyPlanningApplication;
-function Harness({ owner = 'user-1', completion, visible = true }: { owner?: string; completion?: Promise<void>; visible?: boolean }) {
+interface HarnessProps {
+  owner?: string; completion?: Promise<void>; visible?: boolean;
+  availability?: PlannerDataAvailability; isSnapshotCurrent?: () => boolean;
+  actuals?: Actual[]; materials?: StudyMaterial[];
+}
+function Harness({ owner = 'user-1', completion, visible = true, availability, isSnapshotCurrent = () => true, actuals = [], materials = [] }: HarnessProps) {
   app = useWeeklyPlanningApplication({ userId: owner, selectedDate: '2026-07-14', plans: [], scheduleTemplates: [],
-    plannerDataAvailability: createReadyPlannerDataAvailability(owner), saveWeeklyApprovedPlan: vi.fn() });
+    actuals, studyMaterials: materials, isPlannerDataSnapshotCurrent: isSnapshotCurrent,
+    plannerDataAvailability: availability ?? createReadyPlannerDataAvailability(owner), saveWeeklyApprovedPlan: vi.fn() });
   const application = completion ? { ...app, submitTurn: async (...args: Parameters<WeeklyPlanningApplication['submitTurn']>) => {
     const result = await app.submitTurn(...args); await completion; return result;
   } } : app;
@@ -345,4 +353,67 @@ it('freezes an unreadable initial conversation and retries loading without overw
   expect(app.chat.requiresInitialization).toBe(false);
   expect(sidebar().props.activeChatId).toBe(savedId);
   expect(app.state.messages.map(message => message.content)).toContain('Keep this saved conversation');
+});
+
+
+it.each([false, true])('retains typed input and image when delayed OCR has an obsolete planner snapshot (recovered=%s)', async (recovered) => {
+  const authority = new PlannerDataReadAuthority();
+  const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+  authority.succeed(load.token, '2026-07-14T00:01:00Z');
+  const oldLease = authority.captureProjectionLease()!;
+  const oldActuals: Actual[] = [{ id: 'actual-before-read', userId: 'user-1', planId: null,
+    occurrenceDate: '2026-07-14', actualStartTime: '10:00', actualEndTime: '10:30',
+    subject: '数学', note: '', updatedAt: '2026-07-14T01:00:00Z' }];
+  const oldMaterials: StudyMaterial[] = [{ id: 'material-before-read', userId: 'user-1', name: '旧教材',
+    subjectId: 'math', subjectName: '数学', createdAt: '2026-07-14T00:00:00Z', updatedAt: '2026-07-14T00:00:00Z' }];
+  const currentActuals = [{ ...oldActuals[0], id: 'actual-after-read' }];
+  const currentMaterials = [{ ...oldMaterials[0], id: 'material-after-read' }];
+  const originalLease = () => authority.isProjectionUsable(oldLease);
+  const pending = createDeferred<{ text: string }>(); mocks.ocr.mockReturnValueOnce(pending.promise);
+  await act(async () => { renderer = create(<Harness isSnapshotCurrent={originalLease} actuals={oldActuals} materials={oldMaterials} />); });
+  await act(async () => { renderer!.root.findByType('textarea').props.onChange({ target: { value: '  入力を残す\n' } }); });
+  await attach(); await act(async () => { send().props.onClick(); });
+  expect(mocks.ocr).toHaveBeenCalledTimes(1);
+  authority.requireActualMaterialReconciliation(oldLease, '2026-07-14T00:02:00Z');
+  await act(async () => { renderer!.update(<Harness isSnapshotCurrent={originalLease} actuals={oldActuals} materials={oldMaterials}
+    availability={authority.read()} />); });
+  if (recovered) {
+    const ticket = authority.beginReconciliation(oldLease, '2026-07-14T00:03:00Z')!;
+    authority.acceptReconciliation(ticket, '2026-07-14T00:04:00Z');
+    const currentLease = authority.captureProjectionLease()!;
+    await act(async () => { renderer!.update(<Harness isSnapshotCurrent={() => authority.isProjectionUsable(currentLease)} availability={authority.read()}
+      actuals={currentActuals} materials={currentMaterials} />); });
+  }
+  await settle(pending);
+  expect(mocks.execute).not.toHaveBeenCalled();
+  expect(app.state.messages).toEqual([]);
+  expect(app.state.pendingTurn).toBeUndefined();
+  expect(renderer!.root.findByType('textarea').props.value).toBe('  入力を残す\n');
+  expect(renderer!.root.findAllByProps({ src: 'blob:synthetic' })).toHaveLength(1);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('もう一度送信してください');
+  expect(sidebar().props.disabled).toBe(false);
+  expect(send().props.disabled).toBe(!recovered);
+  if (recovered) {
+    mocks.ocr.mockResolvedValueOnce({ text: 'current image evidence' });
+    await act(async () => { send().props.onClick(); });
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute.mock.calls[0][0].actuals).toBe(currentActuals);
+    expect(mocks.execute.mock.calls[0][0].studyMaterials).toBe(currentMaterials);
+    expect(renderer!.root.findByType('textarea').props.value).toBe('');
+    expect(renderer!.root.findAllByProps({ src: 'blob:synthetic' })).toHaveLength(0);
+  }
+});
+
+it('blocks send and OCR while planner data is pending without disabling chat history or editing input', async () => {
+  await act(async () => { renderer = create(<Harness isSnapshotCurrent={() => false}
+    availability={{ ownerId: 'user-1', observedAt: '2026-07-14T00:02:00Z', lastSuccessfulAt: '2026-07-14T00:01:00Z', status: 'stale' }} />); });
+  await act(async () => { renderer!.root.findByType('textarea').props.onChange({ target: { value: '送信待ち' } }); });
+  await attach();
+  expect(send().props.disabled).toBe(true);
+  expect(renderer!.root.findByType('textarea').props.disabled).toBe(false);
+  expect(sidebar().props.disabled).toBe(false);
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.ocr).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
+  expect(renderer!.root.findByType('textarea').props.value).toBe('送信待ち');
+  expect(renderer!.root.findAllByProps({ src: 'blob:synthetic' })).toHaveLength(1);
 });

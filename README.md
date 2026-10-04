@@ -207,7 +207,7 @@ Playwright を使った Browser Regression は `.github/workflows/browser-regres
 
 週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation requirement は [`docs/domains/weekly-planning/spec/learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
 
-client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。
+client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。local planner read の鮮度・再確認・consumer lease は [Planner read projection recovery](./docs/domains/client-runtime/architecture/planner-read-projection-recovery.md) が補足します。
 
 学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
 

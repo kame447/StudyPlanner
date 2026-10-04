@@ -6,6 +6,7 @@ import { useWeeklyPlanningApplication, type WeeklyPlanningApplication } from '..
 import { WeeklyPlanningRuntimeModuleError } from '../features/weeklyPlanning/application/weeklyPlanningRuntimeModule';
 import { AI_PLANNING_MODULE_RECOVERY_KEY } from '../features/weeklyPlanning/chat/aiPlanningModuleRecovery';
 import { createDeferred, createMemoryStorageHarness } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
+import { PlannerDataReadAuthority, type PlannerDataAvailability } from '../domain/plannerDataReadAuthority';
 import { createReadyPlannerDataAvailability } from '../features/weeklyPlanning/testUtils/plannerDataAvailabilityTest';
 import { createInitialPlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
@@ -24,9 +25,10 @@ vi.mock('../features/weeklyPlanning/weeklyPlanningTurnExecutor', async () => ({
   ...await vi.importActual('../features/weeklyPlanning/weeklyPlanningTurnExecutor'), executeWeeklyPlanningTurn: mocks.execute,
 }));
 let app: WeeklyPlanningApplication;
-function Harness({ owner = 'user-1', ready = true, suspended }: { owner?: string; ready?: boolean; suspended?: Promise<void> }) {
+function Harness({ owner = 'user-1', ready = true, suspended, availability, isSnapshotCurrent = () => true }: { owner?: string; ready?: boolean; suspended?: Promise<void>; availability?: PlannerDataAvailability; isSnapshotCurrent?: () => boolean }) {
   app = useWeeklyPlanningApplication({ userId: owner, selectedDate: '2026-10-05', plans: [], scheduleTemplates: [],
-    plannerDataAvailability: ready ? createReadyPlannerDataAvailability(owner) : {status:'loading',ownerId:owner,observedAt:new Date().toISOString(),lastSuccessfulAt:null}, saveWeeklyApprovedPlan: vi.fn() });
+    isPlannerDataSnapshotCurrent: isSnapshotCurrent,
+    plannerDataAvailability: availability ?? (ready ? createReadyPlannerDataAvailability(owner) : {status:'loading',ownerId:owner,observedAt:new Date().toISOString(),lastSuccessfulAt:null}), saveWeeklyApprovedPlan: vi.fn() });
   if (suspended) throw suspended;
   return <AiPlanningView application={app} userId={owner} selectedDate="2026-10-05" plans={[]} />;
 }
@@ -292,6 +294,8 @@ it('review: aborting second preflight preserves original whitespace exactly', as
   await act(async () => { pending.resolve({}); });
   expect(mocks.execute).not.toHaveBeenCalled();
   expect(textInput().props.value).toBe('  exact input\n');
+  expect(JSON.stringify(renderer!.toJSON())).toContain('送信前の状態が変わりました');
+  expect(send().props.disabled).toBe(false);
 });
 it('review: restored starter cannot submit without its target while source rows are loading', async () => {
   const rows = [{id:'todo-known',title:'math exercises',status:'todo',dueDate:null,createdAt:new Date().toISOString()}];
@@ -389,4 +393,79 @@ it('a removed restored starter target fails before OCR instead of silently sendi
 it('keeps explicit reload available if navigation returns without replacing the document',async()=>{
   await mount();await type('draft');await failSubmission();await act(async()=>{button('入力を一時保存して画面を更新').props.onClick()});
   expect(mocks.reload).toHaveBeenCalledTimes(1);expect(textInput().props.disabled).toBe(false);expect(button('入力を一時保存して画面を更新').props.disabled).toBe(false);
+});
+
+
+it.each([false, true])('preflight data revocation across code loading retains exact composer without OCR (recovered=%s)', async (recovered) => {
+  const authority = new PlannerDataReadAuthority();
+  const load = authority.begin('user-1', '2026-10-05T00:00:00Z');
+  authority.succeed(load.token, '2026-10-05T00:01:00Z');
+  const lease = authority.captureProjectionLease()!;
+  const isSnapshotCurrent = () => authority.isProjectionUsable(lease);
+  await act(async () => { renderer = create(<Harness availability={authority.read()} isSnapshotCurrent={isSnapshotCurrent} />); });
+  await type('  exact before OCR\n'); const file = await attach();
+  const pending = createDeferred<object>(); mocks.load.mockReturnValue(pending.promise);
+  await act(async () => { send().props.onClick(); });
+  authority.requireActualMaterialReconciliation(lease, '2026-10-05T00:02:00Z');
+  await act(async () => { renderer!.update(<Harness availability={authority.read()} isSnapshotCurrent={isSnapshotCurrent} />); });
+  if (recovered) {
+    const ticket = authority.beginReconciliation(lease, '2026-10-05T00:03:00Z')!;
+    authority.acceptReconciliation(ticket, '2026-10-05T00:04:00Z');
+    const currentLease = authority.captureProjectionLease()!;
+    await act(async () => { renderer!.update(<Harness availability={authority.read()}
+      isSnapshotCurrent={() => authority.isProjectionUsable(currentLease)} />); });
+  }
+  await act(async () => { pending.resolve({}); });
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.ocr).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
+  expect(app.state.messages).toHaveLength(0); expect(app.state.pendingTurn).toBeUndefined();
+  expect(textInput().props.value).toBe('  exact before OCR\n');
+  expect(renderer!.root.findByProps({ 'aria-label': `添付画像 ${file.name}` })).toBeDefined();
+  expect(JSON.stringify(renderer!.toJSON())).toContain('学習データが更新されました');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('機能の読み込みを再試行');
+  expect(textInput().props.disabled).toBe(false); expect(send().props.disabled).toBe(!recovered);
+  expect(mocks.reload).not.toHaveBeenCalled();
+  if (recovered) {
+    await act(async () => { send().props.onClick(); });
+    expect(mocks.ocr).toHaveBeenCalledTimes(1); expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(textInput().props.value).toBe('');
+  }
+});
+
+it.each(['before-load', 'during-load'] as const)('module retry remains recoverable after data revocation %s without replaying the draft', async (phase) => {
+  const authority = new PlannerDataReadAuthority();
+  const load = authority.begin('user-1', '2026-10-05T00:00:00Z');
+  authority.succeed(load.token, '2026-10-05T00:01:00Z');
+  const lease = authority.captureProjectionLease()!;
+  const isSnapshotCurrent = () => authority.isProjectionUsable(lease);
+  await act(async () => { renderer = create(<Harness availability={authority.read()} isSnapshotCurrent={isSnapshotCurrent} />); });
+  await type('  exact retry input\n'); const file = await attach(); await failSubmission();
+  const pending = createDeferred<object>(); mocks.load.mockReturnValue(pending.promise);
+  if (phase === 'before-load') authority.requireActualMaterialReconciliation(lease, '2026-10-05T00:02:00Z');
+  await act(async () => { button('機能の読み込みを再試行').props.onClick(); });
+  if (phase === 'during-load') authority.requireActualMaterialReconciliation(lease, '2026-10-05T00:02:00Z');
+  await act(async () => { renderer!.update(<Harness availability={authority.read()} isSnapshotCurrent={isSnapshotCurrent} />); });
+  await act(async () => { pending.resolve({}); });
+  expect(mocks.load).toHaveBeenCalledTimes(phase === 'before-load' ? 1 : 2);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('学習データが更新されました。確認が終わったら「機能の読み込みを再試行」を押してから、もう一度送信してください。入力内容と画像は保持しています。');
+  expect(button('機能の読み込みを再試行').props.disabled).toBe(false);
+  expect(textInput().props.value).toBe('  exact retry input\n');
+  expect(renderer!.root.findByProps({ 'aria-label': `添付画像 ${file.name}` })).toBeDefined();
+  expect(textInput().props.disabled).toBe(false); expect(send().props.disabled).toBe(true);
+  expect(mocks.ocr).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
+  expect(app.state.messages).toHaveLength(0); expect(app.state.pendingTurn).toBeUndefined();
+  const ticket = authority.beginReconciliation(lease, '2026-10-05T00:03:00Z')!;
+  authority.acceptReconciliation(ticket, '2026-10-05T00:04:00Z');
+  const currentLease = authority.captureProjectionLease()!;
+  await act(async () => { renderer!.update(<Harness availability={authority.read()}
+    isSnapshotCurrent={() => authority.isProjectionUsable(currentLease)} />); });
+  expect(send().props.disabled).toBe(true); // Still needs a successful code-only retry.
+  await act(async () => { button('機能の読み込みを再試行').props.onClick(); });
+  expect(send().props.disabled).toBe(false);
+  expect(textInput().props.value).toBe('  exact retry input\n');
+  expect(renderer!.root.findByProps({ 'aria-label': `添付画像 ${file.name}` })).toBeDefined();
+  expect(mocks.ocr).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
+  expect(mocks.reload).not.toHaveBeenCalled();
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.ocr).toHaveBeenCalledTimes(1); expect(mocks.execute).toHaveBeenCalledTimes(1);
 });

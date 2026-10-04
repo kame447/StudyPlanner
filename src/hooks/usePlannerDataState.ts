@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
 import { removeByKey, upsertByKey } from '../lib/collections';
@@ -17,8 +18,8 @@ import {
 } from '../domain/timetableDataNormalization';
 import {
   PlannerDataReadAuthority,
-  createInitialPlannerDataAvailability,
   type PlannerDataAvailability,
+  type PlannerDataRecovery,
 } from '../domain/plannerDataReadAuthority';
 import {
   normalizePlannerTimetableData,
@@ -175,6 +176,9 @@ export interface UsePlannerDataStateResult {
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
   plannerDataAvailability: PlannerDataAvailability;
+  plannerDataRecovery: PlannerDataRecovery | null;
+  retryPlannerData: () => Promise<void>;
+  isPlannerDataSnapshotCurrent: () => boolean;
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -260,8 +264,66 @@ export function usePlannerDataState({
     plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
   }
   const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;
-  const [plannerDataAvailability, setPlannerDataAvailability] =
-    useState<PlannerDataAvailability>(() => createInitialPlannerDataAvailability());
+  const [plannerDataReadSnapshot, setPlannerDataReadSnapshot] = useState(() => plannerDataReadAuthority.readSnapshot());
+  const { availability: plannerDataAvailability, recovery: plannerDataRecovery } = plannerDataReadSnapshot;
+  const publishReadSnapshot = useCallback(() => {
+    setPlannerDataReadSnapshot(plannerDataReadAuthority.readSnapshot());
+  }, [plannerDataReadAuthority]);
+  const reconciliationRef = useRef<PlannerMutationReconciliation<[Actual[], StudyMaterial[]]> | null>(null);
+  if (!reconciliationRef.current) reconciliationRef.current = new PlannerMutationReconciliation(plannerDataReadAuthority);
+  const reconciliation = reconciliationRef.current;
+  const mounted = useRef(false);
+  // Only a committed owner/scope may change the coordinator's callbacks. A
+  // suspended render for another owner must not revoke the visible owner's read.
+  useLayoutEffect(() => {
+    reconciliation.configure({
+      isCurrent: ownerId => mounted.current && userId === ownerId && mutationScope.isCurrent(),
+      read: async ownerId => {
+        const [nextActuals, nextMaterials] = await Promise.all([
+          plannerRepository.getActuals(ownerId),
+          plannerRepository.getStudyMaterials(ownerId),
+        ]);
+        // Prepare the entire replacement before either setter. Persisted legacy
+        // rows can fail sorting; that is a retryable read/preparation failure.
+        return [nextActuals, sortStudyMaterials(nextMaterials)];
+      },
+      publish: ([nextActuals, nextMaterials]) => {
+        rawSetActuals(nextActuals);
+        rawSetStudyMaterials(nextMaterials);
+      },
+      changed: publishReadSnapshot,
+    });
+  });
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      plannerDataReadAuthority.reset();
+      reconciliation.reset(null);
+    };
+  }, [plannerDataReadAuthority, reconciliation]);
+  useLayoutEffect(() => {
+    const scope = plannerDataReadAuthority.captureOwnerScope();
+    if (scope && scope.ownerId !== userId) {
+      plannerDataReadAuthority.reset();
+      publishReadSnapshot();
+    }
+    // The initial load can begin before the auth-state render. Adopt that same
+    // owner without resetting activity again when its render catches up.
+    reconciliation.activateOwner(userId);
+    reconciliation.pump();
+  }, [userId, mutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation]);
+  function trackMutation<Args extends unknown[], Result>(operation: (...args: Args) => Promise<Result>) {
+    return mutationScope.bindMutation(async (...args: Args) => {
+      const ticket = reconciliation.beginMutation();
+      try { return await operation(...args); }
+      finally { reconciliation.settleMutation(ticket); }
+    });
+  }
+  const projectionLease = plannerDataReadSnapshot.projectionLease;
+  const isPlannerDataSnapshotCurrent = useCallback(() => mutationScope.isCurrent() && projectionLease !== null
+    && projectionLease.ownerId === userId && plannerDataReadAuthority.isProjectionUsable(projectionLease),
+  [mutationScope, projectionLease, userId, plannerDataReadAuthority]);
   const clearPlannerDataCollections = useCallback(() => {
     rawSetPlans([]);
     rawSetActuals([]);
@@ -330,8 +392,11 @@ export function usePlannerDataState({
   const isRecurringPlanEdit = isScopedRecurringEditCandidate(editingPlan);
 
   const loadPlannerData = useCallback(async (nextUserId: string) => {
+    if (!mounted.current) return;
+    reconciliation.activateOwner(nextUserId);
+    const fullReadActivity = reconciliation.captureActivity();
     const loadStart = plannerDataReadAuthority.begin(nextUserId, new Date().toISOString());
-    setPlannerDataAvailability(loadStart.availability);
+    publishReadSnapshot();
     if (loadStart.ownerChanged) {
       invalidateMutationScope();
       clearPlannerDataCollections();
@@ -413,10 +478,9 @@ export function usePlannerDataState({
       const readyAvailability = plannerDataReadAuthority.succeed(
         loadStart.token,
         new Date().toISOString(),
+        reconciliation.isQuiescentSince(fullReadActivity),
       );
-      if (readyAvailability) {
-        setPlannerDataAvailability(readyAvailability);
-      }
+      if (readyAvailability) publishReadSnapshot();
     } catch (error) {
       const failedAvailability = plannerDataReadAuthority.fail(
         loadStart.token,
@@ -425,20 +489,36 @@ export function usePlannerDataState({
       if (!failedAvailability) {
         return;
       }
-      setPlannerDataAvailability(failedAvailability);
+      publishReadSnapshot();
       throw error;
+    } finally {
+      reconciliation.pump();
     }
-  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, showOwnerNotice]);
+  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation, showOwnerNotice]);
 
   const resetPlannerData = useCallback(() => {
     invalidateMutationScope();
-    setPlannerDataAvailability(plannerDataReadAuthority.reset());
+    plannerDataReadAuthority.reset();
+    reconciliation.reset();
+    publishReadSnapshot();
     clearPlannerDataCollections();
     rawSetEditorDraft(null);
     rawSetEditingPlanId(null);
     rawSetEditingPlan(null);
     rawSetPendingRecurringPlanAction(null);
-  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority]);
+  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation]);
+
+  const retryPlannerData = async () => {
+    if (!mutationScope.isCurrent() || !projectionLease || projectionLease.ownerId !== userId) return;
+    const action = plannerDataReadAuthority.retryAction(projectionLease);
+    if (action === 'full') {
+      // Full load classifies its own failure; a click must not reject unhandled.
+      try { await loadPlannerData(projectionLease.ownerId); } catch { /* Persistent recovery owns the error. */ }
+    } else if (action === 'projection' && plannerDataReadAuthority.retryReconciliation(projectionLease, new Date().toISOString())) {
+      publishReadSnapshot();
+      reconciliation.pump();
+    }
+  };
 
   function openCreatePlan() {
     if (!userId) {
@@ -665,7 +745,7 @@ export function usePlannerDataState({
       placement: 'bottom',
       onAction: async () => {
         try {
-          await onUndo();
+          await trackMutation(onUndo)();
           showNotice('元に戻しました。', 'success');
         } catch (error) {
           showNotice(resolveErrorMessage(error, '復元できませんでした。'), 'error');
@@ -738,6 +818,7 @@ export function usePlannerDataState({
   }
 
   async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
     const existingActual = targetActualId
@@ -760,25 +841,29 @@ export function usePlannerDataState({
         actual: nextActual,
         materials: progress.changedMaterials,
       });
-      setActuals((current) =>
-        upsertActualByOccurrenceKey(
-          current,
-          savedActual,
-          targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
-        ),
-      );
-      actualState.commit(actualOperation);
-      if (progress.changedMaterials.length > 0) {
-        setStudyMaterials((current) =>
-          sortStudyMaterials(
-            progress.changedMaterials.reduce(
-              (records, nextMaterial) =>
-                upsertByKey(records, nextMaterial, (material) => material.id),
-              current,
-            ),
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setActuals((current) =>
+          upsertActualByOccurrenceKey(
+            current,
+            savedActual,
+            targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
           ),
         );
+        if (progress.changedMaterials.length > 0) {
+          setStudyMaterials((current) =>
+            sortStudyMaterials(
+              progress.changedMaterials.reduce(
+                (records, nextMaterial) =>
+                  upsertByKey(records, nextMaterial, (material) => material.id),
+                current,
+              ),
+            ),
+          );
+        }
+      } else {
+        reconciliation.request(acknowledgedProjection);
       }
+      actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
       actualState.reject(actualOperation);
@@ -788,6 +873,7 @@ export function usePlannerDataState({
   }
 
   async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
     if (!draft.title.trim()) {
       showNotice('記録のタイトルを入力してください。', 'error');
@@ -833,25 +919,29 @@ export function usePlannerDataState({
         actual: nextActual,
         materials: progress.changedMaterials,
       });
-      setActuals((current) =>
-        upsertByKey(
-          current.filter((actual) => actual.id !== nextActual.id),
-          savedActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
-      actualState.commit(actualOperation);
-      if (progress.changedMaterials.length > 0) {
-        setStudyMaterials((current) =>
-          sortStudyMaterials(
-            progress.changedMaterials.reduce(
-              (records, nextMaterial) =>
-                upsertByKey(records, nextMaterial, (material) => material.id),
-              current,
-            ),
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setActuals((current) =>
+          upsertByKey(
+            current.filter((actual) => actual.id !== nextActual.id),
+            savedActual,
+            (item) => getActualOccurrenceKey(item),
           ),
         );
+        if (progress.changedMaterials.length > 0) {
+          setStudyMaterials((current) =>
+            sortStudyMaterials(
+              progress.changedMaterials.reduce(
+                (records, nextMaterial) =>
+                  upsertByKey(records, nextMaterial, (material) => material.id),
+                current,
+              ),
+            ),
+          );
+        }
+      } else {
+        reconciliation.request(acknowledgedProjection);
       }
+      actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
       actualState.reject(actualOperation);
@@ -861,6 +951,7 @@ export function usePlannerDataState({
   }
 
   async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
@@ -903,13 +994,17 @@ export function usePlannerDataState({
 
     try {
       const savedActual = await plannerRepository.upsertActual(nextActual);
-      setActuals((current) =>
-        upsertByKey(
-          current.filter((item) => item.id !== actual.id),
-          savedActual,
-          (item) => getActualOccurrenceKey(item),
-        ),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setActuals((current) =>
+          upsertByKey(
+            current.filter((item) => item.id !== actual.id),
+            savedActual,
+            (item) => getActualOccurrenceKey(item),
+          ),
+        );
+      } else {
+        reconciliation.request(acknowledgedProjection);
+      }
       actualState.commit(actualOperation);
       showNotice('予定に紐づけました。', 'success');
     } catch (error) {
@@ -1691,6 +1786,9 @@ export function usePlannerDataState({
     timetableTerms,
     timetablePeriods,
     plannerDataAvailability,
+    plannerDataRecovery,
+    retryPlannerData,
+    isPlannerDataSnapshotCurrent,
     viewMode,
     selectedDate,
     monthDate,
@@ -1711,32 +1809,32 @@ export function usePlannerDataState({
     openCreatePlan,
     openEditPlan,
     closePlanEditor,
-    savePlanDraft: mutationScope.bindMutation(savePlanDraft),
-    movePlanOccurrence: mutationScope.bindMutation(movePlanOccurrence),
-    deletePlan: mutationScope.bindMutation(deletePlan),
-    confirmRecurringPlanScope: mutationScope.bindMutation(confirmRecurringPlanScope),
+    savePlanDraft: trackMutation(savePlanDraft),
+    movePlanOccurrence: trackMutation(movePlanOccurrence),
+    deletePlan: trackMutation(deletePlan),
+    confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,
-    saveActual: mutationScope.bindMutation(saveActual),
-    saveStandaloneActual: mutationScope.bindMutation(saveStandaloneActual),
-    linkStandaloneActualToPlan: mutationScope.bindMutation(linkStandaloneActualToPlan),
-    deleteActual: mutationScope.bindMutation(deleteActual),
-    saveDayNote: mutationScope.bindMutation(saveDayNote),
-    saveMonthEvent: mutationScope.bindMutation(saveMonthEvent),
-    deleteMonthEvent: mutationScope.bindMutation(deleteMonthEvent),
-    saveTodo: mutationScope.bindMutation(saveTodo),
-    scheduleTodoAsPlan: mutationScope.bindMutation(scheduleTodoAsPlan),
-    deleteTodo: mutationScope.bindMutation(deleteTodo),
-    saveStudySubject: mutationScope.bindMutation(saveStudySubject),
-    deleteStudySubject: mutationScope.bindMutation(deleteStudySubject),
-    saveStudyMaterial: mutationScope.bindMutation(saveStudyMaterial),
-    deleteStudyMaterial: mutationScope.bindMutation(deleteStudyMaterial),
-    saveScheduleTemplate: mutationScope.bindMutation(saveScheduleTemplate),
-    deleteScheduleTemplate: mutationScope.bindMutation(deleteScheduleTemplate),
-    activateTimetableTerm: mutationScope.bindMutation(activateTimetableTerm),
-    deleteTimetableTerm: mutationScope.bindMutation(deleteTimetableTerm),
-    clearTimetableTermData: mutationScope.bindMutation(clearTimetableTermData),
-    saveTimetablePeriod: mutationScope.bindMutation(saveTimetablePeriod),
-    deleteTimetablePeriod: mutationScope.bindMutation(deleteTimetablePeriod),
+    saveActual: trackMutation(saveActual),
+    saveStandaloneActual: trackMutation(saveStandaloneActual),
+    linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
+    deleteActual: trackMutation(deleteActual),
+    saveDayNote: trackMutation(saveDayNote),
+    saveMonthEvent: trackMutation(saveMonthEvent),
+    deleteMonthEvent: trackMutation(deleteMonthEvent),
+    saveTodo: trackMutation(saveTodo),
+    scheduleTodoAsPlan: trackMutation(scheduleTodoAsPlan),
+    deleteTodo: trackMutation(deleteTodo),
+    saveStudySubject: trackMutation(saveStudySubject),
+    deleteStudySubject: trackMutation(deleteStudySubject),
+    saveStudyMaterial: trackMutation(saveStudyMaterial),
+    deleteStudyMaterial: trackMutation(deleteStudyMaterial),
+    saveScheduleTemplate: trackMutation(saveScheduleTemplate),
+    deleteScheduleTemplate: trackMutation(deleteScheduleTemplate),
+    activateTimetableTerm: trackMutation(activateTimetableTerm),
+    deleteTimetableTerm: trackMutation(deleteTimetableTerm),
+    clearTimetableTermData: trackMutation(clearTimetableTermData),
+    saveTimetablePeriod: trackMutation(saveTimetablePeriod),
+    deleteTimetablePeriod: trackMutation(deleteTimetablePeriod),
     selectDate,
     changeMonth,
     openWeek,

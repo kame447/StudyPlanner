@@ -1,8 +1,10 @@
-// This fixture exercises completed code loading; module failures have a separate regression.
+// Hold code loading independently of planner-data authority and turn execution.
 vi.mock('./weeklyPlanningRuntimeModule', async () => ({
   ...await vi.importActual('./weeklyPlanningRuntimeModule'),
-  loadWeeklyPlanningRuntimeModule: vi.fn(async () => ({})),
+  loadWeeklyPlanningRuntimeModule: loadRuntimeMock,
 }));
+import { PlannerDataReadAuthority } from '../../../domain/plannerDataReadAuthority';
+import * as turnApplication from './weeklyPlanningTurnApplication';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import {
   createRef,
@@ -13,7 +15,7 @@ import {
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
-import type { Plan, PlanDraft } from '../../../types/domain';
+import type { Actual, Plan, PlanDraft, StudyMaterial } from '../../../types/domain';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
 import {
@@ -45,6 +47,7 @@ import {
 } from './useWeeklyPlanningApplication';
 
 const executeWeeklyPlanningTurnMock = vi.hoisted(() => vi.fn());
+const loadRuntimeMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../weeklyPlanningTurnExecutor', async () => {
   const actual = await vi.importActual<typeof import('../weeklyPlanningTurnExecutor')>(
@@ -84,6 +87,7 @@ async function renderApplicationHarness(
   const ref = createRef<WeeklyPlanningApplication>();
   let currentProps: UseWeeklyPlanningApplicationInput = {
     userId: 'user-1',
+    isPlannerDataSnapshotCurrent: () => true,
     selectedDate: '2026-07-14',
     plans: [],
     scheduleTemplates: [],
@@ -151,6 +155,7 @@ describe('useWeeklyPlanningApplication', () => {
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     executeWeeklyPlanningTurnMock.mockReset();
+    loadRuntimeMock.mockReset().mockResolvedValue({});
     clearWeeklyPlanningSessionRuntime();
   });
 
@@ -158,6 +163,183 @@ describe('useWeeklyPlanningApplication', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     clearWeeklyPlanningSessionRuntime();
     restoreWindow();
+  });
+
+  it.each([false, true])('rejects retained snapshot admission after pending (recovered=%s)', async (recovered) => {
+    const authority = new PlannerDataReadAuthority();
+    const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+    authority.succeed(load.token, '2026-07-14T00:01:00Z');
+    const oldLease = authority.captureProjectionLease()!;
+    const oldActuals: Actual[] = [{ id: 'actual-old', userId: 'user-1', planId: null,
+      occurrenceDate: '2026-07-14', actualStartTime: '10:00', actualEndTime: '10:30',
+      subject: '数学', note: '', updatedAt: '2026-07-14T01:00:00Z' }];
+    const oldMaterials: StudyMaterial[] = [{ id: 'material-old', userId: 'user-1', name: '旧教材',
+      subjectId: 'math', subjectName: '数学', createdAt: '2026-07-14T00:00:00Z', updatedAt: '2026-07-14T00:00:00Z' }];
+    const newActuals = [{ ...oldActuals[0], id: 'actual-current' }];
+    const newMaterials = [{ ...oldMaterials[0], id: 'material-current' }];
+    const admission = vi.spyOn(turnApplication, 'submitWeeklyPlanningApplicationTurn');
+    executeWeeklyPlanningTurnMock.mockImplementation(async (input: WeeklyPlanningTurnExecutionInput) => turnResult(input.userText));
+    const harness = await renderApplicationHarness({ actuals: oldActuals, studyMaterials: oldMaterials,
+      plannerDataAvailability: authority.read(),
+      isPlannerDataSnapshotCurrent: () => authority.isProjectionUsable(oldLease) });
+    const retainedSubmit = harness.ref.current!.submitTurn;
+    expect(harness.ref.current!.plannerDataReady).toBe(true);
+    authority.requireActualMaterialReconciliation(oldLease, '2026-07-14T00:02:00Z');
+    await harness.update({ plannerDataAvailability: authority.read() });
+    expect(harness.ref.current!.plannerDataReady).toBe(false);
+    if (recovered) {
+      const ticket = authority.beginReconciliation(oldLease, '2026-07-14T00:03:00Z')!;
+      authority.acceptReconciliation(ticket, '2026-07-14T00:04:00Z');
+      const currentLease = authority.captureProjectionLease()!;
+      await harness.update({ actuals: newActuals, studyMaterials: newMaterials,
+        plannerDataAvailability: authority.read(),
+        isPlannerDataSnapshotCurrent: () => authority.isProjectionUsable(currentLease) });
+      expect(harness.ref.current!.plannerDataReady).toBe(true);
+    }
+    const before = harness.ref.current!.state;
+    const savedBefore = new Map(storageHarness.values);
+    await act(async () => {
+      expect(await retainedSubmit('画像の予定')).toEqual({ accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed' });
+    });
+    expect(admission).not.toHaveBeenCalled();
+    expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    expect(harness.ref.current!.state).toBe(before);
+    expect(storageHarness.values).toEqual(savedBefore);
+    if (recovered) {
+      await act(async () => { expect((await harness.ref.current!.submitTurn('現在の予定')).accepted).toBe(true); });
+      expect(admission).toHaveBeenCalledTimes(1);
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(1);
+      expect(executeWeeklyPlanningTurnMock.mock.calls[0][0].actuals).toBe(newActuals);
+      expect(executeWeeklyPlanningTurnMock.mock.calls[0][0].studyMaterials).toBe(newMaterials);
+    }
+    admission.mockRestore();
+    await harness.unmount();
+  });
+
+  it('rejects a revoked bound lease before code loading without requiring a render', async () => {
+    const authority = new PlannerDataReadAuthority();
+    const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+    authority.succeed(load.token, '2026-07-14T00:01:00Z');
+    const lease = authority.captureProjectionLease()!;
+    const harness = await renderApplicationHarness({ plannerDataAvailability: authority.read(),
+      isPlannerDataSnapshotCurrent: () => authority.isProjectionUsable(lease) });
+    const retained = harness.ref.current!;
+    authority.requireActualMaterialReconciliation(lease, '2026-07-14T00:02:00Z');
+    await expect(retained.prepareTurn()).resolves.toEqual({ ready: false, reason: 'planner-data-changed' });
+    await expect(retained.submitTurn('old arrays')).resolves.toEqual({ accepted: false,
+      draftCandidates: [], rejectionReason: 'planner-data-changed' });
+    expect(loadRuntimeMock).not.toHaveBeenCalled();
+    expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    expect(harness.ref.current!.state.messages).toEqual([]);
+    await harness.unmount();
+  });
+
+  it.each([false, true])('revokes preparation and admission across a runtime await even when latest data is ready (recovered=%s)', async (recovered) => {
+    const authority = new PlannerDataReadAuthority();
+    const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+    authority.succeed(load.token, '2026-07-14T00:01:00Z');
+    const lease = authority.captureProjectionLease()!;
+    const harness = await renderApplicationHarness({ plannerDataAvailability: authority.read(),
+      isPlannerDataSnapshotCurrent: () => authority.isProjectionUsable(lease) });
+    const retained = harness.ref.current!;
+    const pending = createDeferred<object>();
+    loadRuntimeMock.mockReturnValue(pending.promise);
+    const preparation = retained.prepareTurn();
+    const submission = retained.submitTurn('old arrays');
+    expect(loadRuntimeMock).toHaveBeenCalledTimes(2);
+    authority.requireActualMaterialReconciliation(lease, '2026-07-14T00:02:00Z');
+    // No pending render is needed to revoke the original callbacks.
+    if (recovered) {
+      const ticket = authority.beginReconciliation(lease, '2026-07-14T00:03:00Z')!;
+      authority.acceptReconciliation(ticket, '2026-07-14T00:04:00Z');
+      const currentLease = authority.captureProjectionLease()!;
+      await harness.update({ plannerDataAvailability: authority.read(),
+        isPlannerDataSnapshotCurrent: () => authority.isProjectionUsable(currentLease) });
+      expect(harness.ref.current!.plannerDataReady).toBe(true);
+    }
+    const before = harness.ref.current!.state;
+    const savedBefore = new Map(storageHarness.values);
+    await act(async () => {
+      pending.resolve({});
+      await expect(preparation).resolves.toEqual({ ready: false, reason: 'planner-data-changed' });
+      await expect(submission).resolves.toEqual({ accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed' });
+    });
+    expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    expect(harness.ref.current!.state).toBe(before);
+    expect(storageHarness.values).toEqual(savedBefore);
+    if (recovered) await expect(harness.ref.current!.prepareTurn()).resolves.toEqual({ ready: true });
+    await harness.unmount();
+  });
+
+  it('rechecks the bound lease at admission after successful preparation has resolved', async () => {
+    const authority = new PlannerDataReadAuthority();
+    const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+    authority.succeed(load.token, '2026-07-14T00:01:00Z');
+    const lease = authority.captureProjectionLease()!;
+    let revokeAfterCheck = false;
+    const isPlannerDataSnapshotCurrent = () => {
+      const current = authority.isProjectionUsable(lease);
+      if (revokeAfterCheck && current) {
+        revokeAfterCheck = false;
+        // The preflight check succeeds, then its caller resumes against a revoked lease.
+        queueMicrotask(() => authority.requireActualMaterialReconciliation(lease, '2026-07-14T00:02:00Z'));
+      }
+      return current;
+    };
+    const harness = await renderApplicationHarness({ plannerDataAvailability: authority.read(), isPlannerDataSnapshotCurrent });
+    loadRuntimeMock.mockImplementation(async () => { revokeAfterCheck = true; return {}; });
+    await act(async () => {
+      await expect(harness.ref.current!.submitTurn('revoked before admission')).resolves.toEqual({
+        accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed',
+      });
+    });
+    expect(loadRuntimeMock).toHaveBeenCalledTimes(1);
+    expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    expect(harness.ref.current!.state.messages).toEqual([]);
+    await harness.unmount();
+  });
+
+  it('keeps committed preflight valid across a harmless rerender with the same request inputs and bound lease', async () => {
+    const authority = new PlannerDataReadAuthority();
+    const load = authority.begin('user-1', '2026-07-14T00:00:00Z');
+    authority.succeed(load.token, '2026-07-14T00:01:00Z');
+    const lease = authority.captureProjectionLease()!;
+    const isPlannerDataSnapshotCurrent = () => authority.isProjectionUsable(lease);
+    const harness = await renderApplicationHarness({ plannerDataAvailability: authority.read(), isPlannerDataSnapshotCurrent });
+    const retained = harness.ref.current!;
+    const pending = createDeferred<object>();
+    loadRuntimeMock.mockReturnValue(pending.promise);
+    executeWeeklyPlanningTurnMock.mockImplementation(async (input: WeeklyPlanningTurnExecutionInput) => turnResult(input.userText));
+    const preparation = retained.prepareTurn();
+    const submission = retained.submitTurn('same committed arrays');
+    await harness.update({ saveWeeklyApprovedPlan: async (draft) => persistedPlan(draft, 'new-save-handler') });
+    expect(harness.ref.current).not.toBe(retained);
+    await act(async () => {
+      pending.resolve({});
+      await expect(preparation).resolves.toEqual({ ready: true });
+      expect((await submission).accepted).toBe(true);
+    });
+    expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(1);
+    await harness.unmount();
+  });
+
+  it('keeps the committed request identity fence even when a retained lease remains usable', async () => {
+    const harness = await renderApplicationHarness();
+    const retained = harness.ref.current!;
+    const pending = createDeferred<object>();
+    loadRuntimeMock.mockReturnValue(pending.promise);
+    const preparation = retained.prepareTurn();
+    const submission = retained.submitTurn('old request context');
+    await harness.update({ plans: [] });
+    await act(async () => {
+      pending.resolve({});
+      await expect(preparation).resolves.toEqual({ ready: false, reason: 'request-changed' });
+      await expect(submission).resolves.toEqual({ accepted: false, draftCandidates: [] });
+    });
+    expect(harness.ref.current!.plannerDataReady).toBe(true);
+    expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    expect(harness.ref.current!.state.messages).toEqual([]);
+    await harness.unmount();
   });
 
   it('rejects a second submission while the first turn is active', async () => {

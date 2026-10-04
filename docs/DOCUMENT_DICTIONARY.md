@@ -1,7 +1,7 @@
 # StudyPlanner Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-09-10
+Updated: 2026-10-05
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -113,6 +113,8 @@ current parent ownerはIssue #294。`src/features/userPlanningContext/`はIssue 
 入口: `docs/domains/client-runtime/README.md`
 
 client-first executionの正仕様は `spec/client-first-execution-requirements.md`。作業状態はIssue #164を正とし、同じrequirements本文をtask文書へ複製しない。
+
+local planner read projectionの鮮度、再確認、consumer leaseの補助architectureは `architecture/planner-read-projection-recovery.md` が所有する。週間計画側はこのleaseをturn admissionへ接続し、client-runtimeのread/retry契約を重複定義しない。
 
 ### Reporting
 
