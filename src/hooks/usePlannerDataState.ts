@@ -997,11 +997,9 @@ export function usePlannerDataState({
         sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
       );
 
-      if (!currentMonthEvent) {
-        setSelectedDate(nextMonthEvent.date);
-      }
-
-      setMonthDate(startOfMonth(nextMonthEvent.date));
+      selectDate(currentMonthEvent && isSameMonth(selectedDate, nextMonthEvent.date)
+        ? selectedDate
+        : nextMonthEvent.date);
       await plannerRepository.upsertMonthEvent(nextMonthEvent);
       showNotice(
         currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',

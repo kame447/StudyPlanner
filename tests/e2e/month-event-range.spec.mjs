@@ -194,6 +194,61 @@ test.describe('multi-day month events', () => {
     expectThreeDayRangeGeometry(await readRangeGeometry(rangeBar));
   });
 
+  test('editing an event into another month keeps selection, keyboard navigation and views aligned', async ({ page }) => {
+    const dates = currentMonthDays();
+    const [year, month] = dates.startDate.split('-').map(Number);
+    const nextMonth = new Date(year, month, dates.startDay);
+    const targetDate = formatIsoDate(nextMonth.getFullYear(), nextMonth.getMonth(), dates.startDay);
+    const title = '別月へ移動する予定';
+    const now = new Date().toISOString();
+    await seedRangeTestState(page, [{
+      id: 'moved-month-event', userId: 'month-range-user', date: dates.startDate, endDate: dates.startDate,
+      title, startTime: '09:00', endTime: '10:00', repeat: 'none', repeatUntil: null,
+      excludedDates: [], url: '', memo: '', checklist: [], locationTags: [], createdAt: now, updatedAt: now,
+    }]);
+    await openSchedule(page);
+    const grid = page.getByRole('grid', { name: '月間カレンダー' });
+    await cellForDay(grid, page, dates.startDay).click();
+    await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+    const editorOverlay = page.locator('.month-event-modal-overlay');
+    const editor = editorOverlay.locator('.month-event-modal');
+    await expect(editor.getByLabel('タイトル')).toHaveValue(title);
+    await editor.getByRole('button', { name: '開始日' }).click();
+    const picker = editorOverlay.locator(':scope > .date-picker-overlay');
+    await picker.getByRole('button', { name: '翌月', exact: true }).click();
+    await picker.locator('.mini-calendar-day:not(.is-outside)')
+      .filter({ hasText: new RegExp(`^${dates.startDay}$`) }).click();
+    await expect(picker).toHaveCount(0);
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editorOverlay).toHaveCount(0);
+    await expect.poll(() => readCanonicalMonthEventRange(page, title))
+      .toEqual({ date: targetDate, endDate: targetDate });
+
+    const heading = page.locator('.schedule-period-picker-trigger');
+    const targetMonthLabel = `${nextMonth.getFullYear()}年 ${nextMonth.getMonth() + 1}月`;
+    await expect(heading).toContainText(targetMonthLabel.replace('年 ', '年'));
+    const selected = grid.locator('[role="gridcell"][aria-selected="true"]');
+    await expect(selected).toHaveCount(1);
+    await expect(grid.locator('[role="gridcell"][tabindex="0"]')).toHaveCount(1);
+    await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
+    await selected.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay + 1));
+    await expect(selected).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
+    await expect(selected).toBeFocused();
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    await expect(heading).toContainText(`${targetMonthLabel}${dates.startDay}日`);
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '週', exact: true }).click();
+    await expect(heading).toContainText(targetMonthLabel);
+    await expect(page.locator('.schedule-week-view').getByText(title, { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '月', exact: true }).click();
+    await expect(selected).toHaveCount(1);
+    await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
+  });
+
   test('repeated multi-day occurrences stay continuous instead of falling back to daily pills', async ({ page }, testInfo) => {
     const dates = currentMonthDays();
     const now = new Date().toISOString();
