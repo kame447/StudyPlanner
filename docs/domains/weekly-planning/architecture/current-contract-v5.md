@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-10-04
+Updated: 2026-10-05
 
 References:
 - [Domain index](../README.md)
@@ -252,6 +252,14 @@ A completed preview edit must update its restorable chat snapshot before control
 The direct Stable V5 session-save API rejects an invalid graph without overwriting the existing checkpoint bytes. This is not an application-wide promise to retain an old checkpoint: `saveOwnedWeeklyPlanningState` deliberately clears that Stable checkpoint and persists compatibility state when the direct save returns false. Valid empty-state removal and quota-compaction policies also remain separate. Keep tests and reports explicit about which storage boundary they establish.
 
 When consultation is implemented, advice/context/retrieval strings remain untrusted data. If prompt, request/response, trace or persisted session fields change, the feature-local `src/features/weeklyPlanning/AGENTS.md` trace persistence gate applies.
+
+### AI runtime module recovery
+
+The application loads the AI-turn runtime before OCR, clearing the composer, or beginning a turn. A module-load failure keeps input local and permits one explicit code-only retry; it never retries OCR, provider execution, approval, or persistence. Awaited preflight is bound to committed planner inputs and the current owner/chat/state lifetime, including A→B→A transitions. It must not admit a retained request after those inputs change.
+
+A separate explicit reload action first checkpoints and re-reads the canonical chat snapshot/index, then verifies a small per-tab recovery capsule in sessionStorage. The capsule is versioned, bound to owner/chat/conversation/week/state revision, limited to 2 MiB of serialized data and 30 minutes, and contains exact composer text, projected starter metadata, and supported original image bytes. Revalidate the durable chat and current lifetime after asynchronous image serialization and immediately before reload. Quota, invalid data, oversized images, or failed checkpoint/read-back keep the current editable draft and block reload, with copy/reattach guidance. The ordinary 15 MiB attachment limit does not imply that every attachment fits this recovery capsule.
+
+Restore only after canonical chat hydration, without overwriting a nonempty composer. Consume the exact capsule only after its draft has rendered. Revalidate restored starter references against the current catalog before OCR or submission; do not silently drop an unavailable target. Restoration never automatically sends a turn. The capsule is transient UI recovery, not Fact Graph authority, a durable conversation store, or diagnostic trace data. Preflight failures occur before turn admission and create no provider request/turn diagnostic; tests verify that boundary. Other lazy-loaded app surfaces and already-admitted runtime failures are separate responsibilities.
 
 ## Testing
 
