@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
 import { removeByKey, upsertByKey } from '../lib/collections';
@@ -274,8 +274,11 @@ export function usePlannerDataState({
     rawSetTimetablePeriods([]);
   }, []);
   const [viewMode, setViewMode] = useScopedPlannerState<ViewMode>('month', mutationScope);
-  const [selectedDate, setSelectedDate] = useScopedPlannerState(todayIsoDate(), mutationScope);
-  const [monthDate, setMonthDate] = useScopedPlannerState(startOfMonth(todayIsoDate()), mutationScope);
+  const selectionState = useOptimisticPlannerState(selectionAt(todayIsoDate()), mutationScope);
+  const { selectedDate, monthDate } = selectionState.value;
+  // Preserve current calendar position while discarding old scope's pending intents.
+  useLayoutEffect(() => { selectionState.replace(current => current); }, [mutationScope, selectionState.replace]);
+  function selectionAt(date: string) { return { selectedDate: date, monthDate: startOfMonth(date) }; }
   const [editorDraft, setEditorDraft, rawSetEditorDraft] = useScopedPlannerState<PlanDraft | null>(null, mutationScope);
   const [editingPlanId, setEditingPlanId, rawSetEditingPlanId] = useScopedPlannerState<string | null>(null, mutationScope);
   const [editingPlan, setEditingPlan, rawSetEditingPlan] = useScopedPlannerState<Plan | null>(null, mutationScope);
@@ -522,8 +525,7 @@ export function usePlannerDataState({
       );
 
       if (pendingRecurringPlanAction.kind === 'edit') {
-        setSelectedDate(occurrenceDate);
-        setMonthDate(startOfMonth(occurrenceDate));
+        selectionState.set(selectionAt(occurrenceDate));
       }
       setPendingRecurringPlanAction(null);
       closePlanEditor();
@@ -633,14 +635,12 @@ export function usePlannerDataState({
     const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
     const nextPlan = createPlanFromDraft(draft, currentPlan);
     const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const previousSelectedDate = selectedDate;
-    const previousMonthDate = monthDate;
+    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
     try {
-      setSelectedDate(nextPlan.date);
-      setMonthDate(startOfMonth(nextPlan.date));
       closePlanEditor();
       await plannerRepository.upsertPlan(nextPlan);
+      selectionState.commit(selectionOperation);
       planState.commit(planOperation);
       showNotice(
         currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
@@ -648,8 +648,7 @@ export function usePlannerDataState({
       );
     } catch (error) {
       planState.reject(planOperation);
-      setSelectedDate(previousSelectedDate);
-      setMonthDate(previousMonthDate);
+      selectionState.reject(selectionOperation);
       showNotice(
         resolveErrorMessage(error, '学習予定を保存できませんでした。'),
         'error',
@@ -979,26 +978,25 @@ export function usePlannerDataState({
     );
     const nextMonthEvent = createMonthEventFromDraft(draft, currentMonthEvent);
     const previousMonthEvents = monthEvents;
-    const previousSelectedDate = selectedDate;
-    const previousMonthDate = monthDate;
+    const selectionOperation = selectionState.begin(() => selectionAt(
+      currentMonthEvent && isSameMonth(selectedDate, nextMonthEvent.date)
+        ? selectedDate : nextMonthEvent.date,
+    ));
 
     try {
       setMonthEvents((current) =>
         sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
       );
 
-      selectDate(currentMonthEvent && isSameMonth(selectedDate, nextMonthEvent.date)
-        ? selectedDate
-        : nextMonthEvent.date);
       await plannerRepository.upsertMonthEvent(nextMonthEvent);
+      selectionState.commit(selectionOperation);
       showNotice(
         currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',
         'success',
       );
     } catch (error) {
       setMonthEvents(previousMonthEvents);
-      setSelectedDate(previousSelectedDate);
-      setMonthDate(previousMonthDate);
+      selectionState.reject(selectionOperation);
       showNotice(
         resolveErrorMessage(error, '月の主要予定を保存できませんでした。'),
         'error',
@@ -1104,14 +1102,12 @@ export function usePlannerDataState({
       updatedAt: new Date().toISOString(),
     };
     const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const previousSelectedDate = selectedDate;
-    const previousMonthDate = monthDate;
+    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
     const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
     try {
-      setSelectedDate(nextPlan.date);
-      setMonthDate(startOfMonth(nextPlan.date));
       await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
+      selectionState.commit(selectionOperation);
       planState.commit(planOperation);
       todoState.commit(todoOperation);
       showNotice('Todoを予定化しました。', 'success');
@@ -1119,8 +1115,7 @@ export function usePlannerDataState({
     } catch (error) {
       planState.reject(planOperation);
       todoState.reject(todoOperation);
-      setSelectedDate(previousSelectedDate);
-      setMonthDate(previousMonthDate);
+      selectionState.reject(selectionOperation);
       showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
       throw error;
     }
@@ -1664,20 +1659,12 @@ export function usePlannerDataState({
   }
 
   function selectDate(date: string) {
-    setSelectedDate(date);
-
-    if (!isSameMonth(monthDate, date)) {
-      setMonthDate(startOfMonth(date));
-    }
+    selectionState.set(selectionAt(date));
   }
 
   function changeMonth(date: string) {
     const nextMonthDate = startOfMonth(date);
-    setMonthDate(nextMonthDate);
-
-    if (!isSameMonth(selectedDate, date)) {
-      setSelectedDate(nextMonthDate);
-    }
+    selectionState.set({ selectedDate: isSameMonth(selectedDate, date) ? selectedDate : nextMonthDate, monthDate: nextMonthDate });
   }
 
   function openWeek(date: string) {
