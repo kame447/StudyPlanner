@@ -116,6 +116,15 @@ function engine(
 }
 
 describe('ProductObservabilityRollupEngine', () => {
+  it('advances past census-only pages without changing user/activity/API/planning projections', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('census-only', { eventType: 'semantic_turn_census', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:01.000Z', environment: 'production', actorSubjectId: 'actor-census', payload: {} });
+    const result = await engine(firestore).runBatch(1);
+    expect(result.processed).toBe(0);
+    expect(result.checkpoint.cursor?.documentName).toContain('census-only');
+    expect([...firestore.documents.keys()]).toEqual(['observability_rollup_state/main']);
+    const next = await engine(firestore).runBatch(1); expect(next.hasMore).toBe(false);
+  });
   it('projects multiple events exactly once and counts one active actor per day', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('event-1', activityEvent({

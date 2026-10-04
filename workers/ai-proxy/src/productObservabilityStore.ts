@@ -13,6 +13,7 @@ import {
   FirestoreServiceAccountClient,
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
+import { parseSemanticCensusEvent } from '../../../shared/semanticTurnCensus';
 
 export interface ProductObservabilityEnv extends FirestoreServiceAccountEnv {
   OBSERVABILITY_IDENTITY_SECRET?: string;
@@ -335,5 +336,21 @@ export class ProductObservabilityStore {
       params.requestId,
       event as unknown as Record<string, unknown>,
     );
+  }
+
+  async storeSemanticCensus(firebaseUid: string, input: unknown): Promise<void> {
+    const payload = parseSemanticCensusEvent(input);
+    if (!payload) throw new Error('Telemetry census payload is invalid');
+    this.validateClientTimestamp(payload.occurredAt);
+    const actorSubjectId = await this.resolveActorSubjectId(firebaseUid);
+    const observedAt = this.now().toISOString();
+    const eventId = `census-${payload.kind}-${payload.kind === 'request' ? payload.requestId : payload.turnId}`;
+    await this.persistEvent(actorSubjectId, eventId, {
+      schemaVersion: PRODUCT_OBSERVABILITY_SCHEMA_VERSION, eventId,
+      eventType: 'semantic_turn_census', occurredAt: payload.occurredAt, observedAt,
+      actorSubjectId, environment: normalizedEnvironment(this.env.ENVIRONMENT), appVersion: 'semantic-census-v1',
+      source: payload.kind === 'request' ? 'ai_proxy' : 'web_app', correlation: {}, payload,
+      expireAt: new Date(new Date(observedAt).getTime() + EVENT_RETENTION_MS).toISOString(),
+    });
   }
 }

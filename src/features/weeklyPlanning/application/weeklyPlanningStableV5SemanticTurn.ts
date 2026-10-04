@@ -10,6 +10,7 @@ import {
   resolveWeeklyPlanningTemporalConstraintsV5,
 } from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
+import { createCensusObservedWeeklyPlanningNormalizer } from '../trace/weeklyPlanningSemanticCensus';
 import {
   createWeeklyPlanningSemanticPipelineV5,
   type WeeklyPlanningSemanticPipelineResultV5,
@@ -169,7 +170,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   });
 
   const semantic = await createWeeklyPlanningSemanticPipelineV5(
-    createWeeklyPlanningSemanticNormalizerV5(createOpenAiCompatibleClient(aiConfig)),
+    createCensusObservedWeeklyPlanningNormalizer(createOpenAiCompatibleClient(aiConfig), createWeeklyPlanningSemanticNormalizerV5),
   ).run({
     graph: runtimeSession.graph,
     conversationId: input.conversationId,

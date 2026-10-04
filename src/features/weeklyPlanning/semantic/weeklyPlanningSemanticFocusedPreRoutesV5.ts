@@ -259,7 +259,8 @@ export async function tryFocusedContextualAnswerRouteV5(
       },
     });
     try {
-      const response = await run.client.createChatCompletion(request);
+      const response = await run.client.createChatCompletion(run.client.semanticCensusEnabled
+        ? { ...request, semanticCensusStage: attempt === 1 ? 'focused' : 'retry' } : request);
       responseLengths.push(response.length);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: run.input.traceRequestId,
@@ -388,7 +389,8 @@ export async function tryFocusedAuthorizationRouteV5(
   });
 
   try {
-    const response = await run.client.createChatCompletion(request);
+    const response = await run.client.createChatCompletion(run.client.semanticCensusEnabled
+      ? { ...request, semanticCensusStage: 'focused' } : request);
     const focusedDecision = parseFocusedAuthorizationDecisionV5(response);
     const decision = focusedDecision?.decision ?? null;
     recordWeeklyPlanningStableV5DebugTrace({

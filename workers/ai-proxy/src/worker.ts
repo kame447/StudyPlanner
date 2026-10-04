@@ -1,4 +1,5 @@
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { createWorkerSemanticCensus, type SemanticCensusEnv } from './semanticTurnCensus';
 import { observedDecisionProviders, observeSemanticBackgroundWork } from './semanticDispatchWorkerObservation';
 import aiProxyWorker, { AiQuotaDurableObject } from './index';
 import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
@@ -1158,14 +1159,21 @@ export default {
     executionContext?: ExecutionContext, observationContext?: AiProxyObservationContext,
     dispatchRecorder?: SemanticRequestRecorder,
   ): Promise<Response> {
-    if (!dispatchRecorder) return worker.fetch(request, env, tokenProvider, executionContext, observationContext);
-    if (!['/', '/chat/completions'].includes(new URL(request.url).pathname)) dispatchRecorder.markUnknown();
+    const context = observationContext ?? { identity: { kind: 'resolve_from_request' as const } };
+    const census = !dispatchRecorder && ['/', '/chat/completions'].includes(new URL(request.url).pathname)
+      ? createWorkerSemanticCensus(env as SemanticCensusEnv, context, tokenProvider) : undefined;
+    const recorder = dispatchRecorder ?? census?.recorder;
+    if (!recorder) return worker.fetch(request, env, tokenProvider, executionContext, observationContext);
+    if (!['/', '/chat/completions'].includes(new URL(request.url).pathname)) recorder.markUnknown();
+    let httpStatus = 500;
     try {
-      return await worker.fetch(request, env, tokenProvider,
-        observeSemanticBackgroundWork(executionContext, dispatchRecorder), observationContext, dispatchRecorder);
+      const response = await worker.fetch(request, env, tokenProvider,
+        observeSemanticBackgroundWork(executionContext, recorder), context, recorder);
+      httpStatus = response.status;
+      return response;
     } finally {
-      dispatchRecorder.finishMain();
-      const settled = dispatchRecorder.settle();
+      recorder.finishMain();
+      const settled = recorder.settle().then(() => census?.persist(httpStatus)).catch(() => undefined);
       if (executionContext) executionContext.waitUntil(settled);
       else void settled;
     }
