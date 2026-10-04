@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, NotebookPen, Pencil, Trash2, X } from 'lucide-react';
 import { useExitMotion } from '../hooks/useExitMotion';
 import { buildPlanOccurrenceKey } from '../lib/planRecurrence';
@@ -49,12 +49,46 @@ function DayDetailSession({
   const { isExiting, requestExit } = useExitMotion(onClose);
   const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const pendingDelete = useRef<object | null>(null);
+  const leavingMenu = useRef(false);
+  useLayoutEffect(() => () => { pendingDelete.current = null; }, []);
+  const menuBlocked = () => Boolean(pendingDelete.current || leavingMenu.current);
+  const closeMenu = () => {
+    if (menuBlocked()) return;
+    leavingMenu.current = true;
+    requestExit();
+  };
+
+  async function deleteFromMenu() {
+    if (!detailPlan || menuBlocked()) return;
+    const attempt = {};
+    pendingDelete.current = attempt;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await onDeletePlan(detailPlan);
+    } catch {
+      if (pendingDelete.current === attempt) {
+        pendingDelete.current = null;
+        setIsDeleting(false);
+        setDeleteError('予定を削除できませんでした。もう一度試してください。');
+      }
+      return;
+    }
+    if (pendingDelete.current === attempt) {
+      leavingMenu.current = true;
+      requestExit();
+    }
+  }
+
   if (detailPlan) {
     if (!recordSession) {
       return (
         <div
           className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${sheetMotionClassName}`}
-          onClick={() => requestExit()}
+          onClick={closeMenu}
         >
           <section
             className="modal-card daily-detail-modal schedule-action-sheet"
@@ -65,7 +99,7 @@ function DayDetailSession({
           >
             <div className="schedule-action-handle" aria-hidden="true" />
             <div className="schedule-action-topline">
-              <button className="schedule-action-close" onClick={() => requestExit()} type="button" aria-label="閉じる">
+              <button className="schedule-action-close" onClick={closeMenu} disabled={isDeleting || isExiting} type="button" aria-label="閉じる">
                 <X aria-hidden="true" size={22} />
               </button>
               <div>
@@ -78,7 +112,10 @@ function DayDetailSession({
               {!monthEvent ? (
                 <button
                   className="schedule-action-item"
+                  disabled={isDeleting || isExiting}
                   onClick={() => {
+                    if (menuBlocked()) return;
+                    leavingMenu.current = true;
                     requestExit(() => {
                       window.requestAnimationFrame(() => onEditPlan(detailPlan));
                     });
@@ -96,7 +133,8 @@ function DayDetailSession({
 
               <button
                 className="schedule-action-item"
-                onClick={() => setRecordSession(structuredClone({ plan: detailPlan, actual: detailActual }))}
+                disabled={isDeleting || isExiting}
+                onClick={() => { if (!menuBlocked()) setRecordSession(structuredClone({ plan: detailPlan, actual: detailActual })); }}
                 type="button"
               >
                 <span className="schedule-action-icon"><NotebookPen aria-hidden="true" size={24} /></span>
@@ -110,9 +148,8 @@ function DayDetailSession({
               {!monthEvent ? (
                 <button
                   className="schedule-action-item danger"
-                  onClick={() => {
-                    void onDeletePlan(detailPlan).finally(() => requestExit());
-                  }}
+                  disabled={isDeleting || isExiting}
+                  onClick={() => void deleteFromMenu()}
                   type="button"
                 >
                   <span className="schedule-action-icon"><Trash2 aria-hidden="true" size={24} /></span>
@@ -124,6 +161,7 @@ function DayDetailSession({
                 </button>
               ) : null}
             </div>
+            {deleteError ? <p className="inline-error" role="alert">{deleteError}</p> : null}
           </section>
         </div>
       );

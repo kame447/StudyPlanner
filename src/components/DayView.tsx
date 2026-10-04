@@ -142,6 +142,7 @@ export function DayView({
   onOpenAddMaterial,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const [pendingDetailDeletion, setPendingDetailDeletion] = useState<{ plan: Plan; viewedDate: string } | null>(null);
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
@@ -332,9 +333,11 @@ export function DayView({
     () => new Map(dayActuals.map((actual) => [getActualOccurrenceKey(actual), actual])),
     [dayActuals],
   );
+  const retainedDeletingPlan = pendingDetailDeletion?.plan.userId === userId && pendingDetailDeletion.viewedDate === selectedDate
+    ? pendingDetailDeletion.plan : null;
   const selectedPlan =
     modalState.type === 'plan-detail'
-      ? dayPlanMap.get(modalState.planId) ?? null
+      ? dayPlanMap.get(modalState.planId) ?? (retainedDeletingPlan?.id === modalState.planId ? retainedDeletingPlan : null)
       : null;
   const selectedMonthEvent =
     modalState.type === 'month-event-detail'
@@ -355,7 +358,7 @@ export function DayView({
       : null;
 
   useEffect(() => {
-    if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
+    if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId) && retainedDeletingPlan?.id !== modalState.planId) {
       setModalState({ type: 'closed' });
     }
 
@@ -366,13 +369,24 @@ export function DayView({
       setModalState({ type: 'closed' });
     }
 
-  }, [dayMonthEventMap, dayPlanMap, modalState]);
+  }, [dayMonthEventMap, dayPlanMap, modalState, retainedDeletingPlan]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
     setQuickMaterial(null);
     scheduleAction.dismiss();
   }, [selectedDate, userId]);
+
+  async function deleteDetailPlan(plan: Plan) {
+    // Preserve only the in-flight menu target while the list updates optimistically.
+    const target = { plan: structuredClone(plan), viewedDate: selectedDate };
+    setPendingDetailDeletion(target);
+    try {
+      await onDeletePlan(plan);
+    } finally {
+      setPendingDetailDeletion((current) => current === target ? null : current);
+    }
+  }
 
   function closeModal() {
     setModalState({ type: 'closed' });
@@ -486,7 +500,7 @@ export function DayView({
         plans={plans}
         actuals={actuals}
         onEditPlan={onEditPlan}
-        onDeletePlan={onDeletePlan}
+        onDeletePlan={deleteDetailPlan}
         onSaveActual={onSaveActual}
         onSaveStandaloneActual={onSaveStandaloneActual}
         onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
