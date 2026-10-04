@@ -1,3 +1,5 @@
+import { createWeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApproval';
+import { createWeeklyPlanningTestDraftBlock } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AiPlanningView } from './AiPlanningView';
@@ -184,4 +186,33 @@ it.each([false, true])('cancel releases the view while late submission stays obs
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('obsolete planning error');
   await settle(current); expect(sidebar().props.disabled).toBe(false);
   expect(index().activeChatId).toBe(currentIndex.activeChatId);
+});
+
+it('freezes input and image extraction during approval recovery while allowing snapshot-backed chat navigation', async () => {
+  await mount();
+  const snapshot = app.exportConversationSnapshot({ includeEmpty: true })!;
+  const block = createWeeklyPlanningTestDraftBlock({ id: 'recover-ui' });
+  const operation = createWeeklyDraftApprovalOperation({ userId: 'user-1',
+    metadata: { previewId: 'recover-ui', stateRevision: 0, authorizedUserId: 'user-1',
+      assumptionDependencies: [], approvalEligibility: 'eligible', stale: false },
+    blocks: [block], now: '2026-10-04T00:00:00.000Z' });
+  operation.status = 'failed'; operation.items[0].status = 'failed';
+  snapshot.planningState.draftBlocks = [block];
+  snapshot.planningState.approvalRecovery = { version: 1, weekStartDate: snapshot.weekStartDate, operation, blocks: [block] };
+  await act(async () => { expect(app.loadConversationSnapshot(snapshot)).toBe(true); });
+  expect(app.canEditDraftBlocks).toBe(false);
+  expect(send().props.disabled).toBe(true);
+  expect(sidebar().props.disabled).toBe(false);
+  expect(renderer!.root.findAllByProps({ role: 'status' }).some((node) => JSON.stringify(node.children).includes('保存の確認が途中'))).toBe(true);
+  await attach();
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.ocr).not.toHaveBeenCalled();
+  expect(mocks.execute).not.toHaveBeenCalled();
+  const previous = index().activeChatId;
+  await act(async () => { sidebar().props.onCreate(); });
+  expect(index().activeChatId).not.toBe(previous);
+  expect(app.state.approvalRecovery).toBeUndefined();
+  await act(async () => { sidebar().props.onSelect(previous); });
+  expect(app.state.approvalRecovery?.operation.approvalOperationId).toBe(operation.approvalOperationId);
+  expect(app.state.draftBlocks).toHaveLength(1);
 });

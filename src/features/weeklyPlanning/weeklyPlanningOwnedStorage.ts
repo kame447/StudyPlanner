@@ -83,7 +83,8 @@ function isActiveSessionIndex(
 }
 
 function belongsToUser(state: PlanningState, userId: string): boolean {
-  return state.draftBlocks.every((block) =>
+  return (!state.approvalRecovery || state.approvalRecovery.operation.userId === userId)
+    && state.draftBlocks.every((block) =>
     block.userId === userId
     && (!block.behaviorMetadata?.previewMetadata
       || block.behaviorMetadata.previewMetadata.authorizedUserId === userId),

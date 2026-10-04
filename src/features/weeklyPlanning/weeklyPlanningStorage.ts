@@ -1,3 +1,4 @@
+import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalRecovery, isWeeklyPlanningApprovalRecovery } from './planning/weeklyPlanningApprovalRecovery';
 import {
   isDateWithinWindow,
   isOrderedPlanningDateTimeRange,
@@ -625,7 +626,7 @@ function isPlanningState(value: unknown): value is PlanningState {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
       'weekStartDate', 'revision', 'conversationRequestSequence', 'mode',
-      'draftBlocks', 'previewCandidates', 'messages',
+      'draftBlocks', 'previewCandidates', 'messages', 'approvalRecovery',
       'intakeState', 'lastAssistantMessage', 'updatedAt',
     ])) {
     return false;
@@ -636,6 +637,8 @@ function isPlanningState(value: unknown): value is PlanningState {
     && MODES.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.every(isDraftBlock)
+    && (value.approvalRecovery === undefined || isWeeklyPlanningApprovalRecovery(
+      value.approvalRecovery, value.draftBlocks, value.weekStartDate, isDraftBlock))
     && Array.isArray(value.previewCandidates)
     && value.previewCandidates.every(isPreviewCandidate)
     && Array.isArray(value.messages)
@@ -646,7 +649,7 @@ function isPlanningState(value: unknown): value is PlanningState {
 }
 
 function parseStoredPlanningState(value: unknown): PlanningState | null {
-  const sanitized = sanitizeStoredPlanningState(value);
+  const sanitized = sanitizeStoredPlanningState(expandWeeklyPlanningApprovalRecovery(value));
   return isPlanningState(sanitized) ? sanitized : null;
 }
 
@@ -734,7 +737,7 @@ export function saveWeeklyPlanningState(userId: string, state: PlanningState): v
       return;
     }
     const envelope: StoredPlanningStateV2 = { version: STORAGE_VERSION, state: serializableState };
-    window.localStorage.setItem(key, JSON.stringify(envelope));
+    window.localStorage.setItem(key, JSON.stringify({ ...envelope, state: compactWeeklyPlanningApprovalRecovery(serializableState) }));
   } catch {
     // localStorage is best effort; the in-memory session remains authoritative.
   }
