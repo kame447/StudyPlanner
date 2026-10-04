@@ -35,13 +35,13 @@ test('retains standalone edits through failed date move and plan link, then retr
   const editor = page.locator('.standalone-actual-editor-card');
   await editor.getByLabel('タイトル', { exact: true }).fill('移動した記録');
   await editor.getByLabel('日付', { exact: true }).fill(NEXT_DAY);
-  await editor.getByLabel('メモ', { exact: true }).fill('失敗しても残すメモ');
+  await editor.getByRole('textbox', { name: 'メモ', exact: true }).fill('失敗しても残すメモ');
   await page.evaluate(() => { window.__actualWriteFailures = 1; });
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByRole('alert')).toContainText('もう一度保存');
   await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('移動した記録');
   await expect(editor.getByLabel('日付', { exact: true })).toHaveValue(NEXT_DAY);
-  await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('失敗しても残すメモ');
+  await expect(editor.getByRole('textbox', { name: 'メモ', exact: true })).toHaveValue('失敗しても残すメモ');
   await expect.poll(async () => (await readActuals(page))[0].occurrenceDate).toBe(E2E_TODAY);
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).toHaveCount(0);
