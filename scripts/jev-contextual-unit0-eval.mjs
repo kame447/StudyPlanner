@@ -441,20 +441,72 @@ export function wranglerReadOnlyExec(args) {
   if (result.status !== 0) throw new Error('Read-only production snapshot command failed: wrangler ' + args.slice(0, 2).join(' '));
   return result.stdout;
 }
+// Minimal shapes printed by the pinned Wrangler 4.143.1 with --json
+// (logRaw(JSON.stringify(...)) in src/versions/{list,deployments/list,
+// deployments/status}.ts): a deployment has an id, created_on and a non-empty
+// versions traffic split ({ version_id, percentage } summing to 100); a version
+// has an id and metadata.created_on. Anything else — empty, null, an
+// "unavailable" message, or JSON missing these fields — is not a snapshot.
+const nonEmptyText = (value) => typeof value === 'string' && value.trim().length > 0;
+function deploymentIdentity(deployment) {
+  assert.ok(deployment && typeof deployment === 'object' && !Array.isArray(deployment), 'Deployment must be an object.');
+  assert.ok(nonEmptyText(deployment.id) && nonEmptyText(deployment.created_on) && Number.isFinite(Date.parse(deployment.created_on)),
+    'Deployment identity missing.');
+  assert.ok(Array.isArray(deployment.versions) && deployment.versions.length > 0, 'Deployment traffic split missing.');
+  const traffic = deployment.versions.map((entry) => {
+    assert.ok(entry && nonEmptyText(entry.version_id) && typeof entry.percentage === 'number' && Number.isFinite(entry.percentage)
+      && entry.percentage >= 0 && entry.percentage <= 100, 'Deployment traffic entry invalid.');
+    return { versionId: entry.version_id, percentage: entry.percentage };
+  });
+  assert.ok(Math.abs(traffic.reduce((sum, entry) => sum + entry.percentage, 0) - 100) < 1e-6, 'Deployment traffic does not sum to 100%.');
+  return { id: deployment.id, createdOn: deployment.created_on, traffic };
+}
+function versionIdentity(version) {
+  assert.ok(version && typeof version === 'object' && nonEmptyText(version.id), 'Version identity missing.');
+  assert.ok(version.metadata && nonEmptyText(version.metadata.created_on) && Number.isFinite(Date.parse(version.metadata.created_on)),
+    'Version metadata missing.');
+  return { id: version.id, createdOn: version.metadata.created_on };
+}
+export const SNAPSHOT_VALIDATORS = Object.freeze({
+  'deployments list': (value) => {
+    assert.ok(Array.isArray(value) && value.length > 0, 'Deployments list must be a non-empty array.');
+    return value.map(deploymentIdentity);
+  },
+  'deployments status': (value) => deploymentIdentity(value),
+  'versions list': (value) => {
+    assert.ok(Array.isArray(value) && value.length > 0, 'Versions list must be a non-empty array.');
+    return value.map(versionIdentity);
+  },
+});
 export async function productionSnapshot({ exec = wranglerReadOnlyExec, workerName = EXECUTION_PATH.workerName } = {}) {
   const entries = [];
+  const identity = {};
   for (const command of SNAPSHOT_COMMANDS) {
+    const name = command.join(' ');
     const output = await exec([...command, '--name', workerName, '--json']);
-    assert.equal(typeof output, 'string');
-    entries.push({ command: 'wrangler ' + command.join(' ') + ' --name ' + workerName + ' --json', sha256: sha256Text(output) });
+    assert.ok(nonEmptyText(output), 'Snapshot output missing: wrangler ' + name);
+    let parsed;
+    try { parsed = JSON.parse(output); } catch { throw new assert.AssertionError({ message: 'Snapshot output is not JSON: wrangler ' + name }); }
+    identity[name] = SNAPSHOT_VALIDATORS[name](parsed);
+    // Only digests are kept: no account details (author e-mail etc.) are stored.
+    entries.push({ command: 'wrangler ' + name + ' --name ' + workerName + ' --json', rawSha256: sha256Text(output),
+      identitySha256: sha256Text(canonicalJson(identity[name])) });
   }
-  return { takenAt: new Date().toISOString(), entries, digest: sha256Text(entries.map((entry) => entry.sha256).join('')),
+  // The latest deployment must be the one the status reports.
+  const latest = identity['deployments list'].reduce((a, b) => (Date.parse(a.createdOn) >= Date.parse(b.createdOn) ? a : b));
+  assert.equal(latest.id, identity['deployments status'].id, 'Deployment status disagrees with the deployments list.');
+  // (No cross-check against the versions list: it holds only the 10 newest
+  // uploads, which need not include the deployed version.)
+  return { takenAt: new Date().toISOString(), entries, valid: true,
+    identityDigest: sha256Text(canonicalJson(identity)), digest: sha256Text(entries.map((entry) => entry.rawSha256).join('')),
     routes: 'not observable with read-only Wrangler commands' };
 }
-async function snapshotAfter(before, exec) {
+export async function snapshotAfter(before, exec) {
   try {
     const after = await productionSnapshot({ exec });
-    return { before, after, unchanged: after.digest === before.digest };
+    // Both snapshots must be valid; identity and raw bytes must both match.
+    return { before, after, unchanged: before.valid === true && after.valid === true
+      && after.identityDigest === before.identityDigest && after.digest === before.digest };
   } catch { return { before, after: null, unchanged: false }; }
 }
 

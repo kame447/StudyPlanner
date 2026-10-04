@@ -110,7 +110,7 @@ Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-i
 
 - 許可する経路は、既存の認証済みの remote 評価の経路だけ：legacy な `unstable_dev`（`local: false`）の remote preview を、**正確な名前 `studyplanner-ai-proxy`** で使う。承認書に mode と正確な名前を記録し、harness はそれと照合する。ほかの名前・mode（`wrangler preview` の branch の配備、version の URL を含む）や prefix による許可は拒否する。
 - 生成する一時的な config は `name`・`main`・`compatibility_date` だけ。production の wrangler の config を読み込まず、route・trigger・migration・binding を持たない。deploy・version の promotion・traffic の routing をしない。生成する code は承認した2つの provider の endpoint だけを使い、Secret の値を表示・export しない（Cloudflare の中で既存の credential を再利用するだけ）。
-- run（smoke と holdout）の前後に、production の deployment・現在の deployment の状態・version を、読み取りだけの Wrangler の command（`deployments list`、`deployments status`、`versions list`、`--name studyplanner-ai-proxy --json`）で取り、digest を記録して照合する。前の snapshot が取れなければ run を始めない。差分か取得の失敗があれば、run の終端の妥当性の gate が FAIL（HOLD）になる。zone の route は、読み取りだけの Wrangler の command では観測できないので、その限界を記録する。
+- run（smoke と holdout）の前後に、production の deployment・現在の deployment の状態・version を、読み取りだけの Wrangler の command（`deployments list`、`deployments status`、`versions list`、`--name studyplanner-ai-proxy --json`）で取る。出力は JSON として parse し、固定した Wrangler 4.143.1 の shape で検証する（deployment は id・created_on・合計 100% の version の traffic の割当て、version は id・metadata.created_on。status は list の最新の deployment と一致すること）。空・null・不正・field の欠落は snapshot ではない。検証した identity の digest と raw の出力の digest の両方を記録して照合し、account の情報は残さない。前の snapshot が取れない・無効なら run を始めない（送信0、消費なし）。差分か取得の失敗があれば、run の終端の妥当性の gate が FAIL（HOLD）になる。zone の route は、読み取りだけの Wrangler の command では観測できないので、その限界を記録する。
 - readiness で、preview の中の provider の credential が使えないと分かったら、その具体的な失敗を報告する。Secret の copy・export や、別の経路への切替えはしない。
 
 ### 4.1 時間の見積もり（推定。実測ではない）

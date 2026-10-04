@@ -11,7 +11,7 @@ import { DECISION_RULES, evaluateUnit0, nearestRank } from './jev-contextual-uni
 import { DRY_RUN_LABEL_SOURCE, R2_LABEL_SOURCE, REVIEW_SCHEMA, canonicalJson, createBlindPacket, importBlindReview,
   sha256Text, validateLabelProvenance } from './jev-contextual-unit0-review.mjs';
 import { DEVELOPMENT_CORPUS_SHA256, DURABLE_PERSISTENCE, EXECUTION_PATH, IN_PROCESS_DIRECTORY, ROSTER_SPEC, createWorkerTransport,
-  productionSnapshot, runSerialEvaluation, runTerminalValidity, segmentWranglerConfig, unstableDevOptions, SMOKE_LIMITS, buildRoster, buildWorkerBundle, loadBundleInProcess, preSendFor, realRun,
+  productionSnapshot, runSerialEvaluation, runTerminalValidity, segmentWranglerConfig, snapshotAfter, unstableDevOptions, SMOKE_LIMITS, buildRoster, buildWorkerBundle, loadBundleInProcess, preSendFor, realRun,
   recordConsumptionAttempt, smokeCases, smokeRun, validateApprovalR2, workerCases, writeSegmentFiles } from './jev-contextual-unit0-eval.mjs';
 import { DRY_RUN_PRICING, buildMockSets, createInProcessTransport, runDryRun } from './jev-contextual-unit0-dry-run.mjs';
 import { runtimeFingerprint, sha256 } from './jev-contextual-paired-eval.mjs';
@@ -32,8 +32,16 @@ const REFERENCE = {
   replicate1C: [26, 8, 32, 17, 1, 12, 31, 4, 22, 26, 13, 1, 11, 5, 16, 28, 23, 21, 29, 2, 0, 16, 32, 19, 31, 9, 4, 14, 27, 29, 15, 17, 21, 25, 33],
   zeroHarmUpper65: 0.045042258123013545,
 };
-// Read-only production snapshot stand-in: identical output before and after.
-const fixedSnapshot = async (args) => JSON.stringify({ fixture: args.slice(0, 2) });
+// Read-only production snapshot stand-in shaped like Wrangler 4.143.1 --json
+// output (no real account data): identical before and after.
+const fixtureDeployment = (version = 'v-current') => ({ id: 'dep-1', created_on: '2026-10-01T00:00:00.000Z', source: 'wrangler',
+  strategy: 'percentage', versions: [{ version_id: version, percentage: 100 }] });
+const snapshotOutput = (command, version = 'v-current') => JSON.stringify({
+  'deployments list': [{ ...fixtureDeployment('v-old'), id: 'dep-0', created_on: '2026-09-01T00:00:00.000Z' }, fixtureDeployment(version)],
+  'deployments status': fixtureDeployment(version),
+  'versions list': [{ id: version, number: 7, metadata: { created_on: '2026-10-01T00:00:00.000Z', source: 'wrangler' } }],
+}[command], null, 2);
+const fixedSnapshot = async (args) => snapshotOutput(args.slice(0, 2).join(' '));
 const freshRunState = () => ({ attempts: 0, infrastructureFailures: 0, consecutiveInfrastructureFailures: 0 });
 const caseName = (n) => 'case-' + String(n).padStart(3, '0');
 
@@ -968,7 +976,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     await expect(other.startSegment({ id: 0, expiresAt: Date.now() + 1_800_000 })).rejects.toThrow('approved remote-preview');
     expect(deployed).toBe(false);
     const commands = [];
-    await productionSnapshot({ exec: async (args) => { commands.push(args.join(' ')); return '[]'; } });
+    await productionSnapshot({ exec: async (args) => { commands.push(args.join(' ')); return fixedSnapshot(args); } });
     expect(commands).toEqual(['deployments list --name studyplanner-ai-proxy --json', 'deployments status --name studyplanner-ai-proxy --json',
       'versions list --name studyplanner-ai-proxy --json']);
     // A snapshot that cannot be taken stops everything before deploy or consumption.
@@ -985,13 +993,42 @@ describe('holdout consumption order and the development smoke (in-process, no pr
     const changed = await prepare('snapshot-changes');
     let call = 0;
     const artifact = await realRun({ approvalPath: changed.approvalPath, worker: 'studyplanner-ai-proxy', setB: base.files.B, setC: base.files.C,
-      outputDir: changed.dir, clock, snapshotExec: async (args) => JSON.stringify({ args, version: call++ < 3 ? 1 : 2 }),
+      outputDir: changed.dir, clock, snapshotExec: async (args) => snapshotOutput(args.slice(0, 2).join(' '), call++ < 3 ? 'v-current' : 'v-new'),
       transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) });
     expect(artifact.productionIsolation).toMatchObject({ unchanged: false });
     const verdict = runTerminalValidity({ artifact, spendLedgerBytes: await readFile(artifact.spendLedgerPath), roster: buildRoster(
       { B: { corpus: sets.B.corpus, sha256: base.corpusSha256.B }, C: { corpus: sets.C.corpus, sha256: base.corpusSha256.C } }) });
     expect(verdict).toMatchObject({ status: 'FAIL', failures: ['production_snapshot_changed_or_unknown'] });
   }, 180_000);
+
+  it.each([
+    ['an empty string', () => ''], ['null', () => null], ['an unavailable message', () => 'temporarily unavailable'],
+    ['JSON without the traffic split', (command) => command === 'deployments status' ? JSON.stringify({ id: 'dep-1', created_on: '2026-10-01T00:00:00Z' }) : fixedSnapshot(command.split(' '))],
+    ['an empty deployments list', (command) => command === 'deployments list' ? '[]' : fixedSnapshot(command.split(' '))],
+    ['versions without identity', (command) => command === 'versions list' ? JSON.stringify([{ number: 1 }]) : fixedSnapshot(command.split(' '))],
+    ['traffic not summing to 100%', (command) => command === 'deployments status'
+      ? JSON.stringify({ ...fixtureDeployment(), versions: [{ version_id: 'v-current', percentage: 50 }] }) : fixedSnapshot(command.split(' '))],
+    ['a status disagreeing with the list', (command) => command === 'deployments status'
+      ? JSON.stringify({ ...fixtureDeployment(), id: 'dep-other' }) : fixedSnapshot(command.split(' '))],
+  ])('refuses a production snapshot with %s, and the same invalid output before and after is never "unchanged"', async (_name, output) => {
+    const exec = async (args) => output(args.slice(0, 2).join(' '));
+    await expect(productionSnapshot({ exec })).rejects.toThrow();
+    const valid = await productionSnapshot({ exec: fixedSnapshot });
+    expect(valid).toMatchObject({ valid: true });
+    expect(JSON.stringify(valid)).not.toMatch(/dep-1|v-current/); // digests only
+    const after = await snapshotAfter(valid, exec);
+    expect(after).toMatchObject({ unchanged: false, after: null });
+    // Before the run, an invalid snapshot refuses to start: no send, no consumption.
+    const blocked = await prepare('invalid-snapshot-' + _name.replace(/\W+/g, '-'));
+    const before = await readFile(blocked.ledgerPath);
+    const counters = { jev: 0, luna: 0, segments: 0, maxBodyBytes: 0 };
+    const clock = clockFor();
+    await expect(realRun({ approvalPath: blocked.approvalPath, worker: 'studyplanner-ai-proxy', setB: base.files.B, setC: base.files.C,
+      outputDir: blocked.dir, clock, snapshotExec: exec,
+      transportFactory: (bundle) => createInProcessTransport({ bundle, scenario: {}, clock, counters }) })).rejects.toThrow();
+    expect(counters).toMatchObject({ jev: 0, luna: 0, segments: 0 });
+    expect((await readFile(blocked.ledgerPath)).equals(before)).toBe(true);
+  }, 120_000);
 
   it('persists the canonical guards durably in order, and a persistence failure forbids every provider send', async () => {
     const calls = [];
