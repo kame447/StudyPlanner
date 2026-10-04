@@ -1,3 +1,5 @@
+// Consumed 2026-09-27. These legacy cases are diagnostic regression inputs,
+// never an independent holdout for the question-identity repair or adoption.
 const cases = [
   // Tuning groups. Wording variants that share one semantic situation stay together.
   { id: 'ctx-t-target-01', group: 't-target-direct', split: 'tuning', questionCode: 'quantity_role_unresolved', userText: 'この20ページを今回の予定で進めたい量です。', expectedBoundary: 'quantity_role_answer', expectedQuantityRole: 'target' },

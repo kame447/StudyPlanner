@@ -8,11 +8,12 @@ import {
   JEV_CONTEXTUAL_CASES,
   JEV_CONTEXTUAL_CORPUS_VERSION,
 } from './jev-contextual-corpus.mjs';
+import { observedLunaUsage, observedTotal } from './jev-contextual-eval-metrics.mjs';
 
 // This is the supported toolchain pin, not evidence of a fresh live-provider evaluation.
 const PINNED_WRANGLER_VERSION = '4.143.1';
 
-async function loadWrangler() {
+export async function loadWrangler() {
   for (const directory of (process.env.PATH ?? '').split(delimiter)) {
     let executable;
     try { executable = await realpath(join(directory, 'wrangler')); } catch { continue; }
@@ -114,12 +115,13 @@ function finalMatchesSyntheticBoundary(record) {
   return record.lunaCalled === true;
 }
 
-function summarizeLunaBaseline(records) {
+export function summarizeLunaBaseline(records) {
   const errors = records.filter((record) => !finalMatchesSyntheticBoundary(record));
   const latencies = records.map((record) => record.lunaLatencyMs)
     .filter((value) => typeof value === 'number');
   return {
     corpusVersion: JEV_CONTEXTUAL_CORPUS_VERSION,
+    evidenceStatus: 'consumed_diagnostic_only',
     split: 'luna-baseline',
     cases: records.length,
     conversationGroups: new Set(records.map((record) => record.group)).size,
@@ -136,15 +138,14 @@ function summarizeLunaBaseline(records) {
       p95: percentile(latencies, 0.95),
     },
     usage: {
-      promptTokens: records.reduce((sum, record) => sum + (record.lunaPromptTokens ?? 0), 0),
-      completionTokens: records.reduce((sum, record) =>
-        sum + (record.lunaCompletionTokens ?? 0), 0),
+      promptTokens: observedLunaUsage(records, 'lunaPromptTokens'),
+      completionTokens: observedLunaUsage(records, 'lunaCompletionTokens'),
       costUsd: null,
     },
   };
 }
 
-function summarize(records) {
+export function summarize(records) {
   const semanticRecords = records.filter((record) => record.split !== 'faults');
   const quantityAccepted = semanticRecords.filter((record) =>
     record.lunaCalled === false && record.finalDecision === 'quantity_role_answer');
@@ -181,6 +182,7 @@ function summarize(records) {
 
   return {
     corpusVersion: JEV_CONTEXTUAL_CORPUS_VERSION,
+    evidenceStatus: 'consumed_diagnostic_only',
     split: records[0]?.split ?? null,
     cases: records.length,
     conversationGroups: new Set(records.map((record) => record.group)).size,
@@ -234,16 +236,13 @@ function summarize(records) {
       ),
     },
     jevUsage: {
-      inputTokens: records.reduce((sum, record) => sum + (record.jevInputTokens ?? 0), 0),
-      outputTokens: records.reduce((sum, record) => sum + (record.jevOutputTokens ?? 0), 0),
-      reportedCostUsd: records.every((record) => record.jevCostUsd !== null)
-        ? records.reduce((sum, record) => sum + record.jevCostUsd, 0)
-        : null,
+      inputTokens: observedTotal(records.map((record) => record.jevInputTokens)),
+      outputTokens: observedTotal(records.map((record) => record.jevOutputTokens)),
+      reportedCostUsd: observedTotal(records.map((record) => record.jevCostUsd)),
     },
     lunaUsage: {
-      promptTokens: records.reduce((sum, record) => sum + (record.lunaPromptTokens ?? 0), 0),
-      completionTokens: records.reduce((sum, record) =>
-        sum + (record.lunaCompletionTokens ?? 0), 0),
+      promptTokens: observedLunaUsage(records, 'lunaPromptTokens'),
+      completionTokens: observedLunaUsage(records, 'lunaCompletionTokens'),
       costUsd: null,
     },
   };
@@ -623,7 +622,7 @@ async function main() {
   }
 }
 
-main().catch(() => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(() => {
   console.error('Jev contextual Cloudflare evaluation failed. Check the fixed runbook prerequisites; raw provider data is intentionally suppressed.');
   process.exitCode = 1;
 });

@@ -1,6 +1,8 @@
-import type {
-  FocusedContextualDecisionContext,
-  FocusedContextualDecisionResponse,
+import {
+  focusedContextualDecisionState,
+  type FocusedContextualDecisionContext,
+  type FocusedContextualDecisionResponse,
+  type FocusedContextualDecisionState,
 } from '../../../../shared/focusedContextualDecision';
 import type {
   AiRequestMetricPayload,
@@ -143,19 +145,21 @@ export async function dispatchFocusedContextual(params: {
   signal: AbortSignal;
   fallback: (signal?: AbortSignal) => Promise<Response>;
   respond: (decision: FocusedContextualDecisionResponse) => Response;
-  provider?: DecisionProvider<FocusedContextualDecisionContext['state'], ContextualDecision>;
+  provider?: DecisionProvider<FocusedContextualDecisionState, ContextualDecision>;
   /** Evaluation-harness hook only; production freshness is enforced by the client revision echo. */
   isHarnessContextCurrent?: () => boolean;
 }): Promise<Response> {
   const mode = contextualDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
+  const state = focusedContextualDecisionState(params.context);
+  if (!state) return Response.json({ error: 'Invalid focused decision context.' }, { status: 400 });
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
   const selected = mode === 'canary' && contextualCanarySelected(params.env);
   if (mode === 'canary' && !selected) return params.fallback();
   if (mode === 'shadow' && !params.executionContext) return params.fallback();
 
   const provider = params.provider ?? createOpenRouterDecisionProvider<
-    FocusedContextualDecisionContext['state'],
+    FocusedContextualDecisionState,
     ContextualDecision
   >({
     apiKey: params.env.OPENROUTER_API_KEY,
@@ -168,7 +172,7 @@ export async function dispatchFocusedContextual(params: {
     evaluation: DecisionEvaluation<ContextualDecision>,
     baseline: BaselineDecision | null,
   ) => {
-    const gate = gateContextualDecision(evaluation, params.context.questionCode);
+    const gate = gateContextualDecision(evaluation, state.questionCode);
     const metadata = evaluation.metadata;
     const rawChoiceMatchesBaseline = evaluation.status === 'evaluated'
       ? choiceMatchesBaseline(evaluation.decision, baseline)
@@ -212,7 +216,7 @@ export async function dispatchFocusedContextual(params: {
       inputTokens: metadata.inputTokens,
       outputTokens: metadata.outputTokens,
       contextualChoice: evaluation.status === 'evaluated' ? evaluation.decision : null,
-      questionCode: params.context.questionCode,
+      questionCode: state.questionCode,
       ...decision,
     });
     await recordAiRequestMetricBestEffort({
@@ -250,7 +254,7 @@ export async function dispatchFocusedContextual(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(params.context.state);
+    const evaluation = provider.evaluate(state);
     const baseline = fallbackWithFailureMarker(
       params.fallback,
       mode,
@@ -279,8 +283,8 @@ export async function dispatchFocusedContextual(params: {
     controller.abort();
   }, CONTEXTUAL_REQUEST_TIMEOUT_MS);
   try {
-    const evaluation = await provider.evaluate(params.context.state, controller.signal);
-    const gate = gateContextualDecision(evaluation, params.context.questionCode);
+    const evaluation = await provider.evaluate(state, controller.signal);
+    const gate = gateContextualDecision(evaluation, state.questionCode);
     const metric = record(evaluation, null).catch(() => undefined);
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;

@@ -6,6 +6,7 @@ import type { ContextualDecision } from './contextualDecisionPolicy';
 
 const calls: string[] = [];
 const lunaBodies: Array<Record<string, unknown>> = [];
+const jevBodies: Array<Record<string, unknown>> = [];
 let jevChoice: ContextualDecision = 'remaining';
 let jevConfidence = 0.999;
 let independentMeaning = 0.001;
@@ -111,6 +112,7 @@ function execute(params: {
 beforeEach(() => {
   calls.length = 0;
   lunaBodies.length = 0;
+  jevBodies.length = 0;
   jevChoice = 'remaining';
   jevConfidence = 0.999;
   independentMeaning = 0.001;
@@ -132,6 +134,7 @@ beforeEach(() => {
     }
     if (url.endsWith('/api/alpha/decisions')) {
       const body = JSON.parse(String(init?.body));
+      jevBodies.push(body);
       expect(body.questions.contextual_answer.type).toBe('choice');
       expect(body.questions).not.toHaveProperty('authorization');
       expect(body.state).not.toHaveProperty('requestId');
@@ -153,11 +156,71 @@ afterEach(() => {
 });
 
 describe('focused contextual Worker dispatch', () => {
+  it.each(['shadow', 'canary'] as const)(
+    'serializes question identity for the minimal pair in %s',
+    async (mode) => {
+      const original = decisionContext();
+      original.state.currentUserText = 'その量のことです。';
+      original.state.pendingQuestion.targetQuantityRole = 'unknown';
+      const pair = { ...original, questionCode: 'missing_effort_estimate' as const };
+      expect(pair.state).toEqual(original.state);
+      for (const context of [original, pair]) {
+        const run = execute({ mode, context });
+        expect((await run.response).status).toBe(200);
+        await Promise.all(run.pending);
+      }
+      expect(jevBodies).toHaveLength(2);
+      expect(jevBodies[0]).toEqual({
+        model: JEV_MODEL.request,
+        state: { questionCode: original.questionCode, ...original.state },
+        questions: expect.any(Object),
+      });
+      expect(jevBodies[1]).toEqual({
+        ...jevBodies[0],
+        state: { questionCode: pair.questionCode, ...original.state },
+      });
+      expect(JSON.stringify(jevBodies[0])).not.toContain(original.requestId);
+      expect(jevBodies[0].state).not.toHaveProperty('inputRevision');
+      expect(jevBodies[0].questions).toMatchObject({
+        contextual_answer: { criteria: {
+          remaining: expect.stringContaining('state.questionCode=quantity_role_unresolved'),
+        } },
+      });
+    },
+  );
+
+  it.each(['off', 'shadow', 'canary'] as const)(
+    'rejects malformed, unknown, or duplicated identity before providers in %s',
+    async (mode) => {
+      const original = decisionContext();
+      const invalidContexts = [
+        { ...original, questionCode: 'unknown_code' },
+        { ...original, questionCode: null },
+        { ...original, questionCode: ['quantity_role_unresolved'] },
+        { ...original, state: { ...original.state, questionCode: 'missing_effort_estimate' } },
+        { ...original, state: { ...original.state, questionCode: 'quantity_role_unresolved' } },
+        { ...original, state: { ...original.state, pendingQuestion: {
+          ...original.state.pendingQuestion, questionCode: 'missing_effort_estimate',
+        } } },
+      ];
+      for (const context of invalidContexts) {
+        const run = execute({ mode, context });
+        expect((await run.response).status).toBe(400);
+        await Promise.all(run.pending);
+      }
+      expect(jevBodies).toHaveLength(0);
+      expect(lunaBodies).toHaveLength(0);
+    },
+  );
+
   it('preserves the Luna response in off mode and never calls Jev', async () => {
     const { response } = execute({ mode: 'off' });
     expect(await (await response).json()).toEqual({ content: lunaContent });
     expect(calls.filter((url) => url.endsWith('/api/alpha/decisions'))).toHaveLength(0);
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(1);
+    const withoutContext = execute({ mode: 'off', omitContext: true });
+    expect(await (await withoutContext.response).json()).toEqual({ content: lunaContent });
+    expect(lunaBodies[0]).toEqual(lunaBodies[1]);
   });
 
   it('returns a parser-compatible Jev quantity role with revision correlation', async () => {
