@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
-import { usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
+import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
@@ -273,6 +273,7 @@ export function usePlannerDataState({
   type RepairSnapshot = {
     actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[] };
     monthEvents?: MonthEvent[];
+    plansTodos?: { plans: Plan[]; todos: TodoTask[] };
   };
   const reconciliationRef = useRef<PlannerMutationReconciliation<RepairSnapshot> | null>(null);
   if (!reconciliationRef.current) reconciliationRef.current = new PlannerMutationReconciliation(plannerDataReadAuthority);
@@ -284,12 +285,16 @@ export function usePlannerDataState({
     reconciliation.configure({
       isCurrent: ownerId => mounted.current && userId === ownerId && mutationScope.isCurrent(),
       read: async (ownerId, targets) => {
-        const [actualMaterial, nextMonthEvents] = await Promise.all([
+        const [actualMaterial, nextMonthEvents, plansTodos] = await Promise.all([
           targets.includes('actual-material') ? Promise.all([
             plannerRepository.getActuals(ownerId),
             plannerRepository.getStudyMaterials(ownerId),
           ]) : undefined,
           targets.includes('month-events') ? plannerRepository.getMonthEvents(ownerId) : undefined,
+          targets.includes('plans-todos') ? Promise.all([
+            plannerRepository.getPlans(ownerId),
+            plannerRepository.getTodos(ownerId),
+          ]) : undefined,
         ]);
         // Prepare every requested group before publishing any. A failure keeps
         // the whole batch retryable, without certifying or replacing one slice.
@@ -298,6 +303,7 @@ export function usePlannerDataState({
             actuals: actualMaterial[0], materials: sortStudyMaterials(actualMaterial[1]),
           } : undefined,
           monthEvents: nextMonthEvents ? sortMonthEvents(nextMonthEvents) : undefined,
+          plansTodos: plansTodos ? { plans: sortByDateTime(plansTodos[0]), todos: plansTodos[1] } : undefined,
         };
       },
       publish: snapshot => {
@@ -306,6 +312,10 @@ export function usePlannerDataState({
           rawSetStudyMaterials(snapshot.actualMaterial.materials);
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
+        if (snapshot.plansTodos) {
+          rawSetPlans(snapshot.plansTodos.plans);
+          rawSetTodos(snapshot.plansTodos.todos);
+        }
       },
       changed: publishReadSnapshot,
     });
@@ -502,7 +512,10 @@ export function usePlannerDataState({
         loadStart.token,
         new Date().toISOString(),
         reconciliation.isQuiescentSince(fullReadActivity),
-        reconciliation.successfulTargetsSince(fullReadActivity),
+        [
+          ...reconciliation.successfulTargetsSince(fullReadActivity),
+          ...reconciliation.planRestoreTargetsSince(fullReadActivity),
+        ],
       );
       if (readyAvailability) publishReadSnapshot();
     } catch (error) {
@@ -819,18 +832,34 @@ export function usePlannerDataState({
       actualState.commit(actualOperation);
       todoState.commit(todoOperation);
       showDeleteUndoNotice(async () => {
-        await plannerRepository.restorePlanWithDependents({
-          plan,
-          actuals: linkedActuals,
-          todo: linkedTodo,
-        });
-        setPlans((current) => sortAndUpsertPlans(current, [plan]));
-        if (linkedActuals.length > 0) {
-          setActuals((current) => upsertActualsById(current, linkedActuals));
+        const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+        // Only local owner admission is known to reject safely before dispatch.
+        // Repository validation/outcome policy remains behind its own boundary.
+        if (!mutationScope.isCurrent() || !acknowledgedProjection
+          || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
+          throw new PlannerMutationScopeExpiredError();
         }
-        if (linkedTodo) {
-          setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
-        }
+        const restore = reconciliation.beginPlanRestore();
+        let outcome: 'success' | 'failure' = 'failure';
+        try {
+          await plannerRepository.restorePlanWithDependents({
+            plan,
+            actuals: linkedActuals,
+            todo: linkedTodo,
+          });
+          outcome = 'success';
+          // Publish all captured dependents under one accepted-projection lease.
+          // A failed/superseded read alone does not revoke this acknowledgement.
+          if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+            || plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) return;
+          setPlans((current) => sortAndUpsertPlans(current, [plan]));
+          if (linkedActuals.length > 0) {
+            setActuals((current) => upsertActualsById(current, linkedActuals));
+          }
+          if (linkedTodo) {
+            setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
+          }
+        } finally { reconciliation.settleMutation(restore, outcome); }
       });
     } catch (error) {
       planState.reject(planOperation);

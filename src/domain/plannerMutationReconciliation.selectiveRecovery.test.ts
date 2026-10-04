@@ -272,24 +272,24 @@ describe('selective repair coordinator target and successful-completion contract
 
   it.each(orders)('does not partially publish prepared %s data when the requested %s group fails', async (succeeds, fails) => {
     const h = harness();
-    const groupReads = {
+    const groupReads: Partial<Record<PlannerRepairTarget, ReturnType<typeof deferred<string[]>>>> = {
       'actual-material': deferred<string[]>(),
       'month-events': deferred<string[]>(),
     };
     const read = vi.fn(async (_owner: string, targets: readonly PlannerRepairTarget[]): Promise<Snapshot> => {
-      const results = await Promise.all(targets.map(async target => [target, await groupReads[target].promise] as const));
+      const results = await Promise.all(targets.map(async target => [target, await groupReads[target]!.promise] as const));
       return Object.fromEntries(results);
     });
     h.controller.configure({ isCurrent: owner => owner === 'owner', read, publish: h.publish, changed: h.changed });
     const revision = h.authority.captureProjectionLease()!.acceptedRevision;
     h.controller.request(h.authority.captureOwnerScope()!, BOTH);
     await flush();
-    groupReads[succeeds].resolve(['prepared successful group']);
+    groupReads[succeeds]!.resolve(['prepared successful group']);
     await flush();
     expect(h.publish).not.toHaveBeenCalled();
     expect(h.authority.read().status).toBe('stale');
     expect(h.authority.captureProjectionLease()!.acceptedRevision).toBe(revision);
-    groupReads[fails].reject(new Error('other requested group failed'));
+    groupReads[fails]!.reject(new Error('other requested group failed'));
     await flush();
     expect(h.publish).not.toHaveBeenCalled();
     expect(h.authority.captureProjectionLease()!.acceptedRevision).toBe(revision);
