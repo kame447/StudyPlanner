@@ -167,3 +167,38 @@ test('day long press then movement hands off to drag and hides delete action', a
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe(bodyOverflowBefore);
   await context.close();
 });
+
+test('day action-menu deletion failure keeps the target available for retry without an unhandled error', async ({ browser }, testInfo) => {
+  const { context, page } = await openDaySchedule(browser);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  const readEvents = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]'));
+  const before = await readEvents();
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    let failures = 1;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'studyplanner.scheduleEvents.v1' && failures > 0) {
+        failures -= 1;
+        throw new DOMException('Fixture deletion failure', 'QuotaExceededError');
+      }
+      return setItem.call(this, key, value);
+    };
+  });
+  const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
+  await plan.click();
+  const menu = page.getByRole('dialog', { name: '長押し削除確認の操作', exact: true });
+  const remove = menu.getByRole('button', { name: '削除 この予定を削除', exact: true });
+  await remove.click();
+  await expect(menu.getByRole('alert')).toContainText('もう一度');
+  await expect(remove).toBeEnabled();
+  expect(await readEvents()).toEqual(before);
+  await page.screenshot({ path: testInfo.outputPath('day-menu-delete-recovery.png') });
+  await remove.click();
+  await expect(menu).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
+  await expect.poll(async () => (await readEvents()).map(event => event.id)).toEqual(['plan:sibling-plan']);
+  expect(pageErrors).toEqual([]);
+  await context.close();
+});
