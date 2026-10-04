@@ -1,3 +1,5 @@
+import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { observedDecisionProviders, observeSemanticBackgroundWork } from './semanticDispatchWorkerObservation';
 import aiProxyWorker, { AiQuotaDurableObject } from './index';
 import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 import {
@@ -596,6 +598,7 @@ async function handleChatRequest(
   request: Request, env: Env, tokenProvider?: FirestoreTokenProvider,
   executionContext?: ExecutionContext,
   observationContext?: AiProxyObservationContext,
+  dispatchRecorder?: SemanticRequestRecorder,
 ): Promise<Response> {
   if (!env.OPENAI_API_KEY?.trim()) {
     return jsonResponse(request, env, 500, {
@@ -633,6 +636,8 @@ async function handleChatRequest(
   if (observationContext) {
     observationContext.requestBody = { kind: 'parsed', payload, bytes: requestBytes };
   }
+  const semanticRecorder = dispatchRecorder?.matchesPurpose(payload?.purpose) ? dispatchRecorder : undefined;
+  const providers = observedDecisionProviders(semanticRecorder, env.OPENROUTER_API_KEY, env.JEV_MODE);
   const validationError = validateChatRequest(payload);
   if (validationError) {
     return jsonResponse(request, env, 400, { error: validationError });
@@ -671,8 +676,9 @@ async function handleChatRequest(
   if (focusedContext.kind === 'focused_authorization') {
     const context = focusedContext.context;
     return dispatchFocusedAuthorization({
+      provider: providers?.authorization,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify({ decision }),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -682,8 +688,9 @@ async function handleChatRequest(
   if (focusedContext.kind === 'focused_contextual') {
     const context = focusedContext.context;
     return dispatchFocusedContextual({
+      provider: providers?.contextual,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -693,8 +700,9 @@ async function handleChatRequest(
   if (focusedContext.kind === 'temporal_scope_repair') {
     const context = focusedContext.context;
     return dispatchTemporalScopeRepair({
+      provider: providers?.temporal,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -704,19 +712,21 @@ async function handleChatRequest(
   if (focusedContext.kind === 'user_context_routing') {
     const context = focusedContext.context;
     return dispatchUserContextRouting({
+      provider: providers?.userContext,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
       }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
     });
   }
-  return fetchChatCompletion(request, env, payload, modelResolution.model);
+  return fetchChatCompletion(request, env, payload, modelResolution.model, undefined, semanticRecorder);
 }
 
 async function fetchChatCompletion(
   request: Request, env: Env, payload: ChatCompletionRequest, model: string, signal?: AbortSignal,
+  dispatchRecorder?: SemanticRequestRecorder,
 ): Promise<Response> {
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1')
     .replace(/\/$/, '');
@@ -724,7 +734,10 @@ async function fetchChatCompletion(
     model,
     getChatTemperature(payload),
   );
-  const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
+  const providerFetch = dispatchRecorder?.providerFetch('openai', model === 'gpt-5.6-luna' ? 'luna' : 'other',
+    dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev')
+      && env.JEV_MODE !== 'shadow' ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
+  const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     ...(signal ? { signal } : {}),
     headers: {
@@ -1040,13 +1053,14 @@ async function handleTraceRequest(
   return jsonResponse(request, env, result.status, result.body);
 }
 
-export default {
+const worker = {
   async fetch(
     request: Request,
     env: Env,
     tokenProvider?: FirestoreTokenProvider,
     executionContext?: ExecutionContext,
     observationContext?: AiProxyObservationContext,
+    dispatchRecorder?: SemanticRequestRecorder,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isWeeklyPlanningTracePath(pathname)) {
@@ -1118,7 +1132,7 @@ export default {
         return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
       }
       try {
-        return await handleChatRequest(request, env, tokenProvider, executionContext, observationContext);
+        return await handleChatRequest(request, env, tokenProvider, executionContext, observationContext, dispatchRecorder);
       } catch (error) {
         const baselineFailure = resolveFocusedAuthorizationBaselineFailure(error)
           ?? resolveFocusedContextualBaselineFailure(error)
@@ -1135,5 +1149,25 @@ export default {
     }
 
     return await aiProxyWorker.fetch(request, env as never);
+  },
+};
+
+export default {
+  async fetch(
+    request: Request, env: Env, tokenProvider?: FirestoreTokenProvider,
+    executionContext?: ExecutionContext, observationContext?: AiProxyObservationContext,
+    dispatchRecorder?: SemanticRequestRecorder,
+  ): Promise<Response> {
+    if (!dispatchRecorder) return worker.fetch(request, env, tokenProvider, executionContext, observationContext);
+    if (!['/', '/chat/completions'].includes(new URL(request.url).pathname)) dispatchRecorder.markUnknown();
+    try {
+      return await worker.fetch(request, env, tokenProvider,
+        observeSemanticBackgroundWork(executionContext, dispatchRecorder), observationContext, dispatchRecorder);
+    } finally {
+      dispatchRecorder.finishMain();
+      const settled = dispatchRecorder.settle();
+      if (executionContext) executionContext.waitUntil(settled);
+      else void settled;
+    }
   },
 };

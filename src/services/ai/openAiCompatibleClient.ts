@@ -1,3 +1,4 @@
+import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
@@ -22,6 +23,8 @@ export interface OpenAiCompatibleClientConfig {
   model: string;
   apiKey: string;
   requestTimeoutMs?: number;
+  /** Explicit per-request evaluation hook; never serialized to proxy/provider or trace. */
+  dispatchRecorder?: SemanticRequestRecorder;
 }
 
 export interface JsonSchemaResponseFormat {
@@ -267,11 +270,12 @@ async function runFetchWithTimeout<T>(
   init: RequestInit,
   timeoutMs: number,
   handleResponse: (response: Response) => Promise<T>,
+  transport: typeof fetch = fetch,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(new DOMException('Provider timeout.', 'TimeoutError')), timeoutMs);
   try {
-    const response = await fetch(input, { ...init, signal: controller.signal });
+    const response = await transport(input, { ...init, signal: controller.signal });
     return await handleResponse(response);
   } catch (error) {
     if (controller.signal.aborted) {
@@ -298,7 +302,7 @@ export function createOpenAiCompatibleClient(
   config: OpenAiCompatibleClientConfig,
 ): OpenAiCompatibleClient {
   const requestTimeoutMs = resolvedTimeoutMs(config.requestTimeoutMs);
-  return {
+  const client: OpenAiCompatibleClient = {
     async createChatCompletion({
       decisionContext,
       messages,
@@ -307,7 +311,10 @@ export function createOpenAiCompatibleClient(
       purpose,
       maxCompletionTokens,
     }) {
+      const recorder = config.dispatchRecorder;
+      const observesSemantic = recorder?.matchesPurpose(purpose);
       if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
+        recorder?.markUnobservedProxy();
         const proxyUrl = getCloudflareAiProxyUrl();
         const firebaseAuth = getFirebaseAuth();
 
@@ -452,6 +459,7 @@ export function createOpenAiCompatibleClient(
 
             return { content, usage: data.usage ?? null };
           },
+          observesSemantic ? recorder?.providerFetch('openai', directModel === 'gpt-5.6-luna' ? 'luna' : 'other') : undefined,
         );
 
         if (shouldCaptureEvalUsage()) {
@@ -487,6 +495,15 @@ export function createOpenAiCompatibleClient(
           startedAtMs,
         });
         throw error;
+      }
+    },
+  };
+  return {
+    async createChatCompletion(input) {
+      try { return await client.createChatCompletion(input); }
+      finally {
+        config.dispatchRecorder?.finishMain();
+        await config.dispatchRecorder?.settle();
       }
     },
   };
