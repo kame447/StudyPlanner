@@ -39,7 +39,7 @@ function semantic(): WeeklyPlanningSemanticDocumentV5 {
 interface RequestBody { messages: Array<{ role: string; content: string }>; response_format?: { json_schema?: { name?: string } } }
 interface RequestRecord { schema: string; body: RequestBody; signal: AbortSignal | null | undefined }
 let renderer: ReactTestRenderer | undefined; let restoreStorage: (() => void) | undefined;
-let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout'; let semanticCount: number;
+let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout' | 'network'; let semanticCount: number;
 let started: ReturnType<typeof createDeferred<void>>;
 let responseDocument: WeeklyPlanningSemanticDocumentV5;
 const gateway = () => vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute'); // Call through to the real executor.
@@ -60,6 +60,7 @@ beforeEach(() => {
     let content: string;
     if (schema.includes('weekly_planning_semantic')) {
       semanticCount += 1;
+      if (mode === 'network') throw new TypeError('Failed to fetch');
       if (mode === 'timeout') {
         const signal = init?.signal; expect(signal).toBeDefined(); started.resolve();
         return new Promise<Response>((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
@@ -123,7 +124,7 @@ it('repairs an invalid HTTP completion through the real normalizer before produc
   const execution = await spy.mock.results[0].value; expect(execution.failure).toBeUndefined(); expect(execution.observability?.repairUsed).toBe(true);
   expect(ref.current!.state.previewCandidates!.length).toBeGreaterThan(0); unsaved();
 });
-it.each(['exhausted', 'timeout'] as const)('preserves accepted preview after %s and admits a later healthy turn', async failureMode => {
+it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted preview after %s and admits a later healthy turn', async failureMode => {
   const spy = gateway(); const { ref, submit, unsaved } = await mount(); await submit(); unsaved();
   const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
   const intake = structuredClone(ref.current!.state.intakeState); const preview = structuredClone(ref.current!.state.previewCandidates);
@@ -135,11 +136,13 @@ it.each(['exhausted', 'timeout'] as const)('preserves accepted preview after %s 
     });
     expect(calls[0].signal?.aborted).toBe(true);
   } else result = await submit();
+  if (failureMode === 'network') expect(calls[0].signal?.aborted).toBe(false);
+  const providerFailure = failureMode !== 'exhausted';
   expect(result.accepted).toBe(true); expect(result.draftCandidates).toEqual([]);
   const execution = await spy.mock.results[1].value;
-  expect(execution.failure).toMatchObject({ code: failureMode === 'timeout' ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
-    diagnostics: { attemptCount: failureMode === 'timeout' ? 1 : 2, repairAttempted: failureMode !== 'timeout' } });
-  expect(semanticCount).toBe(failureMode === 'timeout' ? 1 : 2); expect(calls.some(call => call.schema.includes('dialogue'))).toBe(false);
+  expect(execution.failure).toMatchObject({ code: providerFailure ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
+    diagnostics: { attemptCount: providerFailure ? 1 : 2, repairAttempted: !providerFailure } });
+  expect(semanticCount).toBe(providerFailure ? 1 : 2); expect(calls.some(call => call.schema.includes('dialogue'))).toBe(false);
   expect(ref.current!.state.pendingTurn).toBeUndefined(); expect(ref.current!.state.intakeState).toEqual(intake); expect(ref.current!.state.previewCandidates).toEqual(preview);
   expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph); unsaved();
   mode = 'valid'; semanticCount = 0; responseDocument = { ...semantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] };
