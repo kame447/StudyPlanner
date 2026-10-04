@@ -76,7 +76,7 @@ type DayViewModalState =
   | { type: 'closed' }
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string }
-  | { type: 'standalone-actual-detail'; actualId: string };
+  | { type: 'standalone-actual-detail'; actual: Actual };
 
 function createMonthEventActualPlan(
   monthEvent: MonthEvent,
@@ -350,10 +350,8 @@ export function DayView({
       )
     : undefined;
   const selectedStandaloneActual =
-    modalState.type === 'standalone-actual-detail'
-      ? dayActuals.find(
-          (actual) => actual.id === modalState.actualId && !actual.planId,
-        ) ?? null
+    modalState.type === 'standalone-actual-detail' && modalState.actual.userId === userId
+      ? modalState.actual
       : null;
 
   useEffect(() => {
@@ -368,21 +366,13 @@ export function DayView({
       setModalState({ type: 'closed' });
     }
 
-    if (
-      modalState.type === 'standalone-actual-detail' &&
-      !dayActuals.some(
-        (actual) => actual.id === modalState.actualId && !actual.planId,
-      )
-    ) {
-      setModalState({ type: 'closed' });
-    }
-  }, [dayActuals, dayMonthEventMap, dayPlanMap, modalState]);
+  }, [dayMonthEventMap, dayPlanMap, modalState]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
     setQuickMaterial(null);
     scheduleAction.dismiss();
-  }, [selectedDate]);
+  }, [selectedDate, userId]);
 
   function closeModal() {
     setModalState({ type: 'closed' });
@@ -546,15 +536,16 @@ export function DayView({
                 ? `standalone-actual:${selectedStandaloneActual.id}`
                 : undefined
         }
-        onSelectEntry={(entry) =>
-          entry.kind === 'standalone-actual'
-            ? setModalState({ type: 'standalone-actual-detail', actualId: entry.id })
-            : setModalState(
-                entry.kind === 'plan'
-                  ? { type: 'plan-detail', planId: entry.id }
-                  : { type: 'month-event-detail', monthEventId: entry.id },
-              )
-        }
+        onSelectEntry={(entry) => {
+          if (entry.kind === 'standalone-actual') {
+            const actual = dayActuals.find(item => item.id === entry.id && !item.planId);
+            if (actual) setModalState({ type: 'standalone-actual-detail', actual: structuredClone(actual) });
+            return;
+          }
+          setModalState(entry.kind === 'plan'
+            ? { type: 'plan-detail', planId: entry.id }
+            : { type: 'month-event-detail', monthEventId: entry.id });
+        }}
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
         onPrint={() => window.print()}
