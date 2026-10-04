@@ -1,16 +1,13 @@
+import { createGraphCheckpointAssertions } from '../testUtils/__tests__/weeklyPlanningGraphCheckpointAssertions';
 import { createWeeklyPlanningTurnRequestContext, resolveWeeklyPlanningPlanningHorizon } from '../application/weeklyPlanningTemporalContext';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import { resolveWeeklyPlanningTemporalConstraintsV5 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { validateWeeklyPlanningSemanticValueV5 } from './weeklyPlanningSemanticValidatorV5';
-import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
 import { SEMANTIC_COMPONENT_ROLES_V5, SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_TASK_CATEGORIES_V5, WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
-import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
-import { createInitialPlanningState } from '../weeklyPlanningReducer';
-import { getWeeklyPlanningStableV5SessionStorageKeyForTest, loadWeeklyPlanningStableV5PersistedSession, saveWeeklyPlanningStableV5PersistedSession } from '../application/weeklyPlanningStableV5SessionStorage';
-import { prepareWeeklyPlanningStableV5Checkpoint } from '../application/weeklyPlanningStableV5SessionCodec';
 import { createWeeklyPlanningAvailabilityResolverGraphV5 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
 import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 
@@ -34,18 +31,9 @@ function canonical(input = document()) {
   if (result.status !== 'applied') throw new Error(result.errors.join(','));
   return result.graph;
 }
-const parameters = (graph: WeeklyPlanningFactGraphV5) => ({ ownerId: OWNER, weekStartDate: WEEK, conversationId: CONVERSATION,
-  graph, planningState: createInitialPlanningState(WEEK) });
-const load = () => loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK });
-let storage: ReturnType<typeof createMemoryStorageHarness>;
-let restore: () => void;
-beforeEach(() => { storage = createMemoryStorageHarness(); restore = installWeeklyPlanningTestStorage(storage.storage); });
-afterEach(() => restore());
-function roundTrip(graph: WeeklyPlanningFactGraphV5) {
-  expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(graph)).graph).toEqual(graph);
-  expect(saveWeeklyPlanningStableV5PersistedSession(parameters(graph))).toBe(true);
-  expect(load()?.graph).toEqual(graph);
-}
+let checkpoint: ReturnType<typeof createGraphCheckpointAssertions>;
+beforeEach(() => { checkpoint = createGraphCheckpointAssertions({ ownerId: OWNER, weekStartDate: WEEK, conversationId: CONVERSATION }); });
+afterEach(() => checkpoint.restore());
 type Bucket = 'tasks' | 'components' | 'studyContexts' | 'planningWindows' | 'availabilityDeclarations';
 function providerPayload(input: WeeklyPlanningSemanticDocumentV5, bucket: Bucket): object {
   if (bucket === 'tasks') return input.tasks[0];
@@ -71,44 +59,42 @@ const malformed: Array<[Bucket, Record<string, unknown>]> = [
   ['availabilityDeclarations', { namedTimePeriod: 'night' }], ['availabilityDeclarations', { dateExpression: '2026-02-30' }],
   ['availabilityDeclarations', { dateExpression: null, startTime: null, endTime: null }],
   ['availabilityDeclarations', { capacityMinutes: 30 }],
+  ['availabilityDeclarations', { namedTimePeriod: 'not-a-period', startTime: null, endTime: null }],
 ];
 describe('existing payload contracts at every persisted graph gate', () => {
   it.each(malformed)('rejects %s corruption %j without exposing it to recovery consumers', (bucket, change) => {
     const input = document(); const graph = canonical(input);
-    roundTrip(graph);
-    const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER, WEEK);
-    const original = storage.storage.getItem(key)!;
+    checkpoint.roundTrip(graph);
     Object.assign(providerPayload(input, bucket), change);
     Object.assign(graph[bucket][0], change);
-    expect(validateWeeklyPlanningSemanticValueV5(input).document).toBeNull();
-    expect(validateWeeklyPlanningFactGraphValueV5(graph).graph).toBeNull();
-    expect(parseWeeklyPlanningFactGraphV5(JSON.stringify(graph)).graph).toBeNull();
-    expect(() => serializeWeeklyPlanningFactGraphV5(graph)).toThrow('Invalid WeeklyPlanningFactGraphV5');
-    expect(prepareWeeklyPlanningStableV5Checkpoint(parameters(graph)).status).not.toBe('ready');
-    expect(saveWeeklyPlanningStableV5PersistedSession(parameters(graph))).toBe(false);
-    expect(storage.storage.getItem(key)).toBe(original); // Direct API only; owner fallback has a separate contract.
-    const corrupted = JSON.parse(original); corrupted.graph = graph;
-    storage.storage.setItem(key, JSON.stringify(corrupted));
-    expect(load()).toBeNull();
+    const validation = validateWeeklyPlanningSemanticValueV5(input);
+    expect(validation.document).toBeNull();
+    if (bucket === 'availabilityDeclarations') {
+      const suffix = change.startTime === '25:99' ? '.startTime:clock-format'
+        : change.dateExpression === '2026-02-30' ? '.dateExpression:canonical-expression'
+        : change.namedTimePeriod === 'not-a-period' ? '.namedTimePeriod' : null;
+      if (suffix) expect(validation.errors).toContain(`document.availabilityDeclarations[0]${suffix}`);
+    }
+    checkpoint.reject(graph);
   });
   it.each(SEMANTIC_TASK_CATEGORIES_V5)('round trips category %s', category => {
     const input = document(); input.tasks[0].category = category;
     if (category === 'non_study') input.tasks[0].study = null;
-    roundTrip(canonical(input));
+    checkpoint.roundTrip(canonical(input));
   });
   it.each(SEMANTIC_COMPONENT_ROLES_V5)('round trips component role %s', role => {
-    const input = document(); input.tasks[0].study!.components[0].role = role; roundTrip(canonical(input));
+    const input = document(); input.tasks[0].study!.components[0].role = role; checkpoint.roundTrip(canonical(input));
   });
   it.each(SEMANTIC_STUDY_PURPOSES_V5)('round trips study purpose %s', purpose => {
-    const input = document(); input.tasks[0].study!.purpose = purpose; roundTrip(canonical(input));
+    const input = document(); input.tasks[0].study!.purpose = purpose; checkpoint.roundTrip(canonical(input));
   });
   it.each([null, '', '  ', 'exam'])('preserves contextLabel %j', contextLabel => {
-    const input = document(); input.tasks[0].study!.contextLabel = contextLabel; roundTrip(canonical(input));
+    const input = document(); input.tasks[0].study!.contextLabel = contextLabel; checkpoint.roundTrip(canonical(input));
   });
   it('restores valid task and availability values for the real consumers', () => {
-    roundTrip(canonical());
-    expect(stableV5MissingSchedulableWorkQuestion(load()!.graph).taskTitles).toEqual(['数学']);
-    expect(() => createWeeklyPlanningAvailabilityResolverGraphV5(load()!.graph)).not.toThrow();
+    checkpoint.roundTrip(canonical());
+    expect(stableV5MissingSchedulableWorkQuestion(checkpoint.load()!.graph).taskTitles).toEqual(['数学']);
+    expect(() => createWeeklyPlanningAvailabilityResolverGraphV5(checkpoint.load()!.graph)).not.toThrow();
   });
 });
 
@@ -129,8 +115,8 @@ it.each([
   { ...capacity, capacityMinutes: 1440 }, { ...capacity, dateExpression: null, recurrenceKind: 'daily' },
   absence, { ...absence, capacityMinutes: null }, { ...absence, dateExpression: 'custom:after exam' },
 ])('preserves canonical availability representation %j', change => {
-  const graph = canonical(availabilityInput(change)); roundTrip(graph);
-  expect(() => createWeeklyPlanningAvailabilityResolverGraphV5(load()!.graph)).not.toThrow();
+  const graph = canonical(availabilityInput(change)); checkpoint.roundTrip(graph);
+  expect(() => createWeeklyPlanningAvailabilityResolverGraphV5(checkpoint.load()!.graph)).not.toThrow();
 });
 it.each([
   ...[null, undefined, 0, -1, Infinity, NaN, 1441, '90'].map(capacityMinutes => ({ ...capacity, capacityMinutes })),
@@ -144,10 +130,10 @@ it.each([
   const graph = canonical(); Object.assign(graph.availabilityDeclarations[0], change);
   expect(validateWeeklyPlanningSemanticValueV5(availabilityInput(change)).document).toBeNull();
   expect(validateWeeklyPlanningFactGraphValueV5(graph).graph).toBeNull();
-  expect(saveWeeklyPlanningStableV5PersistedSession(parameters(graph))).toBe(false);
+  expect(checkpoint.save(graph)).toBe(false);
 });
 it.each([{}, absence])('allows legacy omitted capacityMinutes in stored facts %j', change => {
-  const graph = canonical(availabilityInput(change)); delete graph.availabilityDeclarations[0].capacityMinutes; roundTrip(graph);
+  const graph = canonical(availabilityInput(change)); delete graph.availabilityDeclarations[0].capacityMinutes; checkpoint.roundTrip(graph);
 });
 it.each([
   { kind: 'relative_week', value: 'this_week', start: null, end: null },
@@ -155,17 +141,17 @@ it.each([
   { kind: 'named_period', value: 'custom:summer holiday', start: null, end: null },
   { kind: 'absolute', value: '2026-08-24/2026-08-30', start: '2026-08-24', end: '2026-08-30' },
 ])('round trips planning window %j', change => {
-  const input = document(); Object.assign(input.planningWindow!, change); roundTrip(canonical(input));
+  const input = document(); Object.assign(input.planningWindow!, change); checkpoint.roundTrip(canonical(input));
 });
 it('keeps the saved absolute-window legacy label contract', () => {
   const input = document(); Object.assign(input.planningWindow!, { kind: 'absolute', value: '2026-08-24/2026-08-30', start: '2026-08-24', end: '2026-08-30' });
-  const graph = canonical(input); graph.planningWindows[0].value = '今週の予定'; roundTrip(graph);
+  const graph = canonical(input); graph.planningWindows[0].value = '今週の予定'; checkpoint.roundTrip(graph);
 });
 it('does not require provider nesting or extensions in a saved task-only graph', () => {
   const input = document(); input.tasks[0].study!.components = [];
   const graph = canonical(input); const removedIds = new Set(graph.studyContexts.map(fact => fact.id));
   graph.studyContexts = []; graph.factLifecycles = graph.factLifecycles.filter(entry => !removedIds.has(entry.factId));
-  roundTrip(graph); expect(graph.tasks[0]).not.toHaveProperty('decompositionStatus');
+  checkpoint.roundTrip(graph); expect(graph.tasks[0]).not.toHaveProperty('decompositionStatus');
 });
 it('checks the saved availability resolution marker', () => {
   const graph = canonical(); Object.assign(graph.availabilityDeclarations[0], { resolutionStatus: 'resolved' });
@@ -177,8 +163,8 @@ it.each([false, true])('restores a resolvable planning horizon (legacy absolute=
   if (absolute) Object.assign(input.planningWindow!, { kind: 'absolute', value: '2026-08-24/2026-08-30', start: '2026-08-24', end: '2026-08-30' });
   const graph = canonical(input);
   if (absolute) graph.planningWindows[0].value = '今週の予定';
-  roundTrip(graph);
-  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(load()!.graph);
+  checkpoint.roundTrip(graph);
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(checkpoint.load()!.graph);
   const requestContext = createWeeklyPlanningTurnRequestContext({ startedAtIso: '2026-08-24T00:00:00Z', timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' });
   expect(resolveWeeklyPlanningPlanningHorizon({ graph: active, selectedDate: WEEK, requestContext,
     resolvedTemporalConstraints: resolveWeeklyPlanningTemporalConstraintsV5({ graph: active, currentDate: requestContext.currentDate, weekStartsOn: 'monday' }),
@@ -195,7 +181,7 @@ it.each(['removed', 'superseded'] as const)('still validates malformed historica
   Object.assign(graph.factLifecycles.find(entry => entry.factId === old.id)!, {
     status, terminalRevision: 2, supersededByFactId: status === 'superseded' ? replacement.id : null,
   });
-  roundTrip(graph);
+  checkpoint.roundTrip(graph);
   Object.assign(old, { days: null });
   expect(validateWeeklyPlanningFactGraphValueV5(graph).errors).toContain('graph.availabilityDeclarations[0].days');
 });

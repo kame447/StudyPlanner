@@ -126,7 +126,7 @@ describe('reduced saved date rules', () => {
   });
 });
 
-describe('provider-only wire fields and shared availability primitives', () => {
+describe('provider-only temporal wire fields', () => {
   it.each([
     [{ precision: 'certain' }, '.precision'], [{ precision: undefined }, '.precision'],
     [{ namedTimePeriod: 'night' }, '.namedTimePeriod:must-be-null-for-date-rule'],
@@ -140,25 +140,6 @@ describe('provider-only wire fields and shared availability primitives', () => {
     const input = document(true); input.tasks[0].temporalConstraints[0].precision = precision;
     const graph = canonical(input); expect(graph.taskDateRules[0]).not.toHaveProperty('precision');
     expect(saveWeeklyPlanningStableV5PersistedSession(parameters(graph))).toBe(true);
-  });
-  function availabilityInput(change: Record<string, unknown>) {
-    const input = document(); input.availabilityDeclarations = [{ localId: 'availability', kind: 'unavailable',
-      dateExpression: '2026-08-26', namedTimePeriod: null, startTime: '18:00', endTime: '19:00',
-      recurrenceKind: null, days: [], constraintLevel: 'hard', sourceText: 'この時間は予定あり' }];
-    Object.assign(input.availabilityDeclarations[0], change); return input;
-  }
-  it.each([
-    [{ startTime: '25:99' }, '.startTime:clock-format'], [{ dateExpression: '2026-02-30' }, '.dateExpression:canonical-expression'],
-    [{ namedTimePeriod: 'not-a-period', startTime: null, endTime: null }, '.namedTimePeriod'],
-  ] as Array<[Record<string, unknown>, string]>)('retains availability rejection %j', (change, suffix) => {
-    expect(validateWeeklyPlanningSemanticValueV5(availabilityInput(change)).errors).toContain(`document.availabilityDeclarations[0]${suffix}`);
-  });
-  it.each([
-    { startTime: '', endTime: '' },
-    { dateExpression: 'custom:after exam' },
-    { namedTimePeriod: 'custom:after lunch', startTime: null, endTime: null },
-  ])('retains valid availability scalar representation %j', (change) => {
-    expect(validateWeeklyPlanningSemanticValueV5(availabilityInput(change)).errors).toEqual([]);
   });
 });
 
