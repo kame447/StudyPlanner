@@ -25,6 +25,9 @@ type AppSettingsTab = 'settings' | 'memory' | 'support';
 
 interface AppSettingsDialogProps {
   open: boolean;
+  showMonthTimetable?: boolean;
+  onChangeMonthTimetable?: (value: boolean) => void;
+  monthTimetableError?: string | null;
   themeMode: ThemeMode;
   themePalette: ThemePalette;
   onChangeTheme: (nextThemeMode: ThemeMode) => void;
@@ -41,6 +44,9 @@ function memoryOriginLabel(record: UserPlanningContextRecordV1): string {
 
 export function AppSettingsDialog({
   open,
+  showMonthTimetable = true,
+  onChangeMonthTimetable,
+  monthTimetableError,
   themeMode,
   themePalette,
   onChangeTheme,
@@ -224,6 +230,34 @@ export function AppSettingsDialog({
                   ) : null}
                 </div>
               </section>
+
+              {onChangeMonthTimetable ? (
+                <section className="assistant-settings-card">
+                  <div className="field">
+                    <span className="settings-field-label" id="month-timetable-label">
+                      <CalendarDays aria-hidden="true" size={20} strokeWidth={1.9} />
+                      月カレンダーに時間割を表示
+                    </span>
+                    <div className="segmented-control" role="group"
+                      aria-labelledby="month-timetable-label" aria-describedby="month-timetable-description">
+                      <button type="button" className={showMonthTimetable ? 'segment active' : 'segment'}
+                        aria-pressed={showMonthTimetable} onClick={() => onChangeMonthTimetable(true)}>
+                        表示する
+                      </button>
+                      <button type="button" className={!showMonthTimetable ? 'segment active' : 'segment'}
+                        aria-pressed={!showMonthTimetable} onClick={() => onChangeMonthTimetable(false)}>
+                        表示しない
+                      </button>
+                    </div>
+                  </div>
+                  <p className="detail-note" id="month-timetable-description">
+                    時間割から自動表示する授業を、月カレンダーと日付を開いた一覧に表示します。
+                    オフにしても、予定として保存した授業は残ります。週・日表示やAIの空き時間判定は変わりません。
+                    このブラウザに、ユーザーごとに保存されます。
+                  </p>
+                  {monthTimetableError ? <p className="settings-inline-error" role="alert">{monthTimetableError}</p> : null}
+                </section>
+              ) : null}
 
               <section className="assistant-settings-card">
                 <div className="field">

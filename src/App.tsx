@@ -21,6 +21,7 @@ import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog'
 import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
+import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
 import { useThemePreference } from './hooks/useThemePreference';
 import {
   hasStoredAppAccessGrant,
@@ -161,6 +162,7 @@ export default function App() {
     openDay,
     setEditorDraft,
   } = usePlannerAppState();
+  const monthTimetablePreference = useMonthTimetablePreference(user?.id);
   const {
     term: activeTimetableTerm,
     termId: activeTimetableTermId,
@@ -443,6 +445,7 @@ export default function App() {
 
         {isWorkspaceSurface && viewMode === 'month' ? (
           <MonthView
+            showTimetable={monthTimetablePreference.showTimetable}
             monthDate={monthDate}
             selectedDate={selectedDate}
             userId={user.id}
@@ -654,6 +657,9 @@ export default function App() {
 
       <AppSettingsDialog
         open={isAppSettingsOpen}
+        showMonthTimetable={monthTimetablePreference.showTimetable}
+        onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
+        monthTimetableError={monthTimetablePreference.error}
         themeMode={themeMode}
         themePalette={themePalette}
         onChangeTheme={setThemeMode}

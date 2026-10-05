@@ -460,3 +460,33 @@ describe('month view projection', () => {
     },
   );
 });
+
+
+describe('month timetable visibility', () => {
+  it('hides only automatic classes across month navigation and restores them without modifying data', () => {
+    const term = createTimetableTerm();
+    const input = {
+      userId: 'user-1',
+      plans: [plan, { ...plan, id: 'saved-class', seriesId: 'saved-class', type: 'school-event' as const,
+        title: '保存した授業', sourceType: 'timetable' as const, sourceId: 'class-1' },
+        { ...plan, id: 'normal', seriesId: 'normal', type: 'other' as const, title: '通常予定' }],
+      actuals: [actual], monthEvents: [createMonthEvent('月予定', '17:00')],
+      scheduleTemplates: [createScheduleTemplate()], timetableTermId: term.id,
+      timetableTerm: term, timetableTerms: [term],
+    };
+    const before = JSON.stringify(input);
+    const visible = buildMonthPanelProjection({ ...input, monthDate: '2026-08-01' });
+    for (const monthDate of ['2026-08-01', '2026-09-01', '2026-08-01']) {
+      const hidden = buildMonthPanelProjection({ ...input, monthDate, showTimetable: false });
+      expect(hidden.cells.flatMap(cell => cell.monthEvents).some(event => event.title === '情報学演習')).toBe(false);
+      if (monthDate === '2026-08-01') {
+        const day = hidden.cells.find(cell => cell.date === '2026-08-14')!;
+        expect(day.monthEvents.map(event => event.title)).toEqual(expect.arrayContaining(['保存した授業', '通常予定', '月予定']));
+        expect([day.targetMinutes, day.actualMinutes]).toEqual([90, 60]);
+      }
+    }
+    expect(visible.cells.flatMap(cell => cell.monthEvents).some(event => event.title === '情報学演習')).toBe(true);
+    expect(buildMonthPanelProjection({ ...input, monthDate: '2026-08-01', showTimetable: true })).toEqual(visible);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+});

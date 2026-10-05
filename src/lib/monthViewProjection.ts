@@ -184,6 +184,7 @@ export function buildMonthPanelProjection({
   plans,
   actuals,
   monthEvents,
+  showTimetable = true,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
@@ -194,6 +195,7 @@ export function buildMonthPanelProjection({
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  showTimetable?: boolean;
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -237,6 +239,7 @@ export function buildMonthPanelProjection({
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const monthEventById = new Map(monthEvents.map((monthEvent) => [monthEvent.id, monthEvent]));
   const projectedMonthEvents = scheduleProjection.occurrences.flatMap((occurrence) => {
+    if (!showTimetable && occurrence.source.backingKind === 'timetable-template') return [];
     const projected = projectOccurrenceAsMonthEvent({
       occurrence,
       planById,
