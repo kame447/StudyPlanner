@@ -87,15 +87,15 @@ describe('temporal-scope repair Jev gate', () => {
 
   it('defaults off and requires a supported explicit canary percentage', () => {
     expect(temporalScopeRepairDecisionMode({})).toBe('off');
-    expect(temporalScopeRepairDecisionMode({ JEV_MODE: 'invalid' })).toBe('off');
-    expect(temporalScopeRepairCanarySelected({ JEV_MODE: 'canary' }, 0)).toBe(false);
+    expect(temporalScopeRepairDecisionMode({ JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'invalid', JEV_MODE: 'invalid' })).toBe('off');
+    expect(temporalScopeRepairCanarySelected({ JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary' }, 0)).toBe(false);
     expect(temporalScopeRepairCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.04)).toBe(true);
     expect(temporalScopeRepairCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.06)).toBe(false);
   });
 });

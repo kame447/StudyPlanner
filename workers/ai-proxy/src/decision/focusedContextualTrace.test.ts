@@ -63,7 +63,7 @@ it('excludes the provider-only projection while persisting contextual diagnostic
       body: JSON.stringify({ purpose: request.purpose, messages: request.messages,
         response_format: request.responseFormat, decisionContext: request.decisionContext }),
     }), { OPENAI_API_KEY: 'offline-key', OPENROUTER_API_KEY: 'offline-key', FIREBASE_WEB_API_KEY: 'fixture-project',
-      ALLOWED_ORIGIN: 'https://app.example', JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+      ALLOWED_ORIGIN: 'https://app.example', JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100',
       AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 1 }) }) } } as never,
     { getToken: async () => 'unused' }, { waitUntil: (promise: Promise<unknown>) => pending.push(promise) } as ExecutionContext);
     await Promise.all(pending);

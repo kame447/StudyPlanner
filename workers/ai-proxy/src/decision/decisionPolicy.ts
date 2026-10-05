@@ -1,3 +1,4 @@
+import { resolveJevPurposeRollout, jevPurposeCanarySelected, type JevRolloutEnv } from './jevPurposeRollout';
 import type { DecisionEvaluation } from './decisionProvider';
 
 // Update the request ID and the verified response allowlist together on model upgrade.
@@ -18,19 +19,16 @@ export const FOCUSED_AUTHORIZATION_GATE_THRESHOLDS = {
   createAuxiliaryVeto: 0.5,
 } as const;
 
-export interface DecisionEnv {
+export interface DecisionEnv extends JevRolloutEnv {
   OPENROUTER_API_KEY?: string;
-  JEV_MODE?: string;
-  JEV_CANARY_PERCENT?: string;
 }
 
 export function decisionMode(env: DecisionEnv): 'off' | 'shadow' | 'canary' {
-  return env.JEV_MODE === 'shadow' || env.JEV_MODE === 'canary' ? env.JEV_MODE : 'off';
+  return resolveJevPurposeRollout(env, 'focused_authorization').mode;
 }
 
-export function canarySelected(env: DecisionEnv, random = Math.random()): boolean {
-  const percent = Number(env.JEV_CANARY_PERCENT ?? 0);
-  return env.JEV_MODE === 'canary' && [5, 25, 100].includes(percent) && random * 100 < percent;
+export function canarySelected(env: DecisionEnv, sample?: number): boolean {
+  return jevPurposeCanarySelected(env, 'focused_authorization', sample);
 }
 
 export type DecisionGate = { status: 'accepted'; decision: 'create_plan' | 'fallback' }

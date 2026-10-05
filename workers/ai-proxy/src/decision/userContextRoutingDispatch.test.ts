@@ -61,7 +61,7 @@ function provider(
   return { evaluate: vi.fn(async () => result) };
 }
 
-const canaryEnv = { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' } as const;
+const canaryEnv = { JEV_USER_CONTEXT_ROUTING_MODE: 'canary', JEV_MODE: 'canary', JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' } as const;
 
 function lunaResponse(targetDomain = 'user_context'): Response {
   return Response.json({
@@ -197,7 +197,7 @@ describe('user-context routing dispatch', () => {
     const fallback = vi.fn(async () => lunaResponse('bookshelf'));
     const response = await dispatchUserContextRouting({
       context,
-      env: { JEV_MODE: 'shadow' },
+      env: { JEV_USER_CONTEXT_ROUTING_MODE: 'shadow', JEV_MODE: 'shadow', JEV_CANARY_PERCENT: '0', JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '0' },
       firebaseUid: 'user-fixture',
       executionContext: { waitUntil: (promise) => pending.push(promise) },
       signal: new AbortController().signal,

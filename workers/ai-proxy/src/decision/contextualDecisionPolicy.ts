@@ -1,3 +1,4 @@
+import { resolveJevPurposeRollout, jevPurposeCanarySelected, type JevRolloutEnv } from './jevPurposeRollout';
 import type { FocusedContextualQuestionCode } from '../../../../shared/focusedContextualDecision';
 import type { DecisionEvaluation, DecisionQuestionCatalog } from './decisionProvider';
 import { JEV_MODEL } from './decisionPolicy';
@@ -108,26 +109,14 @@ export function gateContextualDecision(
   return { status: 'accepted', decision: result.decision };
 }
 
-export interface ContextualDecisionEnv {
+export interface ContextualDecisionEnv extends JevRolloutEnv {
   OPENROUTER_API_KEY?: string;
-  JEV_MODE?: string;
-  JEV_CANARY_PERCENT?: string;
 }
 
-export function contextualDecisionMode(
-  env: ContextualDecisionEnv,
-): 'off' | 'shadow' | 'canary' {
-  return env.JEV_MODE === 'shadow' || env.JEV_MODE === 'canary'
-    ? env.JEV_MODE
-    : 'off';
+export function contextualDecisionMode(env: ContextualDecisionEnv): 'off' | 'shadow' | 'canary' {
+  return resolveJevPurposeRollout(env, 'focused_contextual_answer').mode;
 }
 
-export function contextualCanarySelected(
-  env: ContextualDecisionEnv,
-  random = Math.random(),
-): boolean {
-  const percent = Number(env.JEV_CANARY_PERCENT ?? 0);
-  return env.JEV_MODE === 'canary'
-    && [5, 25, 100].includes(percent)
-    && random * 100 < percent;
+export function contextualCanarySelected(env: ContextualDecisionEnv, sample?: number): boolean {
+  return jevPurposeCanarySelected(env, 'focused_contextual_answer', sample);
 }

@@ -1,3 +1,4 @@
+import { resolveJevPurposeRollout, jevPurposeCanarySelected, type JevRolloutEnv } from './jevPurposeRollout';
 import type { DecisionEvaluation, DecisionQuestionCatalog } from './decisionProvider';
 import { JEV_MODEL } from './decisionPolicy';
 
@@ -96,26 +97,14 @@ export function gateTemporalScopeRepairDecision(
   return { status: 'accepted', decision: result.decision };
 }
 
-export interface TemporalScopeRepairDecisionEnv {
+export interface TemporalScopeRepairDecisionEnv extends JevRolloutEnv {
   OPENROUTER_API_KEY?: string;
-  JEV_MODE?: string;
-  JEV_CANARY_PERCENT?: string;
 }
 
-export function temporalScopeRepairDecisionMode(
-  env: TemporalScopeRepairDecisionEnv,
-): 'off' | 'shadow' | 'canary' {
-  return env.JEV_MODE === 'shadow' || env.JEV_MODE === 'canary'
-    ? env.JEV_MODE
-    : 'off';
+export function temporalScopeRepairDecisionMode(env: TemporalScopeRepairDecisionEnv): 'off' | 'shadow' | 'canary' {
+  return resolveJevPurposeRollout(env, 'temporal_scope_repair').mode;
 }
 
-export function temporalScopeRepairCanarySelected(
-  env: TemporalScopeRepairDecisionEnv,
-  random = Math.random(),
-): boolean {
-  const percent = Number(env.JEV_CANARY_PERCENT ?? 0);
-  return env.JEV_MODE === 'canary'
-    && [5, 25, 100].includes(percent)
-    && random * 100 < percent;
+export function temporalScopeRepairCanarySelected(env: TemporalScopeRepairDecisionEnv, sample?: number): boolean {
+  return jevPurposeCanarySelected(env, 'temporal_scope_repair', sample);
 }

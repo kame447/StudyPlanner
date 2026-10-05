@@ -68,7 +68,7 @@ function provider(
   return { evaluate: vi.fn(async () => result) };
 }
 
-const canaryEnv = { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' } as const;
+const canaryEnv = { JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' } as const;
 const structuredResponse = (decision: TemporalScopeRepairDecision) => Response.json({
   content: JSON.stringify({ decision }),
 });
@@ -155,7 +155,7 @@ describe('temporal-scope repair dispatch', () => {
     const fallback = vi.fn(async () => structuredResponse('uncertain'));
     const response = await dispatchTemporalScopeRepair({
       context: context(),
-      env: { JEV_MODE: 'shadow' },
+      env: { JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'shadow', JEV_MODE: 'shadow', JEV_CANARY_PERCENT: '0', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '0' },
       firebaseUid: 'user-fixture',
       executionContext: { waitUntil: (promise) => pending.push(promise) },
       signal: new AbortController().signal,

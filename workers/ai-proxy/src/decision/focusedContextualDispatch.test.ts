@@ -75,7 +75,7 @@ function provider(
   return { evaluate: vi.fn(async () => result) };
 }
 
-const canaryEnv = { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' } as const;
+const canaryEnv = { JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' } as const;
 
 function structuredResponse(content: unknown): Response {
   return Response.json({ content: JSON.stringify(content) });
@@ -99,7 +99,7 @@ describe('focused contextual dispatch', () => {
       const invalid = { ...context(), questionCode: 'unknown_code' };
       const response = await dispatchFocusedContextual({
         context: invalid as unknown as FocusedContextualDecisionContext,
-        env: { JEV_MODE: mode, JEV_CANARY_PERCENT: '100' },
+        env: { JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: mode, JEV_MODE: mode, JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
         firebaseUid: 'user-fixture',
         signal: new AbortController().signal,
         executionContext: { waitUntil: () => undefined },
@@ -345,7 +345,7 @@ describe('focused contextual dispatch', () => {
     }));
     const response = await dispatchFocusedContextual({
       context: context(),
-      env: { JEV_MODE: 'shadow' },
+      env: { JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'shadow', JEV_MODE: 'shadow', JEV_CANARY_PERCENT: '0', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '0' },
       firebaseUid: 'user-fixture',
       executionContext: { waitUntil: (promise) => pending.push(promise) },
       signal: new AbortController().signal,

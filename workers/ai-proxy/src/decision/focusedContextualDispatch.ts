@@ -1,3 +1,4 @@
+import { jevPurposeCanarySample } from './jevPurposeRollout';
 import {
   focusedContextualDecisionState,
   type FocusedContextualDecisionContext,
@@ -154,7 +155,7 @@ export async function dispatchFocusedContextual(params: {
   const state = focusedContextualDecisionState(params.context);
   if (!state) return Response.json({ error: 'Invalid focused decision context.' }, { status: 400 });
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
-  const selected = mode === 'canary' && contextualCanarySelected(params.env);
+  const selected = mode === 'canary' && contextualCanarySelected(params.env, jevPurposeCanarySample('focused_contextual_answer', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();
   if (mode === 'shadow' && !params.executionContext) return params.fallback();
 

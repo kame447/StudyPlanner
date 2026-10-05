@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import { JEV_MODEL } from './decisionPolicy';
 import { choiceRequest } from '../../../../shared/candidateChoiceFixtures.testUtils';
-const env = { OPENAI_API_KEY: 'fixture-openai', OPENROUTER_API_KEY: 'fixture-jev', FIREBASE_WEB_API_KEY: 'fixture-project', ALLOWED_ORIGIN: 'https://app.test', JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100', AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 1 }) }) } };
+const env = { OPENAI_API_KEY: 'fixture-openai', OPENROUTER_API_KEY: 'fixture-jev', FIREBASE_WEB_API_KEY: 'fixture-project', ALLOWED_ORIGIN: 'https://app.test', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100', AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 1 }) }) } };
 async function execute(request = choiceRequest(), overrides: Record<string, unknown> = {}, mode = 'canary') {
   return worker.fetch(new Request('https://proxy.test/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer fixture', Origin: 'https://app.test' },
-    body: JSON.stringify({ purpose: 'weekly_planning_semantic_normalizer', messages: [{ role: 'user', content: request.wholeUtterance }], decisionContext: { purpose: 'candidate_choice', request }, semanticCensus: { sentinel: 'proxy-only-census' }, ...overrides }) }), { ...env, JEV_MODE: mode } as never);
+    body: JSON.stringify({ purpose: 'weekly_planning_semantic_normalizer', messages: [{ role: 'user', content: request.wholeUtterance }], decisionContext: { purpose: 'candidate_choice', request }, semanticCensus: { sentinel: 'proxy-only-census' }, ...overrides }) }), { ...env, JEV_CANDIDATE_CHOICE_MODE: mode, JEV_MODE: mode } as never);
 }
 function install() {
   const bodies: Record<string, unknown>[] = []; const urls: string[] = [];

@@ -84,8 +84,8 @@ function execute(params: {
     OPENROUTER_API_KEY: crypto.randomUUID(),
     FIREBASE_WEB_API_KEY: 'public-test-project',
     ALLOWED_ORIGIN: 'https://app.example',
-    JEV_MODE: params.mode ?? 'canary',
-    JEV_CANARY_PERCENT: '100',
+    JEV_USER_CONTEXT_ROUTING_MODE: params.mode ?? 'canary', JEV_MODE: params.mode ?? 'canary',
+    JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100',
     AI_QUOTA: {
       getByName: () => ({
         checkAndConsume: async () => {
