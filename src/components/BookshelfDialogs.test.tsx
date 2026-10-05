@@ -4,6 +4,7 @@ import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
 import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import type { StudyMaterial, StudySubject } from '../types/domain';
+import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 
 const subject: StudySubject = {
   id: 'subject-math',
@@ -136,6 +137,7 @@ describe('bookshelf dialogs', () => {
         progressUnit: 'page',
       }),
       undefined,
+      undefined,
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -196,6 +198,7 @@ describe('bookshelf dialogs', () => {
         aliases: catalogCandidate.aliases,
       }),
       undefined,
+      undefined,
     );
   });
 
@@ -226,6 +229,8 @@ describe('bookshelf dialogs', () => {
   });
 
   it('preserves the existing current-position clamp when editing paced material', async () => {
+    // Opaque forwarding fixture; real token validation is covered by hook/UI integration.
+    const baseline = Object.freeze({ materialId: material.id }) as MaterialEditBaseline;
     const onSave = vi.fn().mockResolvedValue(material);
     let renderer!: ReactTestRenderer;
 
@@ -234,6 +239,7 @@ describe('bookshelf dialogs', () => {
         <BookshelfMaterialDialog
           userId="user-1"
           material={material}
+          baseline={baseline}
           subjects={[subject]}
           onClose={vi.fn()}
           onSave={onSave}
@@ -253,6 +259,7 @@ describe('bookshelf dialogs', () => {
         paceEnabled: true,
       }),
       'material-1',
+      baseline,
     );
   });
 });

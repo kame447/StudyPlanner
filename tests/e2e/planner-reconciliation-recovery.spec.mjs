@@ -808,3 +808,237 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
   }
 });
 }
+
+// Issue456: one shared Home/Study Session body at two complementary surfaces.
+// The pre-dispatch gate models remote latency outside the native-local queue;
+// this does not assert live Firebase timing or all-client transaction safety.
+const materialAdmissionCallCount = async page => calledMethods(await repoSnapshot(page))
+  .filter(method => method === 'upsertActualWithMaterialProgress').length;
+
+const materialReloadTimetableKeys = ['studyplanner.scheduleTemplates.v1',
+  'studyplanner.timetableTerms.v1', 'studyplanner.timetablePeriods.v1'];
+const readMaterialReloadTimetable = page => page.evaluate(keys => Object.fromEntries(
+  keys.map(key => [key, localStorage.getItem(key)])), materialReloadTimetableKeys);
+
+async function observeMaterialAdmissionReload(page) {
+  const before = await readMaterialReloadTimetable(page);
+  await page.addInitScript(keys => {
+    const watched = new Set(keys);
+    const writes = window.__materialAdmissionReloadTimetableWrites = [];
+    // Installed before the harness/App on the NEXT load only. The normal
+    // fixture already observes Actual/material writes; include timetable
+    // attempts here so an allowed method call cannot hide physical rewrites.
+    for (const method of ['setItem', 'removeItem', 'clear']) {
+      const original = Storage.prototype[method];
+      Storage.prototype[method] = function (...args) {
+        if (this === localStorage && (method === 'clear' || watched.has(String(args[0])))) {
+          writes.push({ method, args });
+        }
+        return original.apply(this, args);
+      };
+    }
+  }, materialReloadTimetableKeys);
+  return before;
+}
+
+async function expectMaterialAdmissionReloadWithoutReplay(page, timetableBefore) {
+  // Bootstrap always invokes normalization. A previously normalized timetable
+  // yields a no-op; it must not be confused with replaying a user mutation.
+  // Keep the complete mutation-call allowlist exact, not a broad filter.
+  expect(writeMethods(await repoSnapshot(page))).toEqual(['applyTimetableMutation']);
+  expect(await materialAdmissionCallCount(page)).toBe(0);
+  expect(await durableWrites(page)).toEqual([]);
+  expect(await page.evaluate(() => window.__materialAdmissionReloadTimetableWrites)).toEqual([]);
+  expect(await readMaterialReloadTimetable(page)).toEqual(timetableBefore);
+}
+
+async function inspectMaterialAdmissionDraft(page, testInfo, label, record) {
+  const explanation = record.getByRole('alert');
+  const save = record.getByRole('button', { name: '記録を保存', exact: true });
+  await save.scrollIntoViewIfNeeded();
+  await expect(explanation).toBeVisible();
+  await expect(save).toBeEnabled();
+  const boxes = await Promise.all([explanation, save].map(locator => locator.boundingBox()));
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  for (const box of boxes) {
+    expect(box).not.toBeNull();
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+    expect(box.x).toBeGreaterThanOrEqual(-1);
+    expect(box.y).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  const path = testInfo.outputPath(`${label}-preserved-material-draft.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(`${label} preserved material draft and retry`, { path, contentType: 'image/png' });
+  await testInfo.attach(`${label} draft geometry`, {
+    body: JSON.stringify({ viewport, explanation: boxes[0], save: boxes[1] }, null, 2),
+    contentType: 'application/json',
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`same-material Study Sessions preserve busy draft, retry from committed progress and reload ${viewport}-${theme}`, async ({ page }, testInfo) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const plans = await page.evaluate(async date => {
+      const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+      const plans = await window.__plannerRecoveryRepository.seedMaterialAdmissionPlans({ userId, date });
+      await window.__plannerRecoveryHook.refresh();
+      return plans;
+    }, E2E_TODAY);
+    await expect.poll(async () => (await hookSnapshot(page)).plans)
+      .toEqual(plans.map(plan => expect.objectContaining(plan)));
+    const initial = await hookSnapshot(page);
+    const nextPlan = page.locator('[data-home-section="next-plan"]');
+    await expect(nextPlan.getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
+    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
+    await page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('button', { name: 'スタート', exact: true }).click();
+    // Move beyond A's planned end with the shared deterministic clock. The
+    // one-hour plan avoids a fragile one-minute boot/setup budget; no arbitrary
+    // wall-clock delay creates the concurrency schedule.
+    await page.clock.fastForward(60 * 60_000);
+    await page.getByRole('dialog', { name: '学習中', exact: true })
+      .getByRole('button', { name: '終了する', exact: true }).click();
+    let record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+    await record.getByLabel('進捗', { exact: true }).fill('5');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextActualDispatch());
+    await record.getByRole('button', { name: '記録を保存', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingActualDispatches).toBe(1);
+    const beforeBusy = await durable(page);
+    expect(beforeBusy.actuals).toEqual([]);
+    expect(beforeBusy.materials).toEqual([expect.objectContaining({ currentUnit: 10 })]);
+    const beforeBusyWrites = await durableWrites(page);
+    expect(await materialAdmissionCallCount(page)).toBe(1);
+    await record.getByRole('button', { name: '戻る', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('dialog', { name: '学習中', exact: true })
+      .getByRole('button', { name: '戻る', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
+    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
+    await page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('button', { name: 'スタート', exact: true }).click();
+    await page.clock.fastForward(60_000);
+    await page.getByRole('dialog', { name: '学習中', exact: true })
+      .getByRole('button', { name: '終了する', exact: true }).click();
+    record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+    const progress = record.getByLabel('進捗', { exact: true });
+    const note = record.getByPlaceholder('つまずいた点や気づき');
+    await progress.fill('7');
+    await note.fill('先の保存を待って、この入力で再試行する');
+    await record.getByRole('button', { name: '記録を保存', exact: true }).click();
+    await expect(record.getByRole('alert')).toContainText('保存・更新中');
+    await expect(progress).toHaveValue('7');
+    await expect(note).toHaveValue('先の保存を待って、この入力で再試行する');
+    expect(await materialAdmissionCallCount(page)).toBe(1);
+    expect(await durable(page)).toEqual(beforeBusy);
+    expect(await durableWrites(page)).toEqual(beforeBusyWrites);
+    await inspectMaterialAdmissionDraft(page, testInfo, `${viewport}-${theme}-busy`, record);
+
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseActualDispatch())).toBe(true);
+    await expect.poll(async () => (await hookSnapshot(page)).materials[0].currentUnit).toBe(15);
+    await expect.poll(async () => (await durable(page)).actuals.length).toBe(1);
+    // A's late success must neither close B's newly launched session nor consume
+    // its +7 intent. Only this next explicit user click creates the second write.
+    await expect(record).toBeVisible();
+    await expect(progress).toHaveValue('7');
+    await expect(note).toHaveValue('先の保存を待って、この入力で再試行する');
+    expect(await materialAdmissionCallCount(page)).toBe(1);
+    await record.getByRole('button', { name: '記録を保存', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(async () => (await durable(page)).materials[0].currentUnit).toBe(22);
+    const saved = await durable(page);
+    expect(saved.actuals).toHaveLength(2);
+    expect(saved.actuals.map(actual => actual.planId).sort()).toEqual(plans.map(plan => plan.id).sort());
+    expect(saved.actuals.find(actual => actual.planId === plans[1].id).note)
+      .toBe('先の保存を待って、この入力で再試行する');
+    expect(await materialAdmissionCallCount(page)).toBe(2);
+    const lifetime = await hookSnapshot(page);
+    expect({ mounts: lifetime.mounts, unmounts: lifetime.unmounts })
+      .toEqual({ mounts: initial.mounts, unmounts: initial.unmounts });
+    const timetableBeforeReload = await observeMaterialAdmissionReload(page);
+    await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+    await page.reload();
+    await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+    await expect.poll(async () => (await hookSnapshot(page)).actuals).toEqual(saved.actuals);
+    expect((await hookSnapshot(page)).materials).toEqual(saved.materials);
+    expect(await durable(page)).toEqual(saved);
+    await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
+    expect(await runtimeCalls(page)).toEqual([]);
+  });
+}
+
+// A distinct absolute-edit boundary, sampled once rather than multiplying the
+// Home race matrix. The standalone +5 is driven via the existing public-hook
+// fixture; Bookshelf edits and deliberate retry use the real visible controls.
+test('Bookshelf preserves an absolute draft through equal reread, busy and stale rejection; reopening saves deliberately desktop-light', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'desktop' && item.theme === 'light'));
+  await navigate(page, '教材');
+  const openEditor = async () => {
+    await page.getByRole('button', { name: '更新前の教材のメニュー', exact: true }).first().click();
+    await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '教材を編集', exact: true })).toBeVisible();
+    return page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を編集', exact: true }) });
+  };
+  let editor = await openEditor();
+  await editor.getByPlaceholder('黄色チャート').fill('残す教材の入力');
+  await editor.getByLabel('現在位置', { exact: true }).fill('12');
+  const unchanged = await durable(page);
+  await page.evaluate(() => window.__plannerRecoveryHook.refresh());
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('残す教材の入力');
+  await expect(editor.getByLabel('現在位置', { exact: true })).toHaveValue('12');
+  // Equal rereads are covered for successful Save/Delete in the component
+  // contract. Here the same still-open draft then encounters an actual change.
+  expect(await durable(page)).toEqual(unchanged);
+  await page.evaluate(() => {
+    window.__plannerRecoveryRepository.holdNextActualDispatch();
+    window.__plannerRecoveryHook.startActual();
+  });
+  await expect.poll(async () => (await repoSnapshot(page)).pendingActualDispatches).toBe(1);
+  const writesBefore = writeMethods(await repoSnapshot(page));
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor.locator('.inline-error')).toContainText('保存・更新中');
+  expect(writeMethods(await repoSnapshot(page))).toEqual(writesBefore);
+  expect(await durable(page)).toEqual(unchanged);
+  expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseActualDispatch())).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+  await expect.poll(async () => (await hookSnapshot(page)).materials[0].currentUnit).toBe(15);
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor.locator('.inline-error')).toContainText('開き直');
+  await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('残す教材の入力');
+  await expect(editor.getByLabel('現在位置', { exact: true })).toHaveValue('12');
+  expect(writeMethods(await repoSnapshot(page))).toEqual(writesBefore);
+  expect((await durable(page)).materials[0].currentUnit).toBe(15);
+  const path = testInfo.outputPath('desktop-light-bookshelf-stale-draft.png');
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach('Bookshelf stale draft preserved', { path, contentType: 'image/png' });
+  await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  editor = await openEditor();
+  await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('更新前の教材');
+  await expect(editor.getByLabel('現在位置', { exact: true })).toHaveValue('15');
+  await editor.getByLabel('現在位置', { exact: true }).fill('12');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '教材を編集', exact: true })).toHaveCount(0);
+  await expect.poll(async () => (await durable(page)).materials[0].currentUnit).toBe(12);
+  const saved = await durable(page);
+  expect(saved.actuals).toHaveLength(1);
+  expect(saved.actuals[0].planId).toBeNull();
+  expect(writeMethods(await repoSnapshot(page))).toEqual([...writesBefore, 'upsertStudyMaterial']);
+  const timetableBeforeReload = await observeMaterialAdmissionReload(page);
+  await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+  await page.reload();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect(await durable(page)).toEqual(saved);
+  expect((await hookSnapshot(page)).materials).toEqual(saved.materials);
+  await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
+});

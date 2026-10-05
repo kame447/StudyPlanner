@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError, materialUncertainMessage, type MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import {
   useRef,
   useState,
@@ -26,13 +27,15 @@ import type {
 interface BookshelfMaterialDialogProps {
   userId: string;
   material: StudyMaterial | null;
+  baseline?: MaterialEditBaseline;
   subjects: StudySubject[];
   onClose: () => void;
   onSave: (
     draft: StudyMaterialDraft,
     targetMaterialId?: string,
+    baseline?: MaterialEditBaseline,
   ) => Promise<StudyMaterial>;
-  onDelete: (material: StudyMaterial) => Promise<void>;
+  onDelete: (material: StudyMaterial, baseline?: MaterialEditBaseline) => Promise<void>;
 }
 
 function catalogMeta(candidate: MaterialMetadataCandidate): string {
@@ -50,11 +53,14 @@ function catalogMeta(candidate: MaterialMetadataCandidate): string {
 export function BookshelfMaterialDialog({
   userId,
   material,
+  baseline,
   subjects,
   onClose,
   onSave,
   onDelete,
 }: BookshelfMaterialDialogProps) {
+  const [editBaseline] = useState(baseline);
+  const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
   const [name, setName] = useState(material?.name ?? '');
   const [subjectId, setSubjectId] = useState(material?.subjectId ?? firstSubject?.id ?? '');
@@ -95,7 +101,7 @@ export function BookshelfMaterialDialog({
     progressUnit === 'custom'
       ? progressUnitLabel.trim() || '単位'
       : getMaterialUnitLabel({ progressUnit });
-  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting;
+  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection;
   const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -162,6 +168,7 @@ export function BookshelfMaterialDialog({
           maxUnitsPerDay: parseOptionalNumber(maxUnitsPerDay),
         },
         material?.id,
+        editBaseline,
       );
 
       if (!material && catalogCandidate?.tableOfContents?.length) {
@@ -178,7 +185,9 @@ export function BookshelfMaterialDialog({
 
       onClose();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '教材を保存できませんでした。');
+      const uncertain = !(error instanceof ActualMutationAdmissionError);
+      setRequiresInspection(uncertain);
+      setStatus(`${error instanceof Error ? error.message : '教材を保存できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
       setIsSubmitting(false);
@@ -186,7 +195,7 @@ export function BookshelfMaterialDialog({
   }
 
   async function handleDelete() {
-    if (!material || isSubmitting) {
+    if (!material || isSubmitting || requiresInspection) {
       return;
     }
 
@@ -197,10 +206,12 @@ export function BookshelfMaterialDialog({
 
     setIsSubmitting(true);
     try {
-      await onDelete(material);
+      await onDelete(material, editBaseline);
       onClose();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '教材を削除できませんでした。');
+      const uncertain = !(error instanceof ActualMutationAdmissionError);
+      setRequiresInspection(uncertain);
+      setStatus(`${error instanceof Error ? error.message : '教材を削除できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
       setIsSubmitting(false);
@@ -493,7 +504,7 @@ export function BookshelfMaterialDialog({
             {material ? (
               <button
                 className="ghost-button danger"
-                disabled={isSubmitting}
+                disabled={isSubmitting || requiresInspection}
                 onClick={() => void handleDelete()}
                 type="button"
               >

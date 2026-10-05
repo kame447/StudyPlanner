@@ -1,3 +1,4 @@
+import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
 import { useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
@@ -104,11 +105,13 @@ interface PlannerAppState {
     targetSubjectId?: string,
   ) => Promise<StudySubject>;
   deleteStudySubject: (subject: StudySubject) => Promise<void>;
+  captureStudyMaterialBaseline: (material: StudyMaterial) => MaterialEditBaseline;
   saveStudyMaterial: (
     draft: StudyMaterialDraft,
     targetMaterialId?: string,
+    baseline?: MaterialEditBaseline,
   ) => Promise<StudyMaterial>;
-  deleteStudyMaterial: (material: StudyMaterial) => Promise<void>;
+  deleteStudyMaterial: (material: StudyMaterial, baseline?: MaterialEditBaseline) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -192,6 +195,7 @@ export function usePlannerAppState(): PlannerAppState {
     deleteTodo,
     saveStudySubject,
     deleteStudySubject,
+    captureStudyMaterialBaseline,
     saveStudyMaterial,
     deleteStudyMaterial,
     saveScheduleTemplate,
@@ -382,6 +386,7 @@ export function usePlannerAppState(): PlannerAppState {
     deleteTodo,
     saveStudySubject,
     deleteStudySubject,
+    captureStudyMaterialBaseline,
     saveStudyMaterial,
     deleteStudyMaterial,
     saveScheduleTemplate,

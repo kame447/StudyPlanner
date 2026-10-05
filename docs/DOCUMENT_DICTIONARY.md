@@ -118,7 +118,7 @@ local planner read projectionの鮮度、再確認、consumer leaseの補助arch
 
 local fallbackのcommand/compensation直列化は `architecture/local-planner-storage-access.md` が所有する。同一module instance・同一Storage objectの境界であり、Firestore/offline同期/複数タブの正仕様を置換しない。
 
-Actualの画面横断pending admissionと古いtarget拒否は `architecture/actual-action-admission.md` が所有する。read health、storage queue、material progress競合とは責務と保証範囲を区別する。
+Actualと教材の画面横断admission、古いtarget拒否、教材編集時点の証拠は `architecture/actual-action-admission.md` が所有する。read healthと条件付きSubject再取得はread projection契約、storage queueはstorage契約が所有し、保証範囲を区別する。
 
 時間割のowner-scoped canonical IDと既存参照の整合化は `architecture/timetable-owner-identity.md` が所有する。既存Firestore所有者ルール、カスタム期間ID、旧clientのrollout制約を維持する。
 

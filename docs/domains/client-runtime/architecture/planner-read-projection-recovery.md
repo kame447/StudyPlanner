@@ -44,6 +44,14 @@ Any current-owner dispatched restore failure requests the same repair union even
 
 Retry fetches the requested groups after tracked quiescence, prepares every result before publication, and retains the whole batch as stale/retryable on any failure. It does not dispatch restore/save/progress mutations or invoke full-loader normalization. As with existing repository reads, this is not a new migration or backend atomicity guarantee. Failure recovery exposes surviving durable state; it cannot reconstruct data lost by a failed storage operation.
 
+## Material and Subject dependent repair
+
+Material-bearing admission requires an accepted same-owner snapshot before dispatch so uncertain failures have a valid repair boundary. A dispatched material edit/delete/Undo, progress create, or existing-member Subject fanout failure requests Actual/material repair and retains its affected admission claims. Pre-dispatch busy/stale rejection adds no such uncertain-effect repair. Writer/coordinator tickets settle normally so the repair does not wait on its own claim.
+
+Subject data is a conditional dependent slice of that existing group. Each immutable repair attempt captures whether a waiting Subject claim requires the Subjects getter. Pure Actual/material attempts add no Subjects read. If Subject activity starts or settles while an Actual-only attempt is in flight, activity/request validation invalidates it; a fresh attempt includes Subjects. A failed Subjects getter or preparation publishes none of the batch and cannot release the Subject claim. Superseding nonquiescent full reads retain outstanding claim requirements; a stable full read already includes Subjects and can satisfy them.
+
+This conditional footprint is not a fourth global readiness authority or a claim to have repaired every collection. Scope/owner/read checks still govern acceptance. Do not become ready with a stranded Subject claim, unconditionally add Subjects to every Actual read, or transparently replay writes after an uncertain outcome.
+
 ## User-visible recovery
 
 The authority's owner-scoped waiting, refreshing and failed states must remain visible independently of a dismissible or expiring notification, including across ordinary App navigation. Recovery must leave existing planner data usable for inspection and preserve the AI draft and attachment.

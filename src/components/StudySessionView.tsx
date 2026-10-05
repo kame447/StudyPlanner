@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import {
   ArrowLeft,
   BookOpen,
@@ -15,6 +16,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type PropsWithChildren,
@@ -57,20 +59,21 @@ export function StudySessionProvider({
   materials,
   onSaveActual,
 }: PropsWithChildren<StudySessionProviderProps>) {
-  const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const nextSessionId = useRef(0);
+  const [activeSession, setActiveSession] = useState<{ id: number; plan: Plan } | null>(null);
 
   return (
-    <StudySessionLaunchContext.Provider value={setActivePlan}>
+    <StudySessionLaunchContext.Provider value={plan => setActiveSession({ id: ++nextSessionId.current, plan })}>
       {children}
-      {activePlan ? (
+      {activeSession ? (
         <StudySessionView
-          key={`${activePlan.id}:${activePlan.date}`}
-          plan={activePlan}
+          key={activeSession.id}
+          plan={activeSession.plan}
           materials={materials}
-          onClose={() => setActivePlan(null)}
+          onClose={() => setActiveSession(current => current === activeSession ? null : current)}
           onSaveActual={async (plan, draft) => {
             await onSaveActual(plan, draft);
-            setActivePlan(null);
+            setActiveSession(current => current === activeSession ? null : current);
           }}
         />
       ) : null}
@@ -139,6 +142,7 @@ function StudySessionView({
   const [observationProgressInput, setObservationProgressInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [requiresInspection, setRequiresInspection] = useState(false);
 
   const plannedMinutes = Math.max(1, minutesBetween(plan.startTime, plan.endTime));
   const plannedMs = plannedMinutes * 60_000;
@@ -292,7 +296,7 @@ function StudySessionView({
   }
 
   async function saveRecord() {
-    if (!recordDraft) return;
+    if (!recordDraft || saving || requiresInspection) return;
     if (minutesBetween(recordDraft.actualStartTime, recordDraft.actualEndTime) <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
@@ -342,9 +346,11 @@ function StudySessionView({
         materialProgressUpdates,
         weeklyPlanningObservationResult,
       });
-    } catch {
+    } catch (error) {
       setSaving(false);
-      setError('記録の保存に失敗しました。');
+      const uncertain = !(error instanceof ActualMutationAdmissionError);
+      setRequiresInspection(uncertain);
+      setError(`${error instanceof Error ? error.message : '記録の保存に失敗しました。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
     }
   }
 
@@ -573,8 +579,8 @@ function StudySessionView({
               </label>
             </section>
 
-            {error ? <p className="study-session-error" role="alert">{error}</p> : null}
-            <button type="button" className="study-session-save-button" onClick={() => void saveRecord()} disabled={saving}>
+            {error || requiresInspection ? <p className="study-session-error" role="alert">{error || materialUncertainMessage}</p> : null}
+            <button type="button" className="study-session-save-button" onClick={() => void saveRecord()} disabled={saving || requiresInspection}>
               {saving ? '保存中...' : '記録を保存'}
             </button>
           </main>

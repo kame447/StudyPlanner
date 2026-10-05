@@ -145,6 +145,7 @@ export default function App() {
     deleteTodo,
     saveStudySubject,
     deleteStudySubject,
+    captureStudyMaterialBaseline,
     saveStudyMaterial,
     deleteStudyMaterial,
     saveScheduleTemplate,
@@ -576,6 +577,7 @@ export default function App() {
                 onInitialActionHandled={() => setBookshelfInitialAction(null)}
                 onSaveSubject={saveStudySubject}
                 onDeleteSubject={deleteStudySubject}
+                onCaptureMaterialBaseline={captureStudyMaterialBaseline}
                 onSaveMaterial={saveStudyMaterial}
                 onDeleteMaterial={deleteStudyMaterial}
                 onAddMaterialToPlan={() => setIsQuickEntryOpen(true)}
