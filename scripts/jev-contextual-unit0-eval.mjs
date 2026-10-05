@@ -27,6 +27,42 @@ export const ROSTER_SPEC = Object.freeze({
 const STRATA = ['B', 'C'];
 const ARMS = ['jevFirst', 'lunaOnly'];
 
+/** @typedef {{workerStop: 'stopped' | 'failed' | 'not_started', temporaryFiles: 'removed' | 'remove_failed' | 'unknown'}} CleanupResult */
+/** @typedef {CleanupResult & {phase: 'segment_start' | 'segment_rotation' | 'run_finalization', segmentId: number}} CleanupFailure */
+// Associate typed cleanup facts without modifying or replacing the original
+// readiness exception (including frozen errors). Raw errors never enter records.
+/** @type {WeakMap<object, CleanupResult>} */
+const cleanupNotes = new WeakMap();
+/** @param {unknown} error @param {CleanupResult} detail */
+function noteCleanupFailure(error, detail) {
+  const primary = error !== null && (typeof error === 'object' || typeof error === 'function')
+    ? error : new Error('Segment start failed.', { cause: error });
+  cleanupNotes.set(primary, detail);
+  return primary;
+}
+
+/** @param {{stop: () => Promise<void>} | undefined} worker @param {string} directory @returns {Promise<CleanupResult | null>} */
+async function cleanupPreview(worker, directory) {
+  /** @type {CleanupResult['workerStop']} */
+  let workerStop = worker ? 'stopped' : 'not_started';
+  /** @type {CleanupResult['temporaryFiles']} */
+  let temporaryFiles = 'removed';
+  try { await worker?.stop(); } catch { workerStop = 'failed'; }
+  // File removal must be attempted even when stopping the preview fails.
+  try { await rm(directory, { recursive: true, force: true }); } catch { temporaryFiles = 'remove_failed'; }
+  return workerStop === 'failed' || temporaryFiles === 'remove_failed' ? { workerStop, temporaryFiles } : null;
+}
+
+function validateCleanupFailure(failure) {
+  assert.ok(failure && typeof failure === 'object' && !Array.isArray(failure), 'Invalid cleanup failure.');
+  assert.deepEqual(Object.keys(failure).sort(), ['phase', 'segmentId', 'temporaryFiles', 'workerStop']);
+  assert.ok(['segment_start', 'segment_rotation', 'run_finalization'].includes(failure.phase));
+  assert.ok(Number.isSafeInteger(failure.segmentId) && failure.segmentId >= 0);
+  assert.ok(['stopped', 'failed', 'not_started'].includes(failure.workerStop));
+  assert.ok(['removed', 'remove_failed', 'unknown'].includes(failure.temporaryFiles));
+  assert.ok(failure.workerStop === 'failed' || failure.temporaryFiles === 'remove_failed');
+}
+
 // One holdout artifact per stratum. A dry-run mock is structurally validated
 // by the same holdout validator but must declare itself as a mock.
 export function validateHoldoutSet(corpus, stratum, { dryRun = false } = {}) {
@@ -173,19 +209,30 @@ export async function runSerialEvaluation({ roster, order, transport, ledger, li
   const at = () => clock.now() - runStart;
   let segment = null;
   let stopReason = null;
+  /** @type {CleanupFailure | null} */
+  let cleanupFailure = null;
   let consumed = beforeFirstProviderTurn === null ? null : false;
   let pairsInSegment = 0;
-  const stopSegment = async () => {
-    if (!segment) return;
+  const stopSegment = async (phase) => {
+    if (!segment) return true;
     const stopped = segment;
     segment = null;
-    try { await stopped.stop(); } finally { await ledger.append({ type: 'segment_stopped', segmentId: stopped.id, at: at() }); }
+    try { await stopped.stop(); } catch (error) {
+      cleanupFailure = { phase, segmentId: stopped.id,
+        ...(cleanupNotes.get(error) ?? { workerStop: 'failed', temporaryFiles: 'unknown' }) };
+      // The first operational/provider failure wins; cleanup is secondary.
+      stopReason = stopReason ?? ledger.stopReason() ?? 'segment_stop_failed';
+      await ledger.append({ type: 'segment_stop_failed', segmentId: stopped.id, at: at(), cleanupFailure });
+      return false;
+    }
+    await ledger.append({ type: 'segment_stopped', segmentId: stopped.id, at: at() });
+    return true;
   };
   // Returns a stop reason, or null once a ready segment can host `arms` turns.
   const ensureSegment = async (arms, force) => {
     if (!force && segmentCanHost(segment, clock.now(), arms)) return null;
     pairsInSegment = 0;
-    await stopSegment();
+    if (!await stopSegment('segment_rotation')) return stopReason;
     // Runtime, policy, bundle and inputs are re-verified before every
     // segment; a mismatch stops the run rather than deploying other code.
     let frozen;
@@ -195,8 +242,10 @@ export async function runSerialEvaluation({ roster, order, transport, ledger, li
     // A failed deployment or readiness check exposes no provider; it still
     // ends the run, recorded, without an automatic retry.
     try { segment = await transport.startSegment({ id, expiresAt }); } catch (error) {
+      const cleanup = cleanupNotes.get(error);
+      if (cleanup) cleanupFailure = { phase: 'segment_start', segmentId: id, ...cleanup };
       await ledger.append({ type: 'segment_start_failed', segmentId: id, at: at(),
-        error: String(error?.message ?? 'unknown').slice(0, 200) }); // harness message only; no case text
+        error: String(error?.message ?? 'unknown').slice(0, 200), cleanupFailure });
       return 'segment_start_failed';
     }
     segments.push({ id, expiresAt: expiresAt - runStart, startedAt: at() });
@@ -270,21 +319,25 @@ export async function runSerialEvaluation({ roster, order, transport, ledger, li
       pairsInSegment += 1;
     }
   } finally {
-    await stopSegment();
+    await stopSegment('run_finalization');
   }
   // Final boundary: a latched or contractual stop always survives to the result.
   stopReason = stopReason ?? ledger.stopReason();
   const complete = stopReason === null && roster.cases.every((item) => ARMS.every((arm) => pairs.get(item.id)?.[arm]));
   await ledger.close(complete ? 'run_completed' : 'run_aborted', { stopReason, elapsedMs: at(),
-    automaticRerun: false, holdoutConsumed: consumed });
+    automaticRerun: false, holdoutConsumed: consumed, cleanupFailure });
   return { status: complete ? 'awaiting_blind_review' : 'incomplete_HOLD', stopReason, holdoutConsumed: consumed,
-    elapsedMs: at(), segments, pairs: [...pairs.values()], ledgerTotals: ledger.totals() };
+    cleanupFailure, elapsedMs: at(), segments, pairs: [...pairs.values()], ledgerTotals: ledger.totals() };
 }
 
 export function validateR2Artifact(artifact, roster) {
   assert.equal(artifact.schemaVersion, R2_ARTIFACT_SCHEMA);
   assert.deepEqual(artifact.corpusSha256, roster.corpusSha256);
   assert.equal(artifact.dryRun, roster.dryRun);
+  if (artifact.cleanupFailure !== undefined && artifact.cleanupFailure !== null) {
+    validateCleanupFailure(artifact.cleanupFailure);
+    assert.notEqual(artifact.stopReason, null, 'Cleanup failure cannot claim a completed run.');
+  }
   for (const hash of [artifact.runtimeSha256, artifact.policySha256]) assert.match(hash, /^[a-f0-9]{64}$/);
   assert.equal(artifact.expectedTurns, roster.cases.length * 2);
   const order = executionOrder(roster.cases.map((item) => item.id));
@@ -547,9 +600,13 @@ export function createWorkerTransport({ bundle, workerName, loadWrangler }) {
             assert.equal(response.status, 200);
             return response.json();
           },
-          async stop() { try { await worker.stop(); } finally { await rm(directory, { recursive: true, force: true }); } } };
+          async stop() {
+            const cleanup = await cleanupPreview(worker, directory);
+            if (cleanup) throw noteCleanupFailure(new Error('Segment cleanup failed.'), cleanup);
+          } };
       } catch (error) {
-        try { await worker?.stop(); } finally { await rm(directory, { recursive: true, force: true }); }
+        const cleanup = await cleanupPreview(worker, directory);
+        if (cleanup) throw noteCleanupFailure(error, cleanup);
         throw error;
       }
     },
@@ -699,6 +756,7 @@ export async function smokeRun({ approvalPath, worker, outputDir, transportFacto
   const artifact = { schemaVersion: SMOKE_SCHEMA, status: 'smoke_not_evidence', evidence: 'none', runId, corpusSha256,
     runtimeSha256, policySha256, pricingVersion: PREREGISTERED_PRICING.version, workerCodeSha256: bundle.templateSha256,
     casesSha256: bundle.casesSha256, runStatus: result.status, stopReason: result.stopReason,
+    cleanupFailure: result.cleanupFailure,
     executionPath: { ...EXECUTION_PATH },
     checks: {
       productionIsolation,

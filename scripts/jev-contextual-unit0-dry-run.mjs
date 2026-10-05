@@ -185,7 +185,7 @@ export async function runDryRun({ scenario: name, outputDir, replicates = 20_000
   const artifactBytes = Buffer.from(JSON.stringify(artifact, null, 2));
   await writeFile(join(directory, 'results.json'), artifactBytes);
   const summary = { scenario: name, describe: scenario.describe, dryRun: true, evidence: 'none',
-    status: result.status, stopReason: result.stopReason, ledgerTotals: result.ledgerTotals,
+    status: result.status, stopReason: result.stopReason, cleanupFailure: result.cleanupFailure, ledgerTotals: result.ledgerTotals,
     providerCallsSeenByMock: { jev: counters.jev, luna: counters.luna }, segments: result.segments.length,
     maxRequestBodyBytes: counters.maxBodyBytes, reservePerCallUsd: reserve, limits,
     pairsObserved: result.pairs.filter((pair) => pair.jevFirst && pair.lunaOnly).length,
