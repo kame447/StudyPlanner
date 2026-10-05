@@ -1,3 +1,4 @@
+import { plannerReadMethods as allGetters, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as dates from '../lib/date';
@@ -22,10 +23,6 @@ const M: StudyMaterial = {
   id: 'material', userId: 'owner', name: 'Book', subjectId: 'math', subjectName: 'Math',
   paceEnabled: true, currentUnit: 25, totalUnits: 100, progressUnit: 'page', createdAt: STAMP, updatedAt: STAMP,
 };
-const allGetters = [
-  'getPlans', 'getActuals', 'getDayNotes', 'getMonthEvents', 'getTodos', 'getStudySubjects',
-  'getStudyMaterials', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods',
-] as const;
 const repairGetters = ['getPlans', 'getTodos', 'getActuals', 'getStudyMaterials'] as const;
 const payloadCases = [
   { actualCount: 0, linkedTodo: false }, { actualCount: 1, linkedTodo: false },
@@ -91,7 +88,7 @@ async function retainUndo() {
   return async () => { await action(); };
 }
 function spyReads() {
-  return Object.fromEntries(allGetters.map(name => [name, vi.spyOn(boundary.repository, name)]));
+  return spyPlannerReads(boundary.repository);
 }
 function expectRepairCost(reads: ReturnType<typeof spyReads>, count = 1) {
   for (const name of allGetters) {

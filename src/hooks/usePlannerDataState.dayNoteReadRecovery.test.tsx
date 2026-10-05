@@ -1,3 +1,4 @@
+import { plannerReadMethods as names, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createEmptyDayNoteDraft } from '../domain/planner';
@@ -109,9 +110,7 @@ it.each(['getDayNotes', 'getActuals'] as const)('failed %s union publishes neith
   expect((await repository.getDayNotes('owner'))[0].quickMemo).toBe('saved new memo');
   const storageWrites = vi.spyOn(storage, 'setItem');
   boundary.repository = { ...boundary.repository, [failedGetter]: get };
-  const names = ['getDayNotes', 'getActuals', 'getStudyMaterials', 'getPlans', 'getTodos',
-    'getMonthEvents', 'getStudySubjects', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods'] as const;
-  const reads = Object.fromEntries(names.map(name => [name, vi.spyOn(boundary.repository, name)]));
+  const reads = spyPlannerReads(boundary.repository);
   const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
   await act(async () => { await state.retryPlannerData(); });
   for (const name of names) expect(reads[name], name).toHaveBeenCalledTimes(

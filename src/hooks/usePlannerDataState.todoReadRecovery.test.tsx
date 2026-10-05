@@ -1,3 +1,4 @@
+import { plannerReadMethods as getters, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPlanDraftFromPlan } from '../domain/planner';
@@ -102,9 +103,7 @@ it('repairs both scheduled Todo and Plan with read-only retry after a partial re
   expect((await repository.getTodos('owner'))[0].status).toBe('scheduled');
   const writes = vi.spyOn(storage, 'setItem');
   boundary.repository.getTodos = originalGet;
-  const getters = ['getPlans', 'getTodos', 'getActuals', 'getStudyMaterials', 'getMonthEvents',
-    'getDayNotes', 'getStudySubjects', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods'] as const;
-  const reads = Object.fromEntries(getters.map(name => [name, vi.spyOn(boundary.repository, name)]));
+  const reads = spyPlannerReads(boundary.repository);
   const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
   await act(async () => { await state.retryPlannerData(); });
   for (const name of getters) {
