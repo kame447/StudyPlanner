@@ -1124,3 +1124,49 @@ for (const viewport of cases.filter(item =>
     }
   });
 }
+
+test('native Todo Undo crossing a full read repairs without replay mobile-dark', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  await page.evaluate(async () => {
+    await window.__plannerRecoveryRepository.seedOpenTodo(window.__plannerRecoveryHook.snapshot().ownerId);
+    await window.__plannerRecoveryHook.refresh();
+  });
+  await expect.poll(async () => (await hookSnapshot(page)).todos.length).toBe(1);
+  const restored = (await hookSnapshot(page)).todos;
+  await navigate(page, 'AI計画');
+  await composer(page).fill(TEXT);
+  await page.evaluate(() => window.__plannerRecoveryHook.deleteTodo('read-repair-todo'));
+  await expect.poll(async () => (await hookSnapshot(page)).todos).toEqual([]);
+  const undo = page.getByRole('button', { name: '元に戻す', exact: true });
+  await expect(undo).toBeVisible();
+  await undo.evaluate(button => {
+    const refreshing = window.__plannerRecoveryHook.refresh();
+    // Full getters have already entered the real local queue. Fail only the
+    // later repair, after actual Undo dispatch and successful persistence.
+    window.__plannerRecoveryRepository.failNextTodoRead();
+    button.click();
+    return refreshing;
+  });
+  await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  await expect(retry(page)).toBeVisible();
+  expect((await hookSnapshot(page)).todos).toEqual([]);
+  const readTodos = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.todos.v1') ?? '[]'));
+  expect(await readTodos()).toEqual(restored);
+  const before = await repoSnapshot(page);
+  const storageWrites = await durableWrites(page);
+  await inspectGeometry(page, testInfo, 'todo-undo-repair-mobile-dark', true);
+  await retry(page).click();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).todos).toEqual(restored);
+  expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length).sort())
+    .toEqual(['getActuals', 'getPlans', 'getStudyMaterials', 'getTodos']);
+  expect(writeMethods(await repoSnapshot(page))).toEqual(writeMethods(before));
+  expect(await durableWrites(page)).toEqual(storageWrites);
+  expect(await readTodos()).toEqual(restored);
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(recovery(page)).toHaveCount(0);
+  await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+  await page.reload();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).todos).toEqual(restored);
+});

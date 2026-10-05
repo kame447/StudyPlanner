@@ -45,6 +45,11 @@ export function usePlannerDataState(options) {
         .catch(error => { control.saveError = String(error); })
         .finally(() => { control.saving = false; });
     };
+    control.deleteTodo = todoId => {
+      const todo = result.todos.find(item => item.id === todoId);
+      if (!todo) throw new Error(`Missing real Todo ${todoId}`);
+      return result.deleteTodo(todo);
+    };
     control.deletePlan = planId => {
       const plan = result.plans.find(item => item.id === planId);
       if (!plan) throw new Error(`Missing real Plan ${planId}`);

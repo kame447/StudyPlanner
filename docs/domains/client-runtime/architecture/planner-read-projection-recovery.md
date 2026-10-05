@@ -38,6 +38,12 @@ Uncontended saves keep their optimistic fast path. A rejected ordinary write doe
 
 Repair failure leaves the saved Plan durable but its display stale and retryable. Explicit retry only reads the requested groups; it does not resubmit the save or reset the user's newer date/view selection. Owner/reset epochs revoke old callbacks and read publication. This boundary does not add backend ordering or cross-client guarantees.
 
+## Todo Undo successful acknowledgement
+
+Todo Undo captures an accepted-projection lease when invoked and declares Plans/Todos successful completion. If a current-owner read replaces the projection before the restore returns, do not insert the captured deleted Todo; re-read the existing Plans/Todos group after tracked writers settle. Success observed during an older full read also retains the group. Uncontended Undo keeps its direct post-persistence update without extra reads.
+
+A failed repair does not turn a completed restore into a failed write. Preserve the restore result, expose stale/retry, and re-read without repeating the restore. Scope/owner/reset/unmount fencing remains in the existing callback wrapper. These are successful-response guarantees only: unlike compound Plan Undo, ordinary Todo upsert rejection is not newly classified as a potential durable effect.
+
 ## Plan Undo potential-effect boundary
 
 Plan Undo restores a Plan, linked Actuals and an optional linked Todo. Its projection repair requests the Plans/Todos group together with Actual/material, even when that invocation has no linked Todo. It does not automatically request MonthEvents; an independently outstanding MonthEvent concern still joins the union.
@@ -76,7 +82,7 @@ Weekly admission must validate this lease before and after awaited runtime-modul
 
 Quiescence is conservative across all mutations tracked by the planner hook, while repair coverage remains limited to requested Actual/material, MonthEvent and Plans/Todos groups. Unrelated hook writes may delay repair. Activity overlapping a full or targeted read can require another read, but this cost does not buy freshness for unrequested collections.
 
-Single Plan create/edit, non-recurring move, and Todo save/delete/schedule declare their successful Plans/Todos effects. Todo Undo still uses its existing captured-row acknowledgement and is not covered by these ordinary-writer declarations. Other untagged producers and uncertain ordinary-write failures remain outside that guarantee; do not infer whole-application coverage from these callbacks. `ready` means the authority's known full-read health and targeted concerns have cleared; it is not proof that every collection reflects all completed writes or that global concurrency recovery has finished.
+Single Plan create/edit, non-recurring move, and Todo save/delete/schedule declare their successful Plans/Todos effects. Todo Undo additionally fences its captured-row acknowledgement as specified above. Other untagged producers and uncertain ordinary-write failures remain outside that guarantee; do not infer whole-application coverage from these callbacks. `ready` means the authority's known full-read health and targeted concerns have cleared; it is not proof that every collection reflects all completed writes or that global concurrency recovery has finished.
 
 This boundary handles known local read uncertainty. It does not guarantee server write ordering, acknowledgement races without an intervening accepted read, quiescence of untracked writers, multi-tab/device freshness, or no-refresh successful Plan Undo command-order races. It does not cancel or revalidate an already admitted turn, invalidate an existing preview, or replace server idempotency/authorization, durable sync or optimistic rollback policy.
 
