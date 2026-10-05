@@ -173,7 +173,7 @@ function DayDetailSession({
               ) : null}
             </div>
             {recordBlockReason || recordOpenError ? <p className="inline-error" role="alert">{recordBlockReason || recordOpenError}</p> : null}
-            {deleteError ? <p className="inline-error" role="alert">{deleteError}</p> : null}
+            {deleteError && deleteError !== (recordBlockReason || recordOpenError) ? <p className="inline-error" role="alert">{deleteError}</p> : null}
           </section>
         </div>
       );
