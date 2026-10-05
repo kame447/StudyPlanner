@@ -289,6 +289,7 @@ export function usePlannerDataState({
     actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[]; subjects?: StudySubject[] };
     monthEvents?: MonthEvent[];
     dayNotes?: DayNote[];
+    timetable?: { templates: ScheduleTemplate[]; terms: TimetableTerm[]; periods: TimetablePeriod[] };
     plansTodos?: { plans: Plan[]; todos: TodoTask[] };
   };
   const reconciliationRef = useRef<PlannerMutationReconciliation<RepairSnapshot> | null>(null);
@@ -305,7 +306,7 @@ export function usePlannerDataState({
         // later fanout changes reconciliation activity and invalidates the
         // whole snapshot before publication; it cannot borrow this receipt.
         const repairSubjects = actualAdmission.requiresSubjectRepair();
-        const [actualMaterial, nextMonthEvents, plansTodos, nextDayNotes] = await Promise.all([
+        const [actualMaterial, nextMonthEvents, plansTodos, nextDayNotes, timetable] = await Promise.all([
           targets.includes('actual-material') ? Promise.all([
             plannerRepository.getActuals(ownerId),
             plannerRepository.getStudyMaterials(ownerId),
@@ -317,6 +318,11 @@ export function usePlannerDataState({
             plannerRepository.getTodos(ownerId),
           ]) : undefined,
           targets.includes('day-notes') ? plannerRepository.getDayNotes(ownerId) : undefined,
+          targets.includes('timetable') ? Promise.all([
+            plannerRepository.getScheduleTemplates(ownerId),
+            plannerRepository.getTimetableTerms(ownerId),
+            plannerRepository.getTimetablePeriods(ownerId),
+          ]) : undefined,
         ]);
         // Prepare every requested group before publishing any. A failure keeps
         // the whole batch retryable, without certifying or replacing one slice.
@@ -326,6 +332,7 @@ export function usePlannerDataState({
           } : undefined,
           monthEvents: nextMonthEvents ? sortMonthEvents(nextMonthEvents) : undefined,
           dayNotes: nextDayNotes,
+          timetable: timetable ? { templates: timetable[0], terms: sortTimetableTerms(timetable[1]), periods: [...timetable[2]].sort((a, b) => a.termId.localeCompare(b.termId) || a.periodNumber - b.periodNumber) } : undefined,
           plansTodos: plansTodos ? { plans: sortByDateTime(plansTodos[0]), todos: plansTodos[1] } : undefined,
         };
       },
@@ -338,6 +345,11 @@ export function usePlannerDataState({
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
         if (snapshot.dayNotes) rawSetDayNotes(snapshot.dayNotes);
+        if (snapshot.timetable) {
+          rawSetScheduleTemplates(snapshot.timetable.templates);
+          rawSetTimetableTerms(snapshot.timetable.terms);
+          rawSetTimetablePeriods(snapshot.timetable.periods);
+        }
         if (snapshot.plansTodos) {
           rawSetPlans(snapshot.plansTodos.plans);
           rawSetTodos(snapshot.plansTodos.todos);
@@ -1729,11 +1741,15 @@ export function usePlannerDataState({
       updatedAt: now,
     };
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.upsertScheduleTemplate(nextTemplate);
-      setScheduleTemplates((current) =>
-        upsertByKey(current, nextTemplate, (template) => template.id),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setScheduleTemplates((current) =>
+          upsertByKey(current, nextTemplate, (template) => template.id),
+        );
+      }
       showNotice(
         currentTemplate ? '時間割を更新しました。' : '時間割を追加しました。',
         'success',
@@ -1749,11 +1765,15 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.deleteScheduleTemplate(userId, template.id);
-      setScheduleTemplates((current) =>
-        removeByKey(current, template.id, (item) => item.id),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setScheduleTemplates((current) =>
+          removeByKey(current, template.id, (item) => item.id),
+        );
+      }
       showNotice('時間割を削除しました。');
     } catch (error) {
       showNotice(resolveErrorMessage(error, '時間割を削除できませんでした。'), 'error');
@@ -1811,6 +1831,7 @@ export function usePlannerDataState({
       .filter((term) => term.id !== nextActiveTerm.id)
       .map((term) => ({ ...term, isActive: false, updatedAt: now }));
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.applyTimetableMutation({
         userId,
@@ -1821,7 +1842,10 @@ export function usePlannerDataState({
         periodUpserts: [],
         periodDeletes: [],
       });
-      setTimetableTerms(sortTimetableTerms([...inactiveTerms, nextActiveTerm]));
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setTimetableTerms(sortTimetableTerms([...inactiveTerms, nextActiveTerm]));
+      }
       showNotice('時間割の期間を保存しました。', 'success');
       return nextActiveTerm;
     } catch (error) {
@@ -1848,6 +1872,7 @@ export function usePlannerDataState({
       ? { ...fallbackTerm, isActive: true, updatedAt: new Date().toISOString() }
       : null;
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.applyTimetableMutation({
         userId,
@@ -1858,19 +1883,22 @@ export function usePlannerDataState({
         periodUpserts: [],
         periodDeletes: targetPeriods,
       });
-      setScheduleTemplates((current) =>
-        current.filter((template) => (template.termId || 'default') !== targetTermId),
-      );
-      setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
-      setTimetableTerms((current) =>
-        sortTimetableTerms(
-          current
-            .filter((item) => item.id !== targetTermId)
-            .map((item) =>
-              nextFallbackTerm && item.id === nextFallbackTerm.id ? nextFallbackTerm : item,
-            ),
-        ),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setScheduleTemplates((current) =>
+          current.filter((template) => (template.termId || 'default') !== targetTermId),
+        );
+        setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
+        setTimetableTerms((current) =>
+          sortTimetableTerms(
+            current
+              .filter((item) => item.id !== targetTermId)
+              .map((item) =>
+                nextFallbackTerm && item.id === nextFallbackTerm.id ? nextFallbackTerm : item,
+              ),
+          ),
+        );
+      }
       showNotice('期間を削除しました。', 'success');
     } catch (error) {
       showNotice(resolveErrorMessage(error, '期間を削除できませんでした。'), 'error');
@@ -1887,6 +1915,7 @@ export function usePlannerDataState({
     const targetPeriods = timetablePeriods.filter((period) => period.termId === targetTermId);
     const nextTerm: TimetableTerm = { ...term, updatedAt: new Date().toISOString() };
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.applyTimetableMutation({
         userId,
@@ -1897,13 +1926,16 @@ export function usePlannerDataState({
         periodUpserts: [],
         periodDeletes: targetPeriods,
       });
-      setScheduleTemplates((current) =>
-        current.filter((template) => (template.termId || 'default') !== targetTermId),
-      );
-      setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
-      setTimetableTerms((current) =>
-        sortTimetableTerms(current.map((item) => (item.id === targetTermId ? nextTerm : item))),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setScheduleTemplates((current) =>
+          current.filter((template) => (template.termId || 'default') !== targetTermId),
+        );
+        setTimetablePeriods((current) => current.filter((period) => period.termId !== targetTermId));
+        setTimetableTerms((current) =>
+          sortTimetableTerms(current.map((item) => (item.id === targetTermId ? nextTerm : item))),
+        );
+      }
       showNotice('この期間の授業をすべて削除しました。', 'success');
     } catch (error) {
       showNotice(resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'), 'error');
@@ -1943,15 +1975,19 @@ export function usePlannerDataState({
       updatedAt: now,
     };
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.upsertTimetablePeriod(nextPeriod);
-      setTimetablePeriods((current) =>
-        upsertByKey(current, nextPeriod, (period) => period.id).sort(
-          (left, right) =>
-            left.termId.localeCompare(right.termId) ||
-            left.periodNumber - right.periodNumber,
-        ),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setTimetablePeriods((current) =>
+          upsertByKey(current, nextPeriod, (period) => period.id).sort(
+            (left, right) =>
+              left.termId.localeCompare(right.termId) ||
+              left.periodNumber - right.periodNumber,
+          ),
+        );
+      }
       return nextPeriod;
     } catch (error) {
       showNotice(
@@ -1978,11 +2014,15 @@ export function usePlannerDataState({
       throw new Error('授業が入っている時限は削除できません。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     try {
       await plannerRepository.deleteTimetablePeriod(userId, period.id);
-      setTimetablePeriods((current) =>
-        current.filter((item) => item.id !== period.id),
-      );
+      if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+        setTimetablePeriods((current) =>
+          current.filter((item) => item.id !== period.id),
+        );
+      }
       showNotice('時限を削除しました。');
     } catch (error) {
       showNotice(
@@ -2068,13 +2108,13 @@ export function usePlannerDataState({
     captureStudyMaterialBaseline: actualAdmission.captureMaterial,
     saveStudyMaterial: trackMutation(saveStudyMaterial),
     deleteStudyMaterial: trackMutation(deleteStudyMaterial),
-    saveScheduleTemplate: trackMutation(saveScheduleTemplate),
-    deleteScheduleTemplate: trackMutation(deleteScheduleTemplate),
-    activateTimetableTerm: trackMutation(activateTimetableTerm),
-    deleteTimetableTerm: trackMutation(deleteTimetableTerm),
-    clearTimetableTermData: trackMutation(clearTimetableTermData),
-    saveTimetablePeriod: trackMutation(saveTimetablePeriod),
-    deleteTimetablePeriod: trackMutation(deleteTimetablePeriod),
+    saveScheduleTemplate: trackMutation(saveScheduleTemplate, ['timetable']),
+    deleteScheduleTemplate: trackMutation(deleteScheduleTemplate, ['timetable']),
+    activateTimetableTerm: trackMutation(activateTimetableTerm, ['timetable']),
+    deleteTimetableTerm: trackMutation(deleteTimetableTerm, ['timetable']),
+    clearTimetableTermData: trackMutation(clearTimetableTermData, ['timetable']),
+    saveTimetablePeriod: trackMutation(saveTimetablePeriod, ['timetable']),
+    deleteTimetablePeriod: trackMutation(deleteTimetablePeriod, ['timetable']),
     selectDate,
     changeMonth,
     openWeek,
