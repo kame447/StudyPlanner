@@ -1,3 +1,4 @@
+import { jevPurposeCanarySample } from './jevPurposeRollout';
 import type {
   UserContextRoutingDecisionContext,
   UserContextRoutingDecisionResponse,
@@ -108,7 +109,7 @@ export async function dispatchUserContextRouting(params: {
   const mode = userContextRoutingDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
-  const selected = mode === 'canary' && userContextRoutingCanarySelected(params.env);
+  const selected = mode === 'canary' && userContextRoutingCanarySelected(params.env, jevPurposeCanarySample('user_context_routing', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();
   if (mode === 'shadow' && !params.executionContext) return params.fallback();
 

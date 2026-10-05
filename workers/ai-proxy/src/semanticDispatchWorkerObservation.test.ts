@@ -12,7 +12,7 @@ function jev(accept = true) {
     condition_change: { type: 'noul', noul: .001 }, independent_meaning: { type: 'noul', noul: .001 },
   }, usage: { input_tokens: 2, output_tokens: 1, cost: .001 } });
 }
-function harness(options: { mode?: string; domain?: 'weekly-planning' | 'user-context'; auth?: boolean; quota?: boolean; jev?: () => Promise<Response>; luna?: () => Promise<Response>; payload?: Record<string, unknown>; observed?: boolean } = {}) {
+function harness(options: { mode?: string; masterMode?: string; domain?: 'weekly-planning' | 'user-context'; auth?: boolean; quota?: boolean; jev?: () => Promise<Response>; luna?: () => Promise<Response>; payload?: Record<string, unknown>; observed?: boolean } = {}) {
   const population = { source: 'fixture', domain: options.domain ?? 'weekly-planning', arm: 'baseline', corpusId: crypto.randomUUID() } as const;
   const turnId = crypto.randomUUID(); const requestId = crypto.randomUUID();
   const recorder = createSemanticRequestRecorder({ population, turnId, requestId, stage: 'focused', boundary: 'worker' });
@@ -25,7 +25,11 @@ function harness(options: { mode?: string; domain?: 'weekly-planning' | 'user-co
     if (url.includes('/chat/completions')) return options.luna ? options.luna() : Response.json({ choices: [{ message: { content: '{"decision":"fallback"}' } }] });
     throw new Error('Unexpected network path.');
   }));
-  const env = { OPENAI_API_KEY: 'private-api-key', OPENROUTER_API_KEY: 'private-jev-key', FIREBASE_WEB_API_KEY: 'test', JEV_MODE: options.mode ?? 'off', JEV_CANARY_PERCENT: '100', AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: options.quota !== false, retryAfterSeconds: 1 }) }) } };
+  const purpose = (options.payload?.decisionContext as { purpose?: string } | undefined)?.purpose ?? decisionContext.purpose;
+  const prefix = ({ focused_authorization: 'FOCUSED_AUTHORIZATION', focused_contextual_answer: 'FOCUSED_CONTEXTUAL_ANSWER', temporal_scope_repair: 'TEMPORAL_SCOPE_REPAIR', user_context_routing: 'USER_CONTEXT_ROUTING' } as Record<string, string>)[purpose];
+  const env = { OPENAI_API_KEY: 'private-api-key', OPENROUTER_API_KEY: 'private-jev-key', FIREBASE_WEB_API_KEY: 'test', JEV_MODE: options.masterMode ?? options.mode ?? 'off', JEV_CANARY_PERCENT: '100',
+    [`JEV_${prefix}_MODE`]: options.mode ?? 'off', [`JEV_${prefix}_CANARY_PERCENT`]: '100',
+    AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: options.quota !== false, retryAfterSeconds: 1 }) }) } };
   const request = new Request('https://proxy.test/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer private-auth-token' }, body: JSON.stringify(options.payload ?? { purpose: 'weekly_planning_semantic_normalizer', decisionContext, messages: [{ role: 'user', content: privateText }] }) });
   const run = worker.fetch(request, env as never, undefined, { waitUntil: (promise: Promise<unknown>) => { background.push(promise); } } as ExecutionContext, undefined, options.observed === false ? undefined : recorder);
   return { run, recorder, calls, async summary() {
@@ -37,6 +41,29 @@ function harness(options: { mode?: string; domain?: 'weekly-planning' | 'user-co
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('actual Worker semantic sends (mock network only)', () => {
+  it.each([
+    { kind: 'authorization', domain: 'weekly-planning', context: decisionContext },
+    { kind: 'contextual', domain: 'weekly-planning', context: { purpose: 'focused_contextual_answer', requestId: 'mixed-contextual', inputRevision: 1, questionCode: 'quantity_role_unresolved', state: { currentUserText: privateText, pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } } },
+    { kind: 'temporal', domain: 'weekly-planning', context: { purpose: 'temporal_scope_repair', requestId: 'mixed-temporal', inputRevision: 1, state: { sourceText: privateText, currentAttachedTask: { title: 'private-title' }, interpretedTime: { dateExpression: 'weekday:tuesday', namedTimePeriod: null, startTime: '18:00', endTime: '20:00' } } } },
+    { kind: 'user-context', domain: 'user-context', context: { purpose: 'user_context_routing', requestId: 'mixed-user-context', inputRevision: 0, state: { currentUserText: privateText } } },
+  ] as const)('records effective $kind shadow under global canary, never semantic fallback', async ({ domain, context }) => {
+    let release!: (response: Response) => void;
+    const late = new Promise<Response>(resolve => { release = resolve; });
+    const h = harness({ mode: 'shadow', masterMode: 'canary', domain, jev: () => late,
+      payload: { purpose: domain === 'user-context' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
+        decisionContext: context, messages: [{ role: 'user', content: privateText }] } });
+    const response = await h.run;
+    expect(await response.json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    expect(h.recorder.snapshot().settledAtMs).toBeNull();
+    release(jev());
+    expect(await h.summary()).toMatchObject({ status: 'known', jevDispatches: 1, lunaDispatches: 1,
+      // The summary counts Luna stages; the recorder below also proves Jev's stage.
+      dispatchesByStage: { shadow: 0, focused: 1, fallback: 0 } });
+    expect(h.recorder.snapshot().dispatches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ family: 'jev', stage: 'shadow' }),
+      expect.objectContaining({ family: 'luna', stage: 'focused' }),
+    ]));
+  });
   it('counts zero Luna for a Jev-fulfilled proxy success', async () => {
     const h = harness({ mode: 'canary' }); expect((await h.run).status).toBe(200);
     expect(await h.summary()).toMatchObject({ status: 'known', lunaDispatches: 0, jevDispatches: 1 });

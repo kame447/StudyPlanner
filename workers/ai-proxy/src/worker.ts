@@ -50,6 +50,7 @@ import {
 } from './decision/userContextRoutingDispatch';
 import { markLunaBaselineFailure } from './decision/decisionExecutionMarker';
 import type { DecisionEnv } from './decision/decisionPolicy';
+import { resolveJevPurposeRollout } from './decision/jevPurposeRollout';
 import { isCandidateChoiceDecisionContext } from '../../../shared/candidateChoiceDecision';
 import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
 
@@ -640,7 +641,6 @@ async function handleChatRequest(
     observationContext.requestBody = { kind: 'parsed', payload, bytes: requestBytes };
   }
   const semanticRecorder = dispatchRecorder?.matchesPurpose(payload?.purpose) ? dispatchRecorder : undefined;
-  const providers = observedDecisionProviders(semanticRecorder, env.OPENROUTER_API_KEY, env.JEV_MODE);
   const validationError = validateChatRequest(payload);
   if (validationError) {
     return jsonResponse(request, env, 400, { error: validationError });
@@ -683,8 +683,13 @@ async function handleChatRequest(
   const quotaError = await enforceQuota(request, env, session.uid, 'chat');
   if (quotaError) return quotaError;
 
+  // Use the validated purpose's effective mode, including the global shadow cap.
+  const observedMode = resolveJevPurposeRollout(env, focusedContext.kind === 'focused_contextual'
+    ? 'focused_contextual_answer' : focusedContext.kind).mode;
+  const providers = observedDecisionProviders(semanticRecorder, env.OPENROUTER_API_KEY, observedMode);
+
   if (candidateChoice && isCandidateChoiceDecisionContext(payload.decisionContext)) {
-    const result = await evaluateCandidateChoice({ context: payload.decisionContext, env, signal: request.signal, recorder: semanticRecorder });
+    const result = await evaluateCandidateChoice({ context: payload.decisionContext, env, firebaseUid: session.uid, signal: request.signal, recorder: semanticRecorder });
     return jsonResponse(request, env, 200, { ...result });
   }
 
@@ -750,8 +755,8 @@ async function fetchChatCompletion(
     getChatTemperature(payload),
   );
   const providerFetch = dispatchRecorder?.providerFetch('openai', model === 'gpt-5.6-luna' ? 'luna' : 'other',
-    dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev')
-      && env.JEV_MODE !== 'shadow' ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
+    dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev' && dispatch.stage !== 'shadow')
+      ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
   const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     ...(signal ? { signal } : {}),

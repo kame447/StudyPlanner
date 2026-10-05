@@ -5,7 +5,7 @@ import { JEV_MODEL } from './decision/decisionPolicy';
 import { projectSemanticCensusMetadata } from '../../../shared/semanticTurnCensus';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-function run(options: { mode?: string; purpose?: string; sinkFailure?: boolean; census?: string; abstain?: boolean; jevWork?: Promise<Response>; sinkWork?: Promise<void>; invalidMessages?: boolean } = {}) {
+function run(options: { mode?: string; masterMode?: string; purpose?: string; sinkFailure?: boolean; census?: string; abstain?: boolean; jevWork?: Promise<Response>; sinkWork?: Promise<void>; invalidMessages?: boolean } = {}) {
   const events: unknown[] = []; const providerBodies: unknown[] = []; const background: Promise<unknown>[] = [];
   vi.spyOn(ProductObservabilityStore.prototype, 'storeSemanticCensus').mockImplementation(async (_uid, input) => {
     if (options.sinkFailure) throw new Error('private-sink-secret'); if (options.sinkWork) await options.sinkWork; events.push(input);
@@ -32,7 +32,8 @@ function run(options: { mode?: string; purpose?: string; sinkFailure?: boolean; 
     } : undefined,
   };
   const env = { OPENAI_API_KEY: 'private-api-key', OPENROUTER_API_KEY: 'private-jev-key', FIREBASE_WEB_API_KEY: 'test',
-    JEV_MODE: options.mode ?? 'off', JEV_CANARY_PERCENT: '100', SEMANTIC_CENSUS_MODE: options.census ?? 'typed',
+    JEV_MODE: options.masterMode ?? options.mode ?? 'off', JEV_CANARY_PERCENT: '100', SEMANTIC_CENSUS_MODE: options.census ?? 'typed',
+    JEV_FOCUSED_AUTHORIZATION_MODE: options.mode ?? 'off', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100',
     OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
     AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true }) }) },
   };
@@ -40,6 +41,22 @@ function run(options: { mode?: string; purpose?: string; sinkFailure?: boolean; 
   return { response, events, providerBodies, turnId, requestId, async settle() { await Promise.allSettled(background); } };
 }
 describe('production Worker census wrapper', () => {
+  it('persists effective shadow stages under global canary without raw telemetry expansion', async () => {
+    let release!: (response: Response) => void;
+    const jevWork = new Promise<Response>(resolve => { release = resolve; });
+    const h = run({ mode: 'shadow', masterMode: 'canary', jevWork });
+    expect(await (await h.response).json()).toMatchObject({ content: 'private-generated-output' });
+    expect(h.events).toEqual([]);
+    release(Response.json({ model: JEV_MODEL.responses[1], answers: {} })); await h.settle();
+    expect(h.events).toHaveLength(1);
+    expect(h.events[0]).toMatchObject({ joined: true, integrity: 'complete', lateWork: true, jevDispatches: 1, lunaDispatches: 1,
+      dispatches: expect.arrayContaining([
+        expect.objectContaining({ family: 'jev', stage: 'shadow' }),
+        expect.objectContaining({ family: 'luna', stage: 'focused' }),
+      ]) });
+    expect(JSON.stringify(h.events)).not.toContain('private-');
+    expect(JSON.stringify(h.events)).not.toContain('JEV_');
+  });
   it.each(['off', 'canary'])('observes physical provider dispatch in %s without forwarding census to providers', async (mode) => {
     const h = run({ mode }); const response = await h.response; expect(response.status).toBe(200);
     await h.settle(); expect(h.events).toHaveLength(1);

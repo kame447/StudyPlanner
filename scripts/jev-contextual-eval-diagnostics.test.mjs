@@ -132,7 +132,8 @@ describe('recomputed gate provenance and parity with actual dispatch', () => {
     const actualGate = vi.spyOn(policy, 'gateContextualDecision');
     const fallback = vi.fn(async () => new Response('baseline'));
     const respond = vi.fn(decision => Response.json(decision));
-    await dispatchFocusedContextual({ context: context(questionCode), env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+    await dispatchFocusedContextual({ context: context(questionCode), env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+      JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100' },
       firebaseUid: 'synthetic', signal: new AbortController().signal, fallback, respond,
       provider: { evaluate: async () => result } });
     const observed = actualGate.mock.results.map(call => call.value);

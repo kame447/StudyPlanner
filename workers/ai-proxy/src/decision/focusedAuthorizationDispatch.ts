@@ -1,3 +1,4 @@
+import { jevPurposeCanarySample } from './jevPurposeRollout';
 import type { FocusedAuthorizationDecisionContext } from '../../../../shared/focusedAuthorizationDecision';
 import type { AiRequestMetricPayload, AiRequestMetricStatus } from '../../../../shared/productObservabilityContract';
 import { createAiRequestId, recordAiRequestMetricBestEffort } from '../aiRequestObservability';
@@ -86,7 +87,7 @@ export async function dispatchFocusedAuthorization(params: {
   // The key requirement belongs to the default OpenRouter adapter, not the
   // DecisionProvider port. An injected future transport owns its configuration.
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
-  const selected = mode === 'canary' && canarySelected(params.env);
+  const selected = mode === 'canary' && canarySelected(params.env, jevPurposeCanarySample('focused_authorization', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();
   // Without a Worker lifecycle there is no safe, bounded background shadow job.
   if (mode === 'shadow' && !params.executionContext) return params.fallback();

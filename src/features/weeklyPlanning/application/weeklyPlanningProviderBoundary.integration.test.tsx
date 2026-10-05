@@ -167,7 +167,7 @@ it('consumes real Worker Jev-to-Luna fallback through focused authorization befo
   const env = {
     OPENAI_API_KEY: 'fixture-luna-key', OPENROUTER_API_KEY: 'fixture-jev-key',
     OPENAI_BASE_URL: 'https://provider.fixture.test/v1', FIREBASE_WEB_API_KEY: 'fixture-project',
-    JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+    JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100', JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
     AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 1 }) }) },
   };
   // The app (DOM/ES2020) and Worker (Cloudflare/ES2022) are typechecked separately.

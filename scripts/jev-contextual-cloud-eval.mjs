@@ -570,7 +570,8 @@ async function main() {
       name: workerName,
       main: 'contextual-eval.ts',
       compatibility_date: '2026-04-10',
-      vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+      vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+        JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100' },
     }));
     worker = await unstable_dev(entry, {
       config,

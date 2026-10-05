@@ -14,8 +14,8 @@ function environment() {
     FIREBASE_WEB_API_KEY: 'firebase-fixture',
     ALLOWED_ORIGIN: 'https://app.example',
     ALLOWED_CHAT_MODELS: 'gpt-5.6-luna',
-    JEV_MODE: 'canary',
-    JEV_CANARY_PERCENT: '100',
+    JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary',
+    JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100',
     AI_QUOTA: { getByName: () => quotaStub },
   };
 }

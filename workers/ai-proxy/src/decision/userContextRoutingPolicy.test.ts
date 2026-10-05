@@ -113,14 +113,14 @@ describe('userContextRoutingPolicy', () => {
       'uncertain',
     ]);
     expect(userContextRoutingDecisionMode({})).toBe('off');
-    expect(userContextRoutingDecisionMode({ JEV_MODE: 'typo' })).toBe('off');
+    expect(userContextRoutingDecisionMode({ JEV_USER_CONTEXT_ROUTING_MODE: 'typo', JEV_MODE: 'typo' })).toBe('off');
     expect(userContextRoutingCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_USER_CONTEXT_ROUTING_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.04)).toBe(true);
     expect(userContextRoutingCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_USER_CONTEXT_ROUTING_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.06)).toBe(false);
   });
 });
