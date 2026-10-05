@@ -15,7 +15,8 @@ export function createPairedWorkerSource({ root, cases, digest, expiresAt, provi
 import { createWeeklyPlanningSemanticNormalizerV5 } from ${source('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts')};
 import { dispatchFocusedContextual } from ${source('workers/ai-proxy/src/decision/focusedContextualDispatch.ts')};
 import { createOpenRouterDecisionProvider } from ${source('workers/ai-proxy/src/decision/openRouterDecisionProvider.ts')};
-import { CONTEXTUAL_DECISION_CATALOG, CONTEXTUAL_CATALOG_VERSION, CONTEXTUAL_GATE_VERSION, CONTEXTUAL_JEV_TIMEOUT_MS } from ${source('workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')};
+import { CONTEXTUAL_DECISION_CATALOG, CONTEXTUAL_CATALOG_VERSION, CONTEXTUAL_GATE_VERSION, CONTEXTUAL_JEV_TIMEOUT_MS, gateContextualDecision } from ${source('workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')};
+import { emptyDispatchDiagnostics, providerRequestId, readProviderError, typedJevDiagnostic } from ${source('scripts/jev-contextual-eval-diagnostics.mjs')};
 ${dataModule ? `import { CASES, EXPECTED_DIGEST, EXPIRES_AT } from ${JSON.stringify(dataModule)};` : `const CASES = ${JSON.stringify(cases)};
 const EXPECTED_DIGEST = ${JSON.stringify(digest)};
 const EXPIRES_AT = ${expiresAt};`}
@@ -50,6 +51,7 @@ function inputFor(item, arm) {
 export async function runTurn(item, env, signal, arm, options = {}) {
   const started = Date.now();
   const dispatches = [];
+  const diagnosticReads = [];
   let evaluation = null;
   let directRole = null;
   // The harness passes the hard budget still unreserved (USD 5 − settled −
@@ -145,7 +147,25 @@ export async function runTurn(item, env, signal, arm, options = {}) {
   };
   const abortOutcome = (error) => error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'timeout' : 'network_failure';
   const newDispatch = (provider, phase) => ({ provider, phase, status: 'dispatched', inputTokens: null, outputTokens: null, costUsd: null,
+    evalDiagnostics: emptyDispatchDiagnostics(provider),
     ...(preSend ? { outcome: null, httpStatus: null, servedModel: null, serviceTier: null } : {}) });
+  const observeHeaders = (dispatch, response, sentAt) => {
+    dispatch.evalDiagnostics.elapsedToHeadersMs = Math.max(0, Date.now() - sentAt);
+    dispatch.evalDiagnostics.requestId = providerRequestId(response.headers, dispatch.provider);
+    if (!response.ok) {
+      // Read a clone without awaiting it in the response/gate/stop path. A
+      // stalled diagnostic read cannot delay the provider's original response.
+      try {
+        diagnosticReads.push(readProviderError(response.clone()).then((error) => {
+          dispatch.evalDiagnostics.providerError = error;
+        }).catch(() => {
+          dispatch.evalDiagnostics.providerError = { type: 'unknown', code: 'unknown', param: 'unknown', bodyStatus: 'read_failure' };
+        }));
+      } catch {
+        dispatch.evalDiagnostics.providerError = { type: 'unknown', code: 'unknown', param: 'unknown', bodyStatus: 'read_failure' };
+      }
+    }
+  };
   const jevOutcome = (evaluation) => {
     if (evaluation.status === 'evaluated') return ['response', null];
     const reason = evaluation.reason;
@@ -162,7 +182,12 @@ export async function runTurn(item, env, signal, arm, options = {}) {
       checkBudget('jev', init?.body, undefined, url);
       const dispatch = newDispatch('jev', 'focused');
       dispatches.push(dispatch);
-      try { return await rawFetch(url, init); } catch (error) {
+      const sentAt = Date.now();
+      try {
+        const response = await rawFetch(url, init);
+        observeHeaders(dispatch, response, sentAt);
+        return response;
+      } catch (error) {
         dispatch.status = 'network_failure';
         if (preSend) dispatch.outcome = abortOutcome(error);
         throw error;
@@ -182,12 +207,14 @@ export async function runTurn(item, env, signal, arm, options = {}) {
     dispatches.push(dispatch); // exactly at the actual provider boundary, including failed calls
     try {
       let upstream;
+      const sentAt = Date.now();
       try {
         upstream = await rawFetch(lunaUrl, {
           method: 'POST', signal: requestSignal,
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY.trim() },
           body,
         });
+        observeHeaders(dispatch, upstream, sentAt);
       } catch (error) {
         if (preSend) dispatch.outcome = abortOutcome(error);
         throw error;
@@ -254,6 +281,8 @@ export async function runTurn(item, env, signal, arm, options = {}) {
             if (dispatch) Object.assign(dispatch, { status: evaluation.status,
               inputTokens: evaluation.metadata.inputTokens, outputTokens: evaluation.metadata.outputTokens,
               costUsd: evaluation.metadata.costUsd, ...(preSend ? { servedModel: evaluation.metadata.servedModel ?? null } : {}) });
+            if (dispatch) dispatch.evalDiagnostics.jev = typedJevDiagnostic(evaluation,
+              gateContextualDecision(evaluation, state.questionCode), CONTEXTUAL_GATE_VERSION);
             if (dispatch && preSend) {
               const [outcome, httpStatus] = jevOutcome(evaluation);
               Object.assign(dispatch, { outcome, httpStatus });
@@ -276,9 +305,15 @@ export async function runTurn(item, env, signal, arm, options = {}) {
     throw new Error('Unaccounted provider exposure refused.');
   };
   let result;
+  let elapsedMs;
   try { result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize(inputFor(item, arm)); }
-  finally { if (preSend) globalThis.fetch = rawFetch; }
-  const elapsedMs = Math.max(0, Date.now() - started);
+  finally {
+    if (preSend) globalThis.fetch = rawFetch;
+    elapsedMs = Math.max(0, Date.now() - started);
+    // Settle on every exit, including throw/abort, before a caller can persist
+    // records. This is outside semantic timing and all send/stop/latch decisions.
+    await Promise.allSettled(diagnosticReads);
+  }
   return { caseId: item.id, group: item.group, arm, questionCode: item.questionCode,
     catalogVersion: CONTEXTUAL_CATALOG_VERSION, gateVersion: CONTEXTUAL_GATE_VERSION,
     observationComplete: !preSend || preSend.unaccountedFetchesRefused === 0, dispatches,
