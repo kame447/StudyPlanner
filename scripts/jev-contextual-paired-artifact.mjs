@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { observedTotal } from './jev-contextual-eval-metrics.mjs';
+import { isEvalDispatchDiagnostics } from './jev-contextual-eval-diagnostics.mjs';
 
 export const PAIRED_ARTIFACT_SCHEMA = 'jev-contextual-paired-v1';
 const ARMS = ['jevFirst', 'lunaOnly'];
@@ -58,7 +59,12 @@ function semanticResult(result) {
 
 function validateDispatch(dispatch, complete, preSend) {
   fields(dispatch, ['provider', 'phase', 'status', 'inputTokens', 'outputTokens', 'costUsd',
-    ...(preSend ? ['outcome', 'httpStatus', 'servedModel', 'serviceTier'] : [])]);
+    ...(preSend ? ['outcome', 'httpStatus', 'servedModel', 'serviceTier'] : [])], ['evalDiagnostics']);
+  // Historical records remain valid. New metadata is strictly framed and has
+  // no influence on completeness, stop rules, tariff or unknown accounting.
+  if (Object.hasOwn(dispatch, 'evalDiagnostics')) {
+    assert.ok(isEvalDispatchDiagnostics(dispatch.evalDiagnostics, dispatch.provider), 'Invalid eval dispatch diagnostics.');
+  }
   if (preSend) {
     assert.ok(complete ? ATTEMPT_OUTCOMES.includes(dispatch.outcome)
       : dispatch.outcome === null || ATTEMPT_OUTCOMES.includes(dispatch.outcome), 'Unknown attempt outcome.');
