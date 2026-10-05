@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { ActualEditorCard } from './ActualEditorCard';
+import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { DayDetailModal } from './DayDetailModal';
 import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
@@ -200,4 +201,41 @@ describe('DayView extracted dialogs', () => {
       standaloneActual,
     );
   });
+
+  it('shows a repeated admission message once while preserving distinct delete errors and pending guards', async () => {
+    const busyMessage = 'この記録または予定は保存・更新中です。完了してから開き直してください。';
+    let rejectDelete!: (error: Error) => void;
+    const onDeletePlan = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectDelete = reject; }));
+    const onClose = vi.fn();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<DayDetailModal detailPlan={plan} monthEvent={null} standaloneActual={null}
+        plans={[plan]} actuals={[]} getActualActionBlockReason={() => busyMessage}
+        onEditPlan={vi.fn()} onDeletePlan={onDeletePlan} onSaveActual={noopAsync}
+        onSaveStandaloneActual={noopAsync} onLinkStandaloneActualToPlan={noopAsync}
+        onDeleteActual={noopAsync} onClose={onClose} />);
+    });
+    const alerts = () => renderer.root.findAllByProps({ role: 'alert' }).map(node => node.children.join(''));
+    const button = (label: string) => renderer.root.findAllByType('button').find(node =>
+      node.findAllByType('strong').some(text => text.children.join('') === label))!;
+    expect(alerts()).toEqual([busyMessage]);
+    expect(button('記録を保存').props.disabled).toBe(true);
+    const retainedDelete = button('削除').props.onClick;
+    act(() => { retainedDelete(); retainedDelete(); });
+    expect(onDeletePlan).toHaveBeenCalledTimes(1);
+    expect(button('削除').props.disabled).toBe(true);
+    await act(async () => { rejectDelete(new ActualMutationAdmissionError(busyMessage)); });
+    expect(alerts()).toEqual([busyMessage]);
+    expect(button('削除').props.disabled).toBe(false);
+    expect(button('記録を保存').props.disabled).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+
+    onDeletePlan.mockRejectedValueOnce(new Error('unrelated delete failure'));
+    await act(async () => { button('削除').props.onClick(); });
+    expect(onDeletePlan).toHaveBeenCalledTimes(2);
+    expect(alerts()).toEqual([busyMessage, '予定を削除できませんでした。もう一度試してください。']);
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+  });
+
 });

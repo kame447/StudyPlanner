@@ -9,6 +9,8 @@ import { createLocalPlannerRepository } from '../../../src/repositories/createLo
 const real = createLocalPlannerRepository();
 export const authRepository = createAuthRepository(createLocalAuthStorageGateway());
 const calls = [];
+let holdActualDispatch = false;
+let heldActualDispatch = null;
 let holdActualAcknowledgment = false;
 let heldAcknowledgment = null;
 let holdMonthWrite = false;
@@ -18,11 +20,17 @@ let holdProjectionReads = false;
 const heldReads = [];
 const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
 const targetMethods = new Set(Object.keys(failures));
-const snapshot = () => structuredClone({ calls, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
+const snapshot = () => structuredClone({ calls, pendingActualDispatches: heldActualDispatch ? 1 : 0, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
   pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
 
 export const plannerRepository = Object.fromEntries(Object.entries(real).map(([method, original]) => [method, async (...args) => {
   calls.push({ method, phase: 'called' });
+  if (method === 'upsertActualWithMaterialProgress' && holdActualDispatch) {
+    holdActualDispatch = false;
+    // Test-only remote-latency stand-in BEFORE entering the native local queue.
+    // Native local saves are not claimed to have a cross-event query window.
+    await new Promise(resolve => { heldActualDispatch = resolve; });
+  }
   if (method === 'upsertMonthEvent' && holdMonthWrite) {
     holdMonthWrite = false;
     // Gate BEFORE calling the real repository: the accepted full read must
@@ -57,7 +65,7 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
-  async seedPlanUndo({ userId, date, withTodo = false }) {
+  async seedPlanUndo({ userId, date, withTodo = false, withActual = true }) {
     const now = new Date().toISOString();
     const plan = { id: 'rollback-undo-plan', seriesId: 'rollback-undo-plan', userId,
       title: '復元に失敗する学習予定', subject: '数学', date, startTime: '09:00', endTime: '09:30',
@@ -74,9 +82,9 @@ window.__plannerRecoveryRepository = {
     // Setup uses the same production facade as the App. The hook subsequently
     // reads these rows and captures its real linked-record Undo closure.
     await plannerRepository.upsertPlan(plan);
-    await plannerRepository.upsertActual(actual);
+    if (withActual) await plannerRepository.upsertActual(actual);
     if (todo) await plannerRepository.upsertTodo(todo);
-    return { plan, actual, ...(todo ? { todo } : {}) };
+    return { plan, actual: withActual ? actual : null, ...(todo ? { todo } : {}) };
   },
   armPlanRestoreFault(planId, onPlanRestore) {
     if (planRestoreFault) throw new Error('A Plan restore fault is already installed');
@@ -91,6 +99,14 @@ window.__plannerRecoveryRepository = {
   preserveNextReload() {
     // Consumed once by the test harness entry, never production App code.
     sessionStorage.setItem('studyplanner.e2e.preserve-next-reload', 'true');
+  },
+  holdNextActualDispatch() { holdActualDispatch = true; },
+  releaseActualDispatch() {
+    const release = heldActualDispatch;
+    if (!release) return false;
+    heldActualDispatch = null;
+    release();
+    return true;
   },
   holdNextActualAcknowledgment() { holdActualAcknowledgment = true; },
   releaseActualAcknowledgment() {

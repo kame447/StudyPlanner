@@ -1,3 +1,4 @@
+import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import {
   useEffect,
   useMemo,
@@ -64,6 +65,7 @@ interface DayViewProps {
   onDeletePlan: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  getActualActionBlockReason?: (target: ActualActionTarget) => string | null;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
@@ -134,6 +136,7 @@ export function DayView({
   onDeletePlan,
   onDeleteMonthEvent,
   onSavePlan,
+  getActualActionBlockReason,
   onSaveActual,
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
@@ -143,6 +146,7 @@ export function DayView({
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [pendingDetailDeletion, setPendingDetailDeletion] = useState<{ plan: Plan; viewedDate: string } | null>(null);
+  const [actualOpenError, setActualOpenError] = useState('');
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
@@ -374,6 +378,7 @@ export function DayView({
   useEffect(() => {
     setModalState({ type: 'closed' });
     setQuickMaterial(null);
+    setActualOpenError('');
     scheduleAction.dismiss();
   }, [selectedDate, userId]);
 
@@ -492,6 +497,7 @@ export function DayView({
       onTouchCancelCapture={scheduleAction.cancel}
       onClickCapture={handleClickCapture}
     >
+      {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
       <DayDetailModal
         detailPlan={selectedDetailPlan}
         monthEvent={selectedMonthEvent}
@@ -501,6 +507,7 @@ export function DayView({
         actuals={actuals}
         onEditPlan={onEditPlan}
         onDeletePlan={deleteDetailPlan}
+        getActualActionBlockReason={getActualActionBlockReason}
         onSaveActual={onSaveActual}
         onSaveStandaloneActual={onSaveStandaloneActual}
         onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
@@ -553,9 +560,12 @@ export function DayView({
         onSelectEntry={(entry) => {
           if (entry.kind === 'standalone-actual') {
             const actual = dayActuals.find(item => item.id === entry.id && !item.planId);
-            if (actual) setModalState({ type: 'standalone-actual-detail', actual: structuredClone(actual) });
+            const reason = actual ? getActualActionBlockReason?.(actual) : null;
+            setActualOpenError(reason ?? '');
+            if (actual && !reason) setModalState({ type: 'standalone-actual-detail', actual: structuredClone(actual) });
             return;
           }
+          setActualOpenError('');
           setModalState(entry.kind === 'plan'
             ? { type: 'plan-detail', planId: entry.id }
             : { type: 'month-event-detail', monthEventId: entry.id });

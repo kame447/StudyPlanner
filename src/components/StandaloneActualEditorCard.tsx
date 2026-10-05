@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
@@ -99,12 +100,12 @@ function StandaloneActualEditor({
     setError('');
     try {
       await action();
-    } catch {
+    } catch (error) {
       if (pendingMutation.current === attempt) {
         pendingMutation.current = null;
         setIsSubmitting(false);
         pendingObserver.current?.(false);
-        setError(failureMessage);
+        setError(error instanceof ActualMutationAdmissionError ? error.message : failureMessage);
       }
       return;
     }

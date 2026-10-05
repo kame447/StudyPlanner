@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
+import { ActualMutationAdmissionError, actualUnavailableMessage, useActualMutationAdmission, type ActualActionTarget } from './useActualMutationAdmission';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -199,6 +200,7 @@ export interface UsePlannerDataStateResult {
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
+  getActualActionBlockReason: (target: ActualActionTarget) => string | null;
   saveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
@@ -253,6 +255,17 @@ export function usePlannerDataState({
   const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
   const monthEventState = useOptimisticPlannerState<MonthEvent[]>([], mutationScope);
   const { value: monthEvents, set: setMonthEvents, replace: rawSetMonthEvents } = monthEventState;
+  const actualAdmission = useActualMutationAdmission(mutationScope, userId, actuals, plans, monthEvents);
+  const committedActualAdmission = useRef<{
+    ownerId: string | null;
+    scope: typeof mutationScope;
+    admission: typeof actualAdmission;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const committed = { ownerId: userId, scope: mutationScope, admission: actualAdmission };
+    committedActualAdmission.current = committed;
+    return () => { if (committedActualAdmission.current === committed) committedActualAdmission.current = null; };
+  }, [actualAdmission, mutationScope, userId]);
   const todoState = useOptimisticPlannerState<TodoTask[]>([], mutationScope);
   const { value: todos, set: setTodos, replace: rawSetTodos } = todoState;
   const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
@@ -309,12 +322,14 @@ export function usePlannerDataState({
       publish: snapshot => {
         if (snapshot.actualMaterial) {
           rawSetActuals(snapshot.actualMaterial.actuals);
+          actualAdmission.refreshed(['actual-material']);
           rawSetStudyMaterials(snapshot.actualMaterial.materials);
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
         if (snapshot.plansTodos) {
           rawSetPlans(snapshot.plansTodos.plans);
           rawSetTodos(snapshot.plansTodos.todos);
+          actualAdmission.refreshed(['plans-todos']);
         }
       },
       changed: publishReadSnapshot,
@@ -508,16 +523,30 @@ export function usePlannerDataState({
       rawSetScheduleTemplates(committedScheduleTemplates);
       rawSetTimetableTerms(committedTimetableTerms);
       rawSetTimetablePeriods(committedTimetablePeriods);
+      // Auth retains this loader across owner/scope recreation. Resolve only
+      // the committed current owner here; an abandoned render cannot redirect
+      // read publication or make a retained loader use a revoked admission map.
+      const committed = committedActualAdmission.current;
+      const readAdmission = committed?.ownerId === nextUserId && committed.scope.isCurrent()
+        ? committed.admission : null;
+      const fullReadIsQuiescent = reconciliation.isQuiescentSince(fullReadActivity);
       const readyAvailability = plannerDataReadAuthority.succeed(
         loadStart.token,
         new Date().toISOString(),
-        reconciliation.isQuiescentSince(fullReadActivity),
+        fullReadIsQuiescent,
         [
           ...reconciliation.successfulTargetsSince(fullReadActivity),
           ...reconciliation.planRestoreTargetsSince(fullReadActivity),
+          // A nonquiescent full read cannot certify an outstanding claim. Keep
+          // its required groups in the canonical concern, even if this newer
+          // full read would otherwise retire the older repair request.
+          ...(!fullReadIsQuiescent ? readAdmission?.requiredProjections() ?? [] : []),
         ],
       );
-      if (readyAvailability) publishReadSnapshot();
+      if (readyAvailability) {
+        if (fullReadIsQuiescent) readAdmission?.refreshed(['actual-material', 'plans-todos']);
+        publishReadSnapshot();
+      }
     } catch (error) {
       const failedAvailability = plannerDataReadAuthority.fail(
         loadStart.token,
@@ -590,7 +619,10 @@ export function usePlannerDataState({
     }
 
     const occurrencePlan = pendingRecurringPlanAction.plan;
-    const sourcePlan = resolveStoredPlan(occurrencePlan);
+    const sourcePlan = requireCurrentPlan(occurrencePlan);
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    let releaseAdmission: ReturnType<typeof admitActualMutation> | undefined;
+    let needsRefresh = false;
     const occurrenceDate = occurrencePlan.occurrenceDate ?? occurrencePlan.date;
 
     try {
@@ -598,8 +630,8 @@ export function usePlannerDataState({
         pendingRecurringPlanAction.kind === 'edit'
           ? pendingRecurringPlanAction.draft
             ? buildRecurringPlanEditMutation(
-                plans,
-                actuals,
+                actualAdmission.plans(),
+                actualAdmission.current(),
                 sourcePlan,
                 occurrenceDate,
                 pendingRecurringPlanAction.draft,
@@ -607,8 +639,8 @@ export function usePlannerDataState({
               )
             : null
           : buildRecurringPlanDeleteMutation(
-              plans,
-              actuals,
+              actualAdmission.plans(),
+              actualAdmission.current(),
               sourcePlan,
               occurrenceDate,
               scope,
@@ -618,6 +650,13 @@ export function usePlannerDataState({
         return;
       }
 
+      const affectedPlanIds = [...new Set([
+        sourcePlan.id,
+        ...mutation.planUpserts.map(plan => plan.id),
+        ...mutation.planDeletes.map(plan => plan.id),
+        ...[...mutation.actualUpserts, ...mutation.actualDeletes].flatMap(actual => actual.planId ? [actual.planId] : []),
+      ])];
+      releaseAdmission = admitActualMutation([...mutation.actualUpserts, ...mutation.actualDeletes], affectedPlanIds);
       await plannerRepository.applyRecurringPlanMutation(userId, mutation);
       const deletedPlanIds = new Set(
         mutation.planDeletes.map((plan) => plan.id),
@@ -625,22 +664,25 @@ export function usePlannerDataState({
       const deletedActualIds = new Set(
         mutation.actualDeletes.map((actual) => actual.id),
       );
-      setPlans((current) =>
-        sortAndUpsertPlans(
-          current.filter((plan) => !deletedPlanIds.has(plan.id)),
-          mutation.planUpserts,
-        ),
-      );
-      setActuals((current) =>
-        upsertActualsById(
-          current.filter(
-            (actual) =>
-              !deletedActualIds.has(actual.id) &&
-              (!actual.planId || !deletedPlanIds.has(actual.planId)),
+      needsRefresh = Boolean(acknowledgedProjection && plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection));
+      if (!needsRefresh) {
+        setPlans((current) =>
+          sortAndUpsertPlans(
+            current.filter((plan) => !deletedPlanIds.has(plan.id)),
+            mutation.planUpserts,
           ),
-          mutation.actualUpserts,
-        ),
-      );
+        );
+        setActuals((current) =>
+          upsertActualsById(
+            current.filter(
+              (actual) =>
+                !deletedActualIds.has(actual.id) &&
+                (!actual.planId || !deletedPlanIds.has(actual.planId)),
+            ),
+            mutation.actualUpserts,
+          ),
+        );
+      }
 
       if (pendingRecurringPlanAction.kind === 'edit') {
         selectionState.set(selectionAt(occurrenceDate));
@@ -653,7 +695,7 @@ export function usePlannerDataState({
         showNotice('繰り返し予定を削除しました。');
       }
     } catch (error) {
-      if (!mutationScope.isCurrent()) throw error;
+      if (!mutationScope.isCurrent() || error instanceof ActualMutationAdmissionError) throw error;
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
         scope,
@@ -665,7 +707,8 @@ export function usePlannerDataState({
         sourcePlan: summarizePlanForLog(sourcePlan),
         error: getErrorDiagnostics(error),
       });
-      await loadPlannerData(userId);
+      try { await loadPlannerData(userId); }
+      catch { needsRefresh = true; }
       showNotice(
         resolveErrorMessage(
           error,
@@ -675,6 +718,8 @@ export function usePlannerDataState({
         ),
         'error',
       );
+    } finally {
+      if (releaseAdmission) settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], needsRefresh);
     }
   }
 
@@ -801,13 +846,16 @@ export function usePlannerDataState({
       return;
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const releaseAdmission = admitActualMutation([], [plan.id]);
+    try { plan = requireCurrentPlan(plan); } catch (error) { releaseAdmission(); throw error; }
     const linkedTodo =
       plan.sourceType === 'todo' && plan.sourceId
         ? todos.find(
             (todo) => todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
           ) ?? null
         : null;
-    const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
+    const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
     const nextLinkedTodo = linkedTodo
       ? {
           ...linkedTodo,
@@ -839,7 +887,9 @@ export function usePlannerDataState({
           || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
           throw new PlannerMutationScopeExpiredError();
         }
+        const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
         const restore = reconciliation.beginPlanRestore();
+        let restoreNeedsRefresh = false;
         let outcome: 'success' | 'failure' = 'failure';
         try {
           await plannerRepository.restorePlanWithDependents({
@@ -850,8 +900,11 @@ export function usePlannerDataState({
           outcome = 'success';
           // Publish all captured dependents under one accepted-projection lease.
           // A failed/superseded read alone does not revoke this acknowledgement.
-          if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
-            || plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) return;
+          if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) return;
+          if (plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+            restoreNeedsRefresh = true;
+            return;
+          }
           setPlans((current) => sortAndUpsertPlans(current, [plan]));
           if (linkedActuals.length > 0) {
             setActuals((current) => upsertActualsById(current, linkedActuals));
@@ -859,7 +912,10 @@ export function usePlannerDataState({
           if (linkedTodo) {
             setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
           }
-        } finally { reconciliation.settleMutation(restore, outcome); }
+        } finally {
+          settleActualAdmission(releaseRestoreAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], restoreNeedsRefresh || outcome === 'failure');
+          reconciliation.settleMutation(restore, outcome);
+        }
       });
     } catch (error) {
       planState.reject(planOperation);
@@ -867,21 +923,79 @@ export function usePlannerDataState({
       todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
       throw error;
+    } finally {
+      settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material', 'plans-todos']);
     }
   }
 
-  async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
+  function requireCurrentActual(id: string): Actual {
+    const current = actualAdmission.current().find(actual => actual.id === id && actual.userId === userId);
+    const reason = actualAdmission.reason(current ?? { id, userId: userId ?? '', planId: null, occurrenceDate: '' });
+    if (reason || !current) {
+      const error = new ActualMutationAdmissionError(reason ?? actualUnavailableMessage);
+      showNotice(error.message, 'error');
+      throw error;
+    }
+    return current;
+  }
+
+  function admitActualMutation(targets: ActualActionTarget[], planIds: string[] = []) {
+    try { return actualAdmission.acquire(targets, planIds); }
+    catch (error) {
+      showNotice(resolveErrorMessage(error, '記録を更新できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  function settleActualAdmission(
+    release: ReturnType<typeof actualAdmission.acquire>,
+    lease: ReturnType<typeof plannerDataReadAuthority.captureProjectionLease>,
+    targets: readonly ('actual-material' | 'plans-todos')[] = ['actual-material'],
+    forceRepair = false,
+  ) {
+    const needsRefresh = Boolean(lease && mutationScope.isCurrent()
+      && plannerDataReadAuthority.isOwnerCurrent(lease)
+      && (forceRepair || plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)
+        // An in-flight full read can still install its pre-mutation snapshot
+        // after this promise settles. Retain the claim through its repair too.
+        || plannerDataReadAuthority.read().status === 'loading'));
+    if (needsRefresh && lease) reconciliation.request(lease, targets);
+    release(needsRefresh ? targets : false);
+  }
+
+  function requireLinkedTarget(planId: string, occurrenceDate: string) {
+    const reason = actualAdmission.reason({ userId: userId ?? '', planId, occurrenceDate });
+    if (reason || !actualAdmission.hasLinkedTarget(planId)) {
+      const error = new ActualMutationAdmissionError(reason ?? actualUnavailableMessage);
+      showNotice(error.message, 'error');
+      throw error;
+    }
+  }
+
+  function requireCurrentPlan(plan: Plan): Plan {
+    const current = actualAdmission.plans().find(item => item.id === plan.id && item.userId === userId);
+    if (!current || plan.userId !== userId) {
+      const error = new ActualMutationAdmissionError(actualUnavailableMessage);
+      showNotice(error.message, 'error');
+      throw error;
+    }
+    return current;
+  }
+
+  async function saveActual(_plan: Plan, draft: ActualDraft, targetActualId?: string) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
-    const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
+    if (draft.planId) requireLinkedTarget(draft.planId, draft.occurrenceDate);
+    const occurrenceKey = draft.planId ? buildPlanOccurrenceKey(draft.planId, draft.occurrenceDate) : null;
     const existingActual = targetActualId
-      ? actuals.find((actual) => actual.id === targetActualId)
-      : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
+      ? requireCurrentActual(targetActualId)
+      : actualAdmission.current().find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
     const nextActual = createActualFromDraft(userId, draft, existingActual);
     const progress = existingActual
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
       : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
+    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual]);
     const actualOperation = actualState.begin((current) =>
       upsertActualByOccurrenceKey(
         targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
@@ -913,8 +1027,6 @@ export function usePlannerDataState({
             ),
           );
         }
-      } else {
-        reconciliation.request(acknowledgedProjection);
       }
       actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
@@ -922,7 +1034,7 @@ export function usePlannerDataState({
       actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
   async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
@@ -937,11 +1049,12 @@ export function usePlannerDataState({
       throw new Error('終了時刻は開始時刻より後にしてください。');
     }
     const existingActual = targetActualId
-      ? actuals.find((actual) => actual.id === targetActualId && !actual.planId)
+      ? requireCurrentActual(targetActualId)
       : undefined;
-    if (targetActualId && !existingActual) {
-      showNotice('記録が見つかりませんでした。', 'error');
-      throw new Error('記録が見つかりませんでした。');
+    if (existingActual?.planId) {
+      const message = actualUnavailableMessage;
+      showNotice(message, 'error');
+      throw new ActualMutationAdmissionError(message);
     }
     const nextActual = createActualFromDraft(
       userId,
@@ -959,6 +1072,7 @@ export function usePlannerDataState({
       ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
       : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
 
+    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual]);
     const actualOperation = actualState.begin((current) =>
       upsertByKey(
         targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
@@ -991,8 +1105,6 @@ export function usePlannerDataState({
             ),
           );
         }
-      } else {
-        reconciliation.request(acknowledgedProjection);
       }
       actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
@@ -1000,7 +1112,7 @@ export function usePlannerDataState({
       actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
   async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
@@ -1009,13 +1121,21 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (actual.planId) {
+    const sourceActual = requireCurrentActual(actual.id);
+    if (sourceActual.planId) {
       showNotice('この記録はすでに予定に紐づいています。', 'error');
       throw new Error('この記録はすでに予定に紐づいています。');
     }
 
     const occurrenceDate = actual.occurrenceDate;
-    const existingLinkedActual = actuals.find(
+    requireLinkedTarget(plan.id, occurrenceDate);
+    const destination = { userId, planId: plan.id, occurrenceDate };
+    const destinationReason = actualAdmission.reason(destination);
+    if (destinationReason) {
+      showNotice(destinationReason, 'error');
+      throw new ActualMutationAdmissionError(destinationReason);
+    }
+    const existingLinkedActual = actualAdmission.current().find(
       (item) =>
         item.id !== actual.id &&
         item.planId === plan.id &&
@@ -1037,6 +1157,7 @@ export function usePlannerDataState({
       updatedAt: new Date().toISOString(),
     };
 
+    const releaseAdmission = admitActualMutation([sourceActual, nextActual]);
     const actualOperation = actualState.begin((current) =>
       upsertByKey(
         current.filter((item) => item.id !== actual.id),
@@ -1055,8 +1176,6 @@ export function usePlannerDataState({
             (item) => getActualOccurrenceKey(item),
           ),
         );
-      } else {
-        reconciliation.request(acknowledgedProjection);
       }
       actualState.commit(actualOperation);
       showNotice('予定に紐づけました。', 'success');
@@ -1067,7 +1186,7 @@ export function usePlannerDataState({
         'error',
       );
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
   async function deleteActual(actual: Actual) {
@@ -1075,6 +1194,9 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    actual = requireCurrentActual(actual.id);
+    const releaseAdmission = admitActualMutation([actual]);
     const actualOperation = actualState.begin((current) => removeByKey(current, actual.id, (item) => item.id));
 
     try {
@@ -1088,7 +1210,7 @@ export function usePlannerDataState({
         'error',
       );
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
   async function saveDayNote(draft: DayNoteDraft) {
@@ -1868,9 +1990,10 @@ export function usePlannerDataState({
     closePlanEditor,
     savePlanDraft: trackMutation(savePlanDraft),
     movePlanOccurrence: trackMutation(movePlanOccurrence),
-    deletePlan: trackMutation(deletePlan),
+    deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,
+    getActualActionBlockReason: actualAdmission.reason,
     saveActual: trackMutation(saveActual),
     saveStandaloneActual: trackMutation(saveStandaloneActual),
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),

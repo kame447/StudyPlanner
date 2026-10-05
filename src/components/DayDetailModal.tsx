@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError, type ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, NotebookPen, Pencil, Trash2, X } from 'lucide-react';
 import { useExitMotion } from '../hooks/useExitMotion';
@@ -15,6 +16,7 @@ interface DayDetailModalProps {
   actuals: Actual[];
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
+  getActualActionBlockReason?: (target: ActualActionTarget) => string | null;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
@@ -39,6 +41,7 @@ function DayDetailSession({
   actuals,
   onEditPlan,
   onDeletePlan,
+  getActualActionBlockReason,
   onSaveActual,
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
@@ -49,6 +52,9 @@ function DayDetailSession({
   const { isExiting, requestExit } = useExitMotion(onClose);
   const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 
+  const [recordOpenError, setRecordOpenError] = useState('');
+  const recordTarget = detailActual ?? (detailPlan ? { userId: detailPlan.userId, planId: detailPlan.id, occurrenceDate: detailPlan.date } : null);
+  const recordBlockReason = recordTarget ? getActualActionBlockReason?.(recordTarget) : null;
   const [deleteError, setDeleteError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const pendingDelete = useRef<object | null>(null);
@@ -69,11 +75,11 @@ function DayDetailSession({
     setDeleteError('');
     try {
       await onDeletePlan(detailPlan);
-    } catch {
+    } catch (error) {
       if (pendingDelete.current === attempt) {
         pendingDelete.current = null;
         setIsDeleting(false);
-        setDeleteError('予定を削除できませんでした。もう一度試してください。');
+        setDeleteError(error instanceof ActualMutationAdmissionError ? error.message : '予定を削除できませんでした。もう一度試してください。');
       }
       return;
     }
@@ -133,8 +139,13 @@ function DayDetailSession({
 
               <button
                 className="schedule-action-item"
-                disabled={isDeleting || isExiting}
-                onClick={() => { if (!menuBlocked()) setRecordSession(structuredClone({ plan: detailPlan, actual: detailActual })); }}
+                disabled={isDeleting || isExiting || Boolean(recordBlockReason)}
+                onClick={() => {
+                  if (menuBlocked()) return;
+                  const reason = recordTarget ? getActualActionBlockReason?.(recordTarget) : null;
+                  setRecordOpenError(reason ?? '');
+                  if (!reason) setRecordSession(structuredClone({ plan: detailPlan, actual: detailActual }));
+                }}
                 type="button"
               >
                 <span className="schedule-action-icon"><NotebookPen aria-hidden="true" size={24} /></span>
@@ -161,7 +172,8 @@ function DayDetailSession({
                 </button>
               ) : null}
             </div>
-            {deleteError ? <p className="inline-error" role="alert">{deleteError}</p> : null}
+            {recordBlockReason || recordOpenError ? <p className="inline-error" role="alert">{recordBlockReason || recordOpenError}</p> : null}
+            {deleteError && deleteError !== (recordBlockReason || recordOpenError) ? <p className="inline-error" role="alert">{deleteError}</p> : null}
           </section>
         </div>
       );
