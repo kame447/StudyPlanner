@@ -815,6 +815,43 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
 const materialAdmissionCallCount = async page => calledMethods(await repoSnapshot(page))
   .filter(method => method === 'upsertActualWithMaterialProgress').length;
 
+const materialReloadTimetableKeys = ['studyplanner.scheduleTemplates.v1',
+  'studyplanner.timetableTerms.v1', 'studyplanner.timetablePeriods.v1'];
+const readMaterialReloadTimetable = page => page.evaluate(keys => Object.fromEntries(
+  keys.map(key => [key, localStorage.getItem(key)])), materialReloadTimetableKeys);
+
+async function observeMaterialAdmissionReload(page) {
+  const before = await readMaterialReloadTimetable(page);
+  await page.addInitScript(keys => {
+    const watched = new Set(keys);
+    const writes = window.__materialAdmissionReloadTimetableWrites = [];
+    // Installed before the harness/App on the NEXT load only. The normal
+    // fixture already observes Actual/material writes; include timetable
+    // attempts here so an allowed method call cannot hide physical rewrites.
+    for (const method of ['setItem', 'removeItem', 'clear']) {
+      const original = Storage.prototype[method];
+      Storage.prototype[method] = function (...args) {
+        if (this === localStorage && (method === 'clear' || watched.has(String(args[0])))) {
+          writes.push({ method, args });
+        }
+        return original.apply(this, args);
+      };
+    }
+  }, materialReloadTimetableKeys);
+  return before;
+}
+
+async function expectMaterialAdmissionReloadWithoutReplay(page, timetableBefore) {
+  // Bootstrap always invokes normalization. A previously normalized timetable
+  // yields a no-op; it must not be confused with replaying a user mutation.
+  // Keep the complete mutation-call allowlist exact, not a broad filter.
+  expect(writeMethods(await repoSnapshot(page))).toEqual(['applyTimetableMutation']);
+  expect(await materialAdmissionCallCount(page)).toBe(0);
+  expect(await durableWrites(page)).toEqual([]);
+  expect(await page.evaluate(() => window.__materialAdmissionReloadTimetableWrites)).toEqual([]);
+  expect(await readMaterialReloadTimetable(page)).toEqual(timetableBefore);
+}
+
 async function inspectMaterialAdmissionDraft(page, testInfo, label, record) {
   const explanation = record.getByRole('alert');
   const save = record.getByRole('button', { name: '記録を保存', exact: true });
@@ -857,7 +894,9 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const initial = await hookSnapshot(page);
     const nextPlan = page.locator('[data-home-section="next-plan"]');
     await expect(nextPlan.getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '学習を開始する', exact: true }).click();
+    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     // Move beyond A's planned end with the shared deterministic clock. The
@@ -882,7 +921,9 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
       .getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '学習を開始する', exact: true }).click();
+    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     await page.clock.fastForward(60_000);
@@ -923,13 +964,14 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const lifetime = await hookSnapshot(page);
     expect({ mounts: lifetime.mounts, unmounts: lifetime.unmounts })
       .toEqual({ mounts: initial.mounts, unmounts: initial.unmounts });
+    const timetableBeforeReload = await observeMaterialAdmissionReload(page);
     await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
     await page.reload();
     await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
     await expect.poll(async () => (await hookSnapshot(page)).actuals).toEqual(saved.actuals);
     expect((await hookSnapshot(page)).materials).toEqual(saved.materials);
     expect(await durable(page)).toEqual(saved);
-    expect(await materialAdmissionCallCount(page)).toBe(0);
+    await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
     expect(await runtimeCalls(page)).toEqual([]);
   });
 }
@@ -992,10 +1034,11 @@ test('Bookshelf preserves an absolute draft through equal reread, busy and stale
   expect(saved.actuals).toHaveLength(1);
   expect(saved.actuals[0].planId).toBeNull();
   expect(writeMethods(await repoSnapshot(page))).toEqual([...writesBefore, 'upsertStudyMaterial']);
+  const timetableBeforeReload = await observeMaterialAdmissionReload(page);
   await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
   await page.reload();
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   expect(await durable(page)).toEqual(saved);
   expect((await hookSnapshot(page)).materials).toEqual(saved.materials);
-  expect(writeMethods(await repoSnapshot(page))).toEqual([]);
+  await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
 });
