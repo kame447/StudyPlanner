@@ -709,8 +709,9 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
     await expect(page.locator('.actual-editor-card')).toHaveCount(0);
     const heldCalls = (await repoSnapshot(page)).calls;
     await actions.getByRole('button', { name: '削除 この予定を削除', exact: true }).click();
-    // One busy-open explanation plus the independently rejected delete result.
-    await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(2);
+    // Identical busy feedback is shown once; unchanged repository calls and
+    // durable bytes below independently prove the Plan deletion was rejected.
+    await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(1);
     await expect(actions).toBeVisible();
     await expect(actions.getByRole('button', { name: '削除 この予定を削除', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
