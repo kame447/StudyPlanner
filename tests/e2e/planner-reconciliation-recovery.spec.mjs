@@ -1209,3 +1209,42 @@ test('native DayNote save crossing full read recovers without resave mobile-dark
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   expect((await hookSnapshot(page)).dayNotes).toEqual(saved);
 });
+
+test('native timetable class save crossing full read recovers without resave mobile-dark', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  await navigate(page, 'AI計画');
+  await composer(page).fill(TEXT);
+  await page.evaluate(() => {
+    const refreshing = window.__plannerRecoveryHook.refresh();
+    window.__plannerRecoveryRepository.failNextTimetableRead();
+    window.__plannerRecoveryHook.startTimetableClass({ title: '再読込と重なった授業' });
+    return refreshing;
+  });
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+  await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  expect((await hookSnapshot(page)).scheduleTemplates).toEqual([]);
+  expect((await hookSnapshot(page)).ready).toBe(false);
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+  const readTemplates = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
+  const saved = await readTemplates();
+  expect(saved).toEqual([expect.objectContaining({ title: '再読込と重なった授業' })]);
+  const before = await repoSnapshot(page);
+  const storageWrites = await durableWrites(page);
+  await inspectGeometry(page, testInfo, 'timetable-repair-mobile-dark', true);
+  await retry(page).click();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).scheduleTemplates).toEqual(saved);
+  expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length).sort())
+    .toEqual(['getActuals', 'getScheduleTemplates', 'getStudyMaterials', 'getTimetablePeriods', 'getTimetableTerms']);
+  expect(writeMethods(await repoSnapshot(page))).toEqual(writeMethods(before));
+  expect(await durableWrites(page)).toEqual(storageWrites);
+  expect(await readTemplates()).toEqual(saved);
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+  await expect(recovery(page)).toHaveCount(0);
+  await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+  await page.reload();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).scheduleTemplates).toEqual(saved);
+});

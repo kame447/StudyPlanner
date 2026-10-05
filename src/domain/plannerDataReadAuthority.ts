@@ -57,7 +57,7 @@ export interface PlannerDataLoadStart {
   ownerChanged: boolean;
 }
 
-export const PLANNER_REPAIR_TARGETS = Object.freeze(['actual-material', 'month-events', 'plans-todos', 'day-notes'] as const);
+export const PLANNER_REPAIR_TARGETS = Object.freeze(['actual-material', 'month-events', 'plans-todos', 'day-notes', 'timetable'] as const);
 export type PlannerRepairTarget = typeof PLANNER_REPAIR_TARGETS[number];
 
 // Fixed repair groups, in stable order; tickets never borrow a caller's mutable array.
@@ -76,7 +76,7 @@ export interface PlannerDataReconciliationTicket extends PlannerDataProjectionLe
 export interface PlannerDataRecovery {
   ownerId: string;
   reason: 'full-read' | 'actual-material' | 'full-read-and-actual-material'
-    | 'month-events' | 'plans-todos' | 'day-notes' | 'projections' | 'full-read-and-projections';
+    | 'month-events' | 'plans-todos' | 'day-notes' | 'timetable' | 'projections' | 'full-read-and-projections';
   phase: 'waiting' | 'refreshing' | 'failed';
   canRetry: boolean;
 }
