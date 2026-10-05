@@ -1043,14 +1043,30 @@ test('Bookshelf preserves an absolute draft through equal reread, busy and stale
   await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
 });
 
+for (const operation of ['ordinary Plan save', 'Todo scheduling'])
 for (const viewport of cases.filter(item =>
   (item.label === 'desktop' && item.theme === 'light') || (item.label === 'mobile' && item.theme === 'dark'))) {
-  test(`ordinary Plan save survives refresh and read-only retry ${viewport.label}-${viewport.theme}`, async ({ page }, testInfo) => {
+  test(`${operation} survives refresh and read-only retry ${viewport.label}-${viewport.theme}`, async ({ page }, testInfo) => {
     await boot(page, viewport);
-    await page.evaluate(date => {
-      window.__plannerRecoveryRepository.holdNextPlanWrite();
-      window.__plannerRecoveryHook.startPlan({ date, title: '再読込と重なった学習予定' });
-    }, E2E_TODAY);
+    if (operation === 'Todo scheduling') {
+      await page.evaluate(async () => {
+        await window.__plannerRecoveryRepository.seedOpenTodo(window.__plannerRecoveryHook.snapshot().ownerId);
+        await window.__plannerRecoveryHook.refresh();
+      });
+      await expect.poll(async () => (await hookSnapshot(page)).todos.length).toBe(1);
+    }
+    await page.evaluate(({ date, operation }) => {
+      const repository = window.__plannerRecoveryRepository;
+      const hook = window.__plannerRecoveryHook;
+      const draft = { date, title: '再読込と重なった学習予定' };
+      if (operation === 'Todo scheduling') {
+        repository.holdNextTodoSchedule();
+        hook.startTodoSchedule(draft);
+      } else {
+        repository.holdNextPlanWrite();
+        hook.startPlan(draft);
+      }
+    }, { date: E2E_TODAY, operation });
     await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
     await page.evaluate(() => window.__plannerRecoveryHook.refresh());
     await expect.poll(async () => (await hookSnapshot(page)).plans).toEqual([]);
@@ -1071,16 +1087,28 @@ for (const viewport of cases.filter(item =>
     const readStorage = () => page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
     const savedBytes = await readStorage();
     expect(savedBytes).toContain('再読込と重なった学習予定');
+    const savedTodos = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.todos.v1') ?? '[]'));
+    if (operation === 'Todo scheduling') {
+      expect(savedTodos[0]).toMatchObject({ status: 'scheduled', scheduledPlanId: expect.any(String) });
+      const snapshot = await hookSnapshot(page);
+      expect(snapshot.todos[0].status).toBe('open');
+      expect(snapshot.plans).toEqual([]);
+    }
     await inspectGeometry(page, testInfo, `plan-repair-${viewport.label}-${viewport.theme}`, true);
     await retry(page).click();
     await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
     await expect.poll(async () => (await hookSnapshot(page)).plans.map(plan => plan.title))
       .toEqual(['再読込と重なった学習予定']);
+    if (operation === 'Todo scheduling') {
+      const snapshot = await hookSnapshot(page);
+      expect(snapshot.todos[0]).toMatchObject({ status: 'scheduled', scheduledPlanId: snapshot.plans[0].id });
+    }
     expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length).sort())
       .toEqual(['getActuals', 'getPlans', 'getStudyMaterials', 'getTodos']);
     expect(writeMethods(await repoSnapshot(page))).toEqual(writeMethods(before));
     expect(await durableWrites(page)).toEqual(writes);
     expect(await readStorage()).toBe(savedBytes);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.todos.v1') ?? '[]'))).toEqual(savedTodos);
     await expect(composer(page)).toHaveValue(TEXT);
     await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
     await expect(recovery(page)).toHaveCount(0);
@@ -1089,5 +1117,10 @@ for (const viewport of cases.filter(item =>
     await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
     await expect.poll(async () => (await hookSnapshot(page)).plans.map(plan => plan.title))
       .toEqual(['再読込と重なった学習予定']);
+    if (operation === 'Todo scheduling') {
+      const snapshot = await hookSnapshot(page);
+      expect(snapshot.todos).toEqual(savedTodos);
+      expect(snapshot.todos[0]).toMatchObject({ status: 'scheduled', scheduledPlanId: snapshot.plans[0].id });
+    }
   });
 }
