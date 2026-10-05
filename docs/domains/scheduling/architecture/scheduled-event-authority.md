@@ -1,7 +1,7 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-09-26
+Updated: 2026-10-05
 Baseline implementation: Issue #278 — completed
 
 ## Product invariant
@@ -101,6 +101,9 @@ kind/details = study-specific / general-specific additional data
 ## View contract
 
 ### Month
+
+- 月カレンダーと月の日付詳細には、共通occurrence projection後に適用する「月カレンダーに時間割を表示」設定を設ける。初期値はON。OFFでは `timetable-template` をbackingとする自動表示だけを除外し、取り込み済みの保存Plan、通常予定、月予定、学習集計を保持する。
+- この設定は表示専用で、時間割データ、週・日表示、AIのbusy / 空き時間判定を変更しない。ブラウザ内にユーザーIDを正確に区別して保存し、端末間同期・同時タブ同期は行わない。
 
 - study occurrenceは目標学習時間集計へ使う。
 - non-study occurrenceも予定表示へ投影する。

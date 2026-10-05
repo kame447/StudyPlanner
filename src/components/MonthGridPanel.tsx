@@ -190,6 +190,7 @@ interface MonthGridPanelProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  showTimetable?: boolean;
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -209,6 +210,7 @@ export function MonthGridPanel({
   plans,
   actuals,
   monthEvents,
+  showTimetable = true,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
@@ -226,6 +228,7 @@ export function MonthGridPanel({
         plans,
         actuals,
         monthEvents,
+        showTimetable,
         scheduleTemplates,
         timetableTermId,
         timetableTerm,
@@ -237,6 +240,7 @@ export function MonthGridPanel({
       monthEvents,
       plans,
       scheduleTemplates,
+      showTimetable,
       timetableTerm,
       timetableTermId,
       timetableTerms,

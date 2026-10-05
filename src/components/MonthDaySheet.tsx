@@ -32,6 +32,7 @@ interface MonthDaySheetProps {
   userId?: string;
   plans?: Plan[];
   monthEvents: MonthEvent[];
+  showTimetable?: boolean;
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -76,6 +77,7 @@ function buildEntries(params: {
   userId?: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
+  showTimetable: boolean;
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -112,7 +114,10 @@ function buildEntries(params: {
   });
 
   return projection.occurrences
-    .filter((occurrence) => occurrence.category !== 'study')
+    .filter((occurrence) =>
+      occurrence.category !== 'study' &&
+      (params.showTimetable || occurrence.source.backingKind !== 'timetable-template'),
+    )
     .map((occurrence): MonthDaySheetEntry | null => {
       if (occurrence.source.backingKind === 'month-event') {
         const monthEvent = monthEventById.get(occurrence.source.backingId);
@@ -153,6 +158,7 @@ export function MonthDaySheet({
   userId,
   plans = [],
   monthEvents,
+  showTimetable = true,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
@@ -191,6 +197,7 @@ export function MonthDaySheet({
             userId,
             plans,
             monthEvents,
+            showTimetable,
             scheduleTemplates,
             timetableTermId,
             timetableTerm,
@@ -202,6 +209,7 @@ export function MonthDaySheet({
       plans,
       renderedDate,
       scheduleTemplates,
+      showTimetable,
       timetableTerm,
       timetableTermId,
       timetableTerms,
