@@ -66,7 +66,7 @@ function getTimetableTermKindKey(kind: TimetableTermKind): string {
   }
 }
 
-export function createTimetableTermId(
+function createLegacyTimetableTermId(
   year: number,
   kind: TimetableTermKind,
   now = new Date().toISOString(),
@@ -76,6 +76,25 @@ export function createTimetableTermId(
     : new Date(now).getFullYear();
 
   return `${normalizedYear}-${getTimetableTermKindKey(kind)}`;
+}
+
+/** A document-safe, injective encoding of an authenticated owner's Unicode UID. */
+function encodeTimetableOwner(userId: string): string {
+  const bytes = new TextEncoder().encode(userId);
+  if (!userId || [...userId].length > 128 || new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes) !== userId) {
+    throw new Error('Timetable identity requires a valid owner UID.');
+  }
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+export function createTimetableTermId(
+  userId: string,
+  year: number,
+  kind: TimetableTermKind,
+  now = new Date().toISOString(),
+): string {
+  return `timetable-term:${encodeTimetableOwner(userId)}:${createLegacyTimetableTermId(year, kind, now)}`;
 }
 
 export function normalizeTimetableDate(value: string | null | undefined): string | null {
@@ -99,7 +118,7 @@ function createDefaultTimetableTerm(userId: string, now: string): TimetableTerm 
   const year = new Date(now).getFullYear();
 
   return {
-    id: createTimetableTermId(year, 'fullYear', now),
+    id: createTimetableTermId(userId, year, 'fullYear', now),
     userId,
     year,
     kind: 'fullYear',
@@ -148,18 +167,35 @@ export function normalizeTimetableTermsByYearAndKind(
   termIdMap: Map<string, string>;
   obsoleteTermIds: string[];
 } {
+  if (terms.some((term) => term.userId !== userId)) {
+    throw new Error('Timetable normalization cannot migrate another owner’s records.');
+  }
   const sourceTerms = terms.length > 0 ? terms : [createDefaultTimetableTerm(userId, now)];
   const groupedTerms = new Map<string, TimetableTerm[]>();
   const termIdMap = new Map<string, string>();
 
   sourceTerms.forEach((term) => {
     const stableId =
-      term.kind === 'custom' ? term.id : createTimetableTermId(term.year, term.kind, now);
+      term.kind === 'custom' ? term.id : createTimetableTermId(userId, term.year, term.kind, now);
     const group = groupedTerms.get(stableId) ?? [];
+    if (group.some((candidate) => (candidate.kind === 'custom') !== (term.kind === 'custom'))) {
+      throw new Error('Timetable canonical identity conflicts with a custom period.');
+    }
 
     group.push(term);
     groupedTerms.set(stableId, group);
     termIdMap.set(term.id, stableId);
+  });
+
+  // Historical rows can reference the old year/kind key even when their term
+  // is missing (including an account whose original default write was denied).
+  // Explicit source IDs, especially custom IDs, take precedence over aliases.
+  sourceTerms.forEach((term) => {
+    if (term.kind === 'custom') return;
+    const legacyId = createLegacyTimetableTermId(term.year, term.kind, now);
+    if (!termIdMap.has(legacyId)) {
+      termIdMap.set(legacyId, createTimetableTermId(userId, term.year, term.kind, now));
+    }
   });
 
   const activeSourceTerm = resolveActiveTimetableTerm(sourceTerms).term;
@@ -169,7 +205,7 @@ export function normalizeTimetableTermsByYearAndKind(
   const activeStableId = termIdMap.get(activeSourceTerm.id) ?? (
     activeSourceTerm.kind === 'custom'
       ? activeSourceTerm.id
-      : createTimetableTermId(activeSourceTerm.year, activeSourceTerm.kind, now)
+      : createTimetableTermId(userId, activeSourceTerm.year, activeSourceTerm.kind, now)
   );
 
   if (!termIdMap.has('default')) {

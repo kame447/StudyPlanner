@@ -1727,7 +1727,7 @@ export function usePlannerDataState({
     const isCustomPeriod = draft.kind === 'custom';
     const stableTermId = isCustomPeriod
       ? draft.id?.trim() || createId('timetable-term')
-      : createTimetableTermId(year, draft.kind);
+      : createTimetableTermId(userId, year, draft.kind);
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
     const existingTerm = timetableTerms.find((term) => term.id === stableTermId) ??
       (!isCustomPeriod

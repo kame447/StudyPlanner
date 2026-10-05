@@ -28,6 +28,9 @@ export function normalizePlannerTimetableData(
     timetableTerms: nextTimetableTerms,
     timetablePeriods: nextTimetablePeriods,
   } = data;
+  if ([...nextScheduleTemplates, ...nextTimetablePeriods].some((record) => record.userId !== userId)) {
+    throw new Error('Timetable normalization cannot migrate another owner’s records.');
+  }
   const {
     terms: resolvedTimetableTerms,
     termIdMap,

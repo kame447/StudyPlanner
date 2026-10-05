@@ -120,6 +120,8 @@ local fallbackのcommand/compensation直列化は `architecture/local-planner-st
 
 Actualの画面横断pending admissionと古いtarget拒否は `architecture/actual-action-admission.md` が所有する。read health、storage queue、material progress競合とは責務と保証範囲を区別する。
 
+時間割のowner-scoped canonical IDと既存参照の整合化は `architecture/timetable-owner-identity.md` が所有する。既存Firestore所有者ルール、カスタム期間ID、旧clientのrollout制約を維持する。
+
 ### Reporting
 
 入口: `docs/domains/reporting/README.md`

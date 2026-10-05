@@ -43,8 +43,8 @@ function period(overrides: Partial<TimetablePeriod> = {}): TimetablePeriod {
 
 describe('timetable data normalization', () => {
   it('owns stable term ids and labels', () => {
-    expect(createTimetableTermId(2026, 'firstHalf')).toBe('2026-first');
-    expect(createTimetableTermId(2026, 'fullYear')).toBe('2026-full-year');
+    expect(createTimetableTermId('owner-a', 2026, 'firstHalf')).toBe('timetable-term:b3duZXItYQ:2026-first');
+    expect(createTimetableTermId('owner-a', 2026, 'fullYear')).toBe('timetable-term:b3duZXItYQ:2026-full-year');
     expect(createTimetableTermLabel(2026, 'secondHalf')).toBe('2026年 後期');
     expect(createTimetableTermLabel(2026, 'custom', ' 集中講義 ')).toBe('集中講義');
   });
@@ -57,7 +57,7 @@ describe('timetable data normalization', () => {
   });
 
   it('collapses duplicate non-custom terms onto one stable id while preserving the active source group', () => {
-    const normalized = normalizeTimetableTermsByYearAndKind('owner-b', [
+    const normalized = normalizeTimetableTermsByYearAndKind('owner-a', [
       term({
         id: 'legacy-active',
         isActive: true,
@@ -82,17 +82,17 @@ describe('timetable data normalization', () => {
 
     expect(normalized.terms).toHaveLength(2);
     expect(normalized.terms[0]).toEqual(expect.objectContaining({
-      id: '2026-first',
-      userId: 'owner-b',
+      id: 'timetable-term:b3duZXItYQ:2026-first',
+      userId: 'owner-a',
       label: '2026年 前期',
       isActive: true,
     }));
     expect(normalized.terms.find((item) => item.id === 'custom-summer')).toEqual(
-      expect.objectContaining({ label: '夏季集中', userId: 'owner-b', isActive: false }),
+      expect.objectContaining({ label: '夏季集中', userId: 'owner-a', isActive: false }),
     );
-    expect(normalized.termIdMap.get('legacy-active')).toBe('2026-first');
-    expect(normalized.termIdMap.get('legacy-newer')).toBe('2026-first');
-    expect(normalized.termIdMap.get('default')).toBe('2026-first');
+    expect(normalized.termIdMap.get('legacy-active')).toBe('timetable-term:b3duZXItYQ:2026-first');
+    expect(normalized.termIdMap.get('legacy-newer')).toBe('timetable-term:b3duZXItYQ:2026-first');
+    expect(normalized.termIdMap.get('default')).toBe('timetable-term:b3duZXItYQ:2026-first');
     expect(normalized.obsoleteTermIds).toEqual(expect.arrayContaining([
       'legacy-active',
       'legacy-newer',
