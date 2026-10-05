@@ -112,6 +112,7 @@ export async function runtimeFingerprint() {
   };
   for (const path of ['shared', 'src', 'workers/ai-proxy/src']) await walk(path);
   files.push('scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-paired-artifact.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
+    'scripts/jev-contextual-eval-diagnostics.mjs',
     'scripts/jev-contextual-cloud-eval.mjs', 'scripts/jev-contextual-corpus.mjs',
     'scripts/jev-contextual-unit0-eval.mjs', 'scripts/jev-contextual-unit0-budget.mjs', 'scripts/jev-contextual-unit0-random.mjs',
     'scripts/jev-contextual-unit0-decision.mjs', 'scripts/jev-contextual-unit0-review.mjs', 'package.json', 'package-lock.json');
