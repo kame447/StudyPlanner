@@ -863,3 +863,126 @@ it('keeps a captured lease callback stable through unrelated committed UI render
   expect(state.isPlannerDataSnapshotCurrent).not.toBe(captured);
   expect(state.isPlannerDataSnapshotCurrent()).toBe(true);
 });
+
+it.each(['move', 'plan-update', 'plan-create'] as const)(
+  'repairs %s when a full read is published before the pending write completes',
+  async operation => {
+    await mount();
+    const gate = deferred();
+    hold('upsertPlan', gate);
+    let saving!: Promise<unknown>;
+    await act(async () => { saving = startOther(operation); });
+    expect(gate.entered).toBe(true);
+    await act(async () => { await state.loadPlannerData('owner'); });
+    expect(state.plannerDataAvailability.status).not.toBe('ready');
+    await act(async () => { gate.resolve(); await saving; });
+    await expectPersistedProjection('a successful Plan write must appear after the crossing read');
+    expect(state.plannerDataAvailability.status).toBe('ready');
+  },
+);
+
+it.each(['move', 'plan-update', 'plan-create'] as const)(
+  'repairs %s completed while a captured full read is still pending',
+  async operation => {
+    await mount();
+    const original = boundary.repository.getPlans;
+    const captured = deferred();
+    const release = deferred();
+    let first = true;
+    boundary.repository.getPlans = async owner => {
+      const snapshot = await original(owner);
+      if (first) { first = false; captured.resolve(); await release.promise; }
+      return snapshot;
+    };
+    let loading!: Promise<void>;
+    await act(async () => { loading = state.loadPlannerData('owner'); });
+    await captured.promise;
+    await act(async () => { await startOther(operation); });
+    await act(async () => { release.resolve(); await loading; });
+    await expectPersistedProjection('an older read must not erase a completed Plan write');
+    expect(state.plannerDataAvailability.status).toBe('ready');
+  },
+);
+
+it('keeps a successful Plan save stale after repair failure and retries reads without replaying writes or navigation', async () => {
+  const storage = await mount();
+  const gate = deferred();
+  hold('upsertPlan', gate);
+  const upsert = vi.fn(boundary.repository.upsertPlan);
+  boundary.repository.upsertPlan = upsert;
+  let saving!: Promise<unknown>;
+  await act(async () => { saving = startOther('plan-create'); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const original = boundary.repository.getPlans;
+  boundary.repository.getPlans = async () => { throw new Error('Plan repair offline'); };
+  await act(async () => { state.openDay('2026-12-15'); gate.resolve(); await saving; });
+  expect(state.plannerDataAvailability.status).toBe('stale');
+  expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
+  expect(state.isPlannerDataSnapshotCurrent()).toBe(false);
+  expect(await storage.plans.read()).toHaveLength(3);
+  const writes = storage.plans.write.mock.calls.length;
+  const latestRead = vi.fn(original);
+  boundary.repository.getPlans = latestRead;
+  await act(async () => { await state.retryPlannerData(); });
+  await expectPersistedProjection('explicit read retry restores a saved Plan without another write');
+  expect(upsert).toHaveBeenCalledTimes(1);
+  expect(storage.plans.write).toHaveBeenCalledTimes(writes);
+  expect(state.plannerDataAvailability.status).toBe('ready');
+  expect(state.selectedDate).toBe('2026-12-15');
+  expect(state.viewMode).toBe('day');
+});
+
+it('keeps the newer Plan content when a delayed save acknowledgment follows a newer full snapshot', async () => {
+  const storage = await mount();
+  const { persisted, response } = holdFirstResponse('upsertPlan');
+  let saving!: Promise<unknown>;
+  await act(async () => { saving = startOther('plan-update'); });
+  await persisted.promise;
+  await storage.plans.write((await storage.plans.read()).map(row => row.id === B.id ? { ...row, title: 'newer durable Plan' } : row));
+  await act(async () => { await state.loadPlannerData('owner'); });
+  await act(async () => { response.resolve(); await saving; });
+  await expectPersistedProjection('late captured save must not replace current durable Plan');
+  expect(state.plans.find(row => row.id === B.id)?.title).toBe('newer durable Plan');
+});
+
+it('does not roll back a newer successful Plan when an older pending save fails across refresh', async () => {
+  await mount();
+  const gate = deferred();
+  const original = boundary.repository.upsertPlan;
+  let first = true;
+  boundary.repository.upsertPlan = async row => {
+    if (first) { first = false; await gate.promise; }
+    return original(row);
+  };
+  let oldSaving!: Promise<unknown>;
+  await act(async () => { oldSaving = startOther('plan-update').catch(error => error); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  await act(async () => {
+    await state.savePlanDraft({ ...createPlanDraftFromPlan(B), title: 'new successful Plan' }, B.id);
+  });
+  await act(async () => { gate.reject(new Error('older save failed')); expect(await oldSaving).toBeInstanceOf(Error); });
+  await expectPersistedProjection('a rejected older operation cannot erase a newer success');
+  expect(state.plans.find(row => row.id === B.id)?.title).toBe('new successful Plan');
+  expect(state.plannerDataAvailability.status).toBe('ready');
+});
+
+it('opening recurring move scope without a crossing read does not write or start repair', async () => {
+  const storage = await mount();
+  const recurring: Plan = { ...B, repeat: 'weekly', repeatUntil: '2026-11-01' };
+  await storage.plans.write([A, recurring]);
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const upsert = vi.fn(boundary.repository.upsertPlan);
+  const applyRecurring = vi.fn(boundary.repository.applyRecurringPlanMutation);
+  const getPlans = vi.fn(boundary.repository.getPlans);
+  boundary.repository.upsertPlan = upsert;
+  boundary.repository.applyRecurringPlanMutation = applyRecurring;
+  boundary.repository.getPlans = getPlans;
+  await act(async () => {
+    await state.movePlanOccurrence(recurring, { date: DATE, startTime: '12:00', endTime: '13:00' });
+  });
+  expect(state.pendingRecurringPlanAction?.kind).toBe('edit');
+  expect(upsert).not.toHaveBeenCalled();
+  expect(applyRecurring).not.toHaveBeenCalled();
+  expect(getPlans).not.toHaveBeenCalled();
+  expect(state.plannerDataAvailability.status).toBe('ready');
+});

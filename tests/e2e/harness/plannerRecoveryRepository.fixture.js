@@ -13,6 +13,8 @@ let holdActualDispatch = false;
 let heldActualDispatch = null;
 let holdActualAcknowledgment = false;
 let heldAcknowledgment = null;
+let holdPlanWrite = false;
+let heldPlanWrite = null;
 let holdMonthWrite = false;
 let heldMonthWrite = null;
 let planRestoreFault = null;
@@ -21,7 +23,7 @@ const heldReads = [];
 const failures = { getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
 const targetMethods = new Set(Object.keys(failures));
 const snapshot = () => structuredClone({ calls, pendingActualDispatches: heldActualDispatch ? 1 : 0, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
-  pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
+  pendingPlanWrites: heldPlanWrite ? 1 : 0, pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
 
 export const plannerRepository = Object.fromEntries(Object.entries(real).map(([method, original]) => [method, async (...args) => {
   calls.push({ method, phase: 'called' });
@@ -30,6 +32,11 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
     // Test-only remote-latency stand-in BEFORE entering the native local queue.
     // Native local saves are not claimed to have a cross-event query window.
     await new Promise(resolve => { heldActualDispatch = resolve; });
+  }
+  if (method === 'upsertPlan' && holdPlanWrite) {
+    holdPlanWrite = false;
+    // Remote-latency stand-in before the production repository queue.
+    await new Promise(resolve => { heldPlanWrite = resolve; });
   }
   if (method === 'upsertMonthEvent' && holdMonthWrite) {
     holdMonthWrite = false;
@@ -130,6 +137,14 @@ window.__plannerRecoveryRepository = {
     const release = heldAcknowledgment;
     if (!release) return false;
     heldAcknowledgment = null;
+    release();
+    return true;
+  },
+  holdNextPlanWrite() { holdPlanWrite = true; },
+  releasePlanWrite() {
+    const release = heldPlanWrite;
+    if (!release) return false;
+    heldPlanWrite = null;
     release();
     return true;
   },
