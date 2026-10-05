@@ -10,10 +10,10 @@ This document owns the local planner read-freshness and recovery boundary under 
 
 A successful repository write and a confirmed current UI projection are different outcomes. If a same-owner Actual save or plan-link acknowledgement arrives after an accepted full or targeted read replaced the projection, the old Actual/material acknowledgement must not replace that newer projection. Request an Actual/StudyMaterial re-read instead.
 
-`PlannerDataReadAuthority` owns the owner/reset epoch, accepted projection revision, full-read health, and one outstanding repair concern containing the union of three explicit groups: Actuals/StudyMaterials, MonthEvents, and Plans/Todos. `PlannerMutationReconciliation` owns only tracked local mutation activity and re-read coordination. The production hook exposes the authority's availability, recovery state, retry action, and a projection-bound freshness callback.
+`PlannerDataReadAuthority` owns the owner/reset epoch, accepted projection revision, full-read health, and one outstanding repair concern containing the union of four explicit groups: Actuals/StudyMaterials, MonthEvents, Plans/Todos, and DayNotes. `PlannerMutationReconciliation` owns only tracked local mutation activity and re-read coordination. The production hook exposes the authority's availability, recovery state, retry action, and a projection-bound freshness callback.
 
 - A queued reconciliation concern is already non-ready. A successful targeted read clears only its own concern; it must not repair unrelated full-read failure or advance the last successful full-load timestamp. A failed or superseded full load must not advance the accepted projection revision.
-- Automatic reconciliation reads only the groups requested by its immutable ticket after tracked local mutations finish repository processing and UI commit/rejection. Actuals and StudyMaterials remain one inseparable group; MonthEvents and Plans/Todos are independent requested groups. Retained Undo is tracked when invoked. If activity starts or settles during the read, discard either success or failure and re-read after quiescence. Do not reuse the full loader or claim unread collections were repaired.
+- Automatic reconciliation reads only the groups requested by its immutable ticket after tracked local mutations finish repository processing and UI commit/rejection. Actuals and StudyMaterials remain one inseparable group; MonthEvents, Plans/Todos and DayNotes are independent requested groups. Retained Undo is tracked when invoked. If activity starts or settles during the read, discard either success or failure and re-read after quiescence. Do not reuse the full loader or claim unread collections were repaired.
 - Complete fallible preparation, including sorting, for every requested group before replacing any collection. Immediately before publication, validate owner, read ticket and mutation activity. No await may separate the final check, requested replacements and authority acceptance. If one requested group fails, publish none of the batch and retain the entire union for explicit retry; this is a UI publication rule, not a claim of an atomic backend snapshot.
 - Current read/preparation/publication failures remain explicitly retryable. Unrelated mutations must not repeatedly retry a latched failure. Superseded attempts cannot modify a newer ticket or prevent a newer eligible attempt from starting.
 - A successful full load invalidates older targeted concerns/tickets. If a mutation was pending before or after the read, activity changed during it, or a new concern was requested, publish a new concern with the accepted projection without a transient ready state. Configure owner/scope coordination from committed React renders; an abandoned other-owner render cannot revoke the current read.
@@ -43,6 +43,16 @@ Repair failure leaves the saved Plan durable but its display stale and retryable
 Todo Undo captures an accepted-projection lease when invoked and declares Plans/Todos successful completion. If a current-owner read replaces the projection before the restore returns, do not insert the captured deleted Todo; re-read the existing Plans/Todos group after tracked writers settle. Success observed during an older full read also retains the group. Uncontended Undo keeps its direct post-persistence update without extra reads.
 
 A failed repair does not turn a completed restore into a failed write. Preserve the restore result, expose stale/retry, and re-read without repeating the restore. Scope/owner/reset/unmount fencing remains in the existing callback wrapper. These are successful-response guarantees only: unlike compound Plan Undo, ordinary Todo upsert rejection is not newly classified as a potential durable effect.
+
+## DayNote successful-save freshness
+
+DayNote saves capture an accepted-projection lease and declare the independent DayNotes repair group. Suppress a captured saved note if a newer same-owner projection has been accepted; then read current DayNotes after tracked mutations settle. A successful save observed during an older full read retains this group when that snapshot publishes. Uncontended save keeps its existing post-persistence display update and adds no getters.
+
+A known unresolved DayNote projection uses the same aggregate non-ready/retry boundary as other groups, including AI turn admission. It does not introduce a separate readiness authority, automatically replay a provider request, or allow the rest of a failed union to publish independently. Failed/superseded full reads alone do not revoke the accepted lease. Owner/reset/unmount fencing continues through the existing mutation scope and read authority.
+
+Retry reads DayNotes only when requested, together with any other outstanding groups, and never repeats the note save or timetable normalization. Pure existing-group repairs add no DayNotes getter. This is successful-write/read-crossing coverage, not uncertain-write-outcome recovery or a same-date/cross-client conflict policy.
+
+The immutable repair target list is the single definition for the target type, union order and success-counter construction/reset/enumeration. Adding a group requires an explicit repository read/publication mapping and tests; being writer-tracked alone does not create repair coverage.
 
 ## Plan Undo potential-effect boundary
 
@@ -80,7 +90,7 @@ Weekly admission must validate this lease before and after awaited runtime-modul
 
 ## Scope limits
 
-Quiescence is conservative across all mutations tracked by the planner hook, while repair coverage remains limited to requested Actual/material, MonthEvent and Plans/Todos groups. Unrelated hook writes may delay repair. Activity overlapping a full or targeted read can require another read, but this cost does not buy freshness for unrequested collections.
+Quiescence is conservative across all mutations tracked by the planner hook, while repair coverage remains limited to requested Actual/material, MonthEvent, Plans/Todos and DayNotes groups. Unrelated hook writes may delay repair. Activity overlapping a full or targeted read can require another read, but this cost does not buy freshness for unrequested collections.
 
 Single Plan create/edit, non-recurring move, and Todo save/delete/schedule declare their successful Plans/Todos effects. Todo Undo additionally fences its captured-row acknowledgement as specified above. Other untagged producers and uncertain ordinary-write failures remain outside that guarantee; do not infer whole-application coverage from these callbacks. `ready` means the authority's known full-read health and targeted concerns have cleared; it is not proof that every collection reflects all completed writes or that global concurrency recovery has finished.
 

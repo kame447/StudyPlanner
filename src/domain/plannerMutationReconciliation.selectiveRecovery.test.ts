@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PlannerDataReadAuthority, type PlannerRepairTarget } from './plannerDataReadAuthority';
+import { PLANNER_REPAIR_TARGETS, PlannerDataReadAuthority, type PlannerRepairTarget } from './plannerDataReadAuthority';
 import { PlannerMutationReconciliation } from './plannerMutationReconciliation';
 
 const BOTH: readonly PlannerRepairTarget[] = ['actual-material', 'month-events'];
@@ -378,4 +378,17 @@ describe('successful-settlement reentrant observer safety', () => {
     expect(h.read).not.toHaveBeenCalled();
     expect(h.publish).not.toHaveBeenCalled();
   });
+});
+
+// Every declared repair group must participate in the shared successful counter lifecycle.
+it.each(PLANNER_REPAIR_TARGETS)('records and resets exactly the successful %s repair group', target => {
+  const h = harness();
+  const before = h.controller.captureActivity();
+  expect(Object.keys(before.successful)).toEqual([...PLANNER_REPAIR_TARGETS]);
+  expect(Object.values(before.successful)).toEqual(PLANNER_REPAIR_TARGETS.map(() => 0));
+  h.controller.settleMutation(h.controller.beginMutation([target]), 'success');
+  expect(h.controller.successfulTargetsSince(before)).toEqual([target]);
+  h.controller.reset();
+  expect(h.controller.successfulTargetsSince(before)).toEqual([]);
+  expect(Object.values(h.controller.captureActivity().successful)).toEqual(PLANNER_REPAIR_TARGETS.map(() => 0));
 });

@@ -1,4 +1,4 @@
-import { PlannerDataReadAuthority, type PlannerDataOwnerScope, type PlannerDataReconciliationTicket, type PlannerDataProjectionLease, type PlannerRepairTarget } from './plannerDataReadAuthority';
+import { PLANNER_REPAIR_TARGETS, PlannerDataReadAuthority, type PlannerDataOwnerScope, type PlannerDataReconciliationTicket, type PlannerDataProjectionLease, type PlannerRepairTarget } from './plannerDataReadAuthority';
 
 export interface PlannerMutationActivity {
   readonly epoch: number;
@@ -8,6 +8,9 @@ export interface PlannerMutationActivity {
   readonly successful: Readonly<Record<PlannerRepairTarget, number>>;
   readonly planRestorePending: number;
   readonly planRestoreSettled: number;
+}
+function emptySuccessCounters(): Record<PlannerRepairTarget, number> {
+  return Object.fromEntries(PLANNER_REPAIR_TARGETS.map(target => [target, 0])) as Record<PlannerRepairTarget, number>;
 }
 const PLAN_RESTORE_TARGETS: readonly PlannerRepairTarget[] = Object.freeze(['actual-material', 'plans-todos']);
 
@@ -25,7 +28,7 @@ export class PlannerMutationReconciliation<T> {
   private epoch = 0;
   private started = 0;
   private settled = 0;
-  private successful = { 'actual-material': 0, 'month-events': 0, 'plans-todos': 0 };
+  private successful = emptySuccessCounters();
   private planRestoreSettled = 0;
   private pending = new Map<symbol, {
     targets: readonly PlannerRepairTarget[];
@@ -48,7 +51,7 @@ export class PlannerMutationReconciliation<T> {
     this.epoch += 1;
     this.started = 0;
     this.settled = 0;
-    this.successful = { 'actual-material': 0, 'month-events': 0, 'plans-todos': 0 };
+    this.successful = emptySuccessCounters();
     this.planRestoreSettled = 0;
     this.pending.clear();
     this.running = null;
@@ -110,7 +113,7 @@ export class PlannerMutationReconciliation<T> {
 
   successfulTargetsSince(activity: PlannerMutationActivity): readonly PlannerRepairTarget[] {
     if (activity.epoch !== this.epoch) return [];
-    return (['actual-material', 'month-events', 'plans-todos'] as const).filter(target =>
+    return PLANNER_REPAIR_TARGETS.filter(target =>
       activity.successful[target] !== this.successful[target]);
   }
 

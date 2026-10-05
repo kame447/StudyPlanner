@@ -1170,3 +1170,42 @@ test('native Todo Undo crossing a full read repairs without replay mobile-dark',
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   expect((await hookSnapshot(page)).todos).toEqual(restored);
 });
+
+test('native DayNote save crossing full read recovers without resave mobile-dark', async ({ page }, testInfo) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  await navigate(page, 'AI計画');
+  await composer(page).fill(TEXT);
+  await page.evaluate(date => {
+    const refreshing = window.__plannerRecoveryHook.refresh();
+    window.__plannerRecoveryRepository.failNextDayNoteRead();
+    window.__plannerRecoveryHook.startDayNote({ date, memo: '再読込と重なった日次メモ' });
+    return refreshing;
+  }, E2E_TODAY);
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+  await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  expect((await hookSnapshot(page)).dayNotes).toEqual([]);
+  expect((await hookSnapshot(page)).ready).toBe(false);
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+  const readNotes = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.dayNotes') ?? '[]'));
+  const saved = await readNotes();
+  expect(saved).toEqual([expect.objectContaining({ quickMemo: '再読込と重なった日次メモ' })]);
+  const before = await repoSnapshot(page);
+  const storageWrites = await durableWrites(page);
+  await inspectGeometry(page, testInfo, 'day-note-repair-mobile-dark', true);
+  await retry(page).click();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).dayNotes).toEqual(saved);
+  expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length).sort())
+    .toEqual(['getActuals', 'getDayNotes', 'getStudyMaterials']);
+  expect(writeMethods(await repoSnapshot(page))).toEqual(writeMethods(before));
+  expect(await durableWrites(page)).toEqual(storageWrites);
+  expect(await readNotes()).toEqual(saved);
+  await expect(composer(page)).toHaveValue(TEXT);
+  await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+  await expect(recovery(page)).toHaveCount(0);
+  await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+  await page.reload();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect((await hookSnapshot(page)).dayNotes).toEqual(saved);
+});

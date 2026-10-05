@@ -30,7 +30,7 @@ if (!preserveNextReload) {
 window.__realWeeklyEvents = [];
 // Observe durable writes even from another production repository consumer.
 // Chat checkpoints are not Plan writes and intentionally remain out of scope.
-const observedKeys = new Set(['studyplanner.actuals', 'studyplanner.studyMaterials.v1',
+const observedKeys = new Set(['studyplanner.dayNotes', 'studyplanner.actuals', 'studyplanner.studyMaterials.v1',
   'studyplanner.plans', 'studyplanner.scheduleEvents.v1', 'studyplanner.todos.v1']);
 window.__plannerRecoveryStorageWrites = [];
 const originalSetItem = Storage.prototype.setItem;
