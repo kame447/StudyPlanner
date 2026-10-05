@@ -1434,9 +1434,15 @@ export function usePlannerDataState({
       await plannerRepository.deleteTodo(userId, todo.id);
       todoState.commit(todoOperation);
       showDeleteUndoNotice(async () => {
+        const undoProjection = plannerDataReadAuthority.captureProjectionLease();
         await plannerRepository.upsertTodo(todo);
-        setTodos((current) => upsertByKey(current, todo, (item) => item.id));
-      });
+        // A crossing read owns the newer projection. Repair from persistence
+        // instead of replaying the captured deleted row over that snapshot.
+        if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
+          && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
+          setTodos((current) => upsertByKey(current, todo, (item) => item.id));
+        }
+      }, ['plans-todos']);
     } catch (error) {
       todoState.reject(todoOperation);
       showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
