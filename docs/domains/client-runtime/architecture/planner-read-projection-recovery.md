@@ -30,9 +30,9 @@ MonthEvent Undo captures its lease when invoked. After durable restore, suppress
 
 Pure Actual/material repair adds no MonthEvent getter. Rejected-only MonthEvent operations add none. Existing conservative Actual/material checks around full-read overlap remain, so a full read overlapping a successful MonthEvent operation can require both groups.
 
-## Ordinary Plan save and move completion
+## Ordinary Plan and Todo completion
 
-Single Plan create/edit and non-recurring move declare the Plans/Todos repair group at the tracked callback boundary. A successful write crossing an accepted projection requests a fresh Plans/Todos read; a successful completion during an in-flight full read retains that same group when the older snapshot publishes. Reuse the existing writer barrier and success observations rather than replaying a removed optimistic operation or treating client completion order as durable order.
+Single Plan create/edit, non-recurring move, and Todo save/delete/schedule declare the Plans/Todos repair group at the tracked callback boundary. Todo scheduling must refresh both the newly created Plan and the Todo link as one prepared publication group. A successful write crossing an accepted projection requests a fresh Plans/Todos read; a successful completion during an in-flight full read retains that same group when the older snapshot publishes. Reuse the existing writer barrier and success observations rather than replaying a removed optimistic operation or treating client completion order as durable order.
 
 Uncontended saves keep their optimistic fast path. A rejected ordinary write does not add a successful-completion observation. A callback that only opens recurring-scope selection or declines an unsupported move has no durable effect; if it crosses a full read, callback-level tracking may conservatively add one bounded read. The later confirmed recurring mutation retains its existing admission/recovery boundary.
 
@@ -76,7 +76,7 @@ Weekly admission must validate this lease before and after awaited runtime-modul
 
 Quiescence is conservative across all mutations tracked by the planner hook, while repair coverage remains limited to requested Actual/material, MonthEvent and Plans/Todos groups. Unrelated hook writes may delay repair. Activity overlapping a full or targeted read can require another read, but this cost does not buy freshness for unrequested collections.
 
-Single Plan create/edit and non-recurring move now declare their successful Plans/Todos effects. Other untagged producers and uncertain ordinary-write failures remain outside that guarantee; do not infer whole-application coverage from these two callbacks. `ready` means the authority's known full-read health and targeted concerns have cleared; it is not proof that every collection reflects all completed writes or that global concurrency recovery has finished.
+Single Plan create/edit, non-recurring move, and Todo save/delete/schedule declare their successful Plans/Todos effects. Todo Undo still uses its existing captured-row acknowledgement and is not covered by these ordinary-writer declarations. Other untagged producers and uncertain ordinary-write failures remain outside that guarantee; do not infer whole-application coverage from these callbacks. `ready` means the authority's known full-read health and targeted concerns have cleared; it is not proof that every collection reflects all completed writes or that global concurrency recovery has finished.
 
 This boundary handles known local read uncertainty. It does not guarantee server write ordering, acknowledgement races without an intervening accepted read, quiescence of untracked writers, multi-tab/device freshness, or no-refresh successful Plan Undo command-order races. It does not cancel or revalidate an already admitted turn, invalidate an existing preview, or replace server idempotency/authorization, durable sync or optimistic rollback policy.
 

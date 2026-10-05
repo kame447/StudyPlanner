@@ -21,6 +21,19 @@ export function usePlannerDataState(options) {
       todos: result.todos,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
+    control.startTodoSchedule = ({ date, title }) => {
+      if (control.saving) throw new Error('A fixture save is already pending');
+      const todo = result.todos.find(item => item.id === 'read-repair-todo');
+      if (!todo) throw new Error('Missing read repair Todo');
+      control.saving = true;
+      control.saveError = null;
+      control.saveComplete = false;
+      void result.scheduleTodoAsPlan(todo, { ...createEmptyPlanDraft(options.userId, date), title,
+        startTime: '09:00', endTime: '10:00' })
+        .then(() => { control.saveComplete = true; })
+        .catch(error => { control.saveError = String(error); })
+        .finally(() => { control.saving = false; });
+    };
     control.startPlan = ({ date, title }) => {
       if (control.saving) throw new Error('A fixture save is already pending');
       control.saving = true;

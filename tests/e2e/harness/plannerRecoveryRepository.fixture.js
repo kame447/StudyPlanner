@@ -33,7 +33,7 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
     // Native local saves are not claimed to have a cross-event query window.
     await new Promise(resolve => { heldActualDispatch = resolve; });
   }
-  if (method === 'upsertPlan' && holdPlanWrite) {
+  if (method === holdPlanWrite) {
     holdPlanWrite = false;
     // Remote-latency stand-in before the production repository queue.
     await new Promise(resolve => { heldPlanWrite = resolve; });
@@ -72,6 +72,12 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  async seedOpenTodo(userId) {
+    const now = new Date().toISOString();
+    await plannerRepository.upsertTodo({ id: 'read-repair-todo', userId, title: '予定化するTodo',
+      subject: '数学', type: 'study', estimatedMinutes: 60, dueDate: null, dueTime: null,
+      memo: '', status: 'open', scheduledPlanId: null, pinned: false, createdAt: now, updatedAt: now });
+  },
   async seedMaterialAdmissionPlans({ userId, date }) {
     const material = (await plannerRepository.getStudyMaterials(userId))
       .find(item => item.id === 'material-before-refresh');
@@ -140,7 +146,8 @@ window.__plannerRecoveryRepository = {
     release();
     return true;
   },
-  holdNextPlanWrite() { holdPlanWrite = true; },
+  holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
+  holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
   releasePlanWrite() {
     const release = heldPlanWrite;
     if (!release) return false;
