@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { createEmptyMonthEventDraft } from '../../../src/domain/planner';
+import { createEmptyMonthEventDraft, createEmptyPlanDraft } from '../../../src/domain/planner';
 import { usePlannerDataState as useRealPlannerDataState } from '../../../src/hooks/usePlannerDataState';
 
 // Importer-scoped observer/driver for the SAME hook mounted by usePlannerAppState.
@@ -21,6 +21,17 @@ export function usePlannerDataState(options) {
       todos: result.todos,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
+    control.startPlan = ({ date, title }) => {
+      if (control.saving) throw new Error('A fixture save is already pending');
+      control.saving = true;
+      control.saveError = null;
+      control.saveComplete = false;
+      void result.savePlanDraft({ ...createEmptyPlanDraft(options.userId, date), title,
+        startTime: '09:00', endTime: '10:00' })
+        .then(() => { control.saveComplete = true; })
+        .catch(error => { control.saveError = String(error); })
+        .finally(() => { control.saving = false; });
+    };
     control.deletePlan = planId => {
       const plan = result.plans.find(item => item.id === planId);
       if (!plan) throw new Error(`Missing real Plan ${planId}`);

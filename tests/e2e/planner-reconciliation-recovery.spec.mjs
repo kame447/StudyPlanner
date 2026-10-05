@@ -1042,3 +1042,52 @@ test('Bookshelf preserves an absolute draft through equal reread, busy and stale
   expect((await hookSnapshot(page)).materials).toEqual(saved.materials);
   await expectMaterialAdmissionReloadWithoutReplay(page, timetableBeforeReload);
 });
+
+for (const viewport of cases.filter(item =>
+  (item.label === 'desktop' && item.theme === 'light') || (item.label === 'mobile' && item.theme === 'dark'))) {
+  test(`ordinary Plan save survives refresh and read-only retry ${viewport.label}-${viewport.theme}`, async ({ page }, testInfo) => {
+    await boot(page, viewport);
+    await page.evaluate(date => {
+      window.__plannerRecoveryRepository.holdNextPlanWrite();
+      window.__plannerRecoveryHook.startPlan({ date, title: '再読込と重なった学習予定' });
+    }, E2E_TODAY);
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    await page.evaluate(() => window.__plannerRecoveryHook.refresh());
+    await expect.poll(async () => (await hookSnapshot(page)).plans).toEqual([]);
+    await navigate(page, 'AI計画');
+    await composer(page).fill(TEXT);
+    await page.evaluate(() => {
+      window.__plannerRecoveryRepository.failNextTodoRead();
+      window.__plannerRecoveryRepository.releasePlanWrite();
+    });
+    await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+    expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+    await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
+    await expect(retry(page)).toBeVisible();
+    expect((await hookSnapshot(page)).ready).toBe(false);
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeDisabled();
+    const before = await repoSnapshot(page);
+    const writes = await durableWrites(page);
+    const readStorage = () => page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
+    const savedBytes = await readStorage();
+    expect(savedBytes).toContain('再読込と重なった学習予定');
+    await inspectGeometry(page, testInfo, `plan-repair-${viewport.label}-${viewport.theme}`, true);
+    await retry(page).click();
+    await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+    await expect.poll(async () => (await hookSnapshot(page)).plans.map(plan => plan.title))
+      .toEqual(['再読込と重なった学習予定']);
+    expect(calledMethods(await repoSnapshot(page)).slice(calledMethods(before).length).sort())
+      .toEqual(['getActuals', 'getPlans', 'getStudyMaterials', 'getTodos']);
+    expect(writeMethods(await repoSnapshot(page))).toEqual(writeMethods(before));
+    expect(await durableWrites(page)).toEqual(writes);
+    expect(await readStorage()).toBe(savedBytes);
+    await expect(composer(page)).toHaveValue(TEXT);
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+    await expect(recovery(page)).toHaveCount(0);
+    await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
+    await page.reload();
+    await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+    await expect.poll(async () => (await hookSnapshot(page)).plans.map(plan => plan.title))
+      .toEqual(['再読込と重なった学習予定']);
+  });
+}
