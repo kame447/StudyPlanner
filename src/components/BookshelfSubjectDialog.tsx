@@ -1,3 +1,4 @@
+import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import { useState, type FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
 import { getSubjectStyle, SUBJECT_COLOR_OPTIONS } from './BookshelfDialogFields';
@@ -26,8 +27,9 @@ export function BookshelfSubjectDialog({
   const [name, setName] = useState(subject?.name ?? '');
   const [color, setColor] = useState(subject?.color ?? SUBJECT_COLOR_OPTIONS[0].value);
   const [status, setStatus] = useState('');
+  const [requiresInspection, setRequiresInspection] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSave = name.trim().length > 0 && !isSubmitting;
+  const canSave = name.trim().length > 0 && !isSubmitting && !requiresInspection;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,14 +50,16 @@ export function BookshelfSubjectDialog({
       );
       onClose();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '教科を保存できませんでした。');
+      const uncertain = !(error instanceof ActualMutationAdmissionError);
+      setRequiresInspection(uncertain);
+      setStatus(`${error instanceof Error ? error.message : '教科を保存できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleDelete() {
-    if (!subject || hasMaterials || isSubmitting) {
+    if (!subject || hasMaterials || isSubmitting || requiresInspection) {
       return;
     }
 
@@ -140,7 +144,7 @@ export function BookshelfSubjectDialog({
             {subject ? (
               <button
                 className="ghost-button danger"
-                disabled={hasMaterials || isSubmitting}
+                disabled={hasMaterials || isSubmitting || requiresInspection}
                 onClick={() => void handleDelete()}
                 type="button"
               >

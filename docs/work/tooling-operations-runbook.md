@@ -197,6 +197,12 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - Verification evidence: the combined #391/#392 candidate tree `8b35b05986bb2df4ea1f9cc4652fd1dcc6ba6db0` completed fresh verification with the banner setting: 3,678 passed, 45 skipped, 3 todo, and production build passed. Earlier interrupted attempts were not counted as successes. This is an environment-specific reliability workaround, not a production speedup measurement or a reason to reduce required verification
 - Cleanup: the example scopes the setting to one command; no repository/package/permission cleanup is required. Preserve failure and success logs. If setting it in a persistent shell/session instead, restore the previous value afterward
 
+### npm's own optional update notifier
+
+On 2026-10-05, verification for Issue #464 reached passing fresh app/Worker checks and 5,415 tests, then was interrupted at build startup by a blocked `registry.npmjs.org` request despite `WRANGLER_HIDE_BANNER=true`. The log also contained npm's own upgrade notices. Installed npm 11.9.0's `lib/cli/update-notifier.js` separately calls `pacote.manifest` unless `update-notifier` is disabled. An interrupted aggregate run is not green.
+
+With already-installed, verified dependencies, rerun the normal aggregate command with command-scoped `npm_config_update_notifier=false npm_config_offline=true` in addition to the existing Wrangler settings. This omits optional npm update discovery; it does not install/update packages, grant network access, skip verification, or alter TLS. The retry completed fresh app/Worker checks, all 5,415 tests, production build and bundle budgets. Keep ordinary connected CI installs and security audits unchanged. Do not use this workaround to hide a missing required dependency or another network failure.
+
 
 ## Deferred JavaScript module receives the Pages HTML fallback
 
