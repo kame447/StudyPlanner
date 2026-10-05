@@ -288,6 +288,7 @@ export function usePlannerDataState({
   type RepairSnapshot = {
     actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[]; subjects?: StudySubject[] };
     monthEvents?: MonthEvent[];
+    dayNotes?: DayNote[];
     plansTodos?: { plans: Plan[]; todos: TodoTask[] };
   };
   const reconciliationRef = useRef<PlannerMutationReconciliation<RepairSnapshot> | null>(null);
@@ -304,7 +305,7 @@ export function usePlannerDataState({
         // later fanout changes reconciliation activity and invalidates the
         // whole snapshot before publication; it cannot borrow this receipt.
         const repairSubjects = actualAdmission.requiresSubjectRepair();
-        const [actualMaterial, nextMonthEvents, plansTodos] = await Promise.all([
+        const [actualMaterial, nextMonthEvents, plansTodos, nextDayNotes] = await Promise.all([
           targets.includes('actual-material') ? Promise.all([
             plannerRepository.getActuals(ownerId),
             plannerRepository.getStudyMaterials(ownerId),
@@ -315,6 +316,7 @@ export function usePlannerDataState({
             plannerRepository.getPlans(ownerId),
             plannerRepository.getTodos(ownerId),
           ]) : undefined,
+          targets.includes('day-notes') ? plannerRepository.getDayNotes(ownerId) : undefined,
         ]);
         // Prepare every requested group before publishing any. A failure keeps
         // the whole batch retryable, without certifying or replacing one slice.
@@ -323,6 +325,7 @@ export function usePlannerDataState({
             actuals: actualMaterial[0], materials: sortStudyMaterials(actualMaterial[1]), subjects: actualMaterial[2] ? sortStudySubjects(actualMaterial[2]) : undefined,
           } : undefined,
           monthEvents: nextMonthEvents ? sortMonthEvents(nextMonthEvents) : undefined,
+          dayNotes: nextDayNotes,
           plansTodos: plansTodos ? { plans: sortByDateTime(plansTodos[0]), todos: plansTodos[1] } : undefined,
         };
       },
@@ -334,6 +337,7 @@ export function usePlannerDataState({
           if (snapshot.actualMaterial.subjects) rawSetStudySubjects(snapshot.actualMaterial.subjects);
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
+        if (snapshot.dayNotes) rawSetDayNotes(snapshot.dayNotes);
         if (snapshot.plansTodos) {
           rawSetPlans(snapshot.plansTodos.plans);
           rawSetTodos(snapshot.plansTodos.todos);
@@ -1248,8 +1252,12 @@ export function usePlannerDataState({
     const currentDayNote = dayNotes.find((dayNote) => dayNote.date === draft.date);
     const nextDayNote = createDayNoteFromDraft(draft, currentDayNote);
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     await plannerRepository.upsertDayNote(nextDayNote);
-    setDayNotes((current) => upsertByKey(current, nextDayNote, (item) => item.id));
+    if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+      && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
+      setDayNotes((current) => upsertByKey(current, nextDayNote, (item) => item.id));
+    }
     showNotice('日次メモを保存しました。', 'success');
   }
 
@@ -2049,7 +2057,7 @@ export function usePlannerDataState({
     saveStandaloneActual: trackMutation(saveStandaloneActual),
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
-    saveDayNote: trackMutation(saveDayNote),
+    saveDayNote: trackMutation(saveDayNote, ['day-notes']),
     saveMonthEvent: trackMutation(saveMonthEvent, ['month-events']),
     deleteMonthEvent: trackMutation(deleteMonthEvent, ['month-events']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),

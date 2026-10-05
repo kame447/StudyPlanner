@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { createEmptyMonthEventDraft, createEmptyPlanDraft } from '../../../src/domain/planner';
+import { createEmptyDayNoteDraft, createEmptyMonthEventDraft, createEmptyPlanDraft } from '../../../src/domain/planner';
 import { usePlannerDataState as useRealPlannerDataState } from '../../../src/hooks/usePlannerDataState';
 
 // Importer-scoped observer/driver for the SAME hook mounted by usePlannerAppState.
@@ -18,9 +18,19 @@ export function usePlannerDataState(options) {
     control.snapshot = () => ({ ownerId: options.userId,
       ready: result.isPlannerDataSnapshotCurrent(), availability: result.plannerDataAvailability,
       recovery: result.plannerDataRecovery, plans: result.plans, actuals: result.actuals, materials: result.studyMaterials,
-      todos: result.todos,
+      todos: result.todos, dayNotes: result.dayNotes,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
+    control.startDayNote = ({ date, memo }) => {
+      if (control.saving) throw new Error('A fixture save is already pending');
+      control.saving = true;
+      control.saveError = null;
+      control.saveComplete = false;
+      void result.saveDayNote({ ...createEmptyDayNoteDraft(options.userId, date), quickMemo: memo })
+        .then(() => { control.saveComplete = true; })
+        .catch(error => { control.saveError = String(error); })
+        .finally(() => { control.saving = false; });
+    };
     control.startTodoSchedule = ({ date, title }) => {
       if (control.saving) throw new Error('A fixture save is already pending');
       const todo = result.todos.find(item => item.id === 'read-repair-todo');
