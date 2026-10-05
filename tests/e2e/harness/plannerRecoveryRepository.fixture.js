@@ -65,6 +65,23 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  async seedMaterialAdmissionPlans({ userId, date }) {
+    const material = (await plannerRepository.getStudyMaterials(userId))
+      .find(item => item.id === 'material-before-refresh');
+    if (!material) throw new Error('Material admission seed requires the harness material');
+    const now = new Date().toISOString();
+    const plans = [
+      { id: 'material-admission-first', title: '同じ教材の学習 A', startTime: '10:00', endTime: '11:00' },
+      { id: 'material-admission-second', title: '同じ教材の学習 B', startTime: '11:00', endTime: '12:00' },
+    ].map(plan => ({ ...plan, seriesId: plan.id, userId, date, subject: material.subjectName,
+      repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'study',
+      memo: '', sourceType: 'manual', materialId: material.id, materialName: material.name,
+      createdAt: now, updatedAt: now }));
+    // Setup alone uses a driver. Both concurrent saves in the regression enter
+    // through the actual Home / Study Session controls on the same mounted App.
+    for (const plan of plans) await plannerRepository.upsertPlan(plan);
+    return plans;
+  },
   async seedPlanUndo({ userId, date, withTodo = false, withActual = true }) {
     const now = new Date().toISOString();
     const plan = { id: 'rollback-undo-plan', seriesId: 'rollback-undo-plan', userId,

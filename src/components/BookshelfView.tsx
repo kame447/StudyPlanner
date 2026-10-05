@@ -1,3 +1,4 @@
+import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
@@ -68,11 +69,13 @@ interface BookshelfViewProps {
     targetSubjectId?: string,
   ) => Promise<StudySubject>;
   onDeleteSubject: (subject: StudySubject) => Promise<void>;
+  onCaptureMaterialBaseline: (material: StudyMaterial) => MaterialEditBaseline;
   onSaveMaterial: (
     draft: StudyMaterialDraft,
     targetMaterialId?: string,
+    baseline?: MaterialEditBaseline,
   ) => Promise<StudyMaterial>;
-  onDeleteMaterial: (material: StudyMaterial) => Promise<void>;
+  onDeleteMaterial: (material: StudyMaterial, baseline?: MaterialEditBaseline) => Promise<void>;
   onAddMaterialToPlan: (material: StudyMaterial) => void;
 }
 
@@ -147,6 +150,7 @@ export function BookshelfView({
   onInitialActionHandled,
   onSaveSubject,
   onDeleteSubject,
+  onCaptureMaterialBaseline,
   onSaveMaterial,
   onDeleteMaterial,
   onAddMaterialToPlan,
@@ -157,6 +161,7 @@ export function BookshelfView({
   const [editingMaterial, setEditingMaterial] = useState<StudyMaterial | null | undefined>(
     undefined,
   );
+  const [editingMaterialBaseline, setEditingMaterialBaseline] = useState<MaterialEditBaseline>();
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
@@ -361,7 +366,7 @@ export function BookshelfView({
       return;
     }
 
-    await onDeleteMaterial(material);
+    await onDeleteMaterial(material, onCaptureMaterialBaseline(material));
     setMenuMaterialId(null);
     if (selectedMaterialId === material.id) {
       setSelectedMaterialId(null);
@@ -704,6 +709,7 @@ export function BookshelfView({
             <button
               type="button"
               onClick={() => {
+                setEditingMaterialBaseline(onCaptureMaterialBaseline(menuMaterial));
                 setEditingMaterial(menuMaterial);
                 setMenuMaterialId(null);
               }}
@@ -1079,6 +1085,7 @@ export function BookshelfView({
         <BookshelfMaterialDialog
           userId={userId}
           material={editingMaterial}
+          baseline={editingMaterial ? editingMaterialBaseline : undefined}
           subjects={subjects}
           onClose={() => setEditingMaterial(undefined)}
           onSave={onSaveMaterial}

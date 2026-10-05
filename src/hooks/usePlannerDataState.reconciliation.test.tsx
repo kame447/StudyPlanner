@@ -330,7 +330,7 @@ it('controller waits for pending material writer before replacing material progr
   await act(async () => { await state.loadPlannerData('owner'); });
   const gate = deferred(); hold('deleteStudyMaterial', gate);
   let deleted!: Promise<void>;
-  await act(async () => { deleted = state.deleteStudyMaterial(progressMaterial); });
+  await act(async () => { deleted = state.deleteStudyMaterial(state.studyMaterials.find(material => material.id === progressMaterial.id)!, state.captureStudyMaterialBaseline(state.studyMaterials.find(material => material.id === progressMaterial.id)!)); });
   const reads = vi.spyOn(boundary.repository, 'getStudyMaterials');
   await act(async () => { old.response.resolve(); await old.done; });
   expect(reads).not.toHaveBeenCalled();
@@ -624,8 +624,8 @@ const ancillaryOperations: Array<{ name: string; method: keyof PlannerRepository
   { name: 'deleteTodo', method: 'deleteTodo', run: () => state.deleteTodo(TODO) },
   { name: 'saveStudySubject', method: 'upsertStudySubjectWithMaterials', run: () => state.saveStudySubject({ ...subject, name: 'Renamed' }, subject.id) },
   { name: 'deleteStudySubject', method: 'deleteStudySubject', run: () => state.deleteStudySubject(emptySubject) },
-  { name: 'saveStudyMaterial', method: 'upsertStudyMaterial', run: () => state.saveStudyMaterial({ ...progressMaterial, name: 'Renamed' }, progressMaterial.id) },
-  { name: 'deleteStudyMaterial', method: 'deleteStudyMaterial', run: () => state.deleteStudyMaterial(progressMaterial) },
+  { name: 'saveStudyMaterial', method: 'upsertStudyMaterial', run: () => state.saveStudyMaterial({ ...progressMaterial, name: 'Renamed' }, progressMaterial.id, state.captureStudyMaterialBaseline(state.studyMaterials.find(material => material.id === progressMaterial.id)!)) },
+  { name: 'deleteStudyMaterial', method: 'deleteStudyMaterial', run: () => state.deleteStudyMaterial(state.studyMaterials.find(material => material.id === progressMaterial.id)!, state.captureStudyMaterialBaseline(state.studyMaterials.find(material => material.id === progressMaterial.id)!)) },
   { name: 'saveScheduleTemplate', method: 'upsertScheduleTemplate', run: () => state.saveScheduleTemplate({ ...template, title: 'Changed' }, template.id) },
   { name: 'deleteScheduleTemplate', method: 'deleteScheduleTemplate', run: () => state.deleteScheduleTemplate(template) },
   { name: 'activateTimetableTerm', method: 'applyTimetableMutation', run: () => state.activateTimetableTerm(term) },
