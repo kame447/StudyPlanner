@@ -132,15 +132,15 @@ describe('focused contextual Jev gate', () => {
 
   it('defaults off and requires an explicit supported canary percentage', () => {
     expect(contextualDecisionMode({})).toBe('off');
-    expect(contextualDecisionMode({ JEV_MODE: 'invalid' })).toBe('off');
-    expect(contextualCanarySelected({ JEV_MODE: 'canary' }, 0)).toBe(false);
+    expect(contextualDecisionMode({ JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'invalid', JEV_MODE: 'invalid' })).toBe('off');
+    expect(contextualCanarySelected({ JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_MODE: 'canary' }, 0)).toBe(false);
     expect(contextualCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.04)).toBe(true);
     expect(contextualCanarySelected({
-      JEV_MODE: 'canary',
-      JEV_CANARY_PERCENT: '5',
+      JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_MODE: 'canary',
+      JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5',
     }, 0.06)).toBe(false);
   });
 });

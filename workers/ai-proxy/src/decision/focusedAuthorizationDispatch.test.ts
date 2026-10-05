@@ -51,7 +51,7 @@ function validResponse(independentMeaning = 0.001) {
   };
 }
 
-const canaryEnv = { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' } as DecisionEnv & ProductObservabilityEnv;
+const canaryEnv = { JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' } as DecisionEnv & ProductObservabilityEnv;
 
 function abstainingDecisionProvider(): DecisionProvider {
   return {
@@ -84,7 +84,7 @@ function execute(mode = 'off', options: {
     OPENROUTER_API_KEY: options.openRouterApiKey === undefined
       ? crypto.randomUUID() : options.openRouterApiKey ?? undefined,
     FIREBASE_WEB_API_KEY: 'public-test-project', ALLOWED_ORIGIN: 'https://app.example',
-    JEV_MODE: mode, JEV_CANARY_PERCENT: '100',
+    JEV_FOCUSED_AUTHORIZATION_MODE: mode, JEV_MODE: mode, JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100',
     ...(options.observability ? {
       FIREBASE_PROJECT_ID: 'test-project',
       FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
@@ -422,7 +422,7 @@ describe('focused authorization deployed proxy dispatch', () => {
 
     const response = await dispatchFocusedAuthorization({
       context,
-      env: { JEV_MODE: 'shadow', JEV_CANARY_PERCENT: '0' },
+      env: { JEV_FOCUSED_AUTHORIZATION_MODE: 'shadow', JEV_MODE: 'shadow', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '0', JEV_CANARY_PERCENT: '0' },
       firebaseUid: 'user-fixture',
       executionContext: { waitUntil: (promise) => pending.push(promise) },
       signal: new AbortController().signal,

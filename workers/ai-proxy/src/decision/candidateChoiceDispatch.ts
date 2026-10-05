@@ -1,22 +1,24 @@
 import { CANDIDATE_CHOICE_CATALOG_VERSION, isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, type CandidateChoiceDecisionContext, type CandidateChoiceResult } from '../../../../shared/candidateChoiceDecision';
 import type { SemanticRequestRecorder } from '../../../../shared/semanticDispatchRecorder';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
-import { canarySelected, decisionMode, type DecisionEnv } from './decisionPolicy';
+import type { DecisionEnv } from './decisionPolicy';
+import { resolveJevPurposeRollout, jevPurposeCanarySelected, jevPurposeCanarySample } from './jevPurposeRollout';
 import type { DecisionQuestionCatalog } from './decisionProvider';
 
 /** Interpretation only. Does not choose thresholds, mutate a graph or fall back with a partial answer. */
 export async function evaluateCandidateChoice(params: {
   context: CandidateChoiceDecisionContext;
   env: DecisionEnv;
+  firebaseUid: string;
   signal?: AbortSignal;
   recorder?: SemanticRequestRecorder;
   transport?: typeof fetch;
 }): Promise<CandidateChoiceResult> {
   if (!isCandidateChoiceDecisionContext(params.context)) return { status: 'unavailable', reason: 'invalid_context' };
-  const mode = decisionMode(params.env);
+  const mode = resolveJevPurposeRollout(params.env, 'candidate_choice').mode;
   if (mode === 'off') return { status: 'unavailable', reason: 'off' };
   // Shadow never yields a selectable result; no live shadow route is introduced here.
-  if (mode === 'shadow' || !canarySelected(params.env)) return { status: 'unavailable', reason: 'not_selected' };
+  if (mode === 'shadow' || !jevPurposeCanarySelected(params.env, 'candidate_choice', jevPurposeCanarySample('candidate_choice', params.firebaseUid))) return { status: 'unavailable', reason: 'not_selected' };
   const r = params.context.request;
   const catalog: DecisionQuestionCatalog<string> = {
     choiceAnswerKey: 'candidate', decisions: r.menu.options.map(o => o.id),

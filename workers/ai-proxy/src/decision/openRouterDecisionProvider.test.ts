@@ -175,11 +175,11 @@ describe('OpenRouter Decisions contract and gates', () => {
 
   it('defaults off and requires an explicit valid canary percentage', () => {
     expect(decisionMode({})).toBe('off');
-    expect(decisionMode({ JEV_MODE: 'typo' })).toBe('off');
-    expect(canarySelected({ JEV_MODE: 'canary' }, 0)).toBe(false);
-    expect(canarySelected({ JEV_MODE: 'canary', JEV_CANARY_PERCENT: '5' }, 0.04)).toBe(true);
-    expect(canarySelected({ JEV_MODE: 'canary', JEV_CANARY_PERCENT: '5' }, 0.06)).toBe(false);
-    expect(canarySelected({ JEV_MODE: 'off', JEV_CANARY_PERCENT: '100' }, 0)).toBe(false);
+    expect(decisionMode({ JEV_FOCUSED_AUTHORIZATION_MODE: 'typo', JEV_MODE: 'typo' })).toBe('off');
+    expect(canarySelected({ JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_MODE: 'canary' }, 0)).toBe(false);
+    expect(canarySelected({ JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5' }, 0.04)).toBe(true);
+    expect(canarySelected({ JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '5', JEV_CANARY_PERCENT: '5' }, 0.06)).toBe(false);
+    expect(canarySelected({ JEV_FOCUSED_AUTHORIZATION_MODE: 'off', JEV_MODE: 'off', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, 0)).toBe(false);
   });
 
   it('supports a Worker-owned purpose catalog without changing the authorization default', async () => {

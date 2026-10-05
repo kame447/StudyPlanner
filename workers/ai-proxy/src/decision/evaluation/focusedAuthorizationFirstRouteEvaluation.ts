@@ -246,8 +246,8 @@ export async function evaluateFocusedAuthorizationFirstRouteCase(params: {
     response = await dispatchFocusedAuthorization({
       context,
       env: {
-        JEV_MODE: 'canary',
-        JEV_CANARY_PERCENT: '100',
+        JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_MODE: 'canary',
+        JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100',
         FIREBASE_PROJECT_ID: '',
         FIREBASE_SERVICE_ACCOUNT_EMAIL: '',
         FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: '',

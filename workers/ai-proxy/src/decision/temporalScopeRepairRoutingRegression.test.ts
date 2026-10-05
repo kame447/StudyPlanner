@@ -65,7 +65,7 @@ async function execute(params: {
         },
       },
     },
-    env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+    env: { JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
     firebaseUid: 'security-fixture',
     signal: new AbortController().signal,
     fallback,

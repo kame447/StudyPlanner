@@ -263,7 +263,9 @@ export async function runTurn(item, env, signal, arm, options = {}) {
       if (context?.purpose === 'focused_contextual_answer') {
         response = await dispatchFocusedContextual({ context,
           env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
-            JEV_MODE: arm === 'jevFirst' ? 'canary' : 'off', JEV_CANARY_PERCENT: '100' },
+            JEV_MODE: arm === 'jevFirst' ? 'canary' : 'off', JEV_CANARY_PERCENT: '100',
+            JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: arm === 'jevFirst' ? 'canary' : 'off',
+            JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100' },
           firebaseUid: 'contextual-synthetic-evaluation', signal,
           fallback: (fallbackSignal) => luna(request, fallbackSignal ?? signal),
           respond: (decision) => {

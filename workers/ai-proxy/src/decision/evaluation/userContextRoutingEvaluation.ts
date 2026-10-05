@@ -340,7 +340,7 @@ export async function evaluateUserContextRoutingCase(params: {
   try {
     response = await dispatchUserContextRouting({
       context,
-      env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+      env: { JEV_USER_CONTEXT_ROUTING_MODE: 'canary', JEV_MODE: 'canary', JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
       firebaseUid: 'user-context-routing-evaluation',
       signal: params.signal ?? new AbortController().signal,
       fallback: async (signal) => {

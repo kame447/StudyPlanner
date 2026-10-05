@@ -1,3 +1,4 @@
+import { jevPurposeCanarySample } from './jevPurposeRollout';
 import type {
   TemporalScopeRepairDecisionContext,
   TemporalScopeRepairDecisionResponse,
@@ -104,7 +105,7 @@ export async function dispatchTemporalScopeRepair(params: {
   const mode = temporalScopeRepairDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
-  const selected = mode === 'canary' && temporalScopeRepairCanarySelected(params.env);
+  const selected = mode === 'canary' && temporalScopeRepairCanarySelected(params.env, jevPurposeCanarySample('temporal_scope_repair', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();
   if (mode === 'shadow' && !params.executionContext) return params.fallback();
 

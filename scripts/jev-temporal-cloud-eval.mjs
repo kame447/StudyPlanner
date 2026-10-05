@@ -510,7 +510,8 @@ async function main() {
       name: workerName,
       main: 'temporal-eval.ts',
       compatibility_date: '2026-04-10',
-      vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100' },
+      vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+        JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '100' },
     }));
     worker = await unstable_dev(entry, {
       config,
