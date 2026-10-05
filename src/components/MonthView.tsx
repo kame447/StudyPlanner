@@ -22,6 +22,7 @@ interface MonthViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  showTimetable?: boolean;
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   timetableTerm?: TimetableTerm | null;
@@ -42,6 +43,7 @@ export function MonthView({
   plans,
   actuals,
   monthEvents,
+  showTimetable = true,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
@@ -246,6 +248,7 @@ export function MonthView({
           plans={plans}
           actuals={actuals}
           monthEvents={monthEvents}
+          showTimetable={showTimetable}
           scheduleTemplates={scheduleTemplates}
           timetableTermId={timetableTermId}
           timetableTerm={timetableTerm}
@@ -262,6 +265,7 @@ export function MonthView({
         userId={userId}
         plans={plans}
         monthEvents={monthEvents}
+        showTimetable={showTimetable}
         scheduleTemplates={scheduleTemplates}
         timetableTermId={timetableTermId}
         timetableTerm={timetableTerm}

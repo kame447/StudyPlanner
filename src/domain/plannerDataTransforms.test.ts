@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ScheduleTemplate, StudyMaterial, TimetablePeriod, TimetableTerm } from '../types/domain';
+import { createTimetableTermId } from './timetableDataNormalization';
 import { normalizePlannerTimetableData, resolveActualMaterialProgress } from './plannerDataTransforms';
 
+const canonicalTermId = createTimetableTermId('owner', 2026, 'firstHalf');
 const createdAt = '2026-04-01T00:00:00.000Z';
 const now = '2026-10-02T12:00:00.000Z';
 
 function term(overrides: Partial<TimetableTerm> = {}): TimetableTerm {
   return {
-    id: '2026-first', userId: 'owner', year: 2026, kind: 'firstHalf',
+    id: canonicalTermId, userId: 'owner', year: 2026, kind: 'firstHalf',
     label: '2026年 前期', isActive: true, createdAt, updatedAt: createdAt,
     ...overrides,
   };
@@ -16,14 +18,14 @@ function term(overrides: Partial<TimetableTerm> = {}): TimetableTerm {
 function template(overrides: Partial<ScheduleTemplate> = {}): ScheduleTemplate {
   return {
     id: 'template', userId: 'owner', title: '数学', subject: '数学', type: 'study',
-    weekday: 'mon', startTime: '09:00', endTime: '10:00', termId: '2026-first',
+    weekday: 'mon', startTime: '09:00', endTime: '10:00', termId: canonicalTermId,
     memo: '', active: true, createdAt, updatedAt: createdAt, ...overrides,
   };
 }
 
 function period(overrides: Partial<TimetablePeriod> = {}): TimetablePeriod {
   return {
-    id: 'period', userId: 'owner', termId: '2026-first', periodNumber: 1,
+    id: 'period', userId: 'owner', termId: canonicalTermId, periodNumber: 1,
     label: '1限', startTime: '09:00', endTime: '10:00', createdAt,
     updatedAt: createdAt, ...overrides,
   };
@@ -46,7 +48,7 @@ describe('normalizePlannerTimetableData', () => {
     }, timestamp);
 
     expect(result.timetableTerms).toEqual([{
-      id: '2004-full-year', userId: 'owner', year: 2004, kind: 'fullYear',
+      id: createTimetableTermId('owner', 2004, 'fullYear'), userId: 'owner', year: 2004, kind: 'fullYear',
       label: '2004年 通年', isActive: true, createdAt: timestamp, updatedAt: timestamp,
     }]);
     expect(result.mutation).toEqual({
@@ -60,7 +62,7 @@ describe('normalizePlannerTimetableData', () => {
       timetableTerms: [term({ id: 'legacy', year: NaN })],
       timetablePeriods: [], scheduleTemplates: [],
     }, '2004-07-01T12:00:00.000Z');
-    expect(result.timetableTerms[0]).toMatchObject({ id: '2004-first', label: '2004年 前期' });
+    expect(result.timetableTerms[0]).toMatchObject({ id: createTimetableTermId('owner', 2004, 'firstHalf'), label: '2004年 前期' });
   });
 
   it('collapses legacy terms, remaps references and deletes only losing periods without mutating input', () => {
@@ -87,19 +89,19 @@ describe('normalizePlannerTimetableData', () => {
     const result = normalizePlannerTimetableData('owner', source, now);
 
     expect(source).toEqual(snapshot);
-    expect(result.timetableTerms.map((item) => item.id)).toEqual(['2026-first', 'custom']);
+    expect(result.timetableTerms.map((item) => item.id)).toEqual([canonicalTermId, 'custom']);
     expect(result.mutation.termUpserts).toEqual([expect.objectContaining({
-      id: '2026-first', isActive: true, startDate: '2026-05-01', updatedAt: now,
+      id: canonicalTermId, isActive: true, startDate: '2026-05-01', updatedAt: now,
     })]);
     expect(result.mutation.termDeletes).toEqual(source.timetableTerms.slice(0, 2));
     expect(result.mutation.templateUpserts).toEqual(source.scheduleTemplates.slice(0, 2).map((item) => ({
-      ...item, termId: '2026-first', updatedAt: now,
+      ...item, termId: canonicalTermId, updatedAt: now,
     })));
     expect(result.scheduleTemplates[2]).toBe(source.scheduleTemplates[2]);
     expect(result.scheduleTemplates[3]).toBe(source.scheduleTemplates[3]);
     expect(result.timetablePeriods.map((item) => item.id)).toEqual(['remapped-first', 'second']);
     expect(result.mutation.periodUpserts).toEqual([{
-      ...source.timetablePeriods[1], termId: '2026-first', updatedAt: now,
+      ...source.timetablePeriods[1], termId: canonicalTermId, updatedAt: now,
     }]);
     expect(result.mutation.periodDeletes).toEqual([source.timetablePeriods[0], source.timetablePeriods[2]]);
     expect(result.mutation.templateDeletes).toEqual([]);
@@ -135,7 +137,7 @@ describe('normalizePlannerTimetableData', () => {
       timetableTerms: [term(), term({ id: 'legacy-newer', updatedAt: now, ...change })],
       timetablePeriods: [], scheduleTemplates: [],
     }, now);
-    expect(result.mutation.termUpserts).toEqual([expect.objectContaining({ id: '2026-first', ...change })]);
+    expect(result.mutation.termUpserts).toEqual([expect.objectContaining({ id: canonicalTermId, ...change })]);
   });
 
   it('persists label and active-term repairs even when ids are already canonical', () => {

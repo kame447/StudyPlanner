@@ -1,3 +1,4 @@
+import { createTimetableTermId } from '../domain/timetableDataNormalization';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actual, ActualDraft, Plan, StudyMaterial, TimetableTerm, TodoTask } from '../types/domain';
@@ -396,10 +397,10 @@ describe('usePlannerDataState transform orchestration', () => {
     await act(async () => { await readState().loadPlannerData('owner-a'); });
 
     expect(repository.applyTimetableMutation).toHaveBeenCalledWith(expect.objectContaining({
-      termUpserts: [expect.objectContaining({ id: '2026-full-year' })],
+      termUpserts: [expect.objectContaining({ id: createTimetableTermId('owner-a', 2026, 'fullYear') })],
       termDeletes: [term],
-      templateUpserts: [expect.objectContaining({ termId: '2026-full-year' })],
-      periodUpserts: [expect.objectContaining({ termId: '2026-full-year' })],
+      templateUpserts: [expect.objectContaining({ termId: createTimetableTermId('owner-a', 2026, 'fullYear') })],
+      periodUpserts: [expect.objectContaining({ termId: createTimetableTermId('owner-a', 2026, 'fullYear') })],
     }));
     expect(readState().timetableTerms).toEqual([term]);
     expect(readState().scheduleTemplates).toEqual([template]);
@@ -436,7 +437,7 @@ describe('usePlannerDataState transform orchestration', () => {
     });
 
     expect(readState().timetableTerms).toBe(newSnapshot);
-    expect(newSnapshot[0]).toMatchObject({ id: '2026-full-year', userId: 'owner-b' });
+    expect(newSnapshot[0]).toMatchObject({ id: createTimetableTermId('owner-b', 2026, 'fullYear'), userId: 'owner-b' });
     expect(readState().plannerDataAvailability).toMatchObject({ status: 'ready', ownerId: 'owner-b' });
     expect(showNotice).not.toHaveBeenCalled();
     renderer.unmount();

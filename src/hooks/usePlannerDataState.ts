@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
-import { ActualMutationAdmissionError, actualUnavailableMessage, useActualMutationAdmission, type ActualActionTarget } from './useActualMutationAdmission';
+import { ActualMutationAdmissionError, actualUnavailableMessage, useActualMutationAdmission, MaterialMutationAdmissionError, materialStaleMessage, materialRefreshMessage, type MaterialEditBaseline, type ActualActionTarget } from './useActualMutationAdmission';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
   isSameMonth,
@@ -216,11 +216,13 @@ export interface UsePlannerDataStateResult {
     targetSubjectId?: string,
   ) => Promise<StudySubject>;
   deleteStudySubject: (subject: StudySubject) => Promise<void>;
+  captureStudyMaterialBaseline: (material: StudyMaterial) => MaterialEditBaseline;
   saveStudyMaterial: (
     draft: StudyMaterialDraft,
     targetMaterialId?: string,
+    baseline?: MaterialEditBaseline,
   ) => Promise<StudyMaterial>;
-  deleteStudyMaterial: (material: StudyMaterial) => Promise<void>;
+  deleteStudyMaterial: (material: StudyMaterial, baseline?: MaterialEditBaseline) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -255,7 +257,9 @@ export function usePlannerDataState({
   const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
   const monthEventState = useOptimisticPlannerState<MonthEvent[]>([], mutationScope);
   const { value: monthEvents, set: setMonthEvents, replace: rawSetMonthEvents } = monthEventState;
-  const actualAdmission = useActualMutationAdmission(mutationScope, userId, actuals, plans, monthEvents);
+  const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
+  const [studyMaterials, setStudyMaterials, rawSetStudyMaterials] = useScopedPlannerState<StudyMaterial[]>([], mutationScope);
+  const actualAdmission = useActualMutationAdmission(mutationScope, userId, actuals, plans, monthEvents, studyMaterials, studySubjects);
   const committedActualAdmission = useRef<{
     ownerId: string | null;
     scope: typeof mutationScope;
@@ -268,8 +272,6 @@ export function usePlannerDataState({
   }, [actualAdmission, mutationScope, userId]);
   const todoState = useOptimisticPlannerState<TodoTask[]>([], mutationScope);
   const { value: todos, set: setTodos, replace: rawSetTodos } = todoState;
-  const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
-  const [studyMaterials, setStudyMaterials, rawSetStudyMaterials] = useScopedPlannerState<StudyMaterial[]>([], mutationScope);
   const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
   const [timetableTerms, setTimetableTerms, rawSetTimetableTerms] = useScopedPlannerState<TimetableTerm[]>([], mutationScope);
   const [timetablePeriods, setTimetablePeriods, rawSetTimetablePeriods] = useScopedPlannerState<TimetablePeriod[]>([], mutationScope);
@@ -284,7 +286,7 @@ export function usePlannerDataState({
     setPlannerDataReadSnapshot(plannerDataReadAuthority.readSnapshot());
   }, [plannerDataReadAuthority]);
   type RepairSnapshot = {
-    actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[] };
+    actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[]; subjects?: StudySubject[] };
     monthEvents?: MonthEvent[];
     plansTodos?: { plans: Plan[]; todos: TodoTask[] };
   };
@@ -298,10 +300,15 @@ export function usePlannerDataState({
     reconciliation.configure({
       isCurrent: ownerId => mounted.current && userId === ownerId && mutationScope.isCurrent(),
       read: async (ownerId, targets) => {
+        // Capture the optional subject dependency once for this attempt. A
+        // later fanout changes reconciliation activity and invalidates the
+        // whole snapshot before publication; it cannot borrow this receipt.
+        const repairSubjects = actualAdmission.requiresSubjectRepair();
         const [actualMaterial, nextMonthEvents, plansTodos] = await Promise.all([
           targets.includes('actual-material') ? Promise.all([
             plannerRepository.getActuals(ownerId),
             plannerRepository.getStudyMaterials(ownerId),
+            repairSubjects ? plannerRepository.getStudySubjects(ownerId) : undefined,
           ]) : undefined,
           targets.includes('month-events') ? plannerRepository.getMonthEvents(ownerId) : undefined,
           targets.includes('plans-todos') ? Promise.all([
@@ -313,7 +320,7 @@ export function usePlannerDataState({
         // the whole batch retryable, without certifying or replacing one slice.
         return {
           actualMaterial: actualMaterial ? {
-            actuals: actualMaterial[0], materials: sortStudyMaterials(actualMaterial[1]),
+            actuals: actualMaterial[0], materials: sortStudyMaterials(actualMaterial[1]), subjects: actualMaterial[2] ? sortStudySubjects(actualMaterial[2]) : undefined,
           } : undefined,
           monthEvents: nextMonthEvents ? sortMonthEvents(nextMonthEvents) : undefined,
           plansTodos: plansTodos ? { plans: sortByDateTime(plansTodos[0]), todos: plansTodos[1] } : undefined,
@@ -324,6 +331,7 @@ export function usePlannerDataState({
           rawSetActuals(snapshot.actualMaterial.actuals);
           actualAdmission.refreshed(['actual-material']);
           rawSetStudyMaterials(snapshot.actualMaterial.materials);
+          if (snapshot.actualMaterial.subjects) rawSetStudySubjects(snapshot.actualMaterial.subjects);
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
         if (snapshot.plansTodos) {
@@ -939,9 +947,20 @@ export function usePlannerDataState({
     return current;
   }
 
-  function admitActualMutation(targets: ActualActionTarget[], planIds: string[] = []) {
-    try { return actualAdmission.acquire(targets, planIds); }
-    catch (error) {
+  function admitActualMutation(targets: ActualActionTarget[], planIds: string[] = [], materialIds: string[] = [], subjectIds: string[] = []) {
+    try {
+      if (materialIds.length || subjectIds.length) {
+        const lease = plannerDataReadAuthority.captureProjectionLease();
+        // Use the canonical owner/read lifetime, not a second readiness flag.
+        // A first-load/old-owner callback cannot dispatch a write for which
+        // unknown-outcome repair has no current owner projection to certify.
+        if (!lease || lease.ownerId !== userId || !plannerDataReadAuthority.isOwnerCurrent(lease)
+          || plannerDataReadAuthority.read().lastSuccessfulAt === null) {
+          throw new MaterialMutationAdmissionError(materialRefreshMessage);
+        }
+      }
+      return actualAdmission.acquire(targets, planIds, materialIds, subjectIds);
+    } catch (error) {
       showNotice(resolveErrorMessage(error, '記録を更新できませんでした。'), 'error');
       throw error;
     }
@@ -991,11 +1010,14 @@ export function usePlannerDataState({
       ? requireCurrentActual(targetActualId)
       : actualAdmission.current().find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
     const nextActual = createActualFromDraft(userId, draft, existingActual);
+    // Dependencies include missing, disabled and clamped rows. Admission must
+    // precede resolving the absolute payload, including for retained callbacks.
+    const materialIds = existingActual ? [] : nextActual.materialProgressUpdates?.map(update => update.materialId) ?? [];
+    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual], [], materialIds);
     const progress = existingActual
-      ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
-      : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
-
-    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual]);
+      ? { changedMaterials: [] as StudyMaterial[] }
+      : resolveActualMaterialProgress(actualAdmission.materials(), nextActual, new Date().toISOString());
+    let dispatchedFailure = false;
     const actualOperation = actualState.begin((current) =>
       upsertActualByOccurrenceKey(
         targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
@@ -1031,10 +1053,11 @@ export function usePlannerDataState({
       actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
+      dispatchedFailure = materialIds.length > 0;
       actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
-    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
@@ -1068,11 +1091,14 @@ export function usePlannerDataState({
       },
       existingActual,
     );
+    // Dependencies include missing, disabled and clamped rows. Admission must
+    // precede resolving the absolute payload, including for retained callbacks.
+    const materialIds = existingActual ? [] : nextActual.materialProgressUpdates?.map(update => update.materialId) ?? [];
+    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual], [], materialIds);
     const progress = existingActual
-      ? { nextMaterials: studyMaterials, changedMaterials: [] as StudyMaterial[] }
-      : resolveActualMaterialProgress(studyMaterials, nextActual, new Date().toISOString());
-
-    const releaseAdmission = admitActualMutation([...(existingActual ? [existingActual] : []), nextActual]);
+      ? { changedMaterials: [] as StudyMaterial[] }
+      : resolveActualMaterialProgress(actualAdmission.materials(), nextActual, new Date().toISOString());
+    let dispatchedFailure = false;
     const actualOperation = actualState.begin((current) =>
       upsertByKey(
         targetActualId ? current.filter((actual) => actual.id !== targetActualId) : current,
@@ -1109,10 +1135,11 @@ export function usePlannerDataState({
       actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
+      dispatchedFailure = materialIds.length > 0;
       actualState.reject(actualOperation);
       showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
       throw error;
-    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
@@ -1427,51 +1454,46 @@ export function usePlannerDataState({
       showNotice('教科名を入れてください。', 'error');
       throw new Error('教科名を入れてください。');
     }
-    const currentSubject = studySubjects.find((subject) => subject.id === targetSubjectId);
+    const currentSubject = actualAdmission.subjects().find((subject) => subject.id === targetSubjectId);
+    if (targetSubjectId && !currentSubject) throw new MaterialMutationAdmissionError(materialStaleMessage);
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const subjectId = currentSubject?.id ?? createId('study-subject');
+    const members = currentSubject ? actualAdmission.materials().filter(material => material.subjectId === currentSubject.id) : [];
+    const releaseAdmission = admitActualMutation([], [], members.map(material => material.id), [subjectId]);
+    let dispatchedFailure = false;
     const now = new Date().toISOString();
     const nextSubject: StudySubject = {
-      id: currentSubject?.id ?? createId('study-subject'),
+      id: subjectId,
       userId,
       name,
       color: draft.color.trim() || currentSubject?.color || '#2f6fc2',
       createdAt: currentSubject?.createdAt ?? now,
       updatedAt: now,
     };
-    const updatedMaterials = currentSubject
-      ? studyMaterials
-          .filter((material) => material.subjectId === currentSubject.id)
-          .map((material) => ({
-            ...material,
-            subjectName: nextSubject.name,
-            color: nextSubject.color,
-            updatedAt: now,
-          }))
-      : [];
+    const updatedMaterials = members.map(material => ({
+      ...material, subjectName: nextSubject.name, color: nextSubject.color, updatedAt: now,
+    }));
 
     try {
       await plannerRepository.upsertStudySubjectWithMaterials({
         subject: nextSubject,
         materials: updatedMaterials,
       });
-      setStudySubjects((current) =>
-        sortStudySubjects(upsertByKey(current, nextSubject, (subject) => subject.id)),
-      );
-      if (updatedMaterials.length > 0) {
-        setStudyMaterials((current) =>
-          sortStudyMaterials(
-            updatedMaterials.reduce(
-              (records, material) => upsertByKey(records, material, (item) => item.id),
-              current,
-            ),
-          ),
-        );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudySubjects(current => sortStudySubjects(upsertByKey(current, nextSubject, subject => subject.id)));
+        if (updatedMaterials.length > 0) {
+          setStudyMaterials(current => sortStudyMaterials(updatedMaterials.reduce(
+            (records, material) => upsertByKey(records, material, item => item.id), current,
+          )));
+        }
       }
       showNotice(currentSubject ? '教科を更新しました。' : '教科を追加しました。', 'success');
       return nextSubject;
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教科を保存できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function deleteStudySubject(subject: StudySubject) {
@@ -1510,13 +1532,14 @@ export function usePlannerDataState({
   async function saveStudyMaterial(
     draft: StudyMaterialDraft,
     targetMaterialId?: string,
+    baseline?: MaterialEditBaseline,
   ): Promise<StudyMaterial> {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
     const name = draft.name.trim();
-    const subject = studySubjects.find((item) => item.id === draft.subjectId);
+    const subject = actualAdmission.subjects().find((item) => item.id === draft.subjectId);
 
     if (!name) {
       showNotice('教材名を入れてください。', 'error');
@@ -1528,9 +1551,17 @@ export function usePlannerDataState({
       throw new Error('教科を選択してください。');
     }
 
-    const currentMaterial = studyMaterials.find(
-      (material) => material.id === targetMaterialId,
-    );
+    let currentMaterial: StudyMaterial | undefined;
+    try {
+      currentMaterial = targetMaterialId ? actualAdmission.requireMaterialBaseline(targetMaterialId, baseline) : undefined;
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, materialStaleMessage), 'error');
+      throw error;
+    }
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const materialId = currentMaterial?.id ?? createId('study-material');
+    const releaseAdmission = admitActualMutation([], [], [materialId]);
+    let dispatchedFailure = false;
     const now = new Date().toISOString();
     const paceEnabled = draft.paceEnabled === true;
     const totalUnits =
@@ -1551,7 +1582,7 @@ export function usePlannerDataState({
         ? Math.max(0, draft.maxUnitsPerDay)
         : undefined;
     const nextMaterial: StudyMaterial = {
-      id: currentMaterial?.id ?? createId('study-material'),
+      id: materialId,
       userId,
       name,
       subjectId: subject.id,
@@ -1582,40 +1613,54 @@ export function usePlannerDataState({
 
     try {
       await plannerRepository.upsertStudyMaterial(nextMaterial);
-      setStudyMaterials((current) =>
-        sortStudyMaterials(upsertByKey(current, nextMaterial, (item) => item.id)),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudyMaterials((current) => sortStudyMaterials(upsertByKey(current, nextMaterial, (item) => item.id)));
+      }
       showNotice(
         currentMaterial ? '教材を更新しました。' : '教材を追加しました。',
         'success',
       );
       return nextMaterial;
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教材を保存できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
-  async function deleteStudyMaterial(material: StudyMaterial) {
-    if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
-    }
-
+  async function deleteStudyMaterial(material: StudyMaterial, baseline?: MaterialEditBaseline) {
+    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    // The editor's token carries its original scope/generation. Content equality
+    // alone must not silently re-baseline an old dialog after reset or ABA.
+    actualAdmission.captureMaterial(material);
+    material = actualAdmission.requireMaterialBaseline(material.id, baseline)!;
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const releaseAdmission = admitActualMutation([], [], [material.id]);
+    const undoBaseline = actualAdmission.expectMaterialRemoval(material);
+    let dispatchedFailure = false;
     try {
       await plannerRepository.deleteStudyMaterial(userId, material.id);
-      setStudyMaterials((current) =>
-        current.filter((item) => item.id !== material.id),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudyMaterials(current => current.filter(item => item.id !== material.id));
+      }
       showDeleteUndoNotice(async () => {
-        await plannerRepository.upsertStudyMaterial(material);
-        setStudyMaterials((current) =>
-          sortStudyMaterials(upsertByKey(current, material, (item) => item.id)),
-        );
+        actualAdmission.requireMaterialBaseline(material.id, undoBaseline, true);
+        const restoreProjection = plannerDataReadAuthority.captureProjectionLease();
+        const releaseRestore = admitActualMutation([], [], [material.id]);
+        let restoreFailure = false;
+        try {
+          await plannerRepository.upsertStudyMaterial(material);
+          if (!restoreProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(restoreProjection)) {
+            setStudyMaterials(current => sortStudyMaterials(upsertByKey(current, material, item => item.id)));
+          }
+        } catch (error) { restoreFailure = true; throw error; }
+        finally { settleActualAdmission(releaseRestore, restoreProjection, ['actual-material'], restoreFailure); }
       });
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教材を削除できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveScheduleTemplate(
@@ -1727,7 +1772,7 @@ export function usePlannerDataState({
     const isCustomPeriod = draft.kind === 'custom';
     const stableTermId = isCustomPeriod
       ? draft.id?.trim() || createId('timetable-term')
-      : createTimetableTermId(year, draft.kind);
+      : createTimetableTermId(userId, year, draft.kind);
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
     const existingTerm = timetableTerms.find((term) => term.id === stableTermId) ??
       (!isCustomPeriod
@@ -2006,6 +2051,7 @@ export function usePlannerDataState({
     deleteTodo: trackMutation(deleteTodo),
     saveStudySubject: trackMutation(saveStudySubject),
     deleteStudySubject: trackMutation(deleteStudySubject),
+    captureStudyMaterialBaseline: actualAdmission.captureMaterial,
     saveStudyMaterial: trackMutation(saveStudyMaterial),
     deleteStudyMaterial: trackMutation(deleteStudyMaterial),
     saveScheduleTemplate: trackMutation(saveScheduleTemplate),

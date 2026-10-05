@@ -11,7 +11,9 @@ Canonical requirements:
 
 Supporting architecture:
 
-- [Actual action admission](architecture/actual-action-admission.md) owns cross-surface busy/stale-target rejection and committed record reservations
+- [Timetable owner identity](architecture/timetable-owner-identity.md) owns account-qualified canonical term IDs and bounded legacy-reference repair
+
+- [Actual action admission](architecture/actual-action-admission.md) owns cross-surface record/material admission, immutable edit evidence, and committed reservations
 
 - [Local planner storage access](architecture/local-planner-storage-access.md) owns the bounded local-fallback command/compensation queue and its explicit concurrency limits
 
