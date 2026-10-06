@@ -69,13 +69,15 @@ function applyProposalDecisions(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   turnId: string;
   presentedProposalId: string | null;
+  restrictToPresentedProposal?: boolean;
 }): WeeklyPlanningLearningStrategyProposalRecord[] {
   const records = params.previousRecords.map((record) => ({ ...record }));
   for (const decision of params.document.decisions) {
     if (decision.target.kind !== 'proposal' || !decision.target.publicId) continue;
     // Only the proposal the user was actually shown (a fresh presented question) can be
     // decided; any other pending record waits until its own question is presented.
-    if (decision.target.publicId !== params.presentedProposalId) continue;
+    // (Legacy architecture: any pending proposal may be decided, as before Issue #488.)
+    if (params.restrictToPresentedProposal !== false && decision.target.publicId !== params.presentedProposalId) continue;
     const index = records.findIndex((record) => record.id === decision.target.publicId);
     if (index < 0 || records[index].status !== 'pending') continue;
     if (decision.decision === 'accept') {
@@ -213,6 +215,8 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   turnId: string;
   /** Proposal id of the fresh presented question, or null when none is fresh. */
   presentedProposalId: string | null;
+  /** Interaction architecture (default): only the presented proposal can change status. */
+  restrictToPresentedProposal?: boolean;
 }): WeeklyPlanningLearningStrategyProposalEvaluation {
   const rebasedPreviousRecords = rebaseProposalWorkloadReferences({
     records: params.previousState?.learningStrategyProposalRecords ?? [],
@@ -223,6 +227,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     document: params.document,
     turnId: params.turnId,
     presentedProposalId: params.presentedProposalId,
+    restrictToPresentedProposal: params.restrictToPresentedProposal,
   });
 
   const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);

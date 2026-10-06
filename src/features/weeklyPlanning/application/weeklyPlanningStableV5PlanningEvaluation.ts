@@ -1,3 +1,4 @@
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   isWeeklyPlanningStableV5QuestionSlot,
@@ -257,6 +258,9 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
         presentedProposalId: freshPresentedProposalId(semanticTurn.pendingQuestionPresentation),
+        restrictToPresentedProposal: conversationArchitecturePolicy(
+          input.conversationArchitecture,
+        ).freshProposalDecisionsOnly,
       })
     : {
         records: input.previousState?.learningStrategyProposalRecords ?? [],

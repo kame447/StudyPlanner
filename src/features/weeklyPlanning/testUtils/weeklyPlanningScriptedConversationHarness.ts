@@ -9,6 +9,7 @@ import {
   submitWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
+import { resetWeeklyPlanningTurnMeasurementsForTest } from '../application/weeklyPlanningTurnMeasurement';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { resetWeeklyPlanningStableV5FailureDiagnosticsForTest } from '../semantic/weeklyPlanningStableV5FailureDiagnostics';
@@ -26,6 +27,7 @@ import type {
 import { createReadyPlannerDataAvailability } from './plannerDataAvailabilityTest';
 import type { StudyMaterial } from '../../../types/domain';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 
 /**
  * Deterministic provider double for full-turn tests. It replaces only the HTTP
@@ -44,6 +46,8 @@ export interface ScriptedProviderCall {
   index: number;
   kind: ScriptedProviderCallKind;
   schemaName: string;
+  /** Top-level property names of the JSON schema the provider was asked to follow. */
+  schemaProperties: string[];
   messages: Array<{ role: string; content: string }>;
   /** Parsed JSON payload of the final user message, when it is JSON. */
   payload: Record<string, unknown> | null;
@@ -89,7 +93,7 @@ export function installScriptedWeeklyPlanningProvider(
   vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? '{}')) as {
       messages?: Array<{ role: string; content: string }>;
-      response_format?: { json_schema?: { name?: string } };
+      response_format?: { json_schema?: { name?: string; schema?: { properties?: Record<string, unknown> } } };
     };
     const messages = body.messages ?? [];
     const schemaName = body.response_format?.json_schema?.name ?? '';
@@ -97,6 +101,7 @@ export function installScriptedWeeklyPlanningProvider(
       index: calls.length,
       kind: callKind(schemaName),
       schemaName,
+      schemaProperties: Object.keys(body.response_format?.json_schema?.schema?.properties ?? {}),
       messages,
       payload: lastUserPayload(messages),
     };
@@ -157,6 +162,7 @@ export function resetScriptedConversationRuntime(): void {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   clearWeeklyPlanningSessionRuntime();
   resetWeeklyPlanningStableV5FailureDiagnosticsForTest();
+  resetWeeklyPlanningTurnMeasurementsForTest();
 }
 
 export function createScriptedConversation(params: {
@@ -165,14 +171,21 @@ export function createScriptedConversation(params: {
   conversationId?: string;
   weekStartDate?: string;
   now?: () => string;
+  /** Monotonic ms clock for the turn measurement (fake clock in tests). */
+  measurementClock?: () => number;
   studyMaterials?: StudyMaterial[];
   initialState?: PlanningState;
+  /** Pins the conversation to an architecture before its first turn (otherwise: new-conversation default). */
+  architecture?: WeeklyPlanningConversationArchitecture;
 }): ScriptedConversation {
   const ownerId = params.ownerId ?? 'issue488-owner';
   const conversationId = params.conversationId ?? 'issue488-conversation';
   const weekStartDate = params.weekStartDate ?? '2026-10-05';
   const now = params.now ?? (() => '2026-10-07T09:00:00.000Z');
-  let state: PlanningState = params.initialState ?? createInitialPlanningState(weekStartDate);
+  let state: PlanningState = params.initialState ?? {
+    ...createInitialPlanningState(weekStartDate),
+    ...(params.architecture ? { conversationArchitecture: params.architecture } : {}),
+  };
   const dispatch = (action: WeeklyPlanningAction) => {
     state = weeklyPlanningReducer(state, action);
     return state;
@@ -214,6 +227,7 @@ export function createScriptedConversation(params: {
         userText,
         selectedDate: weekStartDate,
         now,
+        measurementClock: params.measurementClock,
         plans: [],
         studyMaterials: params.studyMaterials ?? [],
         scheduleTemplates: [],

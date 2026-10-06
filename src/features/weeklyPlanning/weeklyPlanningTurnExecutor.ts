@@ -22,7 +22,7 @@ export type {
 export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
-  weeklyPlanningStableV5TurnResultProjector.begin(input.traceRequestId);
+  weeklyPlanningStableV5TurnResultProjector.begin(input.traceRequestId, input.conversationArchitecture);
   const requestContext = resolveWeeklyPlanningRequestContextAtIngress({
     requestContext: input.requestContext,
     selectedDate: input.selectedDate,
@@ -49,6 +49,7 @@ export async function executeWeeklyPlanningTurn(
     traceRequestId: input.traceRequestId,
     requestContext,
     inputStateRevision: input.inputStateRevision,
+    conversationArchitecture: input.conversationArchitecture,
   });
   return weeklyPlanningStableV5TurnResultProjector.project({ input, result });
 }

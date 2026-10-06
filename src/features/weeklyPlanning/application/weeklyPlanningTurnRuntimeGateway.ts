@@ -8,6 +8,7 @@ import type {
 } from '../../../types/domain';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
+import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import {
   executeWeeklyPlanningTurn,
@@ -52,6 +53,8 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
+  /** Architecture the conversation is pinned to; resolved by the turn controller. */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }
 
 export interface WeeklyPlanningTurnRuntimeGateway {
@@ -96,6 +99,7 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         weekStartsOn: requestContext.weekStartsOn,
         requestContext,
         inputStateRevision: params.pending.baseRevision,
+        conversationArchitecture: params.conversationArchitecture,
       });
     },
   };

@@ -29,7 +29,7 @@ import {
   semanticNormalizerErrorMessage,
   WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
-import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
+import { semanticProviderResponseFormatV5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
@@ -142,7 +142,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             purpose: 'weekly_planning_semantic_normalizer',
             messages: baseMessages,
             temperature: 0,
-            responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+            responseFormat: semanticProviderResponseFormatV5(input.conversationArchitecture),
             maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(input),
           },
         },
@@ -175,6 +175,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           recentConversation: input.recentConversation,
           publicStateSummary: input.publicStateSummary,
           committedGraph: input.committedGraph,
+          conversationArchitecture: input.conversationArchitecture,
         },
       );
       run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);

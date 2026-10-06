@@ -56,6 +56,13 @@ import type {
  * shows whether a typed pendingQuestion was offered to the model (planningStateSummary
  * .pendingQuestion present/null) but NOT why it was withheld (stale vs unbound vs
  * malformed). A durable freshness reason is a deferred diagnostic item (see report).
+ *
+ * ARCHITECTURE ATTRIBUTION (comparison switch): `conversationArchitecture` and
+ * `aiDispatchUsage` (enum + counters only) are recorded in the in-memory/local debug trace
+ * (`runtime_session_context_prepared`, `turn_executor_result_projected`). They are NOT durable
+ * diagnostic fields either; the durable entry stays attributable through the persisted
+ * semantic request (the schema/prompt of `legacy_v5` has no conversationActs, `interaction_v1`
+ * has) - asserted below for both architectures through outbox retry and Worker preparation.
  */
 
 const USER_ID = 'owner-conversation-interaction-trace';
@@ -358,5 +365,54 @@ describe('conversation interaction trace persistence gate', () => {
     expect(serialized).toMatch(/traceProjectionTruncated|traceTruncatedItems|…\[trace truncated\]/);
     expect(serialized).not.toContain('あ'.repeat(6_000));
     expectBounded(kept.entry, kept.preparedEntry);
+  });
+});
+
+describe('architecture attribution of persisted traces', () => {
+  async function turnIn(architecture: 'legacy_v5' | 'interaction_v1', conversationId: string) {
+    const conversation = createScriptedConversation({
+      provider, ownerId: USER_ID, conversationId, weekStartDate: WEEK, architecture,
+    });
+    script = (call) => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      const document = String(call.payload?.userText ?? '') === MATH_SETUP ? mathSetup() : emptyDocument();
+      if (architecture === 'legacy_v5') delete document.conversationActs;
+      return JSON.stringify(document);
+    };
+    return conversation.submit(MATH_SETUP);
+  }
+
+  it('marks the architecture in the local debug trace and keeps the persisted request attributable', async () => {
+    const legacy = await turnIn('legacy_v5', CONVERSATION_ID);
+    const interaction = await turnIn('interaction_v1', `${CONVERSATION_ID}-b`);
+
+    for (const [turn, architecture] of [[legacy, 'legacy_v5'], [interaction, 'interaction_v1']] as const) {
+      const data = turn.debugTrace.find((event) => event.stage === 'turn_executor_result_projected')?.data as Json;
+      expect(data.conversationArchitecture).toBe(architecture);
+      expect(data.aiDispatchUsage).toMatchObject({ total: turn.calls.length });
+      expect(JSON.stringify(turn.debugTrace.find((event) => event.stage === 'runtime_session_context_prepared')?.data))
+        .toContain(`"conversationArchitecture":"${architecture}"`);
+    }
+
+    const harness = await persistThroughOutbox([
+      traceInput(legacy, legacy.debugTrace),
+      { ...traceInput(interaction, interaction.debugTrace), conversationId: CONVERSATION_ID },
+    ]);
+    const persistedLegacy = persistedFor(harness, legacy.requestId!);
+    const persistedInteraction = persistedFor(harness, interaction.requestId!);
+
+    // Durable entries are distinguishable through what was actually sent to the provider.
+    for (const text of [JSON.stringify(persistedLegacy.entry), JSON.stringify(persistedLegacy.preparedEntry)]) {
+      expect(text).not.toContain('conversationActs');
+    }
+    for (const text of [JSON.stringify(persistedInteraction.entry), JSON.stringify(persistedInteraction.preparedEntry)]) {
+      expect(text).toContain('conversationActs');
+    }
+    // Deliberate exclusion (enum + counters live in the local debug trace only).
+    for (const entry of [persistedLegacy.entry, persistedInteraction.entry]) {
+      expect(JSON.stringify(entry)).not.toContain('aiDispatchUsage');
+    }
+    expectBounded(persistedLegacy.entry, persistedLegacy.preparedEntry);
+    expectBounded(persistedInteraction.entry, persistedInteraction.preparedEntry);
   });
 });

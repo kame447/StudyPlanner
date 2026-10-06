@@ -67,6 +67,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
+  /** Monotonic millisecond clock for the turn measurement (tests inject a fake clock). */
+  measurementClock?: () => number;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -88,8 +90,10 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
-    execute({ snapshot, pending, userText, supplementalContext, selectedStarterTarget }) {
+    measurementClock: params.measurementClock,
+    execute({ snapshot, pending, userText, supplementalContext, selectedStarterTarget, conversationArchitecture }) {
       return services.runtimeGateway.execute({
+        conversationArchitecture,
         snapshot,
         pending,
         userText,

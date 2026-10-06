@@ -50,6 +50,10 @@ import {
 } from './weeklyPlanningWeekdayEncodingV5';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
   currentUserText?: string;
@@ -58,6 +62,8 @@ export interface WeeklyPlanningSemanticResponseValidationInputV5 {
   recentConversation?: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
   committedGraph?: WeeklyPlanningFactGraphV5;
+  /** Conversation architecture whose response contract applies; omitted = current default. */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }
 
 export interface WeeklyPlanningSemanticValidationAttemptV5 {
@@ -84,9 +90,13 @@ export function validateWeeklyPlanningSemanticResponseV5(
   rawResponse: string,
   input: WeeklyPlanningSemanticResponseValidationInputV5,
 ): WeeklyPlanningSemanticValidationAttemptV5 {
+  const semanticConversationActs = conversationArchitecturePolicy(
+    input.conversationArchitecture,
+  ).semanticConversationActs;
   const preParseNormalization = normalizeWeeklyPlanningSemanticPreParseV5({
     rawResponse,
     publicStateSummary: input.publicStateSummary,
+    semanticConversationActs,
   });
   const rawCorrectionErrors = validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     preParseNormalization.rawResponse,
@@ -94,6 +104,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   );
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
     preParseNormalization.rawResponse,
+    { conversationActs: semanticConversationActs },
   );
   if (!parsed.document) {
     const errors = uniqueErrors([

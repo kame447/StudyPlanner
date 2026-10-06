@@ -183,6 +183,10 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         conversationRequestSequence: requestSequence,
+        // Pinned once per conversation: a later turn (or a changed preference) never rewrites it.
+        ...(state.conversationArchitecture || !action.conversationArchitecture
+          ? {}
+          : { conversationArchitecture: action.conversationArchitecture }),
         mode: state.mode === 'idle' ? 'collecting_tasks' : state.mode,
         messages: [...state.messages, action.userMessage],
         pendingTurn: action.pending,
@@ -360,6 +364,8 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         conversationRequestSequence: 0,
+        // A reset starts a NEW conversation: it captures the then-current default at its first turn.
+        conversationArchitecture: undefined,
         approvalRecovery: undefined,
         mode: 'idle',
         draftBlocks: [],

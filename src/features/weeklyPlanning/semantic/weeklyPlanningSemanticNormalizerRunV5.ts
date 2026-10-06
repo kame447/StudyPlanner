@@ -5,7 +5,7 @@ import type {
 import type { SemanticDispatchStage } from '../../../../shared/semanticDispatchLedger';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
-import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
+import { semanticProviderResponseFormatV5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
   type WeeklyPlanningSemanticNormalizerDiagnosticsV5,
@@ -90,7 +90,7 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
     return this.callTracked({
       messages,
       temperature: 0,
-      responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+      responseFormat: semanticProviderResponseFormatV5(this.input.conversationArchitecture),
       purpose: 'weekly_planning_semantic_normalizer',
       maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(this.input),
     }, attempt);
@@ -146,7 +146,7 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
   }): WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
     return {
       schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-      jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5.json_schema.name,
+      jsonSchemaName: semanticProviderResponseFormatV5(this.input.conversationArchitecture).json_schema.name,
       normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
       attemptCount: params.attemptCount,
       repairAttempted: params.repairAttempted,

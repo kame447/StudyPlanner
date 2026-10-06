@@ -1,3 +1,4 @@
+import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
@@ -207,6 +208,12 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   conversationOutcome?: WeeklyPlanningStableV5DialogueConversationOutcome | null;
   /** A consultation/advice request was heard but is not answered by this runtime. */
   consultationDeferred?: boolean;
+  /**
+   * Conversation architecture of the turn. Legacy (pre-#488) prompts carry neither the typed
+   * outcome fields nor their instructions and let the renderer read the raw user message.
+   * Omitted = current default.
+   */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;

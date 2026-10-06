@@ -7,6 +7,11 @@ import {
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
 } from './weeklyPlanningCalendarResolver';
 import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
+import {
+  WEEKLY_PLANNING_SEMANTIC_LEGACY_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
 } from './weeklyPlanningSemanticSchemaV5';
 
@@ -115,10 +120,10 @@ function appendEnumValue(params: {
   }
 }
 
-function buildProviderResponseFormatV5(): JsonSchemaResponseFormat {
-  const format = structuredClone(
-    WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-  ) as JsonSchemaResponseFormat;
+function buildProviderResponseFormatV5(
+  base: JsonSchemaResponseFormat,
+): JsonSchemaResponseFormat {
+  const format = structuredClone(base) as JsonSchemaResponseFormat;
   const root = record(format.json_schema.schema, 'schema');
   const rootProperties = record(root.properties, 'schema.properties');
 
@@ -211,4 +216,17 @@ function buildProviderResponseFormatV5(): JsonSchemaResponseFormat {
  * live in JSON Schema instead of being repeated in deterministic text parsing.
  */
 export const WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 =
-  buildProviderResponseFormatV5();
+  buildProviderResponseFormatV5(WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5);
+
+/** Pre-Issue-#488 provider format (legacy architecture): no `conversationActs`. */
+export const WEEKLY_PLANNING_SEMANTIC_LEGACY_PROVIDER_RESPONSE_FORMAT_V5 =
+  buildProviderResponseFormatV5(WEEKLY_PLANNING_SEMANTIC_LEGACY_RESPONSE_FORMAT_V5);
+
+/** The provider response format a conversation of this architecture sends. */
+export function semanticProviderResponseFormatV5(
+  architecture?: WeeklyPlanningConversationArchitecture,
+): JsonSchemaResponseFormat {
+  return conversationArchitecturePolicy(architecture).semanticConversationActs
+    ? WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5
+    : WEEKLY_PLANNING_SEMANTIC_LEGACY_PROVIDER_RESPONSE_FORMAT_V5;
+}

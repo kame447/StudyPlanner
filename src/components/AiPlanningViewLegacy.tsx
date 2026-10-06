@@ -53,6 +53,7 @@ import {
 import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import { plannerRepository } from '../repositories';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
+import { AiPlanningArchitectureEvaluationPanel } from './AiPlanningArchitectureEvaluationPanel';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import {
   buildAiPlanningPreviewDatePages,
@@ -862,6 +863,8 @@ export function AiPlanningView({
                 : activeChat?.title ??
                   '対話で学習計画を作成・必要に応じて調整'}
             </p>
+            {/* Evaluation-only (Issue #488 comparison switch); renders nothing unless the gate is on. */}
+            <AiPlanningArchitectureEvaluationPanel pinnedArchitecture={state.conversationArchitecture} />
           </div>
         </div>
 

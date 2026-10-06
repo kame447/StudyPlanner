@@ -347,6 +347,7 @@ function createRenderInput(params: {
       targetFactId,
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
+    conversationArchitecture: params.input.conversationArchitecture,
     conversationOutcome: conversationOutcomeForRenderer(params.result.interactionOutcome),
     consultationDeferred: params.result.interactionOutcome?.consultationDeferred === true,
     fallbackText: withSelfRepairNotice(

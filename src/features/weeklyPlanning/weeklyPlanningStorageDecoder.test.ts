@@ -38,3 +38,42 @@ describe('decodeWeeklyPlanningStatePayload', () => {
     expect(unknownField.messages).toEqual([]);
   });
 });
+
+describe('decodeWeeklyPlanningStatePayload conversation architecture (Issue #488 switch)', () => {
+  it('round-trips the pinned architecture', () => {
+    for (const architecture of ['legacy_v5', 'interaction_v1'] as const) {
+      const state = { ...validStoredState(), conversationArchitecture: architecture };
+      expect(decodeWeeklyPlanningStatePayload({ version: 2, state }, WEEK_START).conversationArchitecture)
+        .toBe(architecture);
+    }
+  });
+
+  it('hydrates a checkpoint with content but no field as legacy_v5 (never silently migrated)', () => {
+    const state = validStoredState();
+    expect(state).not.toHaveProperty('conversationArchitecture');
+    expect(decodeWeeklyPlanningStatePayload({ version: 2, state }, WEEK_START).conversationArchitecture)
+      .toBe('legacy_v5');
+  });
+
+  it('keeps an empty checkpoint unpinned so it captures the default at its first turn', () => {
+    const decoded = decodeWeeklyPlanningStatePayload(
+      { version: 2, state: createInitialPlanningState(WEEK_START) },
+      WEEK_START,
+    );
+    expect(decoded).not.toHaveProperty('conversationArchitecture');
+  });
+
+  it('fails closed on an invalid architecture value or an extra free-text field', () => {
+    const state = validStoredState();
+    for (const tampered of [
+      { ...state, conversationArchitecture: 'both' },
+      { ...state, conversationArchitecture: 1 },
+      { ...state, conversationArchitecture: 'legacy_v5', conversationArchitectureNote: 'free text' },
+    ]) {
+      const decoded = decodeWeeklyPlanningStatePayload({ version: 2, state: tampered }, WEEK_START);
+      expect(decoded.draftBlocks).toEqual([]);
+      expect(decoded.messages).toEqual([]);
+      expect(decoded).not.toHaveProperty('conversationArchitecture');
+    }
+  });
+});

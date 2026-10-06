@@ -1,3 +1,8 @@
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
+
 export const WEEKLY_PLANNING_SEMANTIC_RULE_RETENTION_BASES_V5 = [
   'language_interpretation',
   'contextual_reference_resolution',
@@ -102,8 +107,13 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
 export type WeeklyPlanningSemanticMeaningRuleIdV5 =
   (typeof WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5)[number]['id'];
 
-export function createWeeklyPlanningSemanticMeaningPolicyV5(): string {
+export function createWeeklyPlanningSemanticMeaningPolicyV5(
+  architecture?: WeeklyPlanningConversationArchitecture,
+): string {
+  // Legacy architecture: the pre-#488 rule set, without the conversation-acts rule.
+  const includeConversationActs = conversationArchitecturePolicy(architecture).semanticConversationActs;
   return WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5
+    .filter((rule) => includeConversationActs || rule.id !== 'conversation_acts')
     .map((rule) => rule.instruction)
     .join('\n');
 }

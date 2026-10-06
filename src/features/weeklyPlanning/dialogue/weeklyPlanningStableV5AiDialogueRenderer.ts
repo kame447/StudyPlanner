@@ -1,3 +1,4 @@
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import { getAiConfig, type AiConfig } from '../../../lib/aiConfig';
 import {
   createOpenAiCompatibleClient,
@@ -36,10 +37,20 @@ export {
   createWeeklyPlanningStableV5DialogueStateSummary,
 } from './weeklyPlanningStableV5DialoguePrompt';
 
-const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
+const REPEATED_QUESTION_REPAIR_PREFIX = [
   '前回候補がrecentConversation内の直前assistant発話と同一でした。',
   'applicationDecisionの意味は変えず、直前と異なる自然な表現にしてください。',
+].join('');
+
+const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
+  REPEATED_QUESTION_REPAIR_PREFIX,
   'applicationDecision.conversationOutcomeがexplain_pending_questionの場合は、必要な情報の目的を短く説明してから尋ね直してください。',
+].join('');
+
+/** Legacy architecture (verbatim pre-#488): the renderer reads the raw message to decide. */
+const LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION = [
+  REPEATED_QUESTION_REPAIR_PREFIX,
+  'ユーザーが質問の意味や理由を尋ねている場合は、必要な情報の目的を短く説明してから尋ね直してください。',
 ].join('');
 
 const GROUNDING_ACK_REPAIR_INSTRUCTION = [
@@ -98,7 +109,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           return initial;
         }
         const repairInstruction = initial.reason === 'repeated_question_text'
-          ? REPEATED_QUESTION_REPAIR_INSTRUCTION
+          ? (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+              ? REPEATED_QUESTION_REPAIR_INSTRUCTION
+              : LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION)
           : initial.reason === 'grounding_contract_mismatch'
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
             : null;

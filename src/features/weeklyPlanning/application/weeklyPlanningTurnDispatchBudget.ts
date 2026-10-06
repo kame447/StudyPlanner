@@ -15,6 +15,8 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
  *                 + (one focused repair 1 | generic repair 1 + no-op completeness 3)
  *                 (a dispatched focused repair always returns a result, so generic repair
  *                 never follows one)
+ * Enforcement belongs to the interaction architecture only; the legacy architecture keeps its
+ * historical retry control flow and the pool merely counts (the measurement uses the count).
  * Exhaustion is reachable only in the no-op completeness and dense audit/retry stages;
  * both keep the already valid document. Renderer: reserve 1, deterministic fallback.
  *
@@ -38,53 +40,110 @@ export function isWeeklyPlanningTurnDispatchBudgetExceeded(error: unknown): bool
   return error instanceof WeeklyPlanningTurnDispatchBudgetExceededError;
 }
 
+/** What one turn actually dispatched to the AI provider; identical for every architecture. */
+export interface WeeklyPlanningTurnDispatchUsage {
+  total: number;
+  semantic: number;
+  renderer: number;
+  limit: number;
+  /** The pool was enforced (interaction architecture); legacy only counts. */
+  enforced: boolean;
+  /** Dispatches the enforced pool refused (always 0 when not enforced). */
+  refused: number;
+}
+
 export interface WeeklyPlanningTurnDispatchBudget {
   readonly limit: number;
   readonly used: number;
-  /** Reserves one dispatch for the stage or throws; called immediately before the request. */
+  readonly enforced: boolean;
+  /**
+   * Counts one dispatch for the stage; called immediately before the request. When the pool
+   * is enforced it throws instead once the stage's ceiling is reached. Counting is
+   * independent of enforcement so both architectures are measured the same way.
+   */
   consume(stage: WeeklyPlanningTurnDispatchStage): void;
+  usage(): WeeklyPlanningTurnDispatchUsage;
 }
 
 export function createWeeklyPlanningTurnDispatchBudget(
   limit: number = WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT,
+  options: { enforce?: boolean } = {},
 ): WeeklyPlanningTurnDispatchBudget {
+  const enforced = options.enforce ?? true;
   let used = 0;
+  let refused = 0;
+  const byStage: Record<WeeklyPlanningTurnDispatchStage, number> = { semantic: 0, renderer: 0 };
   return {
     limit,
+    enforced,
     get used() { return used; },
     consume(stage) {
       const ceiling = stage === 'renderer' ? limit : limit - WEEKLY_PLANNING_TURN_AI_RENDERER_RESERVE;
-      if (used >= ceiling) throw new WeeklyPlanningTurnDispatchBudgetExceededError(stage, limit);
+      if (enforced && used >= ceiling) {
+        refused += 1;
+        throw new WeeklyPlanningTurnDispatchBudgetExceededError(stage, limit);
+      }
       used += 1;
+      byStage[stage] += 1;
+    },
+    usage() {
+      return { total: used, ...byStage, limit, enforced, refused };
     },
   };
 }
 
 const MAX_TRACKED_TURNS = 64;
 const budgets = new Map<string, WeeklyPlanningTurnDispatchBudget>();
+const finishedUsage = new Map<string, WeeklyPlanningTurnDispatchUsage>();
+
+function trimOldest<T>(map: Map<string, T>): void {
+  while (map.size > MAX_TRACKED_TURNS) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 
 /** Starts a fresh pool for the turn (called once at turn ingress). */
-export function beginWeeklyPlanningTurnDispatchBudget(turnId: string): WeeklyPlanningTurnDispatchBudget {
-  const budget = createWeeklyPlanningTurnDispatchBudget();
+export function beginWeeklyPlanningTurnDispatchBudget(
+  turnId: string,
+  options: { enforce?: boolean } = {},
+): WeeklyPlanningTurnDispatchBudget {
+  const budget = createWeeklyPlanningTurnDispatchBudget(undefined, options);
   budgets.set(turnId, budget);
-  while (budgets.size > MAX_TRACKED_TURNS) {
-    const oldest = budgets.keys().next().value;
-    if (oldest === undefined) break;
-    budgets.delete(oldest);
-  }
+  finishedUsage.delete(turnId);
+  trimOldest(budgets);
   return budget;
 }
 
-/** The turn's pool; created on demand for callers that enter below turn ingress. */
+/** The turn's pool; created on demand (enforced) for callers that enter below turn ingress. */
 export function getWeeklyPlanningTurnDispatchBudget(turnId: string): WeeklyPlanningTurnDispatchBudget {
   return budgets.get(turnId) ?? beginWeeklyPlanningTurnDispatchBudget(turnId);
 }
 
+/** Closes the turn's pool and keeps its final usage until the measurement collector takes it. */
 export function endWeeklyPlanningTurnDispatchBudget(turnId: string): void {
+  const budget = budgets.get(turnId);
+  if (!budget) return;
+  finishedUsage.set(turnId, budget.usage());
+  trimOldest(finishedUsage);
   budgets.delete(turnId);
 }
 
-/** Wraps the provider client so every dispatch of the turn draws from one pool. */
+/**
+ * Final dispatch usage of the turn (closing a still-open pool), or null when the turn never
+ * reached a provider-capable stage. Taking removes the record.
+ */
+export function takeWeeklyPlanningTurnDispatchUsage(
+  turnId: string,
+): WeeklyPlanningTurnDispatchUsage | null {
+  endWeeklyPlanningTurnDispatchBudget(turnId);
+  const usage = finishedUsage.get(turnId) ?? null;
+  finishedUsage.delete(turnId);
+  return usage;
+}
+
+/** Wraps the provider client so every dispatch of the turn is counted (and, if enforced, pooled). */
 export function withWeeklyPlanningTurnDispatchBudget(
   client: OpenAiCompatibleClient,
   budget: WeeklyPlanningTurnDispatchBudget,

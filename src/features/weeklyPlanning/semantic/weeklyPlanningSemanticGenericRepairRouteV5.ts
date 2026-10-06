@@ -65,6 +65,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
       recentConversation: params.run.input.recentConversation,
       publicStateSummary: params.run.input.publicStateSummary,
       committedGraph: params.run.input.committedGraph,
+      conversationArchitecture: params.run.input.conversationArchitecture,
     },
   );
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);

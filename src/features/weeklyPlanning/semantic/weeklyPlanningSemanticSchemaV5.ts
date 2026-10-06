@@ -360,8 +360,8 @@ const conversationActSchema = objectSchema(
   },
 );
 
-const rootSchema = objectSchema(
-  [
+function buildRootSchema(options: { conversationActs: boolean }) {
+  const required = [
     'schemaVersion',
     'planningIntent',
     'planningWindow',
@@ -370,12 +370,12 @@ const rootSchema = objectSchema(
     'availabilityDeclarations',
     'constraintSourceRequests',
     'userContextFacts',
-    'conversationActs',
+    ...(options.conversationActs ? ['conversationActs'] : []),
     'uncertainties',
     'corrections',
     'decisions',
-  ],
-  {
+  ];
+  return objectSchema(required, {
     schemaVersion: {
       type: 'string',
       const: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -387,18 +387,31 @@ const rootSchema = objectSchema(
     availabilityDeclarations: arraySchema(availabilityDeclarationSchema),
     constraintSourceRequests: arraySchema(constraintSourceRequestSchema),
     userContextFacts: arraySchema(userContextFactSchema),
-    conversationActs: arraySchema(conversationActSchema),
+    ...(options.conversationActs ? { conversationActs: arraySchema(conversationActSchema) } : {}),
     uncertainties: arraySchema(uncertaintySchema),
     corrections: arraySchema(correctionSchema),
     decisions: arraySchema(decisionSchema),
-  },
-);
+  });
+}
 
-export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'weekly_planning_semantic_document_v5',
-    strict: true,
-    schema: rootSchema,
-  },
-};
+function responseFormat(options: { conversationActs: boolean }): JsonSchemaResponseFormat {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'weekly_planning_semantic_document_v5',
+      strict: true,
+      schema: buildRootSchema(options),
+    },
+  };
+}
+
+/** Current (interaction architecture) provider schema: includes typed `conversationActs`. */
+export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat =
+  responseFormat({ conversationActs: true });
+
+/**
+ * Pre-Issue-#488 provider schema (legacy architecture): the same document without
+ * `conversationActs`. Must stay byte-identical to the schema at ee07697e.
+ */
+export const WEEKLY_PLANNING_SEMANTIC_LEGACY_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat =
+  responseFormat({ conversationActs: false });

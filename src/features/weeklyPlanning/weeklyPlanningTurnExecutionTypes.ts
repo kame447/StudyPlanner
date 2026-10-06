@@ -19,6 +19,7 @@ import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPla
 import type { WeeklyPlanningDialogueRendererTrace } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
+import type { WeeklyPlanningConversationArchitecture } from './weeklyPlanningConversationArchitecture';
 
 export interface WeeklyPlanningTurnExecutionInput {
   previousState?: PlanningIntakeState;
@@ -47,6 +48,11 @@ export interface WeeklyPlanningTurnExecutionInput {
   requestContext?: WeeklyPlanningTurnRequestContext;
   /** PlanningState.revision at turn start; binds the previous question presentation. */
   inputStateRevision?: number;
+  /**
+   * Architecture the conversation is pinned to (Issue #488). Resolved once by the turn
+   * controller; omitted only by pure callers, which then get the current default.
+   */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }
 
 export type WeeklyPlanningTurnFailureCode =

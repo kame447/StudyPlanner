@@ -17,6 +17,7 @@ import {
 import {
   projectWeeklyPlanningProvisionalCapacityPreviewV5,
 } from './weeklyPlanningStableV5ProvisionalCapacityPreview';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import {
   classifyWeeklyPlanningInteraction,
   planWeeklyPlanningInteraction,
@@ -77,12 +78,16 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   // Interaction layer: typed conversation acts + machine state decide what kind of turn
   // this was. It may redirect which open question is presented (a named topic) and never
   // touches authorization, readiness, the graph or the preview decision.
-  const interactionPlan = planWeeklyPlanningInteraction({
-    acts: semantic.normalization.document?.conversationActs,
-    graph: semantic.graph,
-    evaluation,
-  });
-  const routingEvaluation = interactionPlan.dialogueQuestionOverride
+  // Legacy architecture bypasses the layer entirely: no acts, no override, no outcome.
+  const interactionPlan = conversationArchitecturePolicy(input.conversationArchitecture)
+    .interactionOutcome
+    ? planWeeklyPlanningInteraction({
+        acts: semantic.normalization.document?.conversationActs,
+        graph: semantic.graph,
+        evaluation,
+      })
+    : null;
+  const routingEvaluation = interactionPlan?.dialogueQuestionOverride
     ? {
         ...evaluation,
         dialogue: {
@@ -103,12 +108,16 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return {
       ...output,
-      interactionOutcome: classifyWeeklyPlanningInteraction({
-        plan: interactionPlan,
-        output,
-        previousQuestion: input.previousState?.lastQuestionContext,
-        presentation: semanticTurn.pendingQuestionPresentation,
-      }),
+      ...(interactionPlan
+        ? {
+            interactionOutcome: classifyWeeklyPlanningInteraction({
+              plan: interactionPlan,
+              output,
+              previousQuestion: input.previousState?.lastQuestionContext,
+              presentation: semanticTurn.pendingQuestionPresentation,
+            }),
+          }
+        : {}),
       observability: semanticObservability,
     };
   }
@@ -121,10 +130,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     retainPartialCapacityEvidence: Boolean(evaluation.provisionalTimeboxProjection.source),
   });
 
-  const applyOutcome = {
-    kind: 'apply' as const,
-    consultationDeferred: interactionPlan.acts.consultation,
-  };
+  const applyOutcome = interactionPlan
+    ? { kind: 'apply' as const, consultationDeferred: interactionPlan.acts.consultation }
+    : undefined;
   const provisionalCapacityOutput = projectWeeklyPlanningProvisionalCapacityPreviewV5({
     input,
     evaluation,
@@ -143,7 +151,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   return {
     ...output,
-    interactionOutcome: applyOutcome,
+    ...(applyOutcome ? { interactionOutcome: applyOutcome } : {}),
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

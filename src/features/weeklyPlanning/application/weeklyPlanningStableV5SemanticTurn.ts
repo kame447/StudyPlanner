@@ -19,6 +19,11 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { createWeeklyPlanningLegacyFailureOutput } from './weeklyPlanningLegacyFailurePresentation';
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecturePolicy,
+} from '../weeklyPlanningConversationArchitecture';
 import {
   getWeeklyPlanningTurnDispatchBudget,
   withWeeklyPlanningTurnDispatchBudget,
@@ -61,19 +66,26 @@ export type WeeklyPlanningStableV5SemanticTurnResult =
 
 function semanticFailureOutput(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
+  policy: WeeklyPlanningConversationArchitecturePolicy;
   branch: 'provider_failure' | 'normalization_rejected' | 'canonicalization_rejected';
   failure: WeeklyPlanningRecoveryFailure;
   graph: WeeklyPlanningFactGraphV5;
   pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
   basis: unknown;
 }): WeeklyPlanningTurnExecutionResult {
-  const output = createWeeklyPlanningConversationRecoveryOutput({
-    failure: params.failure,
-    previousState: params.input.previousState,
-    userText: params.input.userText,
-    graph: params.graph,
-    pendingQuestionPresentation: params.pendingQuestionPresentation,
-  });
+  const output = params.policy.conversationalFailureRecovery
+    ? createWeeklyPlanningConversationRecoveryOutput({
+        failure: params.failure,
+        previousState: params.input.previousState,
+        userText: params.input.userText,
+        graph: params.graph,
+        pendingQuestionPresentation: params.pendingQuestionPresentation,
+      })
+    : createWeeklyPlanningLegacyFailureOutput({
+        branch: params.branch,
+        previousState: params.input.previousState,
+        userText: params.input.userText,
+      });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
     stage: 'runtime_branch_selected',
@@ -112,6 +124,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
   }
 
+  const architecturePolicy = conversationArchitecturePolicy(input.conversationArchitecture);
   const temporal = stableV5RequestContextForInput(input);
   const requestContext = temporal.context;
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({
@@ -154,6 +167,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     messages: input.messages,
     previousState: input.previousState,
     pendingQuestionPresentation,
+    freshPendingQuestionBinding: architecturePolicy.freshPendingQuestionBinding,
     ownerId: input.userId,
     currentDate: requestContext.currentDate,
     userText: input.userText,
@@ -175,6 +189,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       requestContext,
       requestContextSource: temporal.source,
       pendingQuestionPresentation: pendingQuestionPresentation.status,
+      conversationArchitecture: architecturePolicy.architecture,
       resolvedDateExpressions: resolvedDateExpressionsBefore,
       resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
       fallbackHorizon,
@@ -212,6 +227,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     recentConversation,
     publicStateSummary: stateSummary,
     schedulerContext: initialSchedulerContext,
+    conversationArchitecture: architecturePolicy.architecture,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
@@ -229,6 +245,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       status: 'failure',
       output: semanticFailureOutput({
         input,
+        policy: architecturePolicy,
         branch: 'provider_failure',
         failure: 'provider',
         graph: runtimeSession.graph,
@@ -242,6 +259,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       status: 'failure',
       output: semanticFailureOutput({
         input,
+        policy: architecturePolicy,
         branch: 'normalization_rejected',
         failure: 'semantic',
         graph: runtimeSession.graph,
@@ -255,6 +273,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       status: 'failure',
       output: semanticFailureOutput({
         input,
+        policy: architecturePolicy,
         branch: 'canonicalization_rejected',
         failure: 'semantic',
         graph: runtimeSession.graph,

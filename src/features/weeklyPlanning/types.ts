@@ -3,6 +3,7 @@ import type {
   WeeklyPlanningMemoryPaceObservationSourceV1,
 } from '../../types/domain';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type { WeeklyPlanningConversationArchitecture } from './weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
@@ -103,6 +104,13 @@ export interface PlanningState {
   weekStartDate: string;
   revision: number;
   conversationRequestSequence?: number;
+  /**
+   * Conversation architecture this conversation was started under (Issue #488). Pinned once,
+   * at the first admitted turn, and never changed afterwards; absent while the conversation is
+   * empty. A stored conversation with content but no value predates the field and runs as
+   * `legacy_v5`. It selects interpretation/presentation only, never planning authority.
+   */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
   mode: WeeklyPlanningMode;
   draftBlocks: WeeklyPlanDraftBlock[];
   previewCandidates?: WeeklyDraftCandidate[];
@@ -134,6 +142,8 @@ export type WeeklyPlanningAction =
       pending: WeeklyPlanningPendingTurn;
       requestSequence?: number;
       userMessage: WeeklyPlanningMessage;
+      /** Architecture for this turn; pins the conversation when it has none yet. */
+      conversationArchitecture?: WeeklyPlanningConversationArchitecture;
     }
   | {
       type: 'commit_turn';

@@ -43,6 +43,7 @@ function validationState(run: WeeklyPlanningSemanticNormalizerRunV5) {
     recentConversation: run.input.recentConversation,
     publicStateSummary: run.input.publicStateSummary,
     committedGraph: run.input.committedGraph,
+    conversationArchitecture: run.input.conversationArchitecture,
   };
 }
 

@@ -405,13 +405,24 @@ function validateConversationActs(value: unknown): string[] {
   return errors;
 }
 
+export interface WeeklyPlanningSemanticValueOptionsV5 {
+  /**
+   * `false` reproduces the pre-Issue-#488 document contract (legacy architecture):
+   * `conversationActs` is not an extension key, so the base validator rejects it as unknown.
+   */
+  conversationActs?: boolean;
+}
+
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
+  options: WeeklyPlanningSemanticValueOptionsV5 = {},
 ): WeeklyPlanningSemanticValidationResultV5 {
   if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
+  const acceptConversationActs = options.conversationActs ?? true;
   const weeklyValue = Object.fromEntries(
-    Object.entries(value).filter(([key]) => key !== 'userContextFacts' && key !== 'conversationActs'),
+    Object.entries(value).filter(([key]) =>
+      key !== 'userContextFacts' && !(acceptConversationActs && key === 'conversationActs')),
   );
   const baseWeeklyValue = stripSemanticExtensions(weeklyValue);
   const base = validateBaseSemanticValueV5(baseWeeklyValue);
@@ -429,7 +440,9 @@ export function validateWeeklyPlanningSemanticValueV5(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
-  const actErrors = validateConversationActs(value.conversationActs ?? []);
+  const actErrors = acceptConversationActs
+    ? validateConversationActs(value.conversationActs ?? [])
+    : [];
   const structuralErrors = [
     ...baseErrors,
     ...existingPublicIdErrors,
@@ -456,6 +469,7 @@ export function validateWeeklyPlanningSemanticValueV5(
 
 export function parseWeeklyPlanningSemanticDocumentV5(
   content: string,
+  options: WeeklyPlanningSemanticValueOptionsV5 = {},
 ): WeeklyPlanningSemanticValidationResultV5 {
   let value: unknown;
   try {
@@ -463,5 +477,5 @@ export function parseWeeklyPlanningSemanticDocumentV5(
   } catch {
     return { document: null, errors: ['document:invalid-json'] };
   }
-  return validateWeeklyPlanningSemanticValueV5(value);
+  return validateWeeklyPlanningSemanticValueV5(value, options);
 }

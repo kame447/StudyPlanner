@@ -8,6 +8,7 @@ import type {
 } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../types';
+import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 
@@ -32,4 +33,6 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   requestContext: WeeklyPlanningTurnRequestContext;
   /** PlanningState.revision at turn start; binds the previous question presentation. */
   inputStateRevision?: number;
+  /** Pinned conversation architecture; omitted only by pure callers (current default). */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }

@@ -1,5 +1,9 @@
 import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalRecovery, isWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
 import type { PlanningState } from '../types';
+import {
+  hydratedConversationArchitecture,
+  isWeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
 import { validC5SessionRecords } from './c5LocalSelection/basis';
@@ -152,6 +156,7 @@ function isPlanningState(
     'weekStartDate',
     'revision',
     'conversationRequestSequence',
+    'conversationArchitecture',
     'mode',
     'draftBlocks',
     'approvalRecovery',
@@ -174,6 +179,8 @@ function isPlanningState(
     && isNonNegativeInteger(value.revision)
     && (value.conversationRequestSequence === undefined
       || isNonNegativeInteger(value.conversationRequestSequence))
+    && (value.conversationArchitecture === undefined
+      || isWeeklyPlanningConversationArchitecture(value.conversationArchitecture))
     && modes.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.length <= MAX_DRAFT_BLOCKS
@@ -352,6 +359,8 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       planningState: {
         ...value.planningState,
         conversationRequestSequence: value.planningState.conversationRequestSequence ?? 0,
+        // Pre-field checkpoints were authored under the legacy architecture.
+        ...hydratedConversationArchitecture(value.planningState),
         pendingTurn: undefined,
         pendingApproval: undefined,
       },

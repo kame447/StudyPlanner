@@ -71,6 +71,29 @@ function effortMeasurementFromIntent(
  * machine pending question and no short-answer shortcut can bind it. The revision is
  * the one committed with the presenting message, not the current graph.
  */
+/**
+ * Legacy architecture (verbatim pre-#488 behaviour): the previous machine question is
+ * offered as-is and stamped with the CURRENT graph revision. Nothing checks whether the
+ * user was shown it or whether it is still the latest message.
+ */
+function pendingQuestionFromRawState(
+  state: PlanningIntakeState | undefined,
+  graphRevision: number,
+): Record<string, unknown> | null {
+  const context = state?.lastQuestionContext;
+  const questionCode = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
+  if (!context || !questionCode) return null;
+  return {
+    actionId: context.actionId ?? null,
+    questionCode,
+    targetFactId: context.topicId ?? null,
+    graphRevision,
+    effortMeasurement: effortMeasurementFromIntent(context.intent),
+    estimateForWorkloadFactId: context.estimateForWorkloadFactId ?? null,
+    questionBasis: context.questionBasis ?? null,
+  };
+}
+
 function pendingQuestionFromPresentation(
   presentation: WeeklyPlanningQuestionPresentationFreshness,
 ): Record<string, unknown> | null {
@@ -120,6 +143,11 @@ export function createStableV5SemanticPublicStateSummary(params: {
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
   pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
+  /**
+   * `true` (interaction architecture): only a fresh presentation is offered as the pending
+   * question. `false` (legacy architecture): the raw previous machine question is offered.
+   */
+  freshPendingQuestionBinding?: boolean;
   ownerId?: string;
   currentDate?: string;
   userText?: string;
@@ -130,7 +158,9 @@ export function createStableV5SemanticPublicStateSummary(params: {
     runtime: 'weekly-planning-stable-v5',
     graphRevision: params.graph.revision,
     previousCompatibilityStatus: params.previousState?.status ?? null,
-    pendingQuestion: pendingQuestionFromPresentation(params.pendingQuestionPresentation),
+    pendingQuestion: params.freshPendingQuestionBinding === false
+      ? pendingQuestionFromRawState(params.previousState, params.graph.revision)
+      : pendingQuestionFromPresentation(params.pendingQuestionPresentation),
     learningStrategyProposals: learningStrategyProposalsFromState(params.previousState),
     groundingRecords: (params.previousState?.groundingRecords ?? [])
       .filter((record) => record.status !== 'rejected')

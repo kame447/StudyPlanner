@@ -189,6 +189,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         publicStateSummary,
         committedGraph: graph,
         traceRequestId: input.turnId,
+        conversationArchitecture: input.conversationArchitecture,
       });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,

@@ -158,7 +158,10 @@ function isEmptyArray(value: unknown): boolean {
   return Array.isArray(value) && value.length === 0;
 }
 
-function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormalizationResult {
+function normalizeEmptySemanticDeltaEnvelopeV5(
+  rawResponse: string,
+  options: { conversationActs: boolean },
+): RawNormalizationResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawResponse);
@@ -207,7 +210,7 @@ function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormaliz
       availabilityDeclarations: [],
       constraintSourceRequests: [],
       userContextFacts: [],
-      conversationActs: [],
+      ...(options.conversationActs ? { conversationActs: [] } : {}),
       uncertainties: [],
       corrections: [],
       decisions: [],
@@ -227,6 +230,8 @@ function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormaliz
 export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
   rawResponse: string;
   publicStateSummary?: Record<string, unknown>;
+  /** Legacy architecture documents have no `conversationActs`; default is the current schema. */
+  semanticConversationActs?: boolean;
 }): WeeklyPlanningSemanticPreParseNormalizationResultV5 {
   let rawResponse = params.rawResponse;
   const repairs: string[] = [];
@@ -249,7 +254,9 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
   };
 
   applyStage('empty_semantic_delta_envelope', (value) =>
-    normalizeEmptySemanticDeltaEnvelopeV5(value));
+    normalizeEmptySemanticDeltaEnvelopeV5(value, {
+      conversationActs: params.semanticConversationActs ?? true,
+    }));
   applyStage('planning_window_wire', (value) =>
     normalizePlanningWindowCanonicalRawV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>

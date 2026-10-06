@@ -17,6 +17,10 @@ import type {
   WeeklyPlanningReasoningKey,
 } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
+import {
+  hydratedConversationArchitecture,
+  isWeeklyPlanningConversationArchitecture,
+} from './weeklyPlanningConversationArchitecture';
 
 const STORAGE_VERSION = 2;
 const MODES = new Set(['idle', 'collecting_tasks', 'draft_created', 'awaiting_approval', 'confirmed']);
@@ -625,7 +629,8 @@ function sanitizeStoredPlanningState(value: unknown): unknown {
 function isPlanningState(value: unknown): value is PlanningState {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
-      'weekStartDate', 'revision', 'conversationRequestSequence', 'mode',
+      'weekStartDate', 'revision', 'conversationRequestSequence',
+      'conversationArchitecture', 'mode',
       'draftBlocks', 'previewCandidates', 'messages', 'approvalRecovery',
       'intakeState', 'lastAssistantMessage', 'updatedAt',
     ])) {
@@ -634,6 +639,8 @@ function isPlanningState(value: unknown): value is PlanningState {
   return typeof value.weekStartDate === 'string'
     && isNonNegativeInteger(value.revision)
     && isNonNegativeInteger(value.conversationRequestSequence)
+    && (value.conversationArchitecture === undefined
+      || isWeeklyPlanningConversationArchitecture(value.conversationArchitecture))
     && MODES.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.every(isDraftBlock)
@@ -695,6 +702,9 @@ export function decodeWeeklyPlanningStatePayload(
     ...storedState,
     weekStartDate,
     conversationRequestSequence: storedState.conversationRequestSequence ?? 0,
+    // A checkpoint written before the field existed was authored under the legacy
+    // architecture; it is never silently migrated into interaction semantics.
+    ...hydratedConversationArchitecture(storedState),
     pendingTurn: undefined,
     pendingApproval: undefined,
     draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),

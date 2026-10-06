@@ -10,7 +10,12 @@ import {
 import {
   beginWeeklyPlanningTurnDispatchBudget,
   endWeeklyPlanningTurnDispatchBudget,
+  getWeeklyPlanningTurnDispatchBudget,
 } from './weeklyPlanningTurnDispatchBudget';
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -29,9 +34,23 @@ const FAILURE_CODE_BY_STATUS: Record<
   canonicalization_rejected: 'stable_v5_canonicalization_rejected',
 };
 
-function beginTurnResultProjection(traceRequestId: string): void {
+function beginTurnResultProjection(
+  traceRequestId: string,
+  architecture?: WeeklyPlanningConversationArchitecture,
+): void {
   takeWeeklyPlanningStableV5FailureDiagnostics(traceRequestId);
-  beginWeeklyPlanningTurnDispatchBudget(traceRequestId);
+  // Every architecture counts its dispatches (measurement); only interaction enforces the pool.
+  beginWeeklyPlanningTurnDispatchBudget(traceRequestId, {
+    enforce: conversationArchitecturePolicy(architecture).enforceTurnDispatchBudget,
+  });
+}
+
+/** Enum/number-only attribution of the turn's architecture and actual provider dispatches. */
+function architectureEvidence(input: WeeklyPlanningTurnExecutionInput) {
+  return {
+    conversationArchitecture: conversationArchitecturePolicy(input.conversationArchitecture).architecture,
+    aiDispatchUsage: getWeeklyPlanningTurnDispatchBudget(input.traceRequestId).usage(),
+  };
 }
 
 async function projectSuccessfulTurn(params: {
@@ -45,6 +64,7 @@ async function projectSuccessfulTurn(params: {
     data: {
       branch: 'no_recorded_failure',
       criteria: 'failure diagnostics repository returned null',
+      ...architectureEvidence(params.input),
       projectedResult,
     },
   });
@@ -56,19 +76,26 @@ function projectFailedTurn(params: {
   result: WeeklyPlanningTurnExecutionResult;
   recordedFailure: WeeklyPlanningStableV5RecordedFailure;
 }): WeeklyPlanningTurnExecutionResult {
+  const recovery = conversationArchitecturePolicy(
+    params.input.conversationArchitecture,
+  ).conversationalFailureRecovery;
   const projectedResult: WeeklyPlanningTurnExecutionResult = {
     ...params.result,
-    // A failed turn retains the accepted machine state, questions included. With no
-    // previous state nothing is retained and the neutral recovery state is reported.
-    state: params.input.previousState ?? {
-      ...params.result.state,
-      status: 'revision_pending',
-      missing: [],
-      questions: [],
-      lastQuestionContext: undefined,
-      shouldCreateDraft: false,
-      draftGenerationIntent: 'not_requested',
-    },
+    // Interaction architecture: a failed turn retains the accepted machine state, questions
+    // included (with no previous state the neutral recovery state is reported).
+    // Legacy architecture: the pre-#488 projection (questions/draft authorization reported
+    // cleared; the committed state itself is untouched by a failed turn either way).
+    state: recovery && params.input.previousState
+      ? params.input.previousState
+      : {
+          ...params.result.state,
+          status: 'revision_pending',
+          missing: [],
+          questions: [],
+          lastQuestionContext: undefined,
+          shouldCreateDraft: false,
+          draftGenerationIntent: 'not_requested',
+        },
     failure: {
       code: FAILURE_CODE_BY_STATUS[params.recordedFailure.status],
       userMessage: params.result.message,
@@ -95,11 +122,19 @@ function projectFailedTurn(params: {
     severity: 'error',
     data: {
       branch: 'recorded_failure_projected',
-      criteria: {
-        recordedFailureExists: true,
-        machineStateRetained: params.input.previousState !== undefined,
-        authoritativeStateChanged: false,
-      },
+      criteria: recovery
+        ? {
+            recordedFailureExists: true,
+            machineStateRetained: params.input.previousState !== undefined,
+            authoritativeStateChanged: false,
+          }
+        : {
+            recordedFailureExists: true,
+            projectedStatus: 'revision_pending',
+            questionsCleared: true,
+            draftAuthorizationCleared: true,
+          },
+      ...architectureEvidence(params.input),
       recordedFailure: params.recordedFailure,
       originalResult: params.result,
       projectedResult,

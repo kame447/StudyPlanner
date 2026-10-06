@@ -18,6 +18,16 @@ import type { C5LocalSelectionOptions, C5SelectedTurn } from './application/c5Lo
 import { selectC5Turn } from './application/c5LocalSelection/selection';
 import { captureC5Question, decodeC5Ledger } from './application/c5LocalSelection/basis';
 import { commitC5ControlledTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
+import {
+  startWeeklyPlanningTurnMeasurement,
+  type WeeklyPlanningMeasurementClock,
+} from './application/weeklyPlanningTurnMeasurement';
+import {
+  conversationArchitecturePolicy,
+  resolveConversationArchitectureForTurn,
+  type WeeklyPlanningConversationArchitecture,
+} from './weeklyPlanningConversationArchitecture';
+import { resolveNewConversationArchitecture } from './weeklyPlanningConversationArchitecturePreference';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -58,6 +68,8 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     userText: string;
     supplementalContext?: string;
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+    /** Architecture this conversation is pinned to (decided once per turn, below). */
+    conversationArchitecture: WeeklyPlanningConversationArchitecture;
   }): Promise<WeeklyPlanningTurnExecutionResult>;
   onStartedTurn?(params: {
     snapshot: PlanningState;
@@ -83,6 +95,8 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     assistantMessage: WeeklyPlanningMessage;
   }): void | Promise<void>;
   now?: () => string;
+  /** Monotonic millisecond clock for the turn measurement; defaults to `performance.now`. */
+  measurementClock?: WeeklyPlanningMeasurementClock;
   /** Dormant PoC: explicit consumer/provider injection only; no production default. */
   c5LocalSelection?: C5LocalSelectionOptions;
 }
@@ -264,11 +278,28 @@ export async function submitWeeklyPlanningControlledTurn(
     baseRevision: snapshot.revision,
     startedAt: createdAt,
   };
+  // The single point where a turn's architecture is decided: the pinned mode of this
+  // conversation, legacy for pre-field content, or - for an empty conversation - the current
+  // default, which the reducer then pins for the rest of the conversation.
+  const conversationArchitecture = resolveConversationArchitectureForTurn(
+    snapshot,
+    resolveNewConversationArchitecture(),
+  );
+  const architecturePolicy = conversationArchitecturePolicy(conversationArchitecture);
+  const measurement = startWeeklyPlanningTurnMeasurement({
+    architecture: conversationArchitecture,
+    requestId: pending.requestId,
+    turnId: pending.turnId,
+    previousState: snapshot.intakeState,
+    clock: params.measurementClock,
+    enforcesBudget: architecturePolicy.enforceTurnDispatchBudget,
+  });
   const begun = params.dispatch({
     type: 'begin_turn',
     pending,
     requestSequence: params.session.requestSequence,
     userMessage: createTurnMessage(envelope, 'user', userText, createdAt),
+    conversationArchitecture,
   });
   if (!isSameWeeklyPlanningPendingTurn(begun.pendingTurn, pending)) {
     return { accepted: false, draftCandidates: [] };
@@ -292,6 +323,7 @@ export async function submitWeeklyPlanningControlledTurn(
       userText,
       supplementalContext: supplementalContext || undefined,
       selectedStarterTarget: params.selectedStarterTarget,
+      conversationArchitecture,
     });
     result = executionResult;
     if (executionResult.failure) {
@@ -308,6 +340,7 @@ export async function submitWeeklyPlanningControlledTurn(
       const outcome = commitC5ControlledTurn({ ownerId: params.ownerId, snapshot, begun, pending,
         userText, selected: c5Selected, options: params.c5LocalSelection, result: executionResult,
         assistantMessage, getState: params.getState, dispatch: params.dispatch });
+      measurement.finish({ status: outcome.accepted ? 'committed' : 'discarded', result: executionResult });
       if (outcome.accepted) {
         await runBestEffort(() => params.onCommittedTurn?.({ ...context, committed: params.getState(), assistantMessage }));
       } else if (!outcome.recoveryRequired) {
@@ -317,6 +350,7 @@ export async function submitWeeklyPlanningControlledTurn(
       return outcome;
     }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+      measurement.finish({ status: 'discarded', result: executionResult });
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
@@ -325,6 +359,7 @@ export async function submitWeeklyPlanningControlledTurn(
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       preparedCommit?.rollback();
       preparedCommit = undefined;
+      measurement.finish({ status: 'discarded', result: executionResult });
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
@@ -366,6 +401,7 @@ export async function submitWeeklyPlanningControlledTurn(
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
+    measurement.finish({ status: accepted ? 'committed' : 'discarded', result: executionResult });
     if (!accepted) {
       preparedCommit?.rollback();
       preparedCommit = undefined;
@@ -390,6 +426,7 @@ export async function submitWeeklyPlanningControlledTurn(
     };
   } catch (error) {
     if (hasC5Recovery(params.ownerId, pending.conversationId)) {
+      measurement.finish({ status: 'discarded', result });
       return { accepted: false, draftCandidates: [], recoveryRequired: true };
     }
     if (preparedCommit) {
@@ -407,6 +444,7 @@ export async function submitWeeklyPlanningControlledTurn(
       }));
     }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+      measurement.finish({ status: 'discarded', result: failedResult });
       return { accepted: false, draftCandidates: [] };
     }
     const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
@@ -418,7 +456,9 @@ export async function submitWeeklyPlanningControlledTurn(
     // machine question, rebind that question to this message so the next short reply
     // keeps its target; otherwise the carried binding is removed (it can no longer be fresh).
     // The retained state is the turn-start snapshot, never the execution result.
-    const retainedIntakeState = failedResult?.failure && snapshot.intakeState
+    const retainedIntakeState = architecturePolicy.conversationalFailureRecovery
+      && failedResult?.failure
+      && snapshot.intakeState
       ? (() => {
           const carriedC5 = snapshot.intakeState.lastQuestionContext?.c5;
           const bound = bindWeeklyPlanningQuestionPresentation({
@@ -439,6 +479,12 @@ export async function submitWeeklyPlanningControlledTurn(
       pending,
       assistantMessage,
       ...(retainedIntakeState ? { intakeState: retainedIntakeState } : {}),
+    });
+    measurement.finish({
+      status: 'failed',
+      result: failedResult,
+      failureCode: failedResult?.failure?.code
+        ?? (error instanceof Error ? error.name : 'unknown_error'),
     });
     await runBestEffort(() => params.onFailedTurn?.({
       snapshot,

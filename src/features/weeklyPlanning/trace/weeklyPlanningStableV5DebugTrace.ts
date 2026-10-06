@@ -429,6 +429,7 @@ function projectStageData(stage: string, value: unknown): unknown {
         graphRevision: numberValue(data.graphRevision),
         // Freshness status of the previous question's presentation (status only, never the binding).
         pendingQuestionPresentation: stringValue(data.pendingQuestionPresentation),
+        conversationArchitecture: stringValue(data.conversationArchitecture),
         selectedDate: stringValue(data.selectedDate),
         fallbackHorizon: compactUnknown(data.fallbackHorizon),
         recentTurnLimit: numberValue(data.recentTurnLimit),
@@ -551,6 +552,9 @@ function projectStageData(stage: string, value: unknown): unknown {
     case 'turn_executor_result_projected':
       return {
         branch: stringValue(data.branch),
+        // Attribution for architecture comparison: enum + counters only, no text.
+        conversationArchitecture: stringValue(data.conversationArchitecture),
+        aiDispatchUsage: compactUnknown(data.aiDispatchUsage),
         criteria: compactUnknown(data.criteria),
         recordedFailure: compactUnknown(data.recordedFailure),
         projectedResult: outputProjection(data.projectedResult),

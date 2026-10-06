@@ -1,3 +1,4 @@
+import { WeeklyPlanningArchitectureSetting } from './WeeklyPlanningArchitectureSetting';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Brain,
@@ -312,6 +313,7 @@ export function AppSettingsDialog({
                   <p className="detail-note">
                     週間計画はStable V5経路だけを使用します。
                   </p>
+                  <WeeklyPlanningArchitectureSetting />
                 </div>
               </section>
 

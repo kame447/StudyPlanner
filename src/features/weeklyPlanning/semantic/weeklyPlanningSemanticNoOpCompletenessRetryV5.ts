@@ -1,5 +1,9 @@
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
@@ -18,7 +22,7 @@ import {
   semanticNormalizerErrorMessage,
   type WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
-import { WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
+import { semanticProviderResponseFormatV5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
 function completenessRetryInstruction(params: {
@@ -127,6 +131,7 @@ function providerFailureDuringCompletenessRetry(params: {
 export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }): boolean {
   if (!hasMachinePendingQuestion(params.publicStateSummary)) return false;
   const document = params.document;
@@ -134,7 +139,10 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   // valid complete result with an empty planning delta. Re-asking the model for "missing"
   // content would only waste dispatches; only a bare answer act without any delta is a
   // contradiction worth a bounded retry.
-  if (hasSelfSufficientConversationActV5(document.conversationActs)) return false;
+  if (
+    conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry
+    && hasSelfSufficientConversationActV5(document.conversationActs)
+  ) return false;
   if (
     document.planningWindow
     || document.relations.length > 0
@@ -222,6 +230,7 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
           recentConversation: params.run.input.recentConversation,
           publicStateSummary,
           committedGraph: params.run.input.committedGraph,
+          conversationArchitecture: params.run.input.conversationArchitecture,
         },
       )
     : null;
@@ -232,6 +241,7 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
     && !isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
       document: acceptedDocument,
       publicStateSummary,
+      conversationArchitecture: params.run.input.conversationArchitecture,
     });
 
   recordWeeklyPlanningStableV5DebugTrace({
@@ -277,6 +287,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   if (!isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
     document: params.initialDocument,
     publicStateSummary: params.run.input.publicStateSummary,
+    conversationArchitecture: params.run.input.conversationArchitecture,
   })) return null;
 
   const attemptCountBeforeRetry = params.attemptCountBeforeRetry ?? 1;
@@ -338,7 +349,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       response = await params.run.callTracked({
         messages,
         temperature: 0,
-        responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+        responseFormat: semanticProviderResponseFormatV5(params.run.input.conversationArchitecture),
         purpose: 'weekly_planning_semantic_normalizer',
         maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
       }, attempt);
@@ -383,6 +394,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         recentConversation: params.run.input.recentConversation,
         publicStateSummary: params.run.input.publicStateSummary,
         committedGraph: params.run.input.committedGraph,
+          conversationArchitecture: params.run.input.conversationArchitecture,
       },
     );
     params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
@@ -390,6 +402,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       ? isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
           document: validation.document,
           publicStateSummary: params.run.input.publicStateSummary,
+          conversationArchitecture: params.run.input.conversationArchitecture,
         })
       : false;
     const shouldRetryAgain = retryIndex === 0 && (!validation.document || stillNoOp);

@@ -29,6 +29,10 @@ const semanticContextSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticContext.ts', import.meta.url),
   'utf8',
 );
+const legacyFailureSource = readFileSync(
+  new URL('./weeklyPlanningLegacyFailurePresentation.ts', import.meta.url),
+  'utf8',
+);
 const runtimeQuestionsSource = readFileSync(
   new URL('./weeklyPlanningStableV5RuntimeQuestions.ts', import.meta.url),
   'utf8',
@@ -107,6 +111,9 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
       '同じ内容をそのままもう一度送ってください。',
     );
     expect(semanticTurnSource).not.toContain('まず、いつの予定を作るか');
+    // The comparison switch keeps the pre-#488 wording, confined to the legacy-only module.
+    expect(legacyFailureSource).toContain('まず、いつの予定を作るか');
+    expect(recoverySource).not.toContain('まず、いつの予定を作るか');
     expect(recoverySource).not.toContain('同じ内容をそのまま');
     expect(recoverySource).not.toContain('言い換えて');
     expect(recoverySource).toContain('予定条件には反映していません。');
