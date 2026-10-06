@@ -127,3 +127,17 @@ it('revokes pending profile restoration on unmount before starting any planner r
   await act(async () => { profile.resolve(owner('a')); await microtasks(); });
   expect(plansSpy).not.toHaveBeenCalled();
 });
+it('does not read another returned identity under the current root consent boundary', async () => {
+  fixture.profile.mockResolvedValue(owner('b'));
+  await mount();
+  expect(plansSpy).not.toHaveBeenCalled();
+  await release(memoryGate);
+  expect(splash()).toBe(1);
+  expect(fixture.content.mock.lastCall?.[0].user).toBeNull();
+  expect(fixture.content.mock.lastCall?.[0].booting).toBe(true);
+  memoryGate = deferred(); plannerGate = deferred();
+  await act(async () => { fake.emit({ id: 'b', requiresEmailVerification: false }); await microtasks(); });
+  expect(splash()).toBe(1); expect(plansSpy).toHaveBeenCalledExactlyOnceWith('b');
+  await release(memoryGate); await release(plannerGate);
+  expect(splash()).toBe(0); expect(fixture.content.mock.lastCall?.[0].user.id).toBe('b');
+});

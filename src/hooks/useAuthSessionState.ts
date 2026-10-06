@@ -8,6 +8,7 @@ import type { ShowNotice } from './useNoticeState';
 
 interface UseAuthSessionStateOptions {
   showNotice: ShowNotice;
+  expectedUserId?: string;
 }
 
 type SignInResult = User | null | undefined;
@@ -32,6 +33,7 @@ interface UseAuthSessionStateResult {
 
 export function useAuthSessionState({
   showNotice,
+  expectedUserId,
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
   const bootstrapGeneration = useRef(0);
   useEffect(() => () => { bootstrapGeneration.current += 1; }, []);
@@ -50,6 +52,12 @@ export function useAuthSessionState({
       try {
         const currentUser = await startupTiming.measure('profile', () => authRepository.getCurrentUser());
         if (generation !== bootstrapGeneration.current) return;
+        if (currentUser && expectedUserId && currentUser.id !== expectedUserId) {
+          // Live Firebase identity can move ahead of the root's committed session.
+          // Wait for that root transition; never load B under A's consent boundary.
+          bootstrapGeneration.current += 1;
+          return;
+        }
 
         if (!currentUser) {
           setUser(null);
@@ -61,7 +69,7 @@ export function useAuthSessionState({
         try {
           await loadPlannerData(currentUser.id);
         } catch (error) {
-        if (generation !== bootstrapGeneration.current) return;
+          if (generation !== bootstrapGeneration.current) return;
           startupOutcome = 'error';
           showNotice(
             error instanceof Error
@@ -86,7 +94,7 @@ export function useAuthSessionState({
         markRootStartupReady?.();
       }
     },
-    [markRootStartupReady, showNotice],
+    [expectedUserId, markRootStartupReady, showNotice],
   );
 
   const signUpWithPassword = useCallback(

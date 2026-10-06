@@ -81,7 +81,7 @@ function ConsentedStudyPlannerApp({
 
   return (
     <RootStartupReadyProvider onReady={ignoreEarlyBootstrapReady}>
-      <PlannerAppBootstrap>
+      <PlannerAppBootstrap ownerId={userId}>
         {(state, onReady) => (
           <UserPlanningContextProvider ownerId={userId}>
             <WeeklyPlanningPersonalizationProvider
@@ -199,7 +199,6 @@ export function StudyPlannerAppRoot({
       setAuthenticatedUserId(user.id);
     });
   }, [authSession]);
-
 
   if (isLegalPage || !traceEnabled || !authSession.available) {
     return <App />;
