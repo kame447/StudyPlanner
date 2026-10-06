@@ -63,7 +63,7 @@ vi.mock('./useAuthSessionState', () => ({
 }));
 
 vi.mock('../data/naturalLanguageCatalog', () => ({
-  loadNaturalLanguageCatalog: stableAsyncNoop,
+  loadNaturalLanguageCatalogWithOutcome: async () => ({ source: 'server' }),
 }));
 
 vi.mock('./usePlannerDataState', () => ({
