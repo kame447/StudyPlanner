@@ -328,10 +328,10 @@ export function TodayScheduleSection({
               : null}
           </>
         ) : null}
+        <button className="home-schedule-empty" type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
+          <Plus size={20} aria-hidden="true" />
+        </button>
       </div>
-      <button className="home-schedule-empty" type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
-        <Plus size={20} aria-hidden="true" />
-      </button>
       {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>
   );

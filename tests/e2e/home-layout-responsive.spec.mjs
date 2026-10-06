@@ -85,7 +85,7 @@ async function readHomeMetrics(page) {
     const progress = document.querySelector('.home-progress-panel');
     const scheduleList = document.querySelector('.home-schedule-list');
     const scheduleRows = [...document.querySelectorAll('.home-schedule-row')];
-    const addScheduleRow = document.querySelector('.home-schedule-add-row');
+    const addScheduleRow = document.querySelector('.home-schedule-empty');
     const core = document.querySelector('.home-core-sections');
     const lastCore = core?.lastElementChild ?? null;
     const navRect = nav?.getBoundingClientRect() ?? null;
@@ -172,7 +172,7 @@ async function expectScheduleTailAccessible(page, metrics) {
 
   const tail = await page.evaluate(() => {
     const schedule = document.querySelector('.home-schedule-list');
-    const addRow = document.querySelector('.home-schedule-add-row');
+    const addRow = document.querySelector('.home-schedule-empty');
     if (!(schedule instanceof HTMLElement) || !(addRow instanceof HTMLElement)) {
       return null;
     }
@@ -249,18 +249,25 @@ for (const viewport of VIEWPORTS) {
     if (metrics.materialBottom !== null) {
       expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     }
-    if (scheduleIsScrollable) {
-      expect(metrics.visibleMaterialPanelCount).toBe(0);
-    } else if (metrics.fourthScheduleBottom !== null && metrics.scheduleBottom !== null) {
-      expect(metrics.fourthScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+    // The new plus action is the scrollable tail after the plan rows. Material
+    // progress is excluded only when one of the four plans itself does not fit.
+    if (metrics.fourthScheduleBottom !== null && metrics.scheduleBottom !== null) {
+      if (metrics.fourthScheduleBottom > metrics.scheduleBottom + 1) {
+        expect(scheduleIsScrollable).toBe(true);
+        expect(metrics.visibleMaterialPanelCount).toBe(0);
+      } else {
+        expect(metrics.fourthScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+      }
     }
 
     if (viewport.name === 'blackberry-devtools') {
-      expect(scheduleIsScrollable).toBe(false);
+      expect(scheduleIsScrollable).toBe(true);
+      await expectScheduleTailAccessible(page, metrics);
       expect(metrics.visibleMaterialPanelCount).toBe(0);
     }
     if (viewport.name === 'home-reference') {
-      expect(scheduleIsScrollable).toBe(false);
+      expect(scheduleIsScrollable).toBe(true);
+      await expectScheduleTailAccessible(page, metrics);
       expect(metrics.visibleMaterialPanelCount).toBe(1);
     }
   });

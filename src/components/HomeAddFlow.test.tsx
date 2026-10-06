@@ -9,7 +9,7 @@ vi.mock('./QuickEntryModal', () => ({ QuickEntryModal: () => <div data-study /> 
 vi.mock('../lib/date', () => ({ todayIsoDate: () => '2026-10-07' }));
 let renderer: ReactTestRenderer | undefined;
 beforeEach(() => {
-  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn(), requestAnimationFrame: vi.fn(() => 1), cancelAnimationFrame: vi.fn() });
   vi.stubGlobal('document', { activeElement: null, body: {} });
   vi.stubGlobal('HTMLElement', class {});
 });
