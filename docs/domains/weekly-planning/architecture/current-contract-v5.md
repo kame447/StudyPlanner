@@ -199,6 +199,40 @@ deterministic planner / persistence
 
 Deferred (not part of this change): generic evidence references and replay of a failed utterance (relative-date replay would need the original request clock), a durable freshness-reason diagnostic, and the Issue #246 consultation runtime.
 
+## Runtime conversation architecture mode (Issue #488 comparison switch)
+
+Two conversation architectures exist side by side so the Issue #488 interaction model can be compared honestly with what it replaced. The mode changes **conversation interpretation and presentation only**; neither mode weakens Fact Graph validation/provenance, revision/idempotency, scheduler/preview safety, explicit save approval or owner/chat isolation, and `legacy_v5` is the pre-#488 *conversation* architecture, not an older checkout (unrelated main/security fixes are kept).
+
+- `interaction_v1` — the three-responsibility model above. **Default for new conversations.**
+- `legacy_v5` — the Stable V5 conversation/control flow as of `ee07697e`.
+
+**One policy owner, no mixtures.** `weeklyPlanningConversationArchitecture.ts` defines the typed mode and the capability policy derived from it (`conversationArchitecturePolicy`); there is no per-feature toggle, so a conversation can never run a mixture. `weeklyPlanningConversationArchitecturePreference.ts` is the only module that reads `VITE_WEEKLY_PLANNING_CONVERSATION_ARCHITECTURE_DEFAULT`, `VITE_WEEKLY_PLANNING_ARCHITECTURE_SWITCH_ENABLED` and the browser preference (a source-scan test enforces this). The mode is decided once per turn by the turn controller and then travels as a typed value in the turn input (`conversationArchitecture`): executor → Stable V5 runtime → semantic pipeline/normalizer input, validation input, dialogue render input. Nothing downstream inspects env, storage or query strings.
+
+**Session pinning.** `PlanningState.conversationArchitecture` (`'legacy_v5' | 'interaction_v1'`, strictly validated by both codecs; no free text) is written by the reducer at the first admitted turn (`begin_turn`) and never rewritten. Therefore it survives reload, chat A → B → A snapshots and week/session persistence. An empty conversation is unpinned; a new conversation (`reset_session`, new chat) captures the then-current default exactly once, at its first turn. Changing the preference or the build default never touches an existing conversation. A stored checkpoint that has conversation content but no field was authored under the old architecture and hydrates as `legacy_v5` (never silently migrated into interaction semantics); an empty one stays unpinned. The preference (`studyplanner.weeklyPlanning.conversationArchitecturePreference.v1`, `{version:1, architecture}`) is a per-device default for new conversations only, is honoured only while the evaluation gate is on, and is not planning state.
+
+**Legacy fidelity map (what `legacy_v5` restores).**
+
+| #488 change | `legacy_v5` |
+| --- | --- |
+| provider schema + meaning rule `conversation_acts` | pre-#488 schema/prompt without `conversationActs` |
+| response validation / pre-parse | `conversationActs` is an unknown key (old rejection); no `conversationActs: []` in the empty-envelope rewrite; no act-target check |
+| pending question in the public state | raw previous machine question stamped with the current graph revision; no freshness gate |
+| no-op completeness retry | old eligibility (no self-sufficient-act suppression) |
+| interaction decision / outcome / named-topic redirect | bypassed (no `interactionOutcome`) |
+| renderer | raw `currentUserMessage` decides "explain" (old prompt line and repeated-question repair text); no typed outcome, no aside path |
+| failure presentation | fixed pre-#488 messages (`weeklyPlanningLegacyFailurePresentation.ts`, the only place the old generic wording lives), old projection ("questions cleared"), no retained/rebound state on `fail_turn` |
+| turn dispatch pool | counted, not enforced |
+| proposal decisions | any pending proposal may be decided |
+| question rebinding | every committed turn rebinds (unchanged controller path; the freshness gate was what #488 added) |
+
+Fidelity is proven against the pre-#488 tree, not asserted: hashes of the provider schema, meaning rules, base messages, renderer prompt and public-state summary were produced from `git archive ee07697e` and are pinned in `weeklyPlanningConversationArchitectureOracle.test.ts`; a differential replay of five scripted scenarios (13 turns: explanation, semantic failure then answer, aside then short reply, provider outage, first-turn failure) through the pre-#488 tree and `legacy_v5` produced identical provider call sequences, per-call request hashes, messages, states and freshness. If an unrelated main change intentionally alters a shared boundary, confirm it applies to both architectures and then refresh the oracle hash.
+
+**Evaluation-only UI gate.** With `VITE_WEEKLY_PLANNING_ARCHITECTURE_SWITCH_ENABLED=1` (default off; production UI unchanged) App Settings → 週間計画AI shows a selector (`旧Stable V5` / `新Interaction V1`, "次の新規AI計画会話から適用") and the AI planning surface shows a compact strip with the current conversation's pinned architecture (`未固定` before the first turn) and the latest turn's metrics. The setting can be changed at runtime without a rebuild.
+
+**Measurement (identical in both architectures, observation only).** `weeklyPlanningTurnMeasurement.ts` records, per turn: architecture, request/turn id, wall-clock ms from user-turn admission to the commit/failure dispatch (injectable monotonic clock), provider dispatches (total/semantic/renderer, counted at the provider-client choke point independently of whether the pool is enforced, plus refused count), status (`committed`/`failed`/`discarded`), interaction outcome (null in legacy) and an architecture-neutral result kind (`preview`/`question`/`status`/`failure`), failure code, and whether a pending question was presented / re-presented. Records are in memory only (last 20, no user text, no storage, no network) and never feed back into interpretation. The local debug trace carries `conversationArchitecture` and `aiDispatchUsage` (enum + counters); they are deliberately not durable-diagnostic fields: a persisted turn stays attributable through its persisted provider request (the legacy schema/prompt has no `conversationActs`).
+
+**Rollback / comparison semantics.** Rolling back is switching the next new conversation to `legacy_v5` (or setting the build default); existing conversations keep their mode. Measurements compare conversations of different modes on the same scenario; they are not planning truth and are not a substitute for the real-model/human gate.
+
 ## Availability
 
 Existing StudyPlanner plans and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.

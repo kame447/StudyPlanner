@@ -158,6 +158,24 @@ Current example owners:
 - `src/features/weeklyPlanning/application/weeklyPlanningStableV5LearningStrategyProposal.test.ts`
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
 
+### DIALOGUE-011: the architecture switch changes the architecture, not a label
+
+同一fixtureで`legacy_v5`は(a)provider schema/promptに`conversationActs`を持たず、(b)pending question下の説明でhistorical completeness retryを行い、(c)semantic失敗で固定の汎用質問文を出し、(d)aside後も質問がrebindされ短い返答がbindされ、`interaction_v1`は(a)〜(d)がtyped act/outcome/recoveryで置き換わる。mode（pin）はreload・chat A→B→A・旧checkpoint（legacy）で保たれ、preference/build defaultの変更は新規会話にだけ効き、評価gateが無効な本番UIにはselectorも評価stripも出ない。どちらのmodeでもFact Graph validation/provenance・revision/idempotency・scheduler/preview・保存承認・owner/chat隔離は同一。
+
+Current example owners:
+- `src/features/weeklyPlanning/weeklyPlanningConversationArchitectureOracle.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationArchitectureSwitch.integration.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationArchitecture.test.ts`
+- `tests/e2e/weekly-architecture-switch.spec.mjs`
+
+### DIALOGUE-012: turn measurement is shared and observation-only
+
+各turnについてarchitecture・request/turn id・admission→commit/failureのms・provider dispatch数（semantic/renderer、poolをenforceしないlegacyも数える）・outcome/result kind・failure code・pending questionの提示/再提示が両modeで同じ手段で記録され、dispatch数はscripted harnessの実provider呼び出し数と一致する。記録はmemory内のみで、planning truth・外部telemetry・user textを含まず、挙動へ戻らない。
+
+Current example owners:
+- `src/features/weeklyPlanning/application/weeklyPlanningTurnMeasurement.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationArchitectureSwitch.integration.test.ts`
+
 ## 4. Preview / approval
 
 ### PREVIEW-001: no premature preview

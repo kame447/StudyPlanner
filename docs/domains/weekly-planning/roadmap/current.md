@@ -67,6 +67,8 @@ The #246/#294 consultation and memory owners, #187 provider integration, #213 te
 
 Issue #488 adds the conversational layer inside the existing Stable V5 turn as responsibility boundaries (semantic/conversation interpretation ↔ deterministic interaction controller ↔ deterministic planner/persistence); see [the contract](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488). Implementation record and deferred items: [`../work/20261007-issue488-conversation-interaction.md`](../work/20261007-issue488-conversation-interaction.md). It does not ship the #246 consultation runtime.
 
+The branch also carries a runtime comparison switch between the pre-#488 conversation architecture (`legacy_v5`) and the new one (`interaction_v1`), pinned per conversation and measured identically in both; see [the contract](../architecture/current-contract-v5.md#runtime-conversation-architecture-mode-issue-488-comparison-switch). Live measurement in the real UI is performed by the parent after verification and is not claimed here.
+
 ## Issue #246: learning consultation before scheduling
 
 Issue #246 adds pre-scheduling learning consultation/advice.

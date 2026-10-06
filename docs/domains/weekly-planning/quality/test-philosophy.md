@@ -36,6 +36,8 @@ raw Japanese fixtureをdeterministic production codeが意味再解釈するtest
 
 会話interaction（Issue #488）はscripted provider（transportだけを差し替え、controller/runtime/validator/renderer/reducerは本番のまま）でturn全体を通すscenario suiteで守る: pending question→説明→同じ質問の再提示、aside/resumeによるbinding、semantic/provider失敗後のstate保持と同一質問の再提示、reload/chat A→B→A、stale/double submit、mixed turn、不正出力のsentinel非漏洩、act/outcomeが承認・保存・authorizationに影響しないこと。シナリオはregression-scenarios.mdのDIALOGUE-007〜010が正本。typed actは「欠落または誤りでもnon-mutatingに劣化する」ことをdeterministicに検証し、modelがactを正しく出す精度はreal-API gateの責務とする。
 
+会話architecture switch（`legacy_v5` / `interaction_v1`）は「ラベルではなくarchitectureが変わる」ことをdual-mode testで守る: 同一fixture・同一scripted providerで両modeを通し、provider schema/prompt、retry/dispatch数、失敗presentation、aside後のbinding、mode pinning（reload/chat A→B→A/旧checkpoint→legacy）、preference変更が新規会話だけに効くこと、測定のdispatch数が実provider呼び出し数と一致することを検証する。legacyの忠実性は記憶ではなく`git archive ee07697e`で得たpre-#488 treeをoracleとし、schema/prompt/binding/rendererのhash固定（`weeklyPlanningConversationArchitectureOracle.test.ts`）と、同一scenarioのdifferential replay（call列・request hash・message・state・freshnessの一致）で確認する。意図したshared boundaryの変更でoracle hashを更新するときは、両architectureに適用されることを確認してから更新する。測定はobservation専用であり、評価UI/測定値でsemantic挙動を分岐させるtestを書かない。
+
 ## Planned Issue #246 deterministic contract
 
 learning consultation runtimeが実装された場合、少なくとも次はdeterministic regressionで保護する。
