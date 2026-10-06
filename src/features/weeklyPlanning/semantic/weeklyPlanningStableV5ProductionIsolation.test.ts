@@ -35,6 +35,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/evaluationHarness.testUtils.ts',
   // Conversational recovery of a failed semantic step: retained machine question text only.
   'application/weeklyPlanningConversationRecovery.ts',
+  // Legacy architecture (comparison switch): pre-#488 failure presentation over the compatibility projection.
+  'application/weeklyPlanningLegacyFailurePresentation.ts',
   // Interaction layer: typed conversation acts + question identity over the graph; no raw text.
   'application/weeklyPlanningInteractionDecision.ts',
   // Test-only: bind a pending question to its presenting message as the controller does.
