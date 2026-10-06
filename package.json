@@ -52,12 +52,15 @@
     "react-test-renderer": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^6.4.3",
-    "vitest": "^3.2.4",
+    "vitest": "3.2.7",
     "wrangler": "4.143.1"
   },
   "overrides": {
     "@firebase/firestore@4.14.0": {
       "@grpc/grpc-js": "1.13.6"
+    },
+    "vitest@3.2.7": {
+      "tinypool": "2.1.2"
     }
   }
 }
