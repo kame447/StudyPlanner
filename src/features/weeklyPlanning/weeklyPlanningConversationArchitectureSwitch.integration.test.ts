@@ -39,6 +39,10 @@ import {
  * (see weeklyPlanningConversationArchitectureOracle.test.ts for the ee07697e-derived oracle of
  * schema/prompt/binding; here the control flow is exercised end to end).
  */
+// Full turns through the real runtime: the first one pays the cold module import, which can exceed
+// the 5s default when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
+
 const MODES: readonly WeeklyPlanningConversationArchitecture[] = ['legacy_v5', 'interaction_v1'];
 const MATH_SETUP = '来週、数学の問題集を20問進めたい';
 const TWO_TASK_SETUP = '来週、英語の長文を10ページと、数学の問題を20問やりたい。数学は1問5分';
