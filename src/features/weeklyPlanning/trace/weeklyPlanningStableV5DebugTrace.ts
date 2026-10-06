@@ -382,6 +382,8 @@ function outputProjection(value: unknown): Record<string, unknown> {
     previewCandidateCount: numberValue(output.previewCandidateCount)
       ?? (Array.isArray(output.draftCandidates) ? output.draftCandidates.length : 0),
     failure: compactUnknown(output.failure),
+    // Deterministic turn kind (apply/explain/aside/resume/recover): enum-only, no user text.
+    interactionOutcome: compactUnknown(output.interactionOutcome),
   };
 }
 
@@ -425,6 +427,8 @@ function projectStageData(stage: string, value: unknown): unknown {
     case 'runtime_session_context_prepared':
       return {
         graphRevision: numberValue(data.graphRevision),
+        // Freshness status of the previous question's presentation (status only, never the binding).
+        pendingQuestionPresentation: stringValue(data.pendingQuestionPresentation),
         selectedDate: stringValue(data.selectedDate),
         fallbackHorizon: compactUnknown(data.fallbackHorizon),
         recentTurnLimit: numberValue(data.recentTurnLimit),
@@ -527,6 +531,7 @@ function projectStageData(stage: string, value: unknown): unknown {
     case 'runtime_branch_selected':
       return {
         branch: stringValue(data.branch),
+        pendingQuestionPresentation: stringValue(data.pendingQuestionPresentation),
         basis: branchBasisProjection(data.basis),
         output: outputProjection(data.output),
       };
