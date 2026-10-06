@@ -69,6 +69,7 @@ interface AiPlanningViewProps {
   selectedDate: string;
   plans: Plan[];
   cancellationEpoch?: { readonly current: number };
+  onCancelPendingTurn?: () => void;
   checkpointNotice?: ReactNode;
 }
 
@@ -185,9 +186,11 @@ export function AiPlanningView({
   selectedDate,
   plans,
   cancellationEpoch,
+  onCancelPendingTurn,
   checkpointNotice,
 }: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
+  const canCancelTurn = Boolean(state.pendingTurn && onCancelPendingTurn);
   const [text, setText] = useState('');
   const [selectedStarterOption, setSelectedStarterOption] =
     useState<AiPlanningStarterPromptOption | null>(null);
@@ -1083,13 +1086,17 @@ export function AiPlanningView({
           <button
             className="ai-planning-send-button"
             type="button"
-            aria-label="送信"
-            disabled={
+            aria-label={canCancelTurn ? '処理をキャンセル' : '送信'}
+            title={canCancelTurn ? '処理をキャンセル' : '送信'}
+            disabled={!canCancelTurn && (
               (!text.trim() && !imageAttachment) || isComposerBusy || isListening || !application.plannerDataReady || moduleLoadFailed || waitingForStarterTarget
-            }
-            onClick={() => void submitMessage()}
+            )}
+            onClick={() => {
+              if (canCancelTurn) onCancelPendingTurn?.();
+              else void submitMessage();
+            }}
           >
-            <Send size={20} aria-hidden="true" />
+            {canCancelTurn ? <X size={20} aria-hidden="true" /> : <Send size={20} aria-hidden="true" />}
           </button>
         </div>
       </div>

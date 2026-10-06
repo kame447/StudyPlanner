@@ -246,19 +246,9 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       <AiPlanningViewLegacy
         {...props}
         cancellationEpoch={cancellationEpoch}
+        onCancelPendingTurn={cancelPendingTurn}
         checkpointNotice={showingPreview ? null : checkpointNotice}
       />
-      {state.pendingTurn ? (
-        <div className="ai-planning-pending-turn-actions">
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={cancelPendingTurn}
-          >
-            処理をキャンセル
-          </button>
-        </div>
-      ) : null}
       {showingPreview ? (
         <div
           className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}

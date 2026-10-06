@@ -1,13 +1,5 @@
 /* Focused interaction fixes that must load after the primary theme/style bundles. */
 
-.ai-planning-pending-turn-actions {
-  position: fixed;
-  left: 50%;
-  bottom: calc(128px + env(safe-area-inset-bottom, 0px));
-  z-index: 918;
-  transform: translateX(-50%);
-}
-
 /* Make month transitions explicit inside the continuously extending day carousel. */
 .schedule-day-month-boundary {
   flex: 0 0 64px;
@@ -24,13 +16,6 @@
   color: var(--text-muted);
   scroll-snap-align: none;
   user-select: none;
-}
-
-.schedule-day-month-boundary span {
-  font-size: 0.58rem;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .schedule-day-month-boundary strong {
