@@ -480,7 +480,7 @@ Expected:
 - owner domain exposes only the necessary typed projection where possible
 - arbitrary prose does not become memory/system instruction
 
-Security-specific attack corpus coordination remains under Issue #152; this document owns the User Context invariants that those attacks must protect.
+The security attack corpus established under Issue #152 remains regression evidence; this document owns the User Context invariants that those attacks must protect. New release units use the applicable current security gate rather than treating #152 as an active queue.
 
 ## 9. Longitudinal baseline corpus
 
@@ -550,7 +550,7 @@ Before a production phase is considered complete, evidence should include the st
 - multi-tab/multi-device tests when persistence changes
 - real-model Japanese conversations when semantic/surfacing behavior changes
 - Browser Regression for user-facing memory controls
-- adversarial evaluation coordinated with #152
+- adversarial evaluation against the #152 baseline and the applicable current release gate
 - exact diff review
 - privacy/context payload inspection
 - measured request/token/latency impact

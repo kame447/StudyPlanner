@@ -76,6 +76,6 @@ UC-E0は既存work内の評価IDであり、新Issueや新しい記憶phaseで�
 
 ## 7. 所有範囲と今回の変更
 
-#246は相談の意味・proposal/review/adoption/promotion、#187は外部sourceとAgents APIの接続・利用条件、#294は共有contextと失効、#164は正式状態の同期とoperation、#152はtrust/provenance、#213は観測を所有する。#212の開発エージェント管理へ統合しない。実装順は [週間計画roadmap](../../weekly-planning/roadmap/current.md) を優先し、既存security作業を飛ばさない。
+#246は相談の意味・proposal/review/adoption/promotion、#187は外部sourceとAgents APIの接続・利用条件、#294は共有contextと失効、#164は正式状態の同期とoperation、#213は観測を所有する。trust/provenanceは完了済み#152で確立したbaselineを維持し、Jev変更で影響する安全性回帰は#335を使う。#212の開発エージェント管理へ統合しない。実装順は [週間計画roadmap](../../weekly-planning/roadmap/current.md) を優先し、既存security baselineを飛ばさない。
 
 今回の変更は既存PR #304上のMarkdown整備である。限定用途を決めたが、コード、provider設定、保存schema、workflow、APIキー、有料試験、本番データ送信は変更していない。実装と本番有効化の残件は#246/#187で追跡し、設計範囲を再び拡張することを暗黙の次段階にしない。
