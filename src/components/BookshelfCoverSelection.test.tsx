@@ -122,4 +122,54 @@ describe('material cover selection order', () => {
     expect((await submit(save)).coverImageDataUrl).toBe('data:image/jpeg;base64,new');
   });
 
+  it.each([false, true])('does not save the previous draft while a new catalogue selection resolves (previous catalogue: %s)', async previousCatalog => {
+    const details = deferred<typeof candidate>();
+    const save = mount();
+    if (previousCatalog) {
+      mocks.resolve.mockResolvedValueOnce({ ...candidate, catalogEntryId: 'previous', title: 'Previous book' });
+      await startCatalog(); await act(async () => {});
+    }
+    mocks.resolve.mockReturnValueOnce(details.promise);
+    const capturedSubmit = renderer.root.findByType('form').props.onSubmit;
+    await startCatalog();
+    await act(async () => { await capturedSubmit({ preventDefault: vi.fn() }); });
+    expect(save).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+    await act(async () => { details.resolve(candidate); });
+    const draft = await submit(save);
+    expect(draft).toMatchObject({ name: candidate.title, catalogEntryId: candidate.catalogEntryId });
+  });
+
+  it('can cancel stalled details, retain manual fields, and ignore them during a newer selection', async () => {
+    const old = deferred<typeof candidate>(); const latest = deferred<typeof candidate>();
+    mocks.resolve.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+    mocks.image.mockResolvedValue('data:image/jpeg;base64,custom');
+    const save = mount(); await startCatalog(); await act(async () => { await selectPhoto(); });
+    expect(renderer.root.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+    act(() => renderer.root.findAllByType('button').find(button => button.props.children === '教材の選択を取り消す')!.props.onClick());
+    expect(renderer.root.findByProps({ type: 'submit' }).props.disabled).toBe(false);
+    expect(renderer.root.findByProps({ placeholder: '黄色チャート' }).props.value).toBe('Book');
+    await startCatalog();
+    await act(async () => { old.resolve({ ...candidate, title: 'Cancelled book' }); });
+    expect(renderer.root.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ placeholder: '黄色チャート' }).props.value).toBe('Book');
+    await act(async () => { latest.resolve(candidate); });
+    expect((await submit(save)).catalogEntryId).toBe(candidate.catalogEntryId);
+  });
+  it.each(['cancel', 'failure'] as const)('keeps manual registration available after %s without discarding the draft', async outcome => {
+    const details = deferred<typeof candidate>(); mocks.resolve.mockReturnValueOnce(details.promise);
+    const save = mount(); await startCatalog();
+    if (outcome === 'cancel') {
+      act(() => renderer.root.findAllByType('button').find(button => button.props.children === '教材の選択を取り消す')!.props.onClick());
+    } else {
+      await act(async () => { details.reject(new Error('unexpected details failure')); });
+    }
+    const draft = await submit(save);
+    expect(draft.name).toBe('Book'); expect(draft.catalogEntryId).toBeUndefined();
+    if (outcome === 'cancel') {
+      await act(async () => { details.resolve(candidate); });
+      expect(renderer.root.findByProps({ placeholder: '黄色チャート' }).props.value).toBe('Book');
+    }
+  });
+
 });

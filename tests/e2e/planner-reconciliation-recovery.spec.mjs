@@ -1448,3 +1448,52 @@ for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop'
     expect((await durable(page)).materials[0].coverImageDataUrl).toBeUndefined();
   });
 }
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf pending catalogue selection can be cancelled safely ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport);
+    // Control only metadata responses; keep real search/dialog and durable repository.
+    await page.route('**/src/services/materialMetadataService.ts*', route => route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+        const candidate = { catalogEntryId: 'fixture:catalog', title: '検索した教材', authors: [], aliases: [] };
+        window.__catalogDetailRequests = [];
+        export async function searchMaterialMetadata() { return { results: [candidate] }; }
+        export function resolveMaterialMetadataCandidate() {
+          return new Promise(resolve => window.__catalogDetailRequests.push(resolve));
+        }
+      `,
+    }));
+    await page.reload();
+    await page.waitForFunction(() => window.__plannerRecoveryHook?.snapshot?.().ready === true);
+    await navigate(page, '教材');
+    await page.getByRole('button', { name: '教材追加', exact: true }).click();
+    const editor = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を追加', exact: true }) });
+    await editor.getByPlaceholder('黄色チャート').fill('保持する手入力');
+    await editor.getByLabel('ISBN / 教材名', { exact: true }).fill('教材');
+    await editor.getByRole('button', { name: '検索', exact: true }).click();
+    const candidate = editor.locator('.material-metadata-result');
+    await candidate.click();
+    await expect.poll(() => page.evaluate(() => window.__catalogDetailRequests.length)).toBe(1);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    const cancel = editor.getByRole('button', { name: '教材の選択を取り消す', exact: true });
+    await expect(cancel).toBeVisible();
+    const screenshot = testInfo.outputPath(`${viewport.label}-cancel-catalogue-selection.png`);
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach('Pending catalogue selection cancellation', { path: screenshot, contentType: 'image/png' });
+    await cancel.click();
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('保持する手入力');
+    await candidate.click();
+    await expect.poll(() => page.evaluate(() => window.__catalogDetailRequests.length)).toBe(2);
+    await page.evaluate(() => window.__catalogDetailRequests[0]({ catalogEntryId: 'cancelled', title: '取り消した教材', authors: [], aliases: [] }));
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('保持する手入力');
+    await page.evaluate(() => window.__catalogDetailRequests[1]({ catalogEntryId: 'fixture:catalog', title: '検索した教材', authors: [], aliases: [] }));
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('検索した教材');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials).toEqual(expect.arrayContaining([expect.objectContaining({ name: '検索した教材', catalogEntryId: 'fixture:catalog' })]));
+    expect((await durable(page)).materials.some(item => item.name === '保持する手入力' || item.catalogEntryId === 'cancelled')).toBe(false);
+  });
+}
