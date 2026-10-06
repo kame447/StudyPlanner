@@ -1,3 +1,4 @@
+import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type {
   Actual,
   DayNote,
@@ -56,6 +57,8 @@ export interface PlannerStorageGateway {
 }
 
 export interface AuthRepository {
+  // Optional read-only optimization. It must not restore, normalize or write a user.
+  observeStartupProfile?(expectedOwner: string, scope: StartupSessionCapability): () => void;
   signUpWithPassword(email: string, password: string, username: string): Promise<void>;
   signInWithPassword(email: string, password: string): Promise<User>;
   signInWithGoogle(): Promise<User>;

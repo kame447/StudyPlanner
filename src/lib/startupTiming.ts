@@ -1,7 +1,7 @@
 // Explicit, local-only diagnostics. Never collect identities, payloads or raw errors.
 export const STARTUP_PHASES = [
   'splash-mounted', 'auth-session', 'consent', 'preferences', 'memory',
-  'profile', 'plans', 'actuals', 'day-notes', 'month-events', 'todos',
+  'profile-observation', 'profile-observer-stop', 'profile', 'plans', 'actuals', 'day-notes', 'month-events', 'todos',
   'subjects', 'materials', 'templates', 'terms', 'periods',
   'timetable-write', 'bootstrap', 'home-visible',
 ] as const;

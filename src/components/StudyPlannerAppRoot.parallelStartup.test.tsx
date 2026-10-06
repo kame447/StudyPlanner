@@ -4,20 +4,22 @@ import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
 import { SplashScreen } from './SplashScreen';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { createLocalFixture, deferred, MemoryStorage, microtasks, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
+import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { User } from '../types/domain';
 const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
-  profile: vi.fn(), memory: vi.fn(), content: vi.fn(),
-  policy: 'accepted', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
-vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile },
+  profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off',
+  policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
+vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile, observeStartupProfile: fixture.observe },
   plannerRepository: new Proxy({}, { get: (_, key) => fixture.repository[key as keyof PlannerRepository] }) }));
+vi.mock('../lib/startupProfileObservation', () => ({ get startupProfileObservation() { return fixture.observation; } }));
 vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalogWithOutcome: vi.fn(async () => ({ source: 'server' })) }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => true }));
 vi.mock('../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy', () => ({ useWeeklyPlanningTracePolicy: () => ({ status: fixture.policy }) }));
 vi.mock('../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile', () => ({
   useWeeklyPlanningPersonalizationProfile: () => ({ loading: fixture.preferenceLoading,
-    profile: fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: '' }) }));
+    profile: fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: fixture.preferenceError }) }));
 vi.mock('../features/userPlanningContext/userPlanningContextRepository', () => ({ getUserPlanningContextRepositoryV1: () => ({
   initialize: fixture.memory, subscribe: () => () => {},
 }) }));
@@ -47,7 +49,7 @@ let plansSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  vi.clearAllMocks(); fixture.policy = 'accepted'; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
+  vi.clearAllMocks(); fixture.observation = 'off'; fixture.observe.mockReset(); fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
   fixture.repository = { ...createLocalFixture().repository };
   memoryGate = deferred(); plannerGate = deferred();
   fixture.memory.mockImplementation(async (_id, snapshot) => { await memoryGate.promise; return { snapshot, shared: true }; });
@@ -150,7 +152,7 @@ it('keeps the same visible Splash across unresolved auth, consent, preferences a
   const initialSplash = renderer!.root.findByType(SplashScreen);
   await act(async () => { fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
-  fixture.policy = 'accepted'; fixture.preferenceLoading = true;
+  fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = true;
   await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); });
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
   fixture.preferenceLoading = false;
@@ -182,4 +184,64 @@ it('batched signout and same-owner return cannot accept an old startup completio
   await release(oldMemory); await release(oldPlanner);
   expect(splash()).toBe(1); expect(fixture.content).not.toHaveBeenCalled();
   await release(memoryGate); await release(plannerGate); expect(splash()).toBe(0);
+});
+
+function enableObservation() {
+  fixture.observation = 'observe'; fixture.preferenceLoading = true;
+  const stops: ReturnType<typeof vi.fn>[] = [];
+  fixture.observe.mockImplementation((_owner: string, scope: StartupSessionCapability) => {
+    let closed = false; const disposed = vi.fn(); stops.push(disposed);
+    const stop = () => { if (!closed) { closed = true; disposed(); } };
+    scope.onInvalidate(stop); return stop;
+  });
+  return stops;
+}
+async function updateRoot() {
+  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+}
+it('diagnostic profile observation overlaps preferences without advancing write-capable bootstrap', async () => {
+  const stops = enableObservation(); fixture.policy = 'loading'; await mount();
+  expect(fixture.observe).not.toHaveBeenCalled();
+  fixture.policy = 'accepted'; await updateRoot();
+  expect(fixture.observe).toHaveBeenCalledOnce();
+  expect(fixture.profile).not.toHaveBeenCalled(); expect(fixture.memory).not.toHaveBeenCalled();
+  expect(plansSpy).not.toHaveBeenCalled(); expect(splash()).toBe(1);
+  fixture.preferenceLoading = false; await updateRoot();
+  expect(fixture.profile).toHaveBeenCalledOnce(); expect(stops[0]).not.toHaveBeenCalled();
+  await release(plannerGate); expect(stops[0]).not.toHaveBeenCalled(); expect(splash()).toBe(1);
+  await release(memoryGate); expect(stops[0]).toHaveBeenCalledOnce(); expect(splash()).toBe(0);
+});
+it('missing preferences terminate the diagnostic observer permanently before onboarding retry', async () => {
+  const stops = enableObservation(); await mount();
+  fixture.preferenceLoading = false; fixture.weekStartsOn = null; await updateRoot();
+  expect(stops[0]).toHaveBeenCalledOnce(); expect(fixture.profile).not.toHaveBeenCalled();
+  fixture.preferenceLoading = true; await updateRoot();
+  fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday'; await updateRoot();
+  expect(fixture.observe).toHaveBeenCalledOnce(); expect(fixture.profile).toHaveBeenCalledOnce();
+  await release(memoryGate); await release(plannerGate); expect(splash()).toBe(0);
+});
+it.each(['b', 'a'])('auth event revokes observation synchronously before React commits the next %s session', async nextOwner => {
+  const stops = enableObservation(); await mount();
+  const firstScope = fixture.observe.mock.calls[0][1] as StartupSessionCapability;
+  await act(async () => {
+    if (nextOwner === 'a') {
+      fake.emit(null);
+      expect(stops[0]).toHaveBeenCalledOnce(); expect(firstScope.isCurrent()).toBe(false);
+    }
+    fake.emit({ id: nextOwner, requiresEmailVerification: false });
+    expect(stops[0]).toHaveBeenCalledOnce(); expect(firstScope.isCurrent()).toBe(false);
+    await microtasks();
+  });
+  expect(fixture.observe).toHaveBeenCalledTimes(2);
+  expect(fixture.observe.mock.calls[1][0]).toBe(nextOwner);
+  expect(stops[1]).not.toHaveBeenCalled(); expect(fixture.profile).not.toHaveBeenCalled();
+  act(() => renderer!.unmount()); renderer = undefined; expect(stops[1]).toHaveBeenCalledOnce();
+});
+
+it('a preference error stops observation even when a previous preference value is retained', async () => {
+  const stops = enableObservation(); await mount();
+  fixture.preferenceLoading = false; fixture.preferenceError = 'settings unavailable'; await updateRoot();
+  expect(stops[0]).toHaveBeenCalledOnce();
+  fixture.preferenceError = ''; fixture.preferenceLoading = true; await updateRoot();
+  expect(fixture.observe).toHaveBeenCalledOnce();
 });

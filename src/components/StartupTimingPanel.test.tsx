@@ -41,3 +41,9 @@ it('cancels a pending observation on unmount and does not mount diagnostics when
   expect(renderer.toJSON()).toBeNull();
   expect(state.markOnce).not.toHaveBeenCalled();
 });
+
+it('keeps the optional diagnostic panel above the shared bottom-navigation clearance', () => {
+  fixture();
+  expect(renderer.root.findByType('details').props.style.bottom)
+    .toBe('calc(var(--app-bottom-nav-clearance, 72px) + 8px)');
+});

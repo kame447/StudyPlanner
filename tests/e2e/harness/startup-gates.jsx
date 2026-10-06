@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { StudyPlannerAppRoot } from '../../../src/components/StudyPlannerAppRoot';
+import { authRepository } from '../../../src/repositories';
 import { StartupTimingPanel } from '../../../src/components/StartupTimingPanel';
 import { addDays, toIsoDate } from '../../../src/lib/date';
 import { createLocalWeeklyPlanningPersonalizationRepository } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
@@ -29,9 +30,23 @@ window.__plannerRecoveryRepository.holdTargetReads();
 window.__realWeeklyEvents = [];
 const authListeners = new Set();
 const policyListeners = new Set();
-let currentUser = null;
+let currentUser = new URLSearchParams(location.search).get('cachedAuth') === '1' ? { id: ownerId, requiresEmailVerification: false } : null;
+const observations = { started: 0, active: 0, stopped: 0, maxActive: 0 };
+// Only the optional IO port is replaced; the root and hook own real lifetimes.
+authRepository.observeStartupProfile = (_owner, scope) => {
+  observations.started += 1; observations.active += 1;
+  observations.maxActive = Math.max(observations.maxActive, observations.active);
+  let closed = false;
+  const stop = () => {
+    if (closed) return;
+    closed = true; observations.active -= 1; observations.stopped += 1;
+  };
+  scope.onInvalidate(stop);
+  return stop;
+};
 window.__startupGateHarness = {
   React,
+  observations,
   policy: 'loading',
   ownerId,
   emitAuth(id = ownerId) {
