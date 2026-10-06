@@ -382,6 +382,8 @@ sign-out / account switch の cache retention policy を明示し、別 owner �
 
 通常planner mutationと承認保存のUI反映は、開始時のowner / reset世代に束縛する。owner切替、reset、unmount後の成功結果・失敗rollback・通知・Undoが現行画面を更新してはならず、旧世代の完了を現行操作の成功として返さない。UI projectionの共通境界は `src/hooks/usePlannerMutationScope.ts`、load結果の世代検証は既存の `PlannerDataReadAuthority` が所有する。同ownerの通常refreshはmutationのowner世代を変えない。これは既に送信したrepository writeの取消しやserver rollbackではなく、server idempotency / 権限 / offline同期の代替にもならない。
 
+入力editorの保存後close・busy解除も、保存を開始したeditorの寿命へ束縛する。同じownerでも閉じる→再入場した新しい入力を古い保存完了で閉じず、owner変更時は前ownerの未保存draftを再利用しない。これは送信済みwriteを取り消すものではなく、永続化callbackと画面の寿命を分離するUI側の責務である。
+
 ### DATA-005: Storage failure behavior
 
 quota exceeded、permission denial、corrupt record、transaction abort を success に変換しない。durable write を保証できない場合は user-visible degraded state または明示 error とする。
