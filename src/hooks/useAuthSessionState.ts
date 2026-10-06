@@ -1,3 +1,4 @@
+import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useState } from 'react';
 import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
 import { useRootStartupReady } from '../components/RootStartupReadyContext';
@@ -40,9 +41,11 @@ export function useAuthSessionState({
   const bootstrapSession = useCallback(
     async (loadPlannerData: (userId: string) => Promise<void>) => {
       setBooting(true);
+      const finishBootstrap = startupTiming.begin('bootstrap');
+      let startupOutcome: 'success' | 'error' = 'success';
 
       try {
-        const currentUser = await authRepository.getCurrentUser();
+        const currentUser = await startupTiming.measure('profile', () => authRepository.getCurrentUser());
 
         if (!currentUser) {
           setUser(null);
@@ -54,6 +57,7 @@ export function useAuthSessionState({
         try {
           await loadPlannerData(currentUser.id);
         } catch (error) {
+          startupOutcome = 'error';
           showNotice(
             error instanceof Error
               ? error.message
@@ -62,6 +66,7 @@ export function useAuthSessionState({
           );
         }
       } catch (error) {
+          startupOutcome = 'error';
         showNotice(
           error instanceof Error
             ? error.message
@@ -69,6 +74,7 @@ export function useAuthSessionState({
           'error',
         );
       } finally {
+        finishBootstrap(startupOutcome);
         setBooting(false);
         markRootStartupReady?.();
       }

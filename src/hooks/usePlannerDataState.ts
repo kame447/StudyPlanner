@@ -1,3 +1,4 @@
+import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
@@ -491,16 +492,16 @@ export function usePlannerDataState({
       nextTimetableTerms,
       nextTimetablePeriods,
     ] = await Promise.all([
-      plannerRepository.getPlans(nextUserId),
-      plannerRepository.getActuals(nextUserId),
-      plannerRepository.getDayNotes(nextUserId),
-      plannerRepository.getMonthEvents(nextUserId),
-      plannerRepository.getTodos(nextUserId),
-      plannerRepository.getStudySubjects(nextUserId),
-      plannerRepository.getStudyMaterials(nextUserId),
-      plannerRepository.getScheduleTemplates(nextUserId),
-      plannerRepository.getTimetableTerms(nextUserId),
-      plannerRepository.getTimetablePeriods(nextUserId),
+      startupTiming.measure('plans', () => plannerRepository.getPlans(nextUserId)),
+      startupTiming.measure('actuals', () => plannerRepository.getActuals(nextUserId)),
+      startupTiming.measure('day-notes', () => plannerRepository.getDayNotes(nextUserId)),
+      startupTiming.measure('month-events', () => plannerRepository.getMonthEvents(nextUserId)),
+      startupTiming.measure('todos', () => plannerRepository.getTodos(nextUserId)),
+      startupTiming.measure('subjects', () => plannerRepository.getStudySubjects(nextUserId)),
+      startupTiming.measure('materials', () => plannerRepository.getStudyMaterials(nextUserId)),
+      startupTiming.measure('templates', () => plannerRepository.getScheduleTemplates(nextUserId)),
+      startupTiming.measure('terms', () => plannerRepository.getTimetableTerms(nextUserId)),
+      startupTiming.measure('periods', () => plannerRepository.getTimetablePeriods(nextUserId)),
     ]);
 
     if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
@@ -521,7 +522,7 @@ export function usePlannerDataState({
     let committedTimetablePeriods = normalizedTimetable.timetablePeriods;
 
     try {
-      await plannerRepository.applyTimetableMutation(normalizedTimetable.mutation);
+      await startupTiming.measure('timetable-write', () => plannerRepository.applyTimetableMutation(normalizedTimetable.mutation));
     } catch (error) {
       if (!plannerDataReadAuthority.isCurrent(loadStart.token)) {
         return;

@@ -1,3 +1,4 @@
+import { startupTiming } from '../lib/startupTiming';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
@@ -66,6 +67,27 @@ describe('StudyPlannerAppRoot', () => {
   afterEach(() => {
     act(() => renderer?.unmount());
     vi.unstubAllGlobals();
+  });
+
+  it('records failed consent and preference waits as errors without changing their screens', () => {
+    const finish = vi.fn();
+    const spy = vi.spyOn(startupTiming, 'begin').mockReturnValue(finish);
+    try {
+      fake = createFakeAuthSession({ currentUser: verifiedUser });
+      state.policy.status = 'loading';
+      mount();
+      expect(spy).toHaveBeenCalledWith('consent');
+      state.policy.status = 'unavailable'; rerender();
+      expect(finish).toHaveBeenLastCalledWith('error');
+      expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(1);
+      state.personalization.loading = true;
+      state.policy.status = 'accepted'; rerender();
+      expect(spy).toHaveBeenCalledWith('preferences');
+      state.personalization.loading = false;
+      state.personalization.error = 'fixture failure'; rerender();
+      expect(finish).toHaveBeenLastCalledWith('error');
+      expect(renderer.root.findAllByType(InitialWeekStartPreferenceScreen)).toHaveLength(1);
+    } finally { spy.mockRestore(); }
   });
 
   it('hands unauthenticated sign-in state to the root authentication boundary', () => {

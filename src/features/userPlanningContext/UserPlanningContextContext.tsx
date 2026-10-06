@@ -1,3 +1,4 @@
+import { startupTiming } from '../../lib/startupTiming';
 import {
   createContext,
   useCallback,
@@ -116,7 +117,7 @@ export function UserPlanningContextProvider({
       setSnapshot(localSnapshot);
       setLoading(true);
       try {
-        const initial = await repository.initialize(ownerId, localSnapshot);
+        const initial = await startupTiming.measure('memory', () => repository.initialize(ownerId, localSnapshot));
         if (!active) return;
         applyRepositoryState(initial);
         unsubscribeRemote = repository.subscribe(
