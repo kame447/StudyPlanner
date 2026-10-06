@@ -1,3 +1,4 @@
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { useState, type FormEvent } from 'react';
 import {
   isValidQuickEntryDuration,
@@ -31,7 +32,12 @@ interface MaterialQuickCreateModalProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
 }
 
-export function MaterialQuickCreateModal({
+export function MaterialQuickCreateModal(props: MaterialQuickCreateModalProps) {
+  if (props.material.userId !== props.userId) return null;
+  return <MaterialQuickCreateModalSession key={JSON.stringify([props.userId, props.material.id, props.selectedDate])} {...props} />;
+}
+
+function MaterialQuickCreateModalSession({
   userId,
   selectedDate,
   material,
@@ -39,6 +45,7 @@ export function MaterialQuickCreateModal({
   onSavePlan,
   onSaveStandaloneActual,
 }: MaterialQuickCreateModalProps) {
+  const beginMutation = useEditorMutation();
   const [kind, setKind] = useState<MaterialQuickCreateKind>('actual');
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
@@ -90,6 +97,8 @@ export function MaterialQuickCreateModal({
     }
 
     setError('');
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       const baseFields = {
@@ -127,11 +136,12 @@ export function MaterialQuickCreateModal({
         });
       }
 
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch {
+      if (!operation.isCurrent()) return;
       setError(kind === 'plan' ? '予定を保存できませんでした。' : '記録を保存できませんでした。');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 

@@ -1,3 +1,4 @@
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { ActualMutationAdmissionError, materialUncertainMessage, type MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import {
   useRef,
@@ -50,7 +51,12 @@ function catalogMeta(candidate: MaterialMetadataCandidate): string {
     .join(' ・ ');
 }
 
-export function BookshelfMaterialDialog({
+export function BookshelfMaterialDialog(props: BookshelfMaterialDialogProps) {
+  if (props.material && props.material.userId !== props.userId) return null;
+  return <BookshelfMaterialDialogSession key={JSON.stringify([props.userId, props.material?.id ?? null])} {...props} />;
+}
+
+function BookshelfMaterialDialogSession({
   userId,
   material,
   baseline,
@@ -59,6 +65,7 @@ export function BookshelfMaterialDialog({
   onSave,
   onDelete,
 }: BookshelfMaterialDialogProps) {
+  const beginMutation = useEditorMutation();
   const [editBaseline] = useState(baseline);
   const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
@@ -135,6 +142,8 @@ export function BookshelfMaterialDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       const nextTotalUnits = parseOptionalNumber(totalUnits);
@@ -183,14 +192,15 @@ export function BookshelfMaterialDialog({
         });
       }
 
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       const uncertain = !(error instanceof ActualMutationAdmissionError);
       setRequiresInspection(uncertain);
       setStatus(`${error instanceof Error ? error.message : '教材を保存できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
@@ -199,22 +209,26 @@ export function BookshelfMaterialDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     const confirmed = window.confirm(`${material.name} を削除しますか？`);
     if (!confirmed) {
+      operation.finish();
       return;
     }
 
     setIsSubmitting(true);
     try {
       await onDelete(material, editBaseline);
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       const uncertain = !(error instanceof ActualMutationAdmissionError);
       setRequiresInspection(uncertain);
       setStatus(`${error instanceof Error ? error.message : '教材を削除できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 

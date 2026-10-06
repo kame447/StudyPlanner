@@ -3,7 +3,7 @@ import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import { HomeView } from './HomeView';
 import { createActualDraftForPlan } from '../lib/actualDrafts';
-import { createLocalFixture, actual } from '../repositories/localPersistenceConcurrency.testUtils';
+import { createLocalFixture, actual, deferred, microtasks } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
@@ -287,4 +287,29 @@ it.each(['scope-reset', 'observed-recreation'] as const)('open Bookshelf Delete 
   expect(await boundary.repository.getStudyMaterials('owner')).toEqual([original]);
   await click('キャンセル'); await openMaterialEditor(); await click('削除');
   expect(await boundary.repository.getStudyMaterials('owner')).toEqual([]);
+});
+
+
+it.each(['save', 'delete'] as const)('late Bookshelf %s completion cannot close a newer material draft', async action => {
+  await mountBookshelf(); await openMaterialEditor();
+  const gate = deferred();
+  if (action === 'save') {
+    const original = boundary.repository.upsertStudyMaterial;
+    boundary.repository = { ...boundary.repository, upsertStudyMaterial: async row => { const saved = await original(row); await gate.promise; return saved; } };
+  } else {
+    const original = boundary.repository.deleteStudyMaterial;
+    boundary.repository = { ...boundary.repository, deleteStudyMaterial: async (...args) => { await original(...args); await gate.promise; } };
+  }
+  let saving!: Promise<void>;
+  await act(async () => {
+    saving = action === 'save'
+      ? renderer!.root.findByType(BookshelfMaterialDialog).findByType('form').props.onSubmit({ preventDefault: noop })
+      : button('削除').props.onClick();
+    await microtasks();
+  });
+  await click('キャンセル'); await click('教材追加');
+  await act(async () => { materialNameInput().props.onChange({ target: { value: 'New unsaved draft' } }); });
+  await act(async () => { gate.resolve(); await saving; await microtasks(); });
+  expect(renderer!.root.findAllByType(BookshelfMaterialDialog)).toHaveLength(1);
+  expect(materialNameInput().props.value).toBe('New unsaved draft');
 });

@@ -1348,3 +1348,43 @@ for (const viewport of [
     await expect(editor).toHaveCount(0);
   });
 }
+
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf old save/delete cannot dismiss a replacement editor ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport); await navigate(page, '教材');
+    for (const action of ['save', 'delete']) {
+      await page.getByRole('button', { name: '更新前の教材のメニュー', exact: true }).first().click();
+      await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+      const editor = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を編集', exact: true }) });
+      await expect(editor).toBeVisible();
+      const method = action === 'save' ? 'upsertStudyMaterial' : 'deleteStudyMaterial';
+      await page.evaluate(method => window.__plannerRecoveryRepository.holdNextMaterialWrite(method), method);
+      if (action === 'save') {
+        await editor.getByLabel('現在位置', { exact: true }).fill('12');
+        await editor.getByRole('button', { name: '保存', exact: true }).click();
+      } else {
+        page.once('dialog', dialog => dialog.accept());
+        await editor.getByRole('button', { name: '削除', exact: true }).click();
+      }
+      await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+      await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
+      await page.getByRole('button', { name: '教材追加', exact: true }).click();
+      const replacement = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を追加', exact: true }) });
+      await replacement.getByPlaceholder('黄色チャート').fill('後から入力した未保存の教材');
+      expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+      await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+      await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === method && call.phase === 'returned').length).toBe(1);
+      await expect(replacement).toBeVisible();
+      await expect(replacement.getByPlaceholder('黄色チャート')).toHaveValue('後から入力した未保存の教材');
+      const saved = await durable(page);
+      expect(saved.materials.some(material => material.name === '後から入力した未保存の教材')).toBe(false);
+      if (action === 'save') expect(saved.materials[0].currentUnit).toBe(12);
+      else expect(saved.materials).toEqual([]);
+      const screenshot = testInfo.outputPath(`${viewport.label}-${action}-new-draft-retained.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await testInfo.attach('New material draft survives old completion', { path: screenshot, contentType: 'image/png' });
+      await replacement.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    }
+  });
+}

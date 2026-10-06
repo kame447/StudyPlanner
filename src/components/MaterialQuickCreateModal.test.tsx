@@ -1,3 +1,4 @@
+import { deferred } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import type { StudyMaterial } from '../types/domain';
@@ -118,4 +119,26 @@ describe('MaterialQuickCreateModal', () => {
     );
     expect(onSaveStandaloneActual).not.toHaveBeenCalled();
   });
+});
+
+
+it('keeps a replacement quick-entry session open and admits a pending submission only once', async () => {
+  const gate = deferred(); const save = vi.fn(() => gate.promise), close = vi.fn();
+  let renderer!: ReactTestRenderer;
+  const view = (date: string) => <MaterialQuickCreateModal userId="user-1" selectedDate={date} material={material}
+    onClose={close} onSavePlan={vi.fn()} onSaveStandaloneActual={save} />;
+  act(() => { renderer = create(view('2026-08-14')); });
+  const submit = renderer.root.findByType('form').props.onSubmit;
+  let pending!: Promise<void>;
+  act(() => { pending = submit({ preventDefault: vi.fn() }); void submit({ preventDefault: vi.fn() }); });
+  expect(save).toHaveBeenCalledOnce();
+  act(() => { renderer.update(view('2026-08-15')); });
+  await act(async () => { gate.resolve(); await pending; });
+  expect(close).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType('input').find(input => input.props.type === 'date')!.props.value).toBe('2026-08-15');
+  await act(async () => { await submit({ preventDefault: vi.fn() }); });
+  expect(save).toHaveBeenCalledOnce();
+  await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+  expect(close).toHaveBeenCalledOnce(); expect(save).toHaveBeenCalledTimes(2);
+  act(() => renderer.unmount());
 });

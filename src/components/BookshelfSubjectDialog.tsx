@@ -1,3 +1,4 @@
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import { useState, type FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
@@ -16,7 +17,12 @@ interface BookshelfSubjectDialogProps {
   hasMaterials: boolean;
 }
 
-export function BookshelfSubjectDialog({
+export function BookshelfSubjectDialog(props: BookshelfSubjectDialogProps) {
+  if (props.subject && props.subject.userId !== props.userId) return null;
+  return <BookshelfSubjectDialogSession key={JSON.stringify([props.userId, props.subject?.id ?? null])} {...props} />;
+}
+
+function BookshelfSubjectDialogSession({
   userId,
   subject,
   onClose,
@@ -24,6 +30,7 @@ export function BookshelfSubjectDialog({
   onDelete,
   hasMaterials,
 }: BookshelfSubjectDialogProps) {
+  const beginMutation = useEditorMutation();
   const [name, setName] = useState(subject?.name ?? '');
   const [color, setColor] = useState(subject?.color ?? SUBJECT_COLOR_OPTIONS[0].value);
   const [status, setStatus] = useState('');
@@ -38,6 +45,8 @@ export function BookshelfSubjectDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       await onSave(
@@ -48,13 +57,14 @@ export function BookshelfSubjectDialog({
         },
         subject?.id,
       );
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       const uncertain = !(error instanceof ActualMutationAdmissionError);
       setRequiresInspection(uncertain);
       setStatus(`${error instanceof Error ? error.message : '教科を保存できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
@@ -63,19 +73,23 @@ export function BookshelfSubjectDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     const confirmed = window.confirm(`${subject.name} を削除しますか？`);
     if (!confirmed) {
+      operation.finish();
       return;
     }
 
     setIsSubmitting(true);
     try {
       await onDelete(subject);
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       setStatus(error instanceof Error ? error.message : '教科を削除できませんでした。');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
