@@ -451,15 +451,19 @@ describe('Stable V5 human-scale conversation integration', () => {
       proposalId: proposalId!,
       decision: 'accept',
     })));
+    const committedFirst = committedTurnForTest({
+      result: first,
+      precedingMessages: [
+        { id: 'u1', role: 'user', content: '英単語220語を覚える予定を作りたい', createdAt: '2026-08-12T00:00:00.000Z' },
+      ],
+    });
     const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
       conversationId,
-      previousState: first.state,
+      previousState: committedFirst.previousState,
       userText: 'それでお願いします',
       traceRequestId: `${conversationId}:request:2`,
-      messages: [
-        { id: 'u1', role: 'user', content: '英単語220語を覚える予定を作りたい', createdAt: '2026-08-12T00:00:00.000Z' },
-        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
-      ],
+      messages: committedFirst.messages,
+      inputStateRevision: committedFirst.inputStateRevision,
     }));
 
     expect(second.draftCandidates).toEqual([]);

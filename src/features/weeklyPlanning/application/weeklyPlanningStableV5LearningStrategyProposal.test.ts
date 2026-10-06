@@ -113,6 +113,7 @@ function state(records: NonNullable<PlanningIntakeState['learningStrategyProposa
 describe('Stable V5 learning strategy proposal policy', () => {
   it('proposes spaced memory practice for memorization work without inferring it from a unit label', () => {
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       document: document({ activityKind: 'memorization_retrieval' }),
       localToFactId: {
         task: 'task-public',
@@ -135,6 +136,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
 
   it('does not propose the memory strategy for problem-solving work', () => {
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       document: document({ activityKind: 'problem_solving' }),
       localToFactId: {
         task: 'task-public',
@@ -151,6 +153,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
 
   it('accepts only the exact pending proposal and preserves that decision in weekly state', () => {
     const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       document: document({ activityKind: 'memorization_retrieval' }),
       localToFactId: {
         task: 'task-public',
@@ -163,6 +166,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
     const proposalId = first.pendingProposal!.id;
 
     const accepted = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: proposalId,
       previousState: state(first.records),
       document: document({
         activityKind: 'unknown',
@@ -183,8 +187,37 @@ describe('Stable V5 learning strategy proposal policy', () => {
     expect(accepted.records).toHaveLength(1);
   });
 
+  it('does not let a decision settle a pending proposal that was not the presented question', () => {
+    const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
+      document: document({ activityKind: 'memorization_retrieval' }),
+      localToFactId: { task: 'task-public', workload: 'workload-public' },
+      compilation: compilation(),
+      graphRevision: 1,
+      turnId: 'turn-1',
+    });
+    const proposalId = first.pendingProposal!.id;
+    for (const presentedProposalId of [null, 'some-other-presented-proposal']) {
+      const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+        presentedProposalId,
+        previousState: state(first.records),
+        document: document({ activityKind: 'unknown', decision: { proposalId, decision: 'accept' } }),
+        localToFactId: {},
+        compilation: compilation(),
+        graphRevision: 1,
+        turnId: 'turn-2',
+      });
+      expect(result.acceptedSpacedProposal).toBeNull();
+      expect(result.records.find((record) => record.id === proposalId)).toMatchObject({
+        status: 'pending',
+        decidedAtTurnId: null,
+      });
+    }
+  });
+
   it('keeps rejected strategy proposals from becoming scheduling policy', () => {
     const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       document: document({ activityKind: 'memorization_retrieval' }),
       localToFactId: {
         task: 'task-public',
@@ -197,6 +230,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
     const proposalId = first.pendingProposal!.id;
 
     const rejected = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: proposalId,
       previousState: state(first.records),
       document: document({
         activityKind: 'unknown',
@@ -219,6 +253,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
 
   it('proposes one pace-calibration session after an accepted spacing strategy and one-session duration', () => {
     const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       document: document({ activityKind: 'memorization_retrieval' }),
       localToFactId: {
         task: 'task-public',
@@ -235,6 +270,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
     }));
 
     const calibrated = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       previousState: state(acceptedSpacing),
       document: document({ activityKind: 'unknown' }),
       localToFactId: {},
@@ -274,6 +310,7 @@ describe('Stable V5 learning strategy proposal policy', () => {
       decidedAtTurnId: 'turn-2',
     }];
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       previousState: state(records),
       document: document({ activityKind: 'unknown' }),
       localToFactId: {},
