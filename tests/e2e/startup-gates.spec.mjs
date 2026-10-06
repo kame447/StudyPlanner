@@ -1,6 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 const URL = 'http://127.0.0.1:4174/startup-gates.html?startupTiming=1';
-async function boot(page, width) {
+async function boot(page, width, query = '') {
   await page.setViewportSize({ width, height: 900 });
   await page.route('**/*', route => ['127.0.0.1', 'localhost', '[::1]'].includes(new globalThis.URL(route.request().url()).hostname) ? route.continue() : route.abort());
   // Replace only external identity/consent verdicts. Preferences, planner reads,
@@ -13,7 +13,7 @@ async function boot(page, width) {
       return { status, error: '', accept: async () => false, refresh: async () => {} };
     }
   ` }));
-  await page.goto(URL);
+  await page.goto(URL + query);
   await page.waitForFunction(() => Boolean(window.__startupGateHarness));
 }
 
@@ -57,3 +57,25 @@ test('current read failure uses ordinary recovery, never the retired copy', asyn
   await expect(page.getByRole('main', { name: '前回取得した予定', exact: true })).toHaveCount(0);
   expect((await rows(page)).some(row => row.phase === 'month-events' && row.outcome === 'error')).toBe(true);
 });
+
+for (const cachedAuth of [false, true]) {
+  for (const mode of ['off', 'observe']) {
+    test(`StrictMode ${mode} observation releases every listener with ${cachedAuth ? 'cached' : 'pending'} auth`, async ({ page }) => {
+      await boot(page, 390, `&startupProfile=${mode}&cachedAuth=${cachedAuth ? '1' : '0'}`);
+      if (!cachedAuth) await page.evaluate(() => window.__startupGateHarness.emitAuth());
+      await page.evaluate(() => window.__startupGateHarness.emitPolicy('accepted'));
+      await expect(page.locator('.splash-screen:visible')).toHaveCount(1);
+      if (mode === 'observe') await expect.poll(() => page.evaluate(() => window.__startupGateHarness.observations.active)).toBe(1);
+      await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
+      await expect(page.locator('.home-main')).toBeVisible();
+      const counts = await page.evaluate(() => window.__startupGateHarness.observations);
+      expect(counts.active).toBe(0);
+      expect(counts.stopped).toBe(counts.started);
+      expect(counts.maxActive).toBe(mode === 'observe' ? 1 : 0);
+      if (mode === 'observe') expect(counts.started).toBeGreaterThanOrEqual(2);
+      else expect(counts.started).toBe(0);
+      await page.getByRole('button', { name: '予定', exact: true }).click();
+      await expect(page.locator('.schedule-main')).toBeVisible();
+    });
+  }
+}
