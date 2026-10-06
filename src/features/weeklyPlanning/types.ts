@@ -148,6 +148,11 @@ export type WeeklyPlanningAction =
       type: 'fail_turn';
       pending: WeeklyPlanningPendingTurn;
       assistantMessage: WeeklyPlanningMessage;
+      /**
+       * Retained machine state after a recovery turn, with the pending question rebound to
+       * `assistantMessage`. Omitted when the failed turn leaves the intake state untouched.
+       */
+      intakeState?: PlanningIntakeState;
     }
   | { type: 'cancel_turn'; pending: WeeklyPlanningPendingTurn }
   | { type: 'begin_approval'; pending: WeeklyPlanningPendingApproval }

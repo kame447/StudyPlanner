@@ -1,3 +1,7 @@
+import {
+  WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5,
+  WEEKLY_PLANNING_CONVERSATION_ACTS_MAX_V5,
+} from './weeklyPlanningConversationActsV5';
 import { validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
@@ -373,13 +377,41 @@ function validateUserContextFacts(
   return errors;
 }
 
+function validateConversationActs(value: unknown): string[] {
+  if (!Array.isArray(value)) return ['document.conversationActs:expected-array'];
+  const errors: string[] = [];
+  if (value.length > WEEKLY_PLANNING_CONVERSATION_ACTS_MAX_V5) {
+    errors.push('document.conversationActs:too-many');
+  }
+  value.forEach((entry, index) => {
+    const path = `document.conversationActs[${index}]`;
+    if (!isRecord(entry)) {
+      errors.push(`${path}:expected-object`);
+      return;
+    }
+    if (!hasOnlyKeys(entry, ['kind', 'targetPublicId', 'sourceText'])) {
+      errors.push(`${path}:unknown-key`);
+    }
+    if (!(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 as readonly unknown[]).includes(entry.kind)) {
+      errors.push(`${path}.kind:unsupported-value`);
+    }
+    if (!(entry.targetPublicId === null || (typeof entry.targetPublicId === 'string' && entry.targetPublicId.trim()))) {
+      errors.push(`${path}.targetPublicId:expected-non-empty-string-or-null`);
+    }
+    if (typeof entry.sourceText !== 'string' || !entry.sourceText.trim()) {
+      errors.push(`${path}.sourceText:expected-non-empty-string`);
+    }
+  });
+  return errors;
+}
+
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
 ): WeeklyPlanningSemanticValidationResultV5 {
   if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
   const weeklyValue = Object.fromEntries(
-    Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
+    Object.entries(value).filter(([key]) => key !== 'userContextFacts' && key !== 'conversationActs'),
   );
   const baseWeeklyValue = stripSemanticExtensions(weeklyValue);
   const base = validateBaseSemanticValueV5(baseWeeklyValue);
@@ -397,6 +429,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
+  const actErrors = validateConversationActs(value.conversationActs ?? []);
   const structuralErrors = [
     ...baseErrors,
     ...existingPublicIdErrors,
@@ -406,6 +439,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...capacityErrors,
     ...absenceErrors,
     ...contextErrors,
+    ...actErrors,
   ];
   const document = structuralErrors.length === 0
     ? value as unknown as WeeklyPlanningSemanticDocumentV5

@@ -21,6 +21,10 @@ const semanticTurnSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
   'utf8',
 );
+const recoverySource = readFileSync(
+  new URL('./weeklyPlanningConversationRecovery.ts', import.meta.url),
+  'utf8',
+);
 const semanticContextSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticContext.ts', import.meta.url),
   'utf8',
@@ -102,8 +106,9 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(semanticTurnSource).not.toContain(
       '同じ内容をそのままもう一度送ってください。',
     );
-    expect(semanticTurnSource).toContain(
-      '予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
-    );
+    expect(semanticTurnSource).not.toContain('まず、いつの予定を作るか');
+    expect(recoverySource).not.toContain('同じ内容をそのまま');
+    expect(recoverySource).not.toContain('言い換えて');
+    expect(recoverySource).toContain('予定条件には反映していません。');
   });
 });

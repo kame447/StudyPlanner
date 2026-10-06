@@ -33,6 +33,12 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/controller.testUtils.ts',
   // Test-only: isolated paired graph packets; production imports prohibited by dormantArchitecture.test.
   'application/c5LocalSelection/evaluationHarness.testUtils.ts',
+  // Conversational recovery of a failed semantic step: retained machine question text only.
+  'application/weeklyPlanningConversationRecovery.ts',
+  // Test-only: bind a pending question to its presenting message as the controller does.
+  'testUtils/weeklyPlanningFreshPresentationTestUtils.ts',
+  // Test-only: scripted-provider full-turn harness over the real controller/runtime.
+  'testUtils/weeklyPlanningScriptedConversationHarness.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',

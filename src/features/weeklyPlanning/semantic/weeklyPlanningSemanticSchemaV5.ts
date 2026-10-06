@@ -1,3 +1,4 @@
+import { WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 } from './weeklyPlanningConversationActsV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import { USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 } from '../../userPlanningContext/userPlanningContextTypes';
 import {
@@ -350,6 +351,15 @@ const userContextFactSchema = objectSchema(
   },
 );
 
+const conversationActSchema = objectSchema(
+  ['kind', 'targetPublicId', 'sourceText'],
+  {
+    kind: enumSchema(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5),
+    targetPublicId: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+);
+
 const rootSchema = objectSchema(
   [
     'schemaVersion',
@@ -360,6 +370,7 @@ const rootSchema = objectSchema(
     'availabilityDeclarations',
     'constraintSourceRequests',
     'userContextFacts',
+    'conversationActs',
     'uncertainties',
     'corrections',
     'decisions',
@@ -376,6 +387,7 @@ const rootSchema = objectSchema(
     availabilityDeclarations: arraySchema(availabilityDeclarationSchema),
     constraintSourceRequests: arraySchema(constraintSourceRequestSchema),
     userContextFacts: arraySchema(userContextFactSchema),
+    conversationActs: arraySchema(conversationActSchema),
     uncertainties: arraySchema(uncertaintySchema),
     corrections: arraySchema(correctionSchema),
     decisions: arraySchema(decisionSchema),

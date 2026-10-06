@@ -3,6 +3,10 @@ import {
 } from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
+  resolveWeeklyPlanningQuestionPresentationFreshness,
+  type WeeklyPlanningQuestionPresentationFreshness,
+} from '../intake/weeklyPlanningQuestionPresentation';
+import {
   decodeWeeklyPlanningStableV5QuestionSlot,
 } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import type { StudyMaterial } from '../../../types/domain';
@@ -36,10 +40,23 @@ export function stableV5RequestContextForInput(
   return { context: input.requestContext, source: 'captured_request' };
 }
 
-function effortMeasurementFromState(
-  state: PlanningIntakeState | undefined,
+/**
+ * Freshness of the pending question's presentation at turn start. It is computed once
+ * per turn from machine state only (planning-state revision, latest committed message,
+ * graph revision) and every consumer in the turn reads this same value.
+ */
+export function resolveStableV5PendingQuestionPresentation(params: {
+  previousState: PlanningIntakeState | undefined;
+  inputStateRevision: number | undefined;
+  messages: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['messages'];
+  graphRevision: number;
+}): WeeklyPlanningQuestionPresentationFreshness {
+  return resolveWeeklyPlanningQuestionPresentationFreshness(params);
+}
+
+function effortMeasurementFromIntent(
+  intent: string | undefined,
 ): 'total_duration' | 'duration_per_unit' | 'session_duration' | null {
-  const intent = state?.lastQuestionContext?.intent;
   return intent === 'total_duration'
     || intent === 'duration_per_unit'
     || intent === 'session_duration'
@@ -47,21 +64,28 @@ function effortMeasurementFromState(
     : null;
 }
 
-function pendingQuestionFromState(
-  state: PlanningIntakeState | undefined,
-  graphRevision: number,
+/**
+ * Only a question whose presentation is still the latest committed message may be
+ * offered as the question the user is answering. Stale, unbound and malformed
+ * presentations fail closed: the semantic model then interprets the turn without a
+ * machine pending question and no short-answer shortcut can bind it. The revision is
+ * the one committed with the presenting message, not the current graph.
+ */
+function pendingQuestionFromPresentation(
+  presentation: WeeklyPlanningQuestionPresentationFreshness,
 ): Record<string, unknown> | null {
-  const context = state?.lastQuestionContext;
-  const questionCode = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
+  if (presentation.status !== 'fresh') return null;
+  const context = presentation.questionContext;
+  const questionCode = decodeWeeklyPlanningStableV5QuestionSlot(context.targetSlot);
   if (!questionCode) return null;
   return {
-    actionId: context?.actionId ?? null,
+    actionId: context.actionId ?? null,
     questionCode,
-    targetFactId: context?.topicId ?? null,
-    graphRevision,
-    effortMeasurement: effortMeasurementFromState(state),
-    estimateForWorkloadFactId: context?.estimateForWorkloadFactId ?? null,
-    questionBasis: context?.questionBasis ?? null,
+    targetFactId: context.topicId ?? null,
+    graphRevision: presentation.presentation.graphRevision,
+    effortMeasurement: effortMeasurementFromIntent(context.intent),
+    estimateForWorkloadFactId: context.estimateForWorkloadFactId ?? null,
+    questionBasis: context.questionBasis ?? null,
   };
 }
 
@@ -95,6 +119,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
   graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
+  pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
   ownerId?: string;
   currentDate?: string;
   userText?: string;
@@ -105,7 +130,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
     runtime: 'weekly-planning-stable-v5',
     graphRevision: params.graph.revision,
     previousCompatibilityStatus: params.previousState?.status ?? null,
-    pendingQuestion: pendingQuestionFromState(params.previousState, params.graph.revision),
+    pendingQuestion: pendingQuestionFromPresentation(params.pendingQuestionPresentation),
     learningStrategyProposals: learningStrategyProposalsFromState(params.previousState),
     groundingRecords: (params.previousState?.groundingRecords ?? [])
       .filter((record) => record.status !== 'rejected')

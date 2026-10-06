@@ -414,10 +414,31 @@ export async function submitWeeklyPlanningControlledTurn(
       ? error.userMessage
       : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
+    // A recovery turn retains the accepted machine state. When it re-presented the fresh
+    // machine question, rebind that question to this message so the next short reply
+    // keeps its target; otherwise the carried binding is removed (it can no longer be fresh).
+    // The retained state is the turn-start snapshot, never the execution result.
+    const retainedIntakeState = failedResult?.failure && snapshot.intakeState
+      ? (() => {
+          const carriedC5 = snapshot.intakeState.lastQuestionContext?.c5;
+          const bound = bindWeeklyPlanningQuestionPresentation({
+            state: snapshot.intakeState,
+            content: failedResult.questionPresentationContent,
+            turnId: envelope.turnId,
+            assistantMessageId: assistantMessage.id,
+            planningStateRevision: pending.baseRevision + 2,
+            graphRevision: failedResult.questionPresentationGraphRevision,
+          });
+          return carriedC5 && bound.lastQuestionContext
+            ? { ...bound, lastQuestionContext: { ...bound.lastQuestionContext, c5: carriedC5 } }
+            : bound;
+        })()
+      : undefined;
     const failedState = params.dispatch({
       type: 'fail_turn',
       pending,
       assistantMessage,
+      ...(retainedIntakeState ? { intakeState: retainedIntakeState } : {}),
     });
     await runBestEffort(() => params.onFailedTurn?.({
       snapshot,

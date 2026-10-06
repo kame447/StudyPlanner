@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { chainedPreviousTurnForTest } from '../testUtils/weeklyPlanningFreshPresentationTestUtils';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -174,9 +175,15 @@ function turnInput(params: {
   previousState?: PlanningIntakeState;
   messages?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['messages'];
 }): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
-  return {
+  const chained = chainedPreviousTurnForTest({
     previousState: params.previousState,
-    messages: params.messages ?? [],
+    conversationId: params.conversationId,
+    messages: params.messages,
+  });
+  return {
+    previousState: chained.previousState,
+    messages: chained.messages,
+    inputStateRevision: chained.inputStateRevision,
     userText: params.userText,
     selectedDate: '2026-08-17',
     userId: 'owner-memory-integration',

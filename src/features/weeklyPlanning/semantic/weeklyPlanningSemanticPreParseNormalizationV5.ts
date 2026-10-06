@@ -207,6 +207,7 @@ function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormaliz
       availabilityDeclarations: [],
       constraintSourceRequests: [],
       userContextFacts: [],
+      conversationActs: [],
       uncertainties: [],
       corrections: [],
       decisions: [],

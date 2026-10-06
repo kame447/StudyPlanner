@@ -133,7 +133,7 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
     }));
   });
 
-  it('records the failure projection and the state fields it clears', async () => {
+  it('records the failure projection without claiming a retained state was cleared', async () => {
     takeFailureMock
       .mockReturnValueOnce(null)
       .mockReturnValueOnce({
@@ -171,11 +171,36 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
       data: expect.objectContaining({
         branch: 'recorded_failure_projected',
         criteria: expect.objectContaining({
-          questionsCleared: true,
-          draftAuthorizationCleared: true,
+          machineStateRetained: false,
+          authoritativeStateChanged: false,
         }),
         projectedResult: result,
       }),
     }));
+  });
+  it('reports the retained machine state, not a cleared one, when a failed turn had a pending question', async () => {
+    takeFailureMock
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce({
+        status: 'normalization_rejected',
+        traceCode: 'validation=invalid_json',
+        attemptCount: 2,
+        repairAttempted: true,
+        validationErrorCategories: ['invalid_json'],
+        providerErrorCategory: null,
+      });
+    const previousState = runtimeResult().state;
+
+    const result = await executeWeeklyPlanningTurn({ ...input(), previousState });
+
+    expect(result.state).toEqual(previousState);
+    expect(result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:semantic_uncertainty');
+    expect(recordTraceMock).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'turn_executor_result_projected',
+      data: expect.objectContaining({
+        criteria: expect.objectContaining({ machineStateRetained: true }),
+      }),
+    }));
+    expect(JSON.stringify(recordTraceMock.mock.calls)).not.toContain('questionsCleared');
   });
 });

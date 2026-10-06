@@ -46,6 +46,7 @@ describe('Stable V5 registered material semantic context', () => {
       currentDate: '2026-08-29',
       userText: '明日から金フレを9月7日まで進めたい',
       studyMaterials,
+      pendingQuestionPresentation: { status: 'no_question' },
     });
 
     expect(summary.registeredMaterials).toEqual([
@@ -70,6 +71,7 @@ describe('Stable V5 registered material semantic context', () => {
       currentDate: '2026-08-29',
       userText: '金フレを進めたい',
       studyMaterials: [material()],
+      pendingQuestionPresentation: { status: 'no_question' },
     });
 
     expect(summary.registeredMaterials).toEqual([]);

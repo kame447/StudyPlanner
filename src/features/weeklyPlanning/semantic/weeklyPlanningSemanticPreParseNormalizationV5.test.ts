@@ -77,6 +77,7 @@ describe('Stable V5 semantic pre-parse normalization pipeline', () => {
       availabilityDeclarations: [],
       constraintSourceRequests: [],
       userContextFacts: [],
+      conversationActs: [],
       uncertainties: [],
       corrections: [],
       decisions: [],

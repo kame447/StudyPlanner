@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { committedTurnForTest } from '../testUtils/weeklyPlanningFreshPresentationTestUtils';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type SemanticStudyActivityKindV5,
@@ -309,6 +310,7 @@ function turnInput(params: {
   traceRequestId: string;
   previousState?: PlanningIntakeState;
   messages?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['messages'];
+  inputStateRevision?: number;
 }): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   return {
     previousState: params.previousState,
@@ -321,6 +323,7 @@ function turnInput(params: {
     conversationId: params.conversationId,
     traceRequestId: params.traceRequestId,
     requestContext,
+    inputStateRevision: params.inputStateRevision,
   };
 }
 
@@ -357,15 +360,19 @@ async function runTwoTurnPlanningConversation(params: {
       })
     : durationAnswerDocument(params.answerMinutes);
   normalizeMock.mockResolvedValueOnce(acceptedResult(answerDocument));
+  const committedFirst = committedTurnForTest({
+    result: first,
+    precedingMessages: [
+      { id: 'u1', role: 'user', content: params.firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
+    ],
+  });
   const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
     conversationId: params.conversationId,
-    previousState: first.state,
+    previousState: committedFirst.previousState,
     userText: `${params.answerMinutes}分くらい`,
     traceRequestId: `${params.conversationId}:request:2`,
-    messages: [
-      { id: 'u1', role: 'user', content: params.firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
-      { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
-    ],
+    messages: committedFirst.messages,
+    inputStateRevision: committedFirst.inputStateRevision,
   }));
   return { first, second };
 }

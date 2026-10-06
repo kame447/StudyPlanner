@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { chainedPreviousTurnForTest } from '../testUtils/weeklyPlanningFreshPresentationTestUtils';
 import type { Actual, Plan } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -141,8 +142,13 @@ function input(params: {
   userText: string;
   previousState?: PlanningIntakeState;
 }): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
+  const chained = chainedPreviousTurnForTest({
+    previousState: params.previousState,
+    conversationId: params.conversationId,
+  });
   return {
-    previousState: params.previousState, messages: [], userText: params.userText,
+    previousState: chained.previousState, messages: chained.messages,
+    inputStateRevision: chained.inputStateRevision, userText: params.userText,
     selectedDate: '2026-08-17', userId: ownerId,
     plans: [historicalPlan()], actuals: [historicalActual()], scheduleTemplates: [],
     conversationId: params.conversationId, traceRequestId: params.requestId, requestContext,

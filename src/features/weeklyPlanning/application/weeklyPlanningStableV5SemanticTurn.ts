@@ -16,12 +16,18 @@ import {
   type WeeklyPlanningSemanticPipelineResultV5,
 } from '../semantic/weeklyPlanningSemanticPipelineV5';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
-import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
+import type { WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import {
+  createWeeklyPlanningConversationRecoveryOutput,
+  type WeeklyPlanningRecoveryFailure,
+} from './weeklyPlanningConversationRecovery';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import {
   activeStableV5PlanningWindows,
   createStableV5SemanticPublicStateSummary,
+  resolveStableV5PendingQuestionPresentation,
   stableV5RequestContextForInput,
   STABLE_V5_RECENT_TURN_LIMIT,
 } from './weeklyPlanningStableV5SemanticContext';
@@ -41,6 +47,8 @@ export type WeeklyPlanningStableV5SemanticTurnResult =
       requestContext: WeeklyPlanningTurnRequestContext;
       runtimeSession: WeeklyPlanningStableV5RuntimeSession;
       semantic: WeeklyPlanningSemanticPipelineResultV5;
+      /** Freshness of the previous question's presentation at turn start (one value per turn). */
+      pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
     }
   | {
       status: 'failure';
@@ -50,15 +58,17 @@ export type WeeklyPlanningStableV5SemanticTurnResult =
 function semanticFailureOutput(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   branch: 'provider_failure' | 'normalization_rejected' | 'canonicalization_rejected';
-  message: string;
+  failure: WeeklyPlanningRecoveryFailure;
+  graph: WeeklyPlanningFactGraphV5;
+  pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
   basis: unknown;
 }): WeeklyPlanningTurnExecutionResult {
-  const output = projectStableV5CompatibilityOutput({
+  const output = createWeeklyPlanningConversationRecoveryOutput({
+    failure: params.failure,
     previousState: params.input.previousState,
     userText: params.input.userText,
-    message: params.message,
-    draftCandidates: [],
-    authorized: false,
+    graph: params.graph,
+    pendingQuestionPresentation: params.pendingQuestionPresentation,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
@@ -67,6 +77,7 @@ function semanticFailureOutput(params: {
     data: {
       branch: params.branch,
       basis: params.basis,
+      pendingQuestionPresentation: params.pendingQuestionPresentation.status,
       output,
     },
   });
@@ -128,10 +139,17 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   const recentConversation = input.messages
     .slice(-STABLE_V5_RECENT_TURN_LIMIT)
     .map(({ role, content }) => ({ role, content }));
+  const pendingQuestionPresentation = resolveStableV5PendingQuestionPresentation({
+    previousState: input.previousState,
+    inputStateRevision: input.inputStateRevision,
+    messages: input.messages,
+    graphRevision: runtimeSession.graph.revision,
+  });
   const stateSummary = createStableV5SemanticPublicStateSummary({
     graph: runtimeSession.graph,
     messages: input.messages,
     previousState: input.previousState,
+    pendingQuestionPresentation,
     ownerId: input.userId,
     currentDate: requestContext.currentDate,
     userText: input.userText,
@@ -152,6 +170,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       selectedDate: input.selectedDate,
       requestContext,
       requestContextSource: temporal.source,
+      pendingQuestionPresentation: pendingQuestionPresentation.status,
       resolvedDateExpressions: resolvedDateExpressionsBefore,
       resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
       fallbackHorizon,
@@ -200,7 +219,9 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       output: semanticFailureOutput({
         input,
         branch: 'provider_failure',
-        message: 'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。',
+        failure: 'provider',
+        graph: runtimeSession.graph,
+        pendingQuestionPresentation,
         basis: { semanticStatus: semantic.status },
       }),
     };
@@ -211,7 +232,9 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       output: semanticFailureOutput({
         input,
         branch: 'normalization_rejected',
-        message: 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
+        failure: 'semantic',
+        graph: runtimeSession.graph,
+        pendingQuestionPresentation,
         basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
       }),
     };
@@ -222,7 +245,9 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
       output: semanticFailureOutput({
         input,
         branch: 'canonicalization_rejected',
-        message: '直前の会話状態と構造化結果が一致しなかったため、変更は反映していません。直前に確認していた項目だけ、短く一つ教えてください。',
+        failure: 'semantic',
+        graph: runtimeSession.graph,
+        pendingQuestionPresentation,
         basis: {
           semanticStatus: semantic.status,
           expectedRevision: runtimeSession.graph.revision,
@@ -238,5 +263,6 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     requestContext,
     runtimeSession,
     semantic,
+    pendingQuestionPresentation,
   };
 }

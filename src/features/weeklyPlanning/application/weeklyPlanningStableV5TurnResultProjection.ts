@@ -53,7 +53,9 @@ function projectFailedTurn(params: {
 }): WeeklyPlanningTurnExecutionResult {
   const projectedResult: WeeklyPlanningTurnExecutionResult = {
     ...params.result,
-    state: {
+    // A failed turn retains the accepted machine state, questions included. With no
+    // previous state nothing is retained and the neutral recovery state is reported.
+    state: params.input.previousState ?? {
       ...params.result.state,
       status: 'revision_pending',
       missing: [],
@@ -90,9 +92,8 @@ function projectFailedTurn(params: {
       branch: 'recorded_failure_projected',
       criteria: {
         recordedFailureExists: true,
-        projectedStatus: 'revision_pending',
-        questionsCleared: true,
-        draftAuthorizationCleared: true,
+        machineStateRetained: params.input.previousState !== undefined,
+        authoritativeStateChanged: false,
       },
       recordedFailure: params.recordedFailure,
       originalResult: params.result,

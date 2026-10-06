@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { freshnessForTest } from '../testUtils/weeklyPlanningFreshPresentationTestUtils';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   createStableV5SemanticPublicStateSummary,
@@ -88,10 +90,12 @@ describe('Stable V5 semantic public-state question binding', () => {
       revision: 2,
     };
 
+    const fixture = freshnessForTest({ state: previousState, graphRevision: graph.revision });
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: fixture.messages,
+      previousState: fixture.state,
+      pendingQuestionPresentation: fixture.freshness,
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -128,10 +132,12 @@ describe('Stable V5 semantic public-state question binding', () => {
       revision: 4,
     };
 
+    const fixture = freshnessForTest({ state: previousState, graphRevision: graph.revision });
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: fixture.messages,
+      previousState: fixture.state,
+      pendingQuestionPresentation: fixture.freshness,
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -162,10 +168,12 @@ describe('Stable V5 semantic public-state question binding', () => {
       revision: 5,
     };
 
+    const fixture = freshnessForTest({ state: previousState, graphRevision: graph.revision });
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: fixture.messages,
+      previousState: fixture.state,
+      pendingQuestionPresentation: fixture.freshness,
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -180,51 +188,83 @@ describe('Stable V5 semantic public-state question binding', () => {
   });
 });
 
-describe('Stable V5 semantic public-state question presentation exclusion', () => {
-  it('keeps the presentation binding out of the semantic model input', () => {
-    const unbound: PlanningIntakeState = {
-      ...baseState(),
-      lastQuestionContext: {
-        kind: 'options',
-        targetSlot: 'stable_v5:learning_strategy_proposal',
-        intent: 'learning_strategy_proposal',
-        topicId: 'workload-1',
-        actionId: 'proposal-1',
-      },
-    };
-    const bound: PlanningIntakeState = {
-      ...unbound,
-      lastQuestionContext: {
-        ...unbound.lastQuestionContext!,
-        presentation: {
-          version: 1,
-          turnId: 'turn-presentation-sentinel',
-          assistantMessageId: 'turn-presentation-sentinel:assistant',
-          planningStateRevision: 8,
-          graphRevision: 2,
-          content: {
-            responseSource: 'ai',
-            currentTurnGrounding: 'none',
-            selfRepairNotice: false,
-          groundingContext: { proposed: 0, contested: 0 },
-          previewPromotionControl: false,},
-        },
-      },
-    };
+describe('Stable V5 semantic public-state question presentation', () => {
+  const question: PlanningIntakeState = {
+    ...baseState(),
+    lastQuestionContext: {
+      kind: 'options',
+      targetSlot: 'stable_v5:learning_strategy_proposal',
+      intent: 'learning_strategy_proposal',
+      topicId: 'workload-1',
+      actionId: 'proposal-1',
+    },
+  };
+
+  it('keeps the presentation binding itself out of the semantic model input', () => {
     const graph = { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2 };
-
-    const boundSummary = createStableV5SemanticPublicStateSummary({
+    const fixture = freshnessForTest({ state: question, graphRevision: 2 });
+    const bound = {
+      ...fixture.state,
+      lastQuestionContext: {
+        ...fixture.state.lastQuestionContext!,
+        presentation: { ...fixture.state.lastQuestionContext!.presentation!, turnId: 'turn-presentation-sentinel' },
+      },
+    };
+    const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
+      messages: fixture.messages,
       previousState: bound,
+      pendingQuestionPresentation: fixture.freshness,
     });
+    expect(summary.pendingQuestion).not.toBeNull();
+    expect(JSON.stringify(summary)).not.toContain('turn-presentation-sentinel');
+  });
 
-    // The binding is application-owned freshness evidence; semantic interpretation is unchanged.
-    expect(boundSummary).toEqual(createStableV5SemanticPublicStateSummary({
+  it('offers no pending question unless its presentation is fresh', () => {
+    const graph = { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2 };
+    const fixture = freshnessForTest({ state: question, graphRevision: 2 });
+    const summaryFor = (
+      pendingQuestionPresentation: ReturnType<typeof resolveWeeklyPlanningQuestionPresentationFreshness>,
+    ) => createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState: unbound,
-    }));
-    expect(JSON.stringify(boundSummary)).not.toContain('turn-presentation-sentinel');
+      messages: fixture.messages,
+      previousState: fixture.state,
+      pendingQuestionPresentation,
+    }).pendingQuestion;
+
+    expect(summaryFor(fixture.freshness)).not.toBeNull();
+    for (const stateRevision of [3, 5]) {
+      expect(summaryFor(resolveWeeklyPlanningQuestionPresentationFreshness({
+        previousState: fixture.state,
+        inputStateRevision: stateRevision,
+        messages: fixture.messages,
+        graphRevision: 2,
+      }))).toBeNull();
+    }
+    expect(summaryFor(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: fixture.state,
+      inputStateRevision: 4,
+      messages: fixture.messages,
+      graphRevision: 3,
+    }))).toBeNull();
+    expect(summaryFor(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: question,
+      inputStateRevision: 4,
+      messages: fixture.messages,
+      graphRevision: 2,
+    }))).toBeNull();
+  });
+
+  it('reports the revision committed with the presenting message, not the current graph', () => {
+    const fixture = freshnessForTest({ state: question, graphRevision: 7 });
+    const summary = createStableV5SemanticPublicStateSummary({
+      graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 7 },
+      messages: fixture.messages,
+      previousState: fixture.state,
+      pendingQuestionPresentation: fixture.freshness,
+    });
+    expect((summary.pendingQuestion as { graphRevision: number }).graphRevision).toBe(
+      fixture.state.lastQuestionContext!.presentation!.graphRevision,
+    );
   });
 });

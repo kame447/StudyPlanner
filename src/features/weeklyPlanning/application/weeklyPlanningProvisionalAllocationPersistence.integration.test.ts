@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chainedPreviousTurnForTest } from '../testUtils/weeklyPlanningFreshPresentationTestUtils';
 import { createActualFromDraft, createPlanFromDraft } from '../../../domain/planner';
 import { scheduleEventFromPlan, scheduleEventToPlan } from '../../../domain/scheduleEvent';
 import type { Plan } from '../../../types/domain';
@@ -135,8 +136,13 @@ async function runTurn(params: {
 }) {
   const requestId = `${params.conversationId}:${params.turn}`;
   normalizeMock.mockResolvedValueOnce(params.response);
+  const chained = chainedPreviousTurnForTest({
+    previousState: params.previousState,
+    conversationId: params.conversationId,
+  });
   const result = await executeWeeklyPlanningStableV5RuntimeTurn({
-    previousState: params.previousState, messages: [], userText: params.userText,
+    previousState: chained.previousState, messages: chained.messages,
+    inputStateRevision: chained.inputStateRevision, userText: params.userText,
     selectedDate: WEEK_START, userId: OWNER, plans: [], scheduleTemplates: [],
     conversationId: params.conversationId, traceRequestId: requestId,
     requestContext: {

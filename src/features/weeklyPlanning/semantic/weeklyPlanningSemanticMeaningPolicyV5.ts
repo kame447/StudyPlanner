@@ -81,6 +81,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     instruction: 'userContextFacts are durable owner-wide context only: study_goal for enduring academic/admission goals, goal_event for dated milestones, concern for durable weaknesses/worries, learning_preference only beyond this plan. Plan workload, availability, temporary priority/review rules and one-off conditions stay plan-local. Approximate goal-event dates may use custom symbolic form; never invent an exact day.',
   },
   {
+    id: 'conversation_acts',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'Whether an utterance asks about the pending question, shifts or resumes a topic, or asks for advice is discourse meaning; code only routes the typed result.',
+    instruction: 'conversationActs add non-mutating meaning beside the delta; keep every planning fact. Kinds: ask_about_pending_question (why/what), topic_shift, resume_topic, consultation_request (advice/judgement), answer_pending_question (only with the delta). targetPublicId: existing task/component id or null; sourceText quotes this turn. Plain planning input: [].',
+  },
+  {
     id: 'independent_clause_decision_correction',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Clause independence, corrections, and proposal decisions are discourse semantics; deterministic lifecycle code applies them only after the model identifies them.',

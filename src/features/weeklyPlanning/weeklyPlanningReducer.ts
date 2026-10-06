@@ -210,6 +210,7 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),
+        ...(action.intakeState ? { intakeState: action.intakeState } : {}),
         pendingTurn: undefined,
       });
 

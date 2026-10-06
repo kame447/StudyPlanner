@@ -1,3 +1,4 @@
+import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
@@ -128,6 +129,11 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
 }): boolean {
   if (!hasMachinePendingQuestion(params.publicStateSummary)) return false;
   const document = params.document;
+  // A typed non-mutating conversational act (explain / aside / resume / consultation) is a
+  // valid complete result with an empty planning delta. Re-asking the model for "missing"
+  // content would only waste dispatches; only a bare answer act without any delta is a
+  // contradiction worth a bounded retry.
+  if (hasSelfSufficientConversationActV5(document.conversationActs)) return false;
   if (
     document.planningWindow
     || document.relations.length > 0

@@ -6,6 +6,7 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../types/domain';
+import type { WeeklyPlanningInteractionOutcome } from './application/weeklyPlanningInteractionOutcome';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import type {
   PlanningIntakeState,
@@ -89,6 +90,13 @@ export interface WeeklyPlanningTurnExecutionResult {
    * question. The turn controller binds it to the committed assistant message.
    */
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
+  /**
+   * Graph revision the presented question belongs to when the result carries no new
+   * graph (recovery turns). Ignored when `stableV5Graph` is present.
+   */
+  questionPresentationGraphRevision?: number;
+  /** Deterministic decision of what kind of conversational turn this was. */
+  interactionOutcome?: WeeklyPlanningInteractionOutcome;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {
