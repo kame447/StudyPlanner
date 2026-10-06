@@ -48,3 +48,18 @@ Compare alternatives using the same device, network, account, dataset, build and
 認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面が準備できた時点で初めて表示を切り替える。
 
 PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready通知を採用しない。
+
+## Catalog startup lifetime
+
+The global optional subject catalog starts loading immediately during root-owned
+bootstrap, as before. A server-confirmed successful read is reused only within
+that mount/expected-owner scope when the profile changes from unresolved to
+restored. Cached/unknown provenance, a missing document and read failures retain
+the existing owner-transition retry. Overlapping attempts still share one
+in-flight read; a shared failure does not add an automatic retry. Standalone
+anonymous-to-owner behavior and a fresh root mount retain their refreshes.
+
+This removes a redundant sequential read, not an awaited startup gate. It does
+not postpone catalog availability for early entry, introduce persistent caching,
+or establish an improvement in navigation-to-usable-Home time by itself. Treat
+read-count evidence separately from actual cold/warm startup measurements.

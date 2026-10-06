@@ -129,15 +129,27 @@ function normalizeCatalog(value: unknown): NaturalLanguageCatalog {
 
 const fallbackCatalog = normalizeCatalog(rawCatalog);
 let currentCatalog: NaturalLanguageCatalog = fallbackCatalog;
-let loadPromise: Promise<NaturalLanguageCatalog> | null = null;
+export interface NaturalLanguageCatalogLoadResult {
+  catalog: NaturalLanguageCatalog;
+  source: 'server' | 'cache' | 'fallback';
+}
+let loadPromise: Promise<NaturalLanguageCatalogLoadResult> | null = null;
 
 export function getNaturalLanguageCatalog(): NaturalLanguageCatalog {
   return currentCatalog;
 }
 
 export async function loadNaturalLanguageCatalog(
-  _options: { seedWhenMissing?: boolean } = {},
+  options: { seedWhenMissing?: boolean } = {},
 ): Promise<NaturalLanguageCatalog> {
+  return (await loadNaturalLanguageCatalogWithOutcome(options)).catalog;
+}
+
+// Report provenance without retaining settled data as a cross-session cache.
+// The compatibility option does not create or seed catalog documents.
+export async function loadNaturalLanguageCatalogWithOutcome(
+  _options: { seedWhenMissing?: boolean } = {},
+): Promise<NaturalLanguageCatalogLoadResult> {
   if (loadPromise) {
     return loadPromise;
   }
@@ -147,7 +159,7 @@ export async function loadNaturalLanguageCatalog(
 
     if (!firestoreDb) {
       currentCatalog = fallbackCatalog;
-      return currentCatalog;
+      return { catalog: currentCatalog, source: 'fallback' as const };
     }
 
     const catalogRef = doc(firestoreDb, CATALOG_COLLECTION, CATALOG_DOCUMENT_ID);
@@ -157,14 +169,14 @@ export async function loadNaturalLanguageCatalog(
 
       if (snapshot.exists()) {
         currentCatalog = normalizeCatalog(snapshot.data());
-        return currentCatalog;
+        return { catalog: currentCatalog, source: snapshot.metadata?.fromCache === false ? 'server' as const : 'cache' as const };
       }
     } catch (error) {
       console.warn('[NaturalLanguageCatalog] failed to load from Firestore', error);
     }
 
     currentCatalog = fallbackCatalog;
-    return currentCatalog;
+    return { catalog: currentCatalog, source: 'fallback' as const };
   })();
 
   try {

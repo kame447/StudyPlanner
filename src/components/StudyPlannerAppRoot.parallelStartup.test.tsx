@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerReposi
   policy: 'accepted', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
 vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile },
   plannerRepository: new Proxy({}, { get: (_, key) => fixture.repository[key as keyof PlannerRepository] }) }));
-vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalog: vi.fn(async () => undefined) }));
+vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalogWithOutcome: vi.fn(async () => ({ source: 'server' })) }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => true }));
 vi.mock('../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy', () => ({ useWeeklyPlanningTracePolicy: () => ({ status: fixture.policy }) }));
