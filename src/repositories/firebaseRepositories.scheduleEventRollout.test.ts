@@ -1,15 +1,16 @@
+import { createStartupSessionScope } from '../lib/startupSessionScope';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFirebaseRepositories } from './firebaseRepositories';
 import type { PlannerRepository } from './repositoryContracts';
 import { deferred } from './localPersistenceConcurrency.testUtils';
 
-const sdk = vi.hoisted(() => ({ marker: vi.fn(), transactionGet: vi.fn(), runTransaction: vi.fn(),
+const sdk = vi.hoisted(() => ({ observe: vi.fn(), marker: vi.fn(), transactionGet: vi.fn(), runTransaction: vi.fn(),
   query: vi.fn(), set: vi.fn(), legacy: {} as PlannerRepository }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collectionName: string, id: string) => ({ collectionName, id }),
   collection: (_db: unknown, name: string) => ({ name }),
   getDoc: () => { throw new Error('Cache-eligible capability reads are not allowed.'); },
-  getDocFromServer: sdk.marker, getDocs: sdk.query,
+  getDocFromServer: sdk.marker, getDocs: sdk.query, onSnapshot: sdk.observe,
   query: (...parts: unknown[]) => ({ parts }), where: (...parts: unknown[]) => ({ parts }),
   runTransaction: sdk.runTransaction, setDoc: sdk.set, deleteDoc: vi.fn(),
   writeBatch: () => ({ set: sdk.set, delete: vi.fn(), commit: async () => undefined }),
@@ -101,4 +102,38 @@ describe('real Firebase composition migration startup', () => {
     const ownerIds = sdk.query.mock.calls.map(([query]) => query.parts[1].parts[2]);
     expect(ownerIds.sort()).toEqual(['a', 'a', 'b']);
   });
+});
+
+it('observed marker metadata cannot certify cutover or change ordinary migration decisions', async () => {
+  for (const read of [snapshot(completed(), true), snapshot(completed(), false, true), snapshot(null),
+    snapshot({ ...completed(), status: 'migrating' }), snapshot(completed())]) {
+    const repo = createFirebaseRepositories().plannerRepository;
+    const scope = createStartupSessionScope(), stop = vi.fn();
+    sdk.observe.mockReset().mockReturnValue(stop); sdk.marker.mockClear(); sdk.query.mockClear(); sdk.runTransaction.mockClear();
+    sdk.marker.mockResolvedValueOnce(read);
+    repo.observeStartupScheduleMarker!('owner', scope);
+    expect(sdk.observe).toHaveBeenCalledExactlyOnceWith({ collectionName: 'schedule_event_migrations', id: 'owner' },
+      { includeMetadataChanges: true }, expect.any(Function), expect.any(Function));
+    const data = vi.fn(() => { throw new Error('observer must not inspect marker body'); });
+    sdk.observe.mock.calls[0][2]({ metadata: { fromCache: false, hasPendingWrites: false }, data });
+    expect(data).not.toHaveBeenCalled(); expect(sdk.marker).not.toHaveBeenCalled();
+    expect(sdk.query).not.toHaveBeenCalled(); expect(sdk.runTransaction).not.toHaveBeenCalled();
+    await repo.getPlans('owner');
+    const markerData = read.data();
+    const clean = read.exists() && read.metadata.fromCache === false && read.metadata.hasPendingWrites === false
+      && markerData !== null && 'status' in markerData && markerData.status === 'completed';
+    expect(sdk.runTransaction).toHaveBeenCalledTimes(clean ? 0 : 1);
+    expect(sdk.marker).toHaveBeenCalledOnce();
+    scope.invalidate(); expect(stop).toHaveBeenCalledOnce();
+  }
+});
+it('observer failures preserve permission fallback and synchronous scope disposal', async () => {
+  const repo = createFirebaseRepositories().plannerRepository, scope = createStartupSessionScope();
+  const stop = vi.fn(); sdk.observe.mockReset().mockReturnValue(stop);
+  repo.observeStartupScheduleMarker!('owner', scope);
+  sdk.observe.mock.calls[0][3](new Error('optional observation failed'));
+  expect(stop).toHaveBeenCalledOnce();
+  sdk.marker.mockRejectedValueOnce({ code: 'permission-denied' });
+  await repo.getPlans('owner'); expect(sdk.legacy.getPlans).toHaveBeenCalledWith('owner');
+  scope.invalidate(); expect(stop).toHaveBeenCalledOnce();
 });

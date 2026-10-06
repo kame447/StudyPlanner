@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { StudyPlannerAppRoot } from '../../../src/components/StudyPlannerAppRoot';
-import { authRepository } from '../../../src/repositories';
+import { authRepository, plannerRepository } from '../../../src/repositories';
 import { StartupTimingPanel } from '../../../src/components/StartupTimingPanel';
 import { addDays, toIsoDate } from '../../../src/lib/date';
 import { createLocalWeeklyPlanningPersonalizationRepository } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
@@ -44,9 +44,21 @@ authRepository.observeStartupProfile = (_owner, scope) => {
   scope.onInvalidate(stop);
   return stop;
 };
+const markerObservations = { started: 0, active: 0, stopped: 0, maxActive: 0 };
+plannerRepository.observeStartupScheduleMarker = (_owner, scope) => {
+  markerObservations.started += 1; markerObservations.active += 1;
+  markerObservations.maxActive = Math.max(markerObservations.maxActive, markerObservations.active);
+  let closed = false;
+  const stop = () => {
+    if (closed) return;
+    closed = true; markerObservations.active -= 1; markerObservations.stopped += 1;
+  };
+  scope.onInvalidate(stop); return stop;
+};
 window.__startupGateHarness = {
   React,
   observations,
+  markerObservations,
   policy: 'loading',
   ownerId,
   emitAuth(id = ownerId) {

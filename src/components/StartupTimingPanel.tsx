@@ -1,3 +1,4 @@
+import { startupMarkerObservation } from '../lib/startupMarkerObservation';
 import { startupProfileObservation } from '../lib/startupProfileObservation';
 import { startupFirestoreTransport } from '../lib/startupFirestoreTransport';
 import { useEffect, useSyncExternalStore } from 'react';
@@ -34,6 +35,7 @@ export function StartupTimingPanel() {
     <p>ページ開始からのミリ秒。通信待ちを含みます。外部送信・保存はしません。</p>
     <p>Firestore比較設定: {startupFirestoreTransport}（この起動のみ）</p>
     <p>Profile比較設定: {startupProfileObservation}（この起動のみ）</p>
+    <p>Marker比較設定: {startupMarkerObservation}（この起動のみ）</p>
     <pre>{JSON.stringify(rows, null, 2)}</pre>
   </details>;
 }

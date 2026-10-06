@@ -8,10 +8,11 @@ import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { User } from '../types/domain';
 const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
-  profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off',
+  profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off', markerObservation: 'off', marker: vi.fn(),
   policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
 vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile, observeStartupProfile: fixture.observe },
   plannerRepository: new Proxy({}, { get: (_, key) => fixture.repository[key as keyof PlannerRepository] }) }));
+vi.mock('../lib/startupMarkerObservation', () => ({ get startupMarkerObservation() { return fixture.markerObservation; } }));
 vi.mock('../lib/startupProfileObservation', () => ({ get startupProfileObservation() { return fixture.observation; } }));
 vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalogWithOutcome: vi.fn(async () => ({ source: 'server' })) }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
@@ -49,7 +50,7 @@ let plansSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  vi.clearAllMocks(); fixture.observation = 'off'; fixture.observe.mockReset(); fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
+  vi.clearAllMocks(); fixture.observation = 'off'; fixture.markerObservation = 'off'; fixture.marker.mockReset(); fixture.observe.mockReset(); fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
   fixture.repository = { ...createLocalFixture().repository };
   memoryGate = deferred(); plannerGate = deferred();
   fixture.memory.mockImplementation(async (_id, snapshot) => { await memoryGate.promise; return { snapshot, shared: true }; });
@@ -244,4 +245,70 @@ it('a preference error stops observation even when a previous preference value i
   expect(stops[0]).toHaveBeenCalledOnce();
   fixture.preferenceError = ''; fixture.preferenceLoading = true; await updateRoot();
   expect(fixture.observe).toHaveBeenCalledOnce();
+});
+
+function enableMarkerObservation() {
+  fixture.markerObservation = 'observe';
+  const stops: ReturnType<typeof vi.fn>[] = [];
+  fixture.marker.mockImplementation((_owner: string, scope: StartupSessionCapability) => {
+    let closed = false; const disposed = vi.fn(); stops.push(disposed);
+    const stop = () => { if (!closed) { closed = true; disposed(); } };
+    scope.onInvalidate(stop); return stop;
+  });
+  fixture.repository.observeStartupScheduleMarker = fixture.marker;
+  return stops;
+}
+it('starts marker observation after preferences, overlaps profile, and retains it until all planner reads finish', async () => {
+  const stops = enableMarkerObservation(); fixture.preferenceLoading = true;
+  const profile = deferred<User | null>();
+  fixture.profile.mockImplementation(() => { expect(fixture.marker).toHaveBeenCalledOnce(); return profile.promise; });
+  await mount(); expect(fixture.marker).not.toHaveBeenCalled(); expect(fixture.profile).not.toHaveBeenCalled();
+  fixture.preferenceLoading = false; await updateRoot(); expect(stops[0]).not.toHaveBeenCalled();
+  await act(async () => { profile.resolve(owner('a')); await microtasks(); });
+  expect(plansSpy).toHaveBeenCalledOnce(); expect(stops[0]).not.toHaveBeenCalled();
+  await release(plannerGate); expect(stops[0]).toHaveBeenCalledOnce(); expect(splash()).toBe(1);
+  await release(memoryGate); expect(splash()).toBe(0); expect(fixture.marker).toHaveBeenCalledOnce();
+});
+it.each(['error', 'null', 'mismatch'])('closes marker observation on profile %s without waiting for memory or an auth event', async result => {
+  const stops = enableMarkerObservation();
+  if (result === 'error') fixture.profile.mockRejectedValue(new Error('profile unavailable'));
+  else fixture.profile.mockResolvedValue(result === 'null' ? null : owner('b'));
+  await mount(); expect(stops[0]).toHaveBeenCalledOnce(); expect(plansSpy).not.toHaveBeenCalled();
+  expect(splash()).toBe(1); expect(fixture.marker).toHaveBeenCalledOnce();
+});
+it('synchronously revokes the old marker observer on batched same-owner return and ignores stale profile settlement', async () => {
+  const stops = enableMarkerObservation(), oldProfile = deferred<User | null>(), nextProfile = deferred<User | null>();
+  fixture.profile.mockReturnValueOnce(oldProfile.promise).mockReturnValueOnce(nextProfile.promise);
+  await mount();
+  await act(async () => {
+    fake.emit(null); expect(stops[0]).toHaveBeenCalledOnce();
+    fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks();
+  });
+  expect(fixture.marker).toHaveBeenCalledTimes(2); expect(stops[1]).not.toHaveBeenCalled();
+  await act(async () => { oldProfile.resolve(owner('a')); await microtasks(); });
+  expect(stops[1]).not.toHaveBeenCalled(); expect(plansSpy).not.toHaveBeenCalled();
+  await act(async () => { nextProfile.resolve(owner('a')); await microtasks(); });
+  await release(plannerGate); expect(stops[1]).toHaveBeenCalledOnce();
+});
+it('an unavailable or failing optional marker port cannot fail normal startup', async () => {
+  enableMarkerObservation(); fixture.marker.mockImplementation(() => { throw new Error('optional observer'); });
+  await mount(); await release(plannerGate); await release(memoryGate);
+  expect(splash()).toBe(0); expect(plansSpy).toHaveBeenCalledOnce();
+});
+
+it('retained preference values with an error cannot start or later restart marker observation', async () => {
+  enableMarkerObservation(); fixture.preferenceError = 'settings unavailable';
+  await mount(); expect(fixture.marker).not.toHaveBeenCalled();
+  fixture.preferenceError = ''; await updateRoot(); expect(fixture.marker).not.toHaveBeenCalled();
+  await release(plannerGate); await release(memoryGate); expect(splash()).toBe(0);
+});
+it('closes the observer when bootstrap rejects even if another planner read is still pending', async () => {
+  const stops = enableMarkerObservation(), otherRead = deferred<any[]>();
+  plansSpy.mockRejectedValue(new Error('plans unavailable'));
+  fixture.repository.getMonthEvents = () => otherRead.promise;
+  await mount(); expect(stops[0]).toHaveBeenCalledOnce();
+  await release(memoryGate); expect(splash()).toBe(0);
+  expect(fixture.content.mock.lastCall?.[0].notice?.text).toBe('plans unavailable');
+  await act(async () => { otherRead.resolve([]); await microtasks(); });
+  expect(fixture.marker).toHaveBeenCalledOnce(); expect(stops[0]).toHaveBeenCalledOnce();
 });

@@ -1,4 +1,4 @@
-import { startupTiming } from '../lib/startupTiming';
+import { observeStartupDocument } from './observeStartupDocument';
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
   browserLocalPersistence,
@@ -13,7 +13,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import type { FieldValue, Firestore } from 'firebase/firestore';
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { createGoogleProvider } from '../lib/firebaseClient';
 import type { User } from '../types/domain';
 import type { AuthRepository } from './repositoryContracts';
@@ -263,40 +263,14 @@ export function createFirebaseAuthRepository(
       }
     },
     observeStartupProfile(expectedOwner, scope) {
-      const authUser = firebaseAuth.currentUser;
-      if (!scope.isCurrent() || !authUser || authUser.uid !== expectedOwner
-        || (isPasswordLogin(authUser) && !authUser.emailVerified)) return () => {};
-      const finish = startupTiming.begin('profile-observation');
-      let closed = false;
-      let failed = false;
-      let unsubscribe: (() => void) | null = null;
-      let unregister: () => void = () => {};
-      const stop = () => {
-        if (closed) return;
-        closed = true;
-        unregister();
-        try { unsubscribe?.(); }
-        catch { failed = true; }
-        finally {
-          finish(failed ? 'error' : 'cancelled');
-          startupTiming.begin('profile-observer-stop')(failed ? 'error' : 'success');
-        }
+      const eligible = () => {
+        const user = firebaseAuth.currentUser;
+        return scope.isCurrent() && Boolean(user && user.uid === expectedOwner
+          && (!isPasswordLogin(user) || user.emailVerified));
       };
-      try {
-        unsubscribe = onSnapshot(doc(firestoreDb, 'profiles', expectedOwner),
-          { includeMetadataChanges: true }, snapshot => {
-            if (closed) return;
-            const current = firebaseAuth.currentUser;
-            if (!scope.isCurrent() || !current || current.uid !== expectedOwner
-              || (isPasswordLogin(current) && !current.emailVerified)) { stop(); return; }
-            // No profile body is extracted, mapped, stored in React, or reused here.
-            if (snapshot.metadata?.fromCache === false && snapshot.metadata.hasPendingWrites === false) finish('success');
-          }, () => { failed = true; finish('error'); stop(); });
-        // Also handle a synchronously rejected test/provider subscription.
-        if (closed) unsubscribe();
-        else unregister = scope.onInvalidate(stop);
-      } catch { failed = true; finish('error'); stop(); }
-      return stop;
+      return observeStartupDocument({ reference: doc(firestoreDb, 'profiles', expectedOwner),
+        scope: { isCurrent: eligible, onInvalidate: dispose => scope.onInvalidate(dispose) },
+        phase: 'profile-observation', stopPhase: 'profile-observer-stop' });
     },
     async getCurrentUser() {
       await ensureLocalAuthPersistence(firebaseAuth);

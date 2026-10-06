@@ -95,7 +95,7 @@ function ConsentedStudyPlannerApp({
 
   return (
     <RootStartupReadyProvider onReady={ignoreEarlyBootstrapReady}>
-      <PlannerAppBootstrap ownerId={userId}>
+      <PlannerAppBootstrap ownerId={userId} startupScope={startupScope} authSession={authSession} startupObservationAllowed={!personalization.error}>
         {(state, onReady) => (
           <UserPlanningContextProvider ownerId={userId}>
             <WeeklyPlanningPersonalizationProvider

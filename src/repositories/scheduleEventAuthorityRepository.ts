@@ -1,3 +1,4 @@
+import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type { MonthEvent, Plan } from '../types/domain';
 import type {
@@ -20,6 +21,7 @@ export class ScheduleEventMigrationCapabilityUnavailableError extends Error {
 }
 
 export interface ScheduleEventAuthorityRepository {
+  observeStartupScheduleMarker?(expectedOwner: string, scope: StartupSessionCapability): () => void;
   ensureMigrated(
     userId: string,
     loadLegacy: () => Promise<LegacyScheduleSnapshot>,
@@ -79,6 +81,9 @@ export function createScheduleEventBackedPlannerRepository(
 
   return {
     ...legacyRepository,
+    observeStartupScheduleMarker: authorityRepository.observeStartupScheduleMarker
+      ? (owner, scope) => authorityRepository.observeStartupScheduleMarker!(owner, scope)
+      : undefined,
     async getPlans(userId) {
       const mode = await resolveSchedulePersistenceMode(userId);
       return mode === 'canonical'
