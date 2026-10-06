@@ -253,7 +253,6 @@ function ScheduleDayStrip({ selectedDate, onChangeDay }: ScheduleDayStripProps) 
           <Fragment key={date}>
             {monthBoundaryLabel ? (
               <div className="schedule-day-month-boundary" aria-hidden="true">
-                <span>ここから</span>
                 <strong>{monthBoundaryLabel}</strong>
               </div>
             ) : null}

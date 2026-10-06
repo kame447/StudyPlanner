@@ -98,12 +98,37 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     expect(roles).toEqual(['あなた', 'アプリ', 'あなた', 'アプリ']);
   });
 
-  test('canceling an in-flight turn causes the real controller to discard its late runtime result', async ({ page }) => {
+  test('canceling an in-flight turn causes the real controller to discard its late runtime result', async ({ page }, testInfo) => {
     await page.goto(`${REAL_WEEKLY_URL}?gate=real-weekly`);
+    const sendSizes = new Map();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const send = page.getByRole('button', { name: '送信', exact: true });
+      await expect(send).toBeVisible();
+      sendSizes.set(width, await send.boundingBox());
+    }
     await submitWeekly(page, 'キャンセルする条件');
     await waitForRuntimePending(page);
 
-    await page.getByRole('button', { name: '処理をキャンセル' }).click();
+    const cancel = page.locator('.ai-planning-composer').getByRole('button', { name: '処理をキャンセル', exact: true });
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(cancel).toBeVisible();
+      await expect(cancel).toBeEnabled();
+      await expect(cancel).toHaveClass('ai-planning-send-button');
+      await expect(cancel.locator('svg.lucide-x')).toHaveCount(1);
+      await expect(page.getByRole('button', { name: '送信', exact: true })).toHaveCount(0);
+      await expect(page.locator('.ai-planning-pending-turn-actions')).toHaveCount(0);
+      const bounds = await cancel.boundingBox();
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      expect(bounds.width).toBeCloseTo(sendSizes.get(width).width, 1);
+      expect(bounds.height).toBeCloseTo(sendSizes.get(width).height, 1);
+      await page.screenshot({ path: testInfo.outputPath(`composer-cancel-${width}.png`), fullPage: false });
+    }
+    await cancel.click();
+    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeVisible();
+    await expect(cancel).toHaveCount(0);
     await releaseRuntime(page);
     await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
 

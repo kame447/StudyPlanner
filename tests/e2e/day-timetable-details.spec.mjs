@@ -37,6 +37,12 @@ for (const mobile of [false, true]) {
       const navigation = page.getByRole('navigation', { name: '主要ナビゲーション' });
       await navigation.getByRole('button', { name: '予定', exact: true }).click();
       await page.getByRole('tab', { name: '日', exact: true }).click();
+      await expect(page.locator('.schedule-day-month-boundary').filter({ hasText: '9月' })).toHaveText('9月');
+      await expect(page.locator('.schedule-day-month-boundary').getByText('ここから', { exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: '2026年 9月1日 火', exact: true }).click();
+      await expect(page.locator('.schedule-period-picker-trigger')).toContainText('9月1日');
+      await page.getByRole('button', { name: '2026年 8月19日 水', exact: true }).click();
+      await expect(page.locator('.schedule-period-picker-trigger')).toContainText('8月19日');
       const card = page.locator('.timeline-plan-block').filter({ hasText: '未取込の授業' });
       await expect(card).toHaveCount(1);
       await expect(page.locator('.timeline-actual-block')).toHaveCount(0);
