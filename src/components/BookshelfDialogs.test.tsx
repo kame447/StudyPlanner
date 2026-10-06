@@ -1,3 +1,5 @@
+import { loadMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
+import { deferred, MemoryStorage } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
@@ -142,7 +144,9 @@ describe('bookshelf dialogs', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps catalog cover URLs separate and persists the selected catalog identity', async () => {
+  it('keeps catalog cover URLs separate and persists the selected catalog identity even after dismissal', async () => {
+    vi.stubGlobal('window', { localStorage: new MemoryStorage() });
+    try {
     const catalogCoverUrl = 'https://cover.example/9784023315686.jpg';
     const catalogCandidate = {
       catalogEntryId: 'seed:english-kintore',
@@ -151,6 +155,7 @@ describe('bookshelf dialogs', () => {
       isbn13: '9784023315686',
       coverImageUrl: catalogCoverUrl,
       aliases: ['金フレ'],
+      tableOfContents: ['基本', '応用'],
     };
     const savedMaterial: StudyMaterial = {
       ...material,
@@ -163,7 +168,9 @@ describe('bookshelf dialogs', () => {
       catalogIsbn13: catalogCandidate.isbn13,
       aliases: catalogCandidate.aliases,
     };
-    const onSave = vi.fn().mockResolvedValue(savedMaterial);
+    const gate = deferred<StudyMaterial>();
+    const onSave = vi.fn(() => gate.promise);
+    const onClose = vi.fn();
     let renderer!: ReactTestRenderer;
 
     act(() => {
@@ -172,7 +179,7 @@ describe('bookshelf dialogs', () => {
           userId="user-1"
           material={null}
           subjects={[subject]}
-          onClose={vi.fn()}
+          onClose={onClose}
           onSave={onSave}
           onDelete={vi.fn()}
         />,
@@ -183,9 +190,12 @@ describe('bookshelf dialogs', () => {
       renderer.root.findByType(BookshelfMaterialSearch).props.onSelect(catalogCandidate);
     });
 
-    await act(async () => {
-      await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
-    });
+    let pending!: Promise<void>;
+    act(() => { pending = renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+    act(() => renderer.unmount());
+    await act(async () => { gate.resolve(savedMaterial); await pending; });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(loadMaterialDetailPreferences('user-1', savedMaterial.id).structureItems.map(item => item.title)).toEqual(['基本', '応用']);
 
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -200,6 +210,7 @@ describe('bookshelf dialogs', () => {
       undefined,
       undefined,
     );
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('shows the persisted catalog link while editing a linked material', () => {
@@ -262,4 +273,30 @@ describe('bookshelf dialogs', () => {
       baseline,
     );
   });
+});
+
+
+it('isolates old subject save/delete results from a replacement editor', async () => {
+  vi.stubGlobal('window', { confirm: () => true });
+  try {
+    for (const action of ['save', 'delete']) {
+      const gate = deferred<StudySubject>();
+      const onClose = vi.fn(), save = vi.fn(() => gate.promise), remove = vi.fn(() => gate.promise.then(() => undefined));
+      let renderer!: ReactTestRenderer;
+      const view = (target: StudySubject) => <BookshelfSubjectDialog userId="user-1" subject={target}
+        hasMaterials={false} onSave={save} onDelete={remove} onClose={onClose} />;
+      act(() => { renderer = create(view(subject)); });
+      let pending!: Promise<void>;
+      act(() => {
+        pending = action === 'save' ? renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() })
+          : renderer.root.findAllByType('button').find(button => button.props.className === 'ghost-button danger')!.props.onClick();
+      });
+      act(() => { renderer.update(view({ ...subject, id: 'subject-new', name: 'New subject' })); });
+      act(() => { renderer.root.findByProps({ placeholder: '数学' }).props.onChange({ target: { value: 'New unsaved subject' } }); });
+      await act(async () => { gate.resolve(subject); await pending; });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(renderer.root.findByProps({ placeholder: '数学' }).props.value).toBe('New unsaved subject');
+      act(() => renderer.unmount());
+    }
+  } finally { vi.unstubAllGlobals(); }
 });

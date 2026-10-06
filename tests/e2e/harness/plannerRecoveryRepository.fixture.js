@@ -146,6 +146,10 @@ window.__plannerRecoveryRepository = {
     release();
     return true;
   },
+  holdNextMaterialWrite(method) {
+    if (!['upsertStudyMaterial', 'deleteStudyMaterial'].includes(method)) throw new Error('Unsupported material write');
+    holdPlanWrite = method;
+  },
   holdNextTemplateWrite() { holdPlanWrite = 'upsertScheduleTemplate'; },
   holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
   holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
