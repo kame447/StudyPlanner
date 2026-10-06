@@ -9,6 +9,7 @@ import '../styles/material-metadata.css';
 
 interface BookshelfMaterialSearchProps {
   onSelect: (candidate: MaterialMetadataCandidate) => void;
+  onSelectionStart?: () => void;
 }
 
 function candidateMeta(candidate: MaterialMetadataCandidate): string {
@@ -28,6 +29,7 @@ function candidateMeta(candidate: MaterialMetadataCandidate): string {
 
 export function BookshelfMaterialSearch({
   onSelect,
+  onSelectionStart,
 }: BookshelfMaterialSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MaterialMetadataCandidate[]>([]);
@@ -64,6 +66,7 @@ export function BookshelfMaterialSearch({
 
   async function handleSelect(candidate: MaterialMetadataCandidate) {
     if (resolvingId) return;
+    onSelectionStart?.();
     setResolvingId(candidate.catalogEntryId);
     setStatus('教材の表紙・ページ数・版・目次を確認しています...');
     try {

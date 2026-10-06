@@ -1388,3 +1388,63 @@ for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop'
     }
   });
 }
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf cover follows the latest choice ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport); await navigate(page, '教材');
+    // Delay only FileReader start; use the real decoder, resize, editor and repository.
+    await page.evaluate(() => {
+      const RealFileReader = window.FileReader;
+      window.__heldCoverReads = [];
+      window.__coverConversions = 0;
+      const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...args) {
+        const result = realToDataURL.apply(this, args);
+        window.__coverConversions += 1;
+        return result;
+      };
+      window.FileReader = class extends RealFileReader {
+        readAsDataURL(file) {
+          if (file.name === 'held.png') window.__heldCoverReads.push(() => super.readAsDataURL(file));
+          else super.readAsDataURL(file);
+        }
+      };
+    });
+    const photo = (name, base64) => ({ name, mimeType: 'image/png', buffer: Buffer.from(base64, 'base64') });
+    const oldPhoto = photo('held.png', 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC');
+    const newPhoto = photo('new.png', 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC');
+    const openEditor = async () => {
+      await page.getByRole('button', { name: '更新前の教材のメニュー', exact: true }).first().click();
+      await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+      return page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を編集', exact: true }) });
+    };
+    let editor = await openEditor();
+    const input = editor.locator('input[type=file]');
+    await input.setInputFiles(oldPhoto);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await input.setInputFiles(newPhoto);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    const expectedCover = await editor.locator('.bookshelf-cover-preview img').getAttribute('src');
+    expect(expectedCover).toMatch(/^data:image\/jpeg;base64,/);
+    const conversions = await page.evaluate(() => window.__coverConversions);
+    await page.evaluate(() => window.__heldCoverReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__coverConversions)).toBe(conversions + 1);
+    await expect(editor.locator('.bookshelf-cover-preview img')).toHaveAttribute('src', expectedCover);
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials[0].coverImageDataUrl).toBe(expectedCover);
+    editor = await openEditor();
+    await editor.locator('input[type=file]').setInputFiles(oldPhoto);
+    await editor.getByRole('button', { name: '写真を外す', exact: true }).click();
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await page.evaluate(() => window.__heldCoverReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__coverConversions)).toBe(conversions + 2);
+    await expect(editor.locator('.bookshelf-cover-preview img')).toHaveCount(0);
+    const screenshot = testInfo.outputPath(`${viewport.label}-cover-removed.png`);
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach('Later cover removal retained', { path: screenshot, contentType: 'image/png' });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials[0].coverImageDataUrl).toBeUndefined();
+  });
+}
