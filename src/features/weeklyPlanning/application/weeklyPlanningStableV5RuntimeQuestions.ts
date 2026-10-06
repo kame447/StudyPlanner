@@ -361,31 +361,15 @@ function missingEffortQuestion(
   return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
 }
 
-/** Question codes that renderStableV5RuntimeQuestion has dedicated typed text for. */
-export const STABLE_V5_TYPED_QUESTION_CODES: ReadonlySet<string> = new Set([
-  'semantic_uncertainty',
-  'invalid_planning_horizon',
-  'ambiguous_planning_window',
-  'quantity_role_unresolved',
-  'missing_effort_estimate',
-  'ambiguous_effort_estimate',
-  'missing_availability_date_scope',
-  'missing_time_bounds',
-  'invalid_time_interval',
-  'named_time_period_unresolved',
-  'missing_commitment_date_scope',
-  'invalid_commitment_interval',
-  'conflicting_task_date_rule',
-  'constraint_source_unavailable',
-  'active_constraint_source_missing',
-  'orphan_relation_task',
-  'self_relation',
-]);
-
-export function renderStableV5RuntimeQuestion(
+/**
+ * Application-typed text for a question code, or null when the code has no dedicated
+ * typed text. The single source for both the runtime question and conversational
+ * recovery, so what recovery re-presents can never drift from what was asked.
+ */
+export function typedStableV5RuntimeQuestionText(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
-): string {
+): string | null {
   const label = stableV5IssueTaskLabel(graph, question);
   switch (question.code) {
     case 'semantic_uncertainty':
@@ -420,8 +404,16 @@ export function renderStableV5RuntimeQuestion(
     case 'self_relation':
       return 'タスクの順序関係を確認できませんでした。どの予定を先にするか教えてください。';
     default:
-      return `${label}について、予定作成に必要な条件をもう少し具体的に教えてください。`;
+      return null;
   }
+}
+
+export function renderStableV5RuntimeQuestion(
+  graph: WeeklyPlanningFactGraphV5,
+  question: WeeklyPlanningStableQuestionV5,
+): string {
+  return typedStableV5RuntimeQuestionText(graph, question)
+    ?? `${stableV5IssueTaskLabel(graph, question)}について、予定作成に必要な条件をもう少し具体的に教えてください。`;
 }
 
 export function stableV5BlockingIssueCode(

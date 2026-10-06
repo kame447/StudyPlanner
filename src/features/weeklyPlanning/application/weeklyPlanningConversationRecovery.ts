@@ -9,8 +9,14 @@ import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGr
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import {
-  renderStableV5RuntimeQuestion,
-  STABLE_V5_TYPED_QUESTION_CODES,
+  fallbackTextForStableV5TypedIntent,
+} from '../dialogue/weeklyPlanningStableV5TurnDialogue';
+import {
+  learningStrategyProposalIntentForStableV5Dialogue,
+} from '../dialogue/weeklyPlanningStableV5DialogueContext';
+import {
+  stableV5MissingSchedulableWorkQuestion,
+  typedStableV5RuntimeQuestionText,
 } from './weeklyPlanningStableV5RuntimeQuestions';
 
 /**
@@ -41,17 +47,41 @@ const RECOVERY_PRESENTATION_CONTENT: WeeklyPlanningQuestionPresentationContent =
   previewPromotionControl: false,
 };
 
-function typedQuestionText(params: {
+/**
+ * The deterministic application text for the retained question, or null (fail closed:
+ * nothing is re-presented and no presentation is bound). Never the previously shown
+ * assistant message - that may be AI-rendered and carry that turn's acknowledgement.
+ */
+function retainedQuestionText(params: {
+  previousState: PlanningIntakeState;
   context: WeeklyPlanningQuestionContext;
   graph: WeeklyPlanningFactGraphV5;
 }): string | null {
-  const code = decodeWeeklyPlanningStableV5QuestionSlot(params.context.targetSlot);
-  if (!code || !STABLE_V5_TYPED_QUESTION_CODES.has(code)) return null;
-  const effort = params.context.intent;
-  return renderStableV5RuntimeQuestion(params.graph, {
+  const { context, graph, previousState } = params;
+  const code = decodeWeeklyPlanningStableV5QuestionSlot(context.targetSlot);
+  if (!code) return null;
+
+  if (code === 'learning_strategy_proposal') {
+    const intent = learningStrategyProposalIntentForStableV5Dialogue({
+      questionCode: code,
+      actionId: context.actionId ?? null,
+      proposalRecords: previousState.learningStrategyProposalRecords ?? [],
+    });
+    return intent
+      ? fallbackTextForStableV5TypedIntent({ applicationText: '', questionIntent: intent }) || null
+      : null;
+  }
+  if (code === 'missing_schedulable_work') {
+    const missing = stableV5MissingSchedulableWorkQuestion(graph);
+    // Only the question that is still the same target; otherwise the machine has moved on.
+    return (missing.targetFactId ?? undefined) === context.topicId ? missing.message : null;
+  }
+
+  const effort = context.intent;
+  return typedStableV5RuntimeQuestionText(graph, {
     domain: 'work_item',
-    code: code as Parameters<typeof renderStableV5RuntimeQuestion>[1]['code'],
-    factId: params.context.topicId ?? null,
+    code: code as Parameters<typeof typedStableV5RuntimeQuestionText>[1]['code'],
+    factId: context.topicId ?? null,
     details: {},
     effortMeasurement: effort === 'total_duration'
       || effort === 'duration_per_unit'
@@ -59,21 +89,6 @@ function typedQuestionText(params: {
       ? effort
       : null,
   });
-}
-
-/**
- * The text of the retained question. Application-typed text when the question code has
- * one; otherwise the text that was shown with the question (state keeps it verbatim).
- */
-function retainedQuestionText(params: {
-  previousState: PlanningIntakeState;
-  context: WeeklyPlanningQuestionContext;
-  graph: WeeklyPlanningFactGraphV5;
-}): string | null {
-  const typed = typedQuestionText(params);
-  if (typed) return typed;
-  const shown = params.previousState.questions[0]?.trim();
-  return shown ? shown : null;
 }
 
 export function createWeeklyPlanningConversationRecoveryOutput(params: {
