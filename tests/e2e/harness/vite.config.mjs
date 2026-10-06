@@ -5,6 +5,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
+// A second instance of the same harness (own port) enables the Issue #488 architecture
+// evaluation gate, so the evaluation strip/selector never appears in the other specs.
+const architectureEvaluation = process.env.STUDYPLANNER_E2E_ARCHITECTURE_SWITCH === '1';
 const repositoryRoot = path.resolve(harnessDir, '../../..');
 const turnApplicationSuffix = path.normalize(
   'src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts',
@@ -61,10 +64,13 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
     'import.meta.env.VITE_APP_ACCESS_KEY': JSON.stringify(''),
+    ...(architectureEvaluation
+      ? { 'import.meta.env.VITE_WEEKLY_PLANNING_ARCHITECTURE_SWITCH_ENABLED': JSON.stringify('1') }
+      : {}),
   },
   server: {
     host: '127.0.0.1',
-    port: 4174,
+    port: architectureEvaluation ? 4175 : 4174,
     strictPort: true,
     fs: {
       allow: [...new Set([repositoryRoot, path.dirname(fs.realpathSync(path.join(repositoryRoot, 'src')))])],

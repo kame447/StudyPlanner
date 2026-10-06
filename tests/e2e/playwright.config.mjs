@@ -56,5 +56,13 @@ export default defineConfig({
       reuseExistingServer: !isCi,
       timeout: 30_000,
     },
+    {
+      command: 'node ./node_modules/vite/bin/vite.js --config tests/e2e/harness/vite.config.mjs',
+      cwd: repoRoot,
+      env: { STUDYPLANNER_E2E_ARCHITECTURE_SWITCH: '1' },
+      url: 'http://127.0.0.1:4175',
+      reuseExistingServer: !isCi,
+      timeout: 30_000,
+    },
   ],
 });

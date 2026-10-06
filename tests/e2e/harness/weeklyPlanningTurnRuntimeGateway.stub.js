@@ -1,6 +1,11 @@
 import { createInitialPlanningIntakeState } from '../../../src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../../../src/features/weeklyPlanning/intake/weeklyPlanningQuestionPresentation';
 import {
+  beginWeeklyPlanningTurnDispatchBudget,
+  getWeeklyPlanningTurnDispatchBudget,
+} from '../../../src/features/weeklyPlanning/application/weeklyPlanningTurnDispatchBudget';
+import { conversationArchitecturePolicy } from '../../../src/features/weeklyPlanning/weeklyPlanningConversationArchitecture';
+import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   commitWeeklyPlanningStableV5RuntimeGraph,
 } from '../../../src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
@@ -73,6 +78,26 @@ const INTERACTION_PRESENTATION_CONTENT = {
  * The stub records the presentation freshness the real state had at turn start, so the
  * browser test can prove each turn's question binding through the production path.
  */
+/*
+ * The stub replaces the runtime, so it also stands in for the provider dispatches the real
+ * runtime would make: it opens the turn's dispatch pool exactly like the real turn ingress
+ * (enforced only for interaction_v1) and counts SCRIPTED dispatches into it. The numbers are
+ * fixtures (legacy explanation = 3 semantic calls from the historical completeness retries,
+ * everything else = 1) that exercise the measurement/evaluation-UI plumbing; they are not a
+ * measurement of the real runtime.
+ */
+function scriptDispatches(params) {
+  const policy = conversationArchitecturePolicy(params.conversationArchitecture);
+  beginWeeklyPlanningTurnDispatchBudget(params.pending.requestId, {
+    enforce: policy.enforceTurnDispatchBudget,
+  });
+  const budget = getWeeklyPlanningTurnDispatchBudget(params.pending.requestId);
+  const explain = params.userText.startsWith('EXPLAIN');
+  const semantic = !policy.interactionOutcome && explain ? 3 : 1;
+  for (let index = 0; index < semantic; index += 1) budget.consume('semantic');
+  if (!params.userText.startsWith('FAIL')) budget.consume('renderer');
+}
+
 function interactionResult(params, runtimeSession, graphRevision) {
   const previousState = params.snapshot.intakeState ?? createInitialPlanningIntakeState();
   const freshness = resolveWeeklyPlanningQuestionPresentationFreshness({
@@ -81,7 +106,13 @@ function interactionResult(params, runtimeSession, graphRevision) {
     messages: params.snapshot.messages,
     graphRevision: runtimeSession.graph.revision,
   }).status;
-  record('real-interaction-turn', { userText: params.userText, freshness });
+  record('real-interaction-turn', {
+    userText: params.userText,
+    freshness,
+    architecture: params.conversationArchitecture,
+  });
+  scriptDispatches(params);
+  const interaction = conversationArchitecturePolicy(params.conversationArchitecture).interactionOutcome;
   const question = {
     ...previousState,
     status: 'revision_pending',
@@ -89,6 +120,21 @@ function interactionResult(params, runtimeSession, graphRevision) {
     lastQuestionContext: INTERACTION_QUESTION_CONTEXT,
     sourceTurns: [...previousState.sourceTurns, params.userText],
   };
+  if (params.userText.startsWith('FAIL') && !interaction) {
+    // Legacy architecture: fixed generic wording, nothing retained or re-presented.
+    const message = 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。';
+    return {
+      state: previousState,
+      message,
+      draftCandidates: [],
+      failure: {
+        code: 'stable_v5_normalization_rejected',
+        userMessage: message,
+        traceCode: 'browser-interaction-legacy',
+        diagnostics: { attemptCount: 2, repairAttempted: true, validationErrorCategories: [], providerErrorCategory: null },
+      },
+    };
+  }
   if (params.userText.startsWith('FAIL')) {
     return {
       state: previousState,
@@ -105,7 +151,7 @@ function interactionResult(params, runtimeSession, graphRevision) {
       },
     };
   }
-  if (params.userText.startsWith('ASIDE')) {
+  if (params.userText.startsWith('ASIDE') && interaction) {
     // An aside keeps the machine question but does not re-present it: no presentation content.
     return {
       state: question,
@@ -132,9 +178,13 @@ function interactionResult(params, runtimeSession, graphRevision) {
       : INTERACTION_QUESTION,
     draftCandidates: [],
     stableV5Graph: stagedGraph,
-    interactionOutcome: explain
-      ? { kind: 'explain_pending_question', consultationDeferred: false }
-      : { kind: 'apply', consultationDeferred: false },
+    ...(interaction
+      ? {
+          interactionOutcome: explain
+            ? { kind: 'explain_pending_question', consultationDeferred: false }
+            : { kind: 'apply', consultationDeferred: false },
+        }
+      : {}),
     questionPresentationContent: INTERACTION_PRESENTATION_CONTENT,
   };
 }

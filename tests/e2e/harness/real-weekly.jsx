@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AiPlanningView } from '../../../src/components/AiPlanningView';
+import { WeeklyPlanningArchitectureSetting } from '../../../src/components/WeeklyPlanningArchitectureSetting';
 import { useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import '../../../src/styles.css';
 
@@ -74,6 +75,33 @@ const REAL_WEEKLY_PLANNER_DATA_AVAILABILITY = {
   lastSuccessfulAt: '2026-08-13T00:00:00.000Z',
 };
 
+/** Stand-in for the App Settings dialog: an overlay that hosts the real selector component. */
+function ArchitectureSettingsOverlay() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  return (
+    <>
+      <button type="button" data-testid="harness-open-settings" onClick={() => setSettingsOpen(true)}>
+        設定を開く
+      </button>
+      {settingsOpen ? (
+        <div
+          role="dialog"
+          aria-label="設定"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000, overflow: 'auto', padding: 16,
+            background: 'var(--color-bg, #fff)', color: 'var(--color-text, #111)',
+          }}
+        >
+          <WeeklyPlanningArchitectureSetting />
+          <button type="button" data-testid="harness-close-settings" onClick={() => setSettingsOpen(false)}>
+            設定を閉じる
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function RealWeeklyApplicationHarness() {
   const [open, setOpen] = useState(true);
   const application = useWeeklyPlanningApplication({
@@ -133,6 +161,7 @@ function RealWeeklyApplicationHarness() {
       >
         テスト用に閉じる
       </button>
+      {queryParams().get('settings') === '1' ? <ArchitectureSettingsOverlay /> : null}
       <AiPlanningView
         application={application}
         userId={REAL_WEEKLY_USER_ID}
