@@ -1,3 +1,0 @@
-.startup-schedule-preview { max-width: 700px; margin: auto; padding: max(28px, env(safe-area-inset-top)) 20px 32px; }
-.startup-schedule-preview ol { list-style: none; padding: 0; }
-.startup-schedule-preview li { overflow-wrap: anywhere; }

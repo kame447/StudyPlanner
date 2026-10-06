@@ -1,10 +1,7 @@
-import { hasStoredAppAccessGrant } from '../lib/appAccessGate';
-import { clearStartupSchedulePreviews, readStartupSchedulePreview, saveStartupSchedulePreview, type ScheduleReadObserver } from '../lib/startupSchedulePreview';
-import { StartupSchedulePreview } from './StartupSchedulePreview';
-import type { PlannerAppSnapshot } from './PlannerAppBootstrap';
+import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
 import {
@@ -34,43 +31,28 @@ function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pendi
 function StartupSurface({
   children,
   loading,
-  preview,
-}: PropsWithChildren<{ loading: boolean; preview?: ReactNode }>) {
+}: PropsWithChildren<{ loading: boolean }>) {
   return (
     <>
       <div style={loading ? { display: 'none' } : undefined}>
         {children}
       </div>
-      {loading ? preview ?? <SplashScreen fixedLight /> : null}
+      {loading ? <SplashScreen fixedLight /> : null}
     </>
   );
 }
 
-interface StartupPresentation { loading: boolean; preview?: ReactNode }
+interface StartupPresentation { loading: boolean }
 
 const ignoreEarlyBootstrapReady = () => {};
-type PreviewStatus = 'disabled' | 'loading' | 'ready' | 'failed';
-interface PreviewBoundary { active: boolean; capture: ScheduleReadObserver; report: (status: PreviewStatus) => void }
-function BootstrapPreviewStatus({ state, boundary, ownerId }: { state: PlannerAppSnapshot; boundary: PreviewBoundary; ownerId: string }) {
-  const status: PreviewStatus = state.booting ? 'loading'
-    : state.user?.id === ownerId && state.plannerDataAvailability?.status === 'ready'
-      && state.isPlannerDataSnapshotCurrent() ? 'ready' : 'failed';
-  useLayoutEffect(() => { boundary.report(status); return () => boundary.report('disabled'); }, [boundary, status]);
-  return null;
-}
-function hasPreviewAccess() { try { return hasStoredAppAccessGrant(); } catch { return false; } }
-
-
 function ConsentedStudyPlannerApp({
   authSession,
   userId,
   onStartupReady,
-  previewBoundary,
 }: {
   authSession: AuthSessionService;
   userId: string;
   onStartupReady: () => void;
-  previewBoundary: PreviewBoundary;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
   useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
@@ -101,10 +83,8 @@ function ConsentedStudyPlannerApp({
 
   return (
     <RootStartupReadyProvider onReady={ignoreEarlyBootstrapReady}>
-      <PlannerAppBootstrap ownerId={userId} onCommittedScheduleRead={previewBoundary.capture}>
+      <PlannerAppBootstrap ownerId={userId}>
         {(state, onReady) => (
-          <>
-          <BootstrapPreviewStatus state={state} boundary={previewBoundary} ownerId={userId} />
           <UserPlanningContextProvider ownerId={userId}>
             <WeeklyPlanningPersonalizationProvider
               profile={profile}
@@ -112,13 +92,10 @@ function ConsentedStudyPlannerApp({
               resetProfile={personalization.resetProfile}
             >
               <RootStartupReadyProvider onReady={onStartupReady}>
-                {!previewBoundary.active || (!state.booting && state.user?.id === userId
-                  && state.plannerDataAvailability?.status === 'ready' && state.isPlannerDataSnapshotCurrent())
-                  ? <App state={state} onReady={onReady} /> : null}
+                <App state={state} onReady={onReady} />
               </RootStartupReadyProvider>
             </WeeklyPlanningPersonalizationProvider>
           </UserPlanningContextProvider>
-          </>
         )}
       </PlannerAppBootstrap>
     </RootStartupReadyProvider>
@@ -129,12 +106,10 @@ function AuthenticatedStudyPlannerApp({
   authSession,
   userId,
   onStartupReady,
-  previewBoundary,
 }: {
   authSession: AuthSessionService;
   userId: string;
   onStartupReady: () => void;
-  previewBoundary: PreviewBoundary;
 }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
   useStartupWait('consent', policy.status === 'loading', policy.status === 'unavailable');
@@ -155,7 +130,6 @@ function AuthenticatedStudyPlannerApp({
         authSession={authSession}
         userId={userId}
         onStartupReady={onStartupReady}
-        previewBoundary={previewBoundary}
       />
     );
   }
@@ -197,6 +171,7 @@ export function StudyPlannerAppRoot({
     [injectedAuthSession],
   );
   const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
+  useEffect(() => { retireStartupPreviewCache(); }, []);
   const currentPath = window.location.pathname;
   const isLegalPage = currentPath === '/terms'
     || currentPath === '/privacy'
@@ -223,9 +198,8 @@ export function StudyPlannerAppRoot({
       const previous = currentSession.current;
       if (previous.userId === userId) return;
       const next = { userId, epoch: previous.epoch + 1 };
-      // Invalidate captures synchronously, including batched A→null→A events.
+      // Revoke the prior session synchronously, including batched A→null→A events.
       currentSession.current = next;
-      if (typeof previous.userId === 'string' || userId === null) clearStartupSchedulePreviews();
       setSession(next);
     };
     if (!authSession.available) { accept(null); return () => { subscribed = false; }; }
@@ -241,56 +215,27 @@ export function StudyPlannerAppRoot({
   const loading = authenticatedUserId === undefined
     || (typeof authenticatedUserId === 'string' && (currentPresentation?.loading ?? true));
   return (
-    <StartupSurface loading={loading} preview={typeof authenticatedUserId === 'string' ? currentPresentation?.preview : undefined}>
+    <StartupSurface loading={loading}>
       {authenticatedUserId === null ? <RootManagedUnauthenticatedApp />
         : typeof authenticatedUserId === 'string' ? (
           <AuthenticatedStartup key={JSON.stringify([authenticatedUserId, session.epoch])}
-            authSession={authSession} userId={authenticatedUserId} onPresentation={presentStartup}
-            isCurrentSession={() => currentSession.current === session} />
+            authSession={authSession} userId={authenticatedUserId} onPresentation={presentStartup} />
         ) : null}
     </StartupSurface>
   );
 }
 
-function AuthenticatedStartup({ authSession, userId, isCurrentSession, onPresentation }: {
-  authSession: AuthSessionService; userId: string; isCurrentSession: () => boolean;
+function AuthenticatedStartup({ authSession, userId, onPresentation }: {
+  authSession: AuthSessionService; userId: string;
   onPresentation: (value: StartupPresentation) => void;
 }) {
   const [ready, setReady] = useState(false);
-  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>('disabled');
-  const [previewFinished, setPreviewFinished] = useState(false);
-  const [snapshot, setSnapshot] = useState(() => hasPreviewAccess() ? readStartupSchedulePreview(userId) : null);
-  const [startedWithPreview] = useState(Boolean(snapshot));
-  const mounted = useRef(false);
-  const sessionGuard = useRef(isCurrentSession);
-  useLayoutEffect(() => { sessionGuard.current = isCurrentSession; });
-  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => {
-    const changed = () => setSnapshot(hasPreviewAccess() ? readStartupSchedulePreview(userId) : null);
-    window.addEventListener?.('storage', changed);
-    return () => window.removeEventListener?.('storage', changed);
-  }, [userId]);
-  const capture = useCallback<ScheduleReadObserver>(source => {
-    const user = authSession.getCurrentUser();
-    if (!mounted.current || !sessionGuard.current() || source.ownerId !== userId || user?.id !== userId
-      || user.requiresEmailVerification || !hasPreviewAccess()) return;
-    saveStartupSchedulePreview(source);
-  }, [authSession, userId]);
-  const report = useCallback((status: PreviewStatus) => setPreviewStatus(status), []);
-  const previewBoundary = useMemo(() => ({ capture, report, active: startedWithPreview && !previewFinished }), [capture, report, startedWithPreview, previewFinished]);
-  useLayoutEffect(() => { if (ready && previewStatus === 'ready') setPreviewFinished(true); }, [ready, previewStatus]);
   const markReady = useCallback(() => setReady(true), []);
-  const holdPreviewBoundary = startedWithPreview && !previewFinished && previewStatus !== 'disabled'
-    && (!ready || previewStatus !== 'ready');
-  const showPreview = holdPreviewBoundary && hasPreviewAccess() && (snapshot || previewStatus === 'failed');
-  const presentation = useMemo<StartupPresentation>(() => ({
-    loading: !ready || holdPreviewBoundary,
-    preview: showPreview ? <StartupSchedulePreview snapshot={snapshot} failed={previewStatus === 'failed'} /> : undefined,
-  }), [ready, holdPreviewBoundary, showPreview, snapshot, previewStatus]);
+  const presentation = useMemo<StartupPresentation>(() => ({ loading: !ready }), [ready]);
   useLayoutEffect(() => { onPresentation(presentation); }, [onPresentation, presentation]);
   return (
     <RootStartupReadyProvider onReady={markReady}>
-      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} onStartupReady={markReady} previewBoundary={previewBoundary} />
+      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} onStartupReady={markReady} />
     </RootStartupReadyProvider>
   );
 }
