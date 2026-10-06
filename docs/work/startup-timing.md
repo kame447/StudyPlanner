@@ -37,21 +37,14 @@ Missing, migrating, cached/pending-write, metadata-less or unsupported snapshots
 
 The verified mechanism is one clean completed-marker server read instead of a probe followed by a read-only transaction with its verify commit. Missing/migrating paths retain their existing atomic work. This is one shared per-owner gate for plans and month events, not two migrations. End-to-end duration still requires real-browser measurement; do not infer milliseconds from the operation count.
 
-## Read-only schedule preview
+## Readiness is the performance target
 
-For a returning, verified owner, the startup root can show a small local schedule preview after the current consent, week-start preference and app-access gates. Normal planner/profile reads and memory initialization continue. The preview is a separate static surface: it does not hydrate planner state, mount App/AI/editors, certify read authority, or expose scheduling actions. Current-data failure keeps a cache-started session read-only with a reload action. Losing the cached copy while waiting does not release that boundary. Once current startup succeeds, the preview is retired for that mounted session and never reappears during ordinary editing/recovery.
+The separate read-only previous-schedule screen has been withdrawn. It did not establish a shorter time to usable normal Home and added an unwanted intermediate surface. Existing copies are removed best-effort on startup; no planner data is cleared, hydrated from those copies, or newly captured.
 
-Capture occurs only at an accepted, quiescent full-read boundary. It uses repository results and the persisted timetable-normalization result (or original data on normalization failure), never optimistic App arrays. Consequently this is the last successful full-read copy, not necessarily the last edit made before closing the app. It may omit subsequent committed edits until another full read; the UI labels it as previous data and shows its capture time.
-
-The copy contains owner/version/capture time, an eight-day date range, and at most 160 already-projected rows (date, start/end time, title, subject). Home's existing month-event/timetable projection and Plan recurrence functions produce those rows. No profile, memo, images, actual records or AI conversation is copied. Titles/subjects are bounded; serialized UTF-8 size is capped at 96 KiB. Admission expires after 24 hours, rejects future/invalid/mismatched snapshots, and visible previews recheck age/date each minute. Only the first eight current/future rows are shown, explicitly as a subset. It does not relabel yesterday as today or claim complete future coverage.
-
-Logout, unverified/null identity and account changes revoke captures and clear startup copies. An invalidation marker is written before removal, with an in-document guard if storage fails. Re-enabling requires a successful fresh capture that first removes revoked copies. If the browser refuses every storage modification, physical deletion cannot be guaranteed; normal authenticated startup continues without using the copy in that document. This cache is not encrypted storage and must not be treated as an authorization token. Ordinary storage failures are nonfatal.
-
-`cached-schedule-visible` marks the read-only surface separately; it does not close timing collection. `home-visible` still means the normal current Home is visible. Report both times and the remaining current-data wait. Auth/consent/preference latency remains; neither local fixture timing nor a warm reload proves one-second cold startup on an iPhone. First use, expired/invalid copies and storage-denied cases retain the ordinary loading path.
-
+Compare alternatives using the same device, network, account, dataset, build and cache conditions. Record normal Home readiness together with successful required data reads and an ordinary working interaction. First paint, splash disappearance, stale rows or error-only Home are not substitutes. Measure several independent alternatives against a baseline before adopting a speed claim.
 
 ### 起動ロゴの寿命
 
-認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。保存済み予定を先行表示できる時点、または通常画面が準備できた時点で初めて表示を切り替える。
+認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面が準備できた時点で初めて表示を切り替える。
 
-PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready/preview通知を採用しない。
+PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready通知を採用しない。

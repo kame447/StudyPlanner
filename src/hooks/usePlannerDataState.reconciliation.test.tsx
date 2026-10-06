@@ -25,13 +25,12 @@ const INDEPENDENT = actual('independent-standalone', null);
 const TODO: TodoTask = { id: 'todo-b', userId: 'owner', title: 'todo-b', subject: '数学', type: 'study', estimatedMinutes: null,
   dueDate: null, memo: '', status: 'open', scheduledPlanId: null, createdAt: STAMP, updatedAt: STAMP };
 const showNotice = vi.fn<ShowNotice>();
-const committedScheduleRead = vi.fn();
 let state: UsePlannerDataStateResult;
 let renderer: ReactTestRenderer | undefined;
 let harnessOwner: string | null = 'owner';
 let renderedReady = false;
 function Harness() {
-  state = usePlannerDataState({ userId: harnessOwner, showNotice, onCommittedScheduleRead: committedScheduleRead });
+  state = usePlannerDataState({ userId: harnessOwner, showNotice });
   renderedReady = state.isPlannerDataSnapshotCurrent();
   return null;
 }
@@ -56,7 +55,6 @@ async function mount(includeLinkedRecord = true) {
   };
   boundary.repository = createPlannerRepository(gateway);
   showNotice.mockClear();
-  committedScheduleRead.mockReset();
   await act(async () => { renderer = create(<Harness />); });
   await act(async () => { await state.loadPlannerData('owner'); });
   return { plans, actuals, todos, materials, subjects, dayNotes, monthEvents, templates, terms, periods };
@@ -987,24 +985,4 @@ it('opening recurring move scope without a crossing read does not write or start
   expect(applyRecurring).not.toHaveBeenCalled();
   expect(getPlans).not.toHaveBeenCalled();
   expect(state.plannerDataAvailability.status).toBe('ready');
-});
-
-it('publishes a cache observer only for an accepted full read without crossing mutations', async () => {
-  const fixture = await mount();
-  expect(committedScheduleRead).toHaveBeenCalledTimes(1);
-  const gate = deferred(); hold('upsertPlan', gate);
-  let pending!: Promise<unknown>;
-  await act(async () => { pending = startOther('plan-update'); await Promise.resolve(); });
-  expect(gate.entered).toBe(true);
-  const reads = fixture.plans.read.mock.calls.length;
-  await act(async () => { await state.loadPlannerData('owner'); });
-  expect(fixture.plans.read.mock.calls.length).toBeGreaterThan(reads);
-  expect(committedScheduleRead).toHaveBeenCalledTimes(1);
-  await act(async () => { gate.resolve(); await pending; });
-  await act(async () => { await state.loadPlannerData('owner'); });
-  expect(committedScheduleRead).toHaveBeenCalledTimes(2);
-  expect(committedScheduleRead.mock.lastCall?.[0].plans).toEqual(expect.arrayContaining([expect.objectContaining({ title: '保存した予定' })]));
-  committedScheduleRead.mockImplementationOnce(() => { throw new Error('optional observer failed'); });
-  await act(async () => { await state.loadPlannerData('owner'); });
-  expect(state.isPlannerDataSnapshotCurrent()).toBe(true);
 });

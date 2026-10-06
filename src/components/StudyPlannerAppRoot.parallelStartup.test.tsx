@@ -1,8 +1,3 @@
-import { StartupSchedulePreview } from './StartupSchedulePreview';
-import { readStartupSchedulePreview, saveStartupSchedulePreview } from '../lib/startupSchedulePreview';
-import { plan } from '../repositories/localPersistenceConcurrency.testUtils';
-import { todayIsoDate } from '../lib/date';
-import { createPlanDraftFromPlan } from '../domain/planner';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
@@ -148,62 +143,6 @@ it('does not read another returned identity under the current root consent bound
   expect(splash()).toBe(0); expect(fixture.content.mock.lastCall?.[0].user.id).toBe('b');
 });
 
-function seedPreview(id = 'a') {
-  saveStartupSchedulePreview({ ownerId: id, plans: [plan({ userId: id, date: todayIsoDate(), title: `Cached ${id}` })],
-    monthEvents: [], scheduleTemplates: [], timetableTerms: [] });
-}
-const previews = () => renderer!.root.findAllByType(StartupSchedulePreview);
-it('shows cached schedules without mounting App until both authoritative gates complete', async () => {
-  seedPreview(); await mount();
-  expect(previews()).toHaveLength(1); expect(splash()).toBe(0); expect(fixture.content).not.toHaveBeenCalled();
-  await release(memoryGate); expect(previews()).toHaveLength(1); expect(fixture.content).not.toHaveBeenCalled();
-  await release(plannerGate); expect(previews()).toHaveLength(0); expect(fixture.content).toHaveBeenCalled();
-  expect(readStartupSchedulePreview('a')?.rows).toEqual([]);
-});
-it.each(['required', 'unavailable', 'preference-loading', 'preference-missing'])('does not bypass %s with a stored preview', async gate => {
-  seedPreview();
-  if (gate.startsWith('preference')) { fixture.preferenceLoading = gate.endsWith('loading'); fixture.weekStartsOn = gate.endsWith('missing') ? null : 'monday'; }
-  else fixture.policy = gate;
-  await mount(); expect(previews()).toHaveLength(0); expect(plansSpy).not.toHaveBeenCalled();
-});
-it('keeps failed current-data startup read-only and does not replace its prior copy', async () => {
-  seedPreview(); await mount(); await release(memoryGate);
-  await act(async () => { plannerGate.reject(new Error('load failed')); await microtasks(); });
-  expect(previews()).toHaveLength(1); expect(previews()[0].props.failed).toBe(true);
-  expect(fixture.content).not.toHaveBeenCalled();
-  expect(readStartupSchedulePreview('a')?.rows[0].title).toBe('Cached a');
-});
-it('cache removal in another tab cannot mount App while the current read is pending', async () => {
-  const listeners: (() => void)[] = [];
-  Object.assign(window, { addEventListener: (event: string, listener: () => void) => { if (event === 'storage') listeners.push(listener); }, removeEventListener: vi.fn() });
-  seedPreview(); await mount(); await release(memoryGate);
-  act(() => { window.localStorage.clear(); listeners.forEach(listener => listener()); });
-  expect(previews()).toHaveLength(0); expect(splash()).toBe(1); expect(fixture.content).not.toHaveBeenCalled();
-  await act(async () => { plannerGate.reject(new Error('load failed')); await microtasks(); });
-  expect(previews()[0].props.failed).toBe(true); expect(fixture.content).not.toHaveBeenCalled();
-});
-it('revokes stored copies and old captures across batched signout and same-owner return', async () => {
-  seedPreview(); await mount(); const oldMemory = memoryGate, oldPlanner = plannerGate;
-  memoryGate = deferred(); plannerGate = deferred();
-  await act(async () => { fake.emit(null); fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
-  expect(readStartupSchedulePreview('a')).toBeNull(); expect(previews()).toHaveLength(0);
-  await release(oldMemory); await release(oldPlanner);
-  expect(readStartupSchedulePreview('a')).toBeNull();
-  await release(memoryGate); await release(plannerGate);
-  expect(readStartupSchedulePreview('a')).not.toBeNull();
-});
-it('does not cache optimistic edits that later fail', async () => {
-  await mount(); await release(memoryGate); await release(plannerGate);
-  const initial = readStartupSchedulePreview('a'); expect(initial?.rows).toEqual([]);
-  const write = deferred<any>(); fixture.repository.upsertPlan = vi.fn(() => write.promise);
-  let pending!: Promise<void>;
-  act(() => { pending = fixture.content.mock.lastCall![0].savePlanDraft(createPlanDraftFromPlan(plan({ userId: 'a', date: todayIsoDate(), title: 'Uncommitted' }))); pending.catch(() => {}); });
-  expect(readStartupSchedulePreview('a')).toEqual(initial);
-  await act(async () => { write.reject(new Error('write failed')); try { await pending; } catch {} await microtasks(); });
-  expect(readStartupSchedulePreview('a')).toEqual(initial);
-  expect(previews()).toHaveLength(0);
-});
-
 it('keeps the same visible Splash across unresolved auth, consent, preferences and bootstrap', async () => {
   fake = createFakeAuthSession();
   fixture.policy = 'loading';
@@ -222,4 +161,25 @@ it('keeps the same visible Splash across unresolved auth, consent, preferences a
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
   await release(plannerGate); expect(splash()).toBe(0);
   expect(fixture.profile).toHaveBeenCalledOnce(); expect(plansSpy).toHaveBeenCalledOnce();
+});
+
+
+it('retires an old preview copy and follows the ordinary current-data startup', async () => {
+  window.localStorage.setItem('studyplanner.startup-schedule.v1:a', JSON.stringify({ rows: [{ title: 'Old display copy' }] }));
+  await mount();
+  expect(splash()).toBe(1);
+  expect(window.localStorage.getItem('studyplanner.startup-schedule.v1:a')).toBeNull();
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Old display copy');
+  await release(memoryGate); expect(splash()).toBe(1);
+  await release(plannerGate); expect(splash()).toBe(0);
+  expect(window.localStorage.getItem('studyplanner.startup-schedule.v1:a')).toBeNull();
+});
+
+it('batched signout and same-owner return cannot accept an old startup completion', async () => {
+  await mount(); const oldMemory = memoryGate, oldPlanner = plannerGate;
+  memoryGate = deferred(); plannerGate = deferred();
+  await act(async () => { fake.emit(null); fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
+  await release(oldMemory); await release(oldPlanner);
+  expect(splash()).toBe(1); expect(fixture.content).not.toHaveBeenCalled();
+  await release(memoryGate); await release(plannerGate); expect(splash()).toBe(0);
 });

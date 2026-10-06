@@ -36,14 +36,23 @@ test.describe('quick entry modal browser lifecycle', () => {
     expect(await events(page, 'close')).toHaveLength(0);
   });
 
-  test('the explicit close action closes the modal and it can be mounted again', async ({ page }) => {
-    await openHarness(page);
-
-    await page.getByRole('button', { name: '閉じる' }).click();
-    await expect(page.getByRole('button', { name: 'モーダルを再度開く' })).toBeVisible();
-
-    await page.getByRole('button', { name: 'モーダルを再度開く' }).click();
-    await expect(page.getByRole('button', { name: '閉じる' })).toBeVisible();
+  test('closing a pending save cannot dismiss a newly opened draft', async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await openHarness(page, '?gate=save-todo');
+      await page.getByPlaceholder('例: 英語課題 / 面接準備').fill('前の保存');
+      await page.getByRole('button', { name: '保存', exact: true }).click();
+      await expect.poll(async () => (await events(page, 'save-todo')).length).toBe(1);
+      await page.getByRole('button', { name: '閉じる' }).click();
+      await expect(page.getByRole('button', { name: 'モーダルを再度開く' })).toBeVisible();
+      await page.getByRole('button', { name: 'モーダルを再度開く' }).click();
+      const draft = page.getByPlaceholder('例: 英語課題 / 面接準備');
+      await draft.fill('新しい未保存の入力');
+      await release(page, 'save-todo');
+      await expect.poll(async () => (await events(page, 'complete-save-todo')).length).toBe(1);
+      await expect(draft).toHaveValue('新しい未保存の入力');
+      expect(await events(page, 'close')).toHaveLength(1);
+    }
   });
 
   test('a pending Todo save leaves no actionable second save path and persists once', async ({ page }) => {

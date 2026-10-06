@@ -1,4 +1,3 @@
-import type { ScheduleReadObserver } from '../lib/startupSchedulePreview';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
 import { useEffect, useMemo } from 'react';
@@ -134,7 +133,7 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onCommittedScheduleRead }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onCommittedScheduleRead?: ScheduleReadObserver } = {}): PlannerAppState {
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId }: { noticeAutoDismiss?: boolean; expectedUserId?: string } = {}): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
@@ -215,7 +214,6 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   } = usePlannerDataState({
     userId: user?.id ?? null,
     showNotice,
-    onCommittedScheduleRead,
   });
   const { scope: approvalScope, invalidate: invalidateApprovalScope } = usePlannerMutationScope(user?.id ?? null);
   const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay, clearWeeklyApprovedPlanOverlay] =

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
@@ -88,7 +88,11 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
   return timeFromMinutes(endMinutes);
 }
 
-export function QuickEntryModal({
+export function QuickEntryModal(props: QuickEntryModalProps) {
+  return <QuickEntryEditor key={props.userId} {...props} />;
+}
+
+function QuickEntryEditor({
   userId,
   selectedDate,
   initialMode = 'later',
@@ -126,6 +130,11 @@ export function QuickEntryModal({
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const dayPlans = useMemo(
@@ -375,7 +384,7 @@ export function QuickEntryModal({
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (submissionInFlightRef.current || !actualEndTime || !title.trim()) {
+    if (!mountedRef.current || submissionInFlightRef.current || !actualEndTime || !title.trim()) {
       return;
     }
 
@@ -394,17 +403,19 @@ export function QuickEntryModal({
         note: memo.trim(),
         ...getSelectedMaterialFields(),
       });
-      onClose();
+      if (mountedRef.current) onClose();
     } finally {
-      submissionInFlightRef.current = false;
-      setIsSubmitting(false);
+      if (mountedRef.current) {
+        submissionInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (submissionInFlightRef.current || !canSave) {
+    if (!mountedRef.current || submissionInFlightRef.current || !canSave) {
       return;
     }
 
@@ -462,10 +473,12 @@ export function QuickEntryModal({
           pinned: todoPinned,
         });
       }
-      onClose();
+      if (mountedRef.current) onClose();
     } finally {
-      submissionInFlightRef.current = false;
-      setIsSubmitting(false);
+      if (mountedRef.current) {
+        submissionInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
