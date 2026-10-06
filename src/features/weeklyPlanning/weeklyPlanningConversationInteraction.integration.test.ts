@@ -463,7 +463,8 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
 });
 
 describe('Issue #488 E: reload keeps identity and freshness', () => {
-  async function reload(conversation: ScriptedConversation): Promise<ScriptedConversation> {
+  /** What the chat store would persist for this conversation (graph + planning state). */
+  function snapshotOf(conversation: ScriptedConversation) {
     const graph = conversation.graph()!;
     const preparation = prepareWeeklyPlanningStableV5Checkpoint({
       ownerId: conversation.ownerId,
@@ -488,21 +489,80 @@ describe('Issue #488 E: reload keeps identity and freshness', () => {
       weekStartDate: conversation.weekStartDate,
     });
     expect(restored).not.toBeNull();
-    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    return restored!;
+  }
+
+  /** Imports a snapshot the way the chat session does: hydrate the runtime graph, load the state. */
+  function restore(
+    restored: ReturnType<typeof snapshotOf>,
+    conversation: ScriptedConversation,
+  ): ScriptedConversation {
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: conversation.ownerId,
       weekStartDate: conversation.weekStartDate,
       conversationId: conversation.conversationId,
-      graph: restored!.graph,
+      graph: restored.graph,
     });
     return createScriptedConversation({
       provider,
       ownerId: conversation.ownerId,
       conversationId: conversation.conversationId,
       weekStartDate: conversation.weekStartDate,
-      initialState: restored!.planningState,
+      initialState: restored.planningState,
     });
   }
+
+  async function reload(conversation: ScriptedConversation): Promise<ScriptedConversation> {
+    const restored = snapshotOf(conversation);
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    return restore(restored, conversation);
+  }
+
+  it('keeps each chat\'s question identity and freshness across A -> B -> A', async () => {
+    const chatA = createScriptedConversation({ provider, conversationId: 'issue488-chat-a' });
+    await chatA.submit(MATH_SETUP);
+    const pendingA = pendingTarget(chatA);
+    const snapshotA = snapshotOf(chatA);
+
+    // Switch to chat B (its own conversation id, graph and question), answer there.
+    const chatB = createScriptedConversation({ provider, conversationId: 'issue488-chat-b' });
+    await chatB.submit(MATH_SETUP);
+    const pendingB = pendingTarget(chatB);
+    expect(pendingB.topicId).not.toBe(pendingA.topicId);
+    script = (call) => (call.kind === 'semantic_focused_contextual' ? focusedEffort(7) : undefined);
+    await chatB.submit('1問7分');
+    expect(effortMinutesFor(chatB, pendingB.topicId)).toEqual([7]);
+    const snapshotB = snapshotOf(chatB);
+
+    // Switch back to A: the persisted question is still the latest presented one for A.
+    const backInA = restore(snapshotA, chatA);
+    expect(freshness(backInA).status).toBe('fresh');
+    expect(pendingTarget(backInA)).toEqual(pendingA);
+    script = (call) => (call.kind === 'semantic_focused_contextual' ? focusedEffort(3) : undefined);
+    const answer = await backInA.submit('1問3分');
+    expect(answer.calls[0]?.kind).toBe('semantic_focused_contextual');
+    expect(effortMinutesFor(backInA, pendingA.topicId)).toEqual([3]);
+    // B's accepted state is untouched by A's turn, and B's own snapshot is still consistent.
+    expect(effortMinutesFor(chatB, pendingB.topicId)).toEqual([7]);
+    expect(snapshotOf(chatB).graph).toEqual(snapshotB.graph);
+    expect(effortMinutesFor(backInA, pendingB.topicId)).toEqual([]);
+  });
+
+  it('does not treat a restored chat A question as fresh once chat A moved on without it', async () => {
+    const chatA = createScriptedConversation({ provider, conversationId: 'issue488-chat-a' });
+    await chatA.submit(MATH_SETUP);
+    const staleSnapshot = snapshotOf(chatA);
+    script = (call) => (call.kind === 'semantic_focused_contextual' ? focusedEffort(3) : undefined);
+    await chatA.submit('1問3分');
+
+    // A's runtime graph moved on (effort answered); the older planning state must not bind.
+    const restoredOldState = createScriptedConversation({
+      provider,
+      conversationId: 'issue488-chat-a',
+      initialState: staleSnapshot.planningState,
+    });
+    expect(freshness(restoredOldState).status).not.toBe('fresh');
+  });
 
   it('binds the short answer after reloading an explanation turn', async () => {
     const conversation = createScriptedConversation({ provider });
