@@ -1,12 +1,13 @@
 # Issue #305 — Jev purpose rollout isolation
 
-Status: implementation locally verified; review pending; rollout remains off; no deploy/PR merge
+Status: historical / implementation merged by PR #466; production rollout remains off
+Archived: 2026-10-07
 Owner: JollyYukawa; review: BronzeMaxwell / CopperHopper
 Branch: `feat/issue305-jev-purpose-rollout`
 Base/HEAD: `87daed8904b656b8393745ea4ca5dec4f4273e8b` (`origin/main` at final integration)
 Initial base: `dc4093c28e242fde02cf8da63323701a53154e06`; #462 advanced main with no overlapping files; local base fast-forwarded before final verification.
 Worktree: `/Users/Shogo/.agentstack/worktrees/JollyYukawa-jev-purpose-rollout`
-PR: none; existing Issue #305 reused. No existing branch/PR owns this scope.
+PR: #466 — merged 2026-10-05. Production activation was not part of this release unit.
 
 ## Responsibility and design decision
 
@@ -79,6 +80,10 @@ Observation uses the effective purpose mode. A background Jev send does not
 make the authoritative Luna send a fallback. The existing summary stage counts
 are Luna-only; raw Jev/Luna recorder entries independently prove both stages.
 No telemetry schema or collection boundary changes.
+
+## Archive closure
+
+PR #466 completed the publication and merge of this fail-closed per-purpose isolation. The checkpoint below is preserved as pre-merge evidence, so its former `Next:` language is historical rather than a current action. Production activation, evaluation gates and any later canary remain owned by Issue #305.
 
 ## Checkpoint and completion criteria
 

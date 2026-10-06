@@ -1,7 +1,7 @@
 # Learning Consultation and Advice Contract
 
-Status: canonical product requirement / implementation preflight complete
-Updated: 2026-08-31
+Status: canonical product requirement / Phase 1A foundation merged; production integration pending
+Updated: 2026-10-07
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 
 Parent product intent: [product-intent.md](product-intent.md)
@@ -625,7 +625,7 @@ AIがdeterministic numberを上書きしない。
 
 ## 18. Evidence / security
 
-#152をtrust/provenance ownerとする。
+#152で確立したtrust/provenance baselineを消費する。新しいconsultation経路は、その変更で影響するcurrent security regression gateを通す。
 
 - stored labels/text = data
 - external retrieval = evidence
@@ -700,11 +700,9 @@ v1 sessionからはempty consultation stateへidempotent migration。assistant p
 
 clear/reset/export/importもconsultation stateを同じvalidatorで扱う。
 
-### 20.3 Atomic formal turn commit — #270 dependency
+### 20.3 Atomic formal turn commit — #270 completed baseline
 
-current mainの既存turn lifecycleには、conversation PlanningState/message commit後にstaged Fact Graph/userPlanningContext finalizeが失敗し得る既存consistency gapがある。これは#270がownerである。
-
-#246でこの順序をコピーしてはならない。
+Issue #270 / PR #272でapplication-level atomic formal turn boundaryはmainへ統合済みである。#246はこの既存boundaryを消費し、conversation PlanningState/messageとstaged Fact Graph/userPlanningContextを別々のbest-effort commitへ戻してはならない。
 
 reviewable proposalを提示するturnのformal success単位はconceptually:
 
@@ -963,7 +961,7 @@ trace/metricsからmachine stateを復元しない。
 16. owner snapshot/digestをfreshness SSOTにする。
 17. temporal canonicalization。
 18. #187 material identity resolver利用。
-19. #152 supplemental provenance/trust利用。
+19. #152で確立したsupplemental provenance/trust baselineを利用。
 20. promotion coverage / no silent partial apply。
 21. immutable review/promotion history。
 22. versioned/deep-validated consultation persistence。
@@ -990,11 +988,11 @@ trace/metricsからmachine stateを復元しない。
 - seven-view SOLID/SSOT audit
 - current-main sync
 - exact current runtime boundary audit
-- existing-code defects separated to #269 / #270
+- at preflight time, existing-code defects separated to #269 / #270; both are now completed baselines
 
-### Phase 1A — pure consultation contracts (開始可能)
+### Phase 1A — pure consultation contracts (foundation merged)
 
-既存production mutationへまだ接続せず実装可能:
+PR #280でdormant foundationをmainへ統合済み。以下のpure contractを作り直さず、production integration時は既存実装を消費する:
 
 - TurnPurpose strict semantic contract
 - ActiveInteraction projector + conflict guard
@@ -1010,7 +1008,7 @@ trace/metricsからmachine stateを復元しない。
 
 - planner source availability → #269 contractを消費
 - material identity → #187 contractを消費
-- supplemental provenance → #152 boundaryを消費
+- supplemental provenance → #152で確立したtrust/provenance boundaryを消費
 - multi-tab writer → #164 contractを消費
 
 ownerが未提供の能力を#246側で複製して埋めない。
@@ -1026,7 +1024,7 @@ ownerが未提供の能力を#246側で複製して埋めない。
 - promotion into Stable V5
 - Real API / Browser regression
 
-#270未解決のまま、現行post-commit callbackへAdviceProposal保存を足してPhase 1Cを開始しない。
+#270のatomic boundaryは利用可能である。Phase 1Cではこれを迂回してpost-commit callbackへAdviceProposal保存を足さない。production consultation wiring自体は引き続き#246の未完了scopeである。
 
 ### Phase 2+
 
@@ -1071,10 +1069,10 @@ not open:
 
 ## 33. Dependency / owner Issues
 
-- #269: planner-data load availability (`ready / unavailable / stale`) — required before #246 depends on planner arrays as authoritative current context.
-- #270: weekly-planning formal turn atomicity — required before production reviewable proposal commit/presentation wiring.
+- #269: completed planner-data load availability baseline (`ready / unavailable / stale`); #246 consumes it rather than inferring availability from arrays.
+- #270: completed weekly-planning formal turn atomicity baseline; production reviewable proposal commit/presentation must use it.
 - #164: storage/multi-tab coordination.
-- #152: stored/supplemental prompt injection and provenance.
+- #152: completed stored/supplemental prompt-injection and provenance baseline.
 - #187: material identity/catalog/Bookshelf planning context.
 - #51: final Plan approval multi-device uniqueness.
 
@@ -1096,6 +1094,8 @@ Adopted:
 Do not copy another project’s agent count, memory model, or UI as authority.
 
 ## 35. Final implementation preflight — 2026-08-31
+
+This section is a historical pre-implementation snapshot. Since this snapshot, #269 / #270 were completed by PR #274 / #272 and Phase 1A was merged by PR #280. Current execution status is owned by [the roadmap](../roadmap/current.md); the historical gate statements below must not be read as current blockers.
 
 Seven-view audit:
 
@@ -1130,7 +1130,7 @@ Gate decision:
 
 - Product/architecture documentation gate: CLOSED.
 - Phase 1A pure consultation implementation: READY TO START.
-- Phase 1B owner integration: gated per #269/#164/#152/#187 where that owner capability is required.
+- Phase 1B owner integration: consume the #269 baseline, #164 storage boundary, #152 security/provenance baseline and #187 integration boundary where required.
 - Phase 1C production turn integration: BLOCKED until #270 atomic formal turn boundary is available.
 
 This distinction is intentional. A dependency blocker for production wiring must not force #246 to duplicate the missing owner, and it must not prevent safe implementation/testing of pure consultation contracts.
