@@ -1,3 +1,4 @@
+import type { ScheduleReadObserver } from '../lib/startupSchedulePreview';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
@@ -74,6 +75,7 @@ import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type { ShowNotice } from './useNoticeState';
 
 interface UsePlannerDataStateOptions {
+  onCommittedScheduleRead?: ScheduleReadObserver;
   userId: string | null;
   showNotice: ShowNotice;
 }
@@ -248,6 +250,7 @@ export interface UsePlannerDataStateResult {
 export function usePlannerDataState({
   userId,
   showNotice: showOwnerNotice,
+  onCommittedScheduleRead,
 }: UsePlannerDataStateOptions): UsePlannerDataStateResult {
   const { scope: mutationScope, invalidate: invalidateMutationScope } = usePlannerMutationScope(userId);
   const showNotice = useMemo(() => mutationScope.bindNotice(showOwnerNotice), [mutationScope, showOwnerNotice]);
@@ -569,7 +572,14 @@ export function usePlannerDataState({
         ],
       );
       if (readyAvailability) {
-        if (fullReadIsQuiescent) readAdmission?.refreshed(['actual-material', 'plans-todos']);
+        if (fullReadIsQuiescent) {
+          readAdmission?.refreshed(['actual-material', 'plans-todos']);
+          if (readyAvailability.status === 'ready') {
+            try { onCommittedScheduleRead?.({ ownerId: nextUserId, plans: nextPlans, monthEvents: nextMonthEvents,
+              scheduleTemplates: committedScheduleTemplates, timetableTerms: committedTimetableTerms }); }
+            catch { /* A presentation observer cannot fail an accepted read. */ }
+          }
+        }
         publishReadSnapshot();
       }
     } catch (error) {
@@ -585,7 +595,7 @@ export function usePlannerDataState({
     } finally {
       reconciliation.pump();
     }
-  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation, showOwnerNotice]);
+  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation, showOwnerNotice, onCommittedScheduleRead]);
 
   const resetPlannerData = useCallback(() => {
     invalidateMutationScope();
