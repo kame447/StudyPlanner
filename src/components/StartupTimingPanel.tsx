@@ -27,7 +27,7 @@ export function StartupTimingPanel() {
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, []);
   if (!startupTiming.enabled) return null;
-  return <details aria-label="起動時間の診断" style={{ position: 'fixed', bottom: 8, left: 8,
+  return <details aria-label="起動時間の診断" style={{ position: 'fixed', bottom: 'calc(var(--app-bottom-nav-clearance, 72px) + 8px)', left: 8,
     zIndex: 100000, maxWidth: '94vw', maxHeight: '50vh', overflow: 'auto',
     background: '#fff', color: '#111', padding: 8, border: '1px solid #777', fontSize: 12 }}>
     <summary>起動計測（端末内のみ）</summary>

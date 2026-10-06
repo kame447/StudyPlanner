@@ -74,6 +74,9 @@ for (const cachedAuth of [false, true]) {
       expect(counts.maxActive).toBe(mode === 'observe' ? 1 : 0);
       if (mode === 'observe') expect(counts.started).toBeGreaterThanOrEqual(2);
       else expect(counts.started).toBe(0);
+      const diagnosticBox = await page.getByLabel('起動時間の診断').boundingBox();
+      const navigationBox = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
+      expect(diagnosticBox.y + diagnosticBox.height).toBeLessThanOrEqual(navigationBox.y);
       await page.getByRole('button', { name: '予定', exact: true }).click();
       await expect(page.locator('.schedule-main')).toBeVisible();
     });
