@@ -282,19 +282,15 @@ export function TodayScheduleSection({
   dashboard,
   studyMaterials,
   onOpenDay,
-  onOpenSchedule,
+  onAddEntry,
 }: {
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onOpenSchedule: () => void;
+  onAddEntry: () => void;
 }) {
   const futureSlots = Math.max(0, 4 - Math.min(4, dashboard.todayPlans.length));
   const visibleUpcomingPlans = dashboard.upcomingPlans.slice(0, futureSlots);
-  const showFuturePlaceholder =
-    dashboard.todayPlans.length > 0 &&
-    dashboard.todayPlans.length < 4 &&
-    visibleUpcomingPlans.length === 0;
 
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
@@ -330,21 +326,12 @@ export function TodayScheduleSection({
                   />
                 ))
               : null}
-            {showFuturePlaceholder ? (
-              <button className="home-schedule-add-row" type="button" onClick={onOpenSchedule}>
-                <span><Plus size={15} aria-hidden="true" /></span>
-                <strong>この先の予定を追加</strong>
-                <ChevronRight size={17} aria-hidden="true" />
-              </button>
-            ) : null}
           </>
-        ) : (
-          <button className="home-schedule-empty" type="button" onClick={onOpenSchedule}>
-            <span><Plus size={16} aria-hidden="true" /></span>
-            今日の予定はまだありません。予定を追加する
-          </button>
-        )}
+        ) : null}
       </div>
+      <button className="home-schedule-empty" type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
+        <Plus size={20} aria-hidden="true" />
+      </button>
       {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>
   );

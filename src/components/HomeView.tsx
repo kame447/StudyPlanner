@@ -21,6 +21,7 @@ interface HomeViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
+  onAddEntry: () => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -106,6 +107,7 @@ export function HomeView({
   primaryBottomNavRef,
   onOpenAiPlanning,
   onOpenSchedule,
+  onAddEntry,
   onOpenDay,
   onOpenTodo,
   onOpenBookshelf,
@@ -540,7 +542,7 @@ export function HomeView({
             dashboard={dashboard}
             studyMaterials={studyMaterials}
             onOpenDay={onOpenDay}
-            onOpenSchedule={onOpenSchedule}
+            onAddEntry={onAddEntry}
           />
         );
       case 'attention':
