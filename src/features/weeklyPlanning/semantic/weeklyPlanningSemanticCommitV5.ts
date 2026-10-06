@@ -1,3 +1,4 @@
+import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
@@ -237,7 +238,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   });
   const progressReconciledCanonicalization = reconcileWeeklyPlanningProgressCorrectionsV5({
     originalGraph: params.originalGraph,
-    canonicalization: correctionResult.canonicalization,
+    canonicalization: enforceSingleActivePlanningWindowV5(correctionResult.canonicalization),
     operationKeyPrefix: params.operationKeyPrefix,
   });
   const percentageProjectedCanonicalization = projectWeeklyPlanningPercentageProgressV5({

@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 import { describe, expect, it } from 'vitest';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
@@ -327,4 +328,103 @@ describe('Stable V5 planning window replacement', () => {
     expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows)
       .toHaveLength(1);
   });
+});
+
+
+// Regression for #461's confirmed offline ordering defect. These typed responses
+// are fixtures, not a claim about the unavailable provider response in the report.
+it.each(['replace', 'modify'] as const)('applies explicit %s of tomorrow while the missing-work question is pending', async operation => {
+  let response = document({ windowLocalId: 'tomorrow-window', sourceText: '明日の予定を立てたい', tasks: [] });
+  response.planningWindow!.value = 'tomorrow';
+  const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async input => {
+    const validated = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(response), {
+      currentUserText: input.userText, publicStateSummary: input.publicStateSummary,
+      committedGraph: input.committedGraph, recentConversation: input.recentConversation,
+    });
+    expect(validated.errors).toEqual([]);
+    expect(validated.document).not.toBeNull();
+    return acceptedResult(validated.document!);
+  } });
+  const first = await pipeline.run({ graph: createEmptyWeeklyPlanningFactGraphV5(), conversationId: 'date-correction',
+    turnId: 'first', expectedRevision: 0, userText: response.planningWindow!.sourceText, recentConversation: [], publicStateSummary: {}, schedulerContext });
+  const original = structuredClone(first.graph);
+  const oldId = first.canonicalization!.localToFactId['tomorrow-window'];
+  response = document({ windowLocalId: 'today-window', sourceText: '明日じゃなくて今日だ', tasks: [] });
+  response.planningIntent = 'update_plan';
+  response.corrections = [{ localId: 'correct-date', target: { kind: 'planning_window', publicId: oldId, localId: null, mention: '明日' },
+    operation, replacementLocalId: 'today-window', sourceText: '明日じゃなくて今日だ' }];
+  const runInput = { graph: first.graph, conversationId: 'date-correction', turnId: 'second', expectedRevision: first.graph.revision,
+    userText: '明日じゃなくて今日だ', recentConversation: [], publicStateSummary: {
+      pendingQuestion: { actionId: 'missing-work', questionCode: 'missing_schedulable_work', targetFactId: null, graphRevision: first.graph.revision },
+    }, schedulerContext };
+  const second = await pipeline.run(runInput);
+  expect(second.canonicalization?.errors).toEqual([]);
+  expect(second.canonicalization?.status).toBe('applied');
+  expect(createWeeklyPlanningActiveSchedulerGraphViewV5(second.graph).planningWindows).toEqual([
+    expect.objectContaining({ value: 'today' }),
+  ]);
+  expect(second.graph.tasks).toEqual([]);
+  expect(first.graph).toEqual(original);
+  const repeated = await pipeline.run({ ...runInput, graph: second.graph, expectedRevision: second.graph.revision });
+  expect(repeated.graph).toEqual(second.graph);
+});
+
+it('keeps stale, unknown, historical and invalid replacement corrections atomic', async () => {
+  for (const failure of ['stale', 'unknown', 'historical', 'missing-replacement', 'wrong-kind'] as const) {
+    const initialDoc = document({ windowLocalId: 'old-window', sourceText: '明日の予定', tasks: [] });
+    initialDoc.planningWindow!.value = 'tomorrow';
+    const initial = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+      graph: createEmptyWeeklyPlanningFactGraphV5(), document: initialDoc,
+      context: { conversationId: 'negative', turnId: 'initial', expectedRevision: 0 },
+    });
+    const oldId = initial.localToFactId['old-window'];
+    const graph = failure === 'historical'
+      ? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+        graph: initial.graph, document: document({ windowLocalId: 'intermediate', sourceText: '今日の予定', tasks: [] }),
+        context: { conversationId: 'negative', turnId: 'intermediate', expectedRevision: initial.graph.revision },
+      }).graph : initial.graph;
+    const before = structuredClone(graph);
+    const next = document({ windowLocalId: 'replacement', sourceText: '明日じゃなくて今日だ', tasks: [] });
+    next.planningIntent = 'update_plan';
+    next.corrections = [{ localId: 'correction', target: { kind: failure === 'wrong-kind' ? 'task' : 'planning_window',
+      publicId: failure === 'unknown' ? 'unknown-window' : oldId, localId: null, mention: '明日' },
+      operation: 'replace', replacementLocalId: failure === 'missing-replacement' ? 'unknown-replacement' : 'replacement',
+      sourceText: '明日じゃなくて今日だ' }];
+    // Exercise the deterministic commit boundary even if an upstream provider were
+    // to label a malformed reference accepted; no provider safety is disabled.
+    const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async () => acceptedResult(next) });
+    const result = await pipeline.run({ graph, conversationId: 'negative', turnId: 'correction',
+      expectedRevision: graph.revision - (failure === 'stale' ? 1 : 0), userText: '明日じゃなくて今日だ',
+      recentConversation: [], publicStateSummary: {}, schedulerContext });
+    expect(result.canonicalization?.status, failure).toBe('rejected');
+    expect(result.graph, failure).toEqual(before);
+    expect(graph, failure).toEqual(before);
+  }
+});
+
+it('finalizes an explicit window correction through the semantic-uncertainty path', async () => {
+  const initialDoc = document({ windowLocalId: 'old-window', sourceText: '明日の予定', tasks: [] });
+  initialDoc.planningWindow!.value = 'tomorrow';
+  const initial = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+    graph: createEmptyWeeklyPlanningFactGraphV5(), document: initialDoc,
+    context: { conversationId: 'uncertainty', turnId: 'initial', expectedRevision: 0 },
+  });
+  const oldId = initial.localToFactId['old-window'];
+  const graph = structuredClone(initial.graph);
+  graph.uncertainties.push({ id: 'date-uncertainty', targetFactId: oldId, field: 'planning_window', reason: '対象日を確認',
+    createdRevision: graph.revision, source: graph.planningWindows[0].source });
+  graph.factLifecycles.push({ factId: 'date-uncertainty', status: 'active', createdRevision: graph.revision, terminalRevision: null, supersededByFactId: null });
+  const next = document({ windowLocalId: 'replacement', sourceText: '明日じゃなくて今日だ', tasks: [] });
+  next.planningIntent = 'update_plan';
+  next.corrections = [{ localId: 'correction', target: { kind: 'planning_window', publicId: oldId, localId: null, mention: '明日' },
+    operation: 'replace', replacementLocalId: 'replacement', sourceText: '明日じゃなくて今日だ' }];
+  const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async () => acceptedResult(next) });
+  const result = await pipeline.run({ graph, conversationId: 'uncertainty', turnId: 'correction', expectedRevision: graph.revision,
+    userText: '明日じゃなくて今日だ', recentConversation: [], publicStateSummary: {
+      pendingQuestion: { actionId: 'question', questionCode: 'semantic_uncertainty', targetFactId: 'date-uncertainty', graphRevision: graph.revision },
+    }, schedulerContext });
+  expect(result.canonicalization?.errors).toEqual([]);
+  expect(result.canonicalization?.status).toBe('applied');
+  expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows).toEqual([expect.objectContaining({ value: 'today' })]);
+  expect(result.graph.factLifecycles.find(entry => entry.factId === 'date-uncertainty')?.status).toBe('removed');
 });

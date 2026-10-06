@@ -536,6 +536,41 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
+  it('keeps asking for work after accepting an explicit tomorrow-to-today correction', async () => {
+    const tomorrow = todayOnlyDocument();
+    tomorrow.planningWindow!.value = 'tomorrow';
+    tomorrow.planningWindow!.sourceText = '明日の予定を立てたい';
+    normalizeMock.mockResolvedValueOnce(acceptedResult(tomorrow));
+    const common = { selectedDate: '2026-07-24', userId: 'owner-date-correction', plans: [], scheduleTemplates: [],
+      conversationId: 'conversation-date-correction', messages: [] };
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn({ ...common, previousState: undefined,
+      userText: '明日の予定を立てたい', traceRequestId: 'request-date-1' });
+    expect(first.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_schedulable_work');
+    const graph = getWeeklyPlanningStableV5StagedGraph({ ownerId: common.userId,
+      conversationId: common.conversationId, requestId: 'request-date-1' });
+    expect(graph?.planningWindows).toHaveLength(1);
+    finalizeWeeklyPlanningStableV5RuntimeGraph({ ownerId: common.userId,
+      conversationId: common.conversationId, requestId: 'request-date-1' });
+    const today = todayOnlyDocument();
+    today.planningIntent = 'update_plan';
+    today.planningWindow!.localId = 'corrected-today';
+    today.planningWindow!.sourceText = '明日じゃなくて今日だ';
+    today.corrections = [{ localId: 'fix-date', target: { kind: 'planning_window', publicId: graph!.planningWindows[0].id,
+      localId: null, mention: '明日' }, operation: 'replace', replacementLocalId: 'corrected-today', sourceText: '明日じゃなくて今日だ' }];
+    normalizeMock.mockResolvedValueOnce(acceptedResult(today));
+    const second = await executeWeeklyPlanningStableV5RuntimeTurn({ ...common, previousState: first.state,
+      userText: '明日じゃなくて今日だ', traceRequestId: 'request-date-2' });
+    expect(second.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_schedulable_work');
+    expect(second.message).not.toContain('構造化結果が一致しなかった');
+    expect(second.draftCandidates).toEqual([]);
+    expect(second.state.shouldCreateDraft).toBe(false);
+    const corrected = getWeeklyPlanningStableV5StagedGraph({ ownerId: common.userId,
+      conversationId: common.conversationId, requestId: 'request-date-2' });
+    const activeIds = new Set(corrected?.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    expect(corrected?.planningWindows.filter(window => activeIds.has(window.id))).toEqual([expect.objectContaining({ value: 'today' })]);
+    expect(corrected?.tasks).toEqual([]);
+  });
+
   it('accepts 今日 as the planning window and asks for the missing work instead of rejecting normalization', async () => {
     normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
 
