@@ -3,7 +3,7 @@ export const STARTUP_PHASES = [
   'splash-mounted', 'auth-session', 'consent', 'preferences', 'memory',
   'profile', 'plans', 'actuals', 'day-notes', 'month-events', 'todos',
   'subjects', 'materials', 'templates', 'terms', 'periods',
-  'timetable-write', 'bootstrap', 'cached-schedule-visible', 'home-visible',
+  'timetable-write', 'bootstrap', 'home-visible',
 ] as const;
 export type StartupPhase = typeof STARTUP_PHASES[number];
 type Outcome = 'pending' | 'success' | 'error' | 'cancelled';
