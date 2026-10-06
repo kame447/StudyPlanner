@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../App', () => ({ default: () => null }));
+vi.mock('./PlannerAppBootstrap', () => ({ PlannerAppBootstrap: ({ children }: any) => children({}, () => {}) }));
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({
   UserPlanningContextProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -184,7 +185,7 @@ describe('StudyPlannerAppRoot', () => {
     act(() => fake.emit(verifiedUser));
     expect(renderer.root.findAllByType(App)).toHaveLength(1);
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
-    act(() => renderer.root.findByType(RootStartupReadyProvider).props.onReady());
+    act(() => renderer.root.findAllByType(RootStartupReadyProvider).slice(-1)[0].props.onReady());
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
   });
 
@@ -216,7 +217,7 @@ describe('StudyPlannerAppRoot', () => {
     expect(renderer.root.findAllByType(App)).toHaveLength(1);
     expect(renderer.root.findAllByType(InitialWeekStartPreferenceScreen)).toHaveLength(0);
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
-    act(() => renderer.root.findByType(RootStartupReadyProvider).props.onReady());
+    act(() => renderer.root.findAllByType(RootStartupReadyProvider).slice(-1)[0].props.onReady());
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
   });
 

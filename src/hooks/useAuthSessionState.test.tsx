@@ -95,6 +95,24 @@ describe('useAuthSessionState', () => {
     latestState = null;
   });
 
+  it.each(['old-success', 'old-failure'])('ignores %s from an obsolete bootstrap attempt', async outcome => {
+    const first = createDeferred<User | null>(), second = createDeferred<User | null>();
+    authRepositoryMock.getCurrentUser.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const ready = vi.fn(), load = vi.fn(async () => undefined);
+    const { renderer, showNotice } = renderHarness(false, ready);
+    let old!: Promise<void>, current!: Promise<void>;
+    act(() => { old = latestState!.bootstrapSession(load); current = latestState!.bootstrapSession(load); });
+    await act(async () => {
+      if (outcome === 'old-success') first.resolve(currentUser); else first.reject(new Error('old'));
+      await old;
+    });
+    expect(load).not.toHaveBeenCalled(); expect(ready).not.toHaveBeenCalled();
+    expect(showNotice).not.toHaveBeenCalled(); expect(renderedState(renderer)).toBe('booting:anonymous');
+    await act(async () => { second.resolve(currentUser); await current; });
+    expect(load).toHaveBeenCalledExactlyOnceWith(currentUser.id); expect(ready).toHaveBeenCalledOnce();
+    expect(renderedState(renderer)).toBe('ready:user-1'); act(() => renderer.unmount());
+  });
+
   it('keeps booting active until authenticated planner data has finished loading', async () => {
     authRepositoryMock.getCurrentUser.mockResolvedValue(currentUser);
     const plannerData = createDeferred<void>();

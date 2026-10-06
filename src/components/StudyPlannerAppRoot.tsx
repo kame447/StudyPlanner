@@ -1,3 +1,4 @@
+import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import App from '../App';
@@ -40,6 +41,8 @@ function StartupSurface({
   );
 }
 
+const ignoreEarlyBootstrapReady = () => {};
+
 function ConsentedStudyPlannerApp({
   authSession,
   userId,
@@ -62,7 +65,8 @@ function ConsentedStudyPlannerApp({
     return null;
   }
 
-  if (!personalization.profile?.weekStartsOn) {
+  const profile = personalization.profile;
+  if (!profile?.weekStartsOn) {
     return (
       <InitialWeekStartPreferenceScreen
         error={personalization.error}
@@ -76,15 +80,23 @@ function ConsentedStudyPlannerApp({
   }
 
   return (
-    <UserPlanningContextProvider ownerId={userId}>
-      <WeeklyPlanningPersonalizationProvider
-        profile={personalization.profile}
-        setWeekStartsOn={personalization.setWeekStartsOn}
-        resetProfile={personalization.resetProfile}
-      >
-        <App />
-      </WeeklyPlanningPersonalizationProvider>
-    </UserPlanningContextProvider>
+    <RootStartupReadyProvider onReady={ignoreEarlyBootstrapReady}>
+      <PlannerAppBootstrap ownerId={userId}>
+        {(state, onReady) => (
+          <UserPlanningContextProvider ownerId={userId}>
+            <WeeklyPlanningPersonalizationProvider
+              profile={profile}
+              setWeekStartsOn={personalization.setWeekStartsOn}
+              resetProfile={personalization.resetProfile}
+            >
+              <RootStartupReadyProvider onReady={onStartupReady}>
+                <App state={state} onReady={onReady} />
+              </RootStartupReadyProvider>
+            </WeeklyPlanningPersonalizationProvider>
+          </UserPlanningContextProvider>
+        )}
+      </PlannerAppBootstrap>
+    </RootStartupReadyProvider>
   );
 }
 
@@ -172,7 +184,6 @@ export function StudyPlannerAppRoot({
     },
   );
   useStartupWait('auth-session', authenticatedUserId === undefined);
-  const [startupReadyUserId, setStartupReadyUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authSession.available) {
@@ -189,33 +200,24 @@ export function StudyPlannerAppRoot({
     });
   }, [authSession]);
 
-  const markAuthenticatedStartupReady = useCallback(() => {
-    if (typeof authenticatedUserId === 'string') {
-      setStartupReadyUserId(authenticatedUserId);
-    }
-  }, [authenticatedUserId]);
-
   if (isLegalPage || !traceEnabled || !authSession.available) {
     return <App />;
   }
 
-  const authenticatedStartupPending = typeof authenticatedUserId === 'string'
-    && startupReadyUserId !== authenticatedUserId;
-  const startupLoading = authenticatedUserId === undefined || authenticatedStartupPending;
+  if (authenticatedUserId === undefined) return <SplashScreen fixedLight />;
+  if (authenticatedUserId === null) return <RootManagedUnauthenticatedApp />;
+  return <AuthenticatedStartup key={authenticatedUserId} authSession={authSession} userId={authenticatedUserId} />;
+}
 
+function AuthenticatedStartup({ authSession, userId }: { authSession: AuthSessionService; userId: string }) {
+  // Owned by this mounted session, not by a reusable owner ID in the root.
+  const [ready, setReady] = useState(false);
+  const markReady = useCallback(() => setReady(true), []);
   return (
-    <StartupSurface loading={startupLoading}>
-      {authenticatedUserId === null ? (
-        <RootManagedUnauthenticatedApp />
-      ) : typeof authenticatedUserId === 'string' ? (
-        <RootStartupReadyProvider onReady={markAuthenticatedStartupReady}>
-          <AuthenticatedStudyPlannerApp
-            authSession={authSession}
-            userId={authenticatedUserId}
-            onStartupReady={markAuthenticatedStartupReady}
-          />
-        </RootStartupReadyProvider>
-      ) : null}
+    <StartupSurface loading={!ready}>
+      <RootStartupReadyProvider onReady={markReady}>
+        <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} onStartupReady={markReady} />
+      </RootStartupReadyProvider>
     </StartupSurface>
   );
 }

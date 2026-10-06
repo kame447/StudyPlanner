@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
-import type { usePlannerAppState } from './hooks/usePlannerAppState';
+import { usePlannerAppState } from './hooks/usePlannerAppState';
 import type { User } from './types/domain';
 
 const fixture = vi.hoisted(() => ({
@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => ({
   application: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })),
 }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: fixture.schedulePreload }));
-vi.mock('./hooks/usePlannerAppState', () => ({ usePlannerAppState: () => fixture.state }));
+vi.mock('./hooks/usePlannerAppState', () => ({ usePlannerAppState: vi.fn(() => fixture.state) }));
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: fixture.application }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true, verifyAndStoreAppAccessKey: () => true }));
@@ -31,6 +31,7 @@ let renderer: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/' } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden by fixture'); }));
+  vi.mocked(usePlannerAppState).mockClear();
   fixture.application.mockClear();
   fixture.schedulePreload.mockClear();
   fixture.state = {
@@ -115,4 +116,12 @@ it('starts optional preloads only for a ready owner and cancels on reload, owner
   act(() => { renderer!.unmount(); });
   expect(fixture.schedulePreload.mock.results[2].value).toHaveBeenCalledOnce();
   renderer = undefined;
+});
+
+it('consumes supplied bootstrap state without launching a second hydration', () => {
+  const onReady = vi.fn();
+  act(() => { renderer = create(<App state={fixture.state as ReturnType<typeof usePlannerAppState>} onReady={onReady} />); });
+  expect(usePlannerAppState).not.toHaveBeenCalled();
+  expect(onReady).toHaveBeenCalledOnce();
+  expect(fixture.application).toHaveBeenCalled();
 });
