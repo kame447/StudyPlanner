@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
+import { startupTiming } from '../lib/startupTiming';
 import splashLogo from '../assets/studyplanner-logo.png';
 
 export function SplashScreen({ fixedLight = false }: { fixedLight?: boolean }) {
+  useEffect(() => { startupTiming.markOnce('splash-mounted'); }, []);
   return (
     <main
       className={

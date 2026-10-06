@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { startupTiming } from '../lib/startupTiming';
+import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
 import {
@@ -15,6 +16,15 @@ import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceSc
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
+
+function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pending: boolean, failed = false) {
+  const finish = useRef<ReturnType<typeof startupTiming.begin> | null>(null);
+  useEffect(() => {
+    if (pending && !finish.current) finish.current = startupTiming.begin(phase);
+    if (!pending && finish.current) { finish.current(failed ? 'error' : 'success'); finish.current = null; }
+  }, [phase, pending, failed]);
+  useEffect(() => () => { finish.current?.('cancelled'); finish.current = null; }, [phase]);
+}
 
 function StartupSurface({
   children,
@@ -40,6 +50,7 @@ function ConsentedStudyPlannerApp({
   onStartupReady: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
+  useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
 
   useEffect(() => {
     if (!personalization.loading && !personalization.profile?.weekStartsOn) {
@@ -87,6 +98,7 @@ function AuthenticatedStudyPlannerApp({
   onStartupReady: () => void;
 }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
+  useStartupWait('consent', policy.status === 'loading', policy.status === 'unavailable');
 
   useEffect(() => {
     if (
@@ -159,6 +171,7 @@ export function StudyPlannerAppRoot({
           : null;
     },
   );
+  useStartupWait('auth-session', authenticatedUserId === undefined);
   const [startupReadyUserId, setStartupReadyUserId] = useState<string | null>(null);
 
   useEffect(() => {

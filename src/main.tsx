@@ -1,3 +1,4 @@
+import { StartupTimingPanel } from './components/StartupTimingPanel';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { StudyPlannerAppRoot } from './components/StudyPlannerAppRoot';
@@ -27,6 +28,7 @@ if (!isAdminRoute) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <StartupTimingPanel />
     {isAdminRoute ? (
       <React.Suspense fallback={null}>
         <LazyAdminApp />
