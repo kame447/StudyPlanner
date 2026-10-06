@@ -24,7 +24,9 @@ import {
 export interface WeeklyPlanningInteractionPlan {
   /** A different open question to present than the policy's top one (named topic). */
   dialogueQuestionOverride: WeeklyPlanningStableQuestionV5 | null;
-  /** The named topic has an open machine question (it is presented explicitly). */
+  /** The act named an existing active topic (validated against the graph at use time). */
+  targetResolved: boolean;
+  /** The named topic has an open, non-deferred machine question (presented explicitly). */
   targetQuestionOpen: boolean;
   readonly acts: {
     ask: boolean;
@@ -88,12 +90,17 @@ export function planWeeklyPlanningInteraction(params: {
   const { dialogue, compilation } = params.evaluation;
   let override: WeeklyPlanningStableQuestionV5 | null = null;
   let targetQuestionOpen = false;
+  // The repair policy owns what may be asked now: issues it deferred this turn are never
+  // pulled forward by naming their topic.
+  const deferred = new Set(params.evaluation.repairDecision.deferredIssueIds);
   const targetId = flags.resume || flags.shift
     ? resolvedTargetId(acts, ['resume_topic', 'topic_shift'], params.graph)
     : null;
   if (targetId && dialogue.status === 'ask_question') {
     const targeted = listWeeklyPlanningStableBlockingQuestionsV5(compilation)
-      .find((question) => questionConcernsTarget(params.graph, question, targetId));
+      .find((question) =>
+        !(question.factId !== null && deferred.has(question.factId))
+        && questionConcernsTarget(params.graph, question, targetId));
     if (targeted) {
       targetQuestionOpen = true;
       const withMeasurement = withStableV5EffortMeasurement({
@@ -105,7 +112,12 @@ export function planWeeklyPlanningInteraction(params: {
       if (!sameAsTop) override = withMeasurement;
     }
   }
-  return { dialogueQuestionOverride: override, targetQuestionOpen, acts: flags };
+  return {
+    dialogueQuestionOverride: override,
+    targetResolved: targetId !== null,
+    targetQuestionOpen,
+    acts: flags,
+  };
 }
 
 function sameQuestion(
@@ -136,11 +148,16 @@ export function classifyWeeklyPlanningInteraction(params: {
   const apply: WeeklyPlanningInteractionOutcome = { kind: 'apply', consultationDeferred };
   if (hasPreview) return apply;
 
-  if (acts.resume || (acts.shift && params.plan.targetQuestionOpen)) {
+  // "Resume" is only truthful when the presented question belongs to the named topic (or
+  // no topic was named); a resolved topic without an open question is an ordinary turn.
+  const resumes = (acts.resume && (!params.plan.targetResolved || params.plan.targetQuestionOpen))
+    || (acts.shift && params.plan.targetQuestionOpen);
+  if (resumes) {
     return hasQuestion
       ? { kind: 'resume_pending_question', consultationDeferred }
       : apply;
   }
+  if (acts.resume) return apply;
   if (acts.ask) {
     return params.presentation.status === 'fresh'
       && hasQuestion
