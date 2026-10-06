@@ -22,7 +22,11 @@ for (const width of [1280, 390]) {
   test(`cached schedules remain read-only until current readiness at ${width}px`, async ({ page }, testInfo) => {
     await boot(page, width);
     await expect(preview(page)).toHaveCount(0);
+    const originalSplash = await page.locator('.splash-screen:visible').elementHandle();
+    expect(originalSplash).not.toBeNull();
     await page.evaluate(() => window.__startupPreviewHarness.emitAuth());
+    expect(await originalSplash.evaluate(node => node.isConnected)).toBe(true);
+    await expect(page.locator('.splash-screen')).toHaveCount(1);
     await expect(preview(page)).toHaveCount(0);
     await page.evaluate(() => window.__startupPreviewHarness.emitPolicy('accepted'));
     await expect(preview(page)).toBeVisible();
@@ -58,11 +62,15 @@ for (const width of [1280, 390]) {
 }
 test('cache miss uses normal splash and failed cached load stays read-only', async ({ page }) => {
   await boot(page, 390, true);
+  const originalSplash = await page.locator('.splash-screen:visible').elementHandle();
+  expect(originalSplash).not.toBeNull();
   await page.evaluate(() => { window.__startupPreviewHarness.emitAuth(); window.__startupPreviewHarness.emitPolicy('accepted'); });
   await expect(page.locator('.splash-screen:visible')).toHaveCount(1);
+  expect(await originalSplash.evaluate(node => node.isConnected)).toBe(true);
   await expect(preview(page)).toHaveCount(0);
   await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
   await expect(page.locator('.home-main')).toBeVisible();
+  expect(await originalSplash.evaluate(node => node.isConnected)).toBe(false);
   await page.reload(); await page.waitForFunction(() => Boolean(window.__startupPreviewHarness));
   await page.evaluate(() => { window.__startupPreviewHarness.emitAuth(); window.__startupPreviewHarness.emitPolicy('accepted'); window.__plannerRecoveryRepository.failNextMonthRead(); });
   await expect(preview(page)).toBeVisible();

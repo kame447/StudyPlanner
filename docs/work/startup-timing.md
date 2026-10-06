@@ -48,3 +48,10 @@ The copy contains owner/version/capture time, an eight-day date range, and at mo
 Logout, unverified/null identity and account changes revoke captures and clear startup copies. An invalidation marker is written before removal, with an in-document guard if storage fails. Re-enabling requires a successful fresh capture that first removes revoked copies. If the browser refuses every storage modification, physical deletion cannot be guaranteed; normal authenticated startup continues without using the copy in that document. This cache is not encrypted storage and must not be treated as an authorization token. Ordinary storage failures are nonfatal.
 
 `cached-schedule-visible` marks the read-only surface separately; it does not close timing collection. `home-visible` still means the normal current Home is visible. Report both times and the remaining current-data wait. Auth/consent/preference latency remains; neither local fixture timing nor a warm reload proves one-second cold startup on an iPhone. First use, expired/invalid copies and storage-denied cases retain the ordinary loading path.
+
+
+### 起動ロゴの寿命
+
+認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。保存済み予定を先行表示できる時点、または通常画面が準備できた時点で初めて表示を切り替える。
+
+PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready/preview通知を採用しない。
