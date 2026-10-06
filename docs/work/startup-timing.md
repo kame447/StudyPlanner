@@ -63,3 +63,35 @@ This removes a redundant sequential read, not an awaited startup gate. It does
 not postpone catalog availability for early entry, introduce persistent caching,
 or establish an improvement in navigation-to-usable-Home time by itself. Treat
 read-count evidence separately from actual cold/warm startup measurements.
+
+## Opt-in Firestore transport comparison
+
+Ordinary launches retain `experimentalForceLongPolling: true`. A fresh document
+with exactly one `startupTiming=1` and one explicit `startupTransport` can select:
+
+- `forced`: the unchanged control
+- `auto`: force=false, automatic long-polling detection=true
+- `streaming`: force=false, automatic detection=false
+
+These are public options in the locked Firestore 4.14.0 SDK. Streaming names the
+WebChannel fallback policy, not a QUIC/HTTP-version switch. Auto and streaming
+may use the same path on a particular network. The panel shows the configuration
+chosen at document start, not a measurement of the negotiated wire protocol.
+Unknown, absent, duplicate or malformed inputs keep the forced default. Changing
+an SPA URL cannot reconfigure the singleton or change its diagnostic label; use
+a full new launch. The selector stores nothing, makes no requests, and changes
+no authentication, Rules, host, SSL, credentials or data-recovery policy.
+
+Keep the exact build, account/data, browser and network constant. Interleave all
+three configurations in balanced order across repeated fresh JS launches. Require
+all expected startup reads to succeed and verify normal Home controls, rather
+than using `home-visible` alone. Retain failed/hanging launches as failed samples.
+Record count, median, range and failures; do not select a fastest single run.
+If HTTP cache cannot be controlled, label the experiment warm/uncontrolled assets
+with a fresh JS/Firestore client, never cold-cache or an iPhone benchmark.
+
+This diagnostic capability does not adopt a different production default.
+The historical forced setting protects restrictive networks; test reconnection,
+error recovery and representative networks before any default change. Recover a
+failed diagnostic launch by reopening without the override, not by silently
+switching transport inside the same timed sample.

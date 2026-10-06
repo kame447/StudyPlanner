@@ -1,3 +1,4 @@
+import { firestoreTransportSettings, startupFirestoreTransport } from './startupFirestoreTransport';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
 import { initializeFirestore, type Firestore } from 'firebase/firestore';
@@ -61,9 +62,7 @@ export function getFirestoreDb(): Firestore | null {
 
   // Some browsers/networks intermittently fail Firestore's default WebChannel/QUIC
   // transport. Force long polling so localhost and restrictive networks stay usable.
-  firestoreDb = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-  });
+  firestoreDb = initializeFirestore(app, firestoreTransportSettings(startupFirestoreTransport));
   return firestoreDb;
 }
 
