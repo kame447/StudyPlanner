@@ -66,6 +66,15 @@ describe('turn architecture resolution', () => {
     expect(resolveConversationArchitectureForTurn(EMPTY, 'legacy_v5')).toBe('legacy_v5');
   });
 
+  it('does not treat a message appended without any admitted turn as a conversation (stays unpinned, round-trips identically)', () => {
+    const noticeOnly: PlanningState = {
+      ...EMPTY,
+      messages: [{ id: 'm0', role: 'assistant', content: 'notice', createdAt: '2026-10-07T00:00:00.000Z' }],
+    };
+    expect(resolveConversationArchitectureForTurn(noticeOnly, 'interaction_v1')).toBe('interaction_v1');
+    expect(hydratedConversationArchitecture(noticeOnly)).toEqual({});
+  });
+
   it('hydrates old content as legacy and leaves an empty conversation unpinned (no key)', () => {
     expect(hydratedConversationArchitecture(WITH_CONTENT)).toEqual({ conversationArchitecture: 'legacy_v5' });
     expect(hydratedConversationArchitecture(EMPTY)).toEqual({});

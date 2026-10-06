@@ -107,19 +107,21 @@ export function conversationArchitecturePolicy(
 }
 
 /**
- * True when the state already carries conversation content. Such a state with no pinned
- * architecture was authored before the field existed, i.e. under the legacy architecture.
+ * True when a turn has already been admitted in this conversation (or it holds state a turn
+ * produced). Such a state with no pinned architecture was authored before the field existed,
+ * i.e. under the legacy architecture. A message appended without any admitted turn (a notice,
+ * a restored transcript) is not a conversation under either architecture yet, so it stays
+ * unpinned and captures the default at its first turn - this keeps the stored form and the
+ * in-memory form of the same state identical.
  */
 export function planningStateHasConversationContent(
-  state: Pick<PlanningState, 'messages' | 'intakeState' | 'conversationRequestSequence' | 'draftBlocks'>
-    & Partial<Pick<PlanningState, 'previewCandidates' | 'lastAssistantMessage'>>,
+  state: Pick<PlanningState, 'intakeState' | 'conversationRequestSequence' | 'draftBlocks'>
+    & Partial<Pick<PlanningState, 'previewCandidates'>>,
 ): boolean {
-  return state.messages.length > 0
-    || Boolean(state.intakeState)
+  return Boolean(state.intakeState)
     || (state.conversationRequestSequence ?? 0) > 0
     || state.draftBlocks.length > 0
-    || (state.previewCandidates?.length ?? 0) > 0
-    || Boolean(state.lastAssistantMessage);
+    || (state.previewCandidates?.length ?? 0) > 0;
 }
 
 /**
