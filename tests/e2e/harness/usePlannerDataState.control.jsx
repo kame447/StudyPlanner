@@ -21,12 +21,12 @@ export function usePlannerDataState(options) {
       todos: result.todos, dayNotes: result.dayNotes, scheduleTemplates: result.scheduleTemplates,
       monthEvents: result.monthEvents, monthDate: result.monthDate, selectedDate: result.selectedDate,
       mounts: control.mounts, unmounts: control.unmounts });
-    control.startTimetableClass = ({ title }) => {
+    control.startTimetableClass = ({ title, weekday = 'mon', periodNumber }) => {
       if (control.saving) throw new Error('A fixture save is already pending');
       control.saving = true; control.saveError = null; control.saveComplete = false;
       const term = result.timetableTerms.find(item => item.isActive) ?? result.timetableTerms[0];
       if (!term) throw new Error('Missing normalized timetable term');
-      void result.saveScheduleTemplate({ userId: options.userId, title, subject: 'Math', type: 'study', weekday: 'mon', startTime: '12:00', endTime: '13:00', termId: term.id, memo: '', active: true })
+      void result.saveScheduleTemplate({ userId: options.userId, title, subject: 'Math', type: 'study', weekday, periodNumber, startTime: '12:00', endTime: '13:00', termId: term.id, memo: '', active: true })
         .then(() => { control.saveComplete = true; })
         .catch(error => { control.saveError = String(error); })
         .finally(() => { control.saving = false; });

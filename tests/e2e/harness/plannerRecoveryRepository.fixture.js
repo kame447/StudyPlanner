@@ -146,6 +146,7 @@ window.__plannerRecoveryRepository = {
     release();
     return true;
   },
+  holdNextTemplateWrite() { holdPlanWrite = 'upsertScheduleTemplate'; },
   holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
   holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
   releasePlanWrite() {

@@ -1248,3 +1248,33 @@ test('native timetable class save crossing full read recovers without resave mob
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   expect((await hookSnapshot(page)).scheduleTemplates).toEqual(saved);
 });
+
+for (const options of [cases.find(item => item.label === 'desktop' && item.theme === 'light'), cases.find(item => item.label === 'mobile' && item.theme === 'dark')]) {
+  test(`late timetable save preserves a newer editor ${options.label}-${options.theme}`, async ({ page }, testInfo) => {
+    await boot(page, options);
+    for (const [title, weekday] of [['授業A', 'mon'], ['授業B', 'tue']]) {
+      await page.evaluate(args => window.__plannerRecoveryHook.startTimetableClass(args), { title, weekday, periodNumber: 1 });
+      await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+      expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+    }
+    await navigate(page, '時間割');
+    await page.getByRole('button', { name: '月曜 1限 授業Aを編集', exact: true }).click();
+    const editor = page.locator('.timetable-editor-modal');
+    await editor.getByLabel('授業名', { exact: true }).fill('保存した授業A');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.getByRole('button', { name: '火曜 1限 授業Bを編集', exact: true }).click();
+    await editor.getByLabel('授業名', { exact: true }).fill('未保存の授業B');
+    await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await expect(editor.getByLabel('授業名', { exact: true })).toHaveValue('未保存の授業B');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
+    expect(saved.map(item => item.title).sort()).toEqual(['保存した授業A', '授業B'].sort());
+    await page.screenshot({ path: testInfo.outputPath(`timetable-editor-${options.label}-${options.theme}.png`), fullPage: true });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bを編集', exact: true })).toBeVisible();
+  });
+}
