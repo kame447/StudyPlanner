@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { BookOpen, Search } from 'lucide-react';
 import {
   resolveMaterialMetadataCandidate,
@@ -9,7 +9,7 @@ import '../styles/material-metadata.css';
 
 interface BookshelfMaterialSearchProps {
   onSelect: (candidate: MaterialMetadataCandidate) => void;
-  onSelectionStart?: () => void;
+  onSelectionPendingChange?: (pending: boolean) => void;
 }
 
 function candidateMeta(candidate: MaterialMetadataCandidate): string {
@@ -29,13 +29,26 @@ function candidateMeta(candidate: MaterialMetadataCandidate): string {
 
 export function BookshelfMaterialSearch({
   onSelect,
-  onSelectionStart,
+  onSelectionPendingChange,
 }: BookshelfMaterialSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MaterialMetadataCandidate[]>([]);
   const [status, setStatus] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const selection = useRef<object | null>(null);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; selection.current = null; };
+  }, []);
+
+  function cancelSelection() {
+    selection.current = null;
+    setResolvingId(null);
+    onSelectionPendingChange?.(false);
+    setStatus('選択を取り消しました。入力内容はそのまま保存できます。');
+  }
 
   async function handleSearch() {
     const trimmed = query.trim();
@@ -65,12 +78,15 @@ export function BookshelfMaterialSearch({
   }
 
   async function handleSelect(candidate: MaterialMetadataCandidate) {
-    if (resolvingId) return;
-    onSelectionStart?.();
+    if (!mounted.current || selection.current) return;
+    const operation = {};
+    selection.current = operation;
+    onSelectionPendingChange?.(true);
     setResolvingId(candidate.catalogEntryId);
     setStatus('教材の表紙・ページ数・版・目次を確認しています...');
     try {
       const resolved = await resolveMaterialMetadataCandidate(candidate);
+      if (!mounted.current || selection.current !== operation) return;
       onSelect(resolved);
       const detailCount = [
         resolved.coverImageUrl,
@@ -83,8 +99,16 @@ export function BookshelfMaterialSearch({
           ? '教材の詳しい情報を反映しました。内容を確認して保存してください。'
           : '教材名を反映しました。詳しい情報がない項目は手入力できます。',
       );
+    } catch {
+      if (mounted.current && selection.current === operation) {
+        setStatus('教材の詳細を取得できませんでした。再選択するか手入力で登録できます。');
+      }
     } finally {
-      setResolvingId(null);
+      if (mounted.current && selection.current === operation) {
+        selection.current = null;
+        setResolvingId(null);
+        onSelectionPendingChange?.(false);
+      }
     }
   }
 
@@ -139,6 +163,11 @@ export function BookshelfMaterialSearch({
       </div>
 
       {status ? <p className="detail-note material-metadata-search-status">{status}</p> : null}
+      {resolvingId ? (
+        <button className="ghost-button" type="button" onClick={cancelSelection}>
+          教材の選択を取り消す
+        </button>
+      ) : null}
 
       {results.length > 0 ? (
         <div className="material-metadata-results" aria-label="教材検索結果">

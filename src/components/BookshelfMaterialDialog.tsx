@@ -107,6 +107,8 @@ function BookshelfMaterialDialogSession({
   // The search component allows only one catalogue resolution at a time.
   const catalogCoverRevision = useRef(0);
   const pendingPhotoRevision = useRef<number | null>(null);
+  const pendingCatalogSelection = useRef(false);
+  const [isResolvingCatalog, setIsResolvingCatalog] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const mounted = useRef(false);
   useLayoutEffect(() => {
@@ -126,7 +128,7 @@ function BookshelfMaterialDialogSession({
     progressUnit === 'custom'
       ? progressUnitLabel.trim() || '単位'
       : getMaterialUnitLabel({ progressUnit });
-  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection && !isProcessingPhoto;
+  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection && !isProcessingPhoto && !isResolvingCatalog;
   const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -166,7 +168,7 @@ function BookshelfMaterialDialogSession({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSave || !selectedSubject || pendingPhotoRevision.current !== null) {
+    if (!canSave || !selectedSubject || pendingPhotoRevision.current !== null || pendingCatalogSelection.current) {
       return;
     }
 
@@ -296,9 +298,13 @@ function BookshelfMaterialDialogSession({
 
           {!material ? (
             <BookshelfMaterialSearch
-              onSelectionStart={() => {
-                catalogCoverRevision.current = beginCoverSelection();
-                setStatus('');
+              onSelectionPendingChange={(pending) => {
+                pendingCatalogSelection.current = pending;
+                setIsResolvingCatalog(pending);
+                if (pending) {
+                  catalogCoverRevision.current = beginCoverSelection();
+                  setStatus('');
+                }
               }}
               onSelect={(candidate) => {
                 setCatalogCandidate(candidate);
