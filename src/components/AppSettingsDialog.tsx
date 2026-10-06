@@ -1,4 +1,3 @@
-import { WeeklyPlanningArchitectureSetting } from './WeeklyPlanningArchitectureSetting';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Brain,
@@ -21,6 +20,7 @@ import {
   type ThemePalette,
 } from '../lib/themePalette';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
+import { WeeklyPlanningArchitectureSetting } from './WeeklyPlanningArchitectureSetting';
 
 type AppSettingsTab = 'settings' | 'memory' | 'support';
 

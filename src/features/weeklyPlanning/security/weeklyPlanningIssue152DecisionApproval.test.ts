@@ -6,6 +6,7 @@ import { validateWeeklyPlanningDecisionTargetReferencesV5 } from '../semantic/we
 import { evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../application/weeklyPlanningStableV5LearningStrategyProposal';
 import { validateWeeklyPreviewApproval } from '../planning/weeklyPlanningApproval';
 import type { WeeklyPlanDraftBlock } from '../types';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 
 function proposal(id: string, workloadFactId: string): WeeklyPlanningLearningStrategyProposalRecord {
   return {
@@ -89,6 +90,24 @@ describe('Issue #152 V09 proposal decision application boundary', () => {
     expect(result.records.filter((record) => record.status === 'accepted').map((record) => record.id))
       .toEqual(['proposal-a']);
     expect(result.records.find((record) => record.id === 'proposal-b')?.status).toBe('pending');
+  });
+
+  it.each([
+    ['legacy_v5', ['proposal-a', 'proposal-b']],
+    ['interaction_v1', ['proposal-a']],
+  ] as const)('collective decision under %s settles %j (the architecture decides who may be decided)', (architecture, settled) => {
+    const previous = [proposal('proposal-a', 'work-a'), proposal('proposal-b', 'work-b')];
+    const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: 'proposal-a',
+      restrictToPresentedProposal: conversationArchitecturePolicy(architecture).freshProposalDecisionsOnly,
+      previousState: intakeState(previous),
+      document: decisionDocument(['proposal-a', 'proposal-b']),
+      localToFactId: {},
+      compilation: compilation(),
+      graphRevision: 2,
+      turnId: 'turn-2',
+    });
+    expect(result.records.filter((record) => record.status === 'accepted').map((record) => record.id)).toEqual(settled);
   });
 
   it('documents proposal reference validation does not bind side decisions to pendingQuestion (semantic-owned; see Luna B V09)', () => {

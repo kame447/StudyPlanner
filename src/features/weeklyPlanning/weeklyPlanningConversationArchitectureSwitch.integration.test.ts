@@ -232,8 +232,10 @@ describe('A. explanation under a pending effort question', () => {
 
   it('legacy: no typed outcome, the empty delta triggers the historical completeness retries', async () => {
     const { turn, conversation } = await explain('legacy_v5');
-    const generic = turn.calls.filter((call) => call.kind === 'semantic_generic');
-    expect(generic.length).toBeGreaterThan(1);
+    // The historical retry contract, identical to ee07697e on this fixture.
+    expect(kinds(turn.calls)).toEqual([
+      'semantic_focused_contextual', 'semantic_generic', 'semantic_generic', 'semantic_generic', 'renderer',
+    ]);
     expect(turn.result?.interactionOutcome).toBeUndefined();
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
     const decision = renderer?.payload?.applicationDecision as Json;
@@ -429,6 +431,27 @@ describe('conversation pinning and persistence', () => {
       draftBlocks: [], previewCandidates: [], messages: [], updatedAt: '2026-10-07T09:00:00.000Z',
     });
     expect(empty?.planningState).not.toHaveProperty('conversationArchitecture');
+  });
+
+  it('load -> serialize is the identity for a pinned and for a pre-field state with an admitted turn', async () => {
+    const conversation = conversationIn('interaction_v1', { conversationId: 'switch-roundtrip' });
+    await conversation.submit(MATH_SETUP);
+    const pinned = snapshotOf(conversation);
+    const preField = { ...pinned } as Record<string, unknown>;
+    delete preField.conversationArchitecture;
+    for (const stored of [pinned, preField]) {
+      const loaded = parse(conversation, stored)!.planningState;
+      const reserialized = prepareWeeklyPlanningStableV5Checkpoint({
+        ownerId: conversation.ownerId,
+        weekStartDate: conversation.weekStartDate,
+        conversationId: conversation.conversationId,
+        graph: conversation.graph()!,
+        planningState: loaded,
+      });
+      expect(reserialized.status).toBe('ready');
+      if (reserialized.status === 'ready') expect(reserialized.planningState).toEqual(loaded);
+    }
+    expect(parse(conversation, preField)!.planningState.conversationArchitecture).toBe('legacy_v5');
   });
 
   it('rejects a malformed architecture value in a checkpoint (strict codec)', async () => {

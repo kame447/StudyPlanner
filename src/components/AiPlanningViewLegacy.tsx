@@ -864,7 +864,7 @@ export function AiPlanningView({
                   '対話で学習計画を作成・必要に応じて調整'}
             </p>
             {/* Evaluation-only (Issue #488 comparison switch); renders nothing unless the gate is on. */}
-            <AiPlanningArchitectureEvaluationPanel pinnedArchitecture={state.conversationArchitecture} />
+            <AiPlanningArchitectureEvaluationPanel conversation={state} />
           </div>
         </div>
 

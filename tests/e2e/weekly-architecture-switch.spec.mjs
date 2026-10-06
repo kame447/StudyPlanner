@@ -115,16 +115,23 @@ for (const device of [
       expect(overflow).toBeLessThanOrEqual(1);
     });
 
-    test('a failed turn is measured as a failure in both architectures', async ({ page }) => {
-      await page.goto(URL);
-      await send(page, 'SETUP 数学のワーク');
-      await waitForTurn(page, 1);
-      await send(page, 'FAIL えっと');
-      await waitForTurn(page, 2);
-      const failed = await latestMetrics(page);
-      expect(failed.outcome).toContain('失敗 stable_v5_normalization_rejected');
-      expect(failed.architecture).toBe('interaction_v1');
-      await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
-    });
+    for (const architecture of [
+      { key: 'legacy_v5', label: LEGACY, pattern: /まず、いつの予定を作るか/ },
+      { key: 'interaction_v1', label: INTERACTION, pattern: /確認中の質問は変わりません/ },
+    ]) {
+      test(`a failed turn is measured as a failure and presented per architecture (${architecture.key})`, async ({ page }) => {
+        await page.goto(URL);
+        await withSettings(page, (selector) => selector.getByRole('radio', { name: architecture.label }).click());
+        await send(page, 'SETUP 数学のワーク');
+        await waitForTurn(page, 1);
+        await send(page, 'FAIL えっと');
+        await waitForTurn(page, 2);
+        const failed = await latestMetrics(page);
+        expect(failed.outcome).toContain('失敗 stable_v5_normalization_rejected');
+        expect(failed.architecture).toBe(architecture.key);
+        await expect(page.getByText(architecture.pattern)).toHaveCount(1);
+        await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
+      });
+    }
   });
 }

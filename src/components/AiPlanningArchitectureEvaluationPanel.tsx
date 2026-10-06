@@ -4,9 +4,11 @@ import {
   subscribeWeeklyPlanningTurnMeasurements,
   type WeeklyPlanningTurnMeasurement,
 } from '../features/weeklyPlanning/application/weeklyPlanningTurnMeasurement';
+import type { PlanningState } from '../features/weeklyPlanning/types';
 import {
+  planningStateHasConversationContent,
+  resolveConversationArchitectureForTurn,
   WEEKLY_PLANNING_CONVERSATION_ARCHITECTURE_LABELS,
-  type WeeklyPlanningConversationArchitecture,
 } from '../features/weeklyPlanning/weeklyPlanningConversationArchitecture';
 import {
   isWeeklyPlanningArchitectureSwitchEnabled,
@@ -16,8 +18,9 @@ import {
 import './AiPlanningArchitectureEvaluationPanel.css';
 
 interface AiPlanningArchitectureEvaluationPanelProps {
-  /** Architecture the CURRENT conversation is pinned to; undefined while it is still empty. */
-  pinnedArchitecture: WeeklyPlanningConversationArchitecture | undefined;
+  /** The current conversation's state: its pin (if any) and what decides an unpinned one. */
+  conversation: Pick<PlanningState, 'conversationArchitecture' | 'intakeState' | 'conversationRequestSequence' | 'draftBlocks'>
+    & Partial<Pick<PlanningState, 'previewCandidates'>>;
 }
 
 function outcomeText(measurement: WeeklyPlanningTurnMeasurement): string {
@@ -33,7 +36,7 @@ function outcomeText(measurement: WeeklyPlanningTurnMeasurement): string {
  * the in-memory measurement and never feeds anything back into the conversation.
  */
 export function AiPlanningArchitectureEvaluationPanel({
-  pinnedArchitecture,
+  conversation,
 }: AiPlanningArchitectureEvaluationPanelProps) {
   const enabled = isWeeklyPlanningArchitectureSwitchEnabled();
   const latest = useSyncExternalStore(
@@ -49,6 +52,14 @@ export function AiPlanningArchitectureEvaluationPanel({
   if (!enabled) return null;
 
   const labels = WEEKLY_PLANNING_CONVERSATION_ARCHITECTURE_LABELS;
+  // The resolver's effective mode for this conversation's NEXT turn (the single decision point).
+  const effective = resolveConversationArchitectureForTurn(conversation, nextDefault);
+  const pinnedArchitecture = conversation.conversationArchitecture;
+  const modeText = pinnedArchitecture
+    ? labels[pinnedArchitecture]
+    : planningStateHasConversationContent(conversation)
+      ? `${labels[effective]}（旧会話・未固定。次の送信で固定）`
+      : `未固定（最初の送信で ${labels[effective]} に固定）`;
   return (
     <div
       className="ai-planning-architecture-eval"
@@ -61,10 +72,9 @@ export function AiPlanningArchitectureEvaluationPanel({
           className="ai-planning-architecture-eval-mode"
           data-testid="architecture-eval-mode"
           data-architecture={pinnedArchitecture ?? 'unpinned'}
+          data-effective-architecture={effective}
         >
-          {pinnedArchitecture
-            ? labels[pinnedArchitecture]
-            : `未固定（最初の送信で ${labels[nextDefault]} に固定）`}
+          {modeText}
         </strong>
       </div>
       <div

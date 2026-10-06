@@ -65,13 +65,6 @@ function effortMeasurementFromIntent(
 }
 
 /**
- * Only a question whose presentation is still the latest committed message may be
- * offered as the question the user is answering. Stale, unbound and malformed
- * presentations fail closed: the semantic model then interprets the turn without a
- * machine pending question and no short-answer shortcut can bind it. The revision is
- * the one committed with the presenting message, not the current graph.
- */
-/**
  * Legacy architecture (verbatim pre-#488 behaviour): the previous machine question is
  * offered as-is and stamped with the CURRENT graph revision. Nothing checks whether the
  * user was shown it or whether it is still the latest message.
@@ -94,6 +87,13 @@ function pendingQuestionFromRawState(
   };
 }
 
+/**
+ * Only a question whose presentation is still the latest committed message may be
+ * offered as the question the user is answering. Stale, unbound and malformed
+ * presentations fail closed: the semantic model then interprets the turn without a
+ * machine pending question and no short-answer shortcut can bind it. The revision is
+ * the one committed with the presenting message, not the current graph.
+ */
 function pendingQuestionFromPresentation(
   presentation: WeeklyPlanningQuestionPresentationFreshness,
 ): Record<string, unknown> | null {

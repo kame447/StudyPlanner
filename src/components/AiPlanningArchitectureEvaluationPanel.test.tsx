@@ -7,6 +7,10 @@ import {
 import { AiPlanningArchitectureEvaluationPanel } from './AiPlanningArchitectureEvaluationPanel';
 import { WeeklyPlanningArchitectureSetting } from './WeeklyPlanningArchitectureSetting';
 
+const EMPTY = { intakeState: undefined, conversationRequestSequence: 0, draftBlocks: [] };
+const PINNED_LEGACY = { ...EMPTY, conversationRequestSequence: 3, conversationArchitecture: 'legacy_v5' as const };
+const OLD_UNPINNED = { ...EMPTY, conversationRequestSequence: 3 };
+
 afterEach(() => {
   vi.unstubAllEnvs();
   resetWeeklyPlanningTurnMeasurementsForTest();
@@ -19,7 +23,7 @@ describe('architecture evaluation UI (gate off)', () => {
       aiDispatches: { total: 1, semantic: 1, renderer: 0, enforced: false, refused: 0 },
       status: 'committed', interactionOutcome: null, resultKind: 'status', failureCode: null, pendingQuestion: 'none',
     });
-    expect(renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel pinnedArchitecture="legacy_v5" />)).toBe('');
+    expect(renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel conversation={PINNED_LEGACY} />)).toBe('');
     expect(renderToStaticMarkup(<WeeklyPlanningArchitectureSetting />)).toBe('');
   });
 });
@@ -43,7 +47,7 @@ describe('architecture evaluation UI (gate on)', () => {
       status: 'failed', interactionOutcome: null, resultKind: 'failure',
       failureCode: 'stable_v5_normalization_rejected', pendingQuestion: 'none',
     });
-    const html = renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel pinnedArchitecture="legacy_v5" />);
+    const html = renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel conversation={PINNED_LEGACY} />);
     expect(html).toContain('data-architecture="legacy_v5"');
     expect(html).toContain('旧Stable V5');
     expect(html).toContain('経過 1234 ms');
@@ -53,9 +57,17 @@ describe('architecture evaluation UI (gate on)', () => {
 
   it('says an empty conversation is not pinned yet and what the first send will pin', () => {
     vi.stubEnv('VITE_WEEKLY_PLANNING_ARCHITECTURE_SWITCH_ENABLED', '1');
-    const html = renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel pinnedArchitecture={undefined} />);
+    const html = renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel conversation={EMPTY} />);
     expect(html).toContain('未固定');
     expect(html).toContain('新Interaction V1');
     expect(html).toContain('まだありません');
+  });
+
+  it('shows an old unpinned conversation as running legacy at its next turn, not as a fresh default', () => {
+    vi.stubEnv('VITE_WEEKLY_PLANNING_ARCHITECTURE_SWITCH_ENABLED', '1');
+    const html = renderToStaticMarkup(<AiPlanningArchitectureEvaluationPanel conversation={OLD_UNPINNED} />);
+    expect(html).toContain('旧会話・未固定');
+    expect(html).toContain('data-effective-architecture="legacy_v5"');
+    expect(html).not.toContain('最初の送信で');
   });
 });
