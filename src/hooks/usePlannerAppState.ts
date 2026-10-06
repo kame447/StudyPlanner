@@ -236,15 +236,23 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId }:
     void bootstrapSession(loadPlannerData);
   }, [bootstrapSession, loadPlannerData]);
 
+  // Keep the early request, but do not repeat a confirmed successful read when
+  // the root-owned profile is restored. A fresh root mount gets a fresh scope.
+  const catalogStartup = useMemo(() => ({ successful: false }), [expectedUserId]);
   useEffect(() => {
+    if (expectedUserId && catalogStartup.successful) return;
+    let active = true;
     void import('../data/naturalLanguageCatalog').then(
-      ({ loadNaturalLanguageCatalog }) => {
-        void loadNaturalLanguageCatalog({
-          seedWhenMissing: Boolean(user?.id),
-        });
+      async ({ loadNaturalLanguageCatalogWithOutcome }) => {
+        if (!active) return;
+        const result = await loadNaturalLanguageCatalogWithOutcome();
+        // Completion belongs to this mount/owner scope, not the user-id effect:
+        // null-to-owner cleanup must not invalidate an already-started shared read.
+        if (result.source === 'server') catalogStartup.successful = true;
       },
     );
-  }, [user?.id]);
+    return () => { active = false; };
+  }, [catalogStartup, expectedUserId, user?.id]);
 
   async function signUpWithPassword(
     email: string,

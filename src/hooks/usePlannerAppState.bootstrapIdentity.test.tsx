@@ -32,7 +32,7 @@ vi.mock('./useAuthSessionState', async () => {
     sendPasswordReset: auth.noop, saveUserProfile: auth.noop, signOut: auth.signOut,
   }) };
 });
-vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalog: auth.noop }));
+vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalogWithOutcome: async () => { await auth.noop(); return { source: 'server' }; } }));
 vi.mock('../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository', () => ({
   getWeeklyPlanningApprovalPlanRepository: () => ({ saveApprovedPlan: auth.noop, completeOperation: auth.noop }),
 }));
