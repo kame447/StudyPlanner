@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-10-04
+Updated: 2026-10-07
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -60,6 +60,10 @@ Only after the first quality and safety gates pass should an explicitly authoriz
 The third-stage re-inventory (2026-09-28) found no further safe field-level or flat replacement. The next #305 direction is a new hypothesis recorded in [`../work/20261004-issue305-jev-hierarchical-input-interpretation.md`](../work/20261004-issue305-jev-hierarchical-input-interpretation.md): Jev selects only from application-owned candidate sets (complete transactions, a none escape to the existing whole-utterance Luna path, freshness revalidated before commit), using Jevbox `7e456212` as a reference implementation rather than a source of thresholds. The KPI is the semantic layer only (semantic-Luna-free rate, semantic Luna dispatches per turn, semantic latency, cost and correctness); renderer and final wording are out of scope, and the number of Jev fields is not a KPI. A unit is adopted only when it is measured to reduce semantic Luna dispatches safely under that record's pre-registered adoption gate; merging the foundation work (the focused contextual questionCode fix, turn-level semantic dispatch accounting/census, candidate-manifest primitives) is not adoption. Order: docs first, then the questionCode fix and census, then only candidates whose frequency and contract closure are established. Production stays `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`; shadow and canary still need explicit owner approval.
 
 The #246/#294 consultation and memory owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 remains separate from ordinary Stable V5 classification. Keep #305 and #333 open until their own acceptance conditions are met.
+
+## Issue #488: conversation interaction layer
+
+Issue #488 adds the conversational layer inside the existing Stable V5 turn as responsibility boundaries (semantic/conversation interpretation ↔ deterministic interaction controller ↔ deterministic planner/persistence); see [the contract](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488). Implementation record and deferred items: [`../work/20261007-issue488-conversation-interaction.md`](../work/20261007-issue488-conversation-interaction.md). It does not ship the #246 consultation runtime.
 
 ## Issue #246: learning consultation before scheduling
 

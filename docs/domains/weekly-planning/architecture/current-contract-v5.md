@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-10-05
+Updated: 2026-10-07
 
 References:
 - [Domain index](../README.md)
@@ -165,7 +165,7 @@ Issue #246 extends the same proposal principle to AI-generated study advice. Adv
 
 The pending question (`lastQuestionContext`) is application state; the assistant text that shows it is presentation only. When a Stable V5 turn commits a message that presents a pending question, the turn controller binds that question to the committed assistant message: turn ID, message ID, the planning-state revision after the commit, the committed graph revision, and the machine-known accompaniments the renderer was given with it (response source, current-turn grounding mode, self-repair notice, counts of proposed/contested grounding interpretations, preview promotion control). The binding is written only through the accepted commit and is replaced or removed by every later commit.
 
-A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no failed turn, approval message, appended message, edit or clear happened in between), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
+The freshness is computed once per turn at turn start (`pendingQuestionPresentation`) and every consumer reads that single value: the semantic public state (`pendingQuestion` is offered to the model only when fresh, with the revision of the presenting commit rather than the current graph), the focused contextual shortcut, the contextual binder, the no-op retry and proposal decisions. Authorization continues to read the raw previous state conservatively. A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no failed turn, approval message, appended message, edit or clear happened in between), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
 
 - Presentation evidence. With `responseSource: deterministic_fallback` the application's typed question text was shown. With `ai` the renderer echoed this question's typed action contract and passed validation, but whether its free text actually asks the question is not verified, and must not be inferred from the text with regex or keywords. A consumer that depends on the text having asked the question must treat the rendered text as untrusted context and cover non-presenting renders in its evaluation.
 - Scope. Freshness is local to the planning state held by the submitting client. It does not detect a newer checkpoint written by another tab or device; that is the existing last-writer boundary of the conversation store, not something the binding resolves.
@@ -173,6 +173,31 @@ A later turn may treat the pending question as the one the user is replying to o
 
 
 The binding is not semantic input. It is excluded from the semantic model's public state summary and from renderer input, and it grants no approval, save, scheduler or lifecycle authority.
+
+## Conversation interaction: three responsibilities (Issue #488)
+
+The turn is described by three responsibility boundaries inside the one Stable V5 pipeline. They are **not** three LLM services and there is no outer conversation orchestrator or tool loop.
+
+```text
+semantic / conversation interpretation   (the one AI owner of raw Japanese)
+  planning delta + typed conversationActs
+↕
+deterministic interaction / application controller
+  typed acts + machine state + presentation freshness → turn outcome
+↕
+deterministic planner / persistence
+  Fact Graph, readiness, scheduler, preview, approval, save
+```
+
+- **Typed conversational acts.** The semantic document may carry additive, non-exclusive `conversationActs` next to the planning delta: `answer_pending_question`, `ask_about_pending_question`, `topic_shift`, `resume_topic` and `consultation_request`. An ordinary planning turn has none. An act carries only its kind, an optional existing active task/component id (validated against the public state, reject → repair once) and evidence quoted from the current turn. It carries no planning payload and no authority: it never feeds authorization, readiness, preview, approval or save, and a missing or wrong act can only degrade a turn into an ordinary non-mutating one. Mixed turns keep both the planning contribution and the act. `consultation_request` is only a handoff marker for Issue #246; no consultation runtime exists in production and the application states that the request was not answered.
+- **Interaction outcome.** The application decides `apply`, `explain_pending_question`, `aside`, `resume_pending_question` or `recover` from typed acts and machine state only (never raw text). It may redirect which open question is presented when the user names an existing topic, but never pulls forward an issue the repair policy deferred this turn. `explain` is valid only for a fresh, unchanged pending question; an `aside` keeps the machine question but neither re-presents nor re-binds it; `resume` re-presents explicitly. A result carrying a preview is always `apply`.
+- **Renderer.** The renderer receives the typed outcome (`conversationOutcome`, `consultationDeferred`) and verbalizes it. It must not decide from the user message whether the turn was an explanation request or an aside.
+- **No-op retry.** A schema-valid empty delta under a pending question is retried (bounded) only when it is a contradiction (`answer_pending_question` without any delta, or no act at all); a self-sufficient act (explain / topic shift / resume / consultation) is a valid result and triggers no completeness retry.
+- **One turn dispatch pool.** Every provider dispatch of a turn (focused routes, generic call, repair, completeness/dense audit, renderer) draws from one turn-scoped pool (`WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT`, renderer reserve 1). Stages do not own stacking retry allowances. Exhaustion keeps an already valid semantic result and never becomes a connectivity failure; renderer exhaustion falls back to deterministic text.
+- **Conversational recovery.** A provider failure or a semantic/validation/canonicalization failure keeps the accepted graph, preview and machine state exactly (the retained state is the turn-start snapshot). Only when the previous question's presentation was `fresh` and the application has typed text for it, the recovery message re-presents that same question (application-typed text, `deterministic_fallback`, no accompaniment) and rebinds the presentation to that message; otherwise nothing is re-presented and no binding is written (fail closed). Provider failure asks for a resend and never invents a content question; neither exposes validator/provider payloads. The projected result and trace describe the retained state; they do not claim questions were cleared.
+- **Proposal decisions.** A decision on a learning-strategy proposal changes its status only when it targets the proposal of the fresh presented question. This tightens the earlier "any pending proposal" behavior: a collective decision no longer settles a proposal the user was not shown (relevant to the Issue #152 V09 note); the other proposal stays pending until its own question is presented.
+
+Deferred (not part of this change): generic evidence references and replay of a failed utterance (relative-date replay would need the original request clock), a durable freshness-reason diagnostic, and the Issue #246 consultation runtime.
 
 ## Availability
 

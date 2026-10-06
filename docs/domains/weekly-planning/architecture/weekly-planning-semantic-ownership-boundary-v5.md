@@ -1,7 +1,7 @@
 # Weekly Planning Stable V5 semantic ownership boundary
 
 Status: canonical semantic ownership contract
-Updated: 2026-08-30
+Updated: 2026-10-07
 Integration base: the semantic rule contract inventory merged from PR #142, with scheduler-facing temporal ownership refined by PR #204.
 
 This document narrows the ownership boundary already stated in `weekly-planning-dialogue-architecture-v5.md`. The goal is to prevent application-internal decisions from drifting into the LLM layer while also avoiding deterministic re-interpretation of raw user text.
@@ -22,6 +22,8 @@ The application must not re-read raw user text with regex/keywords to choose a d
 - Whether a temporal phrase means today, tomorrow, this/next week, a weekday, an explicit absolute date, or a custom/unsupported expression.
 - Ambiguity. When meaning is not uniquely supported, the semantic layer emits uncertainty instead of asking deterministic code to guess.
 
+- Non-mutating conversation meaning of the turn, reported as additive typed `conversationActs` (answers the pending question / asks what it means / shifts topic / returns to a topic / asks for advice). Deterministic code never infers these from raw text; it only routes the validated typed result (Issue #488).
+
 For the planned Issue #246 extension, the semantic layer also owns natural-language meaning such as:
 
 - whether the user is asking for learning consultation/advice rather than merely supplying a planning fact or operation;
@@ -40,6 +42,7 @@ This does not require one flat `intent` enum to carry every mixed-turn contribut
 - Schema and evidence validation.
 - Public/internal fact IDs, graph revision, lifecycle, correction transactions, dependency safety, and stale-revision rejection.
 - Missing-information/readiness decisions, question target, proposal state, authorization, scheduler input, feasibility, preview, approval, and save.
+- The turn outcome derived from typed conversation acts and machine state (apply / explain / aside / resume / recover), question re-presentation and rebinding, and conversational recovery after failures. These decisions never mutate the Fact Graph and never grant approval, save or authorization.
 
 For planned Issue #246, deterministic application also owns:
 
