@@ -35,6 +35,8 @@ import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
 
+const HomeAddFlow = lazy(() => import('./components/HomeAddFlow').then((module) => ({ default: module.HomeAddFlow })));
+
 const AiPlanningView = lazy(() =>
   import('./components/AiPlanningView').then((module) => ({
     default: module.AiPlanningView,
@@ -97,6 +99,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number } | null>(null);
+  const homeEntrySequence = useRef(0);
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
   const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
@@ -251,6 +255,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       setPrimarySurface('home');
     }
   }, [user?.id]);
+
+  useEffect(() => { setHomeEntry(null); }, [user?.id, primarySurface]);
 
   useEffect(() => {
     if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
@@ -445,6 +451,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
               primaryBottomNavRef={primaryBottomNavRef}
               onOpenAiPlanning={openAiPlanningSurface}
               onOpenSchedule={openScheduleSurface}
+              onAddEntry={() => {
+                closePlanEditor();
+                setHomeEntry({ ownerId: user.id, id: ++homeEntrySequence.current });
+              }}
               onOpenDay={(date) => {
                 setPrimarySurface('workspace');
                 openDay(date);
@@ -655,6 +665,16 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           }}
           onClose={cancelRecurringPlanScope}
         />
+      ) : null}
+
+      {isHomeSurface && homeEntry?.ownerId === user.id ? (
+        <Suspense fallback={null}>
+          <HomeAddFlow key={homeEntry.id} userId={user.id} plans={plans} actuals={actuals} materials={studyMaterials}
+            subjects={studySubjects} monthEvents={monthEvents}
+            onClose={() => setHomeEntry((current) => current === homeEntry ? null : current)}
+            onSaveTodo={saveTodo} onSavePlan={savePlanDraft} onSaveStandaloneActual={saveStandaloneActual}
+            onSaveLinkedActual={saveActual} onSaveMonthEvent={saveMonthEvent} onDeleteMonthEvent={deleteMonthEvent} />
+        </Suspense>
       ) : null}
 
       {isQuickEntryOpen ? (

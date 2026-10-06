@@ -94,6 +94,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Upload compact visual comparison images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-visual-images-${{ github.sha }}
+          path: |
+            artifacts/playwright-visual-results/**/*-actual.png
+            artifacts/playwright-visual-results/**/*-diff.png
+          if-no-files-found: ignore
+          retention-days: 14
+
   cross-browser-smoke:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest

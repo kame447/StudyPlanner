@@ -648,42 +648,19 @@
   font-size: 0.61rem;
 }
 
-.home-schedule-add-row {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 9px;
-  border-top: 1px solid #edf0f4;
-  color: #56708e;
-  text-align: left;
-  cursor: pointer;
-}
-
-.home-schedule-add-row > svg:first-child {
-  color: var(--home-blue);
-}
-
-.home-schedule-add-row span {
-  font-size: 0.72rem;
-  font-weight: 800;
-}
-
+.home-schedule-add-row,
 .home-schedule-empty {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 9px;
+  justify-content: center;
   color: #64728a;
-  text-align: left;
   cursor: pointer;
 }
 
-.home-schedule-empty span {
-  font-size: 0.72rem;
-  font-weight: 800;
-}
+.modal-overlay.home-add-overlay { align-items: end; backdrop-filter: blur(2px); }
+.modal-card.home-add-sheet { width: min(440px, calc(100vw - 32px)); background: var(--surface-strong); padding: 16px; margin-bottom: env(safe-area-inset-bottom, 0px); }
+.home-add-sheet > button { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+@media (min-width: 700px) { .modal-overlay.home-add-overlay { align-items: center; } }
 
 .home-scroll-hint {
   margin: 6px 0 0;

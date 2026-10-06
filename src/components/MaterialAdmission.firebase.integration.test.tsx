@@ -32,7 +32,7 @@ const p=plan({title:'Math',startTime:'19:00',endTime:'20:00'}), noop=()=>{};
 const notices=vi.fn();
 const firstPlan={...p,materialId:'material',materialName:'Book'};
 const secondPlan={...firstPlan,id:'other-plan',seriesId:'other-plan',title:'Math second',startTime:'20:00',endTime:'21:00'};
-function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider materials={state.studyMaterials} onSaveActual={state.saveActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
+function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider materials={state.studyMaterials} onSaveActual={state.saveActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
 function button(label:string){return renderer!.root.findAllByType('button').find(b=>b.children.includes(label))!;}
 async function click(label:string){await act(async()=>{button(label).props.onClick()});}
 beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();

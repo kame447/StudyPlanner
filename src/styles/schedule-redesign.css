@@ -726,6 +726,7 @@
 
 /* Todo -------------------------------------------------------------------- */
 .schedule-main .todo-view {
+  align-content: start;
   padding: 0;
 }
 

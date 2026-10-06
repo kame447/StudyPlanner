@@ -38,6 +38,7 @@ type MaterialSource = 'none' | 'title' | 'user';
 interface QuickEntryModalProps {
   userId: string;
   selectedDate: string;
+  initialMode?: QuickEntryMode;
   plans: Plan[];
   actuals: Actual[];
   materials: StudyMaterial[];
@@ -90,6 +91,7 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
 export function QuickEntryModal({
   userId,
   selectedDate,
+  initialMode = 'later',
   plans,
   actuals,
   materials,
@@ -101,7 +103,7 @@ export function QuickEntryModal({
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
-  const [mode, setMode] = useState<QuickEntryMode>('later');
+  const [mode, setMode] = useState<QuickEntryMode>(initialMode);
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
   const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
