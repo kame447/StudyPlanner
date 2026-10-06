@@ -221,3 +221,12 @@ Keep JavaScript load/link failures distinct from cached evaluation failures. Ref
 - After merge, re-read related Issue states rather than infer them from prose. Reopen accidentally closed unfinished work and record the correction; verify other related Issues too. #437 was reopened and #164 remained open
 - Update completion metadata by replacing obsolete current-status/checkpoint text, not merely prefixing “complete” above an unchanged “not adopted/pending” statement. Preserve failed-run history explicitly as history, with final head/tree and successful post-main evidence separated
 - No workflow, permission, branch or history rewrite is required. Use ordinary Issue/PR metadata actions only. Reference: https://github.com/kame447/StudyPlanner/issues/437#issuecomment-5985007509
+
+
+## Wrangler image dependency audit (sharp / librsvg)
+
+Verified 2026-10-06 for Issue #497. A newly published audit entry can fail an unchanged lock: GHSA-wq5f-xc86-pv6w affects sharp before 0.35.5. The current development chain is Wrangler 4.143.1 → Miniflare 5.20260926.1-alpha → sharp. The narrow override pins sharp 0.35.5 for that exact Miniflare parent; official prebuilt binaries report librsvg 2.63.2. Keep optional platform packages in the lock. Do not accept npm audit's suggested Wrangler downgrade or relax the high threshold.
+
+Run `node scripts/ci/worker-image-toolchain.mjs` after a clean install. It resolves Sharp from the actual Miniflare location, checks native versions, decodes benign SVG, resizes/transcodes PNG/JPEG/WebP, exercises local Miniflare Images info/transform/output and rejects malformed data. No remote binding or production configuration is used. Miniflare 5 requires its exported `convertV4MiniflareOptions` adapter for the older options shape; its bundled README alone is not sufficient evidence of the installed constructor contract.
+
+This override protects the repository-installed toolchain, not an independently downloaded `npm exec --package=wrangler` installation. Existing remote JEV launchers' external toolchain path is not exercised or certified by this fix. Prefer the verified lockfile installation; any separately installed toolchain needs its own dependency validation before use. The production app/Worker has no Images binding or direct Sharp import; this does not establish exploitation or guarantee every external toolchain is patched. Existing moderate Vitest advisories remain separately tracked.
