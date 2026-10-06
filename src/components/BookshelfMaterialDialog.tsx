@@ -1,6 +1,7 @@
 import { useEditorMutation } from '../hooks/useEditorMutation';
 import { ActualMutationAdmissionError, materialUncertainMessage, type MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import {
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -102,43 +103,70 @@ function BookshelfMaterialDialogSession({
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const coverRevision = useRef(0);
+  // The search component allows only one catalogue resolution at a time.
+  const catalogCoverRevision = useRef(0);
+  const pendingPhotoRevision = useRef<number | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; coverRevision.current += 1; };
+  }, []);
+
+  function beginCoverSelection() {
+    coverRevision.current += 1;
+    pendingPhotoRevision.current = null;
+    setIsProcessingPhoto(false);
+    return coverRevision.current;
+  }
   const selectedSubject = subjects.find((subject) => subject.id === subjectId) ?? null;
   const parsedTotalUnits = parseOptionalNumber(totalUnits);
   const unitLabel =
     progressUnit === 'custom'
       ? progressUnitLabel.trim() || '単位'
       : getMaterialUnitLabel({ progressUnit });
-  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection;
+  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection && !isProcessingPhoto;
   const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (!file) {
+    if (!file || !mounted.current) {
       return;
     }
 
+    // Clear this selection immediately; an older completion must not clear a newer input.
+    event.target.value = '';
+    const revision = beginCoverSelection();
+    pendingPhotoRevision.current = revision;
+    setIsProcessingPhoto(true);
     setStatus('画像を処理しています...');
     setStatusTone('info');
 
     try {
       const nextDataUrl = await createMaterialCoverDataUrl(file);
+      if (!mounted.current || coverRevision.current !== revision) return;
       setCoverImageDataUrl(nextDataUrl);
       setCatalogCoverUrl('');
       setStatus('写真を読み込みました。保存すると反映されます。');
       setStatusTone('info');
     } catch (error) {
+      if (!mounted.current || coverRevision.current !== revision) return;
       setStatus(error instanceof Error ? error.message : '写真を読み込めませんでした。');
       setStatusTone('error');
     } finally {
-      event.target.value = '';
+      if (mounted.current && pendingPhotoRevision.current === revision) {
+        pendingPhotoRevision.current = null;
+        setIsProcessingPhoto(false);
+      }
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSave || !selectedSubject) {
+    if (!canSave || !selectedSubject || pendingPhotoRevision.current !== null) {
       return;
     }
 
@@ -268,13 +296,20 @@ function BookshelfMaterialDialogSession({
 
           {!material ? (
             <BookshelfMaterialSearch
+              onSelectionStart={() => {
+                catalogCoverRevision.current = beginCoverSelection();
+                setStatus('');
+              }}
               onSelect={(candidate) => {
                 setCatalogCandidate(candidate);
                 setName(candidate.title);
-                setCatalogCoverUrl(candidate.coverImageUrl ?? '');
-                setCoverImageDataUrl('');
-                setStatus('検索候補の教材情報を反映しました。');
-                setStatusTone('info');
+                // Metadata remains selected even when a later custom photo wins.
+                if (coverRevision.current === catalogCoverRevision.current) {
+                  setCatalogCoverUrl(candidate.coverImageUrl ?? '');
+                  setCoverImageDataUrl('');
+                  setStatus('検索候補の教材情報を反映しました。');
+                  setStatusTone('info');
+                }
               }}
             />
           ) : null}
@@ -383,6 +418,9 @@ function BookshelfMaterialDialogSession({
                   <button
                     className="ghost-button"
                     onClick={() => {
+                      beginCoverSelection();
+                      setStatus('');
+                      setStatusTone('info');
                       setCoverImageDataUrl('');
                       setCatalogCoverUrl('');
                     }}
