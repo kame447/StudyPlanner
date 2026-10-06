@@ -85,7 +85,7 @@ async function readHomeMetrics(page) {
     const progress = document.querySelector('.home-progress-panel');
     const scheduleList = document.querySelector('.home-schedule-list');
     const scheduleRows = [...document.querySelectorAll('.home-schedule-row')];
-    const addScheduleRow = document.querySelector('.home-schedule-empty');
+    const addScheduleRow = document.querySelector('.home-schedule-add-row, .home-schedule-empty');
     const core = document.querySelector('.home-core-sections');
     const lastCore = core?.lastElementChild ?? null;
     const navRect = nav?.getBoundingClientRect() ?? null;
@@ -172,7 +172,7 @@ async function expectScheduleTailAccessible(page, metrics) {
 
   const tail = await page.evaluate(() => {
     const schedule = document.querySelector('.home-schedule-list');
-    const addRow = document.querySelector('.home-schedule-empty');
+    const addRow = document.querySelector('.home-schedule-add-row, .home-schedule-empty');
     if (!(schedule instanceof HTMLElement) || !(addRow instanceof HTMLElement)) {
       return null;
     }
@@ -215,7 +215,7 @@ for (const viewport of VIEWPORTS) {
     expectBottomSpaceUsed(metrics);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
-    expect(metrics.visibleMaterialPanelCount).toBe(viewport.materialFits ? 1 : 0);
+    expect(metrics.visibleMaterialPanelCount, JSON.stringify(metrics)).toBe(viewport.materialFits ? 1 : 0);
     expect(metrics.visibleMaterialPanelCount).toBeLessThanOrEqual(1);
     expect(metrics.materialProbeVisibility).toBe('hidden');
     expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
@@ -254,7 +254,7 @@ for (const viewport of VIEWPORTS) {
     if (metrics.fourthScheduleBottom !== null && metrics.scheduleBottom !== null) {
       if (metrics.fourthScheduleBottom > metrics.scheduleBottom + 1) {
         expect(scheduleIsScrollable).toBe(true);
-        expect(metrics.visibleMaterialPanelCount).toBe(0);
+        expect(metrics.visibleMaterialPanelCount, JSON.stringify(metrics)).toBe(0);
       } else {
         expect(metrics.fourthScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
       }

@@ -46,6 +46,8 @@ function StartupSurface({
   );
 }
 
+interface StartupPresentation { loading: boolean; preview?: ReactNode }
+
 const ignoreEarlyBootstrapReady = () => {};
 type PreviewStatus = 'disabled' | 'loading' | 'ready' | 'failed';
 interface PreviewBoundary { active: boolean; capture: ScheduleReadObserver; report: (status: PreviewStatus) => void }
@@ -203,7 +205,13 @@ export function StudyPlannerAppRoot({
     const user = authSession.getCurrentUser();
     return { userId: user && !user.requiresEmailVerification ? user.id : authSession.available ? undefined : null, epoch: 0 };
   });
+  const [presentation, setPresentation] = useState<{ session: typeof session; value: StartupPresentation } | null>(null);
   const currentSession = useRef(session);
+  const presentStartup = useCallback((value: StartupPresentation) => {
+    if (currentSession.current !== session) return;
+    setPresentation((previous) => previous?.session === session && previous.value === value
+      ? previous : { session, value });
+  }, [session]);
   const authenticatedUserId = session.userId;
   useStartupWait('auth-session', authenticatedUserId === undefined);
 
@@ -229,14 +237,24 @@ export function StudyPlannerAppRoot({
     return <App />;
   }
 
-  if (authenticatedUserId === undefined) return <SplashScreen fixedLight />;
-  if (authenticatedUserId === null) return <RootManagedUnauthenticatedApp />;
-  return <AuthenticatedStartup key={JSON.stringify([authenticatedUserId, session.epoch])} authSession={authSession} userId={authenticatedUserId}
-    isCurrentSession={() => currentSession.current === session} />;
+  const currentPresentation = presentation?.session === session ? presentation.value : null;
+  const loading = authenticatedUserId === undefined
+    || (typeof authenticatedUserId === 'string' && (currentPresentation?.loading ?? true));
+  return (
+    <StartupSurface loading={loading} preview={typeof authenticatedUserId === 'string' ? currentPresentation?.preview : undefined}>
+      {authenticatedUserId === null ? <RootManagedUnauthenticatedApp />
+        : typeof authenticatedUserId === 'string' ? (
+          <AuthenticatedStartup key={JSON.stringify([authenticatedUserId, session.epoch])}
+            authSession={authSession} userId={authenticatedUserId} onPresentation={presentStartup}
+            isCurrentSession={() => currentSession.current === session} />
+        ) : null}
+    </StartupSurface>
+  );
 }
 
-function AuthenticatedStartup({ authSession, userId, isCurrentSession }: {
+function AuthenticatedStartup({ authSession, userId, isCurrentSession, onPresentation }: {
   authSession: AuthSessionService; userId: string; isCurrentSession: () => boolean;
+  onPresentation: (value: StartupPresentation) => void;
 }) {
   const [ready, setReady] = useState(false);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>('disabled');
@@ -265,12 +283,14 @@ function AuthenticatedStartup({ authSession, userId, isCurrentSession }: {
   const holdPreviewBoundary = startedWithPreview && !previewFinished && previewStatus !== 'disabled'
     && (!ready || previewStatus !== 'ready');
   const showPreview = holdPreviewBoundary && hasPreviewAccess() && (snapshot || previewStatus === 'failed');
+  const presentation = useMemo<StartupPresentation>(() => ({
+    loading: !ready || holdPreviewBoundary,
+    preview: showPreview ? <StartupSchedulePreview snapshot={snapshot} failed={previewStatus === 'failed'} /> : undefined,
+  }), [ready, holdPreviewBoundary, showPreview, snapshot, previewStatus]);
+  useLayoutEffect(() => { onPresentation(presentation); }, [onPresentation, presentation]);
   return (
-    <StartupSurface loading={!ready || holdPreviewBoundary}
-      preview={showPreview ? <StartupSchedulePreview snapshot={snapshot} failed={previewStatus === 'failed'} /> : undefined}>
-      <RootStartupReadyProvider onReady={markReady}>
-        <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} onStartupReady={markReady} previewBoundary={previewBoundary} />
-      </RootStartupReadyProvider>
-    </StartupSurface>
+    <RootStartupReadyProvider onReady={markReady}>
+      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} onStartupReady={markReady} previewBoundary={previewBoundary} />
+    </RootStartupReadyProvider>
   );
 }

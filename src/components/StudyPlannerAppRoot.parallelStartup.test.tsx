@@ -203,3 +203,23 @@ it('does not cache optimistic edits that later fail', async () => {
   expect(readStartupSchedulePreview('a')).toEqual(initial);
   expect(previews()).toHaveLength(0);
 });
+
+it('keeps the same visible Splash across unresolved auth, consent, preferences and bootstrap', async () => {
+  fake = createFakeAuthSession();
+  fixture.policy = 'loading';
+  await mount();
+  const initialSplash = renderer!.root.findByType(SplashScreen);
+  await act(async () => { fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
+  expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
+  fixture.policy = 'accepted'; fixture.preferenceLoading = true;
+  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); });
+  expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
+  fixture.preferenceLoading = false;
+  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+  expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
+  expect(fixture.profile).toHaveBeenCalledOnce(); expect(plansSpy).toHaveBeenCalledOnce();
+  await release(memoryGate);
+  expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
+  await release(plannerGate); expect(splash()).toBe(0);
+  expect(fixture.profile).toHaveBeenCalledOnce(); expect(plansSpy).toHaveBeenCalledOnce();
+});

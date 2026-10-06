@@ -648,6 +648,7 @@
   font-size: 0.61rem;
 }
 
+.home-schedule-add-row,
 .home-schedule-empty {
   display: flex;
   align-items: center;

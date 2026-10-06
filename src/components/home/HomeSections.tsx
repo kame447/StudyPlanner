@@ -328,7 +328,7 @@ export function TodayScheduleSection({
               : null}
           </>
         ) : null}
-        <button className="home-schedule-empty" type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
+        <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
           <Plus size={20} aria-hidden="true" />
         </button>
       </div>
