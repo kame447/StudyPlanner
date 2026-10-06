@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   batchCommit: vi.fn(),
   deleteDoc: vi.fn(),
   getDocs: vi.fn(),
+  getDocFromServer: vi.fn(),
   setDoc: vi.fn(),
   transactionDelete: vi.fn(),
   transactionGet: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: mocks.deleteDoc,
   doc: vi.fn((_db, collectionName, id) => ({ collectionName, id })),
   getDocs: mocks.getDocs,
+  getDocFromServer: mocks.getDocFromServer,
   query: vi.fn((...parts) => ({ parts })),
   runTransaction: mocks.runTransaction,
   setDoc: mocks.setDoc,
@@ -116,6 +118,7 @@ function firestoreDoc(id: string, value: object) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getDocFromServer.mockResolvedValue({ ...snapshot(null), metadata: { fromCache: false, hasPendingWrites: false } });
   mocks.transactionGet.mockResolvedValue(snapshot(null));
   mocks.getDocs.mockResolvedValue({ docs: [] });
   mocks.setDoc.mockResolvedValue(undefined);
