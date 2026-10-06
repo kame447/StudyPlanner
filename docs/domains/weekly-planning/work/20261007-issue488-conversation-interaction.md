@@ -12,7 +12,7 @@ Additive typed `conversationActs` in the existing semantic call + a deterministi
 ## Behavior changes to be aware of
 
 - Production now consults question-presentation freshness once per turn; stale/unbound/malformed presentations bypass the focused shortcut.
-- Failure turns retain the accepted state and re-present the same typed question only when it was fresh; failure prose no longer asks an unrelated generic question and never asks to resend/rephrase.
+- Failure turns retain the accepted state and re-present the same typed question only when it was fresh; failure prose no longer asks an unrelated generic question. A semantic failure never asks to resend the same text or rephrase; a provider failure gives resend guidance and never invents a content question.
 - Proposal decisions apply only to the fresh presented proposal. The Issue #152 V09 "collective decision" test was changed accordingly: a collective decision settles only the presented proposal.
 - One turn-scoped AI dispatch pool replaces stacking per-stage retry allowances.
 

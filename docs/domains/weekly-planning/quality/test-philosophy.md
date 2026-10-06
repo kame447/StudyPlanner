@@ -34,7 +34,7 @@ AIの自然な日本語や一つのsemantic phrasingをuniversal oracleとしな
 
 raw Japanese fixtureをdeterministic production codeが意味再解釈するtestを追加しない。
 
-会話interaction（Issue #488）はscripted provider（transportだけを差し替え、controller/runtime/validator/renderer/reducerは本番のまま）でturn全体を通すscenario suiteで守る: pending question→説明→同じ質問の再提示、aside/resumeによるbinding、semantic/provider失敗後のstate保持と同一質問の再提示、reload/chat A→B→A、stale/double submit、mixed turn、不正出力のsentinel非漏洩、act/outcomeが承認・保存・authorizationに影響しないこと。typed actは「欠落または誤りでもnon-mutatingに劣化する」ことをdeterministicに検証し、modelがactを正しく出す精度はreal-API gateの責務とする。
+会話interaction（Issue #488）はscripted provider（transportだけを差し替え、controller/runtime/validator/renderer/reducerは本番のまま）でturn全体を通すscenario suiteで守る: pending question→説明→同じ質問の再提示、aside/resumeによるbinding、semantic/provider失敗後のstate保持と同一質問の再提示、reload/chat A→B→A、stale/double submit、mixed turn、不正出力のsentinel非漏洩、act/outcomeが承認・保存・authorizationに影響しないこと。シナリオはregression-scenarios.mdのDIALOGUE-007〜010が正本。typed actは「欠落または誤りでもnon-mutatingに劣化する」ことをdeterministicに検証し、modelがactを正しく出す精度はreal-API gateの責務とする。
 
 ## Planned Issue #246 deterministic contract
 

@@ -6,11 +6,17 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
  * and dense-audit retries, and the dialogue renderer). Stages no longer own independent
  * retry allowances that stack up; the turn as a whole gets this many dispatches.
  *
- * Arithmetic of the limit (check any new stage against it):
- *   semantic worst case 7 = focused contextual 2 + focused authorization 1 + initial 1
- *                           + no-op completeness (focused side contribution 1 + generic 2)
- *   dense completeness path = 6 (initial + audit + retry + repair headroom)
- *   renderer reserve = 1  =>  limit 8 = 7 semantic + 1 renderer
+ * Arithmetic of the limit (check any new stage against it). Semantic stages may use
+ * limit - reserve = 7:
+ *   valid path:   focused contextual 2 + focused authorization 1 + initial 1
+ *                 + no-op completeness (focused side contribution 1 + generic 2) = 7
+ *   dense path:   contextual 2 + authorization 1 + initial 1 + audit 1 + retry 1 = 6
+ *   invalid path: contextual 2 + authorization 1 + initial 1
+ *                 + (one focused repair 1 | generic repair 1 + no-op completeness 3)
+ *                 (a dispatched focused repair always returns a result, so generic repair
+ *                 never follows one)
+ * Exhaustion is reachable only in the no-op completeness and dense audit/retry stages;
+ * both keep the already valid document. Renderer: reserve 1, deterministic fallback.
  *
  * The renderer keeps a reserve so a turn whose semantic stages used the pool can still be
  * verbalized. Renderer exhaustion is harmless (deterministic fallback text exists); semantic

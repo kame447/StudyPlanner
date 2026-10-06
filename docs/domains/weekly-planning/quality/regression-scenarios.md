@@ -125,6 +125,39 @@ referentが一意でない状態で、特定task/sourceへ勝手にhard bindし�
 
 `今回は夜で`等のweek/session local acceptanceを、`今後も夜が好き`というdurable preferenceへ暗黙昇格させない。
 
+### DIALOGUE-007: explanation is non-mutating and re-presents the same question
+
+pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。
+
+Current example owner:
+- `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+
+### DIALOGUE-008: aside never re-arms the old question; resume re-presents first
+
+topic shift/asideは保留中のquestionを保持するが再提示・再bindしない。後続の短い返答は古いquestionへbindせず、resumeは対象のquestionを再提示してから短い返答がbindされる。resumeの対象は既存のactive task/componentだけで、repair policyがdeferしたissueを前倒ししない。
+
+Current example owners:
+- `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+- `src/features/weeklyPlanning/application/weeklyPlanningInteractionDecision.test.ts`
+- `tests/e2e/weekly-conversation-interaction.spec.mjs`
+
+### DIALOGUE-009: a failed turn retains state and re-presents only the same fresh typed question
+
+semantic/provider failureはaccepted graph・preview・machine stateを変えない。直前のquestionがfreshでapplicationが型付きtextを持つ場合だけ同じquestionを再提示して再bindし、そうでなければ何も提示・bindしない（fail closed）。raw validator/provider payloadをuserへ出さない。
+
+Current example owners:
+- `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+- `src/features/weeklyPlanning/application/weeklyPlanningConversationRecovery.test.ts`
+
+### DIALOGUE-010: short answers and proposal decisions bind only to the one fresh presented target
+
+短い回答とproposalへのaccept/rejectは、freshなpresentationを持つ唯一のquestion/proposalにだけbindする。stale/unbound/malformed/conflictはfocused shortcutを使わず安全側へ戻り、未提示のpending proposalは決定されない。
+
+Current example owners:
+- `src/features/weeklyPlanning/application/weeklyPlanningStableV5SemanticContext.test.ts`
+- `src/features/weeklyPlanning/application/weeklyPlanningStableV5LearningStrategyProposal.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+
 ## 4. Preview / approval
 
 ### PREVIEW-001: no premature preview
