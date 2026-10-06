@@ -51,7 +51,7 @@ These documents supplement the canonical owners above; they do not override them
 - Progress state (`scope_total` / `completed` / `remaining`) and the current planning `target` are distinct.
 - Low-impact uncertainty may be deferred through the repair agenda while blocking information is resolved first; deferred issues must reopen before the boundary they affect.
 - PR #162 established the dedicated `AiPlanningView`; Issue #52 was completed by PR #283. Generic QuickEntry no longer owns weekly-planning conversation, preview or approval plumbing.
-- Issue #152 owns adversarial/prompt-injection evaluation.
+- Issue #152 established the current Stable V5 adversarial/prompt-injection baseline and is closed. New Jev replacement units use Issue #335 for affected safety regressions.
 - Trace privacy/recovery, personalization/cloud authority, multi-device approval uniqueness, saved-preview migration and AI-cost observability remain independent Issues.
 - Client-first execution is a separate responsibility under [`../client-runtime/`](../client-runtime/README.md).
 

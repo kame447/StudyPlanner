@@ -226,7 +226,7 @@ offline対応は「すべての機能がofflineで動く」ことを意味しな
 
 ### CON-005
 
-Issue #47、#51、#45、#89、#128、#152、#160 の既存 responsibility を横取りせず、共通基盤が必要な場合のみ接続する。
+Issue #47、#51、#45、#89、#128、#160 の既存 responsibility を横取りせず、完了済み #152 で確立した security / provenance baseline も維持し、共通基盤が必要な場合のみ接続する。
 
 ## 9. 用語と状態モデル
 
@@ -916,9 +916,9 @@ trace privacy / lifecycle / production recovery を所有する。trace を oper
 
 legacy saved-preview approval compatibility を所有する。storage migration と preview metadata version が交差する場合は migration order を共同で定義する。
 
-### Issue #152
+### Issue #152 security baseline
 
-prompt injection / adversarial AI security を所有する。client-first化で untrusted text が新しい server instruction boundary を横断しないよう整合させる。
+Issue #152 は完了済みで、prompt injection / adversarial AI security の baseline を確立した。client-first化ではこの trust boundary を維持し、新しく追加する経路は該当する current regression gate で検証する。
 
 ### Issue #160
 

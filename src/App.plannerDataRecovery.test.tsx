@@ -1,14 +1,17 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
+import { HomeScheduleView } from './components/HomeScheduleView';
+import { HomeAddFlow } from './components/HomeAddFlow';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import type { User } from './types/domain';
 
 const fixture = vi.hoisted(() => ({
   state: {} as Partial<ReturnType<typeof usePlannerAppState>>,
+  homeEntryMount: vi.fn(),
   schedulePreload: vi.fn(() => vi.fn()),
   application: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })),
 }));
@@ -22,6 +25,7 @@ vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => <div c
 vi.mock('./components/AiPlanningView', () => ({ AiPlanningView: () => <div className="ai-planning-view home-dashboard" /> }));
 vi.mock('./components/MonthView', () => ({ MonthView: () => <div className="schedule-month-view" /> }));
 vi.mock('./components/ScheduleToolbar', () => ({ ScheduleToolbar: () => <div className="schedule-toolbar" /> }));
+vi.mock('./components/HomeAddFlow', () => ({ HomeAddFlow: () => { useEffect(() => { fixture.homeEntryMount(); }, []); return <div data-home-add-flow />; } }));
 vi.mock('./components/QuickAddMenu', () => ({ QuickAddMenu: () => null }));
 vi.mock('./components/PlanEditorPanel', () => ({ PlanEditorPanel: () => null }));
 vi.mock('./components/MyPageDialog', () => ({ MyPageDialog: () => null }));
@@ -33,6 +37,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden by fixture'); }));
   vi.mocked(usePlannerAppState).mockClear();
   fixture.application.mockClear();
+  fixture.homeEntryMount.mockClear();
   fixture.schedulePreload.mockClear();
   fixture.state = {
     booting: false, user: { id: 'owner-a' } as User,
@@ -124,4 +129,29 @@ it('consumes supplied bootstrap state without launching a second hydration', () 
   expect(usePlannerAppState).not.toHaveBeenCalled();
   expect(onReady).toHaveBeenCalledOnce();
   expect(fixture.application).toHaveBeenCalled();
+});
+
+
+it('opens Home creation without navigation, clears prior edits and fences old close callbacks', async () => {
+  const closePlanEditor = vi.fn();
+  fixture.state.closePlanEditor = closePlanEditor;
+  await act(async () => { renderer = create(<App />); });
+  const open = () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry();
+  await act(async () => { open(); });
+  expect(closePlanEditor).toHaveBeenCalledOnce();
+  expect(fixture.state.setViewMode).not.toHaveBeenCalled();
+  expect(renderer!.root.findByType('main').props.className).toBe('home-main planner-data-recovery-main');
+  const oldClose = renderer!.root.findByType(HomeAddFlow).props.onClose;
+  await act(async () => { oldClose(); open(); });
+  await act(async () => { oldClose(); });
+  expect(fixture.homeEntryMount).toHaveBeenCalledTimes(2);
+  expect(renderer!.root.findAllByType(HomeAddFlow)).toHaveLength(1);
+  await act(async () => { renderer!.root.findByType(PrimaryBottomNav).props.onOpenSchedule(); });
+  expect(renderer!.root.findAllByType(HomeAddFlow)).toHaveLength(0);
+  await act(async () => { renderer!.root.findByType(PrimaryBottomNav).props.onOpenHome(); });
+  expect(renderer!.root.findAllByType(HomeAddFlow)).toHaveLength(0);
+  await act(async () => { open(); });
+  fixture.state = { ...fixture.state, user: { id: 'owner-b' } as User };
+  await act(async () => { renderer!.update(<App />); });
+  expect(renderer!.root.findAllByType(HomeAddFlow)).toHaveLength(0);
 });

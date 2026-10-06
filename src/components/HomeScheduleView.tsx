@@ -27,6 +27,7 @@ interface HomeScheduleViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
+  onAddEntry: () => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -48,6 +49,7 @@ export function HomeScheduleView({
   primaryBottomNavRef,
   onOpenAiPlanning,
   onOpenSchedule,
+  onAddEntry,
   onOpenDay,
   onOpenTodo,
   onOpenBookshelf,
@@ -86,6 +88,7 @@ export function HomeScheduleView({
       primaryBottomNavRef={primaryBottomNavRef}
       onOpenAiPlanning={onOpenAiPlanning}
       onOpenSchedule={onOpenSchedule}
+      onAddEntry={onAddEntry}
       onOpenDay={onOpenDay}
       onOpenTodo={onOpenTodo}
       onOpenBookshelf={onOpenBookshelf}

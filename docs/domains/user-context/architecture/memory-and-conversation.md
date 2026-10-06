@@ -448,7 +448,7 @@ Required consequences include:
 
 ## 12. Security and trust boundary
 
-Issue #152 owns adversarial prompt-injection evaluation. User Context must preserve its stronger trust boundary.
+Issue #152 established the adversarial prompt-injection baseline and is complete. User Context must preserve that trust boundary and run the applicable current regression gate when a new path can expose stored or external text.
 
 All stored user/context prose is data, not instruction.
 

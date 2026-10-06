@@ -42,7 +42,7 @@ Exit gateは、current code/testsとtarget architectureの差、再現したfail
 
 ## Phase 1 — identity, provenance and lifecycle
 
-UC-P1A〜P1Cでreadの入口、共通更新規則、stable identity、evidence/origin/authority、scope/time、replace/supersede/revoke、冪等性とanti-resurrectionを固める。保存・同期・旧client・migrationは#164、untrusted dataは#152の契約に従う。
+UC-P1A〜P1Cでreadの入口、共通更新規則、stable identity、evidence/origin/authority、scope/time、replace/supersede/revoke、冪等性とanti-resurrectionを固める。保存・同期・旧client・migrationは#164、untrusted dataは#152で確立したsecurity/provenance契約に従う。
 
 Exit gateは訂正が競合するactive truthを作らず、forgetがreloadと適用対象のconcurrencyで保たれ、既存データを失わず読取/移行できること。原証拠の不明な旧記録から引用を捏造しない。format failureを空と扱って上書きしない。
 
@@ -105,7 +105,7 @@ UC-P7で複数session/time/current-state変更/訂正/forget/一時adoptionのco
 
 #47は共有会話/Fact Graphとoutcome learningを保持し、#294の共通read/episodeをconsumeする。#164はstorage/sync/operation/migrationの必要契約を提供する。初期read adapterは既存repositoryで進められ、WASM等の全体完了を待たない。新共有write/forgetの有効化時は該当契約の完了が必要である。
 
-#152 / PR #174は既存security owner。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187は学習相談に限定したAgents APIと外部sourceの接続・利用条件を所有する。本棚domain、scheduling domain、Actual、明示設定は各現在値を所有する。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
+#152 / PR #174は完了済みのsecurity evaluation履歴であり、current baselineだけを消費する。新しい経路は該当するcurrent security gateで再検証する。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187は学習相談に限定したAgents APIと外部sourceの接続・利用条件を所有する。本棚domain、scheduling domain、Actual、明示設定は各現在値を所有する。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
 
 ## Next implementation boundary
 
