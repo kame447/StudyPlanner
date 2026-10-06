@@ -122,7 +122,7 @@ async function ensureProfile(
   const createdAt = existingProfile?.createdAt
     || authUser.metadata.creationTime
     || new Date().toISOString();
-  const nextProfile = await upsertProfile(firestoreDb, {
+  const nextProfile: ProfileDoc = {
     id: authUser.uid,
     email,
     username:
@@ -131,8 +131,18 @@ async function ensureProfile(
       normalizeUsername(fallbackUsername, email),
     avatar: existingProfile?.avatar ?? '',
     createdAt,
-    ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
-  });
+  };
+  const unchanged = existingProfile && Object.entries(nextProfile).every(
+    ([key, value]) => existingProfile[key as keyof ProfileDoc] === value,
+  );
+  // Restoring an unchanged profile is a read, not a login heartbeat. Avoid a
+  // redundant write acknowledgement before the planner can start loading.
+  if (!unchanged) {
+    await upsertProfile(firestoreDb, {
+      ...nextProfile,
+      ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
+    });
+  }
 
   return mapProfileDocToUser(nextProfile);
 }
