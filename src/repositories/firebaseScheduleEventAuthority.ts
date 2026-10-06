@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDocFromServer,
   query,
   runTransaction,
   setDoc,
@@ -26,9 +27,10 @@ import {
   type ScheduleEventMigrationState,
 } from '../domain/scheduleEvent';
 import type { Actual, Plan } from '../types/domain';
-import type {
-  LegacyScheduleSnapshot,
-  ScheduleEventAuthorityRepository,
+import {
+  ScheduleEventMigrationCapabilityUnavailableError,
+  type LegacyScheduleSnapshot,
+  type ScheduleEventAuthorityRepository,
 } from './scheduleEventAuthorityRepository';
 
 const SCHEDULE_EVENTS_COLLECTION = 'schedule_events';
@@ -381,6 +383,24 @@ export function createFirebaseScheduleEventAuthority(
       userId: string,
       loadLegacy: () => Promise<LegacyScheduleSnapshot>,
     ) {
+      // Keep rollout capability classification restricted to this marker read.
+      // A server read may still include local pending writes: those cannot certify cutover.
+      let snapshot;
+      try {
+        snapshot = await getDocFromServer(doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, userId));
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+        if (code.includes('permission-denied')) {
+          throw new ScheduleEventMigrationCapabilityUnavailableError(
+            'Firestore Rules do not expose the ScheduleEvent migration capability yet.',
+          );
+        }
+        throw error;
+      }
+      if (snapshot.exists() && snapshot.metadata?.fromCache === false
+        && snapshot.metadata?.hasPendingWrites === false
+        && isCurrentScheduleEventMigration(snapshot.data() as ScheduleEventMigrationCandidate)) return;
+
       try {
         const state = await acquireMigrationDocument(firestoreDb, userId);
         if (isCurrentScheduleEventMigration(state)) return;
