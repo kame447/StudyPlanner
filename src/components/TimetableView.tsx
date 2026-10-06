@@ -246,6 +246,8 @@ export function TimetableView({
   const lastEmptyCellTapRef = useRef<{ cellKey: string; at: number } | null>(null);
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
+  const editorRevision = useRef(0);
+  const editorWritePending = useRef(false);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [savingPeriods, setSavingPeriods] = useState(false);
   const [periodActionError, setPeriodActionError] = useState<string | null>(null);
@@ -361,6 +363,7 @@ export function TimetableView({
   }
 
   function closeEditor() {
+    editorRevision.current += 1;
     setDraft(null);
     setEditingTemplate(null);
   }
@@ -371,11 +374,13 @@ export function TimetableView({
       return;
     }
 
+    editorRevision.current += 1;
     setEditingTemplate(null);
     setDraft(createTemplateDraft(userId, activeTermId, weekday, period, activeTerm));
   }
 
   function openEditEditor(template: ScheduleTemplate) {
+    editorRevision.current += 1;
     setEditingTemplate(template);
     setDraft(createTemplateDraftFromTemplate(template));
   }
@@ -686,7 +691,7 @@ export function TimetableView({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!draft || !draft.title.trim()) {
+    if (editorWritePending.current || !draft || !draft.title.trim()) {
       return;
     }
 
@@ -695,6 +700,8 @@ export function TimetableView({
       return;
     }
 
+    const submittedRevision = editorRevision.current;
+    editorWritePending.current = true;
     setSavingTemplateId(editingTemplate?.id ?? 'new');
     try {
       await onSaveScheduleTemplate(
@@ -710,22 +717,26 @@ export function TimetableView({
         },
         editingTemplate?.id,
       );
-      closeEditor();
+      if (editorRevision.current === submittedRevision) closeEditor();
     } finally {
+      editorWritePending.current = false;
       setSavingTemplateId(null);
     }
   }
 
   async function deleteTemplate() {
-    if (!editingTemplate) {
+    if (editorWritePending.current || !editingTemplate) {
       return;
     }
 
+    const submittedRevision = editorRevision.current;
+    editorWritePending.current = true;
     setSavingTemplateId(editingTemplate.id);
     try {
       await onDeleteScheduleTemplate(editingTemplate);
-      closeEditor();
+      if (editorRevision.current === submittedRevision) closeEditor();
     } finally {
+      editorWritePending.current = false;
       setSavingTemplateId(null);
     }
   }
