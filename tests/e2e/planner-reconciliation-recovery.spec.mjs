@@ -1293,20 +1293,42 @@ for (const viewport of [
     await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
     await navigate(page, '時間割');
     await page.getByRole('button', { name: '月曜 1限 編集する授業を編集', exact: true }).click();
-    const overlay = page.locator('.timetable-modal-overlay');
     const editor = page.locator('.timetable-editor-modal');
     await expect(editor).toBeVisible();
-    const bounds = await overlay.boundingBox();
+    // Use an independent fixed element outside the route as the browser's
+    // reference. Root clientWidth can include a reserved scrollbar gutter.
+    const geometry = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;inset:0;margin:0;padding:0;border:0;visibility:hidden;pointer-events:none';
+      document.body.append(probe);
+      try {
+        const rect = probe.getBoundingClientRect();
+        const overlay = document.querySelector('.timetable-modal-overlay').getBoundingClientRect();
+        return {
+          overlay: { x: overlay.x, y: overlay.y, width: overlay.width, height: overlay.height },
+          rootRect: document.documentElement.getBoundingClientRect().toJSON(),
+          fixedViewport: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          innerWidth, innerHeight,
+          rootClientWidth: document.documentElement.clientWidth,
+          rootClientHeight: document.documentElement.clientHeight,
+          rootTransform: getComputedStyle(document.documentElement).transform,
+          bodyTransform: getComputedStyle(document.body).transform,
+          routeTransform: getComputedStyle(document.querySelector('.timetable-view')).transform,
+          rootGutter: getComputedStyle(document.documentElement).scrollbarGutter,
+        };
+      } finally { probe.remove(); }
+    });
+    const bounds = geometry.overlay;
+    await testInfo.attach('overlay-geometry', { body: JSON.stringify({ viewport, geometry }), contentType: 'application/json' });
     expect(bounds.x).toBeCloseTo(0, 0);
     expect(bounds.y).toBeCloseTo(0, 0);
-    // Fixed inset:0 fills the layout viewport, excluding the reserved root
-    // scrollbar gutter. The configured browser width includes that gutter.
-    const layoutViewport = await page.evaluate(() => ({
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight,
-    }));
-    expect(bounds.width).toBeCloseTo(layoutViewport.width, 0);
-    expect(bounds.height).toBeCloseTo(layoutViewport.height, 0);
+    expect(geometry.rootTransform).toBe('none');
+    expect(geometry.bodyTransform).toBe('none');
+    expect(geometry.routeTransform).toBe('none');
+    expect(bounds.x).toBeCloseTo(geometry.fixedViewport.x, 0);
+    expect(bounds.y).toBeCloseTo(geometry.fixedViewport.y, 0);
+    expect(bounds.width).toBeCloseTo(geometry.fixedViewport.width, 0);
+    expect(bounds.height).toBeCloseTo(geometry.fixedViewport.height, 0);
     const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
     const form = await editor.boundingBox();
     expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
