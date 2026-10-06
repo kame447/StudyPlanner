@@ -1,3 +1,4 @@
+import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -353,6 +354,17 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           error: semanticNormalizerErrorDetails(error),
         },
       });
+      // The turn's shared dispatch budget ran out: keep the already valid schema result
+      // instead of turning it into a provider failure.
+      if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) {
+        return acceptedPriorNoOpResult({
+          run: params.run,
+          document: params.initialDocument,
+          attemptCount: attemptCount - 1,
+          repairAttempted,
+          validationErrors,
+        });
+      }
       return providerFailureDuringCompletenessRetry({
         run: params.run,
         attemptCount,

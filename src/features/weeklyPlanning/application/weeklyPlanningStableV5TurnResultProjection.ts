@@ -8,6 +8,10 @@ import {
   type WeeklyPlanningStableV5RecordedFailure,
 } from '../semantic/weeklyPlanningStableV5FailureDiagnostics';
 import {
+  beginWeeklyPlanningTurnDispatchBudget,
+  endWeeklyPlanningTurnDispatchBudget,
+} from './weeklyPlanningTurnDispatchBudget';
+import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type {
@@ -27,6 +31,7 @@ const FAILURE_CODE_BY_STATUS: Record<
 
 function beginTurnResultProjection(traceRequestId: string): void {
   takeWeeklyPlanningStableV5FailureDiagnostics(traceRequestId);
+  beginWeeklyPlanningTurnDispatchBudget(traceRequestId);
 }
 
 async function projectSuccessfulTurn(params: {
@@ -104,6 +109,17 @@ function projectFailedTurn(params: {
 }
 
 async function projectTurnResult(params: {
+  input: WeeklyPlanningTurnExecutionInput;
+  result: WeeklyPlanningTurnExecutionResult;
+}): Promise<WeeklyPlanningTurnExecutionResult> {
+  try {
+    return await projectTurnResultWithinBudget(params);
+  } finally {
+    endWeeklyPlanningTurnDispatchBudget(params.input.traceRequestId);
+  }
+}
+
+async function projectTurnResultWithinBudget(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
 }): Promise<WeeklyPlanningTurnExecutionResult> {

@@ -20,6 +20,10 @@ import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGr
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import {
+  getWeeklyPlanningTurnDispatchBudget,
+  withWeeklyPlanningTurnDispatchBudget,
+} from './weeklyPlanningTurnDispatchBudget';
+import {
   createWeeklyPlanningConversationRecoveryOutput,
   type WeeklyPlanningRecoveryFailure,
 } from './weeklyPlanningConversationRecovery';
@@ -189,7 +193,14 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   });
 
   const semantic = await createWeeklyPlanningSemanticPipelineV5(
-    createCensusObservedWeeklyPlanningNormalizer(createOpenAiCompatibleClient(aiConfig), createWeeklyPlanningSemanticNormalizerV5),
+    createCensusObservedWeeklyPlanningNormalizer(
+      withWeeklyPlanningTurnDispatchBudget(
+        createOpenAiCompatibleClient(aiConfig),
+        getWeeklyPlanningTurnDispatchBudget(input.traceRequestId),
+        'semantic',
+      ),
+      createWeeklyPlanningSemanticNormalizerV5,
+    ),
   ).run({
     graph: runtimeSession.graph,
     conversationId: input.conversationId,

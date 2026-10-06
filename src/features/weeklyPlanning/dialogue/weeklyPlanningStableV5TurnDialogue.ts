@@ -1,4 +1,9 @@
 import { getAiConfig } from '../../../lib/aiConfig';
+import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import {
+  getWeeklyPlanningTurnDispatchBudget,
+  withWeeklyPlanningTurnDispatchBudget,
+} from '../application/weeklyPlanningTurnDispatchBudget';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueActionKind,
@@ -405,9 +410,15 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     input: renderInput,
   });
 
-  const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig()).render(
-    renderInput,
-  );
+  const aiConfig = getAiConfig();
+  const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(
+    aiConfig,
+    withWeeklyPlanningTurnDispatchBudget(
+      createOpenAiCompatibleClient(aiConfig),
+      getWeeklyPlanningTurnDispatchBudget(params.input.traceRequestId),
+      'renderer',
+    ),
+  ).render(renderInput);
   recordWeeklyPlanningDialogueRendererResponseV5({
     requestId: params.input.traceRequestId,
     actionId: currentActionId,

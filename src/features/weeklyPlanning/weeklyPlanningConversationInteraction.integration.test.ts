@@ -9,6 +9,7 @@ import {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './application/weeklyPlanningStableV5RuntimeSession';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
+import { WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT } from './application/weeklyPlanningTurnDispatchBudget';
 import { createDeferred } from './testUtils/weeklyPlanningApplicationTestHarness';
 import {
   createScriptedConversation,
@@ -286,7 +287,7 @@ describe('Issue #488 A: explanation of the pending question', () => {
     const turn = await conversation.submit('たぶんそれくらい');
 
     expect(generic).toBeGreaterThan(1);
-    expect(turn.calls.filter((call) => call.kind !== 'renderer').length).toBeLessThanOrEqual(5);
+    expect(turn.calls.length).toBeLessThanOrEqual(WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT);
   });
 });
 
