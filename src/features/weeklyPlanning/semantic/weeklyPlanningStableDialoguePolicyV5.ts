@@ -86,6 +86,16 @@ function normalizeQuestion(
   };
 }
 
+/** Every blocking question in the deterministic priority order (first = what the policy asks). */
+export function listWeeklyPlanningStableBlockingQuestionsV5(
+  compilation: GenericSchedulerInputCompilationResult,
+): WeeklyPlanningStableQuestionV5[] {
+  return compilation.issues
+    .filter((issue) => issue.blocking)
+    .sort((left, right) => issueKey(left).localeCompare(issueKey(right)))
+    .map(normalizeQuestion);
+}
+
 export function decideWeeklyPlanningStableDialogueV5(
   compilation: GenericSchedulerInputCompilationResult,
 ): WeeklyPlanningStableDialogueDecisionV5 {

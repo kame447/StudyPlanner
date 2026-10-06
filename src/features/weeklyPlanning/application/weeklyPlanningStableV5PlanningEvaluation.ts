@@ -105,7 +105,7 @@ function workloadSupersessions(
   return result;
 }
 
-function withEffortMeasurement(params: {
+export function withStableV5EffortMeasurement(params: {
   graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
   question: WeeklyPlanningStableQuestionV5;
 }): WeeklyPlanningStableQuestionV5 {
@@ -308,7 +308,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const dialogue = selectedQuestion
     ? {
         status: 'ask_question' as const,
-        question: withEffortMeasurement({ graph: activeGraph, question: selectedQuestion }),
+        question: withStableV5EffortMeasurement({ graph: activeGraph, question: selectedQuestion }),
       }
     : baselineDialogue;
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;

@@ -243,7 +243,14 @@ describe('Issue #488 A: explanation of the pending question', () => {
       'semantic_generic',
       'renderer',
     ]);
-    expect(conversation.graph()).toEqual(graphBefore);
+    // Only the idempotency ledger records that this turn was seen; no fact, lifecycle or revision moved.
+    const graphAfter = conversation.graph()!;
+    expect(graphAfter.revision).toBe(graphBefore!.revision);
+    expect({ ...graphAfter, appliedTurnKeys: [] }).toEqual({ ...graphBefore, appliedTurnKeys: [] });
+    expect(graphAfter.appliedTurnKeys).toEqual([
+      ...graphBefore!.appliedTurnKeys,
+      expect.stringContaining(explanation.requestId!),
+    ]);
     expect(pendingTarget(conversation)).toEqual(pending);
     const renderer = explanation.calls.find((call) => call.kind === 'renderer');
     expect(rendererDecision(renderer)).toMatchObject({

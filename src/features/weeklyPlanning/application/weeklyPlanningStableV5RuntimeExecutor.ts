@@ -18,6 +18,10 @@ import {
   projectWeeklyPlanningProvisionalCapacityPreviewV5,
 } from './weeklyPlanningStableV5ProvisionalCapacityPreview';
 import {
+  classifyWeeklyPlanningInteraction,
+  planWeeklyPlanningInteraction,
+} from './weeklyPlanningInteractionDecision';
+import {
   weeklyPlanningStableV5ResponseRouter,
 } from './weeklyPlanningStableV5ResponseRouting';
 import type {
@@ -70,10 +74,27 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     semanticTurn,
   });
 
+  // Interaction layer: typed conversation acts + machine state decide what kind of turn
+  // this was. It may redirect which open question is presented (a named topic) and never
+  // touches authorization, readiness, the graph or the preview decision.
+  const interactionPlan = planWeeklyPlanningInteraction({
+    acts: semantic.normalization.document?.conversationActs,
+    graph: semantic.graph,
+    evaluation,
+  });
+  const routingEvaluation = interactionPlan.dialogueQuestionOverride
+    ? {
+        ...evaluation,
+        dialogue: {
+          status: 'ask_question' as const,
+          question: interactionPlan.dialogueQuestionOverride,
+        },
+      }
+    : evaluation;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
-    evaluation,
+    evaluation: routingEvaluation,
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({
@@ -82,6 +103,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return {
       ...output,
+      interactionOutcome: classifyWeeklyPlanningInteraction({
+        plan: interactionPlan,
+        output,
+        previousQuestion: input.previousState?.lastQuestionContext,
+        presentation: semanticTurn.pendingQuestionPresentation,
+      }),
       observability: semanticObservability,
     };
   }
@@ -94,6 +121,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     retainPartialCapacityEvidence: Boolean(evaluation.provisionalTimeboxProjection.source),
   });
 
+  const applyOutcome = {
+    kind: 'apply' as const,
+    consultationDeferred: interactionPlan.acts.consultation,
+  };
   const provisionalCapacityOutput = projectWeeklyPlanningProvisionalCapacityPreviewV5({
     input,
     evaluation,
@@ -112,6 +143,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   return {
     ...output,
+    interactionOutcome: applyOutcome,
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

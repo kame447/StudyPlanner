@@ -5,6 +5,15 @@ export type WeeklyPlanningStableV5DialogueActionKind =
   | 'status'
   | 'preview_ready';
 
+/**
+ * Typed conversational outcome decided by the application. The renderer verbalizes it;
+ * it never decides it (and never inspects the raw user message to do so).
+ */
+export type WeeklyPlanningStableV5DialogueConversationOutcome =
+  | 'explain_pending_question'
+  | 'aside'
+  | 'resume_pending_question';
+
 export interface WeeklyPlanningStableV5DialogueConversationTurn {
   role: 'user' | 'assistant';
   content: string;
@@ -194,6 +203,10 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
   questionIntent?: WeeklyPlanningStableV5DialogueQuestionIntent | null;
   previewPromotionControlLabel?: string | null;
+  /** Application-decided turn kind; null for an ordinary planning turn. */
+  conversationOutcome?: WeeklyPlanningStableV5DialogueConversationOutcome | null;
+  /** A consultation/advice request was heard but is not answered by this runtime. */
+  consultationDeferred?: boolean;
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;

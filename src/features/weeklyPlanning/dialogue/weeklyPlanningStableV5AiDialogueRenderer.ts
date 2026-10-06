@@ -39,7 +39,7 @@ export {
 const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   '前回候補がrecentConversation内の直前assistant発話と同一でした。',
   'applicationDecisionの意味は変えず、直前と異なる自然な表現にしてください。',
-  'ユーザーが質問の意味や理由を尋ねている場合は、必要な情報の目的を短く説明してから尋ね直してください。',
+  'applicationDecision.conversationOutcomeがexplain_pending_questionの場合は、必要な情報の目的を短く説明してから尋ね直してください。',
 ].join('');
 
 const GROUNDING_ACK_REPAIR_INSTRUCTION = [

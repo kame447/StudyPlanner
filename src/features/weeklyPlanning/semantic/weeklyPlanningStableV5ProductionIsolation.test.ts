@@ -35,6 +35,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/evaluationHarness.testUtils.ts',
   // Conversational recovery of a failed semantic step: retained machine question text only.
   'application/weeklyPlanningConversationRecovery.ts',
+  // Interaction layer: typed conversation acts + question identity over the graph; no raw text.
+  'application/weeklyPlanningInteractionDecision.ts',
   // Test-only: bind a pending question to its presenting message as the controller does.
   'testUtils/weeklyPlanningFreshPresentationTestUtils.ts',
   // Test-only: scripted-provider full-turn harness over the real controller/runtime.

@@ -5,6 +5,7 @@ import {
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import type {
+  WeeklyPlanningStableV5DialogueConversationOutcome,
   WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
 import {
@@ -58,6 +59,37 @@ function questionCodeFromTargetSlot(targetSlot: string | undefined): string | nu
   return decodeWeeklyPlanningStableV5QuestionSlot(targetSlot);
 }
 
+const EXPLAIN_FALLBACK_LEAD = 'この確認は、予定を無理なく配置するために必要です。';
+const RESUME_FALLBACK_LEAD = '先ほどの確認に戻ります。';
+const ASIDE_FALLBACK_TEXT = 'わかりました。ここまでの内容は変更していません。保留中の確認に戻るときは、そう教えてください。';
+const CONSULTATION_DEFERRED_FALLBACK = 'ご相談の内容への回答は、今回は行っていません。';
+
+type InteractionOutcome = NonNullable<WeeklyPlanningTurnExecutionResult['interactionOutcome']>;
+
+function conversationOutcomeForRenderer(
+  outcome: InteractionOutcome | undefined,
+): WeeklyPlanningStableV5DialogueConversationOutcome | null {
+  return outcome && outcome.kind !== 'apply' && outcome.kind !== 'recover'
+    ? outcome.kind
+    : null;
+}
+
+/** Fallback prose for the typed outcome; the typed question text stays the question. */
+function withInteractionFallback(
+  text: string,
+  outcome: InteractionOutcome | undefined,
+): string {
+  if (!outcome || outcome.kind === 'recover') return text;
+  const lead = outcome.kind === 'explain_pending_question'
+    ? `${EXPLAIN_FALLBACK_LEAD}${text}`
+    : outcome.kind === 'resume_pending_question'
+      ? `${RESUME_FALLBACK_LEAD}${text}`
+      : outcome.kind === 'aside'
+        ? ASIDE_FALLBACK_TEXT
+        : text;
+  return outcome.consultationDeferred ? `${lead}${CONSULTATION_DEFERRED_FALLBACK}` : lead;
+}
+
 function dialogueActionKind(
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningStableV5DialogueActionKind {
@@ -106,8 +138,10 @@ function withAssistantMessage(params: {
   responseSource: 'ai' | 'deterministic_fallback' | 'rules' | 'system';
   dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace;
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
+  /** An aside keeps the retained machine question text; the message is not that question. */
+  keepQuestions?: boolean;
 }): WeeklyPlanningTurnExecutionResult {
-  const state = params.result.state.questions.length > 0
+  const state = params.result.state.questions.length > 0 && !params.keepQuestions
     ? { ...params.result.state, questions: [params.message] }
     : params.result.state;
   const {
@@ -308,7 +342,12 @@ function createRenderInput(params: {
       targetFactId,
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
-    fallbackText: withSelfRepairNotice(fallbackText, params.notice),
+    conversationOutcome: conversationOutcomeForRenderer(params.result.interactionOutcome),
+    consultationDeferred: params.result.interactionOutcome?.consultationDeferred === true,
+    fallbackText: withSelfRepairNotice(
+      withInteractionFallback(fallbackText, params.result.interactionOutcome),
+      params.notice,
+    ),
     previewCount: params.result.draftCandidates.length,
   };
 }
@@ -337,8 +376,17 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   }
 
   const notice = selfRepairNotice(params);
-  const actionKind = dialogueActionKind(params.result);
-  const currentQuestionCode = questionCode(params.result);
+  // An aside is presented as a status: the retained question stays in machine state but
+  // is not offered to (or re-bound for) the renderer, so it cannot be mistaken as asked.
+  const aside = params.result.interactionOutcome?.kind === 'aside';
+  const renderResult: WeeklyPlanningTurnExecutionResult = aside
+    ? {
+        ...params.result,
+        state: { ...params.result.state, lastQuestionContext: undefined },
+      }
+    : params.result;
+  const actionKind = dialogueActionKind(renderResult);
+  const currentQuestionCode = questionCode(renderResult);
   const currentActionId = actionId({
     traceRequestId: params.input.traceRequestId,
     actionKind,
@@ -346,6 +394,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   });
   const renderInput = createRenderInput({
     ...params,
+    result: renderResult,
     notice,
     actionKind,
     questionCode: currentQuestionCode,
@@ -381,11 +430,14 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
       message: finalMessage,
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
-      questionPresentationContent: questionPresentationContent({
-        result: params.result,
-        renderInput,
-        responseSource: 'deterministic_fallback',
-        notice,
+      keepQuestions: aside,
+      ...(aside ? {} : {
+        questionPresentationContent: questionPresentationContent({
+          result: params.result,
+          renderInput,
+          responseSource: 'deterministic_fallback',
+          notice,
+        }),
       }),
     });
     recordWeeklyPlanningDialogueDecisionV5({
@@ -415,11 +467,14 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     message: finalMessage,
     responseSource: 'ai',
     dialogueRendererTrace,
-    questionPresentationContent: questionPresentationContent({
-      result: params.result,
-      renderInput,
-      responseSource: 'ai',
-      notice,
+    keepQuestions: aside,
+    ...(aside ? {} : {
+      questionPresentationContent: questionPresentationContent({
+        result: params.result,
+        renderInput,
+        responseSource: 'ai',
+        notice,
+      }),
     }),
   });
   recordWeeklyPlanningDialogueDecisionV5({
