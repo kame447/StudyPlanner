@@ -28,6 +28,8 @@ import {
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
+import { scheduleAppViewPreload } from './lib/preloadAppViews';
+import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
 
@@ -218,6 +220,16 @@ export default function App() {
         : isWorkspaceSurface
           ? 'workspace-primary-header'
           : 'home-primary-header';
+
+  const canPreloadViews = !booting && appAccessGranted && Boolean(user)
+    && !['/terms', '/privacy', '/contact'].includes(currentPath)
+    && isPlannerDataReadyForOwner(plannerDataAvailability, user?.id ?? '');
+
+  useEffect(() => {
+    // Optional screens must not compete with authentication or the initial data load.
+    // Cancelling on sign-out/reload also cancels an idle callback that has not run yet.
+    if (canPreloadViews) return scheduleAppViewPreload();
+  }, [canPreloadViews, user?.id]);
 
   useEffect(() => {
     if (user?.id) {

@@ -9,8 +9,10 @@ import type { User } from './types/domain';
 
 const fixture = vi.hoisted(() => ({
   state: {} as Partial<ReturnType<typeof usePlannerAppState>>,
+  schedulePreload: vi.fn(() => vi.fn()),
   application: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })),
 }));
+vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: fixture.schedulePreload }));
 vi.mock('./hooks/usePlannerAppState', () => ({ usePlannerAppState: () => fixture.state }));
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: fixture.application }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
@@ -30,6 +32,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/' } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden by fixture'); }));
   fixture.application.mockClear();
+  fixture.schedulePreload.mockClear();
   fixture.state = {
     booting: false, user: { id: 'owner-a' } as User,
     plans: [], actuals: [], monthEvents: [], todos: [], studySubjects: [], studyMaterials: [],
@@ -82,4 +85,34 @@ it('hides the previous owner recovery on the first render and removes the recove
   act(() => { renderer!.update(<App />); });
   expect(renderer!.root.findAllByProps({ role: 'status' })).toHaveLength(0);
   expect(renderer!.root.findByType('main').props.className).toBe('home-main');
+});
+
+
+it('starts optional preloads only for a ready owner and cancels on reload, owner change and unmount', () => {
+  act(() => { renderer = create(<App />); });
+  expect(fixture.schedulePreload).not.toHaveBeenCalled();
+  const renderState = (changes: Partial<ReturnType<typeof usePlannerAppState>>) => {
+    fixture.state = { ...fixture.state, ...changes };
+    act(() => { renderer!.update(<App />); });
+  };
+  const ready = { status: 'ready' as const, ownerId: 'owner-a', observedAt: 'now', lastSuccessfulAt: 'now' };
+  renderState({ booting: true, plannerDataAvailability: ready });
+  expect(fixture.schedulePreload).not.toHaveBeenCalled();
+  renderState({ booting: false });
+  expect(fixture.schedulePreload).toHaveBeenCalledTimes(1);
+  const cancelFirst = fixture.schedulePreload.mock.results[0].value;
+  renderState({ notice: { text: 'unrelated render', tone: 'info' } });
+  expect(fixture.schedulePreload).toHaveBeenCalledTimes(1);
+  renderState({ plannerDataAvailability: { ...ready, status: 'loading' } });
+  expect(cancelFirst).toHaveBeenCalledOnce();
+  renderState({ plannerDataAvailability: ready });
+  expect(fixture.schedulePreload).toHaveBeenCalledTimes(2);
+  renderState({ user: { id: 'owner-b' } as User });
+  expect(fixture.schedulePreload.mock.results[1].value).toHaveBeenCalledOnce();
+  expect(fixture.schedulePreload).toHaveBeenCalledTimes(2);
+  renderState({ plannerDataAvailability: { ...ready, ownerId: 'owner-b' } });
+  expect(fixture.schedulePreload).toHaveBeenCalledTimes(3);
+  act(() => { renderer!.unmount(); });
+  expect(fixture.schedulePreload.mock.results[2].value).toHaveBeenCalledOnce();
+  renderer = undefined;
 });
