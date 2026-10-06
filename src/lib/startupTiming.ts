@@ -3,6 +3,9 @@ export const STARTUP_PHASES = [
   'splash-mounted', 'auth-session', 'consent', 'preferences', 'memory',
   'profile-observation', 'profile-observer-stop', 'profile', 'plans', 'actuals', 'day-notes', 'month-events', 'todos',
   'subjects', 'materials', 'templates', 'terms', 'periods',
+  'schedule-marker-read', 'schedule-marker-complete', 'schedule-marker-unavailable',
+  'schedule-migration-acquire', 'schedule-legacy-read', 'schedule-migration-backfill',
+  'schedule-migration-complete-write', 'schedule-canonical-plans', 'schedule-canonical-month-events',
   'timetable-write', 'bootstrap', 'home-visible',
 ] as const;
 export type StartupPhase = typeof STARTUP_PHASES[number];
