@@ -1,3 +1,4 @@
+import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
@@ -187,6 +188,9 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
       maxCompletionTokens: DENSE_TURN_COMPLETENESS_AUDIT_MAX_COMPLETION_TOKENS,
     }, 'dense_completeness_audit');
   } catch (error) {
+    // The turn's shared dispatch budget ran out: keep the valid initial document; budget
+    // exhaustion is never reported as a connectivity failure.
+    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) return null;
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_dense_turn_completeness_audit_result',
@@ -243,6 +247,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   try {
     retryResponse = await params.run.callGeneric(retryMessages, 'dense_completeness_retry');
   } catch (error) {
+    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) return null;
     const result: WeeklyPlanningSemanticNormalizerResultV5 = {
       status: 'provider_failure',
       document: null,

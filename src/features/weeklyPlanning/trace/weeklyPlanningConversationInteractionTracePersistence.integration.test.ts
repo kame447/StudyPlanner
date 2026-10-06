@@ -51,9 +51,11 @@ import type {
  * EXCLUDED from the durable turn diagnostic, on purpose: `interactionOutcome` and the
  * `pendingQuestionPresentation` status. They are enum-only machine state that is kept in
  * the in-memory debug trace; the durable diagnostic would need a new Worker/shared schema
- * field for no information that is not already persisted: the outcome is recoverable from
- * conversationActs + conversationOutcome + failure code, and freshness from whether
- * planningStateSummary.pendingQuestion is present. Both substitutes are asserted here.
+ * field. Substitutes (asserted here): the outcome is recoverable from conversationActs +
+ * conversationOutcome + failure code. Freshness is only partly recoverable: persisted data
+ * shows whether a typed pendingQuestion was offered to the model (planningStateSummary
+ * .pendingQuestion present/null) but NOT why it was withheld (stale vs unbound vs
+ * malformed). A durable freshness reason is a deferred diagnostic item (see report).
  */
 
 const USER_ID = 'owner-conversation-interaction-trace';
@@ -353,7 +355,7 @@ describe('conversation interaction trace persistence gate', () => {
     const serialized = JSON.stringify(kept.entry);
     // The turn is still saved with its real outcome, and the cut is explicit.
     expect(serialized).toContain('explain_pending_question');
-    expect(serialized).toMatch(/traceTruncatedItems|trace truncated|traceProjectionTruncated|…/);
+    expect(serialized).toMatch(/traceProjectionTruncated|traceTruncatedItems|…\[trace truncated\]/);
     expect(serialized).not.toContain('あ'.repeat(6_000));
     expectBounded(kept.entry, kept.preparedEntry);
   });

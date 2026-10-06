@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { tryWeeklyPlanningDenseTurnCompletenessRetryV5 } from '../semantic/weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { tryWeeklyPlanningSemanticNoOpCompletenessRetryV5 } from '../semantic/weeklyPlanningSemanticNoOpCompletenessRetryV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { WeeklyPlanningSemanticNormalizerRunV5 } from '../semantic/weeklyPlanningSemanticNormalizerRunV5';
@@ -72,5 +73,35 @@ describe('turn-level AI dispatch budget', () => {
 
     expect(result?.status).toBe('accepted');
     expect(result?.document).toBe(document);
+  });
+
+  it('never reports budget exhaustion in the dense completeness path as a connectivity failure', async () => {
+    const turnId = 'turn-dense';
+    beginWeeklyPlanningTurnDispatchBudget(turnId);
+    const budget = getWeeklyPlanningTurnDispatchBudget(turnId);
+    for (let i = 0; i < WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT - WEEKLY_PLANNING_TURN_AI_RENDERER_RESERVE; i += 1) {
+      budget.consume('semantic');
+    }
+    const client = withWeeklyPlanningTurnDispatchBudget(fakeClient(), budget, 'semantic');
+    const document = {
+      schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan', planningWindow: null, tasks: [],
+      relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [],
+      uncertainties: [], corrections: [], decisions: [],
+    } as unknown as WeeklyPlanningSemanticDocumentV5;
+    const run = {
+      input: { userText: 'あ'.repeat(4_000), traceRequestId: turnId, publicStateSummary: {} },
+      callTracked: vi.fn(async () => client.createChatCompletion({ messages: [] })),
+      callGeneric: vi.fn(async () => client.createChatCompletion({ messages: [] })),
+      diagnostics: vi.fn((value: unknown) => value),
+      recordDecision: vi.fn(),
+      addAlgorithmicRepairs: vi.fn(),
+    } as unknown as WeeklyPlanningSemanticNormalizerRunV5;
+
+    // null = keep the already valid initial document (not a provider_failure result).
+    await expect(tryWeeklyPlanningDenseTurnCompletenessRetryV5({
+      run, baseMessages: [], initialResponse: '{}', initialDocument: document,
+    })).resolves.toBeNull();
+    expect(run.callTracked).toHaveBeenCalledTimes(1);
+    endWeeklyPlanningTurnDispatchBudget(turnId);
   });
 });
