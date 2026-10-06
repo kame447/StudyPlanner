@@ -133,8 +133,8 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState(): PlannerAppState {
-  const { notice, showNotice, dismissNotice } = useNoticeState();
+export function usePlannerAppState({ noticeAutoDismiss = true }: { noticeAutoDismiss?: boolean } = {}): PlannerAppState {
+  const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
   const {

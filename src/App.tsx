@@ -1,3 +1,5 @@
+import { useRootStartupReady } from './components/RootStartupReadyContext';
+import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeScheduleView } from './components/HomeScheduleView';
@@ -78,7 +80,20 @@ type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
 
 const SCHEDULE_VIEW_MODES = new Set<ViewMode>(['month', 'week', 'day', 'todo']);
 
-export default function App() {
+export default function App({ state, onReady }: { state?: PlannerAppSnapshot; onReady?: () => void } = {}) {
+  return state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />;
+}
+
+function StandaloneApp() {
+  const state = usePlannerAppState();
+  return <AppContent state={state} />;
+}
+
+function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: () => void }) {
+  const markRootStartupReady = useRootStartupReady();
+  useEffect(() => {
+    if (!state.booting) { markRootStartupReady?.(); onReady?.(); }
+  }, [state.booting, markRootStartupReady, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
@@ -163,7 +178,7 @@ export default function App() {
     openWeek,
     openDay,
     setEditorDraft,
-  } = usePlannerAppState();
+  } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
   const {
     term: activeTimetableTerm,

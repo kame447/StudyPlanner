@@ -20,3 +20,11 @@ A Home layout may contain recovery/error UI; inspect bootstrap/read outcomes bef
 Compare the first splash point to Home and inspect the spans between them. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
 
 The panel adds opt-in observation overhead, so do not present sub-millisecond differences as a user-visible speedup. Unit/deferred and synthetic local-repository browser fixtures verify measurement, error identity and ordering, not actual Firebase or mobile latency. Never put private screenshots/fixture replacements into public Issues. Publish only a manually reviewed phase timing summary with environment context.
+
+## Bootstrap overlap
+
+After accepted consent and the saved week-start preference, `PlannerAppBootstrap` restores authentication/profile and planner state concurrently with the existing memory provider initialization. The provider continues to suppress its children until its existing success/error terminal state; `AppContent`, including weekly-planning hooks and optional view preloads, therefore mounts only after memory settles. Supplied planner state is consumed rather than loaded again. The splash releases only when that content also observes bootstrap termination.
+
+Readiness belongs to the keyed authenticated session. Old bootstrap generations cannot publish readiness, notices, or restored identities after a replacement/unmount. Startup notices retain their full dismissal duration until the surface is ready. This does not skip consent, preferences, memory synchronization, planner reads, or error reporting, and does not change memory transaction or AI semantic contracts.
+
+The overlap removes a dependency, not the remaining consent/preferences and slowest-planner-read latency. Compare exact builds in the same authenticated browser; do not promise one-second startup from deferred tests or add overlapping durations.

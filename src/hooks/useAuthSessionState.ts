@@ -1,5 +1,5 @@
 import { startupTiming } from '../lib/startupTiming';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
 import { useRootStartupReady } from '../components/RootStartupReadyContext';
 import { authRepository } from '../repositories';
@@ -33,6 +33,8 @@ interface UseAuthSessionStateResult {
 export function useAuthSessionState({
   showNotice,
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
+  const bootstrapGeneration = useRef(0);
+  useEffect(() => () => { bootstrapGeneration.current += 1; }, []);
   const rootManagedAuthentication = useRootManagedAuthentication();
   const markRootStartupReady = useRootStartupReady();
   const [booting, setBooting] = useState(true);
@@ -40,12 +42,14 @@ export function useAuthSessionState({
 
   const bootstrapSession = useCallback(
     async (loadPlannerData: (userId: string) => Promise<void>) => {
+      const generation = ++bootstrapGeneration.current;
       setBooting(true);
       const finishBootstrap = startupTiming.begin('bootstrap');
       let startupOutcome: 'success' | 'error' = 'success';
 
       try {
         const currentUser = await startupTiming.measure('profile', () => authRepository.getCurrentUser());
+        if (generation !== bootstrapGeneration.current) return;
 
         if (!currentUser) {
           setUser(null);
@@ -57,6 +61,7 @@ export function useAuthSessionState({
         try {
           await loadPlannerData(currentUser.id);
         } catch (error) {
+        if (generation !== bootstrapGeneration.current) return;
           startupOutcome = 'error';
           showNotice(
             error instanceof Error
@@ -66,7 +71,8 @@ export function useAuthSessionState({
           );
         }
       } catch (error) {
-          startupOutcome = 'error';
+        if (generation !== bootstrapGeneration.current) return;
+        startupOutcome = 'error';
         showNotice(
           error instanceof Error
             ? error.message
@@ -74,7 +80,8 @@ export function useAuthSessionState({
           'error',
         );
       } finally {
-        finishBootstrap(startupOutcome);
+        finishBootstrap(generation === bootstrapGeneration.current ? startupOutcome : 'cancelled');
+        if (generation !== bootstrapGeneration.current) return;
         setBooting(false);
         markRootStartupReady?.();
       }
@@ -190,6 +197,7 @@ export function useAuthSessionState({
   );
 
   const signOut = useCallback(async () => {
+    bootstrapGeneration.current += 1;
     await authRepository.signOut();
     setUser(null);
     showNotice('ログアウトしました。');
