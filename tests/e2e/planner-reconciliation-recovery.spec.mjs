@@ -1299,8 +1299,14 @@ for (const viewport of [
     const bounds = await overlay.boundingBox();
     expect(bounds.x).toBeCloseTo(0, 0);
     expect(bounds.y).toBeCloseTo(0, 0);
-    expect(bounds.width).toBeCloseTo(viewport.width, 0);
-    expect(bounds.height).toBeCloseTo(viewport.height, 0);
+    // Fixed inset:0 fills the layout viewport, excluding the reserved root
+    // scrollbar gutter. The configured browser width includes that gutter.
+    const layoutViewport = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    }));
+    expect(bounds.width).toBeCloseTo(layoutViewport.width, 0);
+    expect(bounds.height).toBeCloseTo(layoutViewport.height, 0);
     const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
     const form = await editor.boundingBox();
     expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
