@@ -32,7 +32,13 @@ for (const width of [390, 1280]) {
     await expect(chooser.locator('.lucide-calendar-plus')).toHaveCount(1);
     await expect(chooser.locator('.lucide-book-open-check')).toHaveCount(1);
     await expect(chooser.getByRole('button', { name: '予定を追加', exact: true })).toBeFocused();
-    if (width === 390) expect((await chooser.boundingBox()).y).toBeGreaterThan(500);
+    const chooserBox = await chooser.boundingBox();
+    expect(chooserBox.width).toBeGreaterThanOrEqual(width === 390 ? 342 : 400);
+    expect(chooserBox.width).toBeLessThanOrEqual(440);
+    expect(chooserBox.x).toBeGreaterThanOrEqual(0);
+    expect(chooserBox.x + chooserBox.width).toBeLessThanOrEqual(width);
+    if (width === 390) expect(chooserBox.y).toBeGreaterThan(500);
+    expect(await chooser.getByRole('button', { name: '予定を追加', exact: true }).evaluate(node => parseFloat(getComputedStyle(node).borderRadius))).toBeGreaterThan(0);
     await page.screenshot({ path: testInfo.outputPath('home-add-chooser.png'), fullPage: true });
     await testInfo.attach('Home two-choice sheet', { path: testInfo.outputPath('home-add-chooser.png'), contentType: 'image/png' });
     await page.keyboard.press('Escape');

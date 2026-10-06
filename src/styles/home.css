@@ -657,8 +657,8 @@
   cursor: pointer;
 }
 
-.modal-overlay.home-add-overlay { align-items: end; }
-.home-add-sheet { width: min(440px, 100%); padding: 16px; margin-bottom: env(safe-area-inset-bottom, 0px); }
+.modal-overlay.home-add-overlay { align-items: end; backdrop-filter: blur(2px); }
+.modal-card.home-add-sheet { width: min(440px, calc(100vw - 32px)); background: var(--surface-strong); padding: 16px; margin-bottom: env(safe-area-inset-bottom, 0px); }
 .home-add-sheet > button { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 12px; }
 @media (min-width: 700px) { .modal-overlay.home-add-overlay { align-items: center; } }
 

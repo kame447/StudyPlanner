@@ -26,12 +26,12 @@ export function HomeAddFlow({ monthEvents, onSaveMonthEvent, onDeleteMonthEvent,
     <QuickEntryModal {...props} selectedDate={entry.date} initialMode="scheduled" />
   ) : (
     <div className="overlay modal-overlay home-add-overlay" onClick={props.onClose}>
-      <div ref={dialogRef} tabIndex={-1} className="panel section-stack home-add-sheet" role="dialog" aria-modal="true"
+      <div ref={dialogRef} tabIndex={-1} className="modal-card panel section-stack home-add-sheet" role="dialog" aria-modal="true"
         aria-label="今日の予定に追加" onClick={(event) => event.stopPropagation()}>
-        <button ref={(node) => { initialFocusRef.current = node; }} className="secondary-button" type="button" onClick={() => setEntry({ kind: 'schedule', date: todayIsoDate() })}>
+        <button ref={(node) => { initialFocusRef.current = node; }} className="ghost-button" type="button" onClick={() => setEntry({ kind: 'schedule', date: todayIsoDate() })}>
           <CalendarPlus size={24} aria-hidden="true" />予定を追加
         </button>
-        <button className="secondary-button" type="button" onClick={() => setEntry({ kind: 'study', date: todayIsoDate() })}>
+        <button className="ghost-button" type="button" onClick={() => setEntry({ kind: 'study', date: todayIsoDate() })}>
           <BookOpenCheck size={24} aria-hidden="true" />学習を追加
         </button>
         <button className="ghost-button" type="button" onClick={props.onClose}>キャンセル</button>
