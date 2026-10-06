@@ -99,7 +99,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5(params
   const result = canonicalizeWeeklyPlanningSemanticDocumentV5(params);
   if (result.status !== 'applied' || !result.diff) return result;
 
-  return enforceSingleActivePlanningWindowV5({
+  const withActiveFacts = {
     ...result,
     graph: {
       ...result.graph,
@@ -111,5 +111,14 @@ export function canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5(params
         }),
       ],
     },
-  });
+  };
+  const addedCorrectionIds = new Set(result.diff.added
+    .filter((entry) => entry.kind === 'correction_intent').map((entry) => entry.id));
+  const hasExplicitWindowCorrection = result.graph.correctionIntents.some((correction) =>
+    addedCorrectionIds.has(correction.id) && correction.target.kind === 'planning_window');
+  // Explicit corrections must validate against the still-active prior target.
+  // The semantic commit restores the single-window invariant after that transaction.
+  return hasExplicitWindowCorrection
+    ? withActiveFacts
+    : enforceSingleActivePlanningWindowV5(withActiveFacts);
 }

@@ -1,3 +1,6 @@
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { createWeeklyPlanningSemanticPipelineV5 } from '../semantic/weeklyPlanningSemanticPipelineV5';
+import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
@@ -243,4 +246,82 @@ describe('weekly planning correction trace persistence gate', () => {
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
   });
+});
+
+
+it('persists real explicit-window correction diagnostics through failure, retry and Worker limits', async () => {
+  for (const oversized of [false, true]) {
+    repositoryState.failWrites = true;
+    repositoryState.attempts.length = 0;
+    repositoryState.successfulWrites.length = 0;
+    window.localStorage.clear();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    let document: WeeklyPlanningSemanticDocumentV5 = {
+      schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, planningIntent: 'create_plan',
+      planningWindow: { localId: 'old', kind: 'relative_day', value: 'tomorrow', start: null, end: null, sourceText: '明日の予定を立てたい' },
+      tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], uncertainties: [], corrections: [], decisions: [],
+    };
+    const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async () => ({ status: 'accepted', document,
+      diagnostics: { schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, jsonSchemaName: 'weekly_planning_semantic_document_v5',
+        normalizerVersion: 'weekly-planning-semantic-normalizer-v5', attemptCount: 1, repairAttempted: false,
+        requestBytes: [1], responseLengths: [1], latencyMs: 1, validationErrors: [], providerError: null } }) });
+    const schedulerContext = { ownerId: 'trace-user', currentDate: '2026-10-06', planningStartDate: '2026-10-06', planningEndDate: '2026-10-06', timeZone: 'Asia/Tokyo' };
+    const first = await pipeline.run({ graph: createEmptyWeeklyPlanningFactGraphV5(), conversationId: canonicalIds.logicalConversationId,
+      turnId: 'window-initial', expectedRevision: 0, userText: '明日の予定を立てたい', recentConversation: [], publicStateSummary: {}, schedulerContext });
+    const oldId = first.canonicalization!.localToFactId.old;
+    document = { ...document, planningIntent: 'update_plan', planningWindow: { ...document.planningWindow!, localId: 'new', value: 'today', sourceText: '明日じゃなくて今日だ' },
+      corrections: [{ localId: 'fix', target: { kind: 'planning_window', publicId: oldId, localId: null, mention: '明日' },
+        operation: 'replace', replacementLocalId: 'new', sourceText: '明日じゃなくて今日だ' }] };
+    const requestId = `window-trace-${oversized ? 'large' : 'small'}`;
+    beginWeeklyPlanningStableV5DebugTrace(requestId);
+    const corrected = await pipeline.run({ graph: first.graph, conversationId: canonicalIds.logicalConversationId,
+      turnId: requestId, expectedRevision: first.graph.revision, userText: '明日じゃなくて今日だ', recentConversation: [], publicStateSummary: {}, schedulerContext });
+    expect(corrected.canonicalization?.status).toBe('applied');
+    const canonical = corrected.canonicalization!;
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const event = events.find(entry => entry.stage === 'semantic_canonicalization_evaluated')!;
+    expect(event).toBeDefined();
+    const data = event.data as Record<string, unknown>;
+    // Exceed the document budget while staying within the outbox's separate
+    // 192 KiB ingress limit; overflowing that queue is intentionally rejected.
+    data.adoptedOperations = { ...(data.adoptedOperations as Record<string, unknown>),
+      futureWindowCorrectionSentinel: { retained: true }, ...(oversized ? { futureLargePayload: 'x'.repeat(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes * 2) } : {}) };
+    await recordWeeklyPlanningStableV5TurnTrace({ ...traceInput({ requestId, debugTraceEvents: events }),
+      userText: '明日じゃなくて今日だ', assistantMessage: '予定に入れる作業を教えてください。', outcome: 'nothing_to_schedule' });
+    expect(repositoryState.successfulWrites).toHaveLength(0);
+    expect(window.localStorage.length).toBeGreaterThan(0);
+    repositoryState.failWrites = false;
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: `${requestId}-retry`, debugTraceEvents: [] }));
+    expect(repositoryState.successfulWrites).toHaveLength(2);
+    const retried = repositoryState.successfulWrites[0];
+    // Retry rebuilds the observation timestamp; all original diagnostic content stays.
+    const originalEntry = repositoryState.attempts[0].entries[0];
+    const { observedAt: firstObservedAt, ...originalContent } = originalEntry;
+    const { observedAt: retriedObservedAt, ...retriedContent } = retried.entries[0];
+    expect(retriedContent).toEqual(originalContent);
+    expect(Date.parse(String(retriedObservedAt))).toBeGreaterThanOrEqual(Date.parse(String(firstObservedAt)));
+    const entry = retried.entries[0];
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite(retried, subject, canonicalIds, '2026-10-06T00:00:00Z');
+    expect(prepared.entries).toHaveLength(1);
+    const stored = prepared.entries[0];
+    expect(measureWeeklyPlanningTraceJsonBytes(stored)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    const serialized = JSON.stringify(stored);
+    if (oversized) {
+      expect(serialized).toContain('truncation');
+      expect(entry).toMatchObject({ diagnostics: { truncation: { applied: true } } });
+    } else {
+      expect(serialized).toContain('futureWindowCorrectionSentinel');
+      expect(stored).toMatchObject({ decision: { stateDiff: {
+        fromRevision: canonical.diff!.fromRevision, toRevision: canonical.diff!.toRevision,
+        superseded: expect.arrayContaining([{ kind: 'planning_window', id: oldId }]),
+        added: expect.arrayContaining([{ kind: 'planning_window', id: canonical.localToFactId.new }]),
+        removed: expect.arrayContaining([{ kind: 'correction_intent', id: canonical.localToFactId.fix }]),
+      } } });
+      for (const id of [oldId, canonical.localToFactId.new, canonical.localToFactId.fix]) expect(serialized).toContain(id);
+      for (const key of ['fromRevision', 'toRevision', 'superseded', 'added', 'removed']) expect(serialized).toContain(`"${key}"`);
+      expect(serialized).toContain(`"fromRevision":${canonical.diff!.fromRevision}`);
+      expect(serialized).toContain(`"toRevision":${canonical.diff!.toRevision}`);
+    }
+  }
 });
