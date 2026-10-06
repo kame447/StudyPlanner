@@ -534,6 +534,7 @@ export default function App() {
                 onSaveStandaloneActual={saveStandaloneActual}
                 onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
                 onDeleteActual={deleteActual}
+                onOpenTimetable={openTimetableSurface}
                 onOpenBookshelf={() => setViewMode('bookshelf')}
                 onOpenAddMaterial={() => {
                   setBookshelfInitialAction('add-material');

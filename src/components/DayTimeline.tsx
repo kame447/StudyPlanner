@@ -49,6 +49,7 @@ interface DayTimelineProps {
 export type DayTimelineSelection =
   | { kind: "plan"; id: string }
   | { kind: "month-event"; id: string }
+  | { kind: "timetable"; id: string }
   | { kind: "standalone-actual"; id: string };
 
 interface TimelineEntry {
@@ -202,6 +203,23 @@ export function DayTimeline({
         startTime: plan.startTime,
         endTime: plan.endTime,
         plan,
+        occurrence,
+      }];
+    }),
+    ...scheduleOccurrences.flatMap((occurrence) => {
+      if (occurrence.source.backingKind !== "timetable-template"
+        || isScheduleOccurrenceOutsideHourlyGrid(occurrence)) return [];
+      return [{
+        id: occurrence.id,
+        targetId: occurrence.id,
+        selectionId: `timetable:${occurrence.id}`,
+        entryKind: "timetable" as const,
+        title: occurrence.title,
+        subject: occurrence.subject,
+        type: planTypeForOccurrence(occurrence),
+        sourceType: "timetable" as const,
+        startTime: occurrence.start.time,
+        endTime: occurrence.end.time,
         occurrence,
       }];
     }),
@@ -453,7 +471,7 @@ export function DayTimeline({
                     );
                     const entryKind = occurrence.source.backingKind === "plan"
                       ? "plan"
-                      : "month-event";
+                      : occurrence.source.backingKind === "timetable-template" ? "timetable" : "month-event";
                     return (
                       <button
                         key={occurrence.id}
@@ -465,7 +483,7 @@ export function DayTimeline({
                         onClick={() =>
                           onSelectEntry({
                             kind: entryKind,
-                            id: occurrence.source.backingId,
+                            id: entryKind === "timetable" ? occurrence.id : occurrence.source.backingId,
                           })
                         }
                         onContextMenu={(event) => event.preventDefault()}
@@ -590,11 +608,7 @@ export function DayTimeline({
                             event.stopPropagation();
                             return;
                           }
-                          onSelectEntry(
-                            entry.entryKind === "plan"
-                              ? { kind: "plan", id: entry.targetId }
-                              : { kind: "month-event", id: entry.targetId }
-                          );
+                          onSelectEntry({ kind: entry.entryKind, id: entry.targetId });
                         }}
                         onPointerDown={
                           dragDescriptor

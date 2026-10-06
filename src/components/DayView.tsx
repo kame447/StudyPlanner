@@ -13,7 +13,6 @@ import {
 } from '../domain/scheduleOccurrence';
 import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { addDays, formatDateLabel, sortByDateTime } from '../lib/date';
-import { projectReadOnlyTimetableOccurrencesForDay } from '../lib/dayScheduleDisplay';
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
@@ -28,6 +27,7 @@ import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress'
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { DailyMaterialShelf } from './DailyMaterialShelf';
 import { DayDetailModal } from './DayDetailModal';
+import { DayTimetableDetailModal } from './DayTimetableDetailModal';
 import { DayTimeline } from './DayTimeline';
 import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { MaterialQuickCreateModal } from './MaterialQuickCreateModal';
@@ -70,6 +70,7 @@ interface DayViewProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  onOpenTimetable?: () => void;
   onOpenBookshelf: () => void;
   onOpenAddMaterial: () => void;
 }
@@ -78,6 +79,7 @@ type DayViewModalState =
   | { type: 'closed' }
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string }
+  | { type: 'timetable-detail'; occurrenceId: string; ownerId: string; viewedDate: string }
   | { type: 'standalone-actual-detail'; actual: Actual };
 
 function createMonthEventActualPlan(
@@ -141,6 +143,7 @@ export function DayView({
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
   onDeleteActual,
+  onOpenTimetable,
   onOpenBookshelf,
   onOpenAddMaterial,
 }: DayViewProps) {
@@ -226,18 +229,6 @@ export function DayView({
         }),
       ),
     [dayMonthEventOccurrences, monthEventById, selectedDate],
-  );
-  const dayReadOnlyTimetableEvents = useMemo(
-    () =>
-      projectReadOnlyTimetableOccurrencesForDay(
-        dayScheduleProjection.occurrences,
-        selectedDate,
-      ),
-    [dayScheduleProjection.occurrences, selectedDate],
-  );
-  const dayDisplayMonthEvents = useMemo(
-    () => sortMonthEvents([...dayMonthEvents, ...dayReadOnlyTimetableEvents]),
-    [dayMonthEvents, dayReadOnlyTimetableEvents],
   );
   const dayMonthEventPlans = useMemo(
     () =>
@@ -350,6 +341,11 @@ export function DayView({
   const selectedMonthEventPlan = selectedMonthEvent
     ? dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null
     : null;
+  const selectedTimetableOccurrence = modalState.type === 'timetable-detail'
+    && modalState.ownerId === userId && modalState.viewedDate === selectedDate
+    ? dayOccurrenceById.get(modalState.occurrenceId) : undefined;
+  const detailTimetable = selectedTimetableOccurrence?.source.backingKind === 'timetable-template'
+    ? selectedTimetableOccurrence : null;
   const selectedDetailPlan = selectedPlan ?? selectedMonthEventPlan;
   const selectedDetailActual = selectedDetailPlan
     ? actualByOccurrenceKey.get(
@@ -373,7 +369,8 @@ export function DayView({
       setModalState({ type: 'closed' });
     }
 
-  }, [dayMonthEventMap, dayPlanMap, modalState, retainedDeletingPlan]);
+    if (modalState.type === 'timetable-detail' && !detailTimetable) setModalState({ type: 'closed' });
+  }, [dayMonthEventMap, dayPlanMap, detailTimetable, modalState, retainedDeletingPlan]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
@@ -498,6 +495,10 @@ export function DayView({
       onClickCapture={handleClickCapture}
     >
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
+      {detailTimetable ? (
+        <DayTimetableDetailModal key={detailTimetable.id} occurrence={detailTimetable}
+          onClose={closeModal} onOpenTimetable={onOpenTimetable} />
+      ) : null}
       <DayDetailModal
         detailPlan={selectedDetailPlan}
         monthEvent={selectedMonthEvent}
@@ -540,7 +541,7 @@ export function DayView({
       <DayTimeline
         dateLabel={dayRangeLabel}
         plans={dayPlans}
-        monthEvents={dayDisplayMonthEvents}
+        monthEvents={dayMonthEvents}
         scheduleOccurrences={dayScheduleProjection.occurrences}
         actuals={dayActuals}
         weeklyDraftBlocks={weeklyDraftBlocks.filter(
@@ -549,7 +550,9 @@ export function DayView({
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
         onMovePlan={onMovePlan}
         selectedEntryId={
-          selectedPlan
+          detailTimetable
+            ? `timetable:${detailTimetable.id}`
+            : selectedPlan
             ? `plan:${selectedPlan.id}`
             : selectedMonthEvent
               ? `month-event:${selectedMonthEvent.id}`
@@ -558,6 +561,11 @@ export function DayView({
                 : undefined
         }
         onSelectEntry={(entry) => {
+          if (entry.kind === 'timetable') {
+            setActualOpenError('');
+            setModalState({ type: 'timetable-detail', occurrenceId: entry.id, ownerId: userId, viewedDate: selectedDate });
+            return;
+          }
           if (entry.kind === 'standalone-actual') {
             const actual = dayActuals.find(item => item.id === entry.id && !item.planId);
             const reason = actual ? getActualActionBlockReason?.(actual) : null;
