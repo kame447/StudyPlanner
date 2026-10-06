@@ -82,3 +82,21 @@ for (const cachedAuth of [false, true]) {
     });
   }
 }
+
+for (const cachedAuth of [false, true]) {
+  test(`StrictMode marker observation survives profile and closes at bootstrap with ${cachedAuth ? 'cached' : 'pending'} auth`, async ({ page }) => {
+    await boot(page, 390, `&startupMarker=observe&startupProfile=off&cachedAuth=${cachedAuth ? '1' : '0'}`);
+    if (!cachedAuth) await page.evaluate(() => window.__startupGateHarness.emitAuth());
+    await page.evaluate(() => window.__startupGateHarness.emitPolicy('accepted'));
+    await expect.poll(() => page.evaluate(() => window.__startupGateHarness.markerObservations.active)).toBe(1);
+    await expect(page.locator('.splash-screen:visible')).toHaveCount(1);
+    await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
+    await expect(page.locator('.home-main')).toBeVisible();
+    const counts = await page.evaluate(() => window.__startupGateHarness.markerObservations);
+    expect(counts.started).toBeGreaterThanOrEqual(2);
+    expect(counts.stopped).toBe(counts.started); expect(counts.active).toBe(0); expect(counts.maxActive).toBe(1);
+    expect(await page.evaluate(() => window.__startupGateHarness.observations.started)).toBe(0);
+    await page.getByRole('button', { name: '予定', exact: true }).click();
+    await expect(page.locator('.schedule-main')).toBeVisible();
+  });
+}

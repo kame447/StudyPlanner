@@ -106,6 +106,8 @@ export interface TimetableMutation {
 }
 
 export interface PlannerRepository {
+  // Optional read-only startup observation; never initiates schedule migration.
+  observeStartupScheduleMarker?(expectedOwner: string, scope: StartupSessionCapability): () => void;
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
   getDayNotes(userId: string): Promise<DayNote[]>;

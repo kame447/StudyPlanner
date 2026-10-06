@@ -133,7 +133,7 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId }: { noticeAutoDismiss?: boolean; expectedUserId?: string } = {}): PlannerAppState {
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void } = {}): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
@@ -147,7 +147,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId }:
     sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
-  } = useAuthSessionState({ showNotice, expectedUserId });
+  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled });
   const {
     plans: storedPlans,
     actuals,

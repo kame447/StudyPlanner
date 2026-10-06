@@ -1,3 +1,4 @@
+import { observeStartupDocument } from './observeStartupDocument';
 import { startupTiming } from '../lib/startupTiming';
 import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
 import {
@@ -380,6 +381,12 @@ export function createFirebaseScheduleEventAuthority(
   firestoreDb: Firestore,
 ): ScheduleEventAuthorityRepository {
   return {
+    observeStartupScheduleMarker(ownerId, scope) {
+      return observeStartupDocument({
+        reference: doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, ownerId), scope,
+        phase: 'schedule-marker-observation', stopPhase: 'schedule-marker-observer-stop',
+      });
+    },
     async ensureMigrated(
       userId: string,
       loadLegacy: () => Promise<LegacyScheduleSnapshot>,
