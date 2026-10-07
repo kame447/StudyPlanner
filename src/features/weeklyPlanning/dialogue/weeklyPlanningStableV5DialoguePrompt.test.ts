@@ -149,7 +149,7 @@ describe('Stable V5 dialogue prompt', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(context);
     const payload = JSON.parse(prompt.userPrompt);
     expect(prompt.systemPrompt).toContain('ACK only typed acceptedFacts');
-    expect(prompt.systemPrompt).toContain('ask about unaccepted user times/days/amounts; never echo them as received');
+    expect(prompt.systemPrompt).toContain('Unaccepted user times/days/amounts may be queried, never echoed as received');
     expect(payload.planningStateSummary.acceptedFacts).toEqual(context.planningInformation);
     const legacy = createWeeklyPlanningStableV5DialoguePrompt({ ...context, conversationArchitecture: 'legacy_v5' });
     expect(legacy.systemPrompt).not.toContain('ACK only typed acceptedFacts');
