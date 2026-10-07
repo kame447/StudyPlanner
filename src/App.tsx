@@ -1,3 +1,4 @@
+import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
 import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
 import { useHomeScenePreference } from './hooks/useHomeScenePreference';
@@ -363,7 +364,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   };
 
   return (
-    <HomeSceneAtmosphereProvider active={isHomeSurface || settingsNavigation.isOpen}>
+    <HomeDisplayClockProvider>
+    <HomeSceneAtmosphereProvider>
     <div
       hidden={settingsNavigation.isOpen}
       className={
@@ -737,5 +739,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onClose={settingsNavigation.close}
       />
     </HomeSceneAtmosphereProvider>
+    </HomeDisplayClockProvider>
   );
 }

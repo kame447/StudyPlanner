@@ -1,3 +1,4 @@
+import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
@@ -117,9 +118,10 @@ export function HomeView({
   onOpenBookshelf,
   onOpenReport,
 }: HomeViewProps) {
+  const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos }),
-    [actuals, plans, todos],
+    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
+    [actuals, plans, todos, now],
   );
   const isGettingStarted =
     plans.length === 0 &&

@@ -1,32 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { resolveHomeSceneAtmosphere, type HomeSceneAtmosphere } from '../../lib/homeSceneAtmosphere';
+import { useHomeDisplayClock } from './HomeDisplayClockContext';
 
 const HomeSceneAtmosphereContext = createContext<HomeSceneAtmosphere | null>(null);
 
-export function HomeSceneAtmosphereProvider({ active, children }: { active: boolean; children: ReactNode }) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    if (!active || typeof window === 'undefined' || typeof document === 'undefined'
-      || !window.addEventListener || !document.addEventListener) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      clearTimeout(timer);
-      if (document.visibilityState === 'hidden') return;
-      const instant = Date.now();
-      setNow(new Date(instant));
-      timer = setTimeout(refresh, 60_000 - ((instant % 60_000) + 60_000) % 60_000);
-    };
-    refresh();
-    document.addEventListener('visibilitychange', refresh);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('pageshow', refresh);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', refresh);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('pageshow', refresh);
-    };
-  }, [active]);
+export function HomeSceneAtmosphereProvider({ children }: { children: ReactNode }) {
+  const now = useHomeDisplayClock();
   const atmosphere = useMemo(() => resolveHomeSceneAtmosphere(now), [now]);
   return <HomeSceneAtmosphereContext.Provider value={atmosphere}>{children}</HomeSceneAtmosphereContext.Provider>;
 }
