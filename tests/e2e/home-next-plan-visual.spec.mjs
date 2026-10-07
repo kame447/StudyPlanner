@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForVisualReady } from './support/ui-regression.mjs';
 
 const FIXED_NOW = new Date('2026-08-22T09:00:00Z');
 const FIXED_TODAY = '2026-08-22';
@@ -229,6 +230,9 @@ test.describe('home next-plan code-rendered scenes', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto('/');
     const scene = page.locator('.home-next-card .home-study-scene');
+    // Home adjusts its available-space layout over animation frames. Compare
+    // settled geometry on both sides of a reload, not an attached first frame.
+    await waitForVisualReady(page, '.home-next-card');
     const initialBox = await page.locator('.home-next-card').boundingBox();
     let settings = await openSettings(page);
     const drawingsByStyle = new Map();
@@ -263,6 +267,7 @@ test.describe('home next-plan code-rendered scenes', () => {
     await page.reload();
     await expect(scene).toHaveAttribute('data-scene-style', 'cozy');
     await expect(scene).toHaveAttribute('data-scene-motion', 'on');
+    await waitForVisualReady(page, '.home-next-card');
     const box = await page.locator('.home-next-card').boundingBox();
     expect(Math.abs(box.height - initialBox.height)).toBeLessThan(1);
     expect(Math.abs(box.width - initialBox.width)).toBeLessThan(1);

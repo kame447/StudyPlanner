@@ -27,15 +27,29 @@ async function assertReadable(page) {
     const cardStyle = getComputedStyle(card);
     const panel = element.querySelector('.app-settings-content');
     const box = element.getBoundingClientRect();
+    // Root clientWidth has viewport-special behavior: it can include a reserved
+    // scrollbar gutter even when fixed-position layout excludes that gutter.
+    // Measure the containing block independently, without a guessed allowance.
+    const probe = document.createElement('div');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = 'position:fixed;inset:0;width:auto;height:auto;margin:0;padding:0;border:0;visibility:hidden;pointer-events:none';
+    document.body.append(probe);
+    let viewportWidth;
+    try {
+      viewportWidth = probe.getBoundingClientRect().width;
+    } finally {
+      probe.remove();
+    }
     return { width: box.width, height: box.height, x: box.x, y: box.y,
-      viewportWidth: document.documentElement.clientWidth, viewportHeight: innerHeight,
+      viewportWidth, viewportHeight: innerHeight,
       overflow: element.scrollWidth > element.clientWidth || panel.scrollWidth > panel.clientWidth,
       background: style.backgroundColor, text: labelStyle.color, card: cardStyle.backgroundColor,
       fontSize: parseFloat(labelStyle.fontSize) };
   });
   expect(values.x).toBe(0); expect(values.y).toBe(0);
-  // The layout viewport excludes Chromium's reserved scrollbar gutter. WebKit
+  // Fill the independently measured fixed-position containing block. WebKit
   // can resolve 100dvh to a fractional CSS pixel, even for an integer viewport.
+  expect(values.viewportWidth).toBeGreaterThan(0);
   expect(Math.abs(values.width - values.viewportWidth)).toBeLessThanOrEqual(.5);
   expect(Math.abs(values.height - values.viewportHeight)).toBeLessThanOrEqual(.5);
   expect(values.overflow).toBe(false);
