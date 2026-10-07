@@ -19,9 +19,9 @@ export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 6400;
 export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
-type GenericSemanticAttempt = 'initial' | 'repair' | 'dense_completeness_retry';
+type GenericSemanticAttempt = 'initial' | 'repair' | 'staged_repair' | 'dense_completeness_retry';
 const CENSUS_ATTEMPT_STAGES: Readonly<Record<string, SemanticDispatchStage>> = {
-  initial: 'initial', repair: 'repair', dense_completeness_retry: 'retry',
+  initial: 'initial', repair: 'repair', staged_repair: 'repair', dense_completeness_retry: 'retry',
   completeness_retry: 'retry', completeness_retry_final: 'retry', dense_completeness_audit: 'audit',
   focused_task_temporal_side_contribution: 'focused', focused_user_context_date_repair: 'repair',
   focused_planning_window_repair: 'repair', focused_temporal_scope_repair: 'repair',

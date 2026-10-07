@@ -88,6 +88,8 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   providerDocument?: WeeklyPlanningSemanticDocumentV5 | null;
   /** Planning-delta validation errors only; conversation acts never add one. */
   errors: string[];
+  /** The stage that rejected the delta; post-parse checks only ever see a parsed document. */
+  failedStage?: 'parse' | 'post_parse';
   algorithmicRepairs: string[];
   /**
    * Interaction architecture only: the response's valid conversation acts, reported even
@@ -167,6 +169,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
         conversationArchitecture: input.conversationArchitecture,
       }),
       errors,
+      failedStage: 'parse',
       algorithmicRepairs: preParseNormalization.repairs,
       ...providerDocument,
       ...conversationActEvidence,
@@ -241,6 +244,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     document: errors.length === 0 ? document : null,
     parsedDocument: document,
     errors,
+    ...(errors.length > 0 ? { failedStage: 'post_parse' as const } : {}),
     algorithmicRepairs,
     ...providerDocument,
     ...conversationActEvidence,

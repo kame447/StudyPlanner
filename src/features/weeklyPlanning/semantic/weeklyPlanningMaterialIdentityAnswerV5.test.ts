@@ -7,6 +7,7 @@ import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticD
 import { projectWeeklyPlanningExistingWorkloadRateReferenceV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
 import { reconcileWeeklyPlanningGroundingRecordsV5 } from './weeklyPlanningGroundingV5';
 import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { weeklyPlanningLabelEvidencedBySourceV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
 
 const source = { conversationId: 'c', turnId: 'initial', semanticLocalId: 'm', sourceText: '数学の問題集を20問', origin: 'user' as const };
 function state() {
@@ -175,6 +176,16 @@ describe('identity refinement without an open material question (live B on 64436
     const document = answer();
     document.uncertainties = [{ localId: 'unsure', targetLocalId: 'task', field: 'material_identity', reason: '教材をまだ決めていない', sourceText: '青チャート' }];
     expect(weeklyPlanningMaterialIdentityAnswersV5(state(), document)).toEqual([]);
+  });
+  // A literal gate that only ever falls back to binding-only (reviews of 48a42eec).
+  it.each([
+    ['青チャート 数学III', '青チャートのこと', true],
+    ['ＦＯＣＵＳ ＧＯＬＤ', 'focusのこと', true],
+    ['英語', '英語のこと', true],
+    ['青チャート 数学III', 'ありがとう', false],
+    ['チャート式 基礎からの数学', '青チャのこと', false],
+  ] as const)('evidences %s from %s: %s', (label, source, expected) => {
+    expect(weeklyPlanningLabelEvidencedBySourceV5(label, source)).toBe(expected);
   });
   it('keeps legacy binding-only without an open question', () => {
     const graph = withoutNeed(); const document = answer();
