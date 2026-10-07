@@ -135,6 +135,26 @@ describe('Stable V5 dialogue prompt', () => {
     expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
   });
 
+  it('acknowledges only typed accepted facts when the message also contains unaccepted conditions', () => {
+    const context: WeeklyPlanningStableV5DialogueRenderInput = {
+      ...input(), currentUserMessage: '1ページ3分、平日は20時以降がいい',
+      planningInformation: { workloads: [{ amount: 20, unitLabel: 'ページ', quantityRole: 'target' }] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] },
+      communication: {
+        goal: 'ask_question', questionPurposes: ['estimate_time_to_fit_available_time'],
+        askQuestion: true, laterNeeds: [], statusReason: null,
+        planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+      },
+    };
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt(context);
+    const payload = JSON.parse(prompt.userPrompt);
+    expect(prompt.systemPrompt).toContain('ACK only typed acceptedFacts');
+    expect(prompt.systemPrompt).toContain('ask about unaccepted user times/days/amounts; never echo them as received');
+    expect(payload.planningStateSummary.acceptedFacts).toEqual(context.planningInformation);
+    const legacy = createWeeklyPlanningStableV5DialoguePrompt({ ...context, conversationArchitecture: 'legacy_v5' });
+    expect(legacy.systemPrompt).not.toContain('ACK only typed acceptedFacts');
+  });
+
   it('stays inside the size guard for every interaction goal with every optional instruction', () => {
     const goals = ['ask_question', 'report_status', 'present_preview', 'explain_question',
       'acknowledge_aside', 'resume_question', 'clarify_turn'] as const;
