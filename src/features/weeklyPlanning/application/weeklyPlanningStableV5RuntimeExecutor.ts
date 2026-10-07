@@ -41,6 +41,10 @@ import {
 import {
   stageWeeklyPlanningStableV5Turn,
 } from './weeklyPlanningStableV5TurnStaging';
+import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
+import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -69,10 +73,28 @@ function communicationFacts(params: {
   statusReason: WeeklyPlanningTurnStatusReason | null;
   planningDetailsNotApplied: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
+  consultationRequested: boolean;
+  preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
+  schedulerInput?: GenericSchedulerInput;
 }): WeeklyPlanningTurnCommunicationFacts {
   const context = params.output.state.lastQuestionContext;
   const code = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
   return {
+    allocationBreakdown: summarizeWeeklyPlanningAllocationBreakdown(params.output.draftCandidates),
+    ...(params.schedulerInput && params.output.draftCandidates.length > 0
+      ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
+          graph: params.evaluation.activeGraph,
+          schedulerInput: params.schedulerInput,
+          candidates: params.output.draftCandidates,
+        }) }
+      : {}),
+    consultation: params.consultationRequested
+      ? consultationCommunicationForPlanning({
+          compilation: params.evaluation.compilation,
+          preview: params.preview,
+          preserveExistingPreview: params.output.preserveExistingPreview === true,
+        })
+      : null,
     statusReason: params.statusReason,
     upcomingQuestionCodes: upcomingQuestionCodesForInteraction({
       evaluation: params.evaluation,
@@ -159,6 +181,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               statusReason: responseRoute.statusReason,
               planningDetailsNotApplied,
               omittedWork: null,
+              consultationRequested: interactionPlan.acts.consultation,
             }),
           }
         : {}),
@@ -204,6 +227,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             statusReason: null,
             planningDetailsNotApplied,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
+            consultationRequested: interactionPlan!.acts.consultation,
+            preview,
+            schedulerInput: responseRoute.schedulerInput,
           }),
         }
       : {}),

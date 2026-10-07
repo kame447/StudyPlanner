@@ -150,14 +150,25 @@ describe('Stable V5 dialogue prompt', () => {
           statusReason: goal === 'report_status' ? 'ready_to_create_preview' : null,
           planningDetailsNotApplied: true,
           consultationDeferred: true,
+          consultation: {
+            mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+            feasibility: { status: 'not_evaluated', reason: 'preview_required' },
+            missingQuestionCodes: [], workEstimates: [], dailyLimits: [], nextAction: 'offer_preview',
+          },
           previewDisclosure: goal === 'present_preview'
             ? { omittedWork: [{ label: '英語', extent: 'all' as const }, { label: '物理', extent: 'part' as const }] }
             : null,
+          ...(goal === 'present_preview' ? {
+            previewConstraintSatisfaction: [{ sourceFactId: 'p', taskId: 't', taskLabel: '英語',
+              kind: 'preferred_window' as const, status: 'not_satisfied' as const }],
+            allocationBreakdown: { estimatedMinutes: 60, calibratedMinutes: 60, bufferedMinutes: 66,
+              allocatedMinutes: 70, marginMinutes: 10, reasons: ['estimate_margin' as const, 'rounding' as const] },
+          } : {}),
         },
       });
       const payload = JSON.parse(prompt.userPrompt) as { request: string };
       expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
-      expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
+      expect(bytes(payload.request), goal).toBeLessThanOrEqual(4000);
     }
   });
 
@@ -186,6 +197,15 @@ describe('Stable V5 dialogue prompt', () => {
     expect(requestFor('clarify_turn')).toContain('聞き直す質問はせず');
     // An unanswered consultation is not refused with "cannot judge" wording.
     expect(requestFor('clarify_turn', { consultationDeferred: true })).toContain('「判断できない」「相談」などの断り方はせず');
+    const adviceRequest = requestFor('present_preview', { consultation: {
+      mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+      feasibility: { status: 'fits', basis: 'current_turn_scheduler' },
+      missingQuestionCodes: [], workEstimates: [], dailyLimits: [], nextAction: 'review_preview',
+    } });
+    expect(adviceRequest).toContain('Answer the side question first');
+    expect(adviceRequest).toContain('NOT free time');
+    expect(adviceRequest).toContain('never proves an unaccepted alternative');
+    expect(adviceRequest).not.toContain('助言・可否・数値の判断は書かない');
   });
 
   it('asks the renderer to acknowledge what this turn removed only when something was removed', () => {

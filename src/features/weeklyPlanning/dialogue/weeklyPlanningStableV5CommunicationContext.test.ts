@@ -8,6 +8,7 @@ import {
   type WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
 import type { WeeklyPlanningTurnCommunicationFacts } from '../application/weeklyPlanningInteractionOutcome';
+import { consultationCommunicationForPlanning } from '../application/weeklyPlanningConsultationCommunication';
 
 const facts = (overrides: Partial<WeeklyPlanningTurnCommunicationFacts> = {}): WeeklyPlanningTurnCommunicationFacts => ({
   statusReason: null,
@@ -22,6 +23,23 @@ const effort = (measurement: 'total_duration' | 'duration_per_unit' | 'session_d
 }) as WeeklyPlanningStableV5DialogueQuestionIntent;
 
 describe('communication goal (deterministic WHAT of a reply)', () => {
+  it('offers read-only consultation evidence only when the semantic act requested it', () => {
+    const consultation = consultationCommunicationForPlanning({
+      compilation: { status: 'needs_resolution', input: null, issues: [{
+        domain: 'work_item', code: 'missing_effort_estimate', blocking: true, factId: 'work',
+      }] }, preserveExistingPreview: false,
+    });
+    const params = {
+      facts: facts({ consultation }), actionKind: 'status' as const, questionCode: null, questionIntent: null,
+    };
+    const aside = communicationContextForStableV5Dialogue({
+      ...params, outcome: { kind: 'aside', consultationDeferred: true },
+    });
+    expect(aside).toMatchObject({ goal: 'acknowledge_aside', askQuestion: false, consultation });
+    expect(communicationContextForStableV5Dialogue({
+      ...params, outcome: { kind: 'apply', consultationDeferred: false },
+    })).not.toHaveProperty('consultation');
+  });
   it('follows the typed interaction outcome, never the user text', () => {
     const goal = (kind: string | undefined, actionKind: 'question' | 'status' | 'preview_ready') =>
       communicationContextForStableV5Dialogue({
@@ -70,6 +88,28 @@ describe('communication goal (deterministic WHAT of a reply)', () => {
       questionIntent: null,
     });
     expect(preview).toMatchObject({ goal: 'present_preview', statusReason: null, previewDisclosure: disclosure });
+  });
+
+  it('exposes actual preview constraint/allocation evidence only alongside a new preview', () => {
+    const previewConstraintSatisfaction = [{
+      sourceFactId: 'preference', taskId: 'task', taskLabel: '研究',
+      kind: 'preferred_window' as const, status: 'not_satisfied' as const,
+    }];
+    const allocationBreakdown = {
+      estimatedMinutes: 60, calibratedMinutes: 60, bufferedMinutes: 66,
+      allocatedMinutes: 70, marginMinutes: 10, reasons: ['estimate_margin', 'rounding'] as const,
+    };
+    const parameters = {
+      outcome: { kind: 'apply' as const, consultationDeferred: false },
+      facts: facts({ previewConstraintSatisfaction, allocationBreakdown: {
+        ...allocationBreakdown, reasons: [...allocationBreakdown.reasons],
+      } }), questionCode: null, questionIntent: null,
+    };
+    expect(communicationContextForStableV5Dialogue({ ...parameters, actionKind: 'preview_ready' }))
+      .toMatchObject({ previewConstraintSatisfaction, allocationBreakdown });
+    const kept = communicationContextForStableV5Dialogue({ ...parameters, actionKind: 'status' });
+    expect(kept).not.toHaveProperty('previewConstraintSatisfaction');
+    expect(kept).not.toHaveProperty('allocationBreakdown');
   });
 
   it('lists later open needs by purpose, without the current purpose, deduplicated and bounded', () => {

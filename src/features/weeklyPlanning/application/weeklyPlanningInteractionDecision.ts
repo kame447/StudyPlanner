@@ -24,6 +24,8 @@ import {
  * the produced result.
  */
 export interface WeeklyPlanningInteractionPlan {
+  /** A mixed turn retains normal planning progression after applying its independent delta. */
+  planningChanged: boolean;
   /** A different open question to present than the policy's top one (named topic / asked about). */
   dialogueQuestionOverride: WeeklyPlanningStableQuestionV5 | null;
   /** The act named an existing active topic (validated against the graph at use time). */
@@ -153,6 +155,7 @@ export function planWeeklyPlanningInteraction(params: {
     }
   }
   return {
+    planningChanged: params.evaluation.semanticChanged,
     dialogueQuestionOverride: override,
     targetResolved: targetId !== null,
     targetQuestionOpen,
@@ -205,7 +208,9 @@ export function classifyWeeklyPlanningInteraction(params: {
       ? { kind: 'explain_pending_question', consultationDeferred }
       : apply;
   }
-  if (acts.shift) return { kind: 'aside', consultationDeferred };
+  if (acts.shift || (acts.consultation && !params.plan.planningChanged)) {
+    return { kind: 'aside', consultationDeferred };
+  }
   return apply;
 }
 

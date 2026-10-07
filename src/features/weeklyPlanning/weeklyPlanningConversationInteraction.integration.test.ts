@@ -301,6 +301,56 @@ describe('Issue #488 A: explanation of the pending question', () => {
 });
 
 describe('Issue #488 B: aside and resume', () => {
+  it('answers a consultation without planning changes, holds the question, and resumes with fresh binding', async () => {
+    const conversation = createScriptedConversation({ provider });
+    await conversation.submit(MATH_SETUP);
+    const before = structuredClone(conversation.graph());
+    const question = pendingTarget(conversation);
+    const authorization = conversation.getState().intakeState?.draftGenerationIntent;
+    script = (call) => {
+      if (call.kind === 'semantic_generic') return JSON.stringify(emptyDocument({
+        conversationActs: [act('consultation_request')],
+      }));
+      if (call.kind === 'renderer') return scriptedRendererReply(call,
+        '土日にまとめる進め方も選べます。数学にかかる時間と土日の予定が分かれば、無理なく入るか仮予定で確かめられます。');
+      return undefined;
+    };
+    const aside = await conversation.submit('その前に、土日にまとめてやる感じでも大丈夫？');
+    const renderer = aside.calls.find((call) => call.kind === 'renderer')!;
+    expect(aside.result?.responseSource, aside.result?.dialogueRendererTrace?.response.reason ?? '').toBe('ai');
+    expect(aside.result?.interactionOutcome?.kind).toBe('aside');
+    expect(rendererDecision(renderer)).toMatchObject({ communication: {
+      goal: 'acknowledge_aside', askQuestion: false,
+      consultation: {
+        mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+        feasibility: { status: 'not_evaluated', reason: 'planning_details_missing' },
+        missingQuestionCodes: expect.arrayContaining(['missing_effort_estimate']),
+        nextAction: 'clarify_planning_details',
+      },
+    } });
+    expect(String(renderer.payload?.request)).not.toContain('助言・可否・数値の判断は書かない');
+    expect(conversation.graph()).toEqual({
+      ...before,
+      appliedTurnKeys: [...before!.appliedTurnKeys, `issue488-conversation:${aside.requestId}`],
+    });
+    expect(conversation.getState().intakeState?.draftGenerationIntent).toBe(authorization);
+    expect(aside.result?.draftCandidates).toEqual([]);
+    expect(pendingTarget(conversation)).toEqual(question);
+    expect(freshness(conversation).status).toBe('unbound');
+    expect(aside.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
+    script = (call) => call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('resume_topic')] }))
+      : undefined;
+    const resumed = await conversation.submit('元の話に戻ろう');
+    expect(resumed.calls.some((call) => call.kind === 'semantic_focused_contextual')).toBe(false);
+    expect(resumed.result?.interactionOutcome?.kind).toBe('resume_pending_question');
+    expect(pendingTarget(conversation)).toEqual(question);
+    expect(freshness(conversation).status).toBe('fresh');
+    script = (call) => call.kind === 'semantic_focused_contextual' ? focusedEffort(3) : undefined;
+    await conversation.submit('1問3分くらい');
+    expect(effortMinutesFor(conversation, question.topicId)).toEqual([3]);
+  });
+
   it('does not rebind an old question on an aside, does not bind a later short reply to it, and re-presents on resume', async () => {
     const conversation = createScriptedConversation({ provider });
     await conversation.submit(TWO_TASK_SETUP);
@@ -706,7 +756,50 @@ describe('Issue #488 F: stale responses and double submit', () => {
 });
 
 describe('Issue #488 G: mixed turns keep independent planning contributions', () => {
-  it('applies the planning contribution and records the consultation as a deferred handoff', async () => {
+  it('grounds advice in a real current preview but never reuses that verdict for a later hypothetical preference', async () => {
+    const conversation = createScriptedConversation({ provider });
+    script = (call) => call.kind === 'semantic_generic' ? JSON.stringify(emptyDocument({
+      planningIntent: 'create_plan',
+      planningWindow: { localId: 'w', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' },
+      tasks: [studyTask({
+        localId: 'research', title: '卒業研究ノート', activityKind: 'writing', workloads: [],
+        effortEstimates: [{
+          localId: 'time', targetLocalId: 'research', kind: 'total_duration', minutes: 180,
+          unitCode: null, precision: 'exact', sourceText: '3時間',
+        }], sourceText: '卒業研究ノートを3時間進めたい',
+      })],
+      conversationActs: [act('consultation_request')],
+    })) : undefined;
+    const planned = await conversation.submit('来週、卒業研究ノートを3時間進めたい。土日にまとめるのもあり？');
+    expect(planned.result?.failure).toBeUndefined();
+    expect(planned.result!.draftCandidates.length).toBeGreaterThan(0);
+    expect(rendererDecision(planned.calls.find((call) => call.kind === 'renderer'))).toMatchObject({ communication: {
+      consultation: {
+        mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+        feasibility: { status: 'fits', basis: 'current_turn_scheduler' },
+        workEstimates: expect.arrayContaining([expect.objectContaining({ minutes: expect.any(Number) })]),
+        nextAction: 'review_preview',
+      },
+    } });
+    const before = structuredClone(conversation.graph());
+    const drafts = structuredClone(conversation.getState().previewCandidates);
+    script = (call) => call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('consultation_request')] })) : undefined;
+    const advice = await conversation.submit('その前に、土日にまとめてやる感じでも大丈夫？');
+    expect(rendererDecision(advice.calls.find((call) => call.kind === 'renderer'))).toMatchObject({ communication: {
+      consultation: {
+        feasibility: { status: 'not_evaluated', reason: 'existing_preview_not_rechecked' },
+        nextAction: 'offer_preference_change',
+      },
+    } });
+    expect(conversation.graph()).toEqual({
+      ...before, appliedTurnKeys: [...before!.appliedTurnKeys, `issue488-conversation:${advice.requestId}`],
+    });
+    expect(conversation.getState().previewCandidates).toEqual(drafts);
+    expect(advice.result?.draftCandidates).toEqual([]);
+  });
+
+  it('applies the independent planning contribution and supplies bounded consultation evidence', async () => {
     const conversation = createScriptedConversation({ provider });
     await conversation.submit(TWO_TASK_SETUP);
     const graphRevision = conversation.graph()!.revision;
@@ -734,8 +827,11 @@ describe('Issue #488 G: mixed turns keep independent planning contributions', ()
       expect.objectContaining({ kind: 'unavailable', startTime: '18:00', endTime: '20:00' }),
     ]);
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
-    expect(rendererDecision(renderer)).toMatchObject({ communication: { consultationDeferred: true } });
-    expect(turn.result?.interactionOutcome).toMatchObject({ consultationDeferred: true });
+    expect(rendererDecision(renderer)).toMatchObject({ communication: {
+      askQuestion: true, consultationDeferred: true,
+      consultation: { mode: 'advisory_only', feasibility: { status: 'not_evaluated', reason: 'planning_details_missing' } },
+    } });
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'apply', consultationDeferred: true });
   });
 });
 

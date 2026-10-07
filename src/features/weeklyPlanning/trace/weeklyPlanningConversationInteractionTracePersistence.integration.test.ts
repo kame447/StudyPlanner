@@ -263,6 +263,56 @@ function expectBounded(entry: unknown, workerEntry: unknown) {
 }
 
 describe('conversation interaction trace persistence gate', () => {
+  it('retains consultation evidence and prompt through retry, Worker preparation and future/oversized fields', async () => {
+    const { explanation } = await realTurns();
+    const renderer = explanation.calls.find((call) => call.kind === 'renderer')!;
+    const communication = (renderer.payload!.applicationDecision as Json).communication as Json;
+    expect(communication.consultation).toMatchObject({
+      mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+      feasibility: { status: 'not_evaluated', reason: 'planning_details_missing' },
+      missingQuestionCodes: ['missing_effort_estimate'], nextAction: 'clarify_planning_details',
+    });
+    const input = traceInput(explanation, explanation.debugTrace);
+    const context = input.dialogueRendererTrace!.request!.promptContext as Json;
+    const messages = context.messages as Array<{ role: string; content: string }>;
+    expect(messages).toEqual(renderer.messages);
+    const user = messages.find((message) => message.role === 'user')!;
+    const payload = JSON.parse(user.content) as Json;
+    expect((payload.applicationDecision as Json).communication).toEqual(communication);
+    // The envelope admits future typed evidence without a Worker/schema field migration.
+    const consultation = ((payload.applicationDecision as Json).communication as Json).consultation as Json;
+    consultation.futureConsultationEvidence = FUTURE_FIELD_SENTINEL;
+    user.content = JSON.stringify(payload);
+    context.requestBytes = new TextEncoder().encode(JSON.stringify(messages)).byteLength;
+    const oversized = structuredClone(input);
+    oversized.requestId = `${CONVERSATION_ID}:request:oversized-consultation`;
+    const largeContext = oversized.dialogueRendererTrace!.request!.promptContext as Json;
+    const largeMessages = largeContext.messages as Array<{ role: string; content: string }>;
+    const largeUser = largeMessages.find((message) => message.role === 'user')!;
+    const largePayload = JSON.parse(largeUser.content) as Json;
+    largePayload.futureLargeConsultationEvidence = 'あ'.repeat(30_000);
+    largeUser.content = JSON.stringify(largePayload);
+    largeContext.requestBytes = new TextEncoder().encode(JSON.stringify(largeMessages)).byteLength;
+    const harness = await persistThroughOutbox([input, oversized]);
+    const kept = persistedFor(harness, explanation.requestId!);
+    for (const entry of [kept.entry, kept.preparedEntry]) {
+      const serialized = JSON.stringify(entry);
+      for (const marker of ['advisory_only', 'accepted_plan_only', 'planning_details_missing',
+        'clarify_planning_details', 'Answer the side question first', FUTURE_FIELD_SENTINEL]) {
+        expect(serialized).toContain(marker);
+      }
+    }
+    expectBounded(kept.entry, kept.preparedEntry);
+    const large = persistedFor(harness, oversized.requestId);
+    for (const entry of [large.entry, large.preparedEntry]) {
+      const serialized = JSON.stringify(entry);
+      expect(serialized).toContain('advisory_only');
+      expect(serialized).toMatch(/traceProjectionTruncated|traceTruncatedItems|truncated/u);
+      expect(serialized).not.toContain('あ'.repeat(30_000));
+    }
+    expectBounded(large.entry, large.preparedEntry);
+  });
+
   it('persists an accepted removal and its acknowledgment instruction through retry, future fields and large-value truncation', async () => {
     const setup = mathSetup();
     setup.availabilityDeclarations = [{

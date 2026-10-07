@@ -1,3 +1,7 @@
+import type { WeeklyPlanningConsultationCommunication } from './weeklyPlanningConsultationCommunication';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
+
 /**
  * Deterministic interaction outcome of one Stable V5 turn.
  *
@@ -62,6 +66,11 @@ export interface WeeklyPlanningPreviewOmittedWork {
  * never read back as planning truth. Absent in the legacy architecture.
  */
 export interface WeeklyPlanningTurnCommunicationFacts {
+  /** Accepted preferences compared with the candidates actually shown in this turn. */
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
+  allocationBreakdown?: WeeklyPlanningAllocationBreakdown | null;
+  /** Bounded planning advice; the separate #246 advice/adoption runtime remains deferred. */
+  consultation?: WeeklyPlanningConsultationCommunication | null;
   statusReason: WeeklyPlanningTurnStatusReason | null;
   /** Other open blocking question codes (deferred ones excluded), for "what comes later". */
   upcomingQuestionCodes: string[];

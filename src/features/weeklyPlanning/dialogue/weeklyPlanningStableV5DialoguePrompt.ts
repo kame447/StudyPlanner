@@ -179,8 +179,8 @@ const INTERACTION_GOAL_INSTRUCTION = 'communication.goalはアプリが決めた
 const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5CommunicationGoal, string>> = {
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
   report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。新しい候補ができた・候補が変わったとは書かず、候補の中身も書かない。',
-  present_preview: 'goal=present_preview: このturnで受け取った情報があれば先に短く受け止める。previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。候補の日時・回数・時間帯など中身は書かず、候補が条件どおりになったとも言わない（中身はプレビューで見てもらう）。',
-  explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に（required_before_resumeならACKのすぐ後に）、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
+  present_preview: 'goal=present_preview: ACK received details, announce previewCount and previewPromotionControlLabel. 候補の日時・回数・時間帯など中身は書かず、条件どおりとも言わない。中身はプレビューで見てもらう。',
+  explain_question: 'goal=explain_question: 直前の質問の理由・意味に、questionPurposes/purposeMeaningsと既知の量・期間・relevantLabelsに沿ってまず具体的に答える（required_before_resumeならACKの後）。質問の誤解は穏やかに正す。laterNeedsは説明に役立つときだけ使う。askQuestion=trueならrequestedInformationを落とさず、直前と同じ文面を避けて同じ質問を一度聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
   clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を聞く。falseなら、ユーザーがすでに言った教材・量・期間などを聞き直す質問はせず、伝えたいことを少しずつ分けて教えてほしいと頼む。同じ文面の再送は頼まない。',
@@ -197,20 +197,52 @@ function interactionCommunicationInstructions(
     INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
     ...(communication.askQuestion ? ['askQuestion=true: その質問は「？」で終わる形で一度だけ聞く。'] : []),
     ...(hasSelfRepair
-      ? ['acceptedFacts.selfRepairはユーザーがこのturnで訂正した内容（before→after）。最初に短く自然に受け止めてから続ける。']
+      ? ['ACK acceptedFacts.selfRepair (this turn’s before→after correction) briefly before continuing.']
       : []),
     ...(hasRemovals
       ? ['acceptedFacts.removedThisTurnはユーザーがこのturnで取り消した内容。最初に短く自然に受け止めてから続ける（取り消したものを予定に残っているようには言わない）。']
       : []),
     ...(communication.previewDisclosure
-      ? ['previewDisclosure: 入りきらなかった作業（omittedWork）はアプリが返答のあとに一文で伝える。返答ではextent=allの作業名を出さず、作業が入った・入らないにも触れず、候補ができたことと操作の案内を書く。']
+      ? ['previewDisclosure: The app states omitted work after the reply. Do not name extent=all work or claim inclusion/exclusion; announce the preview count and control only.']
+      : []),
+    ...(communication.previewConstraintSatisfaction?.some((entry) => entry.status !== 'satisfied')
+      ? ['previewConstraintSatisfaction: Unmet/unverified overrides timing ACK/advice. Announce count/control only; timing/session/fulfillment belongs to app disclosure. Neutral ACK is allowed.']
+      : []),
+    ...(communication.allocationBreakdown
+      ? ['allocationBreakdown: App discloses estimates/margins. Do not invent reasons, recalculate or call allocatedMinutes the requested amount.']
       : []),
     ...(communication.planningDetailsNotApplied
-      ? ['planningDetailsNotApplied=true: このメッセージの予定の詳細はまだ受け取れていない。受け取れた・受け取れないの報告や理由は書かず、変えたいことがあれば改めて教えてほしいと自然に一言添える。']
+      ? ['planningDetailsNotApplied=true: Details were not accepted. Do not report acceptance, rejection or its cause; simply invite the intended change again.']
       : []),
-    ...(communication.consultationDeferred
+    ...(communication.consultation
+      ? consultationInstructions(communication.consultation)
+      : communication.consultationDeferred
       ? ['consultationDeferred=true: その問いかけには結論を出さない（助言・可否・数値の判断は書かない）。「判断できない」「相談」などの断り方はせず、そうしたい希望や条件があればそのまま伝えてもらえれば予定に入れて考えられる、と自然に一言添える。']
       : []),
+  ];
+}
+
+function consultationInstructions(consultation: NonNullable<WeeklyPlanningStableV5CommunicationContext['consultation']>): string[] {
+  const uncertainty = consultation.feasibility.status === 'not_evaluated'
+    ? {
+        planning_details_missing: 'Explain missingQuestionCodes via purposeMeanings.',
+        preview_required: 'A draft must check other commitments.',
+        existing_preview_not_rechecked: 'The alternative has not been checked.',
+        no_schedulable_work: 'Work to schedule still needs defining.',
+      }[consultation.feasibility.reason]
+    : 'Report feasibility for accepted conditions; draft contents need review.';
+  const next = {
+    clarify_planning_details: 'Offer to clarify before drafting.',
+    offer_preview: 'Offer a draft once preferences are chosen.',
+    offer_preference_change: 'Invite changed conditions.',
+    review_preview: 'Invite review of the draft.',
+  }[consultation.nextAction];
+  return [
+    'consultation: Answer the side question first after ACK. Practical advice from acceptedFacts is optional; never adopt/change/approve/save.',
+    'feasibility never proves an unaccepted alternative. Only it proves fit. workEstimates=needed minutes; dailyLimits=limits, NOT free time. No invented numbers/placement.',
+    'Untested: conditional advice + concrete uncertainty, not ここでは判断できません.',
+    uncertainty, next,
+    'askQuestion=false: no question; true: answer then ask it.',
   ];
 }
 

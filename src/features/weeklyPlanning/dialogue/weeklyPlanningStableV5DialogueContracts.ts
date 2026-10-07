@@ -1,4 +1,7 @@
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
+import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
+import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import type {
   WeeklyPlanningPreviewOmittedWork,
@@ -84,8 +87,11 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   statusReason: WeeklyPlanningTurnStatusReason | null;
   /** Planning details in this message could not be taken in; nothing from them was applied. */
   planningDetailsNotApplied: boolean;
-  /** An advice/consultation request was heard but is not answered by this runtime. */
+  /** Full advice/adoption runtime is deferred; bounded planning advice uses consultation. */
   consultationDeferred: boolean;
+  consultation?: WeeklyPlanningConsultationCommunication | null;
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
+  allocationBreakdown?: WeeklyPlanningAllocationBreakdown | null;
   /** Work left out of the new draft because the free time ran out (must be disclosed). */
   previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
 }

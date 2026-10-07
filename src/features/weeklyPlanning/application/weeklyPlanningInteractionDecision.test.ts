@@ -39,6 +39,7 @@ function plan(
   targetResolved = targetQuestionOpen,
 ): WeeklyPlanningInteractionPlan {
   return {
+    planningChanged: false,
     dialogueQuestionOverride: null,
     targetResolved,
     targetQuestionOpen,
@@ -87,6 +88,11 @@ describe('interaction outcome classification (typed acts + machine state only)',
   it('never lets an act suppress a preview, and keeps the consultation marker', () => {
     const outcome = classify(plan({ shift: true, ask: true, consultation: true }), output({ question, draft: true }));
     expect(outcome).toEqual({ kind: 'apply', consultationDeferred: true });
+  });
+
+  it('holds the question on a consultation alone but keeps normal progression for mixed planning changes', () => {
+    expect(classify(plan({ consultation: true }), output({ question })).kind).toBe('aside');
+    expect(classify({ ...plan({ consultation: true }), planningChanged: true }, output({ question })).kind).toBe('apply');
   });
 
   it('keeps independent contributions: an explanation can carry a consultation marker', () => {

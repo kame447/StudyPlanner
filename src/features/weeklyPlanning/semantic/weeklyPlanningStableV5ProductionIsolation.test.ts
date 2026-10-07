@@ -39,6 +39,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningLegacyFailurePresentation.ts',
   // Interaction layer: typed conversation acts + question identity over the graph; no raw text.
   'application/weeklyPlanningInteractionDecision.ts',
+  // Interaction layer: read-only consultation evidence from the actual preview result (type-only).
+  'application/weeklyPlanningConsultationCommunication.ts',
   // Test-only: bind a pending question to its presenting message as the controller does.
   'testUtils/weeklyPlanningFreshPresentationTestUtils.ts',
   // Test-only: scripted-provider full-turn harness over the real controller/runtime.

@@ -329,7 +329,7 @@ describe('A. explanation under a pending effort question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "025d7740bd2b03af275593be2c7761e6bf0e0e42ced5553cf1f5f601791bb3c1",
+          "sha256": "0efc91c74327b264a805fe56b6cca43f1c17f9e149a4e220b827a1746a9a6e64",
         },
       ]
     `);

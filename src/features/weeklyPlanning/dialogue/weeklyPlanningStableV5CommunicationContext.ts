@@ -164,7 +164,10 @@ export function communicationContextForStableV5Dialogue(params: {
       })
     : [];
   const laterNeeds = [...new Set(
-    (params.facts?.upcomingQuestionCodes ?? []).flatMap(purposesForQuestionCode),
+    [
+      ...(params.facts?.upcomingQuestionCodes ?? []),
+      ...(params.outcome?.consultationDeferred ? params.facts?.consultation?.missingQuestionCodes ?? [] : []),
+    ].flatMap(purposesForQuestionCode),
   )]
     .filter((purpose) => !questionPurposes.includes(purpose))
     .slice(0, LATER_NEEDS_LIMIT);
@@ -176,6 +179,15 @@ export function communicationContextForStableV5Dialogue(params: {
     statusReason: goal === 'report_status' ? params.facts?.statusReason ?? null : null,
     planningDetailsNotApplied: params.facts?.planningDetailsNotApplied === true,
     consultationDeferred: params.outcome?.consultationDeferred === true,
+    ...(params.outcome?.consultationDeferred === true
+      ? { consultation: params.facts?.consultation ?? null }
+      : {}),
+    ...(params.actionKind === 'preview_ready' && params.facts?.previewConstraintSatisfaction
+      ? { previewConstraintSatisfaction: params.facts.previewConstraintSatisfaction }
+      : {}),
+    ...(params.actionKind === 'preview_ready' && params.facts?.allocationBreakdown
+      ? { allocationBreakdown: params.facts.allocationBreakdown }
+      : {}),
     previewDisclosure: params.actionKind === 'preview_ready'
       ? params.facts?.previewDisclosure ?? null
       : null,
