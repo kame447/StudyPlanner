@@ -7,7 +7,8 @@ async function open(page, scenario) {
   await page.goto(`/weekly-real-scenarios.html?scenario=${scenario}`);
   await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
 }
-async function send(page, index, sequence = index + 1) {
+const TWO_CALLS = { total: 2, semantic: 1, renderer: 1 };
+async function send(page, index, sequence = index + 1, dispatches = TWO_CALLS) {
   const text = await page.evaluate(index => window.__weeklyCampaign.texts[index], index);
   const input = page.locator('.ai-planning-composer textarea');
   await input.fill(text);
@@ -15,9 +16,9 @@ async function send(page, index, sequence = index + 1) {
   await expect.poll(() => page.evaluate(() => window.__weeklyCampaign.measurements().at(-1)?.sequence)).toBe(sequence);
   await expect(input).toBeEnabled();
   const measurement = await page.evaluate(() => window.__weeklyCampaign.measurements().at(-1));
-  expect(measurement).toMatchObject({ status: 'committed', failureCode: null, aiDispatches: { total: 2, semantic: 1, renderer: 1 } });
+  expect(measurement).toMatchObject({ status: 'committed', failureCode: null, aiDispatches: dispatches });
   const metrics = page.getByTestId('architecture-eval-metrics');
-  await expect(metrics.locator('[data-metric="ai-dispatches"]')).toHaveAttribute('data-value', '2');
+  await expect(metrics.locator('[data-metric="ai-dispatches"]')).toHaveAttribute('data-value', String(dispatches.total));
   await expect(metrics.locator('[data-metric="mode"]')).toHaveAttribute('data-architecture', measurement.architecture);
   await expect(metrics.locator('[data-metric="elapsed-ms"]')).toHaveAttribute('data-value', String(measurement.elapsedMs));
   expect(await page.evaluate(() => window.__weeklyCampaign.failures)).toEqual([]);
@@ -52,7 +53,10 @@ for (const scenario of ['A', 'C', 'D', 'F']) {
     let candidates = [];
     let beforeCorrection;
     for (let index = 0; index < count; index += 1) {
-      candidates = await send(page, index);
+      // F turns 5-6 add no new fact to the accepted plan; that act-less shell is re-read once
+      // and then accepted as unchanged (same contract as the Vitest campaign, 65f178e0).
+      candidates = await send(page, index, index + 1, scenario === 'F' && index >= 4
+        ? { total: 3, semantic: 2, renderer: 1 } : TWO_CALLS);
       if (scenario === 'C' && index === 0) beforeCorrection = candidates;
       if (scenario === 'F' && index >= 1) expect(candidates.reduce((total, entry) => total + entry.durationMinutes, 0)).toBe(120);
     }
