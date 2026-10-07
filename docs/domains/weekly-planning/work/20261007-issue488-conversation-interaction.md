@@ -125,3 +125,15 @@ The critic also identified release/acceptance gaps that this campaign does not c
 - Product decisions left open by the second review: an explanation or aside next to a kept preview is answered as an ordinary preview/status turn; an unknown named topic and no topic both resume the current question; several acts in one turn follow a fixed precedence (resume > explain > untargeted aside) rather than temporal/retraction meaning.
 - Not done: making `conversationArchitecture` required at every turn boundary (absent = interaction default), and a measured fallback rate per goal for the real-model gate.
 - Campaign work still needs the final combined HEAD gates and real-provider/mobile recheck. The final integrated code now includes countable-unit caps and dedicated claim/feasibility repairs; richer preview prose beyond the existing typed evidence remains deferred. Repair-call reductions have deterministic/live-response replay evidence, not a universal latency bound.
+
+## Round 2 checkpoint (2026-10-08) — code-only resume confirmed by the user
+- Branch `feat/issue488-conversation-interaction`. The integration tip `e3f74a04` is closing tip `2d4930bf` with main `3a1e60b9` (#529–#532) merged in.
+- #530's shared persisted-state authority (`weeklyPlanningStateCodec.ts`) now carries `allocationBreakdown` and `conversationArchitecture`. #532's lifecycle cases run under both architectures.
+- Scope:
+  - live B, D and E reliability: B material answer (NimbleKepler); D duration targets and omission audit (StellarLeeuwenhoek); D stated budget versus bookshelf scope (TanYukawa); E consultation what-if evidence (SturdyEdison);
+  - renderer action token (PinkBoltzmann);
+  - bundle audit (RockyFranklin).
+- Excluded: no accounts, data seeding or approve/save, and no push, PR, merge or deploy.
+- Live E2E: preview-only on the user's account, approved directly by the user.
+- The old-build deletion fix is its own release unit: `fix/weekly-session-preserve-unreadable` on main `38dabae3`. It must be deployed before this branch.
+- Rules: at most one semantic repair per turn; `legacy_v5` byte-identical; one semantic patch integrated at a time, each followed by the scripted A–H suite and the legacy differential.
