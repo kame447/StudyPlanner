@@ -65,7 +65,11 @@ export function HomeTopbar({
         <button
           className="home-icon-button"
           type="button"
-          onClick={onOpenSettings}
+          onClick={(event) => {
+            // Safari does not focus a button on pointer activation by default.
+            event.currentTarget.focus({ preventScroll: true });
+            onOpenSettings();
+          }}
           aria-label="メニューを開く"
         >
           <Menu aria-hidden="true" size={24} />

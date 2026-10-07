@@ -60,7 +60,7 @@ async function setMonthTimetableVisibility(page, visible) {
   const choice = setting.getByRole('button', { name: visible ? '表示する' : '表示しない', exact: true });
   await choice.click();
   await expect(choice).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('.app-settings-modal').getByRole('button', { name: '閉じる', exact: true }).click();
+  await page.locator('.app-settings-page').getByRole('button', { name: '戻る', exact: true }).click();
 }
 
 async function expectDateDetails(page, grid, showAutomatic) {

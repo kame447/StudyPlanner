@@ -1,3 +1,4 @@
+import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useMemo, type RefObject } from 'react';
 import { todayIsoDate } from '../lib/date';
 import { augmentHomePlansWithScheduleOccurrences } from '../lib/homeScheduleAugmentation';
@@ -13,6 +14,7 @@ import type {
 import { HomeView } from './HomeView';
 
 interface HomeScheduleViewProps {
+  homeScenePreferences?: HomeScenePreferences;
   userId: string;
   plans: Plan[];
   actuals: Actual[];
@@ -35,6 +37,7 @@ interface HomeScheduleViewProps {
 }
 
 export function HomeScheduleView({
+  homeScenePreferences,
   userId,
   plans,
   actuals,
@@ -80,6 +83,7 @@ export function HomeScheduleView({
 
   return (
     <HomeView
+      homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}
       todos={todos}

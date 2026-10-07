@@ -2,6 +2,8 @@ import { forwardRef, useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
+import { PrimaryAppHeader } from './components/PrimaryAppHeader';
+import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
 import { HomeScheduleView } from './components/HomeScheduleView';
 import { HomeAddFlow } from './components/HomeAddFlow';
@@ -154,4 +156,34 @@ it('opens Home creation without navigation, clears prior edits and fences old cl
   fixture.state = { ...fixture.state, user: { id: 'owner-b' } as User };
   await act(async () => { renderer!.update(<App />); });
   expect(renderer!.root.findAllByType(HomeAddFlow)).toHaveLength(0);
+});
+
+
+it('retains the previous App view and Home entry instance while settings owns the visible screen', async () => {
+  let historyState: Record<string, unknown> | null = null;
+  let pop: (() => void) | undefined;
+  vi.stubGlobal('window', { location: { pathname: '/' }, scrollX: 0, scrollY: 0, scrollTo: vi.fn(),
+    history: { get state() { return historyState; }, length: 2,
+      pushState: (value: Record<string, unknown>) => { historyState = value; }, back: vi.fn() },
+    addEventListener: (_type: string, listener: () => void) => { pop = listener; }, removeEventListener: vi.fn(),
+  });
+  fixture.state.closePlanEditor = vi.fn();
+  await act(async () => { renderer = create(<App />); });
+  await act(async () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry());
+  const homeInstance = renderer!.root.findByType(HomeScheduleView);
+  const entryInstance = renderer!.root.findByType(HomeAddFlow);
+  act(() => renderer!.root.findByType(PrimaryAppHeader).props.onOpenSettings());
+  expect(renderer!.root.findByType(AppSettingsDialog).props.open).toBe(true);
+  expect(renderer!.root.findByProps({ className: 'app-shell home-app-shell' }).props.hidden).toBe(true);
+  expect(renderer!.root.findByType(HomeScheduleView)).toBe(homeInstance);
+  expect(renderer!.root.findByType(HomeAddFlow)).toBe(entryInstance);
+  act(() => { historyState = null; pop!(); });
+  expect(renderer!.root.findByProps({ className: 'app-shell home-app-shell' }).props.hidden).toBe(false);
+  expect(renderer!.root.findByType(HomeAddFlow)).toBe(entryInstance);
+  expect(fixture.homeEntryMount).toHaveBeenCalledTimes(1);
+  await act(async () => renderer!.root.findByType(PrimaryBottomNav).props.onOpenSchedule());
+  act(() => renderer!.root.findByType(PrimaryAppHeader).props.onOpenSettings());
+  act(() => { historyState = null; pop!(); });
+  expect(renderer!.root.findByProps({ className: 'app-shell schedule-workspace-shell' }).props.hidden).toBe(false);
+  expect(renderer!.root.findByType('main').props.className).toBe('section-stack schedule-main planner-data-recovery-main');
 });

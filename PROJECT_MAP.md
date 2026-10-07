@@ -1,7 +1,7 @@
 # StudyPlanner Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-10-05
+Updated: 2026-10-07
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -94,6 +94,8 @@ UI components and interaction surfaces. Examples:
 
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface。weekly-planning conversation / preview / approval のユーザー向け入口はここに一本化する
 - calendar / home / bookshelf / timetable views
+- `home/HomeScene.tsx` / `home/scenes/`: Home の装飾用 SVG scene。`src/lib/homeNextPlanVisual.ts` が選んだ study/class/other を pixel / pixel-cat / pixel-turtle / cozy / minimal の renderer へ渡し、theme と任意 motion の描画は `src/styles/home-next-plan-visual.css` が所有する。予定の意味や保存先を変更しない
+- `AppSettingsDialog.tsx` / `AppSettingsGeneral.tsx`: 独立した全画面の設定 surface と一般設定の grouped controls。既存 preference callback、AI memory、support の owner は維持する
 - `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する
 - `QuickEntryModal.tsx`: generic quick/manual entry surface。weekly-planning state / callbacks / persistence plumbingを受け取らない
@@ -106,6 +108,10 @@ Issue #246のlearning consultationは既存のAI planning conversation surface�
 ### `src/hooks/`
 
 React-level orchestration and state composition. Use for view/application lifecycle coordination, not reusable domain policy.
+
+`useSettingsNavigation.ts` は settings の単一 history entry、Back/Forward、元画面への focus/scroll 復帰を所有する。`App.tsx` は元の view を mount したまま非表示にし、settings の表示中に背後の操作対象を公開しない。
+
+`useHomeScenePreference.ts` は Home scene の style/motion をブラウザ内に保存する。選択肢と既定値は `src/lib/homeScenePreferences.ts`、操作 UI は `AppSettingsGeneral.tsx` が所有する。account/server の preference へ昇格せず、保存失敗では直前の保存済み表示値を保持してエラーを伝える。
 
 ## 3. General domain and persistence
 
