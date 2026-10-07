@@ -57,6 +57,18 @@ function withRepairSafePreview(
     return result;
   }
 
+  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
+  if (session?.ownerId === input.userId && result.stableV5Graph) {
+    const previousActiveIds = new Set(session.graph.factLifecycles
+      .filter(entry => entry.status === 'active').map(entry => entry.factId));
+    // Additive repair may keep the unchanged partial preview non-promotable.
+    // A replacement/removal invalidates its accepted basis even while another
+    // question remains; showing that preview would keep the corrected old work.
+    const priorFactInvalidated = result.stableV5Graph.factLifecycles.some(entry =>
+      previousActiveIds.has(entry.factId) && entry.status !== 'active');
+    if (priorFactInvalidated) return result;
+  }
+
   return {
     ...result,
     preserveExistingPreview: true,

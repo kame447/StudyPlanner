@@ -5,6 +5,7 @@ import {
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import { projectWeeklyPlanningCorrectionContextV5 } from './weeklyPlanningCorrectionContextProjectionV5';
 import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
@@ -153,13 +154,19 @@ export function validateWeeklyPlanningSemanticResponseV5(
   }
 
   const normalized = canonicalizeWeeklyPlanningSemanticRepresentationV5(parsed.document);
+  // Provider/context projection only. Legacy keeps its original response contract;
+  // the shared correction transaction owns rate carry and graph mutation in both.
+  const correctionContext = semanticConversationActs
+    ? projectWeeklyPlanningCorrectionContextV5({ document: normalized.document, committedGraph: input.committedGraph })
+    : { document: normalized.document, repairs: [] };
   const algorithmicRepairs = [
     ...preParseNormalization.repairs,
     ...normalized.repairs,
+    ...correctionContext.repairs,
   ];
   const document = actTargets
-    ? { ...normalized.document, conversationActs: actTargets.acts }
-    : normalized.document;
+    ? { ...correctionContext.document, conversationActs: actTargets.acts }
+    : correctionContext.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
