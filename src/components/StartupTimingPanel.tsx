@@ -1,3 +1,5 @@
+import { startupMarkerObservation } from '../lib/startupMarkerObservation';
+import { startupProfileObservation } from '../lib/startupProfileObservation';
 import { startupFirestoreTransport } from '../lib/startupFirestoreTransport';
 import { useEffect, useSyncExternalStore } from 'react';
 import { startupTiming } from '../lib/startupTiming';
@@ -26,12 +28,14 @@ export function StartupTimingPanel() {
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, []);
   if (!startupTiming.enabled) return null;
-  return <details aria-label="起動時間の診断" style={{ position: 'fixed', bottom: 8, left: 8,
+  return <details aria-label="起動時間の診断" style={{ position: 'fixed', bottom: 'calc(var(--app-bottom-nav-clearance, 72px) + 8px)', left: 8,
     zIndex: 100000, maxWidth: '94vw', maxHeight: '50vh', overflow: 'auto',
     background: '#fff', color: '#111', padding: 8, border: '1px solid #777', fontSize: 12 }}>
     <summary>起動計測（端末内のみ）</summary>
     <p>ページ開始からのミリ秒。通信待ちを含みます。外部送信・保存はしません。</p>
     <p>Firestore比較設定: {startupFirestoreTransport}（この起動のみ）</p>
+    <p>Profile比較設定: {startupProfileObservation}（この起動のみ）</p>
+    <p>Marker比較設定: {startupMarkerObservation}（この起動のみ）</p>
     <pre>{JSON.stringify(rows, null, 2)}</pre>
   </details>;
 }

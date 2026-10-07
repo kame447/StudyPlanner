@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createStartupTimingRecorder, startupTiming } from '../lib/startupTiming';
+import { createScheduleEventBackedPlannerRepository, ScheduleEventMigrationCapabilityUnavailableError } from './scheduleEventAuthorityRepository';
+import { createLocalFixture, deferred, microtasks } from './localPersistenceConcurrency.testUtils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { MonthEvent, Plan } from '../types/domain';
 import { scheduleEventFromPlan } from '../domain/scheduleEvent';
@@ -311,4 +314,74 @@ describe('Firebase ScheduleEvent authority', () => {
     ).rejects.toThrow('所有者が一致しません');
     expect(mocks.writeBatch).not.toHaveBeenCalled();
   });
+});
+
+
+afterEach(() => { vi.restoreAllMocks(); });
+function timingRecorder(enabled = true) {
+  let clock = 0;
+  const recorder = createStartupTimingRecorder(enabled, () => ++clock);
+  vi.spyOn(startupTiming, 'measure').mockImplementation(recorder.measure);
+  vi.spyOn(startupTiming, 'markOnce').mockImplementation(recorder.markOnce);
+  return recorder;
+}
+it('separates the shared server marker from each canonical consumer without moving queries earlier', async () => {
+  const recorder = timingRecorder();
+  const marker = deferred<any>(); mocks.getDocFromServer.mockReturnValue(marker.promise);
+  const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+  const repository = createScheduleEventBackedPlannerRepository(createLocalFixture().repository, authority);
+  const requests = Promise.all([repository.getPlans('private-owner'), repository.getMonthEvents('private-owner')]);
+  await microtasks(); expect(mocks.getDocs).not.toHaveBeenCalled(); expect(mocks.runTransaction).not.toHaveBeenCalled();
+  expect(recorder.getSnapshot().map(row => [row.phase, row.outcome])).toEqual([['schedule-marker-read', 'pending']]);
+  marker.resolve({ ...snapshot(completedMigration()), metadata: { fromCache: false, hasPendingWrites: false } });
+  await requests;
+  expect(mocks.getDocFromServer).toHaveBeenCalledOnce(); expect(mocks.getDocs).toHaveBeenCalledTimes(2);
+  expect(recorder.getSnapshot().map(row => row.phase)).toEqual([
+    'schedule-marker-read', 'schedule-marker-complete', 'schedule-canonical-plans', 'schedule-canonical-month-events',
+  ]);
+  expect(recorder.getSnapshot().every(row => row.outcome === 'success')).toBe(true);
+  expect(mocks.runTransaction).not.toHaveBeenCalled(); expect(mocks.setDoc).not.toHaveBeenCalled();
+  expect(JSON.stringify(recorder.getSnapshot())).not.toContain('private-owner');
+});
+it('records real conditional migration stages without bypassing their existing ordering', async () => {
+  const recorder = timingRecorder(); const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+  mocks.transactionGet.mockResolvedValue(snapshot(migrationLease()));
+  const source = plan(); const canonical = scheduleEventFromPlan(source);
+  mocks.getDocs.mockResolvedValueOnce({ docs: [] })
+    .mockResolvedValueOnce({ docs: [firestoreDoc(canonical.id, canonical)] });
+  const legacy = vi.fn(async () => {
+    expect(mocks.runTransaction).toHaveBeenCalled();
+    expect(mocks.setDoc).not.toHaveBeenCalled();
+    return { plans: [source], monthEvents: [] };
+  });
+  await authority.ensureMigrated('user-1', legacy);
+  expect(recorder.getSnapshot().map(row => row.phase)).toEqual([
+    'schedule-marker-read', 'schedule-migration-acquire', 'schedule-legacy-read',
+    'schedule-migration-backfill', 'schedule-migration-complete-write',
+  ]);
+  expect(recorder.getSnapshot().every(row => row.outcome === 'success')).toBe(true);
+  expect(mocks.setDoc).toHaveBeenCalledOnce();
+});
+it('retains rollout capability classification and never records raw failure text', async () => {
+  const recorder = timingRecorder(); const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+  const legacy = vi.fn();
+  mocks.getDocFromServer.mockRejectedValueOnce({ code: 'permission-denied', message: 'private-error' });
+  await expect(authority.ensureMigrated('private-owner', legacy)).rejects.toBeInstanceOf(ScheduleEventMigrationCapabilityUnavailableError);
+  expect(recorder.getSnapshot().map(row => [row.phase, row.outcome])).toEqual([
+    ['schedule-marker-read', 'error'], ['schedule-marker-unavailable', 'success'],
+  ]);
+  expect(legacy).not.toHaveBeenCalled(); expect(mocks.runTransaction).not.toHaveBeenCalled();
+  const error = new Error('private-network-error'); mocks.getDocFromServer.mockRejectedValueOnce(error);
+  await expect(authority.ensureMigrated('private-owner', legacy)).rejects.toBe(error);
+  expect(JSON.stringify(recorder.getSnapshot())).not.toMatch(/private-/);
+});
+it('keeps canonical errors authoritative and stays inert when diagnostics are disabled', async () => {
+  const recorder = timingRecorder(); const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+  mocks.getDocs.mockRejectedValueOnce(new Error('private-read-error'));
+  await expect(authority.getPlans('user-1')).rejects.toThrow('private-read-error');
+  expect(recorder.getSnapshot()[0]).toMatchObject({ phase: 'schedule-canonical-plans', outcome: 'error' });
+  expect(JSON.stringify(recorder.getSnapshot())).not.toContain('private-read-error');
+  vi.restoreAllMocks(); mocks.getDocs.mockResolvedValue({ docs: [] });
+  const disabled = timingRecorder(false);
+  await authority.getMonthEvents('user-1'); expect(disabled.getSnapshot()).toEqual([]);
 });

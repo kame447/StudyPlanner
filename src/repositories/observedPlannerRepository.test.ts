@@ -1,3 +1,4 @@
+import { createStartupSessionScope } from '../lib/startupSessionScope';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProductActivityAction } from '../../shared/productObservabilityContract';
 import type { ProductTelemetryPort } from '../features/productObservability/productTelemetry';
@@ -226,4 +227,14 @@ describe('createObservedPlannerRepository', () => {
 
     expect(actions).toEqual(['actual_recorded', 'material_updated']);
   });
+});
+
+it('forwards the optional startup marker capability without recording product activity', () => {
+  const actions: ProductActivityAction[] = [], stop = vi.fn();
+  const observe = vi.fn(() => stop);
+  const base = { observeStartupScheduleMarker: observe } as unknown as PlannerRepository;
+  const observed = createObservedPlannerRepository(base, telemetry(actions));
+  const scope = createStartupSessionScope();
+  expect(observed.observeStartupScheduleMarker!('owner', scope)).toBe(stop);
+  expect(observe).toHaveBeenCalledExactlyOnceWith('owner', scope); expect(actions).toEqual([]);
 });

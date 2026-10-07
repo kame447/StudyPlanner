@@ -1,3 +1,4 @@
+import { observeStartupDocument } from './observeStartupDocument';
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
   browserLocalPersistence,
@@ -260,6 +261,16 @@ export function createFirebaseAuthRepository(
             error as { message?: string | null }),
         );
       }
+    },
+    observeStartupProfile(expectedOwner, scope) {
+      const eligible = () => {
+        const user = firebaseAuth.currentUser;
+        return scope.isCurrent() && Boolean(user && user.uid === expectedOwner
+          && (!isPasswordLogin(user) || user.emailVerified));
+      };
+      return observeStartupDocument({ reference: doc(firestoreDb, 'profiles', expectedOwner),
+        scope: { isCurrent: eligible, onInvalidate: dispose => scope.onInvalidate(dispose) },
+        phase: 'profile-observation', stopPhase: 'profile-observer-stop' });
     },
     async getCurrentUser() {
       await ensureLocalAuthPersistence(firebaseAuth);
