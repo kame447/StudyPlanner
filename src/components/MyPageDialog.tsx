@@ -175,7 +175,6 @@ export function MyPageDialog({
           <div className="section-header">
             <div>
               <h2>マイページ</h2>
-              <p>表示名とアイコンを編集できます。</p>
             </div>
             <button className="ghost-button" onClick={handleClose} type="button">
               閉じる

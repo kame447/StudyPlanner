@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-05
+Updated: 2026-10-07
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -151,6 +151,28 @@ Last verified: 2026-08-29, PR #240.
 - Quality: line coverage is executed-code evidence, not proof that assertions detect faults. Read survivors/no-coverage cases, use deliberate fault injection and intermediate-state assertions, and distinguish source-string architecture checks, mock contracts, real browser behavior, real runtime integration, and paid model evaluation
 - Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
 - References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
+
+## Playwright OS-dependency installation stalls before tests
+
+Last verified: 2026-10-07, PR #524 head `efb8015c`, UI Regression Matrix run `37669944859`.
+
+Symptom: the `Install Chromium` step running Playwright's `--with-deps` installation consumes the configured 25-minute job limit. Logs show repeated `Ign` responses from `azure.archive.ubuntu.com`, then Ubuntu archive metadata with no further progress. The build and visual-test steps never start. Similar install stalls affected standalone Home/settings jobs. This is missing test evidence from a prerequisite failure, not a passing test or an application regression. The exact mirror/runner/network cause was not established.
+
+After checking the current head and original job steps/logs, use one normal rerun of that specific failed job on the same head when authorized. A fresh runner changes the environment without altering source, dependencies, mirror configuration, workflow, timeout, assertions, goldens or budgets. Check whether the retry already exists before requesting another. If it reproduces the same pre-test stall, follow the repository repeat-action guard; do not loop identical retries or silently switch to a weaker gate.
+
+Verified recovery: initial job `112958816536` was canceled during Chromium installation; build and visual tests were skipped. One same-head job rerun produced replacement job `112970535796`, where installation, production build and visual regression all succeeded. The visual-test portion reported `4 passed (15.2s)`; that is not the total installation/job duration. Original cancellation remains canceled evidence.
+
+Permissions/preconditions: the existing repository CI action must be authorized, and the logs must establish a pre-test installation stall. Do not apply this classification to an assertion failure, timeout inside the tested behavior, flaky test result or unknown error. Do not change browser/test/quality guards to manufacture success. No temporary workflow or repository file was introduced, so no cleanup was needed.
+
+## Miniflare requests sample `cf` metadata during Worker type generation
+
+- Last verified: 2026-10-07 with Wrangler 4.143.1, Miniflare 5.20260926.1-alpha and workerd 1.20260926.1.
+- Symptom: a local `npm run verify` is stopped at Worker runtime-type generation by a request to `https://workers.cloudflare.com/cf.json`. Confirm the endpoint and installed source first; this is a different request from Wrangler's optional npm version notice.
+- In the inspected Miniflare source, this fixed-URL fetch populates sample request `cf` metadata. The existing `CLOUDFLARE_CF_FETCH_ENABLED=false` environment option selects the bundled fallback without making that request. For local type generation that does not need real request geography, scope the option to the verification command. It does not skip runtime-type generation, TypeScript checks, tests or build, and does not change application configuration or network permissions.
+- Recheck the installed implementation when tool versions change. Do not present bundled fallback metadata as a real client location or use it as proof of location-dependent Worker behavior. Do not disable unrelated origin, authentication or certificate checks.
+- Verified result: Issue #528 local tree `4e03f328daa26db591e6e885e70c563e7c7f1cea` completed fresh app/Worker types, 6,022 tests passed / 45 skipped / 1 todo, production build (7.32s) and exit 0 with this command-scoped option. Its 237 installed package identities were unchanged. The prior interrupted run remains incomplete evidence.
+- Cleanup: no repository setting or temporary workflow was added; restore the prior environment value if it was set persistently instead of for one command. Preserve both interrupted and successful logs.
+
 
 ## Maintenance rule for new tooling knowledge
 

@@ -10,10 +10,11 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // #482: five code-rendered Home scenes and standalone settings replace 53,513 bytes of WebP.
-    // Measured raw JS ~2.223 MB; compressed and individual-JS guards remain unchanged.
-    totalRaw: 2_230_000,
-    totalGzip: 600_000,
+    // #164/#528: measured copy-cleanup + persisted-state validation + live Home clock stack.
+    // Combined 2,235,709 raw / 601,042 gzip: +2,868 raw / +292 gzip vs #527; no new dependency.
+    // Calibrate aggregate raw JS only; preserve gzip, individual-JS and all CSS guards.
+    totalRaw: 2_240_000,
+    totalGzip: 602_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
   },

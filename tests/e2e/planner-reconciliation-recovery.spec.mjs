@@ -703,17 +703,17 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
     const actualBlock = page.locator('.timeline-actual-block').filter({ hasText: seeded.plan.title });
     await actualBlock.click();
     const actions = page.getByRole('dialog', { name: `${seeded.plan.title}の操作`, exact: true });
-    const openRecord = actions.getByRole('button', { name: '記録を編集 実際の内容を保存', exact: true });
+    const openRecord = actions.getByRole('button', { name: '記録を編集', exact: true });
     await expect(openRecord).toBeDisabled();
     await expect(actions.getByRole('alert')).toContainText('保存・更新中');
     await expect(page.locator('.actual-editor-card')).toHaveCount(0);
     const heldCalls = (await repoSnapshot(page)).calls;
-    await actions.getByRole('button', { name: '削除 この予定を削除', exact: true }).click();
+    await actions.getByRole('button', { name: '削除', exact: true }).click();
     // Identical busy feedback is shown once; unchanged repository calls and
     // durable bytes below independently prove the Plan deletion was rejected.
     await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(1);
     await expect(actions).toBeVisible();
-    await expect(actions.getByRole('button', { name: '削除 この予定を削除', exact: true })).toBeEnabled();
+    await expect(actions.getByRole('button', { name: '削除', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
     expect((await repoSnapshot(page)).calls).toEqual(heldCalls);
     expect(await durableWrites(page)).toEqual(storageBefore);
@@ -1546,7 +1546,7 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const openEditor = async title => {
       await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
       await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
-        .getByRole('button', { name: '予定を編集 時間や内容を変更', exact: true }).click();
+        .getByRole('button', { name: '予定を編集', exact: true }).click();
       return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
     };
     let editor = await openEditor(seeded.plan.title);
@@ -1642,7 +1642,7 @@ for (const [viewport, theme, replacement] of [['desktop', 'light', 'editor'], ['
     const openEditor = async title => {
       await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
       await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
-        .getByRole('button', { name: '予定を編集 時間や内容を変更', exact: true }).click();
+        .getByRole('button', { name: '予定を編集', exact: true }).click();
       return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
     };
     const scope = () => page.locator('.modal-card').filter({ has: page.getByRole('heading', { name: '繰り返し予定の更新範囲', exact: true }) });

@@ -768,9 +768,7 @@ function MonthEventEditor({
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="detail-note">必要な持ち物や確認事項を追加できます。</p>
-                )}
+                ) : null}
               </section>
             ) : null}
           </section>

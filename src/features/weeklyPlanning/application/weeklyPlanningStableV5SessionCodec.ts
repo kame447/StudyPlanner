@@ -1,23 +1,17 @@
-import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalRecovery, isWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
+import { isPersistedWeeklyPlanningState, MAX_WEEKLY_PLANNING_STORED_MESSAGES } from '../weeklyPlanningStateCodec';
+import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
 import type { PlanningState } from '../types';
-import {
-  hydratedConversationArchitecture,
-  isWeeklyPlanningConversationArchitecture,
-} from '../weeklyPlanningConversationArchitecture';
+import { hydratedConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
 import { validC5SessionRecords } from './c5LocalSelection/basis';
-import { isWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
   'studyplanner-weekly-planning-stable-v5-session-v1' as const;
 export const WEEKLY_PLANNING_C5_SESSION_CAPABILITY = 'c5-local-selection-v1' as const;
 
 export const MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES = 2 * 1024 * 1024;
-const MAX_MESSAGES = 200;
-const MAX_MESSAGE_CONTENT_LENGTH = 20_000;
-const MAX_DRAFT_BLOCKS = 500;
-const MAX_PREVIEW_CANDIDATES = 500;
+const MAX_MESSAGES = MAX_WEEKLY_PLANNING_STORED_MESSAGES;
 
 export interface WeeklyPlanningStableV5PersistedSession {
   version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
@@ -44,14 +38,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -60,149 +46,6 @@ function isDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
-function isTime(value: unknown): value is string {
-  return typeof value === 'string'
-    && (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) || value === '24:00');
-}
-
-function isMessage(value: unknown): boolean {
-  return isRecord(value)
-    && hasOnlyKeys(value, ['id', 'role', 'content', 'createdAt'])
-    && isNonEmptyString(value.id)
-    && (value.role === 'user' || value.role === 'assistant')
-    && typeof value.content === 'string'
-    && value.content.length <= MAX_MESSAGE_CONTENT_LENGTH
-    && isTimestamp(value.createdAt);
-}
-
-function isDraftBlock(value: unknown, ownerId: string, conversationId: string): boolean {
-  if (!isRecord(value)) return false;
-  if (
-    !isNonEmptyString(value.id)
-    || value.userId !== ownerId
-    || !isDate(value.date)
-    || !isTime(value.startTime)
-    || !isTime(value.endTime)
-    || typeof value.title !== 'string'
-    || typeof value.subject !== 'string'
-    || value.source !== 'ai'
-    || value.status !== 'draft'
-    || typeof value.userEdited !== 'boolean'
-    || !isTimestamp(value.createdAt)
-    || !isTimestamp(value.updatedAt)
-    || (value.allocationBreakdown !== undefined && !isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
-  ) {
-    return false;
-  }
-  if (value.behaviorMetadata === undefined) return true;
-  if (!isRecord(value.behaviorMetadata)) return false;
-  const metadataConversationId = value.behaviorMetadata.conversationId;
-  if (metadataConversationId !== undefined && metadataConversationId !== conversationId) {
-    return false;
-  }
-  const previewMetadata = value.behaviorMetadata.previewMetadata;
-  if (previewMetadata !== undefined) {
-    if (!isRecord(previewMetadata)) return false;
-    if (previewMetadata.authorizedUserId !== ownerId) return false;
-    if (
-      previewMetadata.conversationId !== undefined
-      && previewMetadata.conversationId !== conversationId
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isStableV5Metadata(value: unknown, graphRevision: number): boolean {
-  if (!isRecord(value)) return false;
-  return value.runtime === 'stable_v5'
-    && isNonNegativeInteger(value.graphRevision)
-    && value.graphRevision <= graphRevision
-    && isNonEmptyString(value.taskId)
-    && Array.isArray(value.sourceFactRefs)
-    && value.sourceFactRefs.every(isNonEmptyString)
-    && (value.planType === 'study' || value.planType === 'other');
-}
-
-function isPreviewCandidate(value: unknown, graphRevision: number): boolean {
-  if (!isRecord(value)) return false;
-  return isNonEmptyString(value.stableKey)
-    && !value.stableKey.includes('..')
-    && isDate(value.date)
-    && isTime(value.startTime)
-    && isTime(value.endTime)
-    && isPositiveInteger(value.durationMinutes)
-    && typeof value.title === 'string'
-    && typeof value.field === 'string'
-    && typeof value.year === 'number'
-    && Number.isInteger(value.year)
-    && isPositiveInteger(value.estimatedMinutes)
-    && value.source === 'weekly_exam_prep'
-    && value.approvalStatus === 'unapproved'
-    && isNonEmptyString(value.workItemKey)
-    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
-    && isStableV5Metadata(value.stableV5Metadata, graphRevision);
-}
-
-function isPlanningState(
-  value: unknown,
-  ownerId: string,
-  weekStartDate: string,
-  conversationId: string,
-  graphRevision: number,
-): value is PlanningState {
-  if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, [
-    'weekStartDate',
-    'revision',
-    'conversationRequestSequence',
-    'conversationArchitecture',
-    'mode',
-    'draftBlocks',
-    'approvalRecovery',
-    'previewCandidates',
-    'messages',
-    'intakeState',
-    'lastAssistantMessage',
-    'updatedAt',
-  ])) {
-    return false;
-  }
-  const modes = new Set([
-    'idle',
-    'collecting_tasks',
-    'draft_created',
-    'awaiting_approval',
-    'confirmed',
-  ]);
-  return value.weekStartDate === weekStartDate
-    && isNonNegativeInteger(value.revision)
-    && (value.conversationRequestSequence === undefined
-      || isNonNegativeInteger(value.conversationRequestSequence))
-    && (value.conversationArchitecture === undefined
-      || isWeeklyPlanningConversationArchitecture(value.conversationArchitecture))
-    && modes.has(String(value.mode))
-    && Array.isArray(value.draftBlocks)
-    && value.draftBlocks.length <= MAX_DRAFT_BLOCKS
-    && value.draftBlocks.every((block) => isDraftBlock(block, ownerId, conversationId))
-    && (value.approvalRecovery === undefined || (isWeeklyPlanningApprovalRecovery(
-      value.approvalRecovery, value.draftBlocks as PlanningState['draftBlocks'], weekStartDate,
-      (block) => isDraftBlock(block, ownerId, conversationId))
-      && value.approvalRecovery.blocks.length <= MAX_DRAFT_BLOCKS
-      && value.approvalRecovery.operation.items.length <= MAX_DRAFT_BLOCKS))
-    && Array.isArray(value.previewCandidates)
-    && value.previewCandidates.length <= MAX_PREVIEW_CANDIDATES
-    && value.previewCandidates.every((candidate) => isPreviewCandidate(candidate, graphRevision))
-    && Array.isArray(value.messages)
-    && value.messages.length <= MAX_MESSAGES
-    && value.messages.every(isMessage)
-    && (value.intakeState === undefined || isRecord(value.intakeState))
-    && (value.lastAssistantMessage === undefined
-      || typeof value.lastAssistantMessage === 'string')
-    && isTimestamp(value.updatedAt);
 }
 
 function graphBelongsToConversation(
@@ -342,13 +185,13 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
     const parsedGraph = parseWeeklyPlanningFactGraphV5(JSON.stringify(value.graph));
     if (!parsedGraph.graph
       || !graphBelongsToConversation(parsedGraph.graph, value.conversationId)
-      || !isPlanningState(
-        value.planningState,
-        params.ownerId,
-        params.weekStartDate,
-        value.conversationId,
-        parsedGraph.graph.revision,
-      )) {
+      || !isPersistedWeeklyPlanningState(value.planningState, {
+        kind: 'stable_v5_session_v1',
+        ownerId: params.ownerId,
+        weekStartDate: params.weekStartDate,
+        conversationId: value.conversationId,
+        graphRevision: parsedGraph.graph.revision,
+      })) {
       return null;
     }
     if (!validC5SessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)) return null;
@@ -415,13 +258,13 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
   if (!params.includeEmpty && isEmptySession(planningState, params.graph)) {
     return { status: 'empty' };
   }
-  if (!isPlanningState(
-    planningState,
-    params.ownerId,
-    params.weekStartDate,
-    params.conversationId,
-    params.graph.revision,
-  )) {
+  if (!isPersistedWeeklyPlanningState(planningState, {
+    kind: 'stable_v5_session_v1',
+    ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
+    conversationId: params.conversationId,
+    graphRevision: params.graph.revision,
+  })) {
     return { status: 'invalid' };
   }
   return { status: 'ready', planningState };
