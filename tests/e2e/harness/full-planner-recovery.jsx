@@ -41,4 +41,8 @@ Storage.prototype.setItem = function (key, value) {
 };
 // App owns real planner and weekly hooks throughout navigation. Startup/provider
 // onboarding is outside this regression, as in the existing local full-App specs.
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+const app = <App />;
+ReactDOM.createRoot(document.getElementById('root')).render(
+  new URLSearchParams(location.search).get('strict') === 'true'
+    ? <React.StrictMode>{app}</React.StrictMode> : app,
+);
