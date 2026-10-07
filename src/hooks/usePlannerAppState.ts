@@ -77,7 +77,7 @@ interface PlannerAppState {
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
-  saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
+  saveUserProfile: (draft: UserProfileDraft) => Promise<User>;
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;

@@ -35,7 +35,7 @@ interface UseAuthSessionStateResult {
   signInWithPassword: (email: string, password: string) => Promise<SignInResult>;
   signInWithGoogle: () => Promise<SignInResult>;
   sendPasswordReset: (email: string) => Promise<void>;
-  saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
+  saveUserProfile: (draft: UserProfileDraft) => Promise<User>;
   signOut: () => Promise<void>;
 }
 
@@ -232,6 +232,7 @@ export function useAuthSessionState({
         setUser(current => isCurrent() && current?.id === user.id ? nextUser : current);
         if (!isCurrent()) throw new ProfileSaveScopeExpiredError();
         showNotice('プロフィールを更新しました。', 'success');
+        return nextUser;
       } catch (error) {
         if (!isCurrent()) throw new ProfileSaveScopeExpiredError();
         showNotice(

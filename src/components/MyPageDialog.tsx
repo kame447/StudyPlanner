@@ -9,7 +9,7 @@ import { UserAvatar } from './UserAvatar';
 interface MyPageDialogProps {
   open: boolean;
   user: User;
-  onSaveProfile: (draft: UserProfileDraft) => Promise<void>;
+  onSaveProfile: (draft: UserProfileDraft) => Promise<User>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
 }
@@ -30,6 +30,9 @@ export function MyPageDialog({
   const session = useRef<object | null>(null);
   const selection = useRef<object | null>(null);
   const pendingPhoto = useRef<object | null>(null);
+  const draftRevision = useRef<object>({});
+  const hasLocalIntent = useRef(false);
+  const latestSave = useRef<object | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isAdmin } = useAdminStatus(open ? user.id : null);
 
@@ -43,6 +46,9 @@ export function MyPageDialog({
     }
 
     session.current = {};
+    draftRevision.current = {};
+    hasLocalIntent.current = false;
+    latestSave.current = null;
     setUsername(user.username);
     setAvatar(user.avatar);
     setIsAvatarSectionOpen(false);
@@ -53,7 +59,16 @@ export function MyPageDialog({
       selection.current = null;
       pendingPhoto.current = null;
     };
-  }, [open, user.id, user.avatar, user.username]);
+  }, [open, user.id]);
+
+  useLayoutEffect(() => {
+    // Untouched sessions follow profile refreshes. Once editing starts, only a
+    // correlated save result may replace the draft until this dialog is reopened.
+    if (open && session.current && !hasLocalIntent.current) {
+      setUsername(user.username);
+      setAvatar(user.avatar);
+    }
+  }, [open, user.id, user.username, user.avatar]);
 
   if (!open) {
     return null;
@@ -61,17 +76,24 @@ export function MyPageDialog({
 
   async function handleSaveProfile() {
     const owner = session.current;
-    const choice = selection.current;
+    const revision = draftRevision.current;
     if (!owner || pendingPhoto.current) return;
+    const request = {};
+    latestSave.current = request;
+    hasLocalIntent.current = true;
+    const isCurrent = () => session.current === owner
+      && draftRevision.current === revision && latestSave.current === request;
     try {
-      await onSaveProfile({ username, avatar });
+      const saved = await onSaveProfile({ username, avatar });
+      if (!isCurrent()) return;
+      setUsername(saved.username);
+      setAvatar(saved.avatar);
     } catch (error) {
-      if (session.current !== owner || selection.current !== choice) return;
+      if (!isCurrent()) return;
       setStatus(error instanceof Error ? error.message : 'プロフィールを更新できませんでした。');
       setStatusTone('error');
       return;
     }
-    if (session.current !== owner || selection.current !== choice) return;
     setStatus('保存しました。');
     setStatusTone('info');
   }
@@ -83,8 +105,14 @@ export function MyPageDialog({
     onClose();
   }
 
+  function markDraftEdited() {
+    hasLocalIntent.current = true;
+    draftRevision.current = {};
+  }
+
   function selectAvatar(value: string) {
     if (!session.current) return;
+    markDraftEdited();
     selection.current = {};
     pendingPhoto.current = null;
     setIsProcessingPhoto(false);
@@ -103,6 +131,7 @@ export function MyPageDialog({
 
     // Clear synchronously so an older completion cannot clear a newer input.
     event.target.value = '';
+    markDraftEdited();
     const choice = {};
     selection.current = choice;
     pendingPhoto.current = choice;
@@ -180,7 +209,15 @@ export function MyPageDialog({
               <span>ユーザーネーム</span>
               <input
                 value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                onChange={(event) => {
+                  if (!session.current) return;
+                  markDraftEdited();
+                  setUsername(event.target.value);
+                  if (!pendingPhoto.current) {
+                    setStatus('');
+                    setStatusTone('info');
+                  }
+                }}
                 placeholder="未入力ならメールアドレスを使います"
               />
             </label>

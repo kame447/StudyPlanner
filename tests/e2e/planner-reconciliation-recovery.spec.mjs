@@ -1575,9 +1575,9 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
     const storedAvatar = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').avatar);
     await expect.poll(storedAvatar).toBe('🚀');
-    // Profile props reset the expanded section after a successful save.
-    await expect(editor.locator('input[type=file]')).toHaveCount(0);
-    await editor.locator('.collapsible-toggle').click();
+    // A successful save preserves the current editing session and section.
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect(editor.locator('input[type=file]')).toHaveCount(1);
     await editor.locator('input[type=file]').setInputFiles(photo);
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
     editor = await open();
@@ -1686,5 +1686,38 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
     expect((await storedProfile()).username).toBe('応答を待つプロフィール');
+  });
+}
+
+
+for (const [viewport, theme, reopen] of [['desktop', 'light', false], ['mobile', 'dark', true]]) {
+  test(`Profile save preserves newer typing under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    const username = editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true });
+    await username.fill('先に保存した名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedName = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').username);
+    await expect.poll(storedName).toBe('先に保存した名前');
+    if (reopen) {
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+      await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    }
+    await username.fill('後から入力した未保存の名前');
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(username).toHaveValue('後から入力した未保存の名前');
+    await expect(editor).not.toContainText('保存しました。');
+    expect(await storedName()).toBe('先に保存した名前');
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect.poll(storedName).toBe('後から入力した未保存の名前');
   });
 }
