@@ -159,7 +159,7 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
   await page.getByRole('button', { name: 'メニューを開く' }).click();
   await expect(page.getByRole('heading', { name: 'アプリ設定' })).toBeVisible();
   await capture(page, 'dark-ocean-settings-390x844');
-  await page.locator('.app-settings-modal .ghost-button').first().click();
+  await page.locator('.app-settings-page .settings-back-button').first().click();
 
   await clickPrimaryNav(page, '教材');
   await expect(page.locator('.bookshelf-view')).toBeVisible();
@@ -224,7 +224,7 @@ test('theme mode and palette changes apply immediately and survive reload', asyn
   await expect(page.getByRole('heading', { name: 'アプリ設定' })).toBeVisible();
   await page.getByRole('button', { name: 'ライト', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.locator('.app-settings-modal .ghost-button').first().click();
+  await page.locator('.app-settings-page .settings-back-button').first().click();
 
   const lightBackground = await computedColor(page, '.home-streak-card', 'backgroundColor');
   expect(lightBackground).not.toBe(darkBackground);
@@ -233,7 +233,7 @@ test('theme mode and palette changes apply immediately and survive reload', asyn
   await page.getByRole('button', { name: /配色/ }).click();
   await page.getByRole('button', { name: /バイオレット/ }).click();
   const violetAccent = await normalizedAccent(page);
-  await page.locator('.app-settings-modal .ghost-button').first().click();
+  await page.locator('.app-settings-page .settings-back-button').first().click();
 
   expect(await computedColor(page, '.home-bottom-nav button.active')).toBe(violetAccent);
   await capture(page, 'light-violet-home-390x844');

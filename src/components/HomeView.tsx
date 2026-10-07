@@ -1,3 +1,4 @@
+import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
@@ -13,6 +14,7 @@ import {
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 
 interface HomeViewProps {
+  homeScenePreferences?: HomeScenePreferences;
   plans: Plan[];
   actuals: Actual[];
   todos: TodoTask[];
@@ -100,6 +102,7 @@ function preferredScheduleListHeight(scheduleList: HTMLElement): number {
 }
 
 export function HomeView({
+  homeScenePreferences,
   plans,
   actuals,
   todos,
@@ -530,6 +533,7 @@ export function HomeView({
       case 'next-plan':
         return (
           <NextPlanSection
+            homeScenePreferences={homeScenePreferences}
             key={sectionId}
             dashboard={dashboard}
             studyMaterials={studyMaterials}

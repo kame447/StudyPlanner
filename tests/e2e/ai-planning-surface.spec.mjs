@@ -188,19 +188,12 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await page.locator('.ai-chat-drawer-header button').click();
 
   await page.locator('.home-top-actions .home-icon-button').last().click();
-  await expect(page.locator('.app-settings-overlay')).toBeVisible();
-  const stacking = await page.evaluate(() => {
-    const zIndexOf = (element) => {
-      if (!(element instanceof Element)) return 0;
-      return Number.parseInt(getComputedStyle(element).zIndex, 10) || 0;
-    };
-    return {
-      ai: zIndexOf(document.querySelector('.ai-planning-view')),
-      modal: zIndexOf(document.querySelector('.app-settings-overlay')),
-    };
-  });
-  expect(stacking.modal).toBeGreaterThan(stacking.ai);
-  await page.locator('.app-settings-modal .ghost-button').first().click();
+  await expect(page.locator('.app-settings-page')).toBeVisible();
+  await expect(page.locator('.ai-planning-view')).toBeHidden();
+  await expect(page.locator('.primary-bottom-nav')).toBeHidden();
+  await page.locator('.app-settings-page').getByRole('button', { name: '戻る', exact: true }).click();
+  await expect(page.locator('.ai-planning-view')).toBeVisible();
+  await expect(page.locator('.primary-bottom-nav')).toBeVisible();
 
   await page.locator('.home-avatar-button').click();
   await expect(page.locator('.my-page-modal')).toBeVisible();

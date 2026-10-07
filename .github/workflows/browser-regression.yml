@@ -72,5 +72,6 @@ jobs:
             artifacts/playwright-results/**/home-add-chooser.png
             artifacts/playwright-results/**/test-failed-*.png
             artifacts/todo-cross-surface-*.png
+            artifacts/playwright-results/**/attachments/*.png
           if-no-files-found: ignore
           retention-days: 14

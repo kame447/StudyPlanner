@@ -15,6 +15,8 @@ import {
   resolveHomeNextPlanPresentation,
   resolveHomeNextPlanVisual,
 } from '../../lib/homeNextPlanVisual';
+import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
+import { HomeScene } from './HomeScene';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
@@ -189,11 +191,13 @@ export function GettingStartedSection({
 }
 
 export function NextPlanSection({
+  homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   dashboard,
   studyMaterials,
   onOpenAiPlanning,
   onOpenDay,
 }: {
+  homeScenePreferences?: HomeScenePreferences;
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenAiPlanning: () => void;
@@ -255,14 +259,7 @@ export function NextPlanSection({
         )}
       </div>
 
-      <div className="home-study-scene" aria-hidden="true">
-        <img
-          className="home-study-scene-image"
-          src={nextPlanVisual.src}
-          alt=""
-          decoding="async"
-        />
-      </div>
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} />
 
       <button
         className="home-start-button"
