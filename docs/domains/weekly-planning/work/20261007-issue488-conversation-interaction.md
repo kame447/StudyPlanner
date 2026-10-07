@@ -48,6 +48,18 @@ Measured in the real UI: 「なんで時間が必要なの？」 under a pending
   - two requests in one provider-failure bubble, and wording issues.
 
   Tests contributed by the parallel test agents (semantic safety; request fingerprints and gate-off UI) were reviewed and integrated.
+- Real UI / real provider E2E (Computer Use, 2026-10-07, on this branch at `50c90af6`) found merge blockers outside the conversation layer and some in it. Fixed by focused agents and integrated here, each with production-controller regressions:
+  - C: a correction lost to an echoed rate citation, plus a stale preview kept;
+  - D: an accepted session length ignored by the scheduler;
+  - A: plan-wide preferred hours ignored;
+  - F: the scope question looping because a stated time budget had no schedulable work.
+
+  Presentation fixes:
+  - recovery never re-asks what the user just said;
+  - preview/status replies never describe candidate contents or claim new or changed candidates without a new preview;
+  - an unanswered consultation is not phrased as a refusal.
+
+  The +10-minute blocks are intentional allocation (×1.1, then 5/15-minute steps; documented in the scheduling policy).
 - Contract: [current-contract-v5.md](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488); scenarios DIALOGUE-007, 009, 013, 014.
 
 ## Deferred
@@ -62,3 +74,4 @@ Measured in the real UI: 「なんで時間が必要なの？」 under a pending
 - Real-model accuracy of act emission (needs the real-API gate; not run here).
 - Product decisions left open by the second review: an explanation or aside next to a kept preview is answered as an ordinary preview/status turn; an unknown named topic and no topic both resume the current question; several acts in one turn follow a fixed precedence (resume > explain > untargeted aside) rather than temporal/retraction meaning.
 - Not done: making `conversationArchitecture` required at every turn boundary (absent = interaction default), and a measured fallback rate per goal for the real-model gate.
+- Real-E2E follow-ups not done: a typed duration/margin mention and an application-owned preview snapshot for richer (validated) preview descriptions; B (an answer to effort while a material choice is pending still produces a preview); first-turn normalization rejections of long complete messages need the real traces, which were not available, to find their specific causes; latency (20–32 s first/correction turns); mobile layout re-check.
