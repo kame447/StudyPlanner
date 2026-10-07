@@ -52,6 +52,7 @@ const PURPOSES_BY_QUESTION_CODE: Readonly<Record<
   invalid_planning_date_range: ['set_planning_period'],
   unresolved_hard_date_expression: ['use_dates_the_plan_can_read'],
   contradictory_hard_date_bound: ['resolve_conflicting_dates'],
+  hard_date_bound_outside_planning_window: ['use_dates_the_plan_can_read'],
   // Fixed commitments
   unsupported_commitment_date_expression: ['use_dates_the_plan_can_read'],
   missing_commitment_date_scope: ['place_fixed_commitment'],

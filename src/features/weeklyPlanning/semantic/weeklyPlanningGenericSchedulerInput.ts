@@ -157,6 +157,7 @@ export type GenericSchedulerInputIssue =
   | {
       domain: 'temporal_constraint';
       code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound'
+        | 'hard_date_bound_outside_planning_window'
         | 'unsupported_date_expression' | 'named_time_period_unresolved'
         | 'invalid_time_interval' | 'unknown_constraint_level';
       blocking: true;
@@ -454,6 +455,8 @@ function temporalConstraintIssues(params: {
   resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
   namedTimePeriods: GenericSchedulerInputContext['namedTimePeriods'];
+  planningStartDate: string;
+  planningEndDate: string;
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
   for (const constraint of params.graph.temporalConstraints) {
@@ -493,7 +496,24 @@ function temporalConstraintIssues(params: {
       resolved: params.resolvedDateExpressions,
       factId: constraint.id,
     });
-    if (resolved?.status === 'resolved' && resolved.range) continue;
+    if (resolved?.status === 'resolved' && resolved.range) {
+      // Only an accepted, resolved horizon can make a bound fall outside it.
+      const outside = Boolean(params.planningStartDate && params.planningEndDate)
+        && (constraint.kind === 'earliest_start'
+          ? resolved.range.start > params.planningEndDate
+          : resolved.range.end < params.planningStartDate);
+      if (outside) issues.push({
+        domain: 'temporal_constraint', code: 'hard_date_bound_outside_planning_window',
+        blocking: true, factId: constraint.id,
+        details: {
+          taskId: constraint.taskId, targetFactId: constraint.targetFactId,
+          expression: constraint.dateExpression, boundKind: constraint.kind,
+          resolvedStartDate: resolved.range.start, resolvedEndDate: resolved.range.end,
+          planningStartDate: params.planningStartDate, planningEndDate: params.planningEndDate,
+        },
+      });
+      continue;
+    }
     issues.push({
       domain: 'temporal_constraint',
       code: 'unresolved_hard_date_expression',
@@ -548,6 +568,10 @@ export function compileGenericSchedulerInput(params: {
       graph: params.graph,
       currentDate: params.context.currentDate,
       weekStartsOn: params.context.weekStartsOn,
+      planningWindow: params.graph.planningWindows.length === 1 ? {
+        startDate: params.context.planningStartDate,
+        endDate: params.context.planningEndDate,
+      } : null,
     });
 
   const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
@@ -696,6 +720,8 @@ export function compileGenericSchedulerInput(params: {
     resolvedDateExpressions,
     resolvedTemporalConstraints,
     namedTimePeriods: params.context.namedTimePeriods,
+    planningStartDate: params.context.planningStartDate,
+    planningEndDate: params.context.planningEndDate,
   }));
 
   const relations = compileRelations({ graph: params.graph, issues });

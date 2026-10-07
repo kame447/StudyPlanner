@@ -10,12 +10,15 @@ import { listWeeklyPlanningTraceOutboxItems } from './weeklyPlanningTraceOutbox'
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
 import type { WeeklyPlanningTraceEntry, WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession, WeeklyPlanningTraceTurnDiagnosticEntry } from './weeklyPlanningTraceTypes';
 
+import { compileGenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+
 const USER_ID = 'owner-temporal-repair';
 const CONVERSATION_ID = 'weekly-conversation-733e4567-e89b-42d3-a456-426614174010';
 const SENTINEL = 'future-temporal-repair-field';
 let restoreStorage: () => void;
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
-let scenario: 'date_repair' | 'task_preference' | 'hard_available' | 'weekday_scope_question';
+let scenario: 'date_repair' | 'task_preference' | 'hard_available' | 'weekday_scope_question' | 'hard_weekday' | 'hard_bound_scope_question';
 
 beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
@@ -26,9 +29,26 @@ beforeEach(() => {
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, '候補が1件できました。「この内容で仮予定にする」を押してください。');
     const response = scenario === 'task_preference' ? taskTemporalPreferenceDocument()
-      : scenario === 'hard_available' || scenario === 'weekday_scope_question' ? liveATemporalDocument() : schedulingDocument('G');
+      : scenario === 'hard_available' || scenario === 'weekday_scope_question' || scenario === 'hard_weekday' || scenario === 'hard_bound_scope_question' ? liveATemporalDocument() : schedulingDocument('G');
     if (scenario === 'hard_available') Object.assign((response.availabilityDeclarations as Json[])[0], { kind: 'available', constraintLevel: 'hard' });
     if (scenario === 'weekday_scope_question') Object.assign((response.availabilityDeclarations as Json[])[0], { dateExpression: 'weekday:friday', recurrenceKind: null, days: [] });
+    if (scenario === 'hard_weekday' || scenario === 'hard_bound_scope_question') {
+      response.planningWindow = { localId: 'window', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' };
+      (response.tasks as Json[])[0].temporalConstraints = [{ localId: 'deadline', targetLocalId: (response.tasks as Json[])[0].localId, kind: 'latest_end', constraintLevel: 'hard',
+        dateExpression: scenario === 'hard_weekday' ? 'weekday:friday' : '2026-10-09', namedTimePeriod: null, startTime: null, endTime: null,
+        precision: 'exact', sourceText: '金曜日までに終わらせたい' }];
+    }
+    if (scenario === 'hard_weekday') {
+      ((response.tasks as Json[])[0].temporalConstraints as Json[]).push({
+        localId: 'exclude-wednesday', targetLocalId: (response.tasks as Json[])[0].localId, kind: 'excluded_date', constraintLevel: 'hard',
+        dateExpression: 'weekday:wednesday', namedTimePeriod: null, startTime: null, endTime: null,
+        precision: 'exact', sourceText: '水曜は入れないで',
+      }, {
+        localId: 'start-friday', targetLocalId: (response.tasks as Json[])[0].localId, kind: 'earliest_start', constraintLevel: 'hard',
+        dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: null, endTime: null,
+        precision: 'exact', sourceText: '金曜日に始めたい',
+      });
+    }
     if (scenario === 'date_repair' && calls++ === 0) (response.availabilityDeclarations as Json[])[0].dateExpression = '火曜';
     return JSON.stringify(response);
   });
@@ -43,15 +63,16 @@ afterEach(() => {
 });
 
 describe('temporal constraint trace persistence gate', () => {
-  it.each(['date_repair', 'task_preference', 'hard_available', 'weekday_scope_question'] as const)('keeps %s requests, constraints and allocation through durable retry and Worker preparation', async (selected) => {
+  it.each(['date_repair', 'task_preference', 'hard_available', 'weekday_scope_question', 'hard_weekday', 'hard_bound_scope_question'] as const)('keeps %s requests, constraints and allocation through durable retry and Worker preparation', async (selected) => {
     scenario = selected;
     const isG = scenario === 'date_repair';
-    const needsQuestion = scenario === 'weekday_scope_question';
-    const userText = isG ? G : A;
+    const needsQuestion = scenario === 'weekday_scope_question' || scenario === 'hard_bound_scope_question';
+    const questionCode = scenario === 'hard_bound_scope_question' ? 'hard_date_bound_outside_planning_window' : 'availability_outside_planning_window';
+    const userText = isG ? G : scenario === 'hard_weekday' || scenario === 'hard_bound_scope_question' ? `${A}。金曜日までに終わらせたい。水曜は入れないで。金曜日に始めたい` : A;
     const conversation = createScriptedConversation({
       provider, ownerId: USER_ID, conversationId: CONVERSATION_ID,
       weekStartDate: isG ? '2026-10-12' : '2026-10-05',
-      now: () => isG ? '2026-10-13T11:00:00.000Z' : '2026-10-07T09:00:00.000Z',
+      now: () => isG ? '2026-10-13T11:00:00.000Z' : '2026-10-08T09:00:00.000Z',
     });
     const turn = await conversation.submit(userText);
     expect(turn.result?.failure).toBeUndefined();
@@ -59,19 +80,27 @@ describe('temporal constraint trace persistence gate', () => {
     expect(turn.result?.draftCandidates).toHaveLength(needsQuestion ? 0 : 1);
     const candidate = turn.result!.draftCandidates[0];
     if (needsQuestion) {
-      expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:availability_outside_planning_window');
+      expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe(`stable_v5:${questionCode}`);
     } else if (isG) {
       expect(candidate.date <= '2026-10-16').toBe(true);
       expect(candidate.date > '2026-10-13' || candidate.startTime >= '22:00').toBe(true);
     } else {
-      expect(candidate).toMatchObject({ date: '2026-10-12', startTime: '20:00', endTime: '21:10' });
+      expect(candidate).toMatchObject({ date: scenario === 'hard_weekday' ? '2026-10-16' : '2026-10-12', startTime: '20:00', endTime: '21:10' });
     }
     if (!needsQuestion) expect(candidate.durationMinutes).toBe(70);
+    if (scenario === 'hard_weekday') {
+      const compiled = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!),
+        context: { ownerId: USER_ID, currentDate: '2026-10-08', planningStartDate: '2026-10-12', planningEndDate: '2026-10-18', timeZone: 'Asia/Tokyo' } });
+      expect(compiled.input?.hardDateBounds[0]).toMatchObject({ startDate: '2026-10-16', endDate: '2026-10-16' });
+      expect(compiled.input?.taskDateEligibilities[0].excludedDates).toEqual(['2026-10-14']);
+    }
     const events = structuredClone(turn.debugTrace);
     const preview = events.find((event) => event.stage === (needsQuestion ? 'semantic_validation_result' : 'runtime_preview_scheduler_evaluated'))!;
     expect(preview).toBeDefined();
     const extensionTarget = (data: unknown): Json => needsQuestion
-      ? (((data as Json).parsedDocument as Json).availabilityDeclarations as Json[])[0]
+      ? scenario === 'hard_bound_scope_question'
+        ? ((((data as Json).parsedDocument as Json).tasks as Json[])[0].temporalConstraints as Json[])[0]
+        : (((data as Json).parsedDocument as Json).availabilityDeclarations as Json[])[0]
       : ((data as Json).candidates as Json[])[0];
     extensionTarget(preview.data).futureTemporalRepairField = SENTINEL;
     const first = {
@@ -119,7 +148,7 @@ describe('temporal constraint trace persistence gate', () => {
       for (const persisted of [entry, prepared.entries[0] as unknown as WeeklyPlanningTraceTurnDiagnosticEntry]) {
         if (needsQuestion) {
           expect(persisted.constraintContext.scheduler?.preview).toBeNull();
-          expect(persisted.constraintContext.scheduler?.selectedQuestionCode).toBe('availability_outside_planning_window');
+          expect(persisted.constraintContext.scheduler?.selectedQuestionCode).toBe(questionCode);
         } else expect(persisted.constraintContext.scheduler?.preview?.candidateCount).toBe(1);
         if (index === 0) {
           const interpreter = JSON.stringify(persisted.aiInterpreter);
@@ -129,10 +158,10 @@ describe('temporal constraint trace persistence gate', () => {
             expect(interpreter).toContain('weekday:tuesday');
             expect(interpreter).toContain('2026-10-16');
           } else if (needsQuestion) {
-            expect(interpreter).toContain('weekday:friday');
+            expect(interpreter).toContain(scenario === 'hard_bound_scope_question' ? '2026-10-09' : 'weekday:friday');
             expect(JSON.stringify(persisted.aiInterpreter.structuredResults)).toContain(SENTINEL);
           } else {
-            expect(interpreter).toContain(scenario === 'task_preference' ? 'preferred_window' : 'available');
+            expect(interpreter).toContain(scenario === 'task_preference' ? 'preferred_window' : scenario === 'hard_weekday' ? 'weekday:friday' : 'available');
             expect(interpreter).toContain('20:00');
           }
           expect(persisted.aiInterpreter.input.requests).toHaveLength(isG ? 2 : 1);

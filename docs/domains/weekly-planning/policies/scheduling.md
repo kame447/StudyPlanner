@@ -137,6 +137,10 @@ task/componentの希望時刻が片側だけ指定されている場合、開始
 
 plan-wideのnon-recurringなcanonical weekdayのsoft preferenceがrequest clockから解決され、accepted planning windowの外になる場合は、既存の`availability_outside_planning_window`をblockingとして日付scopeを質問する。勝手に毎週の反復や計画週の曜日へ読み替えず、一度のscope回答を通常のsemantic/訂正境界で受理して解決する。既にwindow内のweekdayは追加質問を必要としない。
 
+## Hard weekday dates and the accepted planning window
+
+ハードな期限・終了・開始（deadline / latest_end / earliest_start）と許可日・除外日（allowed_date / excluded_date）の曜日トークンは、受理済みの計画期間が1つあるとき、その期間内の該当曜日に解決する（日付規則は期間内のすべての該当日）。期間内にその曜日が無い短い期間では黙って捨てず確認する。解決後のハードな日付条件が計画期間外になる場合（例: 来週の計画で期限 10/9）は容量不足ではなく、日付の範囲を確認する質問にする。どの金曜日を指すかの解釈はAIが担い、決定論コードは受理済みの事実と期間の関係だけを判定する。
+
 ## Estimated effort and allocated time
 
 作業量とペースから求めた見積もり時間と、実際に確保する予定枠は区別する。明示session capがない場合のcurrent allocation policyは、適用されるペース補正のあとに10%の余裕を加え、基準見積もりが60分以下なら5分単位、60分を超えるなら15分単位で切り上げる。

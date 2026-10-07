@@ -328,6 +328,8 @@ function resolutionIntent(params: {
       };
     case 'ambiguous_effort_estimate':
       return { ...base, resolutionKind: 'effort_estimate_choice' as const, requestedInformation: ['choose_effort_estimate'] as const };
+    case 'hard_date_bound_outside_planning_window':
+      return { ...base, resolutionKind: 'temporal_date_scope' as const, requestedInformation: ['applicable_start_or_deadline_date'] as const };
     case 'missing_availability_date_scope':
     case 'availability_outside_planning_window':
       return { ...base, resolutionKind: 'availability_date_scope' as const, requestedInformation: ['availability_date_scope'] as const };

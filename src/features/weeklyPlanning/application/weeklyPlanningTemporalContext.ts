@@ -244,22 +244,14 @@ function frozenGroundingRange(params: {
     : null;
 }
 
-export function resolveWeeklyPlanningPlanningHorizon(params: {
+/** Resolves only an explicit active window; UI selection is never its authority. */
+export function resolveWeeklyPlanningAcceptedPlanningWindow(params: {
   graph: WeeklyPlanningTemporalGraphView;
-  selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
-  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
   groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
 }): { startDate: string; endDate: string } | null {
   const windows = activePlanningWindows(params.graph);
-  if (windows.length > 1) return null;
-  if (windows.length === 0) {
-    return fallbackPlanningHorizon({
-      graph: params.graph,
-      selectedDate: params.selectedDate,
-      resolvedTemporalConstraints: params.resolvedTemporalConstraints,
-    });
-  }
+  if (windows.length !== 1) return null;
 
   const window = windows[0];
   if (window.start && window.end) {
@@ -287,6 +279,19 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
   return resolution.status === 'resolved'
     ? { startDate: resolution.range.start, endDate: resolution.range.end }
     : null;
+}
+
+export function resolveWeeklyPlanningPlanningHorizon(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  selectedDate: string;
+  requestContext: WeeklyPlanningTurnRequestContext;
+  resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+  groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
+}): { startDate: string; endDate: string } | null {
+  if (activePlanningWindows(params.graph).length === 0) {
+    return fallbackPlanningHorizon(params);
+  }
+  return resolveWeeklyPlanningAcceptedPlanningWindow(params);
 }
 
 export function createWeeklyPlanningSchedulerContext(params: {

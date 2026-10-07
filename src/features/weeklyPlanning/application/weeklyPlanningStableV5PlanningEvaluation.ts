@@ -64,6 +64,7 @@ import type {
 } from './weeklyPlanningStableV5SemanticTurn';
 import {
   createWeeklyPlanningSchedulerContext,
+  resolveWeeklyPlanningAcceptedPlanningWindow,
   resolveWeeklyPlanningPlanningHorizon,
 } from './weeklyPlanningTemporalContext';
 
@@ -155,10 +156,16 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const activeGraph = projectWeeklyPlanningStatedTimeBudgetGraphV5(
     createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
   );
+  const acceptedPlanningWindow = resolveWeeklyPlanningAcceptedPlanningWindow({
+    graph: activeGraph,
+    requestContext,
+    groundingRecords: input.previousState?.groundingRecords,
+  });
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,
     weekStartsOn: requestContext.weekStartsOn,
+    planningWindow: acceptedPlanningWindow,
   });
   const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
     graph: activeGraph,

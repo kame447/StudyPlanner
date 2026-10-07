@@ -389,6 +389,8 @@ export function typedStableV5RuntimeQuestionText(
       return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
     case 'missing_availability_date_scope':
       return 'その空き時間または予定を入れられない時間は、どの日に適用しますか？';
+    case 'hard_date_bound_outside_planning_window':
+      return `${label}の日付条件は今回の計画期間と重なりません。計画期間に合う開始日または期限を何日にしますか？`;
     case 'availability_outside_planning_window':
       return 'その曜日の希望は、今回の計画期間の何日にしますか？';
     case 'missing_time_bounds':
