@@ -385,7 +385,7 @@ This section remains visible so the principle is not lost merely because its his
 
 | Scenario | Contract to assert |
 | --- | --- |
-| A 完全入力と希望時刻 | 来週のhorizonと20時以降のtyped希望を保持し、時刻表/busy枠を避ける。解決不能な希望は質問する。曜日集合を一つの日付欄に書いた初回応答は一度のrepairで曜日ごとの事実（availabilityなら`recurrenceKind`/`days`）へ言い直せ、繰り返しを発明したrepairは拒否する |
+| A 完全入力と希望時刻 | 来週のhorizonと20時以降のtyped希望を保持し、時刻表/busy枠を避ける。解決不能な希望は質問する。曜日集合を一つの日付欄に書いた初回応答は一度のrepairで曜日ごとの事実（availabilityなら未設定の`recurrenceKind`/`days`）へ言い直せ、繰り返しの発明や既存の曜日scopeの変更は拒否する。最初のturnでtaskに付いた登録教材idは新しいtaskとして扱い、repairを要しない |
 | B 質問理由と努力量の回答 | 説明でgraphを変えず、努力量の回答は対象へbindする。未解決の必須教材質問を解消済みとして扱わない（DIALOGUE-016） |
 | C 数量訂正と期限 | 30→20、既存速度、具体日付を同じ作業へ伝播し、旧候補・誤った変更なしclaimを残さない |
 | D 複数作業と後続条件 | 作業を保ち、plan-wide/task-onlyの希望とsession変更をそのscopeへ適用する。容量不足時の旧案は失効する |
