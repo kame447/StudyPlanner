@@ -224,6 +224,9 @@ describe('Stable V5 dialogue prompt', () => {
     } });
     expect(adviceRequest).toContain('Answer the side question first');
     expect(adviceRequest).toContain('NOT free time');
+    expect(adviceRequest).toContain('feasibilityClaim must match text');
+    expect(adviceRequest).toContain('no 可能/大丈夫/できます');
+    expect(adviceRequest).toContain('offer a trial draft');
     expect(adviceRequest).toContain('never proves an unaccepted alternative');
     expect(adviceRequest).not.toContain('助言・可否・数値の判断は書かない');
   });

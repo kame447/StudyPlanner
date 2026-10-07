@@ -1,3 +1,6 @@
+import { CONDITION_SETUP, CONDITION_PACE, CONDITION_FOLLOWUP, conditionSetupDocument } from '../testUtils/weeklyPlanningConditionPropagationFixture';
+import { liveDSplitSessionDocument } from '../testUtils/weeklyPlanningLiveSessionCapFixture';
+import { declaration } from '../testUtils/weeklyPlanningSchedulingConstraintsFixture';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
@@ -608,4 +611,89 @@ describe('architecture attribution of persisted traces', () => {
     expectBounded(persistedLegacy.entry, persistedLegacy.preparedEntry);
     expectBounded(persistedInteraction.entry, persistedInteraction.preparedEntry);
   });
+});
+
+
+it.each(['constraint', 'consultation'] as const)('persists the real %s repair through outbox retry, Worker and bounded future fields', async kind => {
+  const conversation = createScriptedConversation({
+    provider, ownerId: USER_ID, conversationId: CONVERSATION_ID, weekStartDate: WEEK, architecture: 'interaction_v1',
+  });
+  let document: Json = conditionSetupDocument();
+  let renderCount = 0;
+  let repairTurn = false;
+  script = call => {
+    if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
+      decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
+      minutes: 3, precision: 'approximate', quantityRole: null,
+    });
+    if (call.kind === 'semantic_generic') return JSON.stringify(document);
+    if (call.kind === 'renderer') {
+      const initial = repairTurn && ++renderCount === 1;
+      const text = initial ? kind === 'constraint'
+        ? 'どちらも夜の候補です。「この内容で仮予定にする」を選んでください。'
+        : 'まとめて進める形も可能ですが、空き時間を確かめましょう。'
+        : kind === 'constraint' ? '候補を確認し「この内容で仮予定にする」を選んでください。'
+          : '土日にまとめる形で候補を試してみましょう。';
+      return JSON.stringify({ ...JSON.parse(scriptedRendererReply(call, text)),
+        ...(repairTurn && kind === 'consultation' ? { feasibilityClaim: initial ? 'fits' : 'none' } : {}),
+      });
+    }
+    return undefined;
+  };
+  await conversation.submit(CONDITION_SETUP);
+  await conversation.submit(CONDITION_PACE);
+  document = kind === 'constraint' ? liveDSplitSessionDocument(conversation.graph()!)
+    : emptyDocument({ conversationActs: [{ kind: 'consultation_request', targetPublicId: null }] });
+  if (kind === 'constraint') document.availabilityDeclarations = [declaration({
+    kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
+    constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
+  })];
+  repairTurn = true;
+  const turn = await conversation.submit(kind === 'constraint'
+    ? `${CONDITION_FOLLOWUP}。使えるのは毎日9時から12時だけ` : 'その前に、土日にまとめてやる感じでも大丈夫？');
+  expect(turn.result?.responseSource).toBe('ai');
+  const rendererCalls = turn.calls.filter(call => call.kind === 'renderer');
+  expect(rendererCalls).toHaveLength(2);
+  const input = traceInput(turn, turn.debugTrace);
+  input.previewCount = turn.result!.draftCandidates?.length ?? 0;
+  input.outcome = kind === 'constraint' ? 'preview' : 'status';
+  const context = input.dialogueRendererTrace!.request!.promptContext as Json;
+  const reason = kind === 'constraint' ? 'unverified_preview_constraint_claim' : 'unchecked_consultation_feasibility';
+  const expectedContext = {
+    messages: rendererCalls[0].messages,
+    requestBytes: new TextEncoder().encode(JSON.stringify(rendererCalls[0].messages)).byteLength,
+    ...(kind === 'consultation' ? { responseFormat: rendererCalls[0].request.response_format } : {}),
+    repair: { reason, instruction: rendererCalls[1].messages[2].content },
+  };
+  // The full live D request legitimately exceeds the 12 KiB prompt-context limit.
+  // Compare its actual bounded projection to the real provider request plus repair,
+  // instead of assuming every request survives as an unbounded messages array.
+  const expectedTrace = structuredClone(input.dialogueRendererTrace!);
+  expectedTrace.request!.promptContext = expectedContext;
+  expect(context).toEqual(boundWeeklyPlanningDialogueRendererTraceForTransport(expectedTrace).request!.promptContext);
+  expectedTrace.request!.promptContext = { ...expectedContext,
+    repair: { ...expectedContext.repair, futureClaimEvidence: FUTURE_FIELD_SENTINEL },
+  };
+  input.dialogueRendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(expectedTrace);
+  const oversized = structuredClone(input);
+  oversized.requestId = `${CONVERSATION_ID}:request:oversized-${kind}-repair`;
+  const largeContext = oversized.dialogueRendererTrace!.request!.promptContext as Json;
+  largeContext.futureClaimEvidence = 'あ'.repeat(30_000);
+  const persisted = await persistThroughOutbox([input, oversized]);
+  const kept = persistedFor(persisted, turn.requestId!);
+  for (const entry of [kept.entry, kept.preparedEntry]) {
+    const serialized = JSON.stringify(entry);
+    expect(serialized).toContain(reason);
+    expect(serialized).toContain(FUTURE_FIELD_SENTINEL);
+    expect(serialized).toContain('weekly_planning_renderer');
+    if (kind === 'consultation') expect(serialized).toContain('feasibilityClaim');
+  }
+  expectBounded(kept.entry, kept.preparedEntry);
+  const large = persistedFor(persisted, oversized.requestId);
+  for (const entry of [large.entry, large.preparedEntry]) {
+    const serialized = JSON.stringify(entry);
+    expect(serialized).toMatch(/traceProjectionTruncated|traceTruncatedItems|truncated/u);
+    expect(serialized).not.toContain('あ'.repeat(30_000));
+  }
+  expectBounded(large.entry, large.preparedEntry);
 });

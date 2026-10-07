@@ -1,7 +1,8 @@
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
-import { claimsUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { claimsUnverifiedWeeklyPlanningPreviewConstraints, hasUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
 import type {
   WeeklyPlanningStableV5DialogueFallbackReason,
   WeeklyPlanningStableV5DialogueRenderInput,
@@ -347,7 +348,9 @@ function groundingAcknowledgementMismatch(
     return true;
   }
 
-  if (missesAcknowledgedClockValue({
+  const neutralAcknowledgement = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    && hasUnverifiedWeeklyPlanningPreviewConstraints(input.communication?.previewConstraintSatisfaction);
+  if (!neutralAcknowledgement && missesAcknowledgedClockValue({
     factIds: factIds as string[],
     acknowledgementText,
     input,
@@ -373,11 +376,12 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
-  if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)
-    || (input.communication && claimsUnverifiedWeeklyPlanningPreviewConstraints(
-      text, input.communication.previewConstraintSatisfaction,
-    ))) {
+  if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)) {
     return 'action_contract_mismatch';
+  }
+  if (claimsUnverifiedWeeklyPlanningPreviewConstraints(text, input.communication?.previewConstraintSatisfaction)) {
+    return conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+      ? 'unverified_preview_constraint_claim' : 'action_contract_mismatch';
   }
 
   // The question is bound to this reply as presented: a reply that must ask it has to contain a
@@ -462,6 +466,15 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     || parsed.questionCode !== input.questionCode
   ) {
     return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
+  }
+
+  const consultation = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    ? input.communication?.consultation : undefined;
+  if (consultation && (
+    !['none', 'fits', 'does_not_fit'].includes(String(parsed.feasibilityClaim))
+    || (parsed.feasibilityClaim !== 'none' && parsed.feasibilityClaim !== consultation.feasibility.status)
+  )) {
+    return { status: 'fallback', reason: 'unchecked_consultation_feasibility', rawResponse };
   }
 
   const text = parsed.text.replace(/\r\n/g, '\n').trim();

@@ -29,3 +29,15 @@ describe('renderer claims about unverified or unmet preview constraints', () => 
     expect(disclosure(undefined)).toBe('');
   });
 });
+
+
+it('limits claims to explicitly named tasks while keeping unscoped and mixed-task claims guarded', () => {
+  const satisfied = { ...fact, taskId: 'english', taskLabel: '英語の長文', status: 'satisfied' as const };
+  const unmet = { ...fact, taskId: 'english-short', taskLabel: '英語' };
+  expect(claims('英語の長文は夜の候補です。', [satisfied, unmet])).toBe(false);
+  expect(claims('英語は夜の候補です。', [satisfied, unmet])).toBe(true);
+  expect(claims('英語の長文と英語は夜の候補です。', [satisfied, unmet])).toBe(true);
+  expect(claims('英語の長文は夜の候補です。どちらも夜です。', [satisfied, unmet])).toBe(true);
+  expect(claims('どちらも夜です。', [satisfied, unmet])).toBe(true);
+  expect(claims('夜の読書の候補です。', [{ ...fact, taskLabel: '夜の読書' }])).toBe(false);
+});

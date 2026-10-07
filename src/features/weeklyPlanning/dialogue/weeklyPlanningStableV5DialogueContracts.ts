@@ -306,6 +306,9 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_shape'
   | 'action_mismatch'
   | 'action_contract_mismatch'
+  /** Interaction presentation claims contradict application-owned evidence; repair once. */
+  | 'unverified_preview_constraint_claim'
+  | 'unchecked_consultation_feasibility'
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
@@ -395,6 +398,22 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
           ],
         },
         text: stringSchema(),
+      },
+    },
+  },
+};
+
+/** Consultation-only presentation metadata; never an authority for planning or persistence. */
+export const WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+  ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+  json_schema: {
+    ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema,
+    schema: {
+      ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema,
+      required: ['actionId', 'actionKind', 'questionCode', 'groundingAcknowledgement', 'text', 'feasibilityClaim'],
+      properties: {
+        ...(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema.properties as JsonSchemaObject),
+        feasibilityClaim: { type: 'string', enum: ['none', 'fits', 'does_not_fit'] },
       },
     },
   },

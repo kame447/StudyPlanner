@@ -158,7 +158,8 @@ export function campaignRendererReply(payload: Json): string {
   const continuation = communication.askQuestion ? '予定を組むため、もう少し教えてもらえますか？'
     : decision.actionKind === 'preview_ready' ? '候補を確認して、よければ「この内容で仮予定にする」を押してください。' : '予定の内容を確認してください。';
   const text = `${prefix}${continuation}`;
-  return JSON.stringify({ actionId: payload.actionId ?? null, actionKind: decision.actionKind ?? 'status',
+  return JSON.stringify({ ...(communication.consultation ? { feasibilityClaim: 'none' } : {}),
+    actionId: payload.actionId ?? null, actionKind: decision.actionKind ?? 'status',
     questionCode: decision.questionCode ?? null, groundingAcknowledgement: accepted.length && grounding.mode !== 'none'
       ? { factIds: accepted.map(fact => String(fact.factId)), text: prefix } : null, text });
 }

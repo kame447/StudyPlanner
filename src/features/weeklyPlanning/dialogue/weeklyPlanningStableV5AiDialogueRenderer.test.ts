@@ -314,3 +314,95 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     });
   });
 });
+
+
+describe('interaction claim repair and neutral acknowledgements', () => {
+  const liveAcknowledgement = '1回1時間くらいで2回に分けて、どっちも夜がいいのですね。';
+  function preview(): WeeklyPlanningStableV5DialogueRenderInput {
+    return input({
+      conversationArchitecture: 'interaction_v1', actionKind: 'preview_ready', questionCode: null, previewCount: 3,
+      currentUserMessage: '1回1時間くらいで2回に分けたい。どっちも夜がいい。20:00から22:00。',
+      previewPromotionControlLabel: 'この内容で仮予定にする', requiredLabels: ['この内容で仮予定にする'],
+      currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [{ factId: 'night',
+        kind: 'temporal_constraint', sourceText: '20:00から22:00', data: { startTime: '20:00', endTime: '22:00' } }] },
+      communication: { goal: 'present_preview', askQuestion: false, questionPurposes: [], laterNeeds: [],
+        statusReason: null, planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+        previewConstraintSatisfaction: [{ sourceFactId: 'night', taskId: 'research', taskLabel: '研究',
+          kind: 'preferred_window', status: 'not_satisfied' }] },
+    });
+  }
+  const neutral = 'ご希望を受け取りました。';
+  const announcement = '候補3件です。「この内容で仮予定にする」を選んで確認してください。';
+  it('accepts a neutral ACK with the accepted fact IDs without forcing forbidden clock values in one call', async () => {
+    const renderInput = preview();
+    const before = structuredClone(renderInput);
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => response(renderInput,
+      neutral + announcement, { factIds: ['night'], text: neutral })) };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput))
+      .resolves.toMatchObject({ status: 'rendered' });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(renderInput).toEqual(before);
+  });
+  it.each(['value-ack', 'live-detached-ack', 'invalid-fact-id'] as const)('repairs %s once with neutral ACK instructions', async shape => {
+    const renderInput = preview();
+    const initialAck = shape === 'invalid-fact-id' ? neutral : liveAcknowledgement;
+    // Live D returned the ACK separately, not as the text prefix. Use session evidence
+    // here so it reaches the same composition/claim boundary as the live response.
+    renderInput.currentTurnGrounding!.acceptedFacts[0] = {
+      factId: 'night', kind: 'effort_estimate', sourceText: '1回1時間くらいで2回に分けたい', data: { minutes: 60 },
+    };
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn()
+      .mockResolvedValueOnce(response(renderInput, (shape === 'live-detached-ack' ? '' : initialAck) + announcement,
+        { factIds: [shape === 'invalid-fact-id' ? 'foreign' : 'night'], text: initialAck }))
+      .mockResolvedValueOnce(response(renderInput, neutral + announcement, { factIds: ['night'], text: neutral })) };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput))
+      .resolves.toMatchObject({ status: 'rendered' });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(client.createChatCompletion).mock.calls;
+    expect(calls.every(([call]) => call.purpose === 'weekly_planning_renderer')).toBe(true);
+    expect(calls[1][0].messages.slice(-1)[0]?.content).toContain('具体値を繰り返さない');
+    expect(calls[1][0].messages.slice(-1)[0]?.content).toContain('acceptedFacts');
+  });
+  it('stops after one unsuccessful claim repair and retains a distinct failure reason', async () => {
+    const renderInput = preview();
+    const claim = '20:00から22:00に分けました。';
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => response(renderInput,
+      claim + announcement, { factIds: ['night'], text: claim })) };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput))
+      .resolves.toMatchObject({ status: 'fallback', reason: 'unverified_preview_constraint_claim' });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+  });
+  it.each(['satisfied', 'legacy_v5'] as const)('preserves concrete-value ACK requirements outside unmet interaction previews (%s)', async scope => {
+    const renderInput = preview();
+    if (scope === 'legacy_v5') renderInput.conversationArchitecture = scope;
+    else renderInput.communication!.previewConstraintSatisfaction![0].status = 'satisfied';
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => response(renderInput,
+      neutral + announcement, { factIds: ['night'], text: neutral })) };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput))
+      .resolves.toMatchObject({ status: 'fallback', reason: 'grounding_contract_mismatch' });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+  });
+  it('repairs an unchecked typed consultation assertion once, with a consultation-only schema', async () => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [],
+      conversationArchitecture: 'interaction_v1', communication: {
+        goal: 'acknowledge_aside', askQuestion: false, questionPurposes: [], laterNeeds: [], statusReason: null,
+        planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+        consultation: { mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+          feasibility: { status: 'not_evaluated', reason: 'existing_preview_not_rechecked' },
+          workEstimates: [], dailyLimits: [], missingQuestionCodes: [], nextAction: 'offer_preference_change' },
+      } });
+    const withClaim = (claim: string, text: string) => JSON.stringify({ ...JSON.parse(response(renderInput, text)), feasibilityClaim: claim });
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn()
+      .mockResolvedValueOnce(withClaim('fits', 'まとめて進める形も可能ですが、空き時間を確かめましょう。'))
+      .mockResolvedValueOnce(withClaim('none', '土日にまとめる形で候補を試してみましょう。')) };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, client).render(renderInput))
+      .resolves.toMatchObject({ status: 'rendered' });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    for (const [call] of vi.mocked(client.createChatCompletion).mock.calls) {
+      expect(call.purpose).toBe('weekly_planning_renderer');
+      expect(call.responseFormat?.json_schema.schema.required).toContain('feasibilityClaim');
+    }
+    expect(vi.mocked(client.createChatCompletion).mock.calls[1][0].messages.slice(-1)[0]?.content).toContain('feasibilityClaim=none');
+    expect(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema.required).not.toContain('feasibilityClaim');
+  });
+});

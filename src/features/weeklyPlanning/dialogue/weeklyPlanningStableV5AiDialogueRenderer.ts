@@ -11,6 +11,7 @@ import {
 } from '../trace/weeklyPlanningDialogueRendererTrace';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+  WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT,
   type WeeklyPlanningStableV5DialogueRenderInput,
   type WeeklyPlanningStableV5DialogueRenderResult,
   type WeeklyPlanningStableV5DialogueRenderer,
@@ -37,6 +38,20 @@ export {
   createWeeklyPlanningStableV5DialoguePrompt,
   createWeeklyPlanningStableV5DialogueStateSummary,
 } from './weeklyPlanningStableV5DialoguePrompt';
+
+import { hasUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
+
+const UNVERIFIED_CONSTRAINT_REPAIR_INSTRUCTION = [
+  '前回候補は未確認の条件を述べるか、ACK契約に違反していました。条件の説明はアプリが別途表示します。',
+  '時刻・時間帯・時間数・回数や条件を満たすとの表現を避け、候補件数と操作を案内してください。',
+  'ACKは具体値を繰り返さない中立的な受領文でよく、acceptedFactsの正しいfactIdsを参照し、最終textをそのACK本文から始めてください。',
+].join('');
+
+const CONSULTATION_FEASIBILITY_REPAIR_INSTRUCTION = [
+  '前回候補の可否表明は相談の根拠と一致していません。feasibilityClaim=noneで書き直してください。',
+  '未確認の希望について可能・大丈夫・できると断定せず、空き時間など何を確かめる必要があるかを短く説明し、候補で試す次の一歩を提案してください。',
+  '予定を変えたとは書かず、ACKとcommunicationの残りの契約を保ってください。',
+].join('');
 
 const REPEATED_QUESTION_REPAIR_PREFIX = [
   '前回候補がrecentConversation内の直前assistant発話と同一でした。',
@@ -114,7 +129,10 @@ async function requestDialogueRender(params: {
   const rawResponse = await params.client.createChatCompletion({
     messages: params.messages,
     temperature: 0.4,
-    responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+    responseFormat: conversationArchitecturePolicy(params.input.conversationArchitecture).interactionOutcome
+      && params.input.communication?.consultation
+      ? WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT
+      : WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
   });
   return parseWeeklyPlanningDialogueWithAcknowledgement(rawResponse, params.input);
@@ -128,10 +146,11 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
     async render(input) {
       try {
         const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
-        rememberWeeklyPlanningDialogueRendererPromptContext(
-          input.actionId,
-          rendererPromptTraceContext(prompt),
-        );
+        const promptContext = rendererPromptTraceContext(prompt);
+        if (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome && input.communication?.consultation) {
+          promptContext.responseFormat = WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT;
+        }
+        rememberWeeklyPlanningDialogueRendererPromptContext(input.actionId, promptContext);
         const baseMessages: ChatMessage[] = [
           { role: 'system', content: prompt.systemPrompt },
           { role: 'user', content: prompt.userPrompt },
@@ -141,7 +160,14 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           return initial;
         }
         const interaction = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome;
-        const repairInstruction = initial.reason === 'repeated_question_text'
+        const neutralConstraintRepair = interaction
+          && hasUnverifiedWeeklyPlanningPreviewConstraints(input.communication?.previewConstraintSatisfaction);
+        const repairInstruction = interaction && initial.reason === 'unchecked_consultation_feasibility'
+          ? CONSULTATION_FEASIBILITY_REPAIR_INSTRUCTION
+          : interaction && (initial.reason === 'unverified_preview_constraint_claim'
+            || (initial.reason === 'grounding_contract_mismatch' && neutralConstraintRepair))
+            ? UNVERIFIED_CONSTRAINT_REPAIR_INSTRUCTION
+            : initial.reason === 'repeated_question_text'
           ? (interaction
               ? REPEATED_QUESTION_REPAIR_INSTRUCTION
               : LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION)
@@ -157,6 +183,12 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
                   ? PREVIEW_CLAIM_REPAIR_INSTRUCTION
                   : null;
         if (!repairInstruction) return initial;
+        // Keep the original request plus the one appended instruction. The actual repair
+        // request is reconstructible without storing the full conversation twice.
+        if (interaction) rememberWeeklyPlanningDialogueRendererPromptContext(input.actionId, {
+          ...promptContext,
+          repair: { reason: initial.reason, instruction: repairInstruction },
+        });
         // Awaited inside the try: a failed repair dispatch (provider error, exhausted pool or
         // an outage-gated renderer) must end in the deterministic fallback, never reject.
         return await requestDialogueRender({

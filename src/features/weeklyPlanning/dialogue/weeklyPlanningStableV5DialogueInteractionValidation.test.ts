@@ -239,7 +239,7 @@ describe('interaction renderer output: actual preview constraints', () => {
       }),
     });
     const claim = 'どちらも夜の候補を3件用意しました。「この内容で仮予定にする」を押してください。';
-    expect(render(renderInput, claim)).toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
+    expect(render(renderInput, claim)).toMatchObject({ status: 'fallback', reason: 'unverified_preview_constraint_claim' });
     expect(render({
       ...renderInput, communication: {
         ...renderInput.communication!,
@@ -249,5 +249,34 @@ describe('interaction renderer output: actual preview constraints', () => {
     }, claim)).toMatchObject({ status: 'rendered' });
     expect(render({ ...renderInput, conversationArchitecture: 'legacy_v5', communication: undefined }, claim))
       .toMatchObject({ status: 'rendered' });
+  });
+});
+
+
+describe('typed consultation feasibility claims', () => {
+  it.each(['none', 'fits', 'does_not_fit', 'future_value', undefined])('validates %s against unassessed evidence, without changing legacy', claim => {
+    const renderInput = input({
+      actionKind: 'status', questionCode: null,
+      communication: communication({ goal: 'acknowledge_aside', askQuestion: false, consultation: {
+        mode: 'advisory_only', assessmentScope: 'accepted_plan_only',
+        feasibility: { status: 'not_evaluated', reason: 'existing_preview_not_rechecked' },
+        missingQuestionCodes: [], workEstimates: [], dailyLimits: [], nextAction: 'offer_preference_change',
+      } }),
+    });
+    const raw = JSON.stringify({ actionId: renderInput.actionId, actionKind: 'status', questionCode: null,
+      groundingAcknowledgement: null, feasibilityClaim: claim, text: '土日にまとめる形で候補を試してみましょう。' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(raw, renderInput)).toMatchObject(claim === 'none'
+      ? { status: 'rendered' } : { status: 'fallback', reason: 'unchecked_consultation_feasibility' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(raw, {
+      ...renderInput, conversationArchitecture: 'legacy_v5', communication: undefined,
+    })).toMatchObject({ status: 'rendered' });
+    for (const status of ['fits', 'does_not_fit'] as const) {
+      expect(parseWeeklyPlanningStableV5DialogueRendererResponse(raw, {
+        ...renderInput, communication: { ...renderInput.communication!, consultation: {
+          ...renderInput.communication!.consultation!, feasibility: { status, basis: 'current_turn_scheduler' },
+        } },
+      })).toMatchObject(claim === 'none' || claim === status ? { status: 'rendered' }
+        : { status: 'fallback', reason: 'unchecked_consultation_feasibility' });
+    }
   });
 });

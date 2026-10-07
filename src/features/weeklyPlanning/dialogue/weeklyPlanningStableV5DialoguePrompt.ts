@@ -207,7 +207,7 @@ function interactionCommunicationInstructions(
       ? ['previewDisclosure: The app states omitted work after the reply. Do not name extent=all work or claim inclusion/exclusion; announce the preview count and control only.']
       : []),
     ...(communication.previewConstraintSatisfaction?.some((entry) => entry.status !== 'satisfied')
-      ? ['previewConstraintSatisfaction: Unmet/unverified overrides timing ACK/advice. Announce count/control only; timing/session/fulfillment belongs to app disclosure. Neutral ACK is allowed.']
+      ? ['previewConstraintSatisfaction: Unmet/unverified overrides value ACK. Use count/control; app discloses conditions. Neutral ACK cites accepted factIds without values.']
       : []),
     ...(communication.allocationBreakdown
       ? ['allocationBreakdown: App shows estimates/margins. Never mention either in this reply, even zero margin.']
@@ -239,9 +239,9 @@ function consultationInstructions(consultation: NonNullable<WeeklyPlanningStable
     review_preview: 'Invite review of the draft.',
   }[consultation.nextAction];
   return [
-    'consultation: Answer the side question first after ACK. Practical advice from acceptedFacts is optional; never adopt/change/approve/save.',
-    'feasibility never proves an unaccepted alternative. Only it proves fit. workEstimates=needed minutes; dailyLimits=limits, NOT free time. No invented numbers/placement.',
-    'Untested: conditional advice + concrete uncertainty, not ここでは判断できません.',
+    'consultation: Answer the side question first after ACK; never adopt/change/approve/save.',
+    'feasibility never proves an unaccepted alternative. workEstimates=needed minutes; dailyLimits=limits, NOT free time. No invented placement.',
+    'feasibilityClaim must match text: none or evidenced fits/does_not_fit. Untested: none; no 可能/大丈夫/できます. Explain uncertainty; offer a trial draft; no blanket refusal.',
     uncertainty, next,
     'askQuestion=false: no question; true: answer then ask it.',
   ];

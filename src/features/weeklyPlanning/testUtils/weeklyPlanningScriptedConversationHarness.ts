@@ -51,7 +51,7 @@ export interface ScriptedProviderCall {
   /** Top-level property names of the JSON schema the provider was asked to follow. */
   schemaProperties: string[];
   messages: Array<{ role: string; content: string }>;
-  /** Parsed JSON payload of the final user message, when it is JSON. */
+  /** Parsed JSON payload; renderer repair instructions retain the original rendering input. */
   payload: Record<string, unknown> | null;
 }
 
@@ -107,7 +107,8 @@ export function installScriptedWeeklyPlanningProvider(
       schemaName,
       schemaProperties: Object.keys(body.response_format?.json_schema?.schema?.properties ?? {}),
       messages,
-      payload: lastUserPayload(messages),
+      payload: lastUserPayload(messages) ?? (schemaName === 'weekly_planning_stable_v5_dialogue_response'
+        ? lastUserPayload(messages.slice(0, 2)) : null),
     };
     calls.push(call);
     // Most scenarios specify interpretation/renderer behavior, not auditor
@@ -142,6 +143,7 @@ export function installScriptedWeeklyPlanningProvider(
 export function scriptedRendererReply(call: ScriptedProviderCall, text: string): string {
   const decision = isRecord(call.payload?.applicationDecision) ? call.payload.applicationDecision : {};
   return JSON.stringify({
+    ...(call.schemaProperties.includes('feasibilityClaim') ? { feasibilityClaim: 'none' } : {}),
     actionId: call.payload?.actionId ?? null,
     actionKind: decision.actionKind ?? 'status',
     questionCode: decision.questionCode ?? null,
