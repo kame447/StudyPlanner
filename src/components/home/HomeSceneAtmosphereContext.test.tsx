@@ -1,3 +1,4 @@
+import { HomeDisplayClockProvider } from './HomeDisplayClockContext';
 import { StrictMode } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,7 @@ import { HomeSceneAtmosphereProvider, useHomeSceneAtmosphere } from './HomeScene
 
 const INITIAL_TIME = new Date('2026-08-19T10:15:59.900Z');
 
-describe('shared Home scene clock lifecycle', () => {
+describe('shared Home display clock and scene lifecycle', () => {
   let renderer: ReactTestRenderer | undefined;
   let browserWindow: EventTarget;
   let browserDocument: EventTarget & { visibilityState: string };
@@ -43,9 +44,9 @@ describe('shared Home scene clock lifecycle', () => {
   }
 
   function scenes(active: boolean, count = 5) {
-    return <HomeSceneAtmosphereProvider active={active}>
+    return <HomeDisplayClockProvider active={active}><HomeSceneAtmosphereProvider>
       {Array.from({ length: count }, (_, index) => <SceneConsumer key={index} />)}
-    </HomeSceneAtmosphereProvider>;
+    </HomeSceneAtmosphereProvider></HomeDisplayClockProvider>;
   }
 
   function mount(active = true) {

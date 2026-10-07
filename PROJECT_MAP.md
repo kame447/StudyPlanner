@@ -95,7 +95,8 @@ UI components and interaction surfaces. Examples:
 - `AiPlanningView.tsx` / `AiPlanningChatSidebar.tsx`: dedicated AI planning surface。weekly-planning conversation / preview / approval のユーザー向け入口はここに一本化する
 - calendar / home / bookshelf / timetable views
 - `home/HomeScene.tsx` / `home/scenes/`: Home の装飾用 SVG scene。`src/lib/homeNextPlanVisual.ts` が選んだ study/class/other を pixel / pixel-cat / pixel-turtle / cozy / minimal の renderer へ渡し、theme と任意 motion の描画は `src/styles/home-next-plan-visual.css` が所有する。予定の意味や保存先を変更しない
-- `home/HomeSceneAtmosphereContext.tsx`: Home／設定が利用する現在時刻を共有し、表示中の分境界と画面復帰で更新する。時間帯と近似月相は `src/lib/homeSceneAtmosphere.ts`、3つのピクセル系の空・月の描画は `home/scenes/PixelSky.tsx` が所有する。端末のローカル時計と月相計算を予定日時・theme・天気APIから独立させ、位置情報を取得しない
+- `home/HomeDisplayClockContext.tsx`: 常設ヘッダーとHomeが利用する現在時刻を共有し、分境界と画面復帰で更新、タブ非表示中はtimerを停止する。dashboardは同じ時刻snapshot、当日予定の投影はそのローカル日付を使う。カレンダーの選択日・保存データ・AI計画の日付は更新しない
+- `home/HomeSceneAtmosphereContext.tsx`: 共通表示clockのsnapshotから空を派生計算し、独自timerは持たない。時間帯と近似月相は `src/lib/homeSceneAtmosphere.ts`、3つのピクセル系の空・月の描画は `home/scenes/PixelSky.tsx` が所有する。端末のローカル時計と月相計算を予定日時・theme・天気APIから独立させ、位置情報を取得しない
 - `AppSettingsDialog.tsx` / `AppSettingsGeneral.tsx`: 独立した全画面の設定 surface と一般設定の grouped controls。既存 preference callback、AI memory、support の owner は維持する
 - `BookshelfMaterialSearch.tsx`: 教材追加時の任意の書籍検索UI。normalized candidateを表示し、候補選択は教材名へだけ反映する。provider選択やXML parsing、共有catalog writeを所有しない
 - `ReportView.tsx`: Homeから開く二次導線の学習レポート。表示・interactionのみを担当し、集計ルールは `src/lib/learningReport.ts` を利用する

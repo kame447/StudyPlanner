@@ -1,6 +1,7 @@
+import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useMemo, type RefObject } from 'react';
-import { todayIsoDate } from '../lib/date';
+import { toIsoDate } from '../lib/date';
 import { augmentHomePlansWithScheduleOccurrences } from '../lib/homeScheduleAugmentation';
 import type {
   Actual,
@@ -58,6 +59,7 @@ export function HomeScheduleView({
   onOpenBookshelf,
   onOpenReport,
 }: HomeScheduleViewProps) {
+  const today = toIsoDate(useHomeDisplayClock());
   const displayPlans = useMemo(
     () =>
       augmentHomePlansWithScheduleOccurrences({
@@ -68,7 +70,7 @@ export function HomeScheduleView({
         timetableTermId,
         timetableTerm,
         timetableTerms,
-        startDate: todayIsoDate(),
+        startDate: today,
       }),
     [
       monthEvents,
@@ -78,6 +80,7 @@ export function HomeScheduleView({
       timetableTermId,
       timetableTerms,
       userId,
+      today,
     ],
   );
 
