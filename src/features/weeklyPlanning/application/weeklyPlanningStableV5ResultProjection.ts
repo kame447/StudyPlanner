@@ -1,6 +1,7 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import {
   getWeeklyPlanningStableV5RuntimeSession,
   getWeeklyPlanningStableV5StagedGraph,
@@ -67,6 +68,27 @@ function withRepairSafePreview(
     const priorFactInvalidated = result.stableV5Graph.factLifecycles.some(entry =>
       previousActiveIds.has(entry.factId) && entry.status !== 'active');
     if (priorFactInvalidated) return result;
+
+    // New scheduling facts can change old work without superseding a fact: a
+    // deadline, preferred window, session length or global availability does so.
+    // Keep partial previews only for additions concerning brand-new work.
+    if (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome) {
+      const nextGraph = result.stableV5Graph;
+      const nextActiveIds = new Set(nextGraph.factLifecycles
+        .filter(entry => entry.status === 'active').map(entry => entry.factId));
+      const isNewActiveFact = (entry: { id: string }) =>
+        nextActiveIds.has(entry.id) && !previousActiveIds.has(entry.id);
+      const globalSchedulingFactAdded = [
+        ...nextGraph.planningWindows, ...nextGraph.availabilityDeclarations, ...nextGraph.constraintSourceRequests,
+      ].some(isNewActiveFact);
+      const existingTaskSchedulingFactAdded = [
+        ...nextGraph.components, ...nextGraph.studyContexts, ...nextGraph.workloads,
+        ...nextGraph.effortEstimates, ...nextGraph.temporalConstraints, ...nextGraph.taskDateRules, ...nextGraph.recurrences,
+      ].some(entry => isNewActiveFact(entry) && previousActiveIds.has(entry.taskId));
+      const existingTaskRelationAdded = nextGraph.relations.some(entry => isNewActiveFact(entry)
+        && (previousActiveIds.has(entry.fromTaskId) || previousActiveIds.has(entry.toTaskId)));
+      if (globalSchedulingFactAdded || existingTaskSchedulingFactAdded || existingTaskRelationAdded) return result;
+    }
   }
 
   return {

@@ -19,6 +19,9 @@ const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 // Interaction architecture: the renderer's own claim that candidates were made or changed.
 // Only checked on replies that come with no new preview; naming the existing preview is fine.
 const NEW_CANDIDATES_CLAIM = /(?:候補|仮予定|案)(?:を|が|は|も)?[^。！？!?\n]{0,12}?(?:できました|作りました|作成しました|用意しました|出しました|分けました|変えました|直しました|組みました)/u;
+// An unchanged-preview claim requires that exact application-owned status. A
+// clarification or recovery must not present a stale/rejected correction as final.
+const UNCHANGED_CANDIDATES_CLAIM = /(?:候補|仮予定|案)(?:を|が|は|も)?[^。！？!?\n]{0,12}?(?:そのままです|変わりません|変わっていません|変更していません|変更はありません)/u;
 const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
 const EXECUTION_CLAIM_EXPRESSION = new RegExp(
   `(?:(?:予定|仮予定|計画).{0,20}${EXECUTION_VERB}|${EXECUTION_VERB}.{0,20}(?:予定|仮予定|計画))`,
@@ -381,6 +384,10 @@ function validateRenderedText(
   // No new preview in this reply (status, question, …): it may not claim new or changed
   // candidates, e.g. "both evening" when the preview stayed as it was.
   if (input.communication && input.actionKind !== 'preview_ready' && NEW_CANDIDATES_CLAIM.test(text)) {
+    return 'preview_claim_without_preview';
+  }
+  if (input.communication && input.communication.statusReason !== 'preview_unchanged'
+    && UNCHANGED_CANDIDATES_CLAIM.test(text)) {
     return 'preview_claim_without_preview';
   }
 

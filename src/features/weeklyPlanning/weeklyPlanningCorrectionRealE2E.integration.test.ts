@@ -20,6 +20,7 @@ type Json = Record<string, unknown>;
 const SETUP = '来週、アルゴリズムイントロダクションを30ページ読みたい。1ページ4分くらい';
 const CORRECTION = 'やっぱり20ページにして、金曜日までに終わらせたい';
 const DATE_ANSWER = '10月16日まで';
+const DEADLINE_ONLY = '金曜日までに終わらせたい';
 const TITLE = 'アルゴリズムイントロダクション';
 
 function emptyDocument(overrides: Json = {}): Json {
@@ -110,12 +111,21 @@ function dateAnswerDocument(call: ScriptedProviderCall): Json {
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 let copiedEffort: boolean;
 let mutateCorrection: ((document: Json) => void) | undefined;
+let rendererText: string;
 beforeEach(() => {
   resetScriptedConversationRuntime();
   copiedEffort = false;
   mutateCorrection = undefined;
+  rendererText = '候補を確認してください。';
   provider = installScriptedWeeklyPlanningProvider((call) => {
-    if (call.kind === 'renderer') return scriptedRendererReply(call, '候補を確認してください。');
+    if (call.kind === 'renderer') {
+      // Renderer repair appends prose after the original JSON payload; keep the
+      // action identity so the repair also tests text validation, not shape errors.
+      const renderCall = call.payload ? call : {
+        ...call, payload: JSON.parse(call.messages.find(message => message.role === 'user')!.content) as Json,
+      };
+      return scriptedRendererReply(renderCall, rendererText);
+    }
     const userText = call.payload?.userText;
     const serialize = (document: Json) => {
       if (!call.schemaProperties.includes('conversationActs')) delete document.conversationActs;
@@ -123,11 +133,18 @@ beforeEach(() => {
     };
     if (userText === SETUP) return serialize(setupDocument());
     if (userText === DATE_ANSWER) return serialize(dateAnswerDocument(call));
-    if (userText === CORRECTION || call.payload?.validationErrors) {
+    if (userText === CORRECTION || userText === DEADLINE_ONLY || call.payload?.validationErrors) {
       const original = call.payload?.validationErrors
         ? [...provider.calls].reverse().find(entry => entry.kind === 'semantic_generic' && entry.payload?.userText === CORRECTION)!
         : call;
       const document = correctionDocument(original, copiedEffort);
+      if (userText === DEADLINE_ONLY) {
+        const boundTask = (document.tasks as Json[])[0];
+        boundTask.sourceText = DEADLINE_ONLY;
+        boundTask.workloads = [];
+        boundTask.effortEstimates = [];
+        document.corrections = [];
+      }
       mutateCorrection?.(document);
       return serialize(document);
     }
@@ -140,6 +157,68 @@ afterEach(() => {
 });
 
 describe('real E2E Scenario C correction through production controller', () => {
+  it('invalidates an existing work preview when an added hard deadline still needs a date', async () => {
+    mutateCorrection = document => {
+      ((document.tasks as Json[])[0].temporalConstraints as Json[])[0].dateExpression = 'custom:Friday of the intended week';
+    };
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(SETUP);
+    const oldPreview = structuredClone(conversation.getState().previewCandidates)!;
+    const oldBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: oldPreview, userId: conversation.ownerId, createdAt: '2026-10-07T09:00:00.000Z',
+    });
+    const changed = await conversation.submit(DEADLINE_ONLY);
+    expect(changed.result?.failure).toBeUndefined();
+    expect(conversation.graph()!.temporalConstraints).toHaveLength(1);
+    expect(changed.result?.state.questions.length).toBeGreaterThan(0);
+    expect(changed.result?.preserveExistingPreview).not.toBe(true);
+    expect(conversation.getState().previewCandidates).toEqual([]);
+    expect(changed.result?.communicationFacts?.statusReason).not.toBe('preview_unchanged');
+    expect(classifyWeeklyPlanningApprovalAvailability({ blocks: oldBlocks, userId: conversation.ownerId }))
+      .toMatchObject({ kind: 'recompute_required' });
+    const answered = await conversation.submit(DATE_ANSWER);
+    expect(answered.result?.failure).toBeUndefined();
+    expect(conversation.getState().previewCandidates?.length).toBeGreaterThan(0);
+    expect(conversation.getState().previewCandidates?.every(candidate => candidate.date <= '2026-10-16')).toBe(true);
+  });
+
+  it.each(['accepted-correction', 'rejected-correction'] as const)('rejects misleading unchanged-preview prose after %s', async (scenario) => {
+    copiedEffort = true;
+    mutateCorrection = document => {
+      if (scenario === 'rejected-correction') {
+        ((document.tasks as Json[])[0].effortEstimates as Json[])[0].minutes = 5;
+      } else {
+        ((document.tasks as Json[])[0].temporalConstraints as Json[])[0].dateExpression = 'custom:Friday of the intended week';
+      }
+    };
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(SETUP);
+    const beforeGraph = structuredClone(conversation.graph())!;
+    const beforePreview = structuredClone(conversation.getState().previewCandidates);
+    rendererText = '今の仮予定の候補はそのままです。何日までに終わらせたいですか？';
+    const corrected = await conversation.submit(CORRECTION);
+    expect(corrected.result?.dialogueRendererTrace?.response.reason).toBe('preview_claim_without_preview');
+    expect(corrected.result?.responseSource).toBe('deterministic_fallback');
+    expect(corrected.result?.message).not.toContain('候補はそのまま');
+    expect(corrected.result?.communicationFacts?.statusReason).not.toBe('preview_unchanged');
+    expect(conversation.getState().previewCandidates).toEqual(scenario === 'accepted-correction' ? [] : beforePreview);
+    if (scenario === 'rejected-correction') expect(conversation.graph()).toEqual(beforeGraph);
+    else expect(conversation.graph()!.revision).toBeGreaterThan(beforeGraph.revision);
+  });
+
+  it('keeps legacy additive-deadline preview retention unchanged', async () => {
+    mutateCorrection = document => {
+      ((document.tasks as Json[])[0].temporalConstraints as Json[])[0].dateExpression = 'custom:Friday of the intended week';
+    };
+    const conversation = createScriptedConversation({ provider, architecture: 'legacy_v5' });
+    await conversation.submit(SETUP);
+    const oldPreview = structuredClone(conversation.getState().previewCandidates);
+    const changed = await conversation.submit(DEADLINE_ONLY);
+    expect(changed.result?.failure).toBeUndefined();
+    expect(changed.result?.preserveExistingPreview).toBe(true);
+    expect(conversation.getState().previewCandidates).toEqual(oldPreview);
+  });
+
   it('applies a grounded replacement and deadline without asking for the known book again', async () => {
     const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
     await conversation.submit(SETUP);
@@ -255,19 +334,30 @@ describe('real E2E Scenario C correction through production controller', () => {
     expect(conversation.getState().previewCandidates).toEqual(preview);
   });
 
-  it('persists the actual correction request, projected delta and fact diff through outbox retry and Worker limits', async () => {
+  it.each(['corrected-preview', 'deadline-clarification', 'correction-clarification'] as const)('persists %s requests, state and renderer decisions through outbox retry and Worker limits', async (scenario) => {
     copiedEffort = true;
     const conversationId = 'weekly-conversation-623e4567-e89b-42d3-a456-426614174001';
     const canonicalIds = { sessionId: 'weekly-trace-623e4567-e89b-42d3-a456-426614174001', logicalConversationId: conversationId };
     const conversation = createScriptedConversation({ provider, conversationId, architecture: 'interaction_v1' });
     await conversation.submit(SETUP);
-    const corrected = await conversation.submit(CORRECTION);
+    const userText = scenario === 'deadline-clarification' ? DEADLINE_ONLY : CORRECTION;
+    if (scenario !== 'corrected-preview') {
+      mutateCorrection = document => {
+        ((document.tasks as Json[])[0].temporalConstraints as Json[])[0].dateExpression = 'custom:Friday of the intended week';
+      };
+      rendererText = '今の仮予定の候補はそのままです。何日までに終わらせたいですか？';
+    }
+    const corrected = await conversation.submit(userText);
     expect(corrected.result?.interactionOutcome?.kind).toBe('apply');
     const sent = corrected.calls.find(call => call.kind === 'semantic_generic')!;
     const requestEvent = corrected.debugTrace.find(event => event.stage === 'semantic_provider_request')!;
     expect(((requestEvent.data as Json).request as Json).messages).toEqual(sent.messages);
     const validation = corrected.debugTrace.find(event => event.stage === 'semantic_validation_result')!;
     expect((validation.data as Json).parsedDocument).toMatchObject({ tasks: [{ effortEstimates: [] }] });
+    if (scenario !== 'corrected-preview') {
+      expect(conversation.getState().previewCandidates).toEqual([]);
+      expect(corrected.result?.dialogueRendererTrace?.response.reason).toBe('preview_claim_without_preview');
+    }
 
     const storage = createMemoryStorageHarness();
     const restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
@@ -297,9 +387,10 @@ describe('real E2E Scenario C correction through production controller', () => {
         ((projected.tasks as Json[])[0]).futureCorrectionSentinel = 'correction-context-future-field';
         if (oversized) projected.futureLargeField = 'x'.repeat(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes * 2);
         const input = {
-          userId: conversation.ownerId, conversationId, requestId: corrected.requestId!, userText: CORRECTION,
+          userId: conversation.ownerId, conversationId, requestId: corrected.requestId!, userText,
           assistantMessage: corrected.result!.message, responseSource: corrected.result!.responseSource,
-          outcome: 'draft_created', debugTraceEvents: events,
+          dialogueRendererTrace: corrected.result!.dialogueRendererTrace,
+          outcome: scenario === 'corrected-preview' ? 'draft_created' : 'question', debugTraceEvents: events,
           previewCount: conversation.getState().previewCandidates?.length ?? 0,
         };
         await recordWeeklyPlanningStableV5TurnTrace(input);
@@ -324,18 +415,25 @@ describe('real E2E Scenario C correction through production controller', () => {
         expect(prepared.entries).toHaveLength(1);
         expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
         const serialized = JSON.stringify(prepared.entries[0]);
+        expect((prepared.entries[0] as unknown as Json).diagnostics).toMatchObject({
+          previewCount: scenario === 'corrected-preview' ? expect.any(Number) : 0,
+        });
         if (oversized) expect(serialized).toContain('truncation');
         else {
           expect(serialized).toContain('correction-context-future-field');
-          expect(serialized).toContain('20ページにして');
+          expect(serialized).toContain(userText);
           expect(serialized).toContain('1ページ4分くらい');
-          expect(serialized).toContain('superseded');
+          if (scenario !== 'deadline-clarification') expect(serialized).toContain('superseded');
+          if (scenario !== 'corrected-preview') {
+            expect(serialized).toContain('preview_claim_without_preview');
+            expect(serialized).toContain('custom:Friday of the intended week');
+          }
           const diagnostic = stored as unknown as Json;
           const request = (((diagnostic.aiInterpreter as Json).input as Json).requests as Json[])[0];
           const messages = request.messages as Array<{ role: string; content: string }>;
           expect(messages.map(message => message.role)).toEqual(sent.messages.map(message => message.role));
           messages.forEach((message, index) => expect(message.content.startsWith(sent.messages[index].content.slice(0, 128))).toBe(true));
-          expect(messages[1].content).toContain(CORRECTION);
+          expect(messages[1].content).toContain(userText);
         }
       }
     } finally {

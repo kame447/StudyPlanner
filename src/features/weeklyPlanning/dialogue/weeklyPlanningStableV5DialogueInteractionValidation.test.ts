@@ -157,6 +157,21 @@ describe('interaction renderer output: no claimed candidates without a new previ
       .toMatchObject({ status: 'rendered' });
   });
 
+  it.each([
+    '今の仮予定の候補はそのままです。何日までに終わらせたいですか？',
+    '仮予定は変わりません。何日までに終わらせたいですか？',
+    '候補は変更していません。何日までに終わらせたいですか？',
+  ])('requires a machine-owned unchanged-preview status for the renderer claim: %s', (text) => {
+    expect(render(input(), text)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    const recovery = input({
+      actionKind: 'status', questionCode: null,
+      communication: communication({ goal: 'clarify_turn', askQuestion: false, questionPurposes: [] }),
+    });
+    expect(render(recovery, text)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    expect(render(input({ conversationArchitecture: 'legacy_v5', communication: undefined }), text))
+      .not.toMatchObject({ reason: 'preview_claim_without_preview' });
+  });
+
   it('keeps legacy inputs out of this interaction check', () => {
     const legacy = input({ ...unchangedStatus(), conversationArchitecture: 'legacy_v5', communication: undefined });
     expect(render(legacy, '2回とも夜に分ける候補が2件できました。よければ「この内容で仮予定にする」を押してください。'))
