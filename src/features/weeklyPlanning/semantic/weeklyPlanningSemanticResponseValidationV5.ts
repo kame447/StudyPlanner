@@ -1,4 +1,5 @@
 import {
+  validateWeeklyPlanningCorrectionReplacementKindsV5,
   validateWeeklyPlanningCorrectionTargetReferencesV5,
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
@@ -206,6 +207,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       input.publicStateSummary,
     ),
+    ...(semanticConversationActs ? validateWeeklyPlanningCorrectionReplacementKindsV5(document) : []),
     ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,
       input.publicStateSummary,

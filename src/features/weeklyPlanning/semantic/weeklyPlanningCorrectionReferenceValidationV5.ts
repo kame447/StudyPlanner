@@ -131,3 +131,40 @@ export function validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     return [];
   }
 }
+
+/**
+ * Interaction only: a correction replaces a fact with a new fact of the same kind. The
+ * canonical correction owner rejects a mismatch after validation, when no repair is left
+ * (live B on dc38e978: a new material component was also sent as the replacement of its
+ * task). Reporting it here lets the single repair drop or fix the correction. Structural
+ * only: declared reference kind versus the kind of the declared replacement fact.
+ */
+export function validateWeeklyPlanningCorrectionReplacementKindsV5(
+  document: WeeklyPlanningSemanticDocumentV5,
+): string[] {
+  const kindByLocalId = new Map<string, string>();
+  const register = (kind: string, facts: ReadonlyArray<{ localId: string }>) => {
+    for (const fact of facts) kindByLocalId.set(fact.localId, kind);
+  };
+  if (document.planningWindow) register('planning_window', [document.planningWindow]);
+  register('relation', document.relations);
+  register('availability_declaration', document.availabilityDeclarations);
+  for (const task of document.tasks) {
+    register('task', [task]);
+    register('workload', task.workloads);
+    register('effort_estimate', task.effortEstimates);
+    register('temporal_constraint', task.temporalConstraints);
+    register('recurrence', task.recurrence);
+    for (const component of task.study?.components ?? []) {
+      register('component', [component]);
+      register('workload', component.workloads);
+    }
+  }
+  return document.corrections.flatMap((correction, index) => {
+    if (!correction.replacementLocalId || correction.target.kind === 'proposal') return [];
+    const replacementKind = kindByLocalId.get(correction.replacementLocalId);
+    return replacementKind && replacementKind !== correction.target.kind
+      ? [`document.corrections[${index}].replacementLocalId:kind-mismatch:${correction.target.kind}:${replacementKind}`]
+      : [];
+  });
+}
