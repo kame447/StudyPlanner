@@ -3,6 +3,7 @@ import { getLatestWeeklyPlanningTurnMeasurement } from './application/weeklyPlan
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime,
   type ScriptedConversation, type ScriptedConversationTurn, type ScriptedProviderCall } from './testUtils/weeklyPlanningScriptedConversationHarness';
 import { CAMPAIGN, CAMPAIGN_MATERIALS, campaignProviderReply, type CampaignRequest, type CampaignScenario } from './testUtils/weeklyPlanningRealE2ECampaignFixture';
+import { schedulingDocument, type Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
 
 vi.setConfig({ testTimeout: 30_000 });
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
@@ -139,6 +140,29 @@ describe('real E2E A–G: full application turns with scripted provider wire res
 
 
 describe('dispatch attribution: repairs are counted, not hidden in the two-call successful path', () => {
+  it('A: a weekday-set preference first written as one task date is restated per weekday by the single repair (live A on 2f9ae953)', async () => {
+    const conversation = start('A');
+    const evening = { localId: 'evening', targetLocalId: 'book', kind: 'preferred_window', constraintLevel: 'soft',
+      dateExpression: '平日', namedTimePeriod: null, startTime: '20:00', endTime: null, precision: 'exact', sourceText: '平日は20時以降がいい' };
+    let semantic = 0;
+    override = call => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      // The live first response had no canonical form for the weekday set; the repair restates it.
+      const document = schedulingDocument('A', { availabilityDeclarations: [] });
+      const [task] = document.tasks as Json[];
+      task.temporalConstraints = semantic++ === 0 ? [evening]
+        : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+          .map((day, index) => ({ ...evening, localId: `evening-${index}`, dateExpression: `weekday:${day}` })).reverse();
+      return JSON.stringify(document);
+    };
+    const turn = await submit(conversation, CAMPAIGN.A[0], ['semantic_generic', 'semantic_generic', 'renderer']);
+    const repair = turn.calls[1].messages;
+    expect(repair[repair.length - 1].content).toContain('one copy per weekday');
+    expectNextWeek(conversation, '2026-10-16');
+    expect(candidates(conversation).every(entry => entry.startTime >= '20:00')).toBe(true);
+    expect(activeWorkloads(conversation).map(entry => entry.amount)).toEqual([20]);
+  });
+
   it.each(['none', 'ack_out_of_order', 'unknown_ack_fact'] as const)('G uses exactly one semantic repair; a renderer repair only for output that composition cannot fix (%s)', async (rendererFault) => {
     const conversation = start('G');
     let semantic = 0;

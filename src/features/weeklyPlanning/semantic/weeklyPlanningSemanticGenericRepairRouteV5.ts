@@ -75,6 +75,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
     initialDocument: params.initialValidation.parsedDocument,
     repairedDocument: repairedValidation.document,
     initialErrors: params.initialValidation.errors,
+    conversationArchitecture: params.run.input.conversationArchitecture,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,

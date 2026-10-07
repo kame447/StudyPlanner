@@ -147,6 +147,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
         rawResponse: preParseNormalization.rawResponse,
         validationErrors: errors,
+        conversationArchitecture: input.conversationArchitecture,
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,

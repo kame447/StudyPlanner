@@ -163,9 +163,18 @@ it('current repair teaches the resolver range syntax while the historical compar
   }));
   const current = create('interaction_v1');
   const legacy = create('legacy_v5');
-  expect(current.requiredChanges?.[0]).toContain('YYYY-MM-DD/YYYY-MM-DD');
-  expect(current.requiredChanges?.[0]).not.toContain('YYYY-MM-DD..YYYY-MM-DD');
-  expect(legacy.requiredChanges?.[0]).toContain('YYYY-MM-DD..YYYY-MM-DD');
-  expect(current.requiredChanges?.[0].replace('YYYY-MM-DD/YYYY-MM-DD', 'YYYY-MM-DD..YYYY-MM-DD'))
-    .toBe(legacy.requiredChanges?.[0]);
+  const currentDirective = current.requiredChanges?.[0] ?? '';
+  const legacyDirective = legacy.requiredChanges?.[0] ?? '';
+  expect(currentDirective).toContain('YYYY-MM-DD/YYYY-MM-DD');
+  expect(currentDirective).not.toContain('YYYY-MM-DD..YYYY-MM-DD');
+  expect(legacyDirective).toContain('YYYY-MM-DD..YYYY-MM-DD');
+  // Current repair adds only the weekday-set restatement (live A on 2f9ae953); the
+  // historical comparison prompt is otherwise the same rule, byte for byte.
+  const rule = (directive: string) => directive.slice(0, directive.indexOf(' Correct every listed validation failure.'));
+  expect(rule(currentDirective).replace('YYYY-MM-DD/YYYY-MM-DD', 'YYYY-MM-DD..YYYY-MM-DD').startsWith(rule(legacyDirective))).toBe(true);
+  expect(rule(legacyDirective).endsWith('never invent an absolute date.')).toBe(true);
+  for (const token of ['recurrenceKind/days', 'one copy per weekday', 'Never add recurrence']) {
+    expect(currentDirective).toContain(token);
+    expect(legacyDirective).not.toContain(token);
+  }
 });

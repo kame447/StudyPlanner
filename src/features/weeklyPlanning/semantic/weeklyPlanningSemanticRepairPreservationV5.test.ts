@@ -7,6 +7,7 @@ import {
 } from './weeklyPlanningSemanticResponseValidationV5';
 import {
   isRepresentationOnlySemanticRepairV5,
+  readWeeklyPlanningRepresentationRepairBaselineV5,
   validateWeeklyPlanningSemanticRepairPreservationV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 
@@ -235,5 +236,118 @@ describe('Stable V5 targeted semantic repair preservation', () => {
       'document.availabilityDeclarations[0].dateExpression:canonical-expression',
       'document.tasks[0].workloads[0].amount',
     ])).toBe(false);
+  });
+});
+
+describe('a recurring weekday set restated during a date-representation repair (live A on 2f9ae953)', () => {
+  const ERRORS = ['document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression'];
+  const REJECTED = ['semantic-repair-preservation:representation-only repair changed unrelated semantic facts'];
+  const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].map((day) => `weekday:${day}`);
+  type TemporalFact = WeeklyPlanningSemanticDocumentV5['tasks'][number]['temporalConstraints'][number];
+  const evening = (overrides: Partial<TemporalFact> = {}): TemporalFact => ({
+    localId: 'temporal-1', targetLocalId: 't1', kind: 'preferred_window', constraintLevel: 'soft',
+    dateExpression: '平日', namedTimePeriod: null, startTime: '20:00', endTime: null,
+    precision: 'exact', sourceText: '平日は20時以降がいい', ...overrides,
+  });
+  function initial(fact: TemporalFact = evening()): WeeklyPlanningSemanticDocumentV5 {
+    const value = document({ canonicalWindow: true });
+    value.tasks[0].temporalConstraints = [fact];
+    return value;
+  }
+  // One copy per weekday with fresh IDs, deliberately not in the original position/order.
+  function split(fact: TemporalFact = evening()): WeeklyPlanningSemanticDocumentV5 {
+    const value = initial(fact);
+    value.tasks[0].temporalConstraints = WEEKDAYS
+      .map((dateExpression, index) => ({ ...fact, localId: `weekday-${index}`, dateExpression }))
+      .reverse();
+    return value;
+  }
+  const guard = (
+    repairedDocument: WeeklyPlanningSemanticDocumentV5,
+    initialDocument = initial(),
+    conversationArchitecture?: 'interaction_v1' | 'legacy_v5',
+  ) => validateWeeklyPlanningSemanticRepairPreservationV5({
+    initialDocument, repairedDocument, initialErrors: ERRORS, conversationArchitecture,
+  });
+
+  it('accepts one copy per weekday that keeps every other field, in any order', () => {
+    expect(guard(split())).toEqual([]);
+    expect(guard(split(), initial(), 'interaction_v1')).toEqual([]);
+  });
+
+  it('still rejects the live repair that invented a task recurrence for the weekday scope', () => {
+    const live = initial(evening({ dateExpression: 'custom:平日' }));
+    live.tasks[0].recurrence = [{
+      localId: 'recurrence-1', targetLocalId: 't1', kind: 'weekdays', count: null, days: WEEKDAYS, sourceText: '平日',
+    }];
+    expect(guard(live)).toEqual(REJECTED);
+    // A single restatement remains allowed, as before.
+    expect(guard(initial(evening({ dateExpression: 'custom:平日' })))).toEqual([]);
+  });
+
+  it.each([
+    ['changes a copy clock', (value: WeeklyPlanningSemanticDocumentV5) => { value.tasks[0].temporalConstraints[2].startTime = '21:00'; }],
+    ['narrows a copy sourceText', (value: WeeklyPlanningSemanticDocumentV5) => { value.tasks[0].temporalConstraints[0].sourceText = '平日'; }],
+    ['repeats a weekday', (value: WeeklyPlanningSemanticDocumentV5) => {
+      value.tasks[0].temporalConstraints[1].dateExpression = value.tasks[0].temporalConstraints[0].dateExpression;
+    }],
+    ['drops an unrelated fact', (value: WeeklyPlanningSemanticDocumentV5) => { value.availabilityDeclarations = []; }],
+    ['drops the weekday fact', (value: WeeklyPlanningSemanticDocumentV5) => { value.tasks[0].temporalConstraints = []; }],
+    ['adds a task recurrence', (value: WeeklyPlanningSemanticDocumentV5) => {
+      value.tasks[0].recurrence = [{ localId: 'r', targetLocalId: 't1', kind: 'weekdays', count: null, days: WEEKDAYS, sourceText: '平日' }];
+    }],
+  ] as const)('rejects a split that %s', (_label, mutate) => {
+    const repaired = split();
+    mutate(repaired);
+    expect(guard(repaired)).toEqual(REJECTED);
+  });
+
+  it('splits only kinds that compose as a union; bounds and deadlines keep one fact', () => {
+    for (const kind of ['allowed_date', 'excluded_date'] as const) {
+      const fact = evening({ kind, constraintLevel: 'hard', startTime: null, precision: 'exact' });
+      expect(guard(split(fact), initial(fact)), kind).toEqual([]);
+    }
+    for (const kind of ['deadline', 'latest_end', 'earliest_start', 'avoid_window'] as const) {
+      const fact = evening({ kind, constraintLevel: kind === 'avoid_window' ? 'soft' : 'hard', startTime: null });
+      expect(guard(split(fact), initial(fact)), kind).toEqual(REJECTED);
+      const single = initial({ ...fact, dateExpression: 'weekday:friday' });
+      expect(guard(single, initial(fact)), `${kind} single`).toEqual([]);
+    }
+  });
+
+  it('lets an availability declaration move a weekday set into its own recurrence fields only', () => {
+    const errors = ['document.availabilityDeclarations[0].dateExpression:canonical-expression'];
+    const before = document({ canonicalWindow: true });
+    Object.assign(before.availabilityDeclarations[0], {
+      kind: 'preferred', dateExpression: '平日', recurrenceKind: null, days: [],
+      startTime: '20:00', endTime: null, constraintLevel: 'soft', sourceText: '平日は20時以降がいい',
+    });
+    const after = structuredClone(before);
+    Object.assign(after.availabilityDeclarations[0], { dateExpression: null, recurrenceKind: 'weekdays', days: WEEKDAYS });
+    const check = (repairedDocument: WeeklyPlanningSemanticDocumentV5) => validateWeeklyPlanningSemanticRepairPreservationV5({
+      initialDocument: before, repairedDocument, initialErrors: errors,
+    });
+    expect(check(after)).toEqual([]);
+    const moved = structuredClone(after);
+    moved.availabilityDeclarations[0].startTime = '21:00';
+    expect(check(moved)).toEqual(REJECTED);
+  });
+
+  it('keeps the historical comparison unguarded for date canonicalization, exactly as before #488', () => {
+    const live = initial(evening({ dateExpression: 'custom:平日' }));
+    live.tasks[0].recurrence = [{
+      localId: 'recurrence-1', targetLocalId: 't1', kind: 'weekdays', count: null, days: WEEKDAYS, sourceText: '平日',
+    }];
+    expect(isRepresentationOnlySemanticRepairV5(ERRORS, 'legacy_v5')).toBe(false);
+    expect(isRepresentationOnlySemanticRepairV5(ERRORS, 'interaction_v1')).toBe(true);
+    expect(guard(live, initial(), 'legacy_v5')).toEqual([]);
+    expect(readWeeklyPlanningRepresentationRepairBaselineV5({
+      rawResponse: JSON.stringify(initial()), validationErrors: ERRORS, conversationArchitecture: 'legacy_v5',
+    })).toBeNull();
+    expect(readWeeklyPlanningRepresentationRepairBaselineV5({
+      rawResponse: JSON.stringify(initial()), validationErrors: ERRORS, conversationArchitecture: 'interaction_v1',
+    })).not.toBeNull();
+    // Representation repairs that were guarded before #488 stay guarded in both architectures.
+    expect(isRepresentationOnlySemanticRepairV5(['document.planningWindow:absolute-range'], 'legacy_v5')).toBe(true);
   });
 });

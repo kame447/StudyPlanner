@@ -26,9 +26,14 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
   if (errors.some((error) => error.includes('canonical-expression'))) {
     // Keep the historical comparison prompt verbatim; current repair must match the
     // slash-separated range accepted by the calendar resolver.
-    const range = conversationArchitecturePolicy(architecture).semanticConversationActs
-      ? 'YYYY-MM-DD/YYYY-MM-DD' : 'YYYY-MM-DD..YYYY-MM-DD';
-    directives.push(`Encode dateExpression in Stable V5 canonical syntax while preserving the exact user meaning: use ISO YYYY-MM-DD or ${range}, symbolic today/tomorrow/day_after_tomorrow/yesterday/this_week/next_week, weekday:sunday through weekday:saturday, or custom:<text> only when no canonical form applies. For weekday-only meaning use weekday:<english-weekday>; never emit a bare localized weekday and never invent an absolute date.`);
+    const current = conversationArchitecturePolicy(architecture).semanticConversationActs;
+    const range = current ? 'YYYY-MM-DD/YYYY-MM-DD' : 'YYYY-MM-DD..YYYY-MM-DD';
+    // A recurring weekday set has no single dateExpression; current repair restates it in
+    // the same fact's days, or as one task date fact per weekday (union kinds only).
+    const weekdaySet = current
+      ? ' A recurring weekday set (every weekday, weekends, or several weekdays each week) is not one dateExpression: on an availability declaration use its recurrenceKind/days with dateExpression null; on a task preferred_window/allowed_date/excluded_date emit one copy per weekday with weekday:<english-weekday> and a fresh localId, copying every other field including sourceText. Never add recurrence or another fact to express date scope.'
+      : '';
+    directives.push(`Encode dateExpression in Stable V5 canonical syntax while preserving the exact user meaning: use ISO YYYY-MM-DD or ${range}, symbolic today/tomorrow/day_after_tomorrow/yesterday/this_week/next_week, weekday:sunday through weekday:saturday, or custom:<text> only when no canonical form applies. For weekday-only meaning use weekday:<english-weekday>; never emit a bare localized weekday and never invent an absolute date.${weekdaySet}`);
   }
   if (errors.includes('document.planningWindow:absolute-year-outside-reference-horizon')) {
     directives.push('The absolute planningWindow year is more than ten years from publicStateSummary.calendarContext.currentDate. Reinterpret only that window from current userText and calendar context; choose an in-range year only when supported, and do not invent a date or change unrelated facts.');
