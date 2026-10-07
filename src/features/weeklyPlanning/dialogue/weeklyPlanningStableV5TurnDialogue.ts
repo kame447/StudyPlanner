@@ -317,7 +317,11 @@ function createRenderInput(params: {
     planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
   });
-  const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
+  // Interaction: a message the application could not use changed nothing, so the previous
+  // preview is not presented as its result (live C on d7b85616 invited promoting the old
+  // 30-page preview after the 20-page correction was rejected). The preview card stays.
+  const unusedTurn = interaction && params.result.interactionOutcome?.kind === 'recover';
+  const previewPromotionControlLabel = params.result.state.status === 'draft_ready' && !unusedTurn
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
   const typedFallbackText = fallbackTextForStableV5TypedIntent({

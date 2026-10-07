@@ -8,6 +8,9 @@ function unique(values: string[]): string[] {
 const PRESERVE_VALID_MEANING_CLAUSE =
   'Correct every listed validation failure. Treat listed validation failures cumulatively. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response. Re-read userText for supported omissions.';
 
+const CANONICAL_DATE_REMINDER =
+  'Any dateExpression you write must be canonical: YYYY-MM-DD, YYYY-MM-DD/YYYY-MM-DD, today/tomorrow/this_week/next_week, weekday:<english-weekday>, or custom:<text> only when none applies.';
+
 function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanningConversationArchitecture): string[] {
   const directives: string[] = [];
 
@@ -69,10 +72,16 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
   }
 
   const result = unique(directives);
+  // Interaction: a repair that adds a fact must not add a new representation error, because
+  // the one repair cannot fix it (live C on d7b85616 added the deadline as 「金曜日」).
+  const preserve = conversationArchitecturePolicy(architecture).semanticConversationActs
+    && !errors.some((error) => error.includes('canonical-expression'))
+    ? `${PRESERVE_VALID_MEANING_CLAUSE} ${CANONICAL_DATE_REMINDER}`
+    : PRESERVE_VALID_MEANING_CLAUSE;
   if (result.length === 0) {
-    return [PRESERVE_VALID_MEANING_CLAUSE];
+    return [preserve];
   }
-  result[0] = `${result[0]} ${PRESERVE_VALID_MEANING_CLAUSE}`;
+  result[0] = `${result[0]} ${preserve}`;
   return result;
 }
 

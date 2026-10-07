@@ -140,6 +140,21 @@ describe('real E2E A–G: full application turns with scripted provider wire res
 
 
 describe('dispatch attribution: repairs are counted, not hidden in the two-call successful path', () => {
+  it('C: a correction the application could not use does not present the old preview as its result (live C on d7b85616)', async () => {
+    const conversation = start('C');
+    await submit(conversation, CAMPAIGN.C[0], normal);
+    const before = candidates(conversation).map(entry => `${entry.date} ${entry.startTime} ${entry.durationMinutes}`);
+    expect(before.length).toBeGreaterThan(0);
+    override = call => (call.kind === 'semantic_generic' ? 'invalid fixture JSON' : undefined);
+    const turn = await conversation.submit(CAMPAIGN.C[1]);
+    expect(turn.result?.failure).toBeDefined();
+    const decision = rendererDecision(turn) as Record<string, unknown> | undefined;
+    expect(decision?.previewPromotionControlLabel ?? null).toBeNull();
+    expect(decision?.relevantLabels).not.toContain('この内容で仮予定にする');
+    // The accepted preview itself is unchanged and still available on the card.
+    expect(candidates(conversation).map(entry => `${entry.date} ${entry.startTime} ${entry.durationMinutes}`)).toEqual(before);
+  });
+
   it('A: a weekday-set preference first written as one task date is restated per weekday by the single repair (live A on 2f9ae953)', async () => {
     const conversation = start('A');
     const evening = { localId: 'evening', targetLocalId: 'book', kind: 'preferred_window', constraintLevel: 'soft',

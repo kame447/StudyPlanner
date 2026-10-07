@@ -60,7 +60,18 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(directive).toContain('exact existingPublicIds');
     expect(directive).toContain('Preserve unrelated supported current-turn facts');
     expect(directive).toContain('schema-valid fields from the invalid response');
-    expect(bytes(directive)).toBeLessThanOrEqual(450);
+    // The current repair adds one canonical-date sentence, because a fact added by the one
+    // repair cannot be repaired again (live C on d7b85616); the historical prompt stays compact.
+    expect(directive).toContain('Any dateExpression you write must be canonical');
+    expect(bytes(directive)).toBeLessThanOrEqual(650);
+    const legacy = repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse,
+      validationErrors: ['document.corrections[0].replacementLocalId:unknown:temporal_1'],
+      conversationArchitecture: 'legacy_v5',
+    })).requiredChanges?.[0] ?? '';
+    expect(legacy).not.toContain('Any dateExpression you write must be canonical');
+    expect(bytes(legacy)).toBeLessThanOrEqual(450);
     expect(messages[messages.length - 2]).toEqual({
       role: 'assistant',
       content: invalidResponse,
