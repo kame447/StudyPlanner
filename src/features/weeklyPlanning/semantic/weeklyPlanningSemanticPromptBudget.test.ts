@@ -45,9 +45,11 @@ const GENERIC_MEANING_POLICY_MAX_BYTES = 5_150;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_600;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
 // Live D split misread (2026-10-08): the interaction-only split/collective-reference
-// rule adds meaning absent from legacy.
-// Bound that addition separately; keep the pre-existing policy/system ceilings intact.
-const INTERACTION_SESSION_RULE_MAX_BYTES = 350;
+// rule adds meaning absent from legacy. Live A (2f9ae953, 730d165c, cf6afe48) wrote
+// 「平日」 into a task dateExpression in most failing first turns; the same rule names the
+// weekday-set representation (+140 B). Bound that addition separately; keep the
+// pre-existing policy/system ceilings intact.
+const INTERACTION_SESSION_RULE_MAX_BYTES = 450;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 // The focused response schema now carries target and measurement as separate
 // typed axes. Keep enough room for that contract while still requiring this

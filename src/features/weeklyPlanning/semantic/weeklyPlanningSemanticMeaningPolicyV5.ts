@@ -23,7 +23,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'session_split_and_shared_preference',
     retentionBasis: 'contextual_reference_resolution',
     retentionReason: 'Session size/count modifies how accepted work is divided, not its total; collective preference references must retain every intended task.',
-    instruction: 'Splitting existing work keeps its total unless explicitly changed: emit session_duration for per-session length and recurrence.count when stated; never replace total workload with session size. Preferences for both/all (どっちも/両方/全部) apply to every referenced task.',
+    instruction: 'Splitting existing work keeps its total unless explicitly changed: emit session_duration for per-session length and recurrence.count when stated; never replace total workload with session size. Preferences for both/all (どっちも/両方/全部) apply to every referenced task. A weekday set (平日 etc.) is never a dateExpression: use availability recurrenceKind/days, or one task preferred_window per weekday:<day>.',
   },
   {
     id: 'current_turn_scope',
