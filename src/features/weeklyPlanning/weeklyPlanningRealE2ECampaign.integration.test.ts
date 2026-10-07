@@ -153,7 +153,8 @@ describe('dispatch attribution: repairs are counted, not hidden in the two-call 
     const turn = await submit(conversation, CAMPAIGN.G[0], expected);
     expect(turn.debugTrace.find(event => event.stage === 'semantic_repair_prepared')).toBeDefined();
     if (repairRenderer) {
-      expect(turn.calls.at(-1)?.messages.at(-1)?.content).toContain('ACK契約');
+      const messages = turn.calls[turn.calls.length - 1].messages;
+      expect(messages[messages.length - 1].content).toContain('ACK契約');
     }
     expect(candidates(conversation).length).toBeGreaterThan(0);
   });

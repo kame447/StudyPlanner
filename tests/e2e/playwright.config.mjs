@@ -15,6 +15,7 @@ export default defineConfig({
     '**/cross-browser-smoke.spec.mjs',
     '**/quality-gates.spec.mjs',
     '**/visual-regression.spec.mjs',
+    // Has its own full-runtime provider-fixture server/config.
     '**/weekly-real-scenarios.spec.mjs',
   ],
   fullyParallel: false,

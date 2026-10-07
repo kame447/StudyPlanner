@@ -26,7 +26,7 @@ beforeEach(() => {
     const document = schedulingDocument('A', { availabilityDeclarations: [] });
     const entry = (document.tasks as Json[])[0];
     // Emulate a provider following the range format actually sent in its repair instruction.
-    const directive = call.messages.at(-1)?.content ?? '';
+    const directive = call.messages[call.messages.length - 1]?.content ?? '';
     const slash = semanticCalls > 1 && directive.includes('YYYY-MM-DD/YYYY-MM-DD');
     entry.temporalConstraints = [{ localId: 'range', targetLocalId: 'book', kind: 'preferred_window', constraintLevel: 'soft',
       dateExpression: slash ? '2026-10-17/2026-10-18' : '2026-10-17..2026-10-18', namedTimePeriod: null,
@@ -42,7 +42,7 @@ describe('canonical range repair uses the same slash syntax as the validator', (
     const conversation = createScriptedConversation({ provider, architecture });
     const turn = await conversation.submit(TEXT);
     expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'semantic_generic', ...(architecture === 'interaction_v1' ? ['renderer'] : [])]);
-    const repair = turn.calls[1].messages.at(-1)!.content;
+    const repair = turn.calls[1].messages[turn.calls[1].messages.length - 1].content;
     if (architecture === 'legacy_v5') {
       expect(repair).toContain('YYYY-MM-DD..YYYY-MM-DD');
       expect(turn.result?.failure?.code).toBe('stable_v5_normalization_rejected');
