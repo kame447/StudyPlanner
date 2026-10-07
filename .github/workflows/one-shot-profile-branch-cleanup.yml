@@ -1,0 +1,52 @@
+name: One-shot merged profile branch cleanup
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/one-shot-profile-branch-cleanup.yml]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Delete only verified merged heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "kame447/StudyPlanner"
+          git fetch origin main
+          git ls-remote --heads origin | sort > /tmp/heads-before
+          test "$(git ls-remote --heads origin refs/heads/fix/profile-avatar-selection | cut -f1)" = "ca938c435c5b6fb6fc030204556c2fc0a4b0d3df"
+          git merge-base --is-ancestor "ca938c435c5b6fb6fc030204556c2fc0a4b0d3df" origin/main
+          test "$(git ls-remote --heads origin refs/heads/fix/recurring-confirmation-lifetime | cut -f1)" = "450c363ae85d1d120f93a995dfa19b17afa40a21"
+          git merge-base --is-ancestor "450c363ae85d1d120f93a995dfa19b17afa40a21" origin/main
+          test "$(git ls-remote --heads origin refs/heads/fix/profile-save-failure-feedback | cut -f1)" = "20ec18b77c44ae3e3fd5a2b91ce410ddbf0ee3b5"
+          git merge-base --is-ancestor "20ec18b77c44ae3e3fd5a2b91ce410ddbf0ee3b5" origin/main
+          test "$(git ls-remote --heads origin refs/heads/fix/profile-save-session-lifetime | cut -f1)" = "a7e42fbc3fceca4ce494e4d98152fde532b6ea96"
+          git merge-base --is-ancestor "a7e42fbc3fceca4ce494e4d98152fde532b6ea96" origin/main
+          test "$(git ls-remote --heads origin refs/heads/fix/profile-draft-save-lifetime | cut -f1)" = "ead06f39ceeea961487fcadace2da548135bd216"
+          git merge-base --is-ancestor "ead06f39ceeea961487fcadace2da548135bd216" origin/main
+          git push --atomic origin --force-with-lease=refs/heads/fix/profile-avatar-selection:ca938c435c5b6fb6fc030204556c2fc0a4b0d3df --force-with-lease=refs/heads/fix/recurring-confirmation-lifetime:450c363ae85d1d120f93a995dfa19b17afa40a21 --force-with-lease=refs/heads/fix/profile-save-failure-feedback:20ec18b77c44ae3e3fd5a2b91ce410ddbf0ee3b5 --force-with-lease=refs/heads/fix/profile-save-session-lifetime:a7e42fbc3fceca4ce494e4d98152fde532b6ea96 --force-with-lease=refs/heads/fix/profile-draft-save-lifetime:ead06f39ceeea961487fcadace2da548135bd216 --delete -- fix/profile-avatar-selection fix/recurring-confirmation-lifetime fix/profile-save-failure-feedback fix/profile-save-session-lifetime fix/profile-draft-save-lifetime
+          git ls-remote --heads origin | sort > /tmp/heads-after
+          ! grep -F "refs/heads/fix/profile-avatar-selection" /tmp/heads-after
+          ! grep -F "refs/heads/fix/recurring-confirmation-lifetime" /tmp/heads-after
+          ! grep -F "refs/heads/fix/profile-save-failure-feedback" /tmp/heads-after
+          ! grep -F "refs/heads/fix/profile-save-session-lifetime" /tmp/heads-after
+          ! grep -F "refs/heads/fix/profile-draft-save-lifetime" /tmp/heads-after
+          python3 - <<'PY'
+          from pathlib import Path
+          targets = ["refs/heads/fix/profile-avatar-selection","refs/heads/fix/recurring-confirmation-lifetime","refs/heads/fix/profile-save-failure-feedback","refs/heads/fix/profile-save-session-lifetime","refs/heads/fix/profile-draft-save-lifetime"]
+          def refs(path):
+              return dict(line.split()[::-1] for line in Path(path).read_text().splitlines())
+          before, after = refs('/tmp/heads-before'), refs('/tmp/heads-after')
+          for ref, sha in before.items():
+              if ref not in targets:
+                  assert ref in after, f"Non-target disappeared: {ref}"
+                  if ref != 'refs/heads/main':
+                      assert after[ref] == sha, f"Non-target moved: {ref}"
+          print("Verified exactly five merged heads deleted; all non-target heads retained.")
+          PY
