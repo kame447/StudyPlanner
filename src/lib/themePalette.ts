@@ -11,7 +11,6 @@ interface ThemePaletteVariant {
 
 interface ThemePaletteDefinition {
   label: string;
-  description: string;
   swatches: [string, string, string];
   light: ThemePaletteVariant;
   dark: ThemePaletteVariant;
@@ -20,14 +19,12 @@ interface ThemePaletteDefinition {
 export interface ThemePaletteOption {
   id: ThemePalette;
   label: string;
-  description: string;
   swatches: [string, string, string];
 }
 
 const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = {
   forest: {
     label: 'フォレスト',
-    description: '落ち着いた印象のフォレストカラーです。',
     swatches: ['#176d66', '#2f8f84', '#dceeea'],
     light: {
       accent: '#176d66',
@@ -44,7 +41,6 @@ const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = 
   },
   ocean: {
     label: 'オーシャン',
-    description: '青系でスッキリ見せます。',
     swatches: ['#2f6fc2', '#3a90e8', '#d7e8fb'],
     light: {
       accent: '#2f6fc2',
@@ -61,7 +57,6 @@ const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = 
   },
   sakura: {
     label: 'サクラ',
-    description: 'やわらかいピンク系です。',
     swatches: ['#c75a86', '#e18db1', '#f7dce6'],
     light: {
       accent: '#c75a86',
@@ -78,7 +73,6 @@ const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = 
   },
   amber: {
     label: 'アンバー',
-    description: '黄みの強い暖色系です。',
     swatches: ['#bf7c24', '#e2a44d', '#f7e3c6'],
     light: {
       accent: '#bf7c24',
@@ -95,7 +89,6 @@ const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = 
   },
   violet: {
     label: 'バイオレット',
-    description: 'やや締まった紫系です。',
     swatches: ['#6a56b7', '#917be2', '#e3dcf7'],
     light: {
       accent: '#6a56b7',
@@ -138,7 +131,6 @@ export const THEME_PALETTE_OPTIONS: ThemePaletteOption[] = (
 ).map(([id, definition]) => ({
   id,
   label: definition.label,
-  description: definition.description,
   swatches: definition.swatches,
 }));
 

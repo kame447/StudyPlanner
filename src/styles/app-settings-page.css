@@ -62,7 +62,6 @@ body:has(.app-settings-page) > :is(.home-add-overlay, .month-event-dialog-motion
 .app-settings-page .home-scene-preview { height: auto; aspect-ratio: 8 / 5; }
 .app-settings-page .home-scene-preview .home-scene-art { width: 100%; margin-left: 0; }
 .app-settings-page .home-scene-option strong { font-size: .875rem; }
-.app-settings-page .home-scene-option-copy small { color: var(--settings-muted); font-size: .75rem; }
 .settings-row-copy { display: grid; gap: 5px; font-weight: 600; }
 .settings-row-copy small { font-size: .8125rem; font-weight: 400; color: var(--settings-muted); }
 .settings-motion-row { cursor: pointer; }
@@ -86,7 +85,6 @@ body:has(.app-settings-page) > :is(.home-add-overlay, .month-event-dialog-motion
 .app-settings-page .faq-item p,
 .app-settings-page .support-copyright { color: var(--settings-muted); }
 .app-settings-page .theme-palette-button { background: var(--settings-card); color: var(--settings-text); }
-.app-settings-page .theme-palette-copy span { color: var(--settings-muted); }
 .app-settings-page :is(button, a, input, textarea, summary, [tabindex]):focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .app-settings-page .app-settings-content:focus-visible { outline-offset: -4px; }
 @media (max-width: 719px) {

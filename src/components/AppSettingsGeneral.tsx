@@ -62,10 +62,9 @@ export function AppSettingsGeneral({
               aria-pressed={themePalette === palette.id} onClick={() => onChangeThemePalette(palette.id)}>
               <span className="theme-palette-swatches" aria-hidden="true">{palette.swatches.map(color =>
                 <span key={color} className="theme-palette-swatch" style={{ backgroundColor: color }} />)}</span>
-              <span className="theme-palette-copy"><strong>{palette.label}</strong><span>{palette.description}</span></span>
+              <span className="theme-palette-copy"><strong>{palette.label}</strong></span>
             </button>)}
           </div>
-          <p className="detail-note">配色はこの端末ですぐ反映されます。</p>
         </div> : null}
       </div>
     </SettingsGroup>
@@ -77,7 +76,7 @@ export function AppSettingsGeneral({
             aria-label={option.label} aria-pressed={homeScenePreferences.style === option.id}
             onClick={() => onChangeHomeSceneStyle(option.id)}>
             <HomeScene kind="study" preferences={{ style: option.id, animated: false }} preview />
-            <span className="home-scene-option-copy"><strong>{option.label}</strong><small>{option.description}</small></span>
+            <span className="home-scene-option-copy"><strong>{option.label}</strong></span>
           </button>)}
         </div>
       </div>
@@ -88,7 +87,6 @@ export function AppSettingsGeneral({
         <input type="checkbox" aria-label="イラストをゆっくり動かす" checked={homeScenePreferences.animated} aria-describedby="home-scene-motion-description"
           onChange={event => onChangeHomeSceneMotion(event.target.checked)} />
       </label>
-      <p className="settings-group-note">このブラウザに保存され、すぐ反映されます。</p>
       {homeSceneError ? <p className="settings-inline-error settings-group-note" role="alert">{homeSceneError}</p> : null}
     </SettingsGroup> : null}
 

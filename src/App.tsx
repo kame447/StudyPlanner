@@ -1,4 +1,5 @@
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
 import { useHomeScenePreference } from './hooks/useHomeScenePreference';
 import { useRootStartupReady } from './components/RootStartupReadyContext';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
@@ -362,7 +363,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   };
 
   return (
-    <>
+    <HomeSceneAtmosphereProvider active={isHomeSurface || settingsNavigation.isOpen}>
     <div
       hidden={settingsNavigation.isOpen}
       className={
@@ -735,6 +736,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onChangeThemePalette={setThemePalette}
         onClose={settingsNavigation.close}
       />
-    </>
+    </HomeSceneAtmosphereProvider>
   );
 }

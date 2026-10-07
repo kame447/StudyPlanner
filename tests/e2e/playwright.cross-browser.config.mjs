@@ -10,7 +10,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   ...baseConfig,
-  testMatch: ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/app-settings-page.spec.mjs'],
+  testMatch: ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs'],
   testIgnore: [],
   outputDir: path.join(artifactsDir, 'playwright-cross-browser-results'),
   reporter: isCi

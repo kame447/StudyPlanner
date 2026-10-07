@@ -1,4 +1,6 @@
 import type { HomeNextPlanVisualKind } from '../../../lib/homeNextPlanVisual';
+import type { HomeSceneAtmosphere } from '../../../lib/homeSceneAtmosphere';
+import { PixelSky } from './PixelSky';
 
 function PixelPlant({ x, y }: { x: number; y: number }) {
   return <g transform={`translate(${x} ${y})`}>
@@ -8,23 +10,21 @@ function PixelPlant({ x, y }: { x: number; y: number }) {
   </g>;
 }
 
-function PixelWindow() {
+function PixelWindow({ atmosphere }: { atmosphere: HomeSceneAtmosphere }) {
   return <g>
     <path d="M160 24h108v88H160z" fill="var(--scene-wood)" />
-    <path d="M168 32h92v72h-92z" fill="var(--scene-sky)" />
-    <path className="home-scene-cloud" d="M176 52h12v-4h16v4h8v8h-36zM226 76h8v-4h16v4h10v8h-34z" fill="var(--scene-cloud)" />
-    <path d="M236 40h12v12h-12z" fill="var(--scene-sun)" />
+    <PixelSky x={168} y={32} width={92} height={72} atmosphere={atmosphere} />
     <path d="M212 32h4v72h-4zM168 68h92v4h-92zM156 108h116v8H156z" fill="var(--scene-paper)" />
   </g>;
 }
 
-export function PixelScene({ kind }: { kind: HomeNextPlanVisualKind }) {
+export function PixelScene({ kind, atmosphere }: { kind: HomeNextPlanVisualKind; atmosphere: HomeSceneAtmosphere }) {
   return <g shapeRendering="crispEdges" data-scene-art="pixel">
     <path d="M0 0h320v200H0z" fill="var(--scene-wall)" />
     <path d="M0 168h320v32H0z" fill="var(--scene-floor)" />
     <path d="M64 172h240v4H64zM96 188h56v4H96zM224 192h76v4h-76z" fill="var(--scene-wood)" opacity=".22" />
     {kind === 'study' ? <>
-      <PixelWindow />
+      <PixelWindow atmosphere={atmosphere} />
       <path d="M78 44h48v4H78zM82 28h8v16h-8zM94 20h8v24h-8zM106 32h12v12h-12z" fill="var(--scene-accent)" />
       <PixelPlant x={76} y={110} />
       <path d="M226 144h32v8h-32zM250 148h8v36h-8zM226 148h8v36h-8zM254 116h8v32h-8z" fill="var(--scene-wood)" />
@@ -41,11 +41,13 @@ export function PixelScene({ kind }: { kind: HomeNextPlanVisualKind }) {
       <path d="M270 156h8v-8h8v8h12v12h-28zM266 160h4v8h-8v-4h4z" fill="var(--scene-cat)" />
       <path d="M282 156h4v4h-4zM290 156h4v4h-4z" fill="var(--scene-ink)" />
     </> : kind === 'class' ? <>
+      <path d="M280 28h36v64h-36z" fill="var(--scene-wood)" />
+      <PixelSky x={284} y={32} width={28} height={56} atmosphere={atmosphere} />
       <path d="M106 32h160v84H106z" fill="var(--scene-wood)" />
       <path d="M114 40h144v68H114z" fill="var(--scene-board)" />
       <path d="M130 56h60v4h-60zM130 72h36v4h-36zM174 72h24v4h-24zM130 88h48v4h-48zM218 64h4v24h-4zM206 76h28v4h-28zM204 112h24v4h-24z" fill="var(--scene-chalk)" opacity=".9" />
-      <path d="M280 44h20v20h-20z" fill="var(--scene-paper)" />
-      <path className="home-scene-glint" d="M288 48h4v8h8v4h-12z" fill="var(--scene-accent)" />
+      <path d="M80 44h20v20H80z" fill="var(--scene-paper)" />
+      <path className="home-scene-glint" d="M88 48h4v8h8v4H88z" fill="var(--scene-accent)" />
       <PixelPlant x={74} y={114} />
       {[142, 232].map(x => <g key={x} transform={`translate(${x} 132)`}>
         <path d="M0 0h60v8H0zM4 8h4v40H4zM52 8h4v40h-4z" fill="var(--scene-wood)" />
@@ -56,7 +58,7 @@ export function PixelScene({ kind }: { kind: HomeNextPlanVisualKind }) {
     </> : <>
       <path d="M182 28h92v140h-92z" fill="var(--scene-wood)" />
       <path d="M190 36h76v132h-76z" fill="var(--scene-sky)" />
-      <path d="M198 44h60v64h-60z" fill="var(--scene-wall)" />
+      <PixelSky x={198} y={44} width={60} height={64} atmosphere={atmosphere} />
       <path d="M230 56h4v28h-4zM214 68h36v4h-36z" fill="var(--scene-paper)" />
       <path className="home-scene-glint" d="M252 118h8v4h-8z" fill="var(--scene-sun)" />
       <path d="M158 172h128v12H158z" fill="var(--scene-accent)" opacity=".5" />

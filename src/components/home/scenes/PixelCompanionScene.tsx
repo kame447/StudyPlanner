@@ -1,8 +1,12 @@
 import type { HomeNextPlanVisualKind } from '../../../lib/homeNextPlanVisual';
+import type { HomeSceneAtmosphere } from '../../../lib/homeSceneAtmosphere';
+import { PixelSky } from './PixelSky';
 
-function CompanionBackdrop({ kind }: { kind: HomeNextPlanVisualKind }) {
+function CompanionBackdrop({ kind, atmosphere }: { kind: HomeNextPlanVisualKind; atmosphere: HomeSceneAtmosphere }) {
   if (kind === 'class') {
     return <g data-companion-backdrop="class">
+      <path d="M280 28h36v64h-36z" fill="var(--scene-wood)" />
+      <PixelSky x={284} y={32} width={28} height={56} atmosphere={atmosphere} />
       <path d="M112 32h164v80H112z" fill="var(--scene-wood)" />
       <path d="M120 40h148v64H120z" fill="var(--scene-board)" />
       <path d="M136 56h56v4h-56zM136 72h36v4h-36zM136 88h64v4h-64zM232 56h4v28h-4zM220 68h28v4h-28z" fill="var(--scene-chalk)" />
@@ -17,7 +21,7 @@ function CompanionBackdrop({ kind }: { kind: HomeNextPlanVisualKind }) {
     return <g data-companion-backdrop="other">
       <path d="M112 28h84v140h-84z" fill="var(--scene-wood)" />
       <path d="M120 36h68v132h-68z" fill="var(--scene-sky)" />
-      <path d="M128 44h52v56h-52z" fill="var(--scene-wall)" />
+      <PixelSky x={128} y={44} width={52} height={56} atmosphere={atmosphere} />
       <path d="M150 52h4v40h-4zM132 72h44v4h-44z" fill="var(--scene-paper)" />
       <path className="home-scene-glint" d="M176 116h8v4h-8z" fill="var(--scene-sun)" />
       <path d="M104 172h96v8h-96z" fill="var(--scene-accent)" opacity=".55" />
@@ -30,9 +34,7 @@ function CompanionBackdrop({ kind }: { kind: HomeNextPlanVisualKind }) {
 
   return <g data-companion-backdrop="study">
     <path d="M160 28h108v76H160z" fill="var(--scene-wood)" />
-    <path d="M168 36h92v60h-92z" fill="var(--scene-sky)" />
-    <path className="home-scene-cloud" d="M176 60h12v-4h16v4h8v8h-36z" fill="var(--scene-cloud)" />
-    <path d="M236 44h12v12h-12z" fill="var(--scene-sun)" />
+    <PixelSky x={168} y={36} width={92} height={60} atmosphere={atmosphere} />
     <path d="M212 36h4v60h-4zM156 100h116v8H156z" fill="var(--scene-paper)" />
     <path d="M104 140h96v8h-96zM112 148h8v36h-8zM184 148h8v36h-8z" fill="var(--scene-wood)" />
     <path d="M120 132h28v8h-28zM124 124h28v8h-28z" fill="var(--scene-clay)" />
@@ -84,15 +86,16 @@ function PixelTurtle() {
   </g>;
 }
 
-export function PixelCompanionScene({ kind, companion }: {
+export function PixelCompanionScene({ kind, companion, atmosphere }: {
   kind: HomeNextPlanVisualKind;
   companion: 'cat' | 'turtle';
+  atmosphere: HomeSceneAtmosphere;
 }) {
   return <g shapeRendering="crispEdges" data-scene-art={`pixel-${companion}`}>
     <path d="M0 0h320v200H0z" fill="var(--scene-wall)" />
     <path d="M0 168h320v32H0z" fill="var(--scene-floor)" />
     <path d="M80 188h88v4H80zM208 192h80v4h-80z" fill="var(--scene-wood)" opacity=".2" />
-    <CompanionBackdrop kind={kind} />
+    <CompanionBackdrop kind={kind} atmosphere={atmosphere} />
     <path d="M284 100h4v28h-4zM276 108h8v4h-8zM288 100h8v4h-8zM292 96h4v4h-4z" fill="var(--scene-leaf)" />
     <path d="M276 124h20v4h-4v12h-12v-12h-4z" fill="var(--scene-clay)" />
     <path d="M272 140h28v4h-28z" fill="var(--scene-wood)" />

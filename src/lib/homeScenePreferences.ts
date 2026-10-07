@@ -10,12 +10,12 @@ export const DEFAULT_HOME_SCENE_PREFERENCES: HomeScenePreferences = {
   animated: false,
 };
 
-export const HOME_SCENE_STYLE_OPTIONS: { id: HomeSceneStyle; label: string; description: string }[] = [
-  { id: 'pixel', label: 'ピクセル', description: '小さなドットの、静かな部屋' },
-  { id: 'pixel-cat', label: 'ピクセル・猫', description: 'しっぽを揺らす猫と、ひと休み' },
-  { id: 'pixel-turtle', label: 'ピクセル・亀', description: 'ゆっくり歩く亀と、自分のペースで' },
-  { id: 'cozy', label: 'イラスト', description: 'やわらかな線と、あたたかな光' },
-  { id: 'minimal', label: 'ミニマル', description: '余白を楽しむ、シンプルな形' },
+export const HOME_SCENE_STYLE_OPTIONS: { id: HomeSceneStyle; label: string }[] = [
+  { id: 'pixel', label: 'ピクセル' },
+  { id: 'pixel-cat', label: 'ピクセル・猫' },
+  { id: 'pixel-turtle', label: 'ピクセル・亀' },
+  { id: 'cozy', label: 'イラスト' },
+  { id: 'minimal', label: 'ミニマル' },
 ];
 
 export function isHomeSceneStyle(value: unknown): value is HomeSceneStyle {
