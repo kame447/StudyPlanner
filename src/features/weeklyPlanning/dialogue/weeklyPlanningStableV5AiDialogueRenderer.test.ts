@@ -246,6 +246,23 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     }
   });
 
+  it('repairs once when the reply had to ask the question but did not', async () => {
+    const renderInput = input({
+      conversationArchitecture: 'interaction_v1',
+      communication: {
+        goal: 'explain_question', questionPurposes: ['estimate_time_to_fit_available_time'], askQuestion: true,
+        laterNeeds: [], statusReason: null, planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+      },
+    });
+    const createChatCompletion = vi.fn()
+      .mockResolvedValueOnce(response(renderInput, '空き時間に収めるためです。'))
+      .mockResolvedValueOnce(response(renderInput, '空き時間に収めるためです。英単語は1回分にどれくらいかかりますか？'));
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion }).render(renderInput))
+      .resolves.toMatchObject({ status: 'rendered' });
+    const messages = createChatCompletion.mock.calls[1]?.[0].messages as Array<{ content: string }>;
+    expect(messages[messages.length - 1].content).toContain('askQuestion=true');
+  });
+
   it('falls back if the one repair attempt still repeats the same assistant question', async () => {
     const previousQuestion = 'この範囲は今回進めたい量ですか？';
     const renderInput = input({

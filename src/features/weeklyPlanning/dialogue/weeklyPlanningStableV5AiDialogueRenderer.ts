@@ -48,6 +48,12 @@ const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   'applicationDecision.communication.goalがexplain_questionの場合は、最初に（required_before_resumeならACKのすぐ後に）なぜその情報が必要かに答えてから尋ね直してください。',
 ].join('');
 
+/** Interaction architecture: the candidate did not ask the question it had to ask. */
+const MISSING_QUESTION_REPAIR_INSTRUCTION = [
+  '前回候補には質問がありませんでした。applicationDecision.communication.askQuestion=trueです。',
+  'goalの内容は保ったまま、questionIntentの質問を「？」で終わる形で一度だけ入れてください。',
+].join('');
+
 /** Interaction architecture: the candidate talked about the app's internals. */
 const INTERNAL_PROCESS_REPAIR_INSTRUCTION = [
   '前回候補には、アプリ内部の仕組みや処理を表す言葉が含まれていました。',
@@ -139,7 +145,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
                 : GROUNDING_ACK_REPAIR_INSTRUCTION)
             : initial.reason === 'internal_process_text'
               ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
-              : null;
+              : initial.reason === 'missing_question'
+                ? MISSING_QUESTION_REPAIR_INSTRUCTION
+                : null;
         if (!repairInstruction) return initial;
         // Awaited inside the try: a failed repair dispatch (provider error, exhausted pool or
         // an outage-gated renderer) must end in the deterministic fallback, never reject.

@@ -188,6 +188,7 @@ function interactionCommunicationInstructions(
   return [
     INTERACTION_GOAL_INSTRUCTION,
     INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
+    ...(communication.askQuestion ? ['askQuestion=true: その質問は「？」で終わる形で一度だけ聞く。'] : []),
     ...(hasSelfRepair
       ? ['acceptedFacts.selfRepairはユーザーがこのturnで訂正した内容（before→after）。最初に短く自然に受け止めてから続ける。']
       : []),

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+import { createFocusedContextualAnswerMessagesV5 } from './weeklyPlanningFocusedContextualAnswerV5';
 
 function publicStateSummary(questionCode: 'missing_effort_estimate' | 'quantity_role_unresolved') {
   return {
@@ -105,6 +106,21 @@ function effortAnswer(params: {
     quantityRole: null,
   });
 }
+
+describe('focused route and conversation acts (Issue #488)', () => {
+  it('sends a turn that also asks for advice, asks about the question or changes topic to the general interpretation', () => {
+    const base = { userText: '1問3分くらい。あと英語は間に合う？', publicStateSummary: publicStateSummary('missing_effort_estimate') };
+    const interaction = createFocusedContextualAnswerMessagesV5({ ...base, conversationArchitecture: 'interaction_v1' });
+    const legacy = createFocusedContextualAnswerMessagesV5({ ...base, conversationArchitecture: 'legacy_v5' });
+    // The narrow route has no channel for acts; interaction tells it to fall back instead of
+    // dropping them. Legacy keeps its pre-#488 request unchanged.
+    expect(interaction[0].content.startsWith(legacy[0].content)).toBe(true);
+    expect(interaction[0].content.slice(legacy[0].content.length)).toMatch(/fallback/);
+    expect(interaction[0].content.slice(legacy[0].content.length)).toMatch(/advice/);
+    expect(legacy[0].content).not.toMatch(/asks for advice/);
+    expect(interaction.slice(1)).toEqual(legacy.slice(1));
+  });
+});
 
 describe('Stable V5 focused contextual-answer semantic route', () => {
   it('interprets a direct pending effort reply without invoking the generic full-plan normalizer', async () => {

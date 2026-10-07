@@ -13,6 +13,10 @@ import {
   type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  conversationArchitecturePolicy,
+  type WeeklyPlanningConversationArchitecture,
+} from '../weeklyPlanningConversationArchitecture';
 
 export const FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS = 320;
 
@@ -127,7 +131,17 @@ export interface FocusedContextualAnswerDecisionV5 {
 export interface FocusedContextualAnswerInputV5 {
   userText: string;
   publicStateSummary?: Record<string, unknown>;
+  /** Conversation architecture of the turn; omitted = current default. */
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }
+
+/**
+ * Interaction architecture: this narrow route has no channel for conversation acts, so a turn
+ * that also asks for advice, asks about the question or changes the topic goes to the general
+ * interpretation, which keeps both the answer and the act (one semantic owner either way).
+ */
+const FOCUSED_CONTEXTUAL_CONVERSATION_FALLBACK_INSTRUCTION =
+  'Also return fallback when currentUserText, besides any answer, asks for advice or a judgement, asks why or what the pending question means, or moves to another topic: that turn needs the general interpretation.';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -326,8 +340,11 @@ export function createFocusedContextualAnswerMessagesV5(
 ): ChatMessage[] {
   const target = focusedContextualTargetV5(input);
   if (!target) return [];
+  const systemPrompt = conversationArchitecturePolicy(input.conversationArchitecture).semanticConversationActs
+    ? `${FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT}\n${FOCUSED_CONTEXTUAL_CONVERSATION_FALLBACK_INSTRUCTION}`
+    : FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT;
   return [
-    { role: 'system', content: FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     {
       role: 'user',
       content: JSON.stringify({

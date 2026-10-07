@@ -116,6 +116,25 @@ describe('interaction renderer output: internal vocabulary', () => {
   });
 });
 
+describe('interaction renderer output: the question that must be asked', () => {
+  it('rejects a reply without any question when the question must be asked (it would be bound as presented)', () => {
+    expect(render(input(), '空き時間に収めるためです。'))
+      .toMatchObject({ status: 'fallback', reason: 'missing_question' });
+    expect(render(input(), '空き時間に収めるためです。1問あたり何分くらいですか？'))
+      .toMatchObject({ status: 'rendered' });
+  });
+
+  it('does not require a question when none is asked (aside, status)', () => {
+    const aside = input({
+      actionId: 'stable-v5:request-1:status',
+      actionKind: 'status',
+      questionCode: null,
+      communication: communication({ goal: 'acknowledge_aside', askQuestion: false, questionPurposes: [] }),
+    });
+    expect(render(aside, 'いいですよ、数学の話をしましょう。')).toMatchObject({ status: 'rendered' });
+  });
+});
+
 describe('interaction renderer output: preview disclosure', () => {
   const preview = (omittedWork: Array<{ label: string; extent: 'all' | 'part' }>) => input({
     actionId: 'stable-v5:request-1:preview_ready',

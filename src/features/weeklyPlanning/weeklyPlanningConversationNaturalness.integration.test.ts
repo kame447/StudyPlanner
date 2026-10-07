@@ -395,6 +395,28 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     expect(freshness(conversation)).toBe('fresh');
   });
 
+  it('never records the question as asked by a reply that did not ask it', async () => {
+    const conversation = await measuredSetup();
+    script = (call) => {
+      if (call.kind === 'semantic_generic') {
+        return JSON.stringify(emptyDocument({ conversationActs: [act('ask_about_pending_question')] }));
+      }
+      if (call.kind === 'renderer') return rendererReplyForBaseRequest(call, '空き時間に収めるためです。');
+      return undefined;
+    };
+    const why = await conversation.submit(WHY);
+
+    // Rejected twice (no question): the shown reply is the emergency explanation, which carries
+    // the application's typed question; only that reply is bound as the presented question.
+    expect(why.calls.map((call) => call.kind)).toEqual(['semantic_generic', 'renderer', 'renderer']);
+    expect(why.result?.responseSource).toBe('deterministic_fallback');
+    expect(why.result?.dialogueRendererTrace).toMatchObject({ response: { reason: 'missing_question' } });
+    expect(why.result?.questionPresentationContent).toMatchObject({ responseSource: 'deterministic_fallback' });
+    expect(lastMessage(conversation)).not.toContain('空き時間に収めるためです。');
+    expect(lastMessage(conversation)).toContain('数学の問題集');
+    expect(freshness(conversation)).toBe('fresh');
+  });
+
   it('fails closed on a malformed act: it is dropped and the turn is handled as an ordinary reply', async () => {
     const conversation = await measuredSetup();
     script = (call) => (call.kind === 'semantic_generic'

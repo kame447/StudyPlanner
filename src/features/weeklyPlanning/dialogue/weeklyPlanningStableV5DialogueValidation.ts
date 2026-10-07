@@ -369,6 +369,12 @@ function validateRenderedText(
     return 'action_contract_mismatch';
   }
 
+  // The question is bound to this reply as presented: a reply that must ask it has to contain a
+  // question (a structural check on the renderer's own text, not an interpretation of it).
+  if (input.communication?.askQuestion === true && !/[?？]/u.test(text)) {
+    return 'missing_question';
+  }
+
   if (repeatsMostRecentAssistantQuestion(text, input)) {
     return 'repeated_question_text';
   }

@@ -301,7 +301,12 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   /** Interaction architecture: the text exposes internal system/process vocabulary. */
   | 'internal_process_text'
   /** The turn's dispatch pool refused the call (exhausted, or the provider just failed). */
-  | 'dispatch_refused';
+  | 'dispatch_refused'
+  /**
+   * Interaction architecture: the reply had to ask the question (askQuestion=true) but
+   * contains no question, so the question would be recorded as presented without being asked.
+   */
+  | 'missing_question';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
