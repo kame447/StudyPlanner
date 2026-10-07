@@ -302,16 +302,6 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   attemptCountBeforeRetry?: number;
   repairAttempted?: boolean;
   validationErrors?: string[];
-  /**
-   * The turn's single generic repair, offered only while it is unused. Interaction: a re-read
-   * of a follow-up to an accepted plan that encodes the meaning with a representation error is
-   * repaired once instead of being dropped for the empty first response.
-   */
-  repairInvalidRetry?: (retry: {
-    response: string;
-    validation: ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
-    attemptCount: number;
-  }) => Promise<WeeklyPlanningSemanticNormalizerResultV5>;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
   if (conversationArchitecturePolicy(params.run.input.conversationArchitecture).actAwareNoOpRetry
     && params.run.input.committedGraph
@@ -442,12 +432,6 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         })
       : false;
     const shouldRetryAgain = retryIndex + 1 < retryLimit && (!validation.document || stillNoOp);
-    // Live D on 91e560cb: the re-read encoded the sessions and evening window but targeted the
-    // accepted workloads by public id; it was dropped and the turn reported no change. Only the
-    // follow-up path without a machine question (one re-read, budget headroom) is repaired.
-    const repairsInvalidRetry = !validation.document && !shouldRetryAgain && !pendingQuestion
-      && Boolean(params.repairInvalidRetry)
-      && conversationArchitecturePolicy(params.run.input.conversationArchitecture).actAwareNoOpRetry;
 
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
@@ -460,26 +444,11 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         errors: validation.errors,
         parsedDocument: validation.parsedDocument,
         retryAgain: shouldRetryAgain,
-        fallback: repairsInvalidRetry
-          ? 'generic_repair'
-          : retryIndex + 1 === retryLimit && (!validation.document || stillNoOp)
-            ? 'initial_schema_valid_document'
-            : null,
+        fallback: retryIndex + 1 === retryLimit && (!validation.document || stillNoOp)
+          ? 'initial_schema_valid_document'
+          : null,
       },
     });
-
-    if (repairsInvalidRetry) {
-      const repaired = await params.repairInvalidRetry!({ response, validation, attemptCount });
-      // A failed repair keeps the earlier floor: the valid first response, accepted unchanged.
-      if (repaired.status === 'accepted') return repaired;
-      return acceptedPriorNoOpResult({
-        run: params.run,
-        document: params.initialDocument,
-        attemptCount: repaired.diagnostics.attemptCount,
-        repairAttempted: true,
-        validationErrors,
-      });
-    }
 
     if (validation.document && !stillNoOp) {
       const result: WeeklyPlanningSemanticNormalizerResultV5 = {

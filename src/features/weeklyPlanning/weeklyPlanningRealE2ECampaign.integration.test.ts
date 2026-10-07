@@ -170,39 +170,6 @@ describe('dispatch attribution: repairs are counted, not hidden in the two-call 
     expect(rendererDecision(final)).toMatchObject({ actionKind: 'preview_ready' });
   });
 
-  it('D: a follow-up re-read that targets accepted work by public id gets the turn\'s one repair (live D on 91e560cb)', async () => {
-    const conversation = start('D');
-    await submit(conversation, CAMPAIGN.D[0], normal);
-    await submit(conversation, CAMPAIGN.D[1], ['semantic_focused_contextual', 'renderer']);
-    const old = structuredClone(candidates(conversation));
-    let generic = 0;
-    override = call => {
-      if (call.kind !== 'semantic_generic') return undefined;
-      generic += 1;
-      const reply = JSON.parse(campaignProviderReply(scenario, call.request as unknown as CampaignRequest));
-      if (generic === 1) {
-        // Live first response: accepted-task shells only.
-        reply.tasks = (reply.tasks as Json[]).map(task => ({ ...task, study: null, workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [] }));
-        reply.availabilityDeclarations = [];
-        return JSON.stringify(reply);
-      }
-      if (generic === 2) {
-        // Live re-read: the meaning is there, but each estimate targets the accepted workload's public id.
-        const graph = conversation.graph()!;
-        for (const task of reply.tasks as Json[]) for (const estimate of task.effortEstimates as Json[]) {
-          estimate.targetLocalId = graph.workloads.find(workload => workload.taskId === task.existingPublicId)!.id;
-        }
-        return JSON.stringify(reply);
-      }
-      return undefined;
-    };
-    const final = await submit(conversation, CAMPAIGN.D[2], ['semantic_generic', 'semantic_generic', 'semantic_generic', 'renderer']);
-    expect(candidates(conversation)).not.toEqual(old);
-    expect(candidates(conversation).filter(entry => entry.title.includes('卒業研究ノート')).map(entry => entry.durationMinutes)).toEqual([60, 60]);
-    expect(candidates(conversation).every(entry => entry.startTime >= '18:00')).toBe(true);
-    expect(rendererDecision(final)).toMatchObject({ actionKind: 'preview_ready' });
-  });
-
   it('C: a correction the application could not use does not present the old preview as its result (live C on d7b85616)', async () => {
     const conversation = start('C');
     await submit(conversation, CAMPAIGN.C[0], normal);
