@@ -178,6 +178,8 @@ describe('Stable V5 provisional capacity preview policy', () => {
     expect(projection?.output.draftCandidates).toHaveLength(1);
     expect(projection?.output.responseSource).toBeUndefined();
     expect(projection?.omittedWorkLabels).toEqual(['英語']);
+    // English has no candidate at all: it is entirely left out.
+    expect(projection?.omittedWork).toEqual([{ label: '英語', extent: 'all' }]);
   });
 
   it('does not weaken the ordinary all-or-nothing contract without provisional permission', () => {

@@ -56,7 +56,7 @@ describe('interaction emergency wording', () => {
           const text = compose(context(goal, {
             planningDetailsNotApplied,
             consultationDeferred,
-            previewDisclosure: goal === 'present_preview' ? { omittedWorkLabels: ['英語'] } : null,
+            previewDisclosure: goal === 'present_preview' ? { omittedWork: [{ label: '英語', extent: 'all' as const }] } : null,
           }));
           expect(text.length).toBeGreaterThan(0);
           expect(text).not.toMatch(INTERNAL_PROCESS_WORDING);
@@ -86,7 +86,9 @@ describe('interaction emergency wording', () => {
   });
 
   it('discloses every omitted work label and the preview control', () => {
-    const text = compose(context('present_preview', { previewDisclosure: { omittedWorkLabels: ['英語', '物理'] } }));
+    const text = compose(context('present_preview', {
+      previewDisclosure: { omittedWork: [{ label: '英語', extent: 'all' }, { label: '物理', extent: 'part' }] },
+    }));
     expect(text).toContain('3件');
     expect(text).toContain('この内容で仮予定にする');
     expect(text).toContain('英語');

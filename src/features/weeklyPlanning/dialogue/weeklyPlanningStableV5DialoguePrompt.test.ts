@@ -150,7 +150,9 @@ describe('Stable V5 dialogue prompt', () => {
           statusReason: goal === 'report_status' ? 'ready_to_create_preview' : null,
           planningDetailsNotApplied: true,
           consultationDeferred: true,
-          previewDisclosure: goal === 'present_preview' ? { omittedWorkLabels: ['英語', '物理'] } : null,
+          previewDisclosure: goal === 'present_preview'
+            ? { omittedWork: [{ label: '英語', extent: 'all' as const }, { label: '物理', extent: 'part' as const }] }
+            : null,
         },
       });
       const payload = JSON.parse(prompt.userPrompt) as { request: string };

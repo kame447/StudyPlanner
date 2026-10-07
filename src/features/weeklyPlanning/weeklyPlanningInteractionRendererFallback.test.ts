@@ -109,12 +109,30 @@ describe('interaction emergency wording replaces routing sentences when the rend
       message: '空き時間内で指定された優先順位に沿って2件の仮予定候補を作りました。英語の一部は容量不足のため候補に入れていません。',
       draftCandidates: [{ id: 'c1' }, { id: 'c2' }] as never,
       interactionOutcome: { kind: 'apply', consultationDeferred: false },
-      communicationFacts: { ...facts, previewDisclosure: { omittedWorkLabels: ['英語'] } },
+      communicationFacts: { ...facts, previewDisclosure: { omittedWork: [{ label: '英語', extent: 'all' }] } },
     });
     expect(result.message).toContain('2件');
     expect(result.message).toContain('英語');
     expect(result.message).toContain('この内容で仮予定にする');
     expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
+  });
+
+  it('a rendered preview reply is followed by the application\'s own omitted-work statement', async () => {
+    const reply = '数学を中心に2件の候補を作りました。よければ下の「この内容で仮予定にする」を押してください。';
+    rendererMock.mockResolvedValue({ status: 'rendered', text: reply, rawResponse: '{}' });
+    for (const extent of ['all', 'part'] as const) {
+      const result = await run({
+        state: { ...createInitialPlanningIntakeState(), status: 'draft_ready' },
+        message: '',
+        draftCandidates: [{ id: 'c1' }, { id: 'c2' }] as never,
+        interactionOutcome: { kind: 'apply', consultationDeferred: false },
+        communicationFacts: { ...facts, previewDisclosure: { omittedWork: [{ label: '英語', extent }] } },
+      });
+      expect(result.responseSource).toBe('ai');
+      expect(result.message.startsWith(reply)).toBe(true);
+      expect(result.message.slice(reply.length)).toContain('英語');
+      expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
+    }
   });
 
   it('capacity shortfall question', async () => {

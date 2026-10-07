@@ -1,5 +1,6 @@
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
+import { weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 
 /**
  * Emergency wording of the interaction architecture (Issue #488).
@@ -27,7 +28,6 @@ const CONSULTATION_NOT_ANSWERED = 'そのご相談には、ここではまだお
 const DETAILS_INVITATION = '予定について変えたいことがあれば、もう一度教えてください。';
 const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作るときは「この条件で予定を作って」と送ってください。';
 const CAPACITY_SHORTFALL = '今の期間と空き時間では、全部は入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるかを教えてください。';
-const SOME_WORK_OMITTED = '空き時間に入りきらなかった作業は、今回の候補には入れていません。';
 const GENERIC_CONTINUE = '続けて、予定の希望を教えてください。';
 
 /** A repeated submission of a turn that was already taken in (idempotency guard). */
@@ -44,12 +44,6 @@ function previewReadyText(count: number, controlLabel: string): string {
 
 function previewUnchangedText(controlLabel: string): string {
   return `今の仮予定の候補はそのままです。直したいところがあれば教えてください。よければ下の「${controlLabel}」を押してください。`;
-}
-
-function omittedWorkText(labels: readonly string[]): string {
-  return labels.length > 0
-    ? `${labels.join('・')}は空き時間に入りきらなかったので、今回の候補には入れていません。`
-    : SOME_WORK_OMITTED;
 }
 
 /** A message that could not be used as it is: the retained question, or an invitation. */
@@ -95,7 +89,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
     case 'present_preview':
       main = `${params.groundingNote}${previewReadyText(params.previewCount, controlLabel)}${
         communication.previewDisclosure
-          ? omittedWorkText(communication.previewDisclosure.omittedWorkLabels)
+          ? weeklyPlanningPreviewOmissionDisclosureText(communication.previewDisclosure.omittedWork)
           : ''}`;
       break;
     case 'report_status':

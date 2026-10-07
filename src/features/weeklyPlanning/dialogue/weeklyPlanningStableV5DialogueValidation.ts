@@ -21,10 +21,20 @@ const EXECUTION_CLAIM_EXPRESSION = new RegExp(
   `(?:(?:予定|仮予定|計画).{0,20}${EXECUTION_VERB}|${EXECUTION_VERB}.{0,20}(?:予定|仮予定|計画))`,
 );
 // Interaction architecture: vocabulary of the app's own internals (data processing, states,
-// providers, retries). It never belongs in an ordinary reply. Deliberately narrow: only
-// unmistakable implementation words, and a word the user or the plan data itself uses is
-// allowed. This checks the renderer's own output; it never interprets the user's words.
-const INTERNAL_PROCESS_TERMS = /構造化|正規化|バリデーション|スキーマ|プロバイダ|リトライ|再試行|内部処理|システム処理|処理結果|予定条件|安全に整理|ペンディング|ステート|リビジョン|ファクト|確認中の質問|保留中の(?:確認|質問)|\b(?:validation|validator|pending|provider|retry|schema|json|state|revision|graph|authoritative|canonical|semantic|normaliz[a-z]*)\b/giu;
+// providers, retries, "not applied" reports, machine codes). It never belongs in an ordinary
+// reply. Deliberately narrow: unmistakable implementation words and report forms only, and a
+// word the user said or a plan label contains is allowed. This checks the renderer's own
+// output; it never interprets the user's words.
+const INTERNAL_PROCESS_TERMS = new RegExp([
+  '構造化|正規化|バリデーション|スキーマ|プロバイダ|リトライ|再試行|内部処理|システム|処理結果',
+  '処理(?:でき|に失敗|され(?:ませ|なかっ))|予定条件|安全に(?:整理|配置|処理|反映|保存)|ペンディング|ステート',
+  'リビジョン|ファクト|確認中の質問|保留|検証|パース|フォールバック|エラーコード',
+  '反映して(?:い)?ません|反映されて(?:い)?ません|反映でき(?:ません|なかっ)|取り込(?:めて(?:い)?ませ|まれて(?:い)?ませ|めませ|めなかっ)',
+  // ASCII words are matched between non-letters, so snake_case neighbours do not hide them.
+  '(?<![A-Za-z0-9])(?:validation|validator|pending|provider|retry|schema|json|state|revision|graph|authoritative|canonical|semantic|normaliz[a-z]*|fallback|parse[dr]?|payload|diagnostics?)(?![A-Za-z0-9])',
+  // Any snake_case identifier (question, goal and failure codes) is a machine code.
+  '(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![A-Za-z0-9_])',
+].join('|'), 'giu');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -193,15 +203,29 @@ function hasIncorrectPreviewCount(
   return mentionedCounts.some((count) => count !== input.previewCount);
 }
 
-function missesPreviewDisclosure(
+/**
+ * The application states omitted work itself, next to the reply. The reply must not name work
+ * that was entirely left out of the preview, so it can never claim that work is included; work
+ * only partly left out still has candidates and may be named. A longer label that merely
+ * contains the omitted one (another task) does not count as naming it.
+ */
+function mentionsFullyOmittedWork(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
   const disclosure = input.communication?.previewDisclosure;
   if (!disclosure) return false;
-  // Without a label the disclosure cannot be verified in the text: use the fallback.
-  if (disclosure.omittedWorkLabels.length === 0) return true;
-  return disclosure.omittedWorkLabels.some((label) => !text.includes(label));
+  const labels = groundedDisplayLabels(input);
+  return disclosure.omittedWork
+    .filter((work) => work.extent === 'all' && work.label.trim().length > 0)
+    .some((work) => {
+      const label = work.label.trim();
+      const remaining = labels
+        .filter((other) => other !== label && other.includes(label))
+        .sort((a, b) => b.length - a.length)
+        .reduce((current, other) => current.split(other).join(''), text);
+      return remaining.includes(label);
+    });
 }
 
 /**
@@ -217,16 +241,15 @@ function exposesInternalProcess(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
   if (!input.communication) return false;
-  const grounding = normalizeSafetyText(JSON.stringify({
-    currentUserMessage: input.currentUserMessage,
-    userTurns: input.recentConversation
-      .filter((turn) => turn.role === 'user')
-      .map((turn) => turn.content),
-    planningInformation: input.planningInformation,
-    requiredLabels: input.requiredLabels,
-  })).toLowerCase();
+  // Only what the user wrote and the plan's display labels can legitimise a word; machine
+  // keys and enum values of the planning data never do (e.g. a `revision` field).
+  const grounding = [
+    input.currentUserMessage,
+    ...input.recentConversation.filter((turn) => turn.role === 'user').map((turn) => turn.content),
+    ...groundedDisplayLabels(input),
+  ].map((value) => normalizeSafetyText(value).toLowerCase());
   return weeklyPlanningInternalProcessTermsIn(text)
-    .some((term) => !grounding.includes(term.toLowerCase()));
+    .some((term) => !grounding.some((value) => value.includes(term.toLowerCase())));
 }
 
 function missesPreviewPromotionControl(
@@ -342,7 +365,7 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
-  if (missesPreviewPromotionControl(text, input) || missesPreviewDisclosure(text, input)) {
+  if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)) {
     return 'action_contract_mismatch';
   }
 

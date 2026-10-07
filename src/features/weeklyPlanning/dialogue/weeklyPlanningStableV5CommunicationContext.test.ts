@@ -45,7 +45,7 @@ describe('communication goal (deterministic WHAT of a reply)', () => {
   });
 
   it('asks the question only when the reply presents one, and scopes status/disclosure to their goals', () => {
-    const disclosure = { omittedWorkLabels: ['英語'] };
+    const disclosure = { omittedWork: [{ label: '英語', extent: 'all' as const }] };
     const status = communicationContextForStableV5Dialogue({
       outcome: { kind: 'apply', consultationDeferred: true },
       facts: facts({ statusReason: 'ready_to_create_preview', previewDisclosure: disclosure, planningDetailsNotApplied: true }),

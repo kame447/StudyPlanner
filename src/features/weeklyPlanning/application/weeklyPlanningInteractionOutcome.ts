@@ -50,6 +50,12 @@ export type WeeklyPlanningTurnStatusReason =
   /** An existing draft schedule stays as it is (nothing in this turn changed it). */
   | 'preview_unchanged';
 
+/** Work the scheduler left out of a preview: all of it, or only the part that did not fit. */
+export interface WeeklyPlanningPreviewOmittedWork {
+  label: string;
+  extent: 'all' | 'part';
+}
+
 /**
  * Machine-owned facts the interaction architecture hands to the renderer next to the
  * outcome (Issue #488). They say WHAT must be communicated; they contain no prose and are
@@ -64,8 +70,11 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * (the turn continued only through its conversation act). Nothing from them was applied.
    */
   planningDetailsNotApplied: boolean;
-  /** Application-owned preview disclosure: work that did not fit and is not in the preview. */
-  previewDisclosure: { omittedWorkLabels: string[] } | null;
+  /**
+   * Application-owned preview disclosure: work that did not fit. The application states it in
+   * its own sentence next to the reply; the renderer never words it.
+   */
+  previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

@@ -24,6 +24,7 @@ import {
   upcomingQuestionCodesForInteraction,
 } from './weeklyPlanningInteractionDecision';
 import type {
+  WeeklyPlanningPreviewOmittedWork,
   WeeklyPlanningTurnCommunicationFacts,
   WeeklyPlanningTurnStatusReason,
 } from './weeklyPlanningInteractionOutcome';
@@ -67,7 +68,7 @@ function communicationFacts(params: {
   output: WeeklyPlanningTurnExecutionResult;
   statusReason: WeeklyPlanningTurnStatusReason | null;
   planningDetailsNotApplied: boolean;
-  omittedWorkLabels: string[] | null;
+  omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
 }): WeeklyPlanningTurnCommunicationFacts {
   const context = params.output.state.lastQuestionContext;
   const code = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
@@ -78,8 +79,8 @@ function communicationFacts(params: {
       presented: code ? { code, factId: context?.topicId ?? null } : null,
     }),
     planningDetailsNotApplied: params.planningDetailsNotApplied,
-    previewDisclosure: params.omittedWorkLabels
-      ? { omittedWorkLabels: params.omittedWorkLabels }
+    previewDisclosure: params.omittedWork
+      ? { omittedWork: params.omittedWork }
       : null,
   };
 }
@@ -157,7 +158,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               output,
               statusReason: responseRoute.statusReason,
               planningDetailsNotApplied,
-              omittedWorkLabels: null,
+              omittedWork: null,
             }),
           }
         : {}),
@@ -202,7 +203,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             output,
             statusReason: null,
             planningDetailsNotApplied,
-            omittedWorkLabels: provisionalCapacity ? provisionalCapacity.omittedWorkLabels : null,
+            omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
           }),
         }
       : {}),

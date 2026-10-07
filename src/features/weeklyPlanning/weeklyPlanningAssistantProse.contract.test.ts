@@ -17,8 +17,9 @@ import { weeklyPlanningInternalProcessTermsIn } from './dialogue/weeklyPlanningS
  * 1. Every production file under weeklyPlanning that contains a Japanese string literal is
  *    registered below under a category with a reason. An unregistered file fails.
  * 2. Texts the interaction architecture can show (its emergency module, the application-typed
- *    question texts reused as the emergency question, the date note and the correction
- *    acknowledgement) contain no internal system/process vocabulary.
+ *    question texts reused as the emergency question, the date note, the correction
+ *    acknowledgement and the application's omitted-work statement) contain no internal
+ *    system/process vocabulary.
  * 3. The interaction decision modules (typed acts, outcome, recovery, communication context)
  *    contain no Japanese literal at all: they decide WHAT, never the words.
  * 4. Pre-Stable-V5 modules with fixed prose are not reachable from the application entry
@@ -36,6 +37,11 @@ const INTERNAL_PROCESS_WORDING = /予定条件|安全に|反映していませ�
 type ProseCategory =
   /** The single interaction emergency module (renderer unavailable / rejected). */
   | 'interaction_emergency'
+  /**
+   * An application-owned statement shown next to a rendered interaction reply because it is
+   * scheduling truth the model may not word (work left out of a preview).
+   */
+  | 'interaction_authoritative_disclosure'
   /** Application-typed texts the interaction architecture reuses only as its emergency text. */
   | 'interaction_emergency_shared'
   /** Shown only by the legacy (pre-#488) comparison architecture; interaction replaces them. */
@@ -57,6 +63,7 @@ type ProseCategory =
 
 const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'dialogue/weeklyPlanningInteractionFallbackText.ts': 'interaction_emergency',
+  'dialogue/weeklyPlanningPreviewOmissionDisclosure.ts': 'interaction_authoritative_disclosure',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts': 'interaction_emergency_shared',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts': 'interaction_emergency_shared',
   'application/weeklyPlanningStableV5GroundingFlow.ts': 'interaction_emergency_shared',
@@ -233,7 +240,9 @@ describe('fixed assistant prose in weekly planning (Issue #488)', () => {
 
   it('keeps internal system/process vocabulary out of every text the interaction architecture can show', () => {
     const violations = Object.entries(PROSE_REGISTRY)
-      .filter(([, category]) => category === 'interaction_emergency' || category === 'interaction_emergency_shared')
+      .filter(([, category]) => category === 'interaction_emergency'
+        || category === 'interaction_emergency_shared'
+        || category === 'interaction_authoritative_disclosure')
       .flatMap(([file]) => (filesWithJapanese.get(file) ?? [])
         // This file's stricter list (fixed text has no grounding exception) plus the renderer
         // output validator's list, so fixed and rendered wording can never drift apart.

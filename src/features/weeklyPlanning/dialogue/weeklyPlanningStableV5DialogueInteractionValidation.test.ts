@@ -4,6 +4,8 @@ import type {
   WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5DialogueContracts';
 import { parseWeeklyPlanningStableV5DialogueRendererResponse } from './weeklyPlanningStableV5DialogueValidation';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { createWeeklyPlanningStableV5DialogueProjection } from '../semantic/weeklyPlanningStableV5DialogueProjection';
 
 /*
  * Interaction-architecture checks on the renderer's OWN output (never on the user's words):
@@ -65,8 +67,29 @@ describe('interaction renderer output: internal vocabulary', () => {
     'pending の質問は変わりません。1問あたり何分ですか？',
     '確認中の質問は変わりません。1問あたり何分ですか？',
     'プロバイダへの接続を再試行しました。1問あたり何分ですか？',
+    // Reviewer counterexamples that the first list let through.
+    'いまの内容は予定には反映していません。1問あたり何分ですか？',
+    '安全に配置できませんでした。1問あたり何分ですか？',
+    '質問は保留にしています。1問あたり何分ですか？',
+    'データを検証できませんでした。1問あたり何分ですか？',
+    '入力をパースできず、フォールバックしました。1問あたり何分ですか？',
+    'さっきの内容は取り込めていません。1問あたり何分ですか？',
+    'semantic_uncertainty のため確認します。1問あたり何分ですか？',
+    'stable_v5_normalization_rejected でした。1問あたり何分ですか？',
+    'missing_effort_estimate を確認します。1問あたり何分ですか？',
   ])('rejects a reply that talks about the app internals: %s', (text) => {
     expect(render(input(), text)).toMatchObject({ status: 'fallback', reason: 'internal_process_text' });
+  });
+
+  it('does not let machine keys or enum values of the real planning data legitimise a word', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    const renderInput = input({
+      planningInformation: createWeeklyPlanningStableV5DialogueProjection(graph),
+      requiredLabels: [],
+    });
+    expect(JSON.stringify(renderInput.planningInformation)).toContain('revision');
+    expect(render(renderInput, 'revision を確認しました。1問あたり何分ですか？'))
+      .toMatchObject({ status: 'fallback', reason: 'internal_process_text' });
   });
 
   it('allows a word the user or the plan data itself uses', () => {
@@ -94,7 +117,7 @@ describe('interaction renderer output: internal vocabulary', () => {
 });
 
 describe('interaction renderer output: preview disclosure', () => {
-  const preview = (omittedWorkLabels: string[]) => input({
+  const preview = (omittedWork: Array<{ label: string; extent: 'all' | 'part' }>) => input({
     actionId: 'stable-v5:request-1:preview_ready',
     actionKind: 'preview_ready',
     questionCode: null,
@@ -103,22 +126,33 @@ describe('interaction renderer output: preview disclosure', () => {
     requiredLabels: ['この内容で仮予定にする'],
     planningInformation: { tasks: [{ title: '数学', category: 'study' }, { title: '英語', category: 'study' }] },
     communication: communication({
-      goal: 'present_preview', askQuestion: false, questionPurposes: [], previewDisclosure: { omittedWorkLabels },
+      goal: 'present_preview', askQuestion: false, questionPurposes: [], previewDisclosure: { omittedWork },
     }),
   });
 
-  it('accepts a reply that names every omitted work item', () => {
-    expect(render(preview(['英語']), '2件の候補を作りました。英語は空き時間に入りきらず、今回は入れていません。よければ「この内容で仮予定にする」を押してください。'))
+  // The application states omitted work itself next to the reply; the reply must leave it out.
+  it('accepts a reply that leaves the omitted work to the application', () => {
+    expect(render(preview([{ label: '英語', extent: 'all' }]), '数学を中心に2件の候補を作りました。よければ「この内容で仮予定にする」を押してください。'))
       .toMatchObject({ status: 'rendered' });
   });
 
-  it('falls back when an omitted work item is not mentioned', () => {
-    expect(render(preview(['英語']), '2件の候補を作りました。よければ「この内容で仮予定にする」を押してください。'))
+  it.each([
+    // A reviewer counterexample: a false claim that the omitted work is included.
+    '英語も含めた2件の候補です。よければ「この内容で仮予定にする」を押してください。',
+    '英語は今回は入っていません。2件の候補です。よければ「この内容で仮予定にする」を押してください。',
+  ])('falls back whenever the reply itself talks about fully omitted work: %s', (text) => {
+    expect(render(preview([{ label: '英語', extent: 'all' }]), text))
       .toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
   });
 
-  it('falls back when the disclosure cannot be verified (no label)', () => {
-    expect(render(preview([]), '2件の候補を作りました。一部は入れていません。よければ「この内容で仮予定にする」を押してください。'))
-      .toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
+  it('lets the reply name work that is only partly left out, and another task containing the label', () => {
+    expect(render(preview([{ label: '英語', extent: 'part' }]), '英語と数学で2件の候補を作りました。よければ「この内容で仮予定にする」を押してください。'))
+      .toMatchObject({ status: 'rendered' });
+    const withLongerTask = input({
+      ...preview([{ label: '英語', extent: 'all' }]),
+      planningInformation: { tasks: [{ title: '英語', category: 'study' }, { title: '英語の長文', category: 'study' }] },
+    });
+    expect(render(withLongerTask, '英語の長文で2件の候補を作りました。よければ「この内容で仮予定にする」を押してください。'))
+      .toMatchObject({ status: 'rendered' });
   });
 });

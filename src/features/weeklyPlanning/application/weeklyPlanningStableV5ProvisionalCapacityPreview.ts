@@ -15,15 +15,20 @@ import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import type { WeeklyPlanningPreviewOmittedWork } from './weeklyPlanningInteractionOutcome';
 
 export interface WeeklyPlanningProvisionalCapacityPreviewProjectionV5 {
   output: WeeklyPlanningTurnExecutionResult;
   /** Lower-priority work left out of the preview: an application-owned disclosure. */
   omittedWorkLabels: string[];
+  /** The same work per task: entirely left out, or only partly (the task also has candidates). */
+  omittedWork: WeeklyPlanningPreviewOmittedWork[];
 }
 
 interface ProvisionalCapacityDecisionV5 {
   unscheduledTaskIds: string[];
+  /** Unscheduled tasks that still have some candidates in the preview. */
+  partlyScheduledTaskIds: string[];
   priorityRelationFactIds: string[];
 }
 
@@ -75,6 +80,7 @@ function provisionalCapacityDecision(params: {
 
   return {
     unscheduledTaskIds,
+    partlyScheduledTaskIds: unscheduledTaskIds.filter((taskId) => scheduledTaskIds.has(taskId)),
     priorityRelationFactIds: [...acceptedRelations].sort(),
   };
 }
@@ -115,6 +121,15 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     params.evaluation,
     decision.unscheduledTaskIds,
   );
+  const partly = new Set(decision.partlyScheduledTaskIds);
+  const omittedWork = new Map<string, WeeklyPlanningPreviewOmittedWork>();
+  for (const taskId of decision.unscheduledTaskIds) {
+    for (const label of taskLabels(schedulerInput, params.evaluation, [taskId])) {
+      const extent = partly.has(taskId) ? 'part' : 'all';
+      const known = omittedWork.get(label);
+      omittedWork.set(label, { label, extent: known?.extent === 'part' ? 'part' : extent });
+    }
+  }
   const omittedText = omittedLabels.length > 0
     ? `${omittedLabels.join('・')}の一部`
     : '低優先度の作業の一部';
@@ -134,9 +149,9 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     learningStrategyProposalRecords: params.evaluation.learningStrategyProposals.records,
   });
   // This disclosure is application-owned: omitting lower-priority work is a deterministic
-  // scheduling decision, not wording the dialogue model may hide. Legacy shows the fixed
-  // system message; the interaction architecture hands the omitted labels to the renderer as
-  // a typed disclosure that its output is validated against (falling back when unverifiable).
+  // scheduling decision, not wording the dialogue model may hide or contradict. Legacy shows the
+  // fixed system message; the interaction architecture lets the renderer write the reply and
+  // states the omitted work itself in one application sentence next to it.
   const output: WeeklyPlanningTurnExecutionResult = conversationArchitecturePolicy(
     params.input.conversationArchitecture,
   ).interactionOutcome
@@ -161,5 +176,5 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     },
   });
 
-  return { output, omittedWorkLabels: omittedLabels };
+  return { output, omittedWorkLabels: omittedLabels, omittedWork: [...omittedWork.values()] };
 }

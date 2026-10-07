@@ -398,8 +398,8 @@ function communicationFactsProjection(value: Record<string, unknown>): Record<st
     statusReason: stringValue(value.statusReason),
     upcomingQuestionCodes: compactUnknown(value.upcomingQuestionCodes),
     planningDetailsNotApplied: value.planningDetailsNotApplied === true,
-    omittedWorkCount: Array.isArray(disclosure.omittedWorkLabels)
-      ? disclosure.omittedWorkLabels.length
+    omittedWorkCount: Array.isArray(disclosure.omittedWork)
+      ? disclosure.omittedWork.length
       : null,
   };
 }

@@ -192,7 +192,7 @@ function interactionCommunicationInstructions(
       ? ['acceptedFacts.selfRepairはユーザーがこのturnで訂正した内容（before→after）。最初に短く自然に受け止めてから続ける。']
       : []),
     ...(communication.previewDisclosure
-      ? ['previewDisclosure: omittedWorkLabelsをすべて名前で挙げ、空き時間に入りきらず今回の候補には入れていないとはっきり伝える。']
+      ? ['previewDisclosure: 入りきらなかった作業（omittedWork）はアプリが返答のあとに一文で伝える。返答ではextent=allの作業名を出さず、作業が入った・入らないにも触れず、候補ができたことと操作の案内を書く。']
       : []),
     ...(communication.planningDetailsNotApplied
       ? ['planningDetailsNotApplied=true: このメッセージにあった予定の内容は取り込めていない。理由は言わず、変えたいことがあればもう一度教えてほしいと一文添える。']

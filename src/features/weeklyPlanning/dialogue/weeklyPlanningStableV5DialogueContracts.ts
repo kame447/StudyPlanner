@@ -1,6 +1,9 @@
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
-import type { WeeklyPlanningTurnStatusReason } from '../application/weeklyPlanningInteractionOutcome';
+import type {
+  WeeklyPlanningPreviewOmittedWork,
+  WeeklyPlanningTurnStatusReason,
+} from '../application/weeklyPlanningInteractionOutcome';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -78,7 +81,7 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   /** An advice/consultation request was heard but is not answered by this runtime. */
   consultationDeferred: boolean;
   /** Work left out of the new draft because the free time ran out (must be disclosed). */
-  previewDisclosure: { omittedWorkLabels: string[] } | null;
+  previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
 }
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {
