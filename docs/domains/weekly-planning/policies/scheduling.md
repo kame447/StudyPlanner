@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-09-01
+Updated: 2026-10-08
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -99,6 +99,8 @@ schedulerは作業の意味構造を勝手に作らない。
 
 current schedulerのsession chunking定数は実装policyであり、作業のatomicityより強くない。
 
+同じtyped task/component/workloadを共有する分割sessionは、まず明示された希望scope内の未使用eligible日を優先し、その後に安全な空き時間の未使用日を探す。安全な未使用日が無ければ同じ日を再利用する。hard date bound・occupied interval・daily capacityを弱めず、無制約の7日horizonでは6 normal daysをreserveより先に使う。明示scopeが土日に限定される場合は、その土日内で別日を優先できる。別々のworkloadを同じ作業とみなして日付を強制分散させない。
+
 ## Progress and target basis
 
 schedulerへ渡す「今回配置する量」は、全範囲や過去進捗と区別する。
@@ -118,6 +120,8 @@ open-ended workに架空のscope totalを作って分配しない。
 
 acceptedな生活制約・buffer・availabilityはtyped constraintとしてschedulerへ渡し、raw Japaneseや科目名から後段で推測しない。
 
+hard availabilityが日付境界をまたぐ場合も、対象日との交差区間を残す。片側だけ指定された時刻は、解決済みの開始日/終了日境界までを表す。`24:00`は内部の解決済み終端であり、providerのwire clockに追加した許容値ではない。
+
 ## Preference and personalization
 
 preferred time、observed profile、learning-specific scoreは、hard availabilityを通過したsafe candidate集合の中でのみ順位付けに使う。
@@ -129,6 +133,10 @@ preferred time、observed profile、learning-specific scoreは、hard availabili
 
 plan-wideの希望時間帯（例: 平日は20時以降）もtask/componentの希望時間帯も、解決済みの日付・時刻から配置用のpreferenceへ渡す。plan-wideの希望は各work targetへ適用し、task/component固有の希望を先に評価する。希望時間に安全な空きがない場合、soft preferenceをhard constraintへ昇格させず、既存の安全な候補へ戻る。
 
+task/componentの希望時刻が片側だけ指定されている場合、開始のみはその時刻から日末、終了のみは日初からその時刻までとしてcompileする。日付だけの希望へ落とさない。日付・named period・時刻区間・constraint levelが解決できない希望はblocking questionにし、黙って省かない。`soft available`は希望として順位付けに使い、hard available集合を拡張しない。既知のtyped clock/named periodはwork targetの有無と独立に解決し、配置用projectionがまだ無いことを理由に未解決の時間帯と判定しない。
+
+plan-wideのnon-recurringなcanonical weekdayのsoft preferenceがrequest clockから解決され、accepted planning windowの外になる場合は、既存の`availability_outside_planning_window`をblockingとして日付scopeを質問する。勝手に毎週の反復や計画週の曜日へ読み替えず、一度のscope回答を通常のsemantic/訂正境界で受理して解決する。既にwindow内のweekdayは追加質問を必要としない。
+
 ## Estimated effort and allocated time
 
 作業量とペースから求めた見積もり時間と、実際に確保する予定枠は区別する。current allocation policyは、適用されるペース補正のあとに10%の余裕を加え、基準見積もりが60分以下なら5分単位、60分を超えるなら15分単位で切り上げる。
@@ -138,6 +146,21 @@ plan-wideの希望時間帯（例: 平日は20時以降）もtask/componentの�
 - 「2時間進める」のような時間そのものを作業量とする`intrinsic_duration`には10%の見積もり余裕を加えない
 
 プレビューの時刻・合計は確保した時間を表示する。会話で予定枠の長さを説明するときも、作業量×ペースをそのまま予定枠と断言せず、実際の候補時間を根拠にする。余裕と切り上げは`semantic/weeklyPlanningEffortAllocation.ts`が所有し、既存予定の前後に置く衝突回避bufferとは別である。
+
+候補とdraftには、基準見積もり・ペース補正後・余裕込み・確保時間、および補正/見積もり余裕/切り上げの理由をtyped `allocationBreakdown`として引き継ぐ。配置済みのsliceから内訳を投影し、previewの集計で再度余裕を加えない。既存データで内訳が無い場合は、理由を推測して表示しない。
+
+preview card/sheetは余裕があるとき「見積もり1時間＋余裕10分」のように基準と差分を表示する。時間そのものを作業量とするintrinsic durationには見積もり余裕の表示を付けない。内訳がrendererへ渡る場合は、見積もり・余裕（0分も含む）の説明を会話で重ねず、applicationの表示へ委ねる。rendererへの内訳と実際の条件達成の説明境界は[current contract](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488)が所有する。
+
+### Explicit content session length precedes margin
+
+個数で数える内容単位（countable content units）の明示session lengthは、通常の日別分配と見積もり余裕より先に扱う。対象は正の整数amountを持つ内容単位で、word/lesson/chapter/section/exam_yearや整数customも含む。minute/hour/sessionは専用の分割経路、mock_examはatomicのままとし、分数customの量を整数へ変えない。補正後の1単位コストと上限から各sessionに収まる整数単位数を求め、全量を保てるだけのsessionへ分ける。各sliceへその内容の実コストを先に確保し、既存の余裕込みallocationと全session上限の小さい方までの残余を、上限内で均等に配る。基準見積もり・page range・session factの出典を保ち、余裕だけのtailや端数page/problemを作らない。
+
+- 40ページ×3分、上限60分 → 20ページずつの60分×2
+- 20ページ×3分、上限60分 → 60分×1。通常の70分allocationより明示上限が先で、実余裕は0分
+- 1単位の補正後コスト自体が上限より長い場合は、その単位を端数化せず実コストを保ち、達成状況を`not_satisfied`として表示する。atomic work・分数custom・生成chunk数上限によって分割できない経路でもsession factの出典を保ち、実際のblock長から達成/未達を判定する。計算可能な超過を`not_evaluated`にしない
+
+各sliceの所要時間はその内容のコストを下回らず、条件が許す別日分散を保つ。固定日のworkはその日を保つ。これらはshared scheduler policyであり、同じaccepted factsなら両conversation architectureへ適用する。
+
 
 ## Change rule
 

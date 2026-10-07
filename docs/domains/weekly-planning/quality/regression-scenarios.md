@@ -1,7 +1,7 @@
 # Weekly Planning Regression Scenarios
 
 Status: canonical scenario catalog
-Updated: 2026-08-27
+Updated: 2026-10-08
 
 Parent: [test-philosophy.md](test-philosophy.md)
 Contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
@@ -69,6 +69,44 @@ Representative evidence owners:
 - `src/features/weeklyPlanning/application/weeklyPlanningTemporalContext.test.ts`
 - `src/features/weeklyPlanning/semantic/weeklyPlanningStableV5WorkItemPlacement.ts`
 - temporal-constraint compilation tests introduced with PR #204
+
+### SCHED-009: clock representation preserves accepted constraints
+
+task/component/plan-wideの希望を同じtyped日付・時刻としてcompileし、片側だけのclock、named period、日付境界をまたぐhard availabilityを消失させない。soft availableはhard空き時間を増やさず順位だけに作用する。未解決の希望はquestionとなり、期間・request-time・busy interval・deadlineの境界は保つ。作業量がまだ無い場合も既知のnamed periodを解決不能とせず、unknown/custom date・time・levelは引き続き質問する。non-recurringなplan-wide weekday soft preferenceがaccepted期間外になる場合はdate-scopeを一度確認し、回答後に配置できる。期間内なら質問せず、反復や基準日を暗黙変更しない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningTemporalPreferenceRepresentations.integration.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningTemporalRepairRealE2E.integration.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningTemporalRepairTracePersistence.integration.test.ts`
+
+### SCHED-010: estimate and allocated time have one typed explanation
+
+量×ペースの見積もりと確保時間を区別し、policyの余裕/切り上げをtyped内訳とUIへ渡す。session分割後の合計でも二重加算しない。intrinsic durationには見積もり余裕を付けず、内訳が無い過去データから理由を発明しない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/semantic/weeklyPlanningAllocationBreakdown.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningAllocationPreview.integration.test.ts`
+- `src/components/WeeklyPlanningAllocationSummary.test.tsx`
+- `src/features/weeklyPlanning/weeklyPlanningAllocationPersistence.integration.test.ts`
+
+### SCHED-011: split siblings prefer distinct eligible days without weakening safety
+
+同一task/component/workloadのsessionは希望scope内の未使用日を優先し、安全な別日が無い場合だけ同日へ戻る。土日scopeなら土曜/日曜へ分けられ、無制約の7日scopeでは6+1 reserve方針を維持する。hard bounds・busy interval・daily capacityを破らず、別workloadへのscope leakや架空のfree timeを作らない。interactionのsemantic instructionは分割を総量の置換にせず、session_duration/countへ分離し、両方/全部の希望を各対象へ表す。prompt budgetの限定増分とlegacy非変更も検査する。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningSplitSessionDistinctDays.integration.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningSplitSessionDistinctDaysV5.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningSplitSessionDistinctDaysTracePersistence.integration.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts`
+
+### SCHED-012: content-unit caps preserve true cost and whole units
+
+正の整数amountを持つcountable content units（整数customを含む）の明示session lengthを日別分配/余裕より先に扱い、必要な整数単位session数と正しい範囲を保つ。各sliceは自分の補正後コスト以上、可能な場合は上限以下とし、全量/基準見積もり/実余裕を一致させる。1単位が上限を超える場合は分数化せず`not_satisfied`とsession source refを保つ。40p×3/cap60、20p×3/cap60、31p×3/cap31、3p×10/cap22、5問×29/cap60を検査し、word/lesson/chapter/section/exam_year/customへも適用し、mock_exam atomic・分数custom・session/hour/minuteの専用経路・chunk上限fallbackを検査する。分割できなくても適用するsession factを保ち、実block長の超過をnot_evaluatedで隠さない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/semantic/weeklyPlanningContentSessionCapV5.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningSplitSessionDistinctDays.integration.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningConditionPropagationTracePersistence.integration.test.ts`
 
 ## 2. Quantity / progress
 
@@ -189,7 +227,7 @@ Current example owners:
 
 ### DIALOGUE-014: ordinary replies are renderer-written and never describe the app's internals
 
-interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。emergency文言はrouting/applicationの文を入力に取らない（statusはtyped reasonから言う）。仮予定候補に入りきらなかった作業はapplicationが返答の横に自分の一文で伝え、返答側が全体を外された作業名を出すと拒否する（「含めた」と偽れない）。内部語彙の例外はユーザーの発話と計画の表示ラベルだけで、データのkey・enum値は例外にならず、snake_caseのコードは常に内部語彙。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならず、表示されうる固定文はrenderer出力の検査と同じ内部語彙listでも検査する。
+interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、会話部分は内部語彙の無い短いemergency文言へ戻る。application所有の未配置作業・未達/未検証条件の説明は通常/緊急応答に添えられる固定文であり、emergencyだけが固定日本語という契約ではない。emergency文言はrouting/applicationの文を入力に取らない（statusはtyped reasonから言う）。仮予定候補に入りきらなかった作業はapplicationが返答の横に自分の一文で伝え、返答側が全体を外された作業名を出すと拒否する（「含めた」と偽れない）。内部語彙の例外はユーザーの発話と計画の表示ラベルだけで、データのkey・enum値は例外にならず、snake_caseのコードは常に内部語彙。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならず、表示されうる固定文はrenderer出力の検査と同じ内部語彙listでも検査する。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningAssistantProse.contract.test.ts`
@@ -197,6 +235,41 @@ Current example owners:
 - `src/features/weeklyPlanning/dialogue/weeklyPlanningInteractionFallbackText.test.ts`
 - `src/features/weeklyPlanning/weeklyPlanningInteractionRendererFallback.test.ts`
 - `tests/e2e/weekly-conversation-interaction.spec.mjs`
+
+### DIALOGUE-015: bounded consultation uses accepted-plan evidence without adoption
+
+planning changeの無い相談は、previewが無ければasideとしてquestionを再bindしない。mixed turnは有効なplanning deltaを保持する。rendererは受理済み計画の実scheduler結果・missing detail・daily upper limitから条件付きの助言をするが、未採用の土日案等を検証済みとしない。保持した旧previewはfreshなfeasibilityの根拠にならず、相談だけでapproval/saveや新しいauthorizationを与えない。strict feasibilityClaim metadataのnone/fits/does_not_fitをtyped evidenceへ照合し、不一致は専用理由で一度repairする。
+
+Evidence owners:
+- `src/features/weeklyPlanning/application/weeklyPlanningConsultationCommunication.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningConversationInteractionTracePersistence.integration.test.ts`
+
+### DIALOGUE-016: independent details do not resolve a required question
+
+interactionでは必須教材の質問中に努力量を答えても、その量は受理しつつ教材の不確実性を未解決として保持し、previewへ進めない。解決は同じtargetの同じdimensionの新しい情報に限定する。未知のfree-form fieldにもtask shell・rate・session・clock budget・過去のreplay・sibling情報を解決根拠にしない。正式な構造/教材回答やknown work-breakdownのtime budgetはその契約で進める。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningRequiredClarification.integration.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUncertaintyResolutionV5.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningRequiredClarificationTracePersistence.integration.test.ts`
+
+### DIALOGUE-017: acknowledgement is limited to accepted facts
+
+interactionのrenderer instructionはtyped acceptedFactsだけを受け止める。ユーザーが書いても未受理の時刻・日・量は質問できるが、受領済みの条件として繰り返さない。prompt/typed contextとlegacyとの差分を検査し、実modelがinstructionに従う精度はreal-API/人手gateで評価する。previewCountは一つのpreview内のcandidate block数であり、別々のpreview/代案の数として話さない。allocation内訳がある場合は、見積もり・余裕の説明を会話で重ねない（0分も同じ）。
+
+Evidence owners:
+- `src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialoguePrompt.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationArchitectureSwitch.integration.test.ts`
+
+### DIALOGUE-018: coverage audit is bounded and does not infer omitted meaning
+
+interactionでは、leaf citationの未引用runが8 code points以上で少なくとも一つのleafが引用済み、かつ破棄するtyped projectionでtarget/remaining workの努力量不足が見込まれる場合だけ、既存AI completeness auditを使う。character class・keyword・tokenizationで不足内容を決めない。完全な応答・時間予算・empty coverageはこの追加経路へ進まず、auditの不正出力/接続失敗/予算不足は元の有効documentを保持する。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningSemanticEvidenceCoverage.integration.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceCoverageV5.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningSemanticEvidenceCoverageTracePersistence.integration.test.ts`
 
 ## 4. Preview / approval
 
@@ -227,6 +300,25 @@ preview生成後にaccepted semantic state / source revisionが変わった場�
 ### PREVIEW-006: bulk discard / approval remain coherent
 
 個別除外を実装・移行しても、一括破棄/再調整と明示承認のboundaryを壊さない。preview candidateとpromoted draftのどちらを操作しているかをUI/applicationで一貫させる。
+
+### PREVIEW-007: corrections and added scheduling facts invalidate the old basis
+
+教材名を省略した数量訂正と期限を同時に受理し、既存速度を保って同じ作業へ結び付ける。interactionでは既存速度の正確な再掲を新しいevidenceにしない。日付の追加確認中も数量訂正に先立つ旧案を消し、続く具体日付を訂正後の同じ作業へ結び付ける。既存作業の配置根拠となる追加条件でも失効し、新しい作業だけの追加では部分previewを保持できる。renderer失敗・reload・double-submit・chat切替でgraphとpreviewのauthorityを分離させない。不正な訂正はgraphを保ち、その未受理の量を現在の候補として説明しない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningCorrectionRealE2E.integration.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningPreviewAuthorityAdversarial.integration.test.ts`
+- `src/features/weeklyPlanning/evals/weeklyPlanningPreviewCorrectionLifecycle.integration.test.ts`
+
+### PREVIEW-008: reply claims follow actual preview evidence
+
+希望時間帯や1回の長さを受理したことと、表示候補がそれを満たすことを区別する。soft availableを含む各taskに適用される希望時間帯のunionで実候補を評価する。未達/未検証条件はapplicationが通常/緊急応答の横へ表示し、rendererの時間帯達成claimは文単位のexact task label scopeで検査する。未達taskがあっても満たした別taskの文や値を繰り返さないneutral accepted-fact ACKは許可し、未検証claimは専用理由で一度repairしてからfallbackする。新しいpreviewが無いときの配置claimを拒否し、変更なしclaimはpreview_unchangedに限定する。task固有の希望・量・session訂正は別作業へ漏れない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningMultiTaskLaterConstraints.integration.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningClaimRepair.integration.test.ts`
+- `src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueInteractionValidation.test.ts`
+- `src/features/weeklyPlanning/trace/weeklyPlanningConditionPropagationTracePersistence.integration.test.ts`
 
 ## 5. Lifecycle / state integrity
 
@@ -286,6 +378,28 @@ Required audit:
 4. do not implement partial acceptance with raw Japanese regex/keyword routing.
 
 This section remains visible so the principle is not lost merely because its historical implementation task was superseded.
+
+## 8. Real UI A–G campaign regression
+
+実UIで発見したscenarioを、provider transportだけを差し替えた本番controller/runtimeとdesktop/390px browserで再現する。自然な日本語の一文一致ではなく、accepted state、実際の候補枠、未承認、architecture pin、dispatch計測を検査する。scripted providerの成功を実modelの意味解釈精度やGemini/人手品質の証拠にはしない。
+
+| Scenario | Contract to assert |
+| --- | --- |
+| A 完全入力と希望時刻 | 来週のhorizonと20時以降のtyped希望を保持し、時刻表/busy枠を避ける。解決不能な希望は質問する |
+| B 質問理由と努力量の回答 | 説明でgraphを変えず、努力量の回答は対象へbindする。未解決の必須教材質問を解消済みとして扱わない（DIALOGUE-016） |
+| C 数量訂正と期限 | 30→20、既存速度、具体日付を同じ作業へ伝播し、旧候補・誤った変更なしclaimを残さない |
+| D 複数作業と後続条件 | 作業を保ち、plan-wide/task-onlyの希望とsession変更をそのscopeへ適用する。容量不足時の旧案は失効する |
+| E 相談と再開 | 受理済み計画のread-only助言、未採用の代案、questionのaside/resumeを分離する |
+| F 曖昧依頼と時間予算 | 量のない作業の明示total timeをschedulable time budgetとして扱い、架空の総量やscope質問loopを作らない |
+| G 期限と除外時間 | deadlineとunavailableを同時に守り、repairで別の事実や除外時間を捨てない |
+
+Evidence owners:
+- `src/features/weeklyPlanning/weeklyPlanningRealE2ECampaign.integration.test.ts`
+- `src/features/weeklyPlanning/testUtils/weeklyPlanningRealE2ECampaignFixture.ts`
+- `src/features/weeklyPlanning/weeklyPlanningTimeBudgetBreakdownLoop.integration.test.ts`（Fの夜/60分session/教材未確定を含むmulti-turn回帰）
+- `tests/e2e/weekly-real-scenarios.spec.mjs`（専用configでdesktop/mobileを実行）
+
+基礎的なA–G replayに加え、各修正のadversarial scenarioは上の専用suiteで検査する。現時点の統合/実測状態は[work record](../work/20261007-issue488-conversation-interaction.md#real-e2e-blocker-campaign-2026-10-0708)を参照する。
 
 ## Archive relationship
 
