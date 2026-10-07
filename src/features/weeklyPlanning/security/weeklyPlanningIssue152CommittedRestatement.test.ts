@@ -123,7 +123,7 @@ const schedulerContext = {
 };
 
 describe('Issue #152 committed workload restatement provenance', () => {
-  it('accepts the observed Real turn 2 repair through validation and commit without duplicating math', async () => {
+  it.each(['legacy_v5', 'interaction_v1'] as const)('accepts the observed Real turn 2 reference in %s without duplicating math', async (conversationArchitecture) => {
     const repaired = repairDocument();
     const initial = repairDocument();
     initial.tasks[0]!.workloads = [];
@@ -135,22 +135,28 @@ describe('Issue #152 committed workload restatement provenance', () => {
       conversationId: source.conversationId,
       turnId: `${source.conversationId}:request:2`, expectedRevision: 1,
       graph: committedGraph(), userText: turnTwoUserText, schedulerContext,
+      conversationArchitecture,
     });
 
     expect(result.normalization.status).toBe('accepted');
-    expect(result.normalization.diagnostics.repairAttempted).toBe(true);
-    expect(result.normalization.diagnostics.validationErrors).toContain(
-      'document.tasks[0].effortEstimates[0].targetLocalId',
-    );
+    expect(result.normalization.diagnostics.repairAttempted).toBe(conversationArchitecture === 'legacy_v5');
+    if (conversationArchitecture === 'legacy_v5') {
+      expect(result.normalization.diagnostics.validationErrors).toContain(
+        'document.tasks[0].effortEstimates[0].targetLocalId',
+      );
+    } else {
+      expect(result.normalization.diagnostics.validationErrors).toEqual([]);
+    }
     expect(result.canonicalization?.status).toBe('applied');
     expect(result.graph.revision).toBe(2);
     expect(result.graph.workloads).toHaveLength(2);
     expect(result.graph.workloads.filter((fact) => fact.taskId === mathTaskId)).toHaveLength(1);
     expect(result.graph.workloads.find((fact) => fact.id === mathWorkloadId)?.amount).toBe(30);
-    expect(result.graph.effortEstimates.some((fact) => fact.targetFactId === mathWorkloadId
+    expect(result.graph.workloads.find((fact) => fact.id === mathWorkloadId)?.source).toEqual(committedGraph().workloads[0].source);
+    expect(result.graph.effortEstimates.some((fact) => fact.targetFactId === (conversationArchitecture === 'legacy_v5' ? mathWorkloadId : mathTaskId)
       && fact.minutes === 10)).toBe(true);
     expect(result.graph.workloads.some((fact) => fact.amount === 200 && fact.unitCode === 'word')).toBe(true);
-    expect(scripted.calls).toHaveLength(2);
+    expect(scripted.calls).toHaveLength(conversationArchitecture === 'legacy_v5' ? 2 : 1);
     expect(JSON.stringify(scripted.calls)).not.toContain('committedGraph');
   });
 

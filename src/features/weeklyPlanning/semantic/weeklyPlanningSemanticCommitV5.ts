@@ -1,6 +1,7 @@
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
+import { weeklyPlanningMaterialIdentityAnswersV5, applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
@@ -224,6 +225,8 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   operationKeyPrefix: string;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }) {
+  const materialIdentityAnswers = conversationArchitecturePolicy(params.conversationArchitecture).freshPendingQuestionBinding
+    ? weeklyPlanningMaterialIdentityAnswersV5(params.originalGraph, params.document) : [];
   const entityBindingApplication = shouldApplyWeeklyPlanningExistingEntityBindingsV5({
     contextualAnswer: params.contextualAnswer,
     questionCode: params.questionCode,
@@ -233,6 +236,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
         originalGraph: params.originalGraph,
         document: params.document,
         canonicalization: params.baseCanonicalization,
+        componentIdentityReplacementLocalIds: materialIdentityAnswers.map((answer) => answer.localId),
       })
     : {
         version: 'weekly-planning-existing-entity-binding-application-v5' as const,
@@ -240,7 +244,9 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
         canonicalization: params.baseCanonicalization,
         errors: [],
       };
-  const boundCanonicalization = entityBindingApplication.canonicalization;
+  const boundCanonicalization = materialIdentityAnswers.length
+    ? applyWeeklyPlanningMaterialIdentityAnswersV5({ ...params, canonicalization: entityBindingApplication.canonicalization })
+    : entityBindingApplication.canonicalization;
   const correctionResult = applyCanonicalCorrectionResult({
     originalGraph: params.originalGraph,
     canonicalization: boundCanonicalization,

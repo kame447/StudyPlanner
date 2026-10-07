@@ -1,5 +1,6 @@
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
+import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
   conversationArchitecturePolicy,
   type WeeklyPlanningConversationArchitecture,
@@ -302,6 +303,9 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   repairAttempted?: boolean;
   validationErrors?: string[];
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  if (conversationArchitecturePolicy(params.run.input.conversationArchitecture).actAwareNoOpRetry
+    && params.run.input.committedGraph
+    && weeklyPlanningMaterialIdentityAnswersV5(params.run.input.committedGraph, params.initialDocument).length > 0) return null;
   if (!isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
     document: params.initialDocument,
     publicStateSummary: params.run.input.publicStateSummary,

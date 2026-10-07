@@ -1,0 +1,89 @@
+import { describe, expect, it } from 'vitest';
+import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
+import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import { finalizeWeeklyPlanningSemanticCanonicalizationV5 } from './weeklyPlanningSemanticCommitV5';
+import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import { projectWeeklyPlanningExistingWorkloadRateReferenceV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
+
+const source = { conversationId: 'c', turnId: 'initial', semanticLocalId: 'm', sourceText: '数学の問題集を20問', origin: 'user' as const };
+function state() {
+  const graph = createEmptyWeeklyPlanningFactGraphV5(); graph.revision = 1;
+  graph.tasks = [{ id: 't', category: 'study', title: '数学', createdRevision: 1, source }];
+  graph.components = [{ id: 'm', taskId: 't', parentComponentId: null, role: 'material', label: '数学の問題集', createdRevision: 1, source }];
+  graph.workloads = [{ id: 'w', taskId: 't', componentId: 'm', quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, createdRevision: 1, source }];
+  graph.uncertainties = [{ id: 'u', targetFactId: 'm', field: 'material_identity', reason: '未確定', createdRevision: 1, source }, { id: 'other', targetFactId: 'm', field: 'unrelated', reason: '別の確認', createdRevision: 1, source }];
+  graph.factLifecycles = ['t', 'm', 'w', 'u', 'other'].map((factId) => ({ factId, status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null }));
+  return graph;
+}
+function answer(): WeeklyPlanningSemanticDocumentV5 {
+  return { schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
+    tasks: [{ localId: 'task', existingPublicId: 't', category: 'study', title: '数学', decompositionStatus: 'atomic',
+      study: { purpose: 'self_study', contextLabel: null, components: [{ localId: 'material', existingPublicId: 'm', parentLocalId: null, role: 'material', label: '青チャート 数学III', workloads: [], sourceText: '青チャート' }] },
+      workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [], sourceText: '青チャート' }],
+    relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [], corrections: [], decisions: [] };
+}
+describe('exact component identity transaction safety', () => {
+  it('preserves work provenance and unrelated needs, retaining historical component source', () => {
+    const graph = state();
+    graph.components.push({ ...graph.components[0], id: 'child', role: 'chapter', parentComponentId: 'm', label: '演習' });
+    graph.effortEstimates.push({ id: 'pace', taskId: 't', targetFactId: 'm', kind: 'duration_per_unit', minutes: 3,
+      unitCode: 'problem', precision: 'approximate', source, createdRevision: 1 });
+    for (const factId of ['child', 'pace']) graph.factLifecycles.push({ factId, status: 'active', createdRevision: 1,
+      terminalRevision: null, supersededByFactId: null });
+    const before = structuredClone(graph); const document = answer();
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'answer', expectedRevision: 1 } });
+    const result = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: graph, document, baseCanonicalization: base,
+      contextualAnswer: false, questionCode: 'semantic_uncertainty', operationKeyPrefix: 'c:answer', conversationArchitecture: 'interaction_v1' }).canonicalization;
+    expect(result.status).toBe('applied');
+    const replacementId = result.localToFactId.material;
+    expect(result.graph.workloads).toEqual([{ ...before.workloads[0], componentId: replacementId }]);
+    expect(result.graph.components.find((fact) => fact.id === 'm')).toEqual(before.components[0]);
+    expect(result.graph.components.find((fact) => fact.id === 'child')).toEqual({ ...before.components[1], parentComponentId: replacementId });
+    expect(result.graph.effortEstimates).toEqual([{ ...before.effortEstimates[0], targetFactId: replacementId }]);
+    expect(result.graph.uncertainties.find((fact) => fact.id === 'other')?.targetFactId).toBe(replacementId);
+    expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'other', status: 'active' }));
+    expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'u', status: 'removed' }));
+    expect(graph).toEqual(before);
+  });
+  it('does not treat a rate, unchanged label or foreign task binding as identity resolution', () => {
+    const graph = state(); const unchanged = answer(); unchanged.tasks[0].study!.components[0].label = '数学の問題集';
+    expect(weeklyPlanningMaterialIdentityAnswersV5(graph, unchanged)).toEqual([]);
+    const foreign = answer(); foreign.tasks[0].existingPublicId = 'another-task';
+    expect(weeklyPlanningMaterialIdentityAnswersV5(graph, foreign)).toEqual([]);
+    const effort = answer(); effort.tasks[0].study!.components = [];
+    expect(weeklyPlanningMaterialIdentityAnswersV5(graph, effort)).toEqual([]);
+  });
+  it('does not broaden a public workload rate across multiple compatible scopes', () => {
+    const graph = state(); graph.workloads.push({ ...graph.workloads[0], id: 'w2', componentId: null });
+    graph.factLifecycles.push({ factId: 'w2', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null });
+    const document = answer(); document.tasks[0].study!.components = [];
+    document.tasks[0].effortEstimates = [{ localId: 'rate', targetLocalId: 'w', kind: 'duration_per_unit', minutes: 3, unitCode: 'problem', precision: 'exact', sourceText: '1問3分' }];
+    const rawResponse = JSON.stringify(document);
+    expect(projectWeeklyPlanningExistingWorkloadRateReferenceV5({ rawResponse, graph })).toEqual({ rawResponse, repairs: [] });
+  });
+  it.each(['different_amount', 'foreign_component', 'new_scope', 'wrong_unit', 'unknown_target'] as const)('leaves %s public rate references for ordinary validation/repair', (variant) => {
+    const graph = state();
+    const document = answer();
+    const { id: _id, taskId: _taskId, componentId: _componentId, source: _source, createdRevision: _revision, ...quantity } = graph.workloads[0];
+    const replay = { ...quantity, localId: 'w', sourceText: '20問' };
+    document.tasks[0].study!.components[0].workloads = [replay];
+    document.tasks[0].effortEstimates = [{ localId: 'rate', targetLocalId: 'w', kind: 'duration_per_unit', minutes: 3, unitCode: 'problem', precision: 'exact', sourceText: '1問3分' }];
+    if (variant === 'different_amount') replay.amount = 21;
+    if (variant === 'foreign_component') document.tasks[0].study!.components[0].existingPublicId = 'other-material';
+    if (variant === 'new_scope') document.tasks[0].workloads = [{ ...replay, localId: 'additional' }];
+    if (variant === 'wrong_unit') document.tasks[0].effortEstimates[0].unitCode = 'page';
+    if (variant === 'unknown_target') document.tasks[0].effortEstimates[0].targetLocalId = 'unknown';
+    const rawResponse = JSON.stringify(document);
+    expect(projectWeeklyPlanningExistingWorkloadRateReferenceV5({ rawResponse, graph })).toEqual({ rawResponse, repairs: [] });
+  });
+  it('keeps legacy component binding and its uncertainty unchanged', () => {
+    const graph = state(); const document = answer();
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'answer', expectedRevision: 1 } });
+    const result = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: graph, document, baseCanonicalization: base,
+      contextualAnswer: false, questionCode: 'semantic_uncertainty', operationKeyPrefix: 'c:answer', conversationArchitecture: 'legacy_v5' }).canonicalization;
+    expect(result.graph.components).toEqual(graph.components);
+    expect(result.graph.uncertainties).toEqual(graph.uncertainties);
+    expect(result.graph.workloads).toEqual(graph.workloads);
+  });
+});

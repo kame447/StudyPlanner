@@ -2,6 +2,7 @@ import type { UncertaintyFactV5, WeeklyPlanningFactGraphV5 } from './weeklyPlann
 import { resolveWeeklyPlanningExistingEntityGraphBindingsV5 } from './weeklyPlanningExistingEntityBindingV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 
 /**
  * A delta is not an answer to every open need. Match the validated payload's
@@ -74,6 +75,7 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
         if (hasCurrentTaskTimeBudget(task)) return true;
         break;
       case 'material_identity':
+        if (weeklyPlanningMaterialIdentityAnswersV5(graph, document).some((answer) => answer.targetId === target)) return true;
         if (taskMatches && components.some((component) =>
           component.role === 'material' && !component.existingPublicId)) return true;
         break;

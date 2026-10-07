@@ -7,6 +7,8 @@ import {
 } from './weeklyPlanningCurrentTurnProvenanceV5';
 import { projectWeeklyPlanningCorrectionContextV5 } from './weeklyPlanningCorrectionContextProjectionV5';
 import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './weeklyPlanningRegisteredMaterialReferenceProjectionV5';
+import { validateWeeklyPlanningMaterialIdentityAnswerV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
+import { projectWeeklyPlanningExistingWorkloadRateReferenceV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
 import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
@@ -124,8 +126,11 @@ export function validateWeeklyPlanningSemanticResponseV5(
     preParseNormalization.rawResponse,
     input.publicStateSummary,
   );
+  const workloadRateReference = semanticConversationActs
+    ? projectWeeklyPlanningExistingWorkloadRateReferenceV5({ rawResponse: preParseNormalization.rawResponse, graph: input.committedGraph })
+    : { rawResponse: preParseNormalization.rawResponse, repairs: [] };
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
-    preParseNormalization.rawResponse,
+    workloadRateReference.rawResponse,
     { conversationActs: semanticConversationActs },
   );
   const actTargets = parsed.conversationActs
@@ -180,6 +185,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     : { document: correctionContext.document, repairs: [] };
   const algorithmicRepairs = [
     ...preParseNormalization.repairs,
+    ...workloadRateReference.repairs,
     ...normalized.repairs,
     ...correctionContext.repairs,
     ...materialReferences.repairs,
@@ -188,6 +194,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ? { ...materialReferences.document, conversationActs: actTargets.acts }
     : materialReferences.document;
   const errors = [
+    ...(semanticConversationActs ? validateWeeklyPlanningMaterialIdentityAnswerV5({ document, graph: input.committedGraph }) : []),
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
       document.planningWindow,

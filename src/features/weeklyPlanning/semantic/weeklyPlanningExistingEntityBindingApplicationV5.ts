@@ -44,6 +44,7 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
   originalGraph: WeeklyPlanningFactGraphV5;
   document: WeeklyPlanningSemanticDocumentV5;
   canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
+  componentIdentityReplacementLocalIds?: readonly string[];
 }): WeeklyPlanningExistingEntityBindingApplicationResultV5 {
   if (params.canonicalization.status !== 'applied' || !params.canonicalization.diff) {
     return {
@@ -98,6 +99,7 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
     localToFactId[localId] = existingId;
   }
   for (const [localId, existingId] of Object.entries(bindings.componentFactIdByLocalId)) {
+    if (params.componentIdentityReplacementLocalIds?.includes(localId)) continue;
     const temporaryId = params.canonicalization.localToFactId[localId];
     if (!temporaryId) {
       const error = `missing-temporary-component-binding:${localId}`;
