@@ -69,6 +69,30 @@ describe('live latency A T1: remove representational provider round trips', () =
     expect(turn.result?.message).toBe(`${response.groundingAcknowledgement.text}\n\n${response.text}`);
     expect(JSON.stringify(turn.result?.dialogueRendererTrace)).toContain(JSON.stringify(fixture.rendererResponse).slice(1, -1));
   });
+
+  it.each(['interaction_v1', 'legacy_v5'] as const)('handles a provider that repeats the registered ID on every semantic response (%s)', async architecture => {
+    const document = JSON.parse(fixture.semanticResponse);
+    if (architecture === 'legacy_v5') delete document.conversationActs;
+    script = call => call.kind !== 'renderer' ? JSON.stringify(document) : undefined;
+    const current = createScriptedConversation({ provider, ownerId: OWNER, conversationId: fixture.conversationId,
+      architecture, studyMaterials: [material()], now: () => '2026-10-07T15:01:00.000Z' });
+    const turn = await current.submit(fixture.userText);
+    const calls = turn.calls.filter(call => call.kind !== 'renderer');
+    if (architecture === 'interaction_v1') {
+      expect(turn.result?.failure).toBeUndefined();
+      expect(calls).toHaveLength(1);
+      expect(turn.debugTrace.some(event => event.stage === 'semantic_repair_prepared')).toBe(false);
+      expect(current.graph()!.revision).toBe(1);
+      expect(current.getState().previewCandidates!.length).toBeGreaterThan(0);
+    } else {
+      expect(turn.result?.failure?.code).toBe('stable_v5_normalization_rejected');
+      expect(calls).toHaveLength(2);
+      expect(turn.debugTrace.some(event => event.stage === 'semantic_repair_prepared')).toBe(true);
+      expect(JSON.stringify(turn.debugTrace)).toContain('unknown-active-component');
+      expect(current.graph()!.revision).toBe(0);
+      expect(current.getState().previewCandidates ?? []).toEqual([]);
+    }
+  });
 });
 
 
