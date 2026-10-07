@@ -10,10 +10,10 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // #525: pinned SunCalc + shared scene clock/pixel sky, with redundant settings copy removed.
-    // Measured 2,232,841 raw / 600,750 gzip (+8,929 / +3,671 vs prior main).
-    // Calibrate only aggregate JS totals; retain individual-JS and all CSS guards.
-    totalRaw: 2_235_000,
+    // #164/#528: measured copy-cleanup + persisted-state validation + live Home clock stack.
+    // Combined 2,235,709 raw / 601,042 gzip: +2,868 raw / +292 gzip vs #527; no new dependency.
+    // Calibrate aggregate raw JS only; preserve gzip, individual-JS and all CSS guards.
+    totalRaw: 2_240_000,
     totalGzip: 602_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
