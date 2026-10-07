@@ -191,6 +191,28 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(focusedPrompt).toContain(userText);
   });
 
+  // Live D T3 on 91e560cb: the re-read encoded the follow-up but targeted accepted facts by public
+  // id; it gets the turn's one repair instead of being dropped for the empty first response.
+  it.each([['repaired', 3], ['still invalid', 3]] as const)('spends the one repair on an invalid follow-up re-read (%s)', async (outcome, calls) => {
+    const invalid = recoveredDeadline();
+    invalid.tasks[0].temporalConstraints[0].targetLocalId = 'wpf_public_fact_id';
+    const fake = fakeClient([JSON.stringify(existingTaskShell()), JSON.stringify(invalid),
+      JSON.stringify(outcome === 'repaired' ? recoveredDeadline() : invalid)]);
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText,
+      publicStateSummary: { ...publicStateSummary(), pendingQuestion: null },
+      conversationArchitecture: 'interaction_v1',
+    });
+    expect(fake.calls).toHaveLength(calls);
+    const repairMessages = fake.calls[2].messages;
+    expect(repairMessages[repairMessages.length - 1]?.content ?? '').toContain('validationErrors');
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({ repairAttempted: true });
+    // A failed repair keeps the earlier floor: the valid empty first response, unchanged.
+    expect(result.document?.tasks[0].temporalConstraints).toEqual(outcome === 'repaired'
+      ? [expect.objectContaining({ kind: 'deadline', dateExpression: 'tomorrow', startTime: '13:00' })] : []);
+  });
+
   it('falls through to the generic completeness retry when focused temporal meaning is absent', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),

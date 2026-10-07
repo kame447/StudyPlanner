@@ -209,6 +209,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           baseMessages,
           initialResponse,
           initialDocument: initialValidation.document,
+          // No repair has been used in this turn yet; the retry may spend it once.
+          repairInvalidRetry: ({ response, validation, attemptCount }) => runGenericSemanticRepairRouteV5({
+            run,
+            baseMessages,
+            initialResponse: response,
+            initialValidation: validation,
+            attemptCountBeforeRepair: attemptCount,
+          }),
         });
         if (completenessRetry) return finish(completenessRetry);
 
