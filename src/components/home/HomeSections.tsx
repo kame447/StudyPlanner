@@ -9,7 +9,7 @@ import {
   Plus,
   Target,
 } from 'lucide-react';
-import { formatCompactDate, minutesBetween } from '../../lib/date';
+import { minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
   resolveHomeNextPlanPresentation,
@@ -74,13 +74,11 @@ function HomeScheduleRow({
   plan,
   actual,
   studyMaterials,
-  future = false,
   onOpenDay,
 }: {
   plan: Plan;
   actual?: Actual;
   studyMaterials: StudyMaterial[];
-  future?: boolean;
   onOpenDay: (date: string) => void;
 }) {
   const presentation = resolveHomeNextPlanPresentation(plan, studyMaterials);
@@ -88,7 +86,7 @@ function HomeScheduleRow({
 
   return (
     <button
-      className={future ? 'home-schedule-row future' : 'home-schedule-row'}
+      className="home-schedule-row"
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >
@@ -97,7 +95,6 @@ function HomeScheduleRow({
       </span>
       <span className="home-schedule-content">
         <time>
-          {future ? `${formatCompactDate(plan.date)} ` : ''}
           {plan.startTime} - {plan.endTime}
         </time>
         <strong>{plan.title}</strong>
@@ -286,9 +283,6 @@ export function TodayScheduleSection({
   onOpenDay: (date: string) => void;
   onAddEntry: () => void;
 }) {
-  const futureSlots = Math.max(0, 4 - Math.min(4, dashboard.todayPlans.length));
-  const visibleUpcomingPlans = dashboard.upcomingPlans.slice(0, futureSlots);
-
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
       <div className="home-section-heading">
@@ -312,17 +306,6 @@ export function TodayScheduleSection({
                 />
               );
             })}
-            {dashboard.todayPlans.length < 4
-              ? visibleUpcomingPlans.map((plan) => (
-                  <HomeScheduleRow
-                    key={`future:${plan.id}:${plan.date}`}
-                    plan={plan}
-                    future
-                    studyMaterials={studyMaterials}
-                    onOpenDay={onOpenDay}
-                  />
-                ))
-              : null}
           </>
         ) : null}
         <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">

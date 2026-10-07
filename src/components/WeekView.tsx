@@ -151,10 +151,13 @@ const DRAG_EDGE_SCROLL_PX = 30;
 const DRAG_EDGE_SCROLL_STEP_PX = 14;
 const CLICK_SUPPRESSION_MS = 700;
 
-function formatWeekDate(dateString: string): string {
+function formatWeekDate(dateString: string, format: 'compact' | 'full'): string {
   const date = new Date(`${dateString}T00:00:00`);
   const weekday = WEEKDAY_LABELS[date.getDay()] ?? '';
-  return `${date.getMonth() + 1}/${date.getDate()}(${weekday})`;
+  const day = format === 'full'
+    ? `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+    : `${date.getDate()}`;
+  return `${day}（${weekday}）`;
 }
 
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
@@ -883,12 +886,13 @@ export function WeekView({
                 <div className="weekly-draft-preview-corner">時間</div>
                 {weekDates.map((date) => (
                   <button
+                    aria-label={formatWeekDate(date, 'full')}
                     className="weekly-draft-preview-date"
                     key={date}
                     onClick={() => onOpenDay(date)}
                     type="button"
                   >
-                    <strong>{formatWeekDate(date)}</strong>
+                    <strong>{formatWeekDate(date, 'compact')}</strong>
                   </button>
                 ))}
               </div>
@@ -1019,7 +1023,7 @@ export function WeekView({
                       onDoubleClick={() => onOpenDay(date)}
                       style={timelineStyle}
                       role="group"
-                      aria-label={`${formatWeekDate(date)}の${timelineMode === 'plan' ? '予定' : '記録'}`}
+                      aria-label={`${formatWeekDate(date, 'full')}の${timelineMode === 'plan' ? '予定' : '記録'}`}
                     >
                       {WEEK_HOURS.map((hour) => (
                         <span
