@@ -99,4 +99,19 @@ describe('Stable V5 removals of the current turn (Issue #488)', () => {
       .toEqual([{ kind: 'task', taskLabel: '英語', label: '英語' }]);
     expect(weeklyPlanningTurnRemovalsV5({ graph, currentTurnId: 'turn-4' })).toEqual([]);
   });
+
+  it('keeps a removal whose reference has no mention, labelled by the removed fact\'s own words', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.revision = 2;
+    graph.availabilityDeclarations = [{
+      id: 'avail-tue', source: source('turn-1', 'a1', '火曜日の18時から20時は勉強できない'), createdRevision: 1,
+    } as never];
+    graph.correctionIntents = [{
+      id: 'remove-tue', target: { kind: 'availability_declaration', publicId: 'avail-tue', factId: 'avail-tue', mention: null },
+      operation: 'remove', replacementFactId: null, source: source('turn-2', 'c1', 'やっぱりなし'), createdRevision: 2,
+    } as never];
+    expect(weeklyPlanningTurnRemovalsV5({ graph, currentTurnId: 'turn-2' })).toEqual([
+      { kind: 'availability_declaration', taskLabel: null, label: '火曜日の18時から20時は勉強できない' },
+    ]);
+  });
 });

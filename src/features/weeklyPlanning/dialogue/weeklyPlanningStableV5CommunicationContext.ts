@@ -2,6 +2,7 @@ import type {
   WeeklyPlanningInteractionOutcome,
   WeeklyPlanningTurnCommunicationFacts,
 } from '../application/weeklyPlanningInteractionOutcome';
+import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import type {
   WeeklyPlanningStableV5CommunicationContext,
   WeeklyPlanningStableV5CommunicationGoal,
@@ -22,31 +23,83 @@ import type {
 
 const LATER_NEEDS_LIMIT = 3;
 
-const PURPOSES_BY_QUESTION_CODE: Readonly<Record<string, readonly WeeklyPlanningStableV5QuestionPurpose[]>> = {
+type WeeklyPlanningStableV5AskableQuestionCode =
+  | WeeklyPlanningStableQuestionV5['code']
+  | 'missing_schedulable_work'
+  | 'learning_strategy_proposal'
+  | 'insufficient_capacity';
+
+/** Every question code has a purpose (compiler-checked), so a "why?" always has a typed reason. */
+const PURPOSES_BY_QUESTION_CODE: Readonly<Record<
+  WeeklyPlanningStableV5AskableQuestionCode,
+  readonly WeeklyPlanningStableV5QuestionPurpose[]
+>> = {
+  // Work items
+  quantity_role_unresolved: ['tell_plan_amount_from_remaining_total'],
   missing_effort_estimate: ['estimate_time_to_fit_available_time'],
   ambiguous_effort_estimate: ['choose_one_time_estimate'],
+  non_integral_discrete_amount: ['count_in_whole_units'],
+  invalid_actual_range: ['identify_which_work_and_how_much'],
+  orphan_workload: ['link_detail_to_its_task'],
+  scope_total_workload_skipped: ['tell_plan_amount_from_remaining_total'],
+  completed_workload_skipped: ['tell_plan_amount_from_remaining_total'],
+  remaining_workload_skipped_for_target: ['tell_plan_amount_from_remaining_total'],
   missing_schedulable_work: ['skip_already_finished_work'],
+  // Meaning and planning period
   semantic_uncertainty: ['resolve_unclear_detail'],
   invalid_planning_horizon: ['set_planning_period'],
   ambiguous_planning_window: ['choose_one_planning_period'],
-  quantity_role_unresolved: ['tell_plan_amount_from_remaining_total'],
+  invalid_planning_date_range: ['set_planning_period'],
+  unresolved_hard_date_expression: ['use_dates_the_plan_can_read'],
+  contradictory_hard_date_bound: ['resolve_conflicting_dates'],
+  // Fixed commitments
+  unsupported_commitment_date_expression: ['use_dates_the_plan_can_read'],
+  missing_commitment_date_scope: ['place_fixed_commitment'],
+  ambiguous_commitment_recurrence: ['place_fixed_commitment'],
+  invalid_commitment_weekday: ['use_dates_the_plan_can_read'],
+  invalid_commitment_interval: ['place_fixed_commitment'],
+  unknown_commitment_constraint_level: ['know_how_strict_a_condition_is'],
+  soft_fixed_interval_not_allowed: ['know_how_strict_a_condition_is'],
+  commitment_outside_planning_window: ['use_dates_the_plan_can_read'],
+  // Day rules for tasks
+  orphan_task_date_rule: ['link_detail_to_its_task'],
+  invalid_task_date_rule_level: ['know_how_strict_a_condition_is'],
+  unsupported_task_date_expression: ['use_dates_the_plan_can_read'],
+  task_date_rule_outside_planning_window: ['use_dates_the_plan_can_read'],
+  conflicting_task_date_rule: ['resolve_conflicting_day_rule'],
+  orphan_task_recurrence: ['link_detail_to_its_task'],
+  invalid_task_recurrence_weekday: ['use_dates_the_plan_can_read'],
+  // Availability and daily limits
+  unsupported_date_expression: ['use_dates_the_plan_can_read'],
+  availability_outside_planning_window: ['use_dates_the_plan_can_read'],
   missing_availability_date_scope: ['apply_time_limits_to_right_days'],
   missing_time_bounds: ['know_exact_time_range'],
-  invalid_time_interval: ['know_exact_time_range'],
   named_time_period_unresolved: ['know_exact_time_range'],
-  missing_commitment_date_scope: ['place_fixed_commitment'],
-  invalid_commitment_interval: ['place_fixed_commitment'],
-  conflicting_task_date_rule: ['resolve_conflicting_day_rule'],
+  unknown_constraint_level: ['know_how_strict_a_condition_is'],
+  invalid_weekday: ['use_dates_the_plan_can_read'],
+  invalid_time_interval: ['know_exact_time_range'],
   constraint_source_unavailable: ['avoid_existing_commitments'],
   active_constraint_source_missing: ['avoid_existing_commitments'],
+  constraint_source_owner_mismatch: ['avoid_existing_commitments'],
+  constraint_event_owner_mismatch: ['avoid_existing_commitments'],
+  invalid_constraint_event: ['avoid_existing_commitments'],
+  invalid_daily_capacity_minutes: ['set_daily_study_limit'],
+  invalid_daily_capacity_weekday: ['use_dates_the_plan_can_read'],
+  unsupported_daily_capacity_date_expression: ['use_dates_the_plan_can_read'],
+  missing_daily_capacity_date_scope: ['apply_time_limits_to_right_days'],
+  // Task order and duplicates
   orphan_relation_task: ['order_tasks_correctly'],
   self_relation: ['order_tasks_correctly'],
+  relation_cycle: ['order_tasks_correctly'],
+  fixed_task_movable_work_suppressed: ['complete_planning_information'],
+  // Application decisions
   learning_strategy_proposal: ['decide_on_study_method_suggestion'],
   insufficient_capacity: ['make_the_plan_fit_available_time'],
 };
 
 function purposesForQuestionCode(code: string): WeeklyPlanningStableV5QuestionPurpose[] {
-  return [...(PURPOSES_BY_QUESTION_CODE[code] ?? ['complete_planning_information'])];
+  const purposes = (PURPOSES_BY_QUESTION_CODE as Readonly<Record<string, readonly WeeklyPlanningStableV5QuestionPurpose[] | undefined>>)[code];
+  return [...(purposes ?? ['complete_planning_information'])];
 }
 
 /** The typed intent refines the code-level purpose when it carries the distinction. */

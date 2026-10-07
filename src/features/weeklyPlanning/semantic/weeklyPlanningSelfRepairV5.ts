@@ -78,6 +78,20 @@ export interface WeeklyPlanningTurnRemovalV5 {
   label: string;
 }
 
+/** The user's own words for a fact, from whichever collection holds it. */
+function factSourceText(graph: WeeklyPlanningFactGraphV5, factId: string): string | null {
+  const collections: ReadonlyArray<ReadonlyArray<{ id: string; source: { sourceText: string } }>> = [
+    graph.planningWindows, graph.tasks, graph.studyContexts, graph.components, graph.workloads,
+    graph.effortEstimates, graph.temporalConstraints, graph.taskDateRules, graph.recurrences,
+    graph.relations, graph.availabilityDeclarations, graph.constraintSourceRequests,
+  ];
+  for (const collection of collections) {
+    const fact = collection.find((item) => item.id === factId);
+    if (fact) return fact.source.sourceText.trim() || null;
+  }
+  return null;
+}
+
 export function weeklyPlanningTurnRemovalsV5(params: {
   graph: WeeklyPlanningFactGraphV5;
   currentTurnId: string;
@@ -88,7 +102,11 @@ export function weeklyPlanningTurnRemovalsV5(params: {
       && Boolean(item.target.factId))
     .flatMap((item) => {
       const factId = item.target.factId as string;
-      const label = factLabel(params.graph, item.target, factId)?.trim();
+      // A typed label when the kind has one, else the user's mention, else the removed fact's
+      // own source words: a removal is never dropped for want of a label.
+      const label = (factLabel(params.graph, item.target, factId)?.trim()
+        || factSourceText(params.graph, factId)
+        || '').trim();
       return label
         ? [{ kind: item.target.kind, taskLabel: taskLabelForFact(params.graph, factId), label }]
         : [];

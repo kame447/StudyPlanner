@@ -56,6 +56,12 @@ export const WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES = [
   'order_tasks_correctly',
   'decide_on_study_method_suggestion',
   'make_the_plan_fit_available_time',
+  'count_in_whole_units',
+  'link_detail_to_its_task',
+  'use_dates_the_plan_can_read',
+  'know_how_strict_a_condition_is',
+  'set_daily_study_limit',
+  'resolve_conflicting_dates',
   'complete_planning_information',
 ] as const;
 

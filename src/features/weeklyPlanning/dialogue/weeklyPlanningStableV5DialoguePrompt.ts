@@ -122,6 +122,12 @@ const QUESTION_PURPOSE_MEANINGS: Readonly<Record<WeeklyPlanningStableV5QuestionP
   order_tasks_correctly: 'which tasks a stated order refers to',
   decide_on_study_method_suggestion: 'whether to adopt a suggested study method; it is used only if accepted',
   make_the_plan_fit_available_time: 'how to make all the work fit: a longer period, less work, or more free time',
+  count_in_whole_units: 'the amount in whole units (for example whole problems), because the work is scheduled unit by unit',
+  link_detail_to_its_task: 'which task a stated detail belongs to, so it is applied to the right work',
+  use_dates_the_plan_can_read: 'a date, day or time that fits the planning period, because the stated one cannot be used as it is',
+  know_how_strict_a_condition_is: 'whether a condition must always hold or is only a preference, because that changes how strictly it is kept',
+  set_daily_study_limit: 'how much time per day can go to study, so no day is overloaded',
+  resolve_conflicting_dates: 'which of two date limits that contradict each other is meant',
   complete_planning_information: 'a detail the plan still needs',
 };
 
